@@ -20,7 +20,7 @@ import { useDrawer } from "@/components/Providers/DrawerProvider";
 
 const navbarTheme: CustomFlowbiteTheme["navbar"] = {
   root: {
-    base: "fixed top-0 left-0 right-0 z-50 items-center bg-white px-2 py-2.5 dark:border-neutral-700 dark:bg-neutral-800 sm:px-4",
+    base: "fixed top-0 left-0 right-0 z-50 items-center bg-white px-2 py-2.5 sm:px-4",
     rounded: {
       on: "rounded",
       off: "",
@@ -49,18 +49,18 @@ const navbarTheme: CustomFlowbiteTheme["navbar"] = {
     },
   },
   link: {
-    base: "block py-2 pl-3 pr-4 md:p-0 border-b border-neutral-200 md:border-none",
+    base: "block py-2 pl-3 pr-4 md:p-0 border-b border-neutral-200 md:border-transparent",
     active: {
-      on: "bg-neutral-200 rounded text-white dark:text-white md:bg-transparent md:text-neutral-800 font-semibold text-accent-900 md:border-transparent",
-      off: "text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-white transition transform duration-50 md:hover:bg-transparent hover:text-neutral-800 md:border-transparent md:border-b-2 md:hover:border-neutral-600 md:dark:hover:bg-transparent md:dark:hover:text-white",
+      on: "bg-neutral-200 rounded text-white md:bg-transparent md:text-neutral-800 font-semibold text-accent-900",
+      off: "text-neutral-700 hover:bg-neutral-100 transition transform duration-50 hover:text-neutral-800 md:hover:bg-transparent md:hover:border-b-2 md:hover:border-neutral-600",
     },
     disabled: {
-      on: "text-neutral-400 hover:cursor-not-allowed dark:text-neutral-600",
+      on: "text-neutral-400 hover:cursor-not-allowed",
       off: "",
     },
   },
   toggle: {
-    base: "inline-flex items-center rounded p-2 text-neutral-700 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:focus:ring-neutral-600 md:hidden",
+    base: "inline-flex items-center rounded p-2 text-neutral-700 hover:bg-neutral-100 md:hidden",
     icon: "h-6 w-6 shrink-0",
   },
 };
@@ -75,24 +75,24 @@ const dropdownTheme: CustomFlowbiteTheme["dropdown"] = {
       style: {
         dark: "bg-neutral-900 dark:bg-neutral-700",
         light: "bg-white",
-        auto: "bg-white dark:bg-neutral-700",
+        auto: "bg-white",
       },
       placement: "-4px",
     },
     base: "z-10 w-fit divide-y divide-neutral-100 rounded shadow focus:outline-none",
-    content: "py-1 text-base text-neutral-700 dark:text-neutral-200",
-    divider: "my-1 h-px bg-neutral-100 dark:bg-neutral-600",
-    header: "block px-4 py-2 text-sm text-neutral-700 dark:text-neutral-200",
+    content: "py-1 text-base text-neutral-700",
+    divider: "my-1 h-px bg-neutral-100",
+    header: "block px-4 py-2 text-sm text-neutral-700",
     hidden: "invisible opacity-0",
     item: {
       container: "",
-      base: "flex w-32 cursor-pointer items-center justify-start px-4 py-2 text-md font-medium text-neutral-700 hover:bg-neutral-100 focus:bg-neutral-100 focus:outline-none dark:text-neutral-200 dark:hover:bg-neutral-600 dark:hover:text-white dark:focus:bg-neutral-600 dark:focus:text-white",
+      base: "flex w-32 cursor-pointer items-center justify-start px-4 py-2 text-md font-medium text-neutral-700 hover:bg-neutral-100 focus:bg-neutral-100 focus:outline-none",
       icon: "mr-2 h-4 w-4",
     },
     style: {
       dark: "bg-neutral-900 text-white dark:bg-neutral-700",
       light: "border border-neutral-200 bg-white text-neutral-900",
-      auto: "border border-neutral-200 bg-white text-neutral-900 dark:border-none dark:bg-neutral-700 dark:text-white",
+      auto: "border border-neutral-200 bg-white text-neutral-900",
     },
     target: "w-fit",
   },
