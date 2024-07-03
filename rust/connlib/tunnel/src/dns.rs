@@ -295,13 +295,13 @@ impl StubResolver {
         }
 
         let resource_records = match qtype {
+            Rtype::A | Rtype::AAAA if self.is_fqdn_resource(&domain) => {
+                self.get_or_create_resource_records(qtype, domain.clone())
+            }
             Rtype::PTR => {
                 let fqdn = self.resource_address_name_by_reservse_dns(&domain)?;
 
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
-            }
-            Rtype::A | Rtype::AAAA if self.is_fqdn_resource(&domain) => {
-                self.get_or_create_resource_records(qtype, domain.clone())
             }
             _ => {
                 return Some(ResolveStrategy::ForwardQuery(DnsQuery {
