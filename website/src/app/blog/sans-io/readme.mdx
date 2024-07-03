@@ -5,9 +5,9 @@ At firezone, we build secure remote access that scales, be it from your Android
 phone, MacOS computer or Linux server. At the core of these apps sits a
 connectivity library - aptly named `connlib` - that manages network connections
 and wireguard tunnels to secure your traffic. After several iterations, we’ve
-landed on a design for our connectivity library that we are extremely happy
-with. It gives us blazingly fast and exhaustive tests, deep customisation and
-overall high assurance that it does what we want it to do.
+landed on a design that we are extremely happy with. It gives us blazingly fast
+and exhaustive tests, deep customisation and overall high assurance that it does
+what we want it to do.
 
 `connlib` is built in Rust and the design we are talking about is known as
 sans-IO. Rust's premise of speed and memory-safety makes it a great choice for
@@ -55,14 +55,14 @@ inner function. This can be problematic if the code you want to call isn't
 actually yours but a dependency that you are pulling in.
 
 Some people see this as a problem and they would like to write code that is
-agnostic over the "asyncness" of their dependencies. This idea has merit. At the
-very bottom of each async call stack sits a `Future` that needs to suspend on
-something. Usually, this is some form of IO, like writing to a socket, reading
-from a file, waiting for time to advance, etc. The majority of async functions
-don't actually perform async work themselves. Instead, they depend on other
-async functions which forces them to be async. The code around those inner async
-functions would usually also work in a blocking context, but the author of your
-dependency happened to pick the async variant.
+agnostic over the "asyncness" of their dependencies. That concern has merit.
+Ultimately, at the very bottom of each async call stack sits a `Future` that
+needs to suspend on something. Usually, this is some form of IO, like writing to
+a socket, reading from a file, waiting for time to advance, etc. The majority of
+async functions however don't actually perform async work themselves. Instead,
+they are only async because they depend on other async functions. The code
+around those inner async functions would usually also work in a blocking
+context, but the author of your dependency happened to pick the async variant.
 
 Let's look at an example of this problem. Firezone's connectivity library
 `connlib` uses ICE and as part of that, we utilise STUN to discover our
@@ -137,9 +137,9 @@ the code that actually sends the message (i.e. the implementation).
 
 That is the heart of the issue in the above example: We are composing our policy
 code on top of a UDP socket and thus, forcing everything upwards to either be
-`async` in the `tokio` example or deal with the blocking nature in the `std`
-example. Yet, the policy code itself is the one we want to test and perhaps
-share with others via libraries, regardless of whether or not we use blocking or
+`async` in the `tokio` example or deal with blocking IO in the `std` case. The
+policy code is the same, yet it is the one we want to test and perhaps share
+with others via libraries, regardless of whether or not we use blocking or
 non-blocking IO.
 
 ## Applying dependency inversion
@@ -184,7 +184,7 @@ The state machine diagram for our STUN binding request looks like this:
 <Image
   width={500}
   className="rounded shadow mx-auto"
-  src="/images/blog/sans-io/stun-binding-state-machine.svg"
+  src="/images/blog/sans-io/stun-binding-state-machine1.svg"
   alt="A UML state diagram for a STUN binding request."
 />
 
@@ -381,6 +381,15 @@ impl StunBinding {
     }
 }
 ```
+
+This is an updated version of our state diagram:
+
+<Image
+  width={500}
+  className="rounded shadow mx-auto"
+  src="/images/blog/sans-io/stun-binding-state-machine2.svg"
+  alt="A UML state diagram for a STUN binding request that is being refreshed every 5s."
+/>
 
 The eventloop also changed slightly. Instead of exiting once we know our public
 IP, we'll now loop until the user quits the program:
