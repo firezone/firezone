@@ -11,6 +11,8 @@ use crate::client::{
     Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
+use arc_swap::ArcSwap;
+use connlib_client_shared::callbacks::ResourceDescription;
 use secrecy::{ExposeSecret, SecretString};
 use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
@@ -434,49 +436,32 @@ struct Controller {
     // Sign-in state with the portal / deep links
     auth: client::auth::Auth,
     ctlr_tx: CtlrTx,
-    /// connlib session for the currently signed-in user, if there is one
-    session: Option<Session>,
+    ipc_client: ipc::Client,
+    is_connected_to_firezone: bool,
     log_filter_reloader: logging::Reloader,
     /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
     notify_controller: Arc<Notify>,
+    resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
     tunnel_ready: bool,
     uptime: client::uptime::Tracker,
-}
-
-/// Everything related to a signed-in user session
-struct Session {
-    callback_handler: CallbackHandler,
-    connlib: ipc::Client,
 }
 
 impl Controller {
     /// Pre-req: the auth module must be signed in
     async fn start_session(&mut self, token: SecretString) -> Result<(), Error> {
-        if self.session.is_some() {
-            Err(anyhow!("can't start session, we're already in a session"))?;
+        if self.is_connected_to_firezone {
+            Err(anyhow::anyhow!(
+                "Can't connect to Firezone, we're already connected."
+            ))?;
         }
-
-        let callback_handler = CallbackHandler {
-            ctlr_tx: self.ctlr_tx.clone(),
-            notify_controller: Arc::clone(&self.notify_controller),
-            resources: Default::default(),
-        };
 
         let api_url = self.advanced_settings.api_url.clone();
         tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
 
-        let connlib = ipc::Client::connect(
-            api_url.as_str(),
-            token,
-            callback_handler.clone(),
-            tokio::runtime::Handle::current(),
-        )
-        .await?;
-
-        self.session = Some(Session {
-            callback_handler,
-            connlib,
-        });
+        self.ipc_client
+            .connect_to_firezone(api_url.as_str(), token)
+            .await?;
+        self.is_connected_to_firezone = true;
         self.refresh_system_tray_menu()?;
 
         ran_before::set().await?;
@@ -573,7 +558,7 @@ impl Controller {
                 .set_text(s)
                 .context("Couldn't copy resource URL or other text to clipboard")?,
             Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn) => {
-                if self.session.is_some() {
+                if self.is_connected_to_firezone {
                     if self.tunnel_ready {
                         tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code.");
                     } else {
@@ -644,10 +629,10 @@ impl Controller {
         // TODO: Show some "Waiting for portal..." state if we got the deep link but
         // haven't got `on_tunnel_ready` yet.
         if let Some(auth_session) = self.auth.session() {
-            if let Some(connlib_session) = &self.session {
+            if self.is_connected_to_firezone {
                 if self.tunnel_ready {
                     // Signed in, tunnel ready
-                    let resources = connlib_session.callback_handler.resources.load();
+                    let resources = self.resources.load();
                     system_tray_menu::signed_in(&auth_session.actor_name, &resources)
                 } else {
                     // Signed in, raising tunnel
@@ -677,11 +662,12 @@ impl Controller {
     async fn sign_out(&mut self) -> Result<()> {
         self.auth.sign_out()?;
         self.tunnel_ready = false;
-        if let Some(session) = self.session.take() {
+        if self.is_connected_to_firezone {
+            self.is_connected_to_firezone = false;
             tracing::debug!("disconnecting connlib");
             // This is redundant if the token is expired, in that case
             // connlib already disconnected itself.
-            session.connlib.disconnect().await?;
+            self.ipc_client.disconnect_from_firezone().await?;
         } else {
             // Might just be because we got a double sign-out or
             // the user canceled the sign-in or something innocent.
@@ -717,14 +703,24 @@ async fn run_controller(
     log_filter_reloader: logging::Reloader,
 ) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");
+    let notify_controller = Arc::new(Notify::new());
+    let resources = Default::default();
+    let callback_handler = CallbackHandler {
+        ctlr_tx: ctlr_tx.clone(),
+        notify_controller: Arc::clone(&notify_controller),
+        resources: Arc::clone(&resources),
+    };
+    let ipc_client = ipc::Client::new(callback_handler).await?;
     let mut controller = Controller {
         advanced_settings,
         app: app.clone(),
         auth: client::auth::Auth::new(),
         ctlr_tx,
-        session: None,
+        ipc_client,
+        is_connected_to_firezone: false,
         log_filter_reloader,
-        notify_controller: Arc::new(Notify::new()), // TODO: Fix cancel-safety
+        notify_controller, // TODO: Fix cancel-safety
+        resources,
         tunnel_ready: false,
         uptime: Default::default(),
     };
@@ -768,17 +764,17 @@ async fn run_controller(
                 let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
                 if new_have_internet != have_internet {
                     have_internet = new_have_internet;
-                    if let Some(session) = controller.session.as_mut() {
+                    if controller.is_connected_to_firezone {
                         tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
-                        session.connlib.reconnect().await?;
+                        controller.ipc_client.reconnect().await?;
                     }
                 }
             },
             resolvers = dns_listener.notified() => {
                 let resolvers = resolvers?;
-                if let Some(session) = controller.session.as_mut() {
+                if controller.is_connected_to_firezone {
                     tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
-                    session.connlib.set_dns(resolvers).await?;
+                    controller.ipc_client.set_dns(resolvers).await?;
                 }
             },
             req = rx.recv() => {
@@ -807,6 +803,9 @@ async fn run_controller(
 
     if let Err(error) = com_worker.close() {
         tracing::error!(?error, "com_worker");
+    }
+    if let Err(error) = controller.ipc_client.disconnect_from_ipc().await {
+        tracing::error!(?error, "ipc_client");
     }
 
     // Last chance to do any drops / cleanup before the process crashes.
