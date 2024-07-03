@@ -38,10 +38,10 @@ load balance for each other. No other configuration is necessary.
 1. A [Firezone Site](/kb/deploy/sites) dedicated to use for this example. This
    Site should contain **only** the Firezone Gateway(s) deployed in this example
    and any associated Resources.
-1. A Firezone Gateway token. See
-   [Multiple Gateways](/kb/deploy/gateways#deploy-multiple-gateways) for
-   instructions on how to obtain a Firezone Gateway token that can be used
-   across multiple instances.
+1. A Firezone Gateway token. This can be obtained by viewing your Site in the
+   admin portal, clicking the `Deploy Gateway` button, and navigating to the
+   instructions for the `GCP` tab. Gateway tokens support multi-use, so only a
+   single token is needed to provision the Firezone Gateways in this guide.
 
 ## Sizing
 
@@ -94,12 +94,18 @@ listed as `Online`.
 
 ## Upgrading
 
-To upgrade the Firezone Gateway(s) to the latest version, simply update the
-`token` and issue a `terraform apply` which will trigger a redeployment of the
-Firezone Gateway(s).
+To upgrade the Firezone Gateway(s) to the latest version, we recommend setting a
+version to deploy with the `vsn` variable. Then, whenever you want to upgrade,
+update this variable and run `terraform apply`, which will trigger a new
+deployment of the Firezone Gateway(s) with the new version.
 
-This will incur about a minute or two of downtime as Terraform destroys the
-existing Firezone Gateway(s) and deploys new ones in their place.
+<Alert color="info">
+  You can follow the latest releases of the Gateway at our [changelog
+  page](https://www.firezone.dev/changelog).
+</Alert>
+
+This will incur a few minutes of downtime as Terraform destroys the existing
+Firezone Gateway(s) and deploys new ones in their place.
 
 ## Output
 

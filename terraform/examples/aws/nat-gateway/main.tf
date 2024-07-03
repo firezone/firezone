@@ -1,4 +1,10 @@
-module "gateway_aws_example" {
+# Change these to match your environment
+locals {
+  region         = "us-east-1"
+  firezone_token = "YOUR_FIREZONE_TOKEN"
+}
+
+module "aws_firezone_gateway" {
   source = "github.com/firezone/firezone/terraform/modules/aws/firezone-gateway"
 
   ###################
@@ -7,7 +13,7 @@ module "gateway_aws_example" {
 
   # Generate a token from the admin portal in Sites -> <site> -> Deploy Gateway.
   # Only one token is needed for the cluster.
-  firezone_token = "YOUR_FIREZONE_TOKEN"
+  firezone_token = local.firezone_token
 
   # Pick an AMI to use. We recommend Ubuntu LTS or Amazon Linux 2.
   base_ami = data.aws_ami_ids.ubuntu.ids[0]
@@ -51,7 +57,7 @@ data "aws_ami_ids" "ubuntu" {
 
 provider "aws" {
   # Change this to your desired region
-  region = "us-east-1"
+  region = local.region
 }
 
 resource "aws_vpc" "main" {
