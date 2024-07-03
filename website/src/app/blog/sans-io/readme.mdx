@@ -204,7 +204,7 @@ impl StunBinding {
 
 The `handle_input` function is like the inverse to `Transmit`.
 We will use it to feed incoming data to our state machine, i.e. the result of `UdpSocket::recv`.
-We also added a few auxiliary functions to actually construct a new instance of our state machine and to query things from it.
+We also add a few auxiliary functions to actually construct a new instance of our state machine and to query things from it.
 With this in place, we now have a state machine that models the behaviour of our program without performing any IO itself.
 
 ## The eventloop
