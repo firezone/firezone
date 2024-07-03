@@ -283,8 +283,9 @@ impl StubResolver {
 
         let question = message.first_question()?;
         let domain = question.qname().to_vec();
+        let qtype = question.qtype();
 
-        tracing::trace!("Parsed packet as DNS query: '{question}'");
+        tracing::trace!("Parsed packet as DNS query: '{qtype} {domain}'");
 
         if let Some(records) = self.known_hosts.get_records(&question) {
             let response = build_dns_with_answer(message, domain, records)?;
@@ -293,19 +294,19 @@ impl StubResolver {
             )));
         }
 
-        let resource_records = match question.qtype() {
+        let resource_records = match qtype {
             Rtype::PTR => {
                 let fqdn = self.resource_address_name_by_reservse_dns(&domain)?;
 
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
             }
-            rtype @ (Rtype::A | Rtype::AAAA) if self.is_fqdn_resource(&domain) => {
-                self.get_or_create_resource_records(rtype, domain.clone())
+            Rtype::A | Rtype::AAAA if self.is_fqdn_resource(&domain) => {
+                self.get_or_create_resource_records(qtype, domain.clone())
             }
             _ => {
                 return Some(ResolveStrategy::ForwardQuery(DnsQuery {
                     name: domain,
-                    record_type: u16::from(question.qtype()).into(),
+                    record_type: u16::from(qtype).into(),
                     query: packet,
                 }))
             }
