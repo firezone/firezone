@@ -2,6 +2,7 @@ use crate::client::IpProvider;
 use connlib_shared::messages::client::ResourceDescriptionDns;
 use connlib_shared::messages::{DnsServer, ResourceId};
 use connlib_shared::DomainName;
+use domain::base::iana::rtype;
 use domain::base::RelativeName;
 use domain::base::{
     iana::{Class, Rcode, Rtype},
@@ -219,13 +220,14 @@ impl StubResolver {
         ips
     }
 
-    fn get_address_records<N: ToName>(
+    fn get_or_create_resource_records(
         &mut self,
-        question: &Question<N>,
+        qtype: Rtype,
+        domain: DomainName,
     ) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
-        match question.qtype() {
+        match qtype {
             Rtype::A => self
-                .get_or_assign_ips(question.qname().to_name())
+                .get_or_assign_ips(domain)
                 .iter()
                 .copied()
                 .filter_map(get_v4)
@@ -233,7 +235,7 @@ impl StubResolver {
                 .map(AllRecordData::A)
                 .collect_vec(),
             Rtype::AAAA => self
-                .get_or_assign_ips(question.qname().to_name())
+                .get_or_assign_ips(domain)
                 .iter()
                 .copied()
                 .filter_map(get_v6)
@@ -294,8 +296,8 @@ impl StubResolver {
 
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn.clone()))]
             }
-            Rtype::A | Rtype::AAAA if self.is_fqdn_resource(&domain) => {
-                self.get_address_records(&question)
+            rtype @ (Rtype::A | Rtype::AAAA) if self.is_fqdn_resource(&domain) => {
+                self.get_or_create_resource_records(rtype, domain.clone())
             }
             _ => {
                 return Some(ResolveStrategy::ForwardQuery(DnsQuery {
