@@ -196,7 +196,6 @@ impl Tun {
 
     // It's okay if this blocks until the route is added in the OS.
     fn add_route(&self, route: IpNetwork) -> Result<()> {
-        tracing::debug!(?route, "add_route");
         const DUPLICATE_ERR: u32 = 0x80071392;
         let entry = self.forward_entry(route);
 
@@ -213,7 +212,6 @@ impl Tun {
 
     // It's okay if this blocks until the route is removed in the OS.
     fn remove_route(&self, route: IpNetwork) -> Result<()> {
-        tracing::debug!(?route, "remove_route");
         let entry = self.forward_entry(route);
 
         // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
