@@ -134,8 +134,6 @@ impl Tun {
             self.remove_route(*old_route)?;
         }
 
-        // TODO: Might be calling this more often than it needs
-        flush_dns().expect("Should be able to flush Windows' DNS cache");
         self.routes = new_routes;
         Ok(())
     }
@@ -243,16 +241,6 @@ impl Tun {
 
         row
     }
-}
-
-/// Flush Windows' system-wide DNS cache
-pub(crate) fn flush_dns() -> Result<()> {
-    tracing::info!("Flushing Windows DNS cache");
-    Command::new("powershell")
-        .creation_flags(CREATE_NO_WINDOW)
-        .args(["-Command", "Clear-DnsClientCache"])
-        .status()?;
-    Ok(())
 }
 
 // Moves packets from the user towards the Internet

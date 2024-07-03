@@ -51,6 +51,19 @@ impl DnsController {
         activate(dns_config).context("Failed to activate DNS control")?;
         Ok(())
     }
+
+    /// Flush Windows' system-wide DNS cache
+    ///
+    /// `&self` is needed to match the Linux signature
+    pub(crate) fn flush(&self) -> Result<()> {
+        tracing::debug!("Flushing Windows DNS cache...");
+        Command::new("powershell")
+            .creation_flags(CREATE_NO_WINDOW)
+            .args(["-Command", "Clear-DnsClientCache"])
+            .status()?;
+        tracing::debug!("Flushed DNS.");
+        Ok(())
+    }
 }
 
 pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
