@@ -190,10 +190,12 @@ fn debug_db_path() -> PathBuf {
 fn ipc_service_command() -> Exec {
     Exec::cmd("sudo").args(&[
         "--preserve-env",
-        "--user",
+        "runuser",
+        "-u",
         "root",
         "--group",
         "firezone-client",
+        "--whitelist-environment=RUST_LOG",
         ipc_path()
             .to_str()
             .expect("IPC binary path should be valid Unicode"),
