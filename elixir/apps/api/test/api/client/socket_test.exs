@@ -120,12 +120,14 @@ defmodule API.Client.SocketTest do
     test "updates existing client" do
       account = Fixtures.Accounts.create_account()
       context = Fixtures.Auth.build_context(type: :client)
-      identity = Fixtures.Auth.create_identity(account: account)
+      actor = Fixtures.Actors.create_actor(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      new_identity = Fixtures.Auth.create_identity(account: account, actor: actor)
 
       {_token, encoded_token} =
         Fixtures.Auth.create_and_encode_token(
           account: account,
-          identity: identity,
+          identity: new_identity,
           context: context
         )
 
@@ -140,6 +142,7 @@ defmodule API.Client.SocketTest do
       assert client.last_seen_remote_ip_location_city == "Kyiv"
       assert client.last_seen_remote_ip_location_lat == 50.4333
       assert client.last_seen_remote_ip_location_lon == 30.5167
+      assert client.identity_id == new_identity.id
     end
 
     test "uses region code to put default coordinates" do

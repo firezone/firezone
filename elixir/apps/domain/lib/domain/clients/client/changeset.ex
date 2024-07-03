@@ -15,6 +15,7 @@ defmodule Domain.Clients.Client.Changeset do
                               last_seen_remote_ip_location_lon
                               last_seen_version
                               last_seen_at
+                              identity_id
                               updated_at]a
   @update_fields ~w[name]a
   @required_fields @upsert_fields
