@@ -244,30 +244,6 @@ impl StubResolver {
         }
     }
 
-    fn get_records<N: ToName>(
-        &mut self,
-        question: &Question<N>,
-    ) -> Option<Vec<AllRecordData<Vec<u8>, DomainName>>> {
-        match question.qtype() {
-            Rtype::A | Rtype::AAAA => {
-                if !self.is_fqdn_resource(&question.qname().to_vec()) {
-                    return None;
-                }
-
-                Some(self.get_address_records(question))
-            }
-            Rtype::PTR => {
-                let address = reverse_dns_addr(&question.qname().to_vec().to_string())?;
-                let fqdn = self.resource_address_name(&address)?;
-
-                Some(vec![AllRecordData::Ptr(domain::rdata::Ptr::new(
-                    fqdn.clone(),
-                ))])
-            }
-            _ => None,
-        }
-    }
-
     fn is_fqdn_resource(&self, domain_name: &DomainName) -> bool {
         get_description(domain_name, &self.dns_resources).is_some()
     }
@@ -310,12 +286,23 @@ impl StubResolver {
             )));
         }
 
-        let Some(resource_records) = self.get_records(&question) else {
-            return Some(ResolveStrategy::ForwardQuery(DnsQuery {
-                name: ToName::to_vec(question.qname()),
-                record_type: u16::from(question.qtype()).into(),
-                query: packet,
-            }));
+        let resource_records = match question.qtype() {
+            Rtype::PTR => {
+                let address = reverse_dns_addr(&question.qname().to_vec().to_string())?;
+                let fqdn = self.resource_address_name(&address)?;
+
+                vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn.clone()))]
+            }
+            Rtype::A | Rtype::AAAA if self.is_fqdn_resource(&question.qname().to_vec()) => {
+                self.get_address_records(&question)
+            }
+            _ => {
+                return Some(ResolveStrategy::ForwardQuery(DnsQuery {
+                    name: ToName::to_vec(question.qname()),
+                    record_type: u16::from(question.qtype()).into(),
+                    query: packet,
+                }))
+            }
         };
 
         let response = build_dns_with_answer(message, question.qname(), resource_records)?;
