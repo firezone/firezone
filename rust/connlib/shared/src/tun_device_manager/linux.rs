@@ -164,7 +164,7 @@ impl TunDeviceManager {
         }
 
         for route in self.routes.difference(&new_routes) {
-            delete_route(route, index, handle).await?;
+            remove_route(route, index, handle).await?;
         }
 
         self.routes = new_routes;
@@ -232,7 +232,7 @@ async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) -> Result<()> {
     Ok(())
 }
 
-async fn delete_route(route: &IpNetwork, idx: u32, handle: &Handle) -> Result<()> {
+async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) -> Result<()> {
     let message = match route {
         IpNetwork::V4(ipnet) => make_route_v4(idx, handle, *ipnet).message_mut().clone(),
         IpNetwork::V6(ipnet) => make_route_v6(idx, handle, *ipnet).message_mut().clone(),
