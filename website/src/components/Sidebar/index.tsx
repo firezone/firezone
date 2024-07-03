@@ -18,7 +18,7 @@ const FlowbiteSidebarTheme: CustomFlowbiteTheme["sidebar"] = {
   },
   collapse: {
     button:
-      "group flex w-full items-center rounded-lg p-2 text-base font-normal text-neutral-900 transition duration-75 hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-700",
+      "group flex w-full items-center rounded p-2 text-base font-normal text-neutral-900 transition duration-75 hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-700",
     icon: {
       base: "h-6 w-6 text-neutral-500 transition duration-75 group-hover:text-neutral-900 dark:text-neutral-400 dark:group-hover:text-white",
       open: {
@@ -55,7 +55,7 @@ const FlowbiteSidebarTheme: CustomFlowbiteTheme["sidebar"] = {
     },
   },
   item: {
-    base: "flex items-center justify-center rounded-lg p-2 text-base font-normal text-neutral-900 hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-700",
+    base: "flex items-center justify-center rounded p-2 text-base font-normal text-neutral-900 hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-700",
     active: "bg-neutral-200 dark:bg-neutral-700",
     collapsed: {
       insideCollapse: "group w-full pl-8 transition duration-75",
