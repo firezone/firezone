@@ -56,11 +56,12 @@ impl DnsController {
     ///
     /// `&self` is needed to match the Linux signature
     pub(crate) fn flush(&self) -> Result<()> {
-        tracing::debug!("Flushing Windows DNS cache");
+        tracing::debug!("Flushing Windows DNS cache...");
         Command::new("powershell")
             .creation_flags(CREATE_NO_WINDOW)
             .args(["-Command", "Clear-DnsClientCache"])
             .status()?;
+        tracing::debug!("Flushed DNS.");
         Ok(())
     }
 }

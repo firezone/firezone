@@ -1,6 +1,6 @@
 use anyhow::{bail, Context as _, Result};
 use connlib_shared::tun_device_manager::linux::IFACE_NAME;
-use std::{net::IpAddr, str::FromStr};
+use std::{net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;
 
@@ -67,7 +67,7 @@ impl DnsController {
     /// Flush systemd-resolved's system-wide DNS cache
     ///
     /// Does nothing if we're using other DNS control methods or none at all
-    pub(crate) fn flush_dns(&self) -> Result<()> {
+    pub(crate) fn flush(&self) -> Result<()> {
         // Flushing is only implemented for systemd-resolved
         if matches!(self.dns_control_method, Some(DnsControlMethod::Systemd)) {
             tracing::debug!("Flushing systemd-resolved DNS cache...");
