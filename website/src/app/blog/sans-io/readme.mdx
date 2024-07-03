@@ -362,7 +362,7 @@ Instead of exiting once we know our public IP, we'll now loop until the user qui
 ## The premise of sans-IO
 
 So far, all of this seems like a very excessive overhead for sending a few UDP packets back and forth.
-Surely, the 10 line example above is preferable over this state machine and the eventloop!
+Surely, the 10 line example introduced at the start is preferable over this state machine and the eventloop!
 The example might be, but recall the debate around function colouring.
 In a code snippet without dependencies like the above example, using `async` seems like a no brainer and really easy.
 The problem arises once you want to bring in dependencies.
