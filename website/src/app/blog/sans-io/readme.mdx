@@ -656,13 +656,15 @@ For example, a bug in the state machine where the value returned from
 `poll_timeout` is not advanced can lead to a busy-looping behaviour in the
 eventloop.
 
-Sequential actions require more boilerplate. In Rust, `async` functions compile
-down to state machines, with each `.await` point representing a transition to a
-different state. This makes it easy for developers to write sequential code.
-Without `async`, we need to write our own state machines for expressing the
-various steps. How annoying this will be in practise depends on your problem
-domain. Modelling a request-response protocol is not very difficult as we've
-seen in the example of a `StunBinding`.
+Also, sequential workflows require more code to be written. In Rust, `async`
+functions compile down to state machines, with each `.await` point representing
+a transition to a different state. This makes it easy for developers to write
+sequential code together with non-blocking IO. Without `async`, we need to write
+our own state machines for expressing the various steps. How annoying this will
+be in practise depends on your problem domain. Modelling a request-response
+protocol is not very difficult as we've seen in the example of a `StunBinding`.
+On the other hand, if need to express larger, sequential workflows, manually
+modelling them out as state machines could become tedious.
 
 Finally, the sans-IO design is not particularly wide-spread (yet) in the Rust
 community. As a result, there are very few libraries out there that follow it.
