@@ -3,11 +3,12 @@ import Alert from "@/components/DocsAlert";
 
 At Firezone, we build secure remote access that scales, be it from your Android
 phone, MacOS computer or Linux server. At the core of these apps sits a
-connectivity library - aptly named [`connlib`](https://www.github.com/firezone/firezone/tree/main/rust/connlib) - that manages network connections
-and WireGuard tunnels to secure your traffic. After several iterations, we’ve
-landed on a design that we are extremely happy with. It gives us blazingly fast
-and exhaustive tests, deep customisation and overall high assurance that it does
-what we want it to do.
+connectivity library - aptly named
+[`connlib`](https://www.github.com/firezone/firezone/tree/main/rust/connlib) -
+that manages network connections and WireGuard tunnels to secure your traffic.
+After several iterations, we’ve landed on a design that we are extremely happy
+with. It gives us blazingly fast and exhaustive tests, deep customisation and
+overall high assurance that it does what we want it to do.
 
 `connlib` is built in Rust and the design we are talking about is known as
 sans-IO. Rust's premise of speed and memory-safety makes it a great choice for
@@ -20,10 +21,10 @@ to `tokio::spawn`, all communication is multiplexed via a single UDP socket and
 the same APIs appear to repeat themselves across various layers:
 `handle_timeout`, `poll_transmit`, `handle_input`, and so on.
 
-These are the tell-tale signs of a sans-IO design. Instead of sending and receiving
-bytes via a socket in multiple places, our protocols are implemented as pure
-state machines. Even time is abstracted away: every function that needs to know
-the current time receives an `Instant` parameter instead of calling
+These are the tell-tale signs of a sans-IO design. Instead of sending and
+receiving bytes via a socket in multiple places, our protocols are implemented
+as pure state machines. Even time is abstracted away: every function that needs
+to know the current time receives an `Instant` parameter instead of calling
 `Instant::now` itself. This pattern isn't something that we invented! The Python
 world even has a dedicated [website](https://sans-io.readthedocs.io/) about it.
 In Rust, it is used by libraries such as:
@@ -65,11 +66,12 @@ around those inner async functions would usually also work in a blocking
 context, but the author of your dependency happened to pick the async variant.
 
 Let's look at an example of this problem. Firezone's connectivity library
-`connlib` uses ICE and as part of that, we utilise STUN to discover our
-server-reflexive candidate, i.e. our public address. STUN is a binary message
-format and a STUN binding is a pretty simple protocol: Send a UDP packet to
-server, server notes the IP + port it sees as the sending socket and send a UDP
-packet back containing that address.
+`connlib` uses [ICE](https://datatracker.ietf.org/doc/html/rfc8445) for NAT
+traversal and as part of that, we utilise STUN to discover our server-reflexive
+candidate, i.e. our public address. STUN is a binary message format and a STUN
+binding is a pretty simple protocol: Send a UDP packet to server, server notes
+the IP + port it sees as the sending socket and send a UDP packet back
+containing that address.
 
 Here is how we could implement this using `tokio`'s `UdpSocket` (thank you to
 Cloudflare for the public STUN server):
@@ -526,7 +528,8 @@ machine is used as the source of truth in our tests. We then leverage
 [state machine testing](https://proptest-rs.github.io/proptest/proptest/state-machine.html)
 to deterministically sample and execute thousands of scenarios on every CI run
 and compare the reference state machine with `connlib`'s actual state. The
-details of this go beyond the scope of this post, so stay tuned for a followup about that topic in particular too! The key take-away here is that a sans-IO
+details of this go beyond the scope of this post, so stay tuned for a followup
+about that topic in particular too! The key take-away here is that a sans-IO
 design enables these kind of tests.
 
 ### Edge-cases and IO failures
@@ -582,10 +585,10 @@ any references, including `&mut`. To mutate state that isn't local to the
 Both of these options have a runtime overhead: Locks can result in contention
 and sending messages through channels requires copying. In addition, multiple
 tasks running inside a runtime operate in a non-deterministic order which can
-easily lead to race conditions and in the worst case, deadlocks. It appears
-that with either of these options, we arrive at a design that feels brittle, is
-prone to deadlocks and no longer employs zero-cost abstractions, yet avoiding
-all of these is one of the reasons we wanted to use Rust in the first place!
+easily lead to race conditions and in the worst case, deadlocks. It appears that
+with either of these options, we arrive at a design that feels brittle, is prone
+to deadlocks and no longer employs zero-cost abstractions, yet avoiding all of
+these is one of the reasons we wanted to use Rust in the first place!
 
 In the sans-IO world, these problems don't exist. Our protocol code doesn't
 spawn any tasks and thus, `&mut self` is all we need to mutate state. Without
