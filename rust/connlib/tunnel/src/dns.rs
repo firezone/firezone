@@ -276,11 +276,12 @@ impl StubResolver {
         }
 
         let question = message.first_question()?;
+        let domain = question.qname().to_vec();
 
         tracing::trace!("Parsed packet as DNS query: '{question}'");
 
         if let Some(records) = self.known_hosts.get_records(&question) {
-            let response = build_dns_with_answer(message, question.qname().to_vec(), records)?;
+            let response = build_dns_with_answer(message, domain, records)?;
             return Some(ResolveStrategy::LocalResponse(build_response(
                 packet, response,
             )));
@@ -288,24 +289,24 @@ impl StubResolver {
 
         let resource_records = match question.qtype() {
             Rtype::PTR => {
-                let address = reverse_dns_addr(&question.qname().to_vec().to_string())?;
+                let address = reverse_dns_addr(&domain.to_string())?;
                 let fqdn = self.resource_address_name(&address)?;
 
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn.clone()))]
             }
-            Rtype::A | Rtype::AAAA if self.is_fqdn_resource(&question.qname().to_vec()) => {
+            Rtype::A | Rtype::AAAA if self.is_fqdn_resource(&domain) => {
                 self.get_address_records(&question)
             }
             _ => {
                 return Some(ResolveStrategy::ForwardQuery(DnsQuery {
-                    name: ToName::to_vec(question.qname()),
+                    name: domain,
                     record_type: u16::from(question.qtype()).into(),
                     query: packet,
                 }))
             }
         };
 
-        let response = build_dns_with_answer(message, question.qname().to_vec(), resource_records)?;
+        let response = build_dns_with_answer(message, domain, resource_records)?;
 
         Some(ResolveStrategy::LocalResponse(build_response(
             packet, response,
