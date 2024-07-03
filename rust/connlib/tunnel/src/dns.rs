@@ -280,7 +280,7 @@ impl StubResolver {
         tracing::trace!("Parsed packet as DNS query: '{question}'");
 
         if let Some(records) = self.known_hosts.get_records(&question) {
-            let response = build_dns_with_answer(message, question.qname(), records)?;
+            let response = build_dns_with_answer(message, question.qname().to_vec(), records)?;
             return Some(ResolveStrategy::LocalResponse(build_response(
                 packet, response,
             )));
@@ -305,7 +305,7 @@ impl StubResolver {
             }
         };
 
-        let response = build_dns_with_answer(message, question.qname(), resource_records)?;
+        let response = build_dns_with_answer(message, question.qname().to_vec(), resource_records)?;
 
         Some(ResolveStrategy::LocalResponse(build_response(
             packet, response,
@@ -386,14 +386,11 @@ fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> IpPack
     IpPacket::owned(res_buf).unwrap()
 }
 
-fn build_dns_with_answer<N>(
+fn build_dns_with_answer(
     message: &Message<[u8]>,
-    qname: &N,
+    qname: DomainName,
     records: Vec<AllRecordData<Vec<u8>, DomainName>>,
-) -> Option<Vec<u8>>
-where
-    N: ToName + ?Sized,
-{
+) -> Option<Vec<u8>> {
     let msg_buf = Vec::with_capacity(message.as_slice().len() * 2);
     let msg_builder = MessageBuilder::from_target(msg_buf).expect(
         "Developer error: we should be always be able to create a MessageBuilder from a Vec",
@@ -404,7 +401,7 @@ where
 
     for record in records {
         answer_builder
-            .push((qname, Class::IN, DNS_TTL, record))
+            .push((&qname, Class::IN, DNS_TTL, record))
             .ok()?;
     }
 
