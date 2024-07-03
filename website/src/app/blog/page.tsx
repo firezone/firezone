@@ -30,7 +30,8 @@ export default function Page() {
             type="Announcement"
           >
             <p className="mb-2">
-              TOOD
+              Firezone's data plane extensively uses the sans-IO design pattern.
+              This post explains why we chose it and how you too can make use of it.
             </p>
           </SummaryCard>
           <SummaryCard
