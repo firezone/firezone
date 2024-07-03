@@ -73,6 +73,7 @@ impl Client {
                     } => callback_handler.on_disconnect(error_msg, is_authentication_error),
                     IpcServerMsg::OnTunnelReady => callback_handler.on_tunnel_ready(),
                     IpcServerMsg::OnUpdateResources(v) => callback_handler.on_update_resources(v),
+                    IpcServerMsg::Response { id: _ } => todo!(),
                 }
             }
             Ok(())

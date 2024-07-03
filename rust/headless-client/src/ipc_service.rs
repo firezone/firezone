@@ -9,6 +9,7 @@ use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets};
 use connlib_shared::tun_device_manager;
 use futures::{future, SinkExt as _, StreamExt as _};
+use serde::{Deserialize, Serialize};
 use std::{net::IpAddr, path::PathBuf, pin::pin, time::Duration};
 use tokio::{sync::mpsc, time::Instant};
 use tracing::subscriber::set_global_default;
@@ -60,12 +61,25 @@ impl Default for Cmd {
     }
 }
 
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub enum ClientMsg {
-    Connect { api_url: String, token: String },
+    Connect {
+        api_url: String,
+        token: String,
+    },
     Disconnect,
     Reconnect,
+    /// A client-initiated request that will get a paired response
+    Request {
+        id: uuid::Uuid,
+        req: Request,
+    },
     SetDns(Vec<IpAddr>),
+}
+
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
+pub enum Request {
+    ClearLogs,
 }
 
 /// Only called from the GUI Client's build of the IPC service
@@ -217,7 +231,7 @@ impl Handler {
                     }
                 }
                 Event::Ipc(msg) => {
-                    if let Err(error) = self.handle_ipc_msg(msg) {
+                    if let Err(error) = self.handle_ipc_msg(msg).await {
                         tracing::error!(?error, "Error while handling IPC message from client");
                         continue;
                     }
@@ -236,18 +250,12 @@ impl Handler {
                         tracing::info!(?dur, "Connlib started");
                     }
                 }
-                self.ipc_tx
-                    .send(&msg)
-                    .await
-                    .context("Error while sending IPC message")?
+                self.send_msg(&msg).await?;
             }
             InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                 self.tun_device.set_ips(ipv4, ipv6).await?;
                 self.dns_controller.set_dns(&dns).await?;
-                self.ipc_tx
-                    .send(&IpcServerMsg::OnTunnelReady)
-                    .await
-                    .context("Error while sending `OnTunnelReady`")?
+                self.send_msg(&IpcServerMsg::OnTunnelReady).await?;
             }
             InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                 self.tun_device.set_routes(ipv4, ipv6).await?
@@ -256,7 +264,7 @@ impl Handler {
         Ok(())
     }
 
-    fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
+    async fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
         match msg {
             ClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);
@@ -299,6 +307,9 @@ impl Handler {
                 .as_mut()
                 .context("No connlib session")?
                 .reconnect(),
+            ClientMsg::Request { id, req: _ } => {
+                self.send_msg(&IpcServerMsg::Response { id }).await?
+            }
             ClientMsg::SetDns(v) => self
                 .connlib
                 .as_mut()
@@ -306,6 +317,13 @@ impl Handler {
                 .set_dns(v),
         }
         Ok(())
+    }
+
+    async fn send_msg(&mut self, msg: &IpcServerMsg) -> Result<()> {
+        self.ipc_tx
+            .send(msg)
+            .await
+            .context("Error while sending IPC message")
     }
 }
 

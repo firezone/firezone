@@ -193,6 +193,9 @@ pub fn run_only_headless_client() -> Result<()> {
                     InternalServerMsg::Ipc(IpcServerMsg::Ok)
                     | InternalServerMsg::Ipc(IpcServerMsg::OnTunnelReady)
                     | InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {}
+                    InternalServerMsg::Ipc(IpcServerMsg::Response { .. }) => unreachable!(
+                        "Standalone Client can't get an IPC Response from connlib callbacks"
+                    ),
                     InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                         tun_device.set_ips(ipv4, ipv6).await?;
                         dns_controller.set_dns(&dns).await?;

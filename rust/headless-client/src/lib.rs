@@ -18,6 +18,7 @@ use std::{
 use tokio::sync::mpsc;
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{fmt, layer::SubscriberExt as _, EnvFilter, Layer as _, Registry};
+use uuid::Uuid;
 
 use platform::default_token_path;
 /// SIGINT and, on Linux, SIGHUP.
@@ -100,6 +101,11 @@ pub enum IpcServerMsg {
     },
     OnTunnelReady,
     OnUpdateResources(Vec<callbacks::ResourceDescription>),
+    /// A response to a client-initiated request.
+    Response {
+        /// The request ID that we're responding to.
+        id: Uuid,
+    },
 }
 
 #[derive(Clone)]
