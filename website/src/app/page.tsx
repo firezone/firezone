@@ -35,26 +35,6 @@ export const metadata: Metadata = {
     "Firezone is a fast, flexible VPN replacement built on WireGuard® that eliminates tedious configuration and integrates with your identity provider.",
 };
 
-function ActionButtons() {
-  return (
-    <div className="w-full max-w-screen-sm flex flex-wrap justify-between mt-8">
-      <button
-        type="button"
-        className="mx-auto mb-8 w-64 inline-flex justify-center items-center py-3 px-5 text-base font-semibold hover:font-bold text-center text-primary-450 rounded border border-primary-450 bg-white hover:scale-105 duration-0 transform transition"
-      >
-        <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
-      </button>
-      <button
-        type="button"
-        className="mx-auto mb-8 w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-semibold hover:font-bold text-center text-white rounded bg-primary-450 hover:scale-105 duration-0 transform transition"
-      >
-        <Link href="/contact/sales">Request demo</Link>
-        <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
-      </button>
-    </div>
-  );
-}
-
 export default function Page() {
   return (
     <>
@@ -79,7 +59,21 @@ export default function Page() {
             </h3>
           </div>
           <div className="mb-12 flex flex-col px-4 justify-center items-center">
-            <ActionButtons />
+            <div className="w-full max-w-screen-sm flex flex-wrap justify-between mt-8">
+              <button
+                type="button"
+                className="mx-auto mb-8 w-64 inline-flex justify-center items-center py-3 px-5 font-semibold text-center text-primary-450 rounded border border-primary-450 bg-white hover:ring-2 hover:ring-primary-200 duration-50 transform transition"
+              >
+                <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
+              </button>
+              <button
+                type="button"
+                className="mx-auto mb-8 w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-300 duration-50 transform transition"
+              >
+                <Link href="/contact/sales">Book a demo</Link>
+                <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
+              </button>
+            </div>
           </div>
           <div className="flex items-center justify-center">
             <video
@@ -713,7 +707,21 @@ export default function Page() {
           <h4 className="my-4 font-medium text-xl max-w-screen-md tracking-tight text-center text-neutral-200 ">
             Give your team secure access to company resources in minutes.
           </h4>
-          <ActionButtons />
+          <div className="w-full max-w-screen-sm flex flex-wrap justify-between mt-8">
+            <button
+              type="button"
+              className="mx-auto mb-8 w-64 inline-flex justify-center items-center py-3 px-5 font-semibold text-center text-primary-450 rounded border border-primary-450 bg-white hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
+            >
+              <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
+            </button>
+            <button
+              type="button"
+              className="mx-auto mb-8 w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
+            >
+              <Link href="/contact/sales">Book a demo</Link>
+              <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
+            </button>
+          </div>
         </div>
       </section>
     </>

@@ -20,8 +20,10 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, reload, EnvFilter, Layer, Re
 #[must_use]
 pub(crate) struct Handles {
     pub logger: file_logger::Handle,
-    pub _reloader: reload::Handle<EnvFilter, Registry>,
+    pub reloader: Reloader,
 }
+
+pub(crate) type Reloader = reload::Handle<EnvFilter, Registry>;
 
 struct LogPath {
     /// Where to find the logs on disk
@@ -56,10 +58,9 @@ pub(crate) fn setup(directives: &str) -> Result<Handles> {
 
     std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
     let (layer, logger) = file_logger::layer(&log_path);
-    let (filter_2, reloader) = reload::Layer::new(EnvFilter::try_new(directives)?);
-    let subscriber = Registry::default()
-        .with(layer.with_filter(filter_2))
-        .with(fmt::layer().with_filter(EnvFilter::try_new(directives)?));
+    let layer = layer.and_then(fmt::layer());
+    let (filter, reloader) = reload::Layer::new(EnvFilter::try_new(directives)?);
+    let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber)?;
     if let Err(error) = output_vt100::try_init() {
         tracing::warn!(
@@ -69,10 +70,7 @@ pub(crate) fn setup(directives: &str) -> Result<Handles> {
     }
     LogTracer::init()?;
     tracing::debug!(?log_path, "Log path");
-    Ok(Handles {
-        logger,
-        _reloader: reloader,
-    })
+    Ok(Handles { logger, reloader })
 }
 
 #[tauri::command]
