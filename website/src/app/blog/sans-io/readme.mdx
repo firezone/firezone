@@ -141,7 +141,7 @@ sans-IO code needs to be "driven", almost similarly as to how a `Future` in Rust
 Eventloops are the implementation of our side-effects and will actually call `UdpSocket::send`.
 That way, the rest of the code turns into a state machine that only expresses, what should happen at a given moment.
 
-## The state machine
+### The state machine
 
 The state machine diagram for our STUN binding request looks like this:
 
@@ -207,7 +207,7 @@ We will use it to feed incoming data to our state machine, i.e. the result of `U
 We also add a few auxiliary functions to actually construct a new instance of our state machine and to query things from it.
 With this in place, we now have a state machine that models the behaviour of our program without performing any IO itself.
 
-## The eventloop
+### The eventloop
 
 Without an eventloop, this state machine does nothing.
 For this example, we can get away with a pretty simple eventloop:
@@ -252,7 +252,7 @@ UDP is an unreliable protocol, meaning our packets could get lost in transit.
 Do mitigate this, STUN mandates retransmission timers.
 As it turns out, adding time to this eventloop is fairly trivial.
 
-## Abstracting time
+### Abstracting time
 
 What do we mean when we talk about abstracting time?
 In most cases, especially in network protocols, access to the current time is needed to check whether some amount of time has passed.
