@@ -2,13 +2,13 @@ import Image from "next/image";
 import Alert from "@/components/DocsAlert";
 
 At Firezone, we build secure remote access that scales, be it from your Android
-phone, MacOS computer or Linux server. At the core of these apps sits a
-connectivity library - aptly named
-[`connlib`](https://www.github.com/firezone/firezone/tree/main/rust/connlib) -
-that manages network connections and WireGuard tunnels to secure your traffic.
-After several iterations, we’ve landed on a design that we are extremely happy
-with. It gives us blazingly fast and exhaustive tests, deep customisation and
-overall high assurance that it does what we want it to do.
+phone, MacOS computer or Linux server. At the core of each app sits a
+connectivity library &mdash; aptly named
+[`connlib`](https://www.github.com/firezone/firezone/tree/main/rust/connlib)
+&mdash; that manages network connections and WireGuard tunnels to secure your
+traffic. After several iterations, we’ve landed on a design that we are
+extremely happy with. It gives us blazingly fast and exhaustive tests, deep
+customisation and overall high assurance that it does what we want it to do.
 
 `connlib` is built in Rust and the design we are talking about is known as
 sans-IO. Rust's premise of speed and memory-safety makes it a great choice for
@@ -148,10 +148,10 @@ non-blocking IO.
 
 How do we apply the dependency inversion principle then? We introduce
 abstractions! When we call `UdpSocket::send`, what data are we actually passing?
-The payload, a `SocketAddr` and - implicitly - the socket itself. The socket can
-also be identified by means of a `SocketAddr`: The one we bound to earlier in
-our application. Let's package these three things up into an abstraction. Meet
-`Transmit`:
+The payload, a `SocketAddr` and &mdash; implicitly &mdash; the socket itself.
+The socket can also be identified by means of a `SocketAddr`: The one we bound
+to earlier in our application. Let's package these three things up into an
+abstraction. Meet `Transmit`:
 
 ```rust
 pub struct Transmit {

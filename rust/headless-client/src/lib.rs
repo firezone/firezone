@@ -79,6 +79,7 @@ struct CliCommon {
     max_partition_time: Option<humantime::Duration>,
 }
 
+/// Messages we get from connlib, including ones that aren't sent to IPC clients
 enum InternalServerMsg {
     Ipc(IpcServerMsg),
     OnSetInterfaceConfig {
@@ -92,6 +93,7 @@ enum InternalServerMsg {
     },
 }
 
+/// Messages that we can send to IPC clients
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum IpcServerMsg {
     Ok,

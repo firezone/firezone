@@ -73,7 +73,9 @@ export default function DocsSidebar() {
             <SidebarItem href="/docs/authenticate/oidc/zitadel">
               OIDC: Zitadel
             </SidebarItem>
-            <SidebarItem href="/docs/authenticate/saml">SAML</SidebarItem>
+            <SidebarItem href="/docs/authenticate/saml">
+              SAML Overview
+            </SidebarItem>
             <SidebarItem href="/docs/authenticate/saml/google">
               SAML: Google
             </SidebarItem>

@@ -249,6 +249,9 @@ impl Handler {
                         let dur = instant.elapsed();
                         tracing::info!(?dur, "Connlib started");
                     }
+
+                    // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
+                    self.dns_controller.flush()?;
                 }
                 self.send_msg(&msg).await?;
             }

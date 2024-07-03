@@ -457,9 +457,16 @@ defmodule Domain.ClientsTest do
     end
 
     test "updates client when it already exists", %{
+      account: account,
+      admin_actor: actor,
       admin_subject: subject
     } do
-      client = Fixtures.Clients.create_client(subject: subject)
+      previous_identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+
+      previous_subject =
+        Fixtures.Auth.create_subject(account: account, identity: previous_identity)
+
+      client = Fixtures.Clients.create_client(subject: previous_subject)
       attrs = Fixtures.Clients.client_attrs(external_id: client.external_id)
 
       subject = %{
@@ -489,7 +496,8 @@ defmodule Domain.ClientsTest do
       assert updated_client.public_key == attrs.public_key
 
       assert updated_client.actor_id == client.actor_id
-      assert updated_client.identity_id == client.identity_id
+      assert updated_client.identity_id == subject.identity.id
+      assert updated_client.identity_id != client.identity_id
       assert updated_client.ipv4 == client.ipv4
       assert updated_client.ipv6 == client.ipv6
       assert updated_client.last_seen_at
