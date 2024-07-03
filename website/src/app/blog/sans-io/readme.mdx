@@ -55,7 +55,7 @@ A result of this constraint is that an async function deep down in your stack
 inner function. This can be problematic if the code you want to call isn't
 actually yours but a dependency that you are pulling in.
 
-Some people see this as a problem and they would like to write code that is
+Some people see this as a problem, and they would like to write code that is
 agnostic over the "asyncness" of their dependencies. That concern has merit.
 Ultimately, at the very bottom of each async call stack sits a `Future` that
 needs to suspend on something. Usually, this is some form of IO, like writing to
@@ -166,16 +166,16 @@ emit a `Transmit`. But that is only one half of the solution. Where does the
 `Transmit` go? We need to execute this `Transmit` somewhere! This is the 2nd
 half of any sans-IO application. Recall the definition of the
 dependency-inversion principle: Policies should not depend on implementations,
-instead both should depend on abstractions. `Transmit` is our abstraction and we
-already know that we need to rewrite our policy code to use it. The actual
+instead both should depend on abstractions. `Transmit` is our abstraction, and
+we already know that we need to rewrite our policy code to use it. The actual
 implementation details, i.e. our `UdpSocket` also needs to be made aware of our
 new abstraction.
 
-This is where eventloops come in. sans-IO code needs to be "driven", almost
+This is where event loops come in. sans-IO code needs to be "driven", almost
 similarly as to how a `Future` in Rust is lazy and needs to be polled by a
 runtime to make progress.
 
-Eventloops are the implementation of our side-effects and will actually call
+Event loops are the implementation of our side-effects and will actually call
 `UdpSocket::send`. That way, the rest of the code turns into a state machine
 that only expresses, what should happen at a given moment.
 
@@ -194,7 +194,7 @@ The state machine diagram for our STUN binding request looks like this:
 Without executing the side-effect of sending a message directly, we need to
 rewrite our code to resemble what it actually is: This state machine. As we can
 see in our diagram, we have 2 states (not counting entry and exit states):
-`Sent` & `Received`. These are mutually-exclusive so we can model them as an
+`Sent` & `Received`. These are mutually-exclusive, so we can model them as an
 enum:
 
 ```rust
@@ -250,10 +250,10 @@ our state machine and to query things from it. With this in place, we now have a
 state machine that models the behaviour of our program without performing any IO
 itself.
 
-### The eventloop
+### The event loop
 
-Without an eventloop, this state machine does nothing. For this example, we can
-get away with a pretty simple eventloop:
+Without an event loop, this state machine does nothing. For this example, we can
+get away with a pretty simple event loop:
 
 ```rust
 fn main() -> anyhow::Result<()> {
@@ -286,15 +286,15 @@ fn main() -> anyhow::Result<()> {
 }
 ```
 
-Notice how the eventloop is slightly more generic than the previous versions?
-The eventloop does not make any assumptions about the details of the STUN
+Notice how the event loop is slightly more generic than the previous versions?
+The event loop does not make any assumptions about the details of the STUN
 binding protocol. It doesn't know that it is request-response for example! From
-the eventloop's perspective, multiple message could be necessary before we can
+the event loop's perspective, multiple message could be necessary before we can
 figure out our public address.
 
 UDP is an unreliable protocol, meaning our packets could get lost in transit. To
 mitigate this, STUN mandates retransmission timers. As it turns out, adding time
-to this eventloop is fairly trivial.
+to this event loop is fairly trivial.
 
 ### Abstracting time
 
@@ -304,9 +304,9 @@ amount of time has passed. For example, has it been more than 5s since we sent
 our request? Another common one is keep-alive messages: Has it been more than
 30s since we sent our last keep-alive?
 
-In all these cases, we don't actually need to know the current _wallclock_ time.
-All we need is a `Duration` to a previous point in time. Rust provides us with a
-very convenient abstraction here: `Instant`. `Instant` doesn't expose the
+In all these cases, we don't actually need to know the current _wall clock_
+time. All we need is a `Duration` to a previous point in time. Rust provides us
+with a very convenient abstraction here: `Instant`. `Instant` doesn't expose the
 current time, but it allows us to measure the `Duration` between two `Instant`s.
 We can extend our state machine with two APIs that are generic enough to cover
 all our time-based needs: `poll_timeout` and `handle_timeout`:
@@ -328,10 +328,10 @@ impl StunBinding {
 ```
 
 Similar to `handle_input` and `poll_timeout`, these APIs are the abstraction
-between our protocol code and the eventloop:
+between our protocol code and the event loop:
 
-- `poll_timeout`: Used by the eventloop to schedule a timer for a wake-up.
-- `handle_timeout`: Used by the eventloop to notify the state machine that a
+- `poll_timeout`: Used by the event loop to schedule a timer for a wake-up.
+- `handle_timeout`: Used by the event loop to notify the state machine that a
   timer has expired.
 
 For demonstration purposes, let's say we want to send a new binding request
@@ -395,7 +395,7 @@ This is an updated version of our state diagram:
   alt="A UML state diagram for a STUN binding request that is being refreshed every 5s."
 />
 
-The eventloop also changed slightly. Instead of exiting once we know our public
+The event loop also changed slightly. Instead of exiting once we know our public
 IP, we'll now loop until the user quits the program:
 
 ```rust
@@ -430,7 +430,7 @@ IP, we'll now loop until the user quits the program:
 
 So far, all of this seems like a very excessive overhead for sending a few UDP
 packets back and forth. Surely, the 10 line example introduced at the start is
-preferable over this state machine and the eventloop! The example might be, but
+preferable over this state machine and the event loop! The example might be, but
 recall the debate around function colouring. In a code snippet without
 dependencies like the above example, using `async` seems like a no-brainer and
 really easy. The problem arises once you want to bring in dependencies.
@@ -448,7 +448,7 @@ additional benefits one by one.
 ### Easy composition
 
 Take another look at the API of `StunBinding`. The main functions exposed to the
-eventloop are: `handle_timeout`, `handle_input`, `poll_transmit` and
+event loop are: `handle_timeout`, `handle_input`, `poll_transmit` and
 `poll_timeout`. None of these are specific to the domain of STUN! Most network
 protocols can be implemented with these or some variation of them. As a result,
 it is very easy to compose these state machines together: want to query 5 STUN
@@ -466,20 +466,19 @@ WebRTC stack though. The only thing we are interested in is the `IceAgent` which
 implements [RFC 8445](https://datatracker.ietf.org/doc/html/rfc8445). ICE uses a
 clever algorithm that ensures two agents, deployed into arbitrary network
 environments find the most optimal communication path to each other. The result
-of ICE is a pair of socket addresses that we then use to perform a WireGuard
-handshake. Because `str0m` is built in a sans-IO fashion, only using the
-`IceAgent` part of it is shockingly trivial: you simply only import that part of
-the library and compose its state machine into your existing code. In `snownet`,
-a
+of ICE is a pair of socket addresses that we then use to setup a WireGuard
+tunnel. Because `str0m` is built in a sans-IO fashion, only using the `IceAgent`
+is shockingly trivial: you simply only import that part of the library and
+compose its state machine into your existing code. In `snownet`, a
 [connection](https://github.com/firezone/firezone/blob/a5b7507932e9d27e3fc9ed5be7428b9937f2f828/rust/connlib/snownet/src/node.rs#L1289-L1306)
 simply houses an `IceAgent` and a wireguard tunnel, dispatching incoming
 messages to either one or the other.
 
 ### Flexible APIs
 
-sans-IO code needs to be "driven" by an eventloop of some sorts because it
+sans-IO code needs to be "driven" by an event loop of some sorts because it
 "just" expresses the state of the system but doesn’t cause any side-effects
-itself. The eventloop is responsible for "querying" the state (like
+itself. The event loop is responsible for "querying" the state (like
 `poll_transmit`), executing it and also passing new input to the state machine
 (`handle_timeout` and `handle_input`). To some people, this may appear as
 unnecessary boilerplate but it comes with a great benefit: flexibility.
@@ -488,14 +487,14 @@ unnecessary boilerplate but it comes with a great benefit: flexibility.
   packets? No problem.
 - Want to multiplex multiple protocols over a single socket? No problem.
 
-Writing the eventloop yourself is an opportunity to be able to tune our code to
+Writing the event loop yourself is an opportunity to be able to tune our code to
 exactly what we want it to do. This also makes maintenance easier for library
 authors: They can focus on correctly implementing protocol functionality instead
 of having debates around async runtimes or exposing APIs to set socket options.
 
 A good example here is `str0m`’s stance on enumerating network interfaces: This
 is an IO concern and up to the application on how to achieve it. `str0m` only
-provides an API to add the socket addresses as ICE candidate to the current
+provides an API to add the socket addresses as an ICE candidate to the current
 state. As a result, we are able to easily implement optimisations such as
 gathering TURN candidates prior to any connection being made, thus reducing
 Firezone's connection-setup latency.
@@ -605,12 +604,12 @@ function calls.
 ## The downsides
 
 There are no silver-bullets and sans-IO is no exception to this. Whilst writing
-your own eventloop gives you great control, it can also result in subtle bugs
+your own event loop gives you great control, it can also result in subtle bugs
 that are initially hard to find.
 
 For example, a bug in the state machine where the value returned from
-`poll_timeout` is not advanced can lead to a busy-looping behaviour in the
-eventloop.
+`poll_timeout` is not advanced can lead to a busy-looping behaviour in the event
+loop.
 
 Also, sequential workflows require more code to be written. In Rust, `async`
 functions compile down to state machines, with each `.await` point representing
