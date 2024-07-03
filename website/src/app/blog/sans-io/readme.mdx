@@ -104,9 +104,10 @@ Whilst some OOP code out there might be a bit extreme in terms of following patt
 The dependency inversion principle says that policies (what to do) should not depend on implementation details (how to do it).
 Instead, both components should depend and communicate via abstractions.
 In other words, the piece of code that decides to send a message on the network (i.e. the policy) should not depend on the code that actually sends the message (i.e. the implementation).
-This is what is "wrong" with the above example:
-We have a direct dependency on a UDP socket in the middle of our policy code.
-Yet, the policy code is the one we want to test and perhaps share with others via libraries.
+
+That is the heart of the issue in the above example:
+We are composing our policy code on top of a UDP socket and thus, forcing everything upwards to either be `async` in the `tokio` example or deal with the blocking nature in the `std` example.
+Yet, the policy code itself is the one we want to test and perhaps share with others via libraries, regardless of whether or not we use blocking or non-blocking IO.
 
 ## Applying dependency inversion
 
