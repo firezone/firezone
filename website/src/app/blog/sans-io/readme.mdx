@@ -547,17 +547,7 @@ errors simply becomes part of state machine's input handling which leads to more
 robust code and makes it less likely for edge-cases to only be considered as an
 after-thought.
 
-## Reflecting on Rust's features
-
-With an understanding of sans-IO, let's focus our attention on a few of Rust's
-features:
-
-- ownership
-- explicit, mutable borrowing
-- exhaustive matching
-- powerful algebraic data types, especially enums
-
-### Ownership & mutable borrowing
+### Rust + sans-IO: A match made in heaven?
 
 Rust forces us to declare, which component or function in our code owns a
 certain value. A common example for these are buffers: When reading from a
@@ -566,67 +556,23 @@ being received. Only the owner of a value can declare it mutable and thus either
 mutate itself or temporarily hand out mutable references to other functions.
 `UdpSocket` follows this design: It doesn't declare a buffer on its own,
 instead, it only requires temporary, mutable access to it when it is actually
-reading from the socket.
+reading from the socket. The explicit modelling of ownership and mutability are
+integral to how Rust works and what enable features like the borrow-checker.
 
-### Exhaustive matching and ADTs
+In a sans-IO design we only have synchronous APIs, i.e. none of the functions on
+a state machines ever block on IO or time. Instead, they are just data
+structures.
 
-The `match` keyword provides us with a compile-time checked way of handling the
-different variations of a value. Combined with enums, this provides a powerful
-way of ensuring that all combinations are handled. Enums lend themselves
-especially well in modelling state that can change at runtime. The following
-code is a slightly simplified snippet from
-[actual production code](https://github.com/firezone/firezone/blob/79fd8f6063761e582013873ff2a49d22c2445c46/rust/connlib/snownet/src/node.rs#L1308-L1330),
-modelling the state of a connection:
-
-```rust
-enum Connection {
-    /// We are still running ICE to figure out, which socket to use to send data.
-    Connecting {
-        /// Socket addresses from which we might receive data (even before we are connected).
-        possible_sockets: HashSet<SocketAddr>,
-        /// Packets emitted by wireguard whilst are still running ICE.
-        ///
-        /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
-        /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
-        buffered: RingBuffer<Vec<u8>>,
-    },
-    /// A socket has been nominated.
-    Connected {
-        /// Our nominated socket.
-        peer_socket: PeerSocket,
-        /// Other addresses that we might see traffic from (e.g.
-        STUN messages during roaming).
-        possible_sockets: HashSet<SocketAddr>,
-    },
-    /// The connection failed in an unrecoverable way and will be GC'd.
-    Failed,
-    /// The connection is idle and will be GC'd.
-    Idle,
-}
-```
-
-The key things about the above model are the invariants around which data is
-available in a particular state. For example, buffered packets can only happen
-whilst we are Connecting. Once we are Connected, there is no more need to buffer
-packets. Similarly, once a Connection is failed, we no longer need to keep
-around the previously connected socket.
-
-### Rust + sans-IO: A match made in heaven?
-
-A sans-IO design only has synchronous APIs, i.e. none of the functions on these
-state machines ever block on IO or time. They are just data structures and we
-can use Rust's features to model our protocol:
-
-- We can use `&mut` very liberally to express state that changes.
-- We can use enums to express mutually-exclusive aspects.
-- We can use exhaustive pattern matching to ensure no state combination is
-  unhandled.
+Those two aspects work exceptionally well together. We can use `&mut` liberally
+to express state changes and thus leverage the borrow-checker to ensure our code
+is sound. In comparison, `async` Rust and `&mut` almost feel somewhat at odds
+with each other.
 
 In Rust, `async` functions are just syntax sugar for a data structure that
 implements `Future`. Spawning a `Future` into a runtime[^1] like `tokio`
 requires this data structure to be `'static` and therefore, it cannot contain
-any references, including `&mut`. To mutate shared state in such a scenario, you
-basically have two options:
+any references, including `&mut`. To mutate state that isn't local to the
+`Future`, you basically have two options:
 
 - Use reference-counted pointers and a mutex, i.e. `Arc<Mutex<T>>`
 - Use "actors" and connect them via channels, i.e. spawn multiple tasks with
