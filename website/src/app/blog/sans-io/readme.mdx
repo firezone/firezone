@@ -685,6 +685,12 @@ state machines. More so, the fact that sans-IO forces you to handle errors as
 you would any other input simply feels like the way networking code should be
 written.
 
+That being said, there are additional ways of writing async Rust not discussed
+in this post. The most notable of those being structured concurrency which sits
+somewhere "in the middle" between sans-IO and the async Rust portrayed in this
+post. Read [this article](https://without.boats/blog/let-futures-be-futures/)
+from withoutboats for more on that topic.
+
 Many thanks to [@algesten](https://github.com/algesten) for providing feedback
 on drafts of this post.
 
