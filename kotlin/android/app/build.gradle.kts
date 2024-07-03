@@ -1,8 +1,8 @@
 import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 
 plugins {
-    id("com.android.application")
     id("org.mozilla.rust-android-gradle.rust-android")
+    id("com.android.application")
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
