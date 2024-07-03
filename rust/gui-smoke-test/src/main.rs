@@ -188,7 +188,16 @@ fn debug_db_path() -> PathBuf {
 
 #[cfg(target_os = "linux")]
 fn ipc_service_command() -> Exec {
-    Exec::cmd("sudo").args(&[OsStr::new("--preserve-env"), ipc_path().as_os_str()])
+    Exec::cmd("sudo").args(&[
+        "--user",
+        "root",
+        "--group",
+        "firezone-client",
+        "--preserve-env",
+        ipc_path()
+            .to_str()
+            .expect("IPC binary path should be valid Unicode"),
+    ])
 }
 
 #[cfg(target_os = "windows")]
