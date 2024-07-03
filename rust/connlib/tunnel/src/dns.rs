@@ -5,7 +5,7 @@ use connlib_shared::DomainName;
 use domain::base::RelativeName;
 use domain::base::{
     iana::{Class, Rcode, Rtype},
-    Message, MessageBuilder, Question, ToName,
+    Message, MessageBuilder, ToName,
 };
 use domain::rdata::AllRecordData;
 use hickory_resolver::lookup::Lookup;
@@ -86,28 +86,25 @@ impl KnownHosts {
         }
     }
 
-    fn get_records<N: ToName>(
+    fn get_records(
         &self,
-        question: &Question<N>,
+        qtype: Rtype,
+        domain: &DomainName,
     ) -> Option<Vec<AllRecordData<Vec<u8>, DomainName>>> {
-        match question.qtype() {
+        match qtype {
             Rtype::A => {
-                let ips = self
-                    .fqdn_to_ips
-                    .get::<DomainName>(&question.qname().to_name())?;
+                let ips = self.fqdn_to_ips.get::<DomainName>(domain)?;
 
                 Some(to_a_records(ips.iter().copied()))
             }
 
             Rtype::AAAA => {
-                let ips = self
-                    .fqdn_to_ips
-                    .get::<DomainName>(&question.qname().to_name())?;
+                let ips = self.fqdn_to_ips.get::<DomainName>(domain)?;
 
                 Some(to_aaaa_records(ips.iter().copied()))
             }
             Rtype::PTR => {
-                let ip = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())?;
+                let ip = reverse_dns_addr(&domain.to_string())?;
                 let fqdn = self.ips_to_fqdn.get(&ip)?;
 
                 Some(vec![AllRecordData::Ptr(domain::rdata::Ptr::new(
@@ -269,7 +266,7 @@ impl StubResolver {
 
         tracing::trace!("Parsed packet as DNS query: '{qtype} {domain}'");
 
-        if let Some(records) = self.known_hosts.get_records(&question) {
+        if let Some(records) = self.known_hosts.get_records(qtype, &domain) {
             let response = build_dns_with_answer(message, domain, records)?;
             return Some(ResolveStrategy::LocalResponse(build_response(
                 packet, response,
