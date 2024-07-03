@@ -1,56 +1,78 @@
 import Image from "next/image";
 import Alert from "@/components/DocsAlert";
 
-At firezone, we build secure remote access that scales, be it from your Android phone, MacOS computer or Linux server.
-At the core of these apps sits a connectivity library - aptly named `connlib` - that manages network connections and wireguard tunnels to secure your traffic.
-After several iterations, we’ve landed on a design for our connectivity library that we are extremely happy with.
-It gives us blazingly fast and exhaustive tests, deep customisation and overall high assurance that it does what we want it to do.
+At firezone, we build secure remote access that scales, be it from your Android
+phone, MacOS computer or Linux server. At the core of these apps sits a
+connectivity library - aptly named `connlib` - that manages network connections
+and wireguard tunnels to secure your traffic. After several iterations, we’ve
+landed on a design for our connectivity library that we are extremely happy
+with. It gives us blazingly fast and exhaustive tests, deep customisation and
+overall high assurance that it does what we want it to do.
 
-`connlib` is built in Rust and the design we are talking about is known as sans-IO.
-Rust's premise of speed and memory-safety makes it a great choice for building network services.
-Most parts of our Rust stack aren't particularly surprising:
-We use the `tokio` runtime for asynchronous tasks, `tungstenite` for WebSockets, `boringtun` for the WireGuard implementation, `rustls` to encrypt traffic with the API, etc.
-Yet, once you go beneath the surface of the library, you will discover something that is perhaps unusual:
-There are almost no calls to `tokio::spawn`, all communication is multiplexed via a single UDP socket and the same APIs appear to repeat themselves across various layers: `handle_timeout`, `poll_transmit`, `handle_input`, ...
+`connlib` is built in Rust and the design we are talking about is known as
+sans-IO. Rust's premise of speed and memory-safety makes it a great choice for
+building network services. Most parts of our Rust stack aren't particularly
+surprising: We use the `tokio` runtime for asynchronous tasks, `tungstenite` for
+WebSockets, `boringtun` for the WireGuard implementation, `rustls` to encrypt
+traffic with the API, etc. Yet, once you go beneath the surface of the library,
+you will discover something that is perhaps unusual: There are almost no calls
+to `tokio::spawn`, all communication is multiplexed via a single UDP socket and
+the same APIs appear to repeat themselves across various layers:
+`handle_timeout`, `poll_transmit`, `handle_input`, ...
 
-These are the tell-tales of a sans-IO design.
-Instead of sending & receiving bytes via a socket in multiple places, our protocols are implemented as pure state machines.
-Even time is abstracted away:
-Every function that needs to know the current time receives an `Instant` parameter instead of calling `Instant::now` itself.
-This pattern isn't something that we invented!
-The Python world even has a dedicated [website](https://sans-io.readthedocs.io/) about it.
+These are the tell-tales of a sans-IO design. Instead of sending & receiving
+bytes via a socket in multiple places, our protocols are implemented as pure
+state machines. Even time is abstracted away: Every function that needs to know
+the current time receives an `Instant` parameter instead of calling
+`Instant::now` itself. This pattern isn't something that we invented! The Python
+world even has a dedicated [website](https://sans-io.readthedocs.io/) about it.
 In Rust, it is used by libraries such as:
 
-- [`quinn`](https://github.com/quinn-rs/quinn/tree/main/quinn-proto), an independent QUIC implementation.
-- [`quiche`](https://github.com/cloudflare/quiche/tree/master/quiche), cloudflare's QUIC implementation.
+- [`quinn`](https://github.com/quinn-rs/quinn/tree/main/quinn-proto), an
+  independent QUIC implementation.
+- [`quiche`](https://github.com/cloudflare/quiche/tree/master/quiche),
+  cloudflare's QUIC implementation.
 - [`str0m`](https://github.com/algesten/str0m), a sans-IO WebRTC implementation.
 
-In this post, we'll go over some of the problems with doing IO the traditional way, followed by transitioning that to a sans-IO design and the reasons why we think it is a good idea.
-As it turns out, Rust lends itself particularly well to this pattern.
+In this post, we'll go over some of the problems with doing IO the traditional
+way, followed by transitioning that to a sans-IO design and the reasons why we
+think it is a good idea. As it turns out, Rust lends itself particularly well to
+this pattern.
 
 ## Rust's async model & the "function colouring" debate
 
-If you've been around the Rust space for a while, you will have likely come across the "function colouring" debate.
-In a nutshell, it discusses the constraint that async functions can only be called from other async functions, thus "colouring" them.
-There are various takes on this but what stands out for me is that the ability to suspend execution and resume later is a pretty important part of function's API contract.
-The fact that Rust enforces this at compile-time is a good thing.
+If you've been around the Rust space for a while, you will have likely come
+across the "function colouring" debate. In a nutshell, it discusses the
+constraint that async functions can only be called from other async functions,
+thus "colouring" them. There are various takes on this but what stands out for
+me is that the ability to suspend execution and resume later is a pretty
+important part of function's API contract. The fact that Rust enforces this at
+compile-time is a good thing.
 
-A result of this constraint is that an async function deep down in your stack "forces" every calling function to also become async in order to `.await` the inner function.
-This can be problematic if the code you want to call isn't actually yours but a dependency that you are pulling in.
+A result of this constraint is that an async function deep down in your stack
+"forces" every calling function to also become async in order to `.await` the
+inner function. This can be problematic if the code you want to call isn't
+actually yours but a dependency that you are pulling in.
 
-Some people see this as a problem and they would like to write code that is agnostic over the "asyncness" of their dependencies.
-This idea has merit.
-At the very bottom of each async call stack sits a `Future` that needs to suspend on something.
-Usually, this is some form of IO, like writing to a socket, reading from a file, waiting for time to advance, etc.
-The majority of async functions don't actually perform async work themselves.
-Instead, they depend on other async functions which forces them to be async.
-The code around those inner async functions would usually also work in a blocking context, but the author of your dependency happened to pick the async variant.
+Some people see this as a problem and they would like to write code that is
+agnostic over the "asyncness" of their dependencies. This idea has merit. At the
+very bottom of each async call stack sits a `Future` that needs to suspend on
+something. Usually, this is some form of IO, like writing to a socket, reading
+from a file, waiting for time to advance, etc. The majority of async functions
+don't actually perform async work themselves. Instead, they depend on other
+async functions which forces them to be async. The code around those inner async
+functions would usually also work in a blocking context, but the author of your
+dependency happened to pick the async variant.
 
-Let's look at an example of this problem.
-Firezone's connectivity library `connlib` uses ICE and as part of that, we utilise STUN to discover our server-reflexive candidate, i.e. our public address.
-STUN is a binary message format and a STUN binding is a pretty simple protocol: Send a UDP packet to server, server notes the IP + port it sees as the sending socket and send a UDP packet back containing that address.
+Let's look at an example of this problem. Firezone's connectivity library
+`connlib` uses ICE and as part of that, we utilise STUN to discover our
+server-reflexive candidate, i.e. our public address. STUN is a binary message
+format and a STUN binding is a pretty simple protocol: Send a UDP packet to
+server, server notes the IP + port it sees as the sending socket and send a UDP
+packet back containing that address.
 
-Here is how we could implement this using `tokio`'s `UdpSocket` (thank you to Cloudflare for the public STUN server):
+Here is how we could implement this using `tokio`'s `UdpSocket` (thank you to
+Cloudflare for the public STUN server):
 
 ```rust
 #[tokio::main]
@@ -88,37 +110,46 @@ fn main() -> anyhow::Result<()> {
 ```
 
 <Alert color="info">
-  You can find all of these snippets as working programs in the following repository: https://github.com/firezone/sans-io-blog-example.
+  You can find all of these snippets as working programs in the following
+  repository: https://github.com/firezone/sans-io-blog-example.
 </Alert>
 
-Notice how this code is virtually identical apart from the use of `async`?
-If we wanted to write a library that allows you to perform STUN, we'd have to decide on one of them or include both.
-There are lots of opinions out there as to what the "best" way of solving this duplication is.
-Writing sans-IO code is one of them.
+Notice how this code is virtually identical apart from the use of `async`? If we
+wanted to write a library that allows you to perform STUN, we'd have to decide
+on one of them or include both. There are lots of opinions out there as to what
+the "best" way of solving this duplication is. Writing sans-IO code is one of
+them.
 
 ## Introducing sans-IO
 
-The core idea of sans-IO is similar to the dependency inversion principle from the OOP world.
-Whilst some OOP code out there might be a bit extreme in terms of following patterns (looking at you [`AbstractSingletonProxyFactoryBean`](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/aop/framework/AbstractSingletonProxyFactoryBean.html)), I've found it helpful to explicitly spell some of these things out to really get to the bottom of a particular design.
+The core idea of sans-IO is similar to the dependency inversion principle from
+the OOP world. Whilst some OOP code out there might be a bit extreme in terms of
+following patterns (looking at you
+[`AbstractSingletonProxyFactoryBean`](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/aop/framework/AbstractSingletonProxyFactoryBean.html)),
+I've found it helpful to explicitly spell some of these things out to really get
+to the bottom of a particular design.
 
-The dependency inversion principle says that policies (what to do) should not depend on implementation details (how to do it).
-Instead, both components should depend and communicate via abstractions.
-In other words, the piece of code that decides to send a message on the network (i.e. the policy) should not depend on the code that actually sends the message (i.e. the implementation).
+The dependency inversion principle says that policies (what to do) should not
+depend on implementation details (how to do it). Instead, both components should
+depend and communicate via abstractions. In other words, the piece of code that
+decides to send a message on the network (i.e. the policy) should not depend on
+the code that actually sends the message (i.e. the implementation).
 
-That is the heart of the issue in the above example:
-We are composing our policy code on top of a UDP socket and thus, forcing everything upwards to either be `async` in the `tokio` example or deal with the blocking nature in the `std` example.
-Yet, the policy code itself is the one we want to test and perhaps share with others via libraries, regardless of whether or not we use blocking or non-blocking IO.
+That is the heart of the issue in the above example: We are composing our policy
+code on top of a UDP socket and thus, forcing everything upwards to either be
+`async` in the `tokio` example or deal with the blocking nature in the `std`
+example. Yet, the policy code itself is the one we want to test and perhaps
+share with others via libraries, regardless of whether or not we use blocking or
+non-blocking IO.
 
 ## Applying dependency inversion
 
-How do we apply the dependency inversion principle then?
-We introduce abstractions!
-When we call `UdpSocket::send`, what data are we actually passing?
-The payload, a `SocketAddr` and - implicitly - the socket itself.
-The socket can also be identified by means of a `SocketAddr`:
-The one we bound to earlier in our application.
-Let's package these three things up into an abstraction.
-Meet `Transmit`:
+How do we apply the dependency inversion principle then? We introduce
+abstractions! When we call `UdpSocket::send`, what data are we actually passing?
+The payload, a `SocketAddr` and - implicitly - the socket itself. The socket can
+also be identified by means of a `SocketAddr`: The one we bound to earlier in
+our application. Let's package these three things up into an abstraction. Meet
+`Transmit`:
 
 ```rust
 pub struct Transmit {
@@ -128,33 +159,40 @@ pub struct Transmit {
 }
 ```
 
-Anywhere where we'd like to send data over our `UdpSocket`, we should instead emit a `Transmit`.
-But that is only one half of the solution.
-Where does the `Transmit` go? We need to execute this `Transmit` somewhere! This is the 2nd half of any sans-IO application.
-Recall the definition of the dependency-inversion principle: Policies should not depend on implementations, instead both should depend on abstractions.
-`Transmit` is our abstraction and we already know that we need to re-write our policy code to use it.
-The actual implementation details, i.e. our `UdpSocket` also needs to be made aware of our new abstraction.
+Anywhere where we'd like to send data over our `UdpSocket`, we should instead
+emit a `Transmit`. But that is only one half of the solution. Where does the
+`Transmit` go? We need to execute this `Transmit` somewhere! This is the 2nd
+half of any sans-IO application. Recall the definition of the
+dependency-inversion principle: Policies should not depend on implementations,
+instead both should depend on abstractions. `Transmit` is our abstraction and we
+already know that we need to re-write our policy code to use it. The actual
+implementation details, i.e. our `UdpSocket` also needs to be made aware of our
+new abstraction.
 
-This is where eventloops come in.
-sans-IO code needs to be "driven", almost similarly as to how a `Future` in Rust is lazy and needs to be polled by a runtime to make progress.
+This is where eventloops come in. sans-IO code needs to be "driven", almost
+similarly as to how a `Future` in Rust is lazy and needs to be polled by a
+runtime to make progress.
 
-Eventloops are the implementation of our side-effects and will actually call `UdpSocket::send`.
-That way, the rest of the code turns into a state machine that only expresses, what should happen at a given moment.
+Eventloops are the implementation of our side-effects and will actually call
+`UdpSocket::send`. That way, the rest of the code turns into a state machine
+that only expresses, what should happen at a given moment.
 
 ### The state machine
 
 The state machine diagram for our STUN binding request looks like this:
 
 <Image
-    width={500}
-    className="rounded shadow mx-auto"
-    src="/images/blog/sans-io/stun-binding-state-machine.svg"
-    alt="A UML state diagram for a STUN binding request."
-  />
+  width={500}
+  className="rounded shadow mx-auto"
+  src="/images/blog/sans-io/stun-binding-state-machine.svg"
+  alt="A UML state diagram for a STUN binding request."
+/>
 
-Without execute the side-effect of sending a message directly, we need to rewrite our code to resemble what it actually is: This state machine.
-As we can see in our diagram, we have 2 states (not counting entry and exit states): `Sent` & `Received`.
-These are mutually-exclusive so we can model them as an enum:
+Without execute the side-effect of sending a message directly, we need to
+rewrite our code to resemble what it actually is: This state machine. As we can
+see in our diagram, we have 2 states (not counting entry and exit states):
+`Sent` & `Received`. These are mutually-exclusive so we can model them as an
+enum:
 
 ```rust
 enum State {
@@ -202,15 +240,17 @@ impl StunBinding {
 }
 ```
 
-The `handle_input` function is like the inverse to `Transmit`.
-We will use it to feed incoming data to our state machine, i.e. the result of `UdpSocket::recv`.
-We also add a few auxiliary functions to actually construct a new instance of our state machine and to query things from it.
-With this in place, we now have a state machine that models the behaviour of our program without performing any IO itself.
+The `handle_input` function is like the inverse to `Transmit`. We will use it to
+feed incoming data to our state machine, i.e. the result of `UdpSocket::recv`.
+We also add a few auxiliary functions to actually construct a new instance of
+our state machine and to query things from it. With this in place, we now have a
+state machine that models the behaviour of our program without performing any IO
+itself.
 
 ### The eventloop
 
-Without an eventloop, this state machine does nothing.
-For this example, we can get away with a pretty simple eventloop:
+Without an eventloop, this state machine does nothing. For this example, we can
+get away with a pretty simple eventloop:
 
 ```rust
 fn main() -> anyhow::Result<()> {
@@ -244,25 +284,29 @@ fn main() -> anyhow::Result<()> {
 ```
 
 Notice how the eventloop is slightly more generic than the previous versions?
-The eventloop does not make any assumptions about the details of the STUN binding protocol.
-It doesn't know that it is request-response for example!
-From the eventloop's perspective, multiple message could be necessary before we can figure out our public address.
+The eventloop does not make any assumptions about the details of the STUN
+binding protocol. It doesn't know that it is request-response for example! From
+the eventloop's perspective, multiple message could be necessary before we can
+figure out our public address.
 
-UDP is an unreliable protocol, meaning our packets could get lost in transit.
-Do mitigate this, STUN mandates retransmission timers.
-As it turns out, adding time to this eventloop is fairly trivial.
+UDP is an unreliable protocol, meaning our packets could get lost in transit. Do
+mitigate this, STUN mandates retransmission timers. As it turns out, adding time
+to this eventloop is fairly trivial.
 
 ### Abstracting time
 
-What do we mean when we talk about abstracting time?
-In most cases, especially in network protocols, access to the current time is needed to check whether some amount of time has passed.
-For example, has it been more than 5s since we sent our request?
-Another common one is keep-alive messages: Has it been more than 30s since we sent our last keep-alive?
+What do we mean when we talk about abstracting time? In most cases, especially
+in network protocols, access to the current time is needed to check whether some
+amount of time has passed. For example, has it been more than 5s since we sent
+our request? Another common one is keep-alive messages: Has it been more than
+30s since we sent our last keep-alive?
 
 In all these cases, we don't actually need to know the current _wallclock_ time.
-All we need is a `Duration` to a previous point in time. Rust provides us with a very convenient abstraction here: `Instant`.
-`Instant` doesn't expose the current time, but it allows us to measure the `Duration` between two `Instant`s.
-We can extend our state machine with two APIs that are generic enough to cover all our time-based needs: `poll_timeout` and `handle_timeout`:
+All we need is a `Duration` to a previous point in time. Rust provides us with a
+very convenient abstraction here: `Instant`. `Instant` doesn't expose the
+current time, but it allows us to measure the `Duration` between two `Instant`s.
+We can extend our state machine with two APIs that are generic enough to cover
+all our time-based needs: `poll_timeout` and `handle_timeout`:
 
 ```rust
 impl StunBinding {
@@ -280,13 +324,16 @@ impl StunBinding {
 }
 ```
 
-Similar to `handle_input` and `poll_timeout`, these APIs are the abstraction between our protocol code and the eventloop:
+Similar to `handle_input` and `poll_timeout`, these APIs are the abstraction
+between our protocol code and the eventloop:
 
 - `poll_timeout`: Used by the eventloop to schedule a timer for a wake-up.
-- `handle_timeout`: Used by the eventloop to notify the state machine that a timer has expired.
+- `handle_timeout`: Used by the eventloop to notify the state machine that a
+  timer has expired.
 
-For demonstration purposes, let's say we want to send a new binding request every 5s after we have received the last one.
-Here is how one could implement this:
+For demonstration purposes, let's say we want to send a new binding request
+every 5s after we have received the last one. Here is how one could implement
+this:
 
 ```rust
 impl StunBinding {
@@ -322,7 +369,8 @@ impl StunBinding {
 }
 ```
 
-The only other changes I've made are adding an `at` field to the `State::Received` variant that gets set to the current time upon `handle_input`:
+The only other changes I've made are adding an `at` field to the
+`State::Received` variant that gets set to the current time upon `handle_input`:
 
 ```rust
 impl StunBinding {
@@ -334,8 +382,8 @@ impl StunBinding {
 }
 ```
 
-The eventloop also changed slightly.
-Instead of exiting once we know our public IP, we'll now loop until the user quits the program:
+The eventloop also changed slightly. Instead of exiting once we know our public
+IP, we'll now loop until the user quits the program:
 
 ```rust
     loop {
@@ -367,76 +415,108 @@ Instead of exiting once we know our public IP, we'll now loop until the user qui
 
 ## The premise of sans-IO
 
-So far, all of this seems like a very excessive overhead for sending a few UDP packets back and forth.
-Surely, the 10 line example introduced at the start is preferable over this state machine and the eventloop!
-The example might be, but recall the debate around function colouring.
-In a code snippet without dependencies like the above example, using `async` seems like a no brainer and really easy.
-The problem arises once you want to bring in dependencies.
-Composing your functionality (i.e. policy) on top of those dependencies imposes their decisions around async vs blocking IO on you.
-Libraries like `str0m` or `quinn-proto` which are written in the sans-IO way don't do that.
-Instead, they are pure state machines and thus the decision about async vs blocking IO or which async runtime to use is deferred to the application.
+So far, all of this seems like a very excessive overhead for sending a few UDP
+packets back and forth. Surely, the 10 line example introduced at the start is
+preferable over this state machine and the eventloop! The example might be, but
+recall the debate around function colouring. In a code snippet without
+dependencies like the above example, using `async` seems like a no brainer and
+really easy. The problem arises once you want to bring in dependencies.
+Composing your functionality (i.e. policy) on top of those dependencies imposes
+their decisions around async vs blocking IO on you. Libraries like `str0m` or
+`quinn-proto` which are written in the sans-IO way don't do that. Instead, they
+are pure state machines and thus the decision about async vs blocking IO or
+which async runtime to use is deferred to the application.
 
-Freedom to use either blocking or non-blocking IO isn't the only benefit to this.
-sans-IO design also compose very well, tend to have very flexible APIs, are easy to test and play well with Rust's features.
+Freedom to use either blocking or non-blocking IO isn't the only benefit to
+this. sans-IO design also compose very well, tend to have very flexible APIs,
+are easy to test and play well with Rust's features.
 
 ### Easy composition
 
-Take another look at the API of `StunBinding`.
-The main functions exposed to the eventloop are: `handle_timeout`, `handle_input`, `poll_transmit` & `poll_timeout`.
-None of these are specific to the domain of STUN!
-Most network protocols can be implemented with these or some variation of them.
-As a result, it is very easy to compose these state machines together: Want to query 5 STUN servers for your public IP? No problem.
-Just make 5 `StunBinding`s and call them in order[^3].
+Take another look at the API of `StunBinding`. The main functions exposed to the
+eventloop are: `handle_timeout`, `handle_input`, `poll_transmit` &
+`poll_timeout`. None of these are specific to the domain of STUN! Most network
+protocols can be implemented with these or some variation of them. As a result,
+it is very easy to compose these state machines together: Want to query 5 STUN
+servers for your public IP? No problem. Just make 5 `StunBinding`s and call them
+in order[^3].
 
-In the case of firezone, you can see this in the example of [`snownet`](https://github.com/firezone/firezone/tree/main/rust/connlib/snownet), a library that combines ICE & wireguard and thereby exposes "magic" IP tunnels that work in any network setup to the rest of the application.
+In the case of firezone, you can see this in the example of
+[`snownet`](https://github.com/firezone/firezone/tree/main/rust/connlib/snownet),
+a library that combines ICE & wireguard and thereby exposes "magic" IP tunnels
+that work in any network setup to the rest of the application.
 
-`snownet` builds on top of `str0m`, a sans-IO WebRTC library and `boringtun`, an (almost[^2]) sans-IO wireguard implementation.
-We don’t need the majority of the WebRTC stack though.
-The only thing we are interested in is the `IceAgent` which implements [RFC 8845](https://github.com/cloudflare/boringtun/issues/391).
-ICE uses a clever algorithm that ensures two agents, deployed into arbitrary network environments find the most optimal communication path to each other.
-The result of ICE is a pair of socket addresses that we then use to perform a wireguard handshake.
-Because `str0m` is built in a sans-IO fashion, only using the `IceAgent` part of it is shockingly trivial:
-you simply only import that part of the library and compose its state machine into your existing code.
-In `snownet`, a [connection](https://github.com/firezone/firezone/blob/a5b7507932e9d27e3fc9ed5be7428b9937f2f828/rust/connlib/snownet/src/node.rs#L1289-L1306) simply houses an `IceAgent` and a wireguard tunnel, dispatching incoming messages to either one or the other.
+`snownet` builds on top of `str0m`, a sans-IO WebRTC library and `boringtun`, an
+(almost[^2]) sans-IO wireguard implementation. We don’t need the majority of the
+WebRTC stack though. The only thing we are interested in is the `IceAgent` which
+implements [RFC 8845](https://github.com/cloudflare/boringtun/issues/391). ICE
+uses a clever algorithm that ensures two agents, deployed into arbitrary network
+environments find the most optimal communication path to each other. The result
+of ICE is a pair of socket addresses that we then use to perform a wireguard
+handshake. Because `str0m` is built in a sans-IO fashion, only using the
+`IceAgent` part of it is shockingly trivial: you simply only import that part of
+the library and compose its state machine into your existing code. In `snownet`,
+a
+[connection](https://github.com/firezone/firezone/blob/a5b7507932e9d27e3fc9ed5be7428b9937f2f828/rust/connlib/snownet/src/node.rs#L1289-L1306)
+simply houses an `IceAgent` and a wireguard tunnel, dispatching incoming
+messages to either one or the other.
 
 ### Flexible APIs
 
-sans-IO code needs to be "driven" by an eventloop of some sorts because it "just" expresses the state of the system but doesn’t cause any side-effects itself.
-The eventloop is responsible for "querying" the state (like `poll_transmit`), executing it and also passing new input to the state machine (`handle_timeout` and `handle_input`).
-To some people, this may appear as unnecessary boilerplate but it comes with a great benefit: flexibility.
+sans-IO code needs to be "driven" by an eventloop of some sorts because it
+"just" expresses the state of the system but doesn’t cause any side-effects
+itself. The eventloop is responsible for "querying" the state (like
+`poll_transmit`), executing it and also passing new input to the state machine
+(`handle_timeout` and `handle_input`). To some people, this may appear as
+unnecessary boilerplate but it comes with a great benefit: flexibility.
 
-* Want to make use of `sendmmsg` to reduce the number of syscalls when sending packets? No problem.
-* Want to multiplex multiple protocols over a single socket? No problem.
+- Want to make use of `sendmmsg` to reduce the number of syscalls when sending
+  packets? No problem.
+- Want to multiplex multiple protocols over a single socket? No problem.
 
-Writing the eventloop yourself is an opportunity to be able to tune our code to exactly what we want it to do.
-This also makes maintenance easier for library authors: They can focus on correctly implementing protocol functionality instead of having debates around async runtimes or exposing APIs to set socket options.
+Writing the eventloop yourself is an opportunity to be able to tune our code to
+exactly what we want it to do. This also makes maintenance easier for library
+authors: They can focus on correctly implementing protocol functionality instead
+of having debates around async runtimes or exposing APIs to set socket options.
 
-A good example here is `str0m`’s stance on the gathering of candidates:
-This is an IO concern and up to the application on how to achieve it.
-`str0m` only provides an API to add such an ICE candidate to the current state.
-As a result, we are able to easily implementation optimisations such as gathering TURN candidates prior to any connection being made, thus reducing firezone's connection-setup latency.
+A good example here is `str0m`’s stance on the gathering of candidates: This is
+an IO concern and up to the application on how to achieve it. `str0m` only
+provides an API to add such an ICE candidate to the current state. As a result,
+we are able to easily implementation optimisations such as gathering TURN
+candidates prior to any connection being made, thus reducing firezone's
+connection-setup latency.
 
 ### Testing at the speed of light
 
-sans-IO code is essentially side-effect free and thus lends itself extremely well for (unit) tests.
-Due to sockets and time being abstracted away, it becomes a breeze to write tests that advance time by 5 minutes in an instant.
-All we need to do is pass a modified `Instant` to our function and assert, how the code behaves.
-To see a real world example of this, [check out](https://github.com/firezone/firezone/blob/53557f46e452c0fe5195a4326873753a356c6005/rust/connlib/snownet/tests/lib.rs#L123-L127) how we test that `snownet` closes idle connections after 5 minutes.
+sans-IO code is essentially side-effect free and thus lends itself extremely
+well for (unit) tests. Due to sockets and time being abstracted away, it becomes
+a breeze to write tests that advance time by 5 minutes in an instant. All we
+need to do is pass a modified `Instant` to our function and assert, how the code
+behaves. To see a real world example of this,
+[check out](https://github.com/firezone/firezone/blob/53557f46e452c0fe5195a4326873753a356c6005/rust/connlib/snownet/tests/lib.rs#L123-L127)
+how we test that `snownet` closes idle connections after 5 minutes.
 
-Similarly, actually sending data over a socket takes (a little bit of) time and more importantly, requires allocation of ports etc.
-In a sans-IO world, "sending data" in a test is as simple as taking a `Transmit` from party B and calling `handle_input` on the state of party A.
-No need to go through a network socket!
+Similarly, actually sending data over a socket takes (a little bit of) time and
+more importantly, requires allocation of ports etc. In a sans-IO world, "sending
+data" in a test is as simple as taking a `Transmit` from party B and calling
+`handle_input` on the state of party A. No need to go through a network socket!
 
-At firezone, we took this idea one step further.
-We implemented a reference state machine that describes how we want `connlib` to work.
-This reference state machine is used as the source of truth in our tests.
-We then leverage `proptest`'s support for [state machine testing](https://proptest-rs.github.io/proptest/proptest/state-machine.html) to deterministically sample and execute thousands of scenarios on every CI run and compare the reference state machine with `connlib`'s actual state.
-The details of this go beyond the scope of this post but we are planning to publish one about that topic in particular too!
-The key take-away here is that a sans-IO design enables these kind of tests.
+At firezone, we took this idea one step further. We implemented a reference
+state machine that describes how we want `connlib` to work. This reference state
+machine is used as the source of truth in our tests. We then leverage
+`proptest`'s support for
+[state machine testing](https://proptest-rs.github.io/proptest/proptest/state-machine.html)
+to deterministically sample and execute thousands of scenarios on every CI run
+and compare the reference state machine with `connlib`'s actual state. The
+details of this go beyond the scope of this post but we are planning to publish
+one about that topic in particular too! The key take-away here is that a sans-IO
+design enables these kind of tests.
 
 ### Edge-cases and IO failures
 
-Not only can we easily test how our code reacts at certain points in time but the lack of any IO also makes it really easy to test for IO failures and/or weird behaviours!
+Not only can we easily test how our code reacts at certain points in time but
+the lack of any IO also makes it really easy to test for IO failures and/or
+weird behaviours!
 
 - What happens if this packets gets dropped and we never receive a response?
 - What happens if we get a malformed response?
@@ -444,32 +524,43 @@ Not only can we easily test how our code reacts at certain points in time but th
 - What happens if we don't have a functional IPv6 interface?
 - What happens if we _only_ have an IPv6 interface?
 
-By decoupling our protocol implementation from the actual IO side-effects, we are forced go back to the drawing board and design our state machine to be resilient against these problems.
-Consequently, detecting and dealing with errors simply becomes part of state machine's input handling which leads to more robust code and makes it less likely for edge-cases to only be considered as an after-thought.
+By decoupling our protocol implementation from the actual IO side-effects, we
+are forced go back to the drawing board and design our state machine to be
+resilient against these problems. Consequently, detecting and dealing with
+errors simply becomes part of state machine's input handling which leads to more
+robust code and makes it less likely for edge-cases to only be considered as an
+after-thought.
 
 ## Reflecting on Rust's features
 
-With an understanding of sans-IO, let's focus our attention on a few of Rust's features:
+With an understanding of sans-IO, let's focus our attention on a few of Rust's
+features:
 
-* ownership
-* explicit, mutable borrowing
-* exhaustive matching
-* powerful algebraic data types, especially enums
+- ownership
+- explicit, mutable borrowing
+- exhaustive matching
+- powerful algebraic data types, especially enums
 
 ### Ownership & mutable borrowing
 
-Rust forces us to declare, which component or function in our code owns a certain value.
-A common example for these are buffers:
-When reading from a `UdpSocket`, we need to provide a `&mut [u8]` as a place for the actual bytes being received.
-Only the owner of a value can declare it mutable and thus either mutate itself or temporarily hand out mutable references to other functions.
-`UdpSocket` follows this design: It doesn't declare a buffer on its own, instead, it only requires temporary, mutable access to it when it is actually reading from the socket.
+Rust forces us to declare, which component or function in our code owns a
+certain value. A common example for these are buffers: When reading from a
+`UdpSocket`, we need to provide a `&mut [u8]` as a place for the actual bytes
+being received. Only the owner of a value can declare it mutable and thus either
+mutate itself or temporarily hand out mutable references to other functions.
+`UdpSocket` follows this design: It doesn't declare a buffer on its own,
+instead, it only requires temporary, mutable access to it when it is actually
+reading from the socket.
 
 ### Exhaustive matching and ADTs
 
-The `match` keyword provides us with a compile-time checked way of handling the different variations of a value.
-Combined with enums, this provides a powerful way of ensuring that all combinations are handled.
-Enums lend themselves especially well in modelling state that can change at runtime.
-The following code is a slightly simplified snippet from [actual production code](https://github.com/firezone/firezone/blob/79fd8f6063761e582013873ff2a49d22c2445c46/rust/connlib/snownet/src/node.rs#L1308-L1330), modelling the state of a connection:
+The `match` keyword provides us with a compile-time checked way of handling the
+different variations of a value. Combined with enums, this provides a powerful
+way of ensuring that all combinations are handled. Enums lend themselves
+especially well in modelling state that can change at runtime. The following
+code is a slightly simplified snippet from
+[actual production code](https://github.com/firezone/firezone/blob/79fd8f6063761e582013873ff2a49d22c2445c46/rust/connlib/snownet/src/node.rs#L1308-L1330),
+modelling the state of a connection:
 
 ```rust
 enum Connection {
@@ -498,67 +589,93 @@ enum Connection {
 }
 ```
 
-The key things about the above model are the invariants around which data is available in a particular state.
-For example, buffered packets can only happen whilst we are Connecting.
-Once we are Connected, there is no more need to buffer packets.
-Similarly, once a Connection is failed, we no longer need to keep around the previously connected socket.
+The key things about the above model are the invariants around which data is
+available in a particular state. For example, buffered packets can only happen
+whilst we are Connecting. Once we are Connected, there is no more need to buffer
+packets. Similarly, once a Connection is failed, we no longer need to keep
+around the previously connected socket.
 
 ### Rust + sans-IO: A match made in heaven?
 
-A sans-IO design only has synchronous APIs, i.e. none of the functions on these state machines ever block on IO or time.
-They are just data structures and we can use Rust's features to model our protocol:
+A sans-IO design only has synchronous APIs, i.e. none of the functions on these
+state machines ever block on IO or time. They are just data structures and we
+can use Rust's features to model our protocol:
 
-* We can use `&mut` very liberally to express state that changes.
-* We can use enums to express mutually-exclusive aspects.
-* We can use exhaustive pattern matching to ensure no state combination is unhandled.
+- We can use `&mut` very liberally to express state that changes.
+- We can use enums to express mutually-exclusive aspects.
+- We can use exhaustive pattern matching to ensure no state combination is
+  unhandled.
 
-In Rust, `async` functions are just syntax sugar for a data structure that implements `Future`.
-Spawning a `Future` into a runtime[^1] like `tokio` requires this data structure to be `'static` and therefore, it cannot contain any references, including `&mut`.
-To mutate shared state in such a scenario, you basically have two options:
+In Rust, `async` functions are just syntax sugar for a data structure that
+implements `Future`. Spawning a `Future` into a runtime[^1] like `tokio`
+requires this data structure to be `'static` and therefore, it cannot contain
+any references, including `&mut`. To mutate shared state in such a scenario, you
+basically have two options:
 
-* Use reference-counted pointers and a mutex, i.e. `Arc<Mutex<T>>`
-* Use "actors" and connect them via channels, i.e. spawn multiple tasks with loops that read and write to channels
+- Use reference-counted pointers and a mutex, i.e. `Arc<Mutex<T>>`
+- Use "actors" and connect them via channels, i.e. spawn multiple tasks with
+  loops that read and write to channels
 
-Both of these options have a runtime overhead:
-Locks can result in contention and sending messages through channels requires copying.
-In addition, multiple tasks running inside a runtime operate in a non-deterministic order which can easily lead to race conditions and in the worst-case, dead-locks.
-It appears that with either of these options, we arrive at a design that feels brittle, is prone to dead-locks and no longer employs zero-cost abstractions, yet avoiding all of these is one of the reasons we wanted to use Rust in the first-place!
+Both of these options have a runtime overhead: Locks can result in contention
+and sending messages through channels requires copying. In addition, multiple
+tasks running inside a runtime operate in a non-deterministic order which can
+easily lead to race conditions and in the worst-case, dead-locks. It appears
+that with either of these options, we arrive at a design that feels brittle, is
+prone to dead-locks and no longer employs zero-cost abstractions, yet avoiding
+all of these is one of the reasons we wanted to use Rust in the first-place!
 
-In the sans-IO world, these problems don't exist.
-Our protocol code doesn't spawn any tasks and thus, `&mut self` is all we need to mutate state.
-Without tasks or threads, we also don't need synchronisation primitives like `Mutex`.
-Without channels, there is no need to copy data: The state machine can simply directly reference the buffer we passed to the socket.
+In the sans-IO world, these problems don't exist. Our protocol code doesn't
+spawn any tasks and thus, `&mut self` is all we need to mutate state. Without
+tasks or threads, we also don't need synchronisation primitives like `Mutex`.
+Without channels, there is no need to copy data: The state machine can simply
+directly reference the buffer we passed to the socket.
 
-Last but not least, we've also found that ever since we moved to sans-IO, our code became much easier to understand.
-No more tracking down of: Where is the other end of this channel? What if the channel is closed? Which other code is locking this `Mutex`?
-Instead, it is all just nested state machines and regular function calls.
+Last but not least, we've also found that ever since we moved to sans-IO, our
+code became much easier to understand. No more tracking down of: Where is the
+other end of this channel? What if the channel is closed? Which other code is
+locking this `Mutex`? Instead, it is all just nested state machines and regular
+function calls.
 
 ## The downsides
 
-There are no silver-bullets and sans-IO is no exception to this.
-Whilst writing your own eventloop gives you great control, it can also result in subtle bugs that are initially hard to find.
+There are no silver-bullets and sans-IO is no exception to this. Whilst writing
+your own eventloop gives you great control, it can also result in subtle bugs
+that are initially hard to find.
 
-For example, a bug in the state machine where the value returned from `poll_timeout` is not advanced can lead to a busy-looping behaviour in the eventloop.
+For example, a bug in the state machine where the value returned from
+`poll_timeout` is not advanced can lead to a busy-looping behaviour in the
+eventloop.
 
-Sequential actions require more boilerplate.
-In Rust, `async` functions compile down to state machines, with each `.await` point representing a transition to a different state.
-This makes it easy for developers to write sequential code.
-Without `async`, we need to write our own state machines for expressing the various steps.
-How annoying this will be in practise depends on your problem domain.
-Modelling a request-response protocol is not very difficult as we've seen in the example of a `StunBinding`.
+Sequential actions require more boilerplate. In Rust, `async` functions compile
+down to state machines, with each `.await` point representing a transition to a
+different state. This makes it easy for developers to write sequential code.
+Without `async`, we need to write our own state machines for expressing the
+various steps. How annoying this will be in practise depends on your problem
+domain. Modelling a request-response protocol is not very difficult as we've
+seen in the example of a `StunBinding`.
 
-Finally, the sans-IO design is not particularly wide-spread (yet) in the Rust community.
-As a result, there are very few libraries out there that follow it.
-Most of them will either implement blocking or non-blocking IO instead of sans-IO.
+Finally, the sans-IO design is not particularly wide-spread (yet) in the Rust
+community. As a result, there are very few libraries out there that follow it.
+Most of them will either implement blocking or non-blocking IO instead of
+sans-IO.
 
 ## Closing
 
-Writing sans-IO code is unusual at first but really enjoyable once you get the hang of it.
-In part, this is because Rust provides great tools for modelling state machines.
-More so, the fact that sans-IO forces you to handle errors as you would any other input simply feels like the way networking code should be written.
+Writing sans-IO code is unusual at first but really enjoyable once you get the
+hang of it. In part, this is because Rust provides great tools for modelling
+state machines. More so, the fact that sans-IO forces you to handle errors as
+you would any other input simply feels like the way networking code should be
+written.
 
 Discuss this post on [Hackernews](TODO) or [Reddit](TODO).
 
-[^1]: Technically, a thread-per-core runtime could allow non-`'static` `Future`s.
-[^2]: `boringtun` does call `Instant::now` internally and is thus unfortunately partly impure, see https://github.com/cloudflare/boringtun/issues/391.
-[^3]: Be sure to implement proper multiplexing of STUN messages at this point. Hint: Use the `TransactionId` and/or the server's address.
+[^1]:
+    Technically, a thread-per-core runtime could allow non-`'static` `Future`s.
+
+[^2]:
+    `boringtun` does call `Instant::now` internally and is thus unfortunately
+    partly impure, see https://github.com/cloudflare/boringtun/issues/391.
+
+[^3]:
+    Be sure to implement proper multiplexing of STUN messages at this point.
+    Hint: Use the `TransactionId` and/or the server's address.

@@ -21,7 +21,7 @@ export default function Page() {
           Announcements, insights, and more from the Firezone team.
         </p>
         <div className="mt-14 grid divide-y">
-        <SummaryCard
+          <SummaryCard
             title="sans-IO: The secret to effective Rust for network services"
             date="July 2, 2024"
             href="/blog/sans-io"
@@ -31,7 +31,8 @@ export default function Page() {
           >
             <p className="mb-2">
               Firezone's data plane extensively uses the sans-IO design pattern.
-              This post explains why we chose it and how you too can make use of it.
+              This post explains why we chose it and how you too can make use of
+              it.
             </p>
           </SummaryCard>
           <SummaryCard
