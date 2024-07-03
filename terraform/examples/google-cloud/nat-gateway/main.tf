@@ -1,4 +1,4 @@
-module "gateway_gcp_example" {
+module "google_firezone_gateway" {
   source = "github.com/firezone/firezone/terraform/modules/google-cloud/apps/gateway-region-instance-group"
   # If you are changing this example along with the module, you should use the local path:
   # source = "../../../modules/google-cloud/apps/gateway-region-instance-group"
