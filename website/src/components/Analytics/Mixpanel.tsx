@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useMixpanel } from "react-mixpanel-browser";
 import { HubSpotSubmittedFormData } from "./types";
 
-export default function Mixpanel() {
+function _Mixpanel() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const mixpanel = useMixpanel();
@@ -59,5 +59,13 @@ export default function Mixpanel() {
     };
   }, [pathname, searchParams, mixpanel]);
 
-  return <Suspense />;
+  return null;
+}
+
+export default function Mixpanel() {
+  return (
+    <Suspense fallback={null}>
+      <_Mixpanel />
+    </Suspense>
+  );
 }
