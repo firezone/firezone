@@ -459,7 +459,7 @@ that work in any network setup to the rest of the application.
 `snownet` builds on top of `str0m`, a sans-IO WebRTC library and `boringtun`, an
 (almost[^2]) sans-IO wireguard implementation. We don’t need the majority of the
 WebRTC stack though. The only thing we are interested in is the `IceAgent` which
-implements [RFC 8845](https://github.com/cloudflare/boringtun/issues/391). ICE
+implements [RFC 8445](https://datatracker.ietf.org/doc/html/rfc8445). ICE
 uses a clever algorithm that ensures two agents, deployed into arbitrary network
 environments find the most optimal communication path to each other. The result
 of ICE is a pair of socket addresses that we then use to perform a wireguard
