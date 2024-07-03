@@ -91,27 +91,21 @@ impl KnownHosts {
         question: &Question<N>,
     ) -> Option<Vec<AllRecordData<Vec<u8>, DomainName>>> {
         match question.qtype() {
-            Rtype::A => Some(
-                self.fqdn_to_ips
-                    .get::<DomainName>(&question.qname().to_name())?
-                    .iter()
-                    .copied()
-                    .filter_map(get_v4)
-                    .map(domain::rdata::A::new)
-                    .map(AllRecordData::A)
-                    .collect_vec(),
-            ),
+            Rtype::A => {
+                let ips = self
+                    .fqdn_to_ips
+                    .get::<DomainName>(&question.qname().to_name())?;
 
-            Rtype::AAAA => Some(
-                self.fqdn_to_ips
-                    .get::<DomainName>(&question.qname().to_name())?
-                    .iter()
-                    .copied()
-                    .filter_map(get_v6)
-                    .map(domain::rdata::Aaaa::new)
-                    .map(AllRecordData::Aaaa)
-                    .collect_vec(),
-            ),
+                Some(to_a_records(ips.iter().copied()))
+            }
+
+            Rtype::AAAA => {
+                let ips = self
+                    .fqdn_to_ips
+                    .get::<DomainName>(&question.qname().to_name())?;
+
+                Some(to_aaaa_records(ips.iter().copied()))
+            }
             Rtype::PTR => {
                 let ip = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())?;
                 let fqdn = self.ips_to_fqdn.get(&ip)?;
@@ -204,26 +198,14 @@ impl StubResolver {
         &mut self,
         fqdn: DomainName,
     ) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
-        self.get_or_assign_ips(fqdn)
-            .iter()
-            .copied()
-            .filter_map(get_v4)
-            .map(domain::rdata::A::new)
-            .map(AllRecordData::A)
-            .collect_vec()
+        to_a_records(self.get_or_assign_ips(fqdn).into_iter())
     }
 
     fn get_or_assign_aaaa_records(
         &mut self,
         fqdn: DomainName,
     ) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
-        self.get_or_assign_ips(fqdn)
-            .iter()
-            .copied()
-            .filter_map(get_v6)
-            .map(domain::rdata::Aaaa::new)
-            .map(AllRecordData::Aaaa)
-            .collect_vec()
+        to_aaaa_records(self.get_or_assign_ips(fqdn).into_iter())
     }
 
     fn get_or_assign_ips(&mut self, fqdn: DomainName) -> Vec<IpAddr> {
@@ -321,6 +303,20 @@ impl StubResolver {
             packet, response,
         )))
     }
+}
+
+fn to_a_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
+    ips.filter_map(get_v4)
+        .map(domain::rdata::A::new)
+        .map(AllRecordData::A)
+        .collect_vec()
+}
+
+fn to_aaaa_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
+    ips.filter_map(get_v6)
+        .map(domain::rdata::Aaaa::new)
+        .map(AllRecordData::Aaaa)
+        .collect_vec()
 }
 
 pub(crate) fn build_response_from_resolve_result(
