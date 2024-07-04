@@ -33,7 +33,7 @@ tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
 secrecy = "0.8"
 hickory-resolver = { git = "https://github.com/hickory-dns/hickory-dns", rev = "a3669bd80f3f7b97f0c301c15f1cba6368d97b63", features = ["tokio-runtime"] }
 hickory-proto = { git = "https://github.com/hickory-dns/hickory-dns", rev = "a3669bd80f3f7b97f0c301c15f1cba6368d97b63" }
-str0m = { version = "0.5", default-features = false }
+str0m = { version = "0.6", default-features = false }
 futures-bounded = "0.2.1"
 domain = { version = "0.10", features = ["serde"] }
 dns-lookup = "2.0"
@@ -74,7 +74,7 @@ private-intra-doc-links = "allow" # We don't publish any of our docs but want to
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
-str0m = { git = "https://github.com/firezone/str0m", branch = "main" }
+str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 proptest = { git = "https://github.com/thomaseizinger/proptest", branch = "fix/always-check-acceptable-current-state" }
