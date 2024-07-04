@@ -926,7 +926,7 @@ defmodule Web.CoreComponents do
           Web.Settings.IdentityProviders.Components.view_provider(@account, @identity.provider)
         }
         data-provider-id={@identity.provider.id}
-        title={get_identity_email(@identity)}
+        title={"View identity provider \"#{@identity.provider.adapter}\""}
         class={~w[
           text-xs
           rounded-l
@@ -978,7 +978,7 @@ defmodule Web.CoreComponents do
         :if={Actors.group_synced?(@group)}
         navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @group.provider)}
         data-provider-id={@group.provider_id}
-        title={@group.provider.adapter}
+        title={"View identity provider \"#{@group.provider.adapter}\""}
         class={~w[
           rounded-l
           py-0.5 px-1.5
@@ -990,7 +990,10 @@ defmodule Web.CoreComponents do
       >
         <.provider_icon adapter={@group.provider.adapter} class="h-3.5 w-3.5" />
       </.link>
-      <.link title={@group.name} navigate={~p"/#{@account}/groups/#{@group}"} class={~w[
+      <.link
+        title={"View Group \"#{@group.name}\""}
+        navigate={~p"/#{@account}/groups/#{@group}"}
+        class={~w[
           text-xs
           truncate
           min-w-0
@@ -998,7 +1001,8 @@ defmodule Web.CoreComponents do
           py-0.5
           text-neutral-800
           bg-neutral-100
-        ]}>
+        ]}
+      >
         <%= @group.name %>
       </.link>
     </span>
