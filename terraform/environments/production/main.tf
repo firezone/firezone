@@ -147,7 +147,7 @@ resource "google_storage_bucket_iam_member" "public-firezone-binary-artifacts" {
   member = "allUsers"
 }
 
-# Create a VPC
+# Create a VPCs
 module "google-cloud-vpc" {
   source = "../../modules/google-cloud/vpc"
 
@@ -191,7 +191,13 @@ module "google-cloud-sql" {
   database_highly_available = true
   database_backups_enabled  = true
 
-  database_read_replica_locations = []
+  database_read_replica_locations = [
+    {
+      ipv4_enabled = true
+      region       = local.region
+      network      = module.google-cloud-vpc.id
+    }
+  ]
 
   database_flags = {
     # Increase the connections count a bit, but we need to set it to Ecto ((pool_count * pool_size) + 50)
