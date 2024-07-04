@@ -771,16 +771,49 @@ defmodule Web.CoreComponents do
     assigns = assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
 
     ~H"""
-    <span
-      :if={not is_nil(@datetime)}
-      class="underline underline-offset-2 decoration-dotted"
-      title={@datetime}
-    >
-      <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to) %>
-    </span>
+    <.popover :if={not is_nil(@datetime)}>
+      <:target>
+        <span :if={not is_nil(@datetime)} class="underline underline-offset-2 decoration-dotted">
+          <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to) %>
+        </span>
+      </:target>
+      <:content>
+        <%= @datetime %>
+      </:content>
+    </.popover>
     <span :if={is_nil(@datetime)}>
       never
     </span>
+    """
+  end
+
+  @doc """
+  Renders a popover element with title and content.
+  """
+  slot :target, required: true
+  slot :content, required: true
+
+  def popover(assigns) do
+    # Any id will do
+    target_id = "popover-#{System.unique_integer([:positive, :monotonic])}"
+    assigns = assign(assigns, :target_id, target_id)
+
+    ~H"""
+    <span data-popover-target={@target_id}>
+      <%= render_slot(@target) %>
+    </span>
+
+    <div data-popover id={@target_id} role="tooltip" class={~w[
+      absolute z-10 invisible inline-block
+      text-sm text-neutral-500 transition-opacity
+      duration-50 bg-white border border-neutral-200
+      rounded shadow-sm opacity-0
+      ]}>
+      <div class="px-3 py-2">
+        <%= render_slot(@content) %>
+      </div>
+      <div data-popper-arrow></div>
+    </div>
     """
   end
 

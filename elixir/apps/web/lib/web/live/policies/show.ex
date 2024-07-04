@@ -150,13 +150,7 @@ defmodule Web.Policies.Show do
               Created
             </:label>
             <:value>
-              <.datetime datetime={@policy.inserted_at} /> by
-              <.link
-                navigate={~p"/#{@account}/actors/#{@policy.created_by_identity.actor.id}"}
-                class={link_style()}
-              >
-                <%= @policy.created_by_identity.actor.name %>
-              </.link>
+              <.created_by account={@account} schema={@policy} />
             </:value>
           </.vertical_table_row>
         </.vertical_table>
