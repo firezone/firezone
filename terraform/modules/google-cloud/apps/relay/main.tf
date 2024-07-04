@@ -363,11 +363,6 @@ resource "google_compute_firewall" "stun-turn-ipv4" {
   target_tags   = ["app-${local.application_name}"]
 
   allow {
-    protocol = "tcp"
-    ports    = ["3478", "49152-65535"]
-  }
-
-  allow {
     protocol = "udp"
     ports    = ["3478", "49152-65535"]
   }
@@ -381,11 +376,6 @@ resource "google_compute_firewall" "stun-turn-ipv6" {
 
   source_ranges = ["::/0"]
   target_tags   = ["app-${local.application_name}"]
-
-  allow {
-    protocol = "tcp"
-    ports    = ["3478", "49152-65535"]
-  }
 
   allow {
     protocol = "udp"

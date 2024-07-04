@@ -44,7 +44,7 @@ firezone-relay --help
 
 ### Ports
 
-By default, the relay listens on port `3478`. This is the standard port for
+By default, the relay listens on port `udp/3478`. This is the standard port for
 STUN/TURN. Additionally, the relay needs to have access to the port range
 `49152` - `65535` for the allocations.
 
