@@ -202,7 +202,7 @@ defmodule Web.ConnCase do
   ### Helpers to test formatted time units
 
   def around_now?(string) do
-    if string =~ "now" do
+    if string =~ "Now" do
       true
     else
       [_all, seconds] = Regex.run(~r/([0-9]+) second[s]? ago/, string)

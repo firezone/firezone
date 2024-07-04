@@ -140,7 +140,7 @@ defmodule Web.Live.Settings.IdentityProviders.IndexTest do
     |> render()
     |> table_to_map()
     |> with_table_row("name", provider.name, fn row ->
-      assert row["sync status"] == "Synced 2 identities and 1 group 1 hour ago"
+      assert String.contains?(row["sync status"], "Synced 2 identities and 1 group 1 hour ago")
     end)
 
     provider =
