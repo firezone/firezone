@@ -67,6 +67,7 @@ resource "google_sql_database_instance" "master" {
     }
 
     backup_configuration {
+      # Backups must be enabled if read replicas are enabled
       enabled    = length(var.database_read_replica_locations) > 0 ? true : var.database_backups_enabled
       start_time = "10:00"
 
@@ -79,7 +80,7 @@ resource "google_sql_database_instance" "master" {
     }
 
     ip_configuration {
-      ipv4_enabled    = length(var.database_read_replica_locations) > 0 ? false : true
+      ipv4_enabled    = true
       private_network = var.network
     }
 
@@ -141,7 +142,9 @@ resource "google_sql_database_instance" "master" {
 
 # Create followers for the main Cloud SQL instance
 resource "google_sql_database_instance" "read-replica" {
-  for_each = toset(var.database_read_replica_locations)
+  for_each = tomap({
+    for location in var.database_read_replica_locations : location.region => location
+  })
 
   project = var.project_id
 
@@ -171,8 +174,8 @@ resource "google_sql_database_instance" "read-replica" {
     }
 
     ip_configuration {
-      ipv4_enabled    = true
-      private_network = var.network
+      ipv4_enabled    = each.value.ipv4_enabled
+      private_network = each.value.network
     }
 
     insights_config {
@@ -180,7 +183,7 @@ resource "google_sql_database_instance" "read-replica" {
       record_application_tags = true
       record_client_address   = false
 
-      query_plans_per_minute = 25
+      query_plans_per_minute = 20
       query_string_length    = 4500
     }
 

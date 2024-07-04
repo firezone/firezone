@@ -102,9 +102,8 @@ module "metabase" {
       value = random_password.metabase_db_password.result
     },
     {
-      # TODO: create a read replica for analytics
       name  = "MB_DB_HOST"
-      value = module.google-cloud-sql.bi_instance_ip_address
+      value = module.google-cloud-sql.master_instance_ip_address
     },
     {
       name  = "MB_SITE_NAME"
