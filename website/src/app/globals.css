@@ -3,9 +3,14 @@
 @tailwind utilities;
 
 @layer components {
+  /* Fix inline headings */
   *:is(h1, h2, h3, h4, h5, h6) {
-    /* Fix anchor slug links and scroll position due to fixed navbar */
-    @apply flex items-center gap-1 scroll-mt-20;
+    @apply flex items-center gap-1;
+  }
+
+  /* Fix anchor slug links and scroll position due to fixed navbar */
+  *:is(h1, h2, h3, h4, h5, h6, li[id^="user-content-"]) {
+    @apply scroll-mt-20;
   }
 
   /* Remove styling for anchors inside headings */
