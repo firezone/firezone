@@ -773,7 +773,7 @@ defmodule Web.CoreComponents do
     ~H"""
     <.popover :if={not is_nil(@datetime)}>
       <:target>
-        <span :if={not is_nil(@datetime)} class="underline underline-offset-2 decoration-dotted">
+        <span class="underline underline-offset-2 decoration-dashed">
           <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to) %>
         </span>
       </:target>
