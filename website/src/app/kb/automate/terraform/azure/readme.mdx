@@ -51,9 +51,18 @@ Gateways. There's no limit to the number of Firezone Gateways you can deploy in
 a single Vnet. A basic Azure Autoscale configuration is provisioned as part of
 the linked module.
 
+<Alert color="warning">
+  If you need more than 64,512 concurrent connections, you can increase the
+  number of public IP addresses reserved for the Azure NAT Gateway. See [Azure's
+  documentation](https://learn.microsoft.com/en-us/azure/nat-gateway/troubleshoot-nat-connectivity)
+  for more information.
+</Alert>
+
 We've tested with `Standard_B1ls` instances which still work quite well for most
 applications. However, you may want to consider a larger instance type if you
-have a high volume of traffic or lots of concurrent connections.
+have a high volume of traffic or lots of concurrent connections. See
+[Gateway sizing recommendations](/kb/deploy/gateeways#sizing-recommendations)
+for some general guidelines depending on your expected traffic.
 
 ## Deployment
 
