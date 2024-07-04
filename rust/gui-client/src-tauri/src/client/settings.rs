@@ -39,7 +39,7 @@ impl Default for AdvancedSettings {
     }
 }
 
-fn advanced_settings_path() -> Result<PathBuf> {
+pub(crate) fn advanced_settings_path() -> Result<PathBuf> {
     Ok(known_dirs::settings()
         .context("`known_dirs::settings` failed")?
         .join("advanced_settings.json"))

@@ -271,10 +271,16 @@ pub(crate) fn run(
     Ok(())
 }
 
+#[cfg(not(debug_assertions))]
+async fn smoke_test(_: CtlrTx) -> Result<()> {
+    bail!("Smoke test is not built for release binaries.");
+}
+
 /// Runs a smoke test and then asks Controller to exit gracefully
 ///
 /// You can purposely fail this test by deleting the exported zip file during
 /// the 10-second sleep.
+#[cfg(debug_assertions)]
 async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     let delay = 10;
     tracing::info!("Will quit on purpose in {delay} seconds as part of the smoke test.");
@@ -322,6 +328,9 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         .await
         .context("Failed to remove zip file")?;
     tracing::info!(?path, ?zip_len, "Exported log zip looks okay");
+
+    // Check that settings file and at least one log file were written
+    anyhow::ensure!(tokio::fs::try_exists(settings::advanced_settings_path()?).await?);
 
     tracing::info!("Quitting on purpose because of `smoke-test` subcommand");
     ctlr_tx

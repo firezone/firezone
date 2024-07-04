@@ -1,9 +1,24 @@
 use anyhow::{Context as _, Result};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
-use std::{fs, io::Write, path::Path};
+use std::{
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 pub(crate) struct DeviceId {
     pub(crate) id: String,
+}
+
+/// Returns the path of the randomly-generated Firezone device ID
+///
+/// e.g. `C:\ProgramData\dev.firezone.client/firezone-id.json` or
+/// `/var/lib/dev.firezone.client/config/firezone-id.json`.
+pub(crate) fn path() -> Result<PathBuf> {
+    let path = crate::known_dirs::ipc_service_config()
+        .context("Failed to compute path for firezone-id file")?
+        .join("firezone-id.json");
+    Ok(path)
 }
 
 /// Returns the device ID, generating it and saving it to disk if needed.
@@ -15,19 +30,19 @@ pub(crate) struct DeviceId {
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
 pub(crate) fn get_or_create() -> Result<DeviceId> {
-    let dir = crate::known_dirs::ipc_service_config()
-        .context("Failed to compute path for firezone-id file")?;
+    let path = path()?;
+    let dir = path
+        .parent()
+        .context("Device ID path should always have a parent")?;
     // Make sure the dir exists, and fix its permissions so the GUI can write the
     // log filter file
-    fs::create_dir_all(&dir).context("Failed to create dir for firezone-id")?;
-    set_permissions(&dir).with_context(|| {
+    fs::create_dir_all(dir).context("Failed to create dir for firezone-id")?;
+    set_permissions(dir).with_context(|| {
         format!(
             "Couldn't set permissions on IPC service config dir `{}`",
             dir.display()
         )
     })?;
-
-    let path = dir.join("firezone-id.json");
 
     // Try to read it from the disk
     if let Some(j) = fs::read_to_string(&path)
