@@ -49,9 +49,18 @@ Simply update the number of replicas to deploy more or fewer Firezone Gateways.
 There's no limit to the number of Firezone Gateways you can deploy in a single
 VPC.
 
+<Alert color="warning">
+  If you need more than 64,512 concurrent connections, you can increase the
+  number of public IP addresses reserved for the Cloud NAT. See [Google's
+  documentation](https://cloud.google.com/nat/docs/ports-and-addresses#ports)
+  for more information.
+</Alert>
+
 We've tested with `f1-micro` instances which still work quite well for most
 applications. However, you may want to consider a larger instance type if you
-have a high volume of traffic or lots of concurrent connections.
+have a high volume of traffic or lots of concurrent connections. See
+[Gateway sizing recommendations](/kb/deploy/gateeways#sizing-recommendations)
+for some general guidelines depending on your expected traffic.
 
 ## Deployment
 

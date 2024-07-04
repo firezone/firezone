@@ -283,13 +283,21 @@ default nameservers as if Firezone didn't exist. For DNS queries that do match a
 defined Resource, however, it behaves a bit differently.
 
 Instead of forwarding the query to your default nameservers, our special stub
-resolver first asks Firezone's Policy Engine to authorize the query for the
-Resource in question.
+resolver generates a special, internal IP for the Resource and responds
+immediately with that, storing the IP in a lookup table.
 
-If approved, the Policy Engine forwards the query to a Gateway that's available
-to serve the Resource. The Gateway then resolves the query for the Resource
-(using _its_ stub resolver) and returns the final result all the way back to the
-stub resolver running inside the Client.
+Upon seeing packets through the tunnel matching the IP in the lookup table, the
+Client generates a request to the Policy Engine to authorize the traffic. If
+approved, the Policy Engine forwards the IP and DNS name corresponding to the
+Resource to a Gateway that's available to serve the Resource.
+
+The Gateway then resolves the actual IP address for the Resource (using _its_
+stub resolver) and stores a mapping between it and the special, internal IP we
+generated earlier.
+
+When the Gateway sees traffic for the special, internal IP, it translates
+translates it back to the actual IP of the Resource and forwards the traffic
+along to the Resource.
 
 <Alert color="info">
   If you're new to Firezone, read more about
@@ -297,10 +305,6 @@ stub resolver running inside the Client.
   Engine](/kb/architecture/core-components#policy-engine) in our architecture
   docs.
 </Alert>
-
-Here's where things get interesting: instead of passing the resolved IP address
-as-is back to the application, the stub resolver generates a dummy IP address
-for it and returns that instead.
 
 <Image
   src="/images/blog/how-dns-works-in-firezone/dns-based-traffic-routing.svg"

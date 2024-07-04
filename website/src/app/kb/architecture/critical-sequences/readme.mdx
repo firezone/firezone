@@ -135,24 +135,31 @@ Firezone employs a unique, granular approach to split DNS to ensure traffic
 intended **only** for DNS-based Resources is routed through Firezone, leaving
 other traffic untouched -- even when resolved IP addresses overlap.
 
-To achieve this, Firezone embeds a tiny, in-memory DNS proxy inside each Client
+To achieve this, Firezone embeds a tiny, in-memory DNS resolver in each Client
 that intercepts all DNS queries on the system.
 
-When the proxy sees a query that doesn't match a known Resource, it operates in
-pass-through mode, forwarding the the query to the system's default resolvers or
-[configured upstream resolvers](/kb/deploy/dns) in your account.
+When the resolver sees a query that doesn't match a known Resource, it operates
+in pass-through mode, forwarding the the query to the system's default resolvers
+or [configured upstream resolvers](/kb/deploy/dns) in your account.
 
 If the query matches a Resource, however, the following happens:
 
-1. The proxy sends the query request to the Policy Engine for evaluation. If the
-   request is allowed, the Policy Engine finds an appropriate Gateway to resolve
-   the query.
-1. The Gateway resolves the query and sends the response back to the proxy.
-1. The proxy generates a special, internal IP from the range `100.96.0.0/11` or
-   `fd00:2021:1111:8000::/107` and maps this IP to the resolved IP returned by
-   the Gateway.
-1. The proxy responds to the Client with this internal IP where it is then
-   returned back to the application making the original request.
+1. The resolver generates a special, internal IP from the range `100.96.0.0/11`
+   or `fd00:2021:1111:8000::/107` and stores an internal mapping of this IP to
+   the DNS name originally queried. The IP is returned to the application that
+   made the query.
+1. When the Client sees traffic for the IP, it triggers connection setup. The
+   Client sends a request to the Policy Engine for evaluation. If the request is
+   allowed, the Policy Engine finds an appropriate Gateway to route the traffic.
+1. At the same time, the Gateway receives the request via the control plane and
+   resolves the DNS query using its system resolver, storing the result in a
+   lookup table.
+1. If the Policy Engine approves the Client's request, it sends the Client the
+   WireGuard keys and NAT traversal information for the Gateway that will serve
+   the Resource.
+1. Traffic from the application flows, and the Gateway translates the internal
+   IP back to the actual IP address of the Resource, forwarding the traffic
+   accordingly.
 
 This is why you'll see DNS-based Resources resolve to IPs such as `100.96.0.1`
 while the Client is signed in:
@@ -168,6 +175,10 @@ Non-authoritative answer:
 Name: github.com
 Address: 100.96.0.1
 ```
+
+Notice in the above process that at no point does the Client's system resolver
+see the actual IP address of the Resource. This ensures that your DNS data
+remains private and secure.
 
 For a deeper dive into how (and why) DNS works this way in Firezone, see the
 [How DNS works in Firezone](/blog/how-dns-works-in-firezone) article.

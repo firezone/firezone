@@ -20,7 +20,7 @@ export default function KbSidebar() {
           <SidebarItem href="/kb">Overview</SidebarItem>
           <SidebarItem href="/kb/quickstart">Quickstart guide</SidebarItem>
         </SidebarItemGroup>
-        <SidebarItemGroup>
+        <SidebarItemGroup label="Get started">
           <SidebarCollapse prefix="/kb/deploy" label="Deploy">
             <SidebarItem href="/kb/deploy">Overview</SidebarItem>
             <SidebarItem href="/kb/deploy/sites">Sites</SidebarItem>
@@ -76,7 +76,7 @@ export default function KbSidebar() {
             </SidebarItem>
           </SidebarCollapse>
         </SidebarItemGroup>
-        <SidebarItemGroup>
+        <SidebarItemGroup label="Use Firezone">
           <SidebarCollapse prefix="/kb/administer" label="Administer">
             <SidebarItem href="/kb/administer">Overview</SidebarItem>
             <SidebarItem href="/kb/administer/upgrading">
@@ -138,7 +138,7 @@ export default function KbSidebar() {
             </SidebarItem>
           </SidebarCollapse>
         </SidebarItemGroup>
-        <SidebarItemGroup>
+        <SidebarItemGroup label="Learn more">
           <SidebarCollapse prefix="/kb/architecture" label="Architecture">
             <SidebarItem href="/kb/architecture">Overview</SidebarItem>
             <SidebarItem href="/kb/architecture/core-components">
