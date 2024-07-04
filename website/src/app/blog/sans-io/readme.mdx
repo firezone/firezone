@@ -461,7 +461,7 @@ a library that combines ICE and WireGuard and thereby exposes "magic" IP tunnels
 that work in any network setup to the rest of the application.
 
 `snownet` builds on top of `str0m`, a sans-IO WebRTC library and `boringtun`, an
-(almost[^4]) sans-IO WireGuard implementation. We don’t need the majority of the
+(almost[^3]) sans-IO WireGuard implementation. We don’t need the majority of the
 WebRTC stack though. The only thing we are interested in is the `IceAgent` which
 implements [RFC 8445](https://datatracker.ietf.org/doc/html/rfc8445). ICE uses a
 clever algorithm that ensures two agents, deployed into arbitrary network
@@ -572,7 +572,7 @@ is sound. In comparison, `async` Rust and `&mut` almost feel somewhat at odds
 with each other.
 
 In Rust, `async` functions are just syntax sugar for a data structure that
-implements `Future`. Spawning a `Future` into a runtime[^4] like `tokio`
+implements `Future`. Spawning a `Future` into a runtime[^2] like `tokio`
 requires this data structure to be `'static` and therefore, it cannot contain
 any references, including `&mut`. To mutate state that isn't local to the
 `Future`, you basically have two options:
