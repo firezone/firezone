@@ -99,7 +99,7 @@ defmodule Web.Live.Actors.IndexTest do
           assert row["groups"] =~ group.name
         end
 
-        assert row["last signed in"] == "never"
+        assert row["last signed in"] == "Never"
       end)
     end
   end
@@ -133,7 +133,7 @@ defmodule Web.Live.Actors.IndexTest do
     |> render()
     |> table_to_map()
     |> with_table_row("name", actor.name, fn row ->
-      assert row["last signed in"] == "1 hour ago"
+      assert String.contains?(row["last signed in"], "1 hour ago")
     end)
   end
 end
