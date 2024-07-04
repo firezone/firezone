@@ -165,7 +165,7 @@ defmodule Web.Live.Groups.ShowTest do
     |> element("#actors")
     |> render()
     |> table_to_map()
-    |> with_table_row("actor", user_actor.name, fn row ->
+    |> with_table_row("name", user_actor.name, fn row ->
       user_actor = Repo.preload(user_actor, identities: [:provider])
 
       for identity <- user_actor.identities do
@@ -173,7 +173,7 @@ defmodule Web.Live.Groups.ShowTest do
         assert row["identities"] =~ identity.provider_identifier
       end
     end)
-    |> with_table_row("actor", "#{service_account.name} (service account)", fn row ->
+    |> with_table_row("name", "#{service_account.name} (service account)", fn row ->
       service_account = Repo.preload(service_account, identities: [:provider])
 
       for identity <- service_account.identities do

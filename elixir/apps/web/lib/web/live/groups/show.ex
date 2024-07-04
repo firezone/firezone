@@ -149,7 +149,7 @@ defmodule Web.Groups.Show do
           ordered_by={@order_by_table_id["actors"]}
           metadata={@actors_metadata}
         >
-          <:col :let={actor} label="actor">
+          <:col :let={actor} label="name">
             <.actor_name_and_role account={@account} actor={actor} />
           </:col>
           <:col :let={actor} label="identities">
