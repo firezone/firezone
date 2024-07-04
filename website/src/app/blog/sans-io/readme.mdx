@@ -1,14 +1,14 @@
 import Image from "next/image";
 import Alert from "@/components/DocsAlert";
 
-At Firezone, we build secure remote access that scales, be it from your Android
-phone, MacOS computer or Linux server. At the core of each app sits a
-connectivity library &mdash; aptly named
+At Firezone, we use Rust to build secure remote access that scales, be it from
+your Android phone, MacOS computer or Linux server. At the core of each app sits
+a connectivity library &mdash; aptly named
 [`connlib`](https://www.github.com/firezone/firezone/tree/main/rust/connlib)
 &mdash; that manages network connections and WireGuard tunnels to secure your
 traffic. After several iterations, we’ve landed on a design that we are
-extremely happy with. It gives us blazingly fast and exhaustive tests, deep
-customisation and overall high assurance that it does what we want it to do.
+extremely happy with. It gives us fast and exhaustive tests, deep customisation
+and overall high assurance that it does what we want it to do.
 
 `connlib` is built in Rust and the design we are talking about is known as
 sans-IO. Rust's premise of speed and memory-safety makes it a great choice for
