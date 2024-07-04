@@ -774,7 +774,8 @@ defmodule Web.CoreComponents do
     <.popover :if={not is_nil(@datetime)}>
       <:target>
         <span class="underline underline-offset-2 decoration-dashed">
-          <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to) %>
+          <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to)
+          |> String.capitalize() %>
         </span>
       </:target>
       <:content>
@@ -782,7 +783,7 @@ defmodule Web.CoreComponents do
       </:content>
     </.popover>
     <span :if={is_nil(@datetime)}>
-      never
+      Never
     </span>
     """
   end
