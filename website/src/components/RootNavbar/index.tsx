@@ -51,8 +51,8 @@ const navbarTheme: CustomFlowbiteTheme["navbar"] = {
   link: {
     base: "block py-2 pl-3 pr-4 md:p-0 border-b border-neutral-200 md:border-transparent",
     active: {
-      on: "bg-neutral-200 rounded text-white md:bg-transparent md:text-neutral-800 font-semibold text-accent-900",
-      off: "text-neutral-700 hover:bg-neutral-100 transition transform duration-50 hover:text-neutral-800 md:hover:bg-transparent md:hover:border-b-2 md:hover:border-neutral-600",
+      on: "bg-neutral-200 rounded text-white md:bg-transparent text-primary-450 font-semibold",
+      off: "text-neutral-700 hover:text-primary-450 hover:bg-neutral-100 transition transform duration-50 md:hover:bg-transparent md:hover:border-b-2 md:hover:border-primary-450",
     },
     disabled: {
       on: "text-neutral-400 hover:cursor-not-allowed",
@@ -97,7 +97,7 @@ const dropdownTheme: CustomFlowbiteTheme["dropdown"] = {
     target: "w-fit",
   },
   inlineWrapper:
-    "flex items-center py-2 pl-3 pr-4 md:p-0 text-neutral-700 hover:text-neutral-800 md:border-transparent md:border-b-2 md:hover:border-neutral-600 duration-50 transition transform",
+    "flex items-center py-2 pl-3 pr-4 md:p-0 text-neutral-700 hover:text-primary-450 md:border-transparent md:border-b-2 md:hover:border-primary-450 duration-50 transition transform",
 };
 
 function NavbarLink({
@@ -193,7 +193,7 @@ export default function RootNavbar() {
         </div>
         <ActionLink
           href="https://app.firezone.dev/"
-          className="hidden md:inline-flex py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-700 md:border-transparent hover:text-neutral-800 hover:bg-neutral-200 md:hover:bg-transparent md:border-b-2 md:hover:border-neutral-600 duration-50 transition transform"
+          className="hidden md:inline-flex py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-700 md:border-transparent hover:text-primary-450 hover:bg-neutral-200 md:hover:bg-transparent md:border-b-2 md:hover:border-primary-450 duration-50 transition transform"
           size="w-5 h-5"
         >
           Sign in
@@ -201,7 +201,7 @@ export default function RootNavbar() {
       </NavbarCollapse>
       <div className="hidden md:flex space-x-4 items-center">
         <Link
-          className="block py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-700 md:border-transparent hover:text-neutral-800 md:border-b-2 hover:border-neutral-600 duration-50 transition transform"
+          className="block py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-700 md:border-transparent hover:text-primary-450 md:border-b-2 hover:border-primary-450 duration-50 transition transform"
           href="https://app.firezone.dev/sign_up"
         >
           Sign up
