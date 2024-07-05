@@ -263,7 +263,7 @@ impl Allocation {
     /// Refresh this allocation.
     ///
     /// In case refreshing the allocation fails, we will attempt to make a new one.
-    #[tracing::instrument(level = "debug", skip_all, fields(relay = ?self.active_socket))]
+    #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
     pub fn refresh(&mut self, now: Instant) {
         self.update_now(now);
 
@@ -551,7 +551,7 @@ impl Allocation {
         Some((peer, payload, socket))
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(relay = ?self.active_socket))]
+    #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
     pub fn handle_timeout(&mut self, now: Instant) {
         self.update_now(now);
 
@@ -642,7 +642,7 @@ impl Allocation {
         earliest_timeout
     }
 
-    #[tracing::instrument(level = "debug", skip(self, now), fields(relay = ?self.active_socket))]
+    #[tracing::instrument(level = "debug", skip(self, now), fields(active_socket = ?self.active_socket))]
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
         if self.is_suspended() {
             tracing::debug!("Allocation is suspended");
