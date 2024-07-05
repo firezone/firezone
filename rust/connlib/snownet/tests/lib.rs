@@ -638,6 +638,8 @@ impl<R> TestNode<R> {
     }
 
     fn receive(&mut self, local: SocketAddr, from: SocketAddr, packet: &[u8], now: Instant) {
+        debug_assert!(self.local.contains(&local));
+
         if let Some((_, packet)) = self
             .span
             .in_scope(|| {
