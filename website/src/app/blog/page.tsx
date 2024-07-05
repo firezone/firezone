@@ -14,13 +14,7 @@ export default function Page() {
   return (
     <section>
       <div className="py-6 px-4 sm:py-8 sm:px-6 md:py-10 md:px-8 lg:py-12 lg:px-10 mx-auto max-w-screen-lg w-full">
-        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold tracking-tight mt-8">
-          Blog
-        </h1>
-        <p className="text-lg md:text-xl lg:text-2xl mt-4 md:mt-6 lg:mt-8 tracking-tight">
-          Announcements, insights, and more from the Firezone team.
-        </p>
-        <div className="mt-14 grid divide-y">
+        <div className="grid divide-y">
           <SummaryCard
             title="sans-IO: The secret to effective Rust for network services"
             date="July 2, 2024"
