@@ -6,6 +6,7 @@ use crate::{
 };
 use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
+use hex_display::HexDisplayExt as _;
 use rand::random;
 use std::{
     borrow::Cow,
@@ -312,7 +313,10 @@ impl Allocation {
 
         let transaction_id = message.transaction_id();
 
-        Span::current().record("id", field::debug(transaction_id));
+        Span::current().record(
+            "id",
+            field::display(format_args!("{:X}", transaction_id.as_bytes().hex())),
+        );
         Span::current().record("method", field::display(message.method()));
         Span::current().record("class", field::display(message.class()));
 
