@@ -188,7 +188,18 @@ fn debug_db_path() -> PathBuf {
 
 #[cfg(target_os = "linux")]
 fn ipc_service_command() -> Exec {
-    Exec::cmd("sudo").args(&[OsStr::new("--preserve-env"), ipc_path().as_os_str()])
+    Exec::cmd("sudo").args(&[
+        "--preserve-env",
+        "runuser", // The `runuser` looks redundant but CI will complain if we use `sudo` directly, not sure why
+        "-u",
+        "root",
+        "--group",
+        "firezone-client",
+        "--whitelist-environment=RUST_LOG",
+        ipc_path()
+            .to_str()
+            .expect("IPC binary path should be valid Unicode"),
+    ])
 }
 
 #[cfg(target_os = "windows")]
