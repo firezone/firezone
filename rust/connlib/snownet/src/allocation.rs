@@ -528,7 +528,9 @@ impl Allocation {
         packet: &'p [u8],
         now: Instant,
     ) -> Option<(SocketAddr, &'p [u8], Socket)> {
-        if from != self.active_socket? {
+        if !self.server.matches(from) {
+            tracing::trace!(?self.server, "Packet is not for this allocation");
+
             return None;
         }
 
@@ -1144,8 +1146,13 @@ impl ChannelBindings {
     const LAST_CHANNEL: u16 = 0x4FFF;
 
     fn try_decode<'p>(&mut self, packet: &'p [u8], now: Instant) -> Option<(SocketAddr, &'p [u8])> {
-        let (channel_number, payload) = crate::channel_data::decode(packet).ok()?;
-        let channel = self.inner.get_mut(&channel_number)?;
+        let (channel_number, payload) = crate::channel_data::decode(packet)
+            .inspect_err(|e| tracing::debug!("Malformed channel data message: {e}"))
+            .ok()?;
+        let Some(channel) = self.inner.get_mut(&channel_number) else {
+            tracing::debug!(%channel_number, "Unknown channel");
+            return None;
+        };
 
         if !channel.bound {
             tracing::debug!(peer = %channel.peer, number = %channel_number, "Dropping message from channel because it is not yet bound");
