@@ -755,10 +755,10 @@ impl Allocation {
 
     fn log_update(&self) {
         tracing::info!(
-            srflx_ip4 = ?self.ip4_srflx_candidate,
-            srflx_ip6 = ?self.ip6_srflx_candidate,
-            relay_ip4 = ?self.ip4_allocation,
-            relay_ip6 = ?self.ip6_allocation,
+            srflx_ip4 = ?self.ip4_srflx_candidate.as_ref().map(|c| c.addr()),
+            srflx_ip6 = ?self.ip6_srflx_candidate.as_ref().map(|c| c.addr()),
+            relay_ip4 = ?self.ip4_allocation.as_ref().map(|c| c.addr()),
+            relay_ip6 = ?self.ip6_allocation.as_ref().map(|c| c.addr()),
             lifetime = ?self.allocation_lifetime,
             "Updated allocation"
         );
