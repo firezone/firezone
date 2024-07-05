@@ -404,7 +404,7 @@ where
         }
     }
 
-    #[tracing::instrument(level = "info", skip_all, fields(id = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
+    #[tracing::instrument(level = "info", skip_all, fields(tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_binding_request(&mut self, request: Binding, sender: ClientSocket) {
         let mut message = Message::new(
             MessageClass::SuccessResponse,
@@ -421,7 +421,7 @@ where
     /// Handle a TURN allocate request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque> for details.
-    #[tracing::instrument(level = "info", skip_all, fields(allocation, id = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
+    #[tracing::instrument(level = "info", skip_all, fields(allocation, tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_allocate_request(
         &mut self,
         request: Allocate,
@@ -540,7 +540,7 @@ where
     /// Handle a TURN refresh request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-refresh-request> for details.
-    #[tracing::instrument(level = "info", skip_all, fields(allocation, id = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
+    #[tracing::instrument(level = "info", skip_all, fields(allocation, tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_refresh_request(
         &mut self,
         request: Refresh,
@@ -589,7 +589,7 @@ where
     /// Handle a TURN channel bind request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-channelbind-req> for details.
-    #[tracing::instrument(level = "info", skip_all, fields(allocation, peer, channel, id = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
+    #[tracing::instrument(level = "info", skip_all, fields(allocation, peer, channel, tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_channel_bind_request(
         &mut self,
         request: ChannelBind,
@@ -693,7 +693,7 @@ where
     ///
     /// This TURN server implementation does not support relaying data other than through channels.
     /// Thus, creating a permission is a no-op that always succeeds.
-    #[tracing::instrument(level = "info", skip_all, fields(id = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
+    #[tracing::instrument(level = "info", skip_all, fields(tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_create_permission_request(
         &mut self,
         request: CreatePermission,

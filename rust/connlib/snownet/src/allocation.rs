@@ -287,7 +287,7 @@ impl Allocation {
         self.send_binding_requests();
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(id, method, class, rtt))]
+    #[tracing::instrument(level = "debug", skip_all, fields(tid, method, class, rtt))]
     pub fn handle_input(
         &mut self,
         from: SocketAddr,
@@ -314,7 +314,7 @@ impl Allocation {
         let transaction_id = message.transaction_id();
 
         Span::current().record(
-            "id",
+            "tid",
             field::display(format_args!("{:X}", transaction_id.as_bytes().hex())),
         );
         Span::current().record("method", field::display(message.method()));
