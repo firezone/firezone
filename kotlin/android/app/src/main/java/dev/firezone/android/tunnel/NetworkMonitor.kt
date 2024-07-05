@@ -17,8 +17,6 @@ class NetworkMonitor(private val tunnelService: TunnelService) : ConnectivityMan
         network: Network,
         linkProperties: LinkProperties,
     ) {
-        Log.d("NetworkMonitor", "OnLinkPropertiesChanged: $network: $linkProperties")
-
         // Acquire mutex lock
         if (tunnelService.lock.tryLock()) {
             if (tunnelService.tunnelState != TunnelService.Companion.State.UP) {

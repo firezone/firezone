@@ -30,7 +30,6 @@ internal class SessionActivity : AppCompatActivity() {
                 name: ComponentName?,
                 service: IBinder?,
             ) {
-                Log.d(TAG, "onServiceConnected")
                 val binder = service as TunnelService.LocalBinder
                 tunnelService = binder.getService()
                 serviceBound = true
@@ -39,7 +38,6 @@ internal class SessionActivity : AppCompatActivity() {
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
-                Log.d(TAG, "onServiceDisconnected")
                 serviceBound = false
             }
         }
@@ -69,14 +67,12 @@ internal class SessionActivity : AppCompatActivity() {
 
     private fun setupViews() {
         binding.btSignOut.setOnClickListener {
-            Log.d(TAG, "Sign out button clicked")
             viewModel.clearToken()
             viewModel.clearActorName()
             tunnelService?.disconnect()
         }
 
         binding.btSettings.setOnClickListener {
-            Log.d(TAG, "Settings button clicked")
             val intent = Intent(this, SettingsActivity::class.java)
             intent.putExtra("isUserSignedIn", true)
             startActivity(intent)
