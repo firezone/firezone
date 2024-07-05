@@ -370,6 +370,16 @@ fn connect(
         }
     });
 
+    // On Android, the VpnService may still be loaded into memory when reconnecting.
+    // Only install the crypto-provider if we haven't done so previously.
+    if rustls::crypto::CryptoProvider::get_default().is_none() {
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .expect(
+                "Calling `install_default` should succeed if we don't have a crypto provider yet.",
+            );
+    }
+
     let args = ConnectArgs {
         url,
         sockets,

@@ -22,7 +22,6 @@ phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
 serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
 tokio = { version = "1.38", default-features = false, features = ["sync", "macros", "rt-multi-thread", "fs", "signal"] }
-tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 tracing = { workspace = true }
 tracing-subscriber = "0.3.17"
 url = { version = "2.4.1", default-features = false }
@@ -35,6 +34,7 @@ either = "1"
 http-health-check = { workspace = true }
 static_assertions = "1.1.0"
 snownet = { workspace = true }
+rustls = { workspace = true }
 
 [dev-dependencies]
 serde_json = { version = "1.0", default-features = false, features = ["std"] }

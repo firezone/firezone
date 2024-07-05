@@ -30,7 +30,7 @@ minidumper = "0.8.2"
 native-dialog = "0.7.0"
 output_vt100 = "0.1"
 rand = "0.8.5"
-reqwest = { version = "0.12.4", default-features = false, features = ["stream", "rustls-tls"] }
+reqwest = { version = "0.12.5", default-features = false, features = ["stream", "rustls-tls"] }
 sadness-generator = "0.5.0"
 secrecy = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
@@ -50,6 +50,7 @@ tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 url = { version = "2.5.0", features = ["serde"] }
 uuid = { version = "1.7.0", features = ["v4"] }
 zip = { version = "2", features = ["deflate", "time"], default-features = false }
+rustls = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
