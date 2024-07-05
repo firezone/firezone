@@ -8,7 +8,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Context.NOTIFICATION_SERVICE
 import android.content.Intent
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import dev.firezone.android.R
 import dev.firezone.android.core.presentation.MainActivity

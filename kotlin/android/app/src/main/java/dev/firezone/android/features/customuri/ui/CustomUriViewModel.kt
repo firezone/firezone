@@ -40,7 +40,7 @@ internal class CustomUriViewModel
                             repo.saveActorName(actorName).collect()
                         }
                         intent.data?.getQueryParameter(QUERY_CLIENT_STATE)?.let { state ->
-                            if (!repo.validateState(state).firstOrNull() == true) {
+                            if (repo.validateState(state).firstOrNull() != true) {
                                 error("Invalid state parameter $state")
                             }
                         }
