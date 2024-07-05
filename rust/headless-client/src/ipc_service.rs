@@ -262,6 +262,9 @@ impl Handler {
         match msg {
             ClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);
+                // There isn't an airtight way to implement a "disconnect and reconnect"
+                // right now because `Session::disconnect` is fire-and-forget:
+                // <https://github.com/firezone/firezone/blob/663367b6055ced7432866a40a60f9525db13288b/rust/connlib/clients/shared/src/lib.rs#L98-L103>
                 assert!(self.connlib.is_none());
                 let device_id =
                     device_id::get_or_create().context("Failed to get / create device ID")?;

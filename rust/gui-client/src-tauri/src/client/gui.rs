@@ -472,7 +472,6 @@ struct Controller {
 }
 
 impl Controller {
-    /// Pre-req: the auth module must be signed in
     async fn start_session(&mut self, token: SecretString) -> Result<(), Error> {
         if self.status.connlib_is_up() {
             Err(anyhow::anyhow!(
