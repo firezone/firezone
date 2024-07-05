@@ -437,12 +437,16 @@ impl Allocation {
                 // We send 2 BINDING requests to start with (one for each IP version) and the first one coming back wins.
                 // Thus, if we already have a socket set, we are done with processing this binding request.
 
-                if self.active_socket.is_some() {
+                if let Some(active_socket) = self.active_socket {
+                    tracing::debug!(%active_socket, additional_socket = %original_dst, "Relay supports dual-stack but we've already picked a socket");
+
                     return true;
                 }
 
                 // If the socket isn't set yet, use the `original_dst` as the primary socket.
                 self.active_socket = Some(original_dst);
+
+                tracing::debug!(active_socket = %original_dst, "Updating active socket");
 
                 if self.has_allocation() {
                     self.authenticate_and_queue(make_refresh_request(), None);
