@@ -621,11 +621,7 @@ impl Allocation {
     }
 
     pub fn poll_event(&mut self) -> Option<CandidateEvent> {
-        let next_event = self.events.pop_front()?;
-
-        tracing::debug!(?next_event);
-
-        Some(next_event)
+        self.events.pop_front()
     }
 
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
