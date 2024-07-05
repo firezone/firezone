@@ -11,7 +11,9 @@ export default function Provider({ children }) {
       <MixpanelProvider
         token={mpToken}
         config={{
-          track_page_view: true,
+          // This doesn't work for the website because page views happen client-side.
+          // We handle this in the Mixpanel component with useSearchParams instead.
+          // track_page_view: true,
           api_host: host,
           record_sessions_percent: 5,
         }}
