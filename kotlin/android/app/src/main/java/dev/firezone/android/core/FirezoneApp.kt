@@ -13,5 +13,9 @@ class FirezoneApp : Application() {
 
         // Disable Crashlytics for debug builds
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
+
+        // Load the native library immediately after FirebaseCrashlytics
+        // so we catch any issues with the native library early on.
+        System.loadLibrary("connlib")
     }
 }

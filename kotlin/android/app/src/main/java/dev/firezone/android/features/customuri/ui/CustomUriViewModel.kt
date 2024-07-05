@@ -37,20 +37,15 @@ internal class CustomUriViewModel
                 when (intent.data?.host) {
                     PATH_CALLBACK -> {
                         intent.data?.getQueryParameter(QUERY_ACTOR_NAME)?.let { actorName ->
-                            Log.d(TAG, "Found actor name: $actorName")
                             repo.saveActorName(actorName).collect()
                         }
                         intent.data?.getQueryParameter(QUERY_CLIENT_STATE)?.let { state ->
-                            if (repo.validateState(state).firstOrNull() == true) {
-                                Log.d(TAG, "Valid state parameter. Continuing to save state...")
-                            } else {
+                            if (repo.validateState(state).firstOrNull() != true) {
                                 error("Invalid state parameter $state")
                             }
                         }
                         intent.data?.getQueryParameter(QUERY_CLIENT_AUTH_FRAGMENT)?.let { fragment ->
                             if (fragment.isNotBlank()) {
-                                Log.d(TAG, "Found valid auth fragment in response")
-
                                 // Save token, then clear nonce and state since we don't
                                 // need to keep them around anymore
                                 repo.saveToken(fragment).collect()
@@ -66,7 +61,6 @@ internal class CustomUriViewModel
                 if (accumulatedErrors.isNotEmpty()) {
                     actionMutableLiveData.postValue(ViewAction.AuthFlowError(accumulatedErrors))
                 } else {
-                    Log.d(TAG, "Auth flow complete")
                     actionMutableLiveData.postValue(ViewAction.AuthFlowComplete)
                 }
             }
