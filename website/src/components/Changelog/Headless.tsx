@@ -8,7 +8,7 @@ export default function Headless() {
 
   return (
     <Entries href={href} arches={arches} title="Linux headless">
-      <Entry version="1.1.3" date={new Date("2024-07-03")}>
+      <Entry version="1.1.3" date={new Date("2024-07-05")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
             Fixes an{" "}
