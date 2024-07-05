@@ -7,6 +7,9 @@ use tracing_subscriber::{
 };
 use url::Url;
 
+// Mark for Firezone sockets to prevent routing loops
+pub const FIREZONE_MARK: u32 = 0xfd002021;
+
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use tun_device_manager::TunDeviceManager;
 

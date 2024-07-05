@@ -3,6 +3,7 @@ mod login_url;
 
 use std::collections::{HashSet, VecDeque};
 use std::mem;
+use std::net::SocketAddr;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::{fmt, future, marker::PhantomData};
@@ -16,15 +17,17 @@ use heartbeat::{Heartbeat, MissedLastHeartbeat};
 use rand_core::{OsRng, RngCore};
 use secrecy::{ExposeSecret as _, Secret};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use socket_factory::SocketFactory;
 use std::task::{Context, Poll, Waker};
 use tokio::net::TcpStream;
-use tokio_tungstenite::connect_async_with_config;
+use tokio_tungstenite::client_async_tls;
+use tokio_tungstenite::tungstenite::handshake::client::Response;
 use tokio_tungstenite::tungstenite::http::StatusCode;
 use tokio_tungstenite::{
-    connect_async,
     tungstenite::{handshake::client::Request, Message},
     MaybeTlsStream, WebSocketStream,
 };
+use url::{Host, Url};
 
 pub use login_url::{LoginUrl, LoginUrlError};
 
@@ -33,6 +36,7 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     waker: Option<Waker>,
     pending_messages: VecDeque<String>,
     next_request_id: Arc<AtomicU64>,
+    socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
 
     heartbeat: Heartbeat,
 
@@ -58,10 +62,67 @@ enum State {
     Closed,
 }
 
+async fn connect_websocket(
+    request: Request,
+    socket: tokio::net::TcpStream,
+) -> Result<
+    (WebSocketStream<MaybeTlsStream<TcpStream>>, Response),
+    tokio_tungstenite::tungstenite::Error,
+> {
+    client_async_tls(request, socket).await
+}
+
+async fn make_socket(
+    url: &Url,
+    socket_factory: &dyn SocketFactory<tokio::net::TcpSocket>,
+) -> Result<TcpStream, InternalError> {
+    let port = url
+        .port_or_known_default()
+        .expect("scheme to be http, https, ws or wss");
+    let addrs: Vec<SocketAddr> = match url.host().ok_or(InternalError::InvalidUrl)? {
+        Host::Domain(n) => tokio::net::lookup_host((n, port))
+            .await
+            .map_err(|_| InternalError::InvalidUrl)?
+            .collect(),
+        Host::Ipv6(ip) => {
+            vec![(ip, port).into()]
+        }
+        Host::Ipv4(ip) => {
+            vec![(ip, port).into()]
+        }
+    };
+
+    let mut last_error = None;
+    for addr in addrs {
+        let Ok(socket) = socket_factory(&addr) else {
+            continue;
+        };
+
+        match socket.connect(addr).await {
+            Ok(socket) => return Ok(socket),
+            Err(e) => {
+                last_error = Some(e);
+            }
+        }
+    }
+
+    let Some(err) = last_error else {
+        return Err(InternalError::InvalidUrl);
+    };
+
+    Err(InternalError::SocketConnection(err))
+}
+
 impl State {
-    fn connect(url: Secret<LoginUrl>, user_agent: String) -> Self {
+    fn connect(
+        url: Secret<LoginUrl>,
+        user_agent: String,
+        socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
+    ) -> Self {
         Self::Connecting(Box::pin(async move {
-            let (stream, _) = connect_async_with_config(make_request(url, user_agent), None, true)
+            let socket = make_socket(url.expose_secret().inner(), &*socket_factory).await?;
+
+            let (stream, _) = connect_websocket(make_request(url, user_agent), socket)
                 .await
                 .map_err(InternalError::WebSocket)?;
 
@@ -99,6 +160,8 @@ enum InternalError {
     MissedHeartbeat,
     CloseMessage,
     StreamClosed,
+    InvalidUrl,
+    SocketConnection(std::io::Error),
 }
 
 impl fmt::Display for InternalError {
@@ -119,6 +182,8 @@ impl fmt::Display for InternalError {
             InternalError::MissedHeartbeat => write!(f, "portal did not respond to our heartbeat"),
             InternalError::CloseMessage => write!(f, "portal closed the websocket connection"),
             InternalError::StreamClosed => write!(f, "websocket stream was closed"),
+            InternalError::InvalidUrl => write!(f, "failed to resolve url"),
+            InternalError::SocketConnection(e) => write!(f, "failed to connect socket: {e}"),
         }
     }
 }
@@ -159,16 +224,17 @@ where
 {
     /// Creates a new [PhoenixChannel] to the given endpoint.
     ///
+    /// This version of the function accept a Protect struct that will be used to protect the socket and prevent routing loops.
+    ///
     /// The provided URL must contain a host.
     /// Additionally, you must already provide any query parameters required for authentication.
-    ///
-    /// Once the connection is established,
     pub fn connect(
         url: Secret<LoginUrl>,
         user_agent: String,
         login: &'static str,
         init_req: TInitReq,
         reconnect_backoff: ExponentialBackoff,
+        socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
     ) -> Self {
         let next_request_id = Arc::new(AtomicU64::new(0));
 
@@ -178,7 +244,8 @@ where
             reconnect_backoff,
             url: url.clone(),
             user_agent: user_agent.clone(),
-            state: State::connect(url, user_agent),
+            state: State::connect(url, user_agent, socket_factory.clone()),
+            socket_factory,
             waker: None,
             pending_messages: Default::default(),
             _phantom: PhantomData,
@@ -220,7 +287,7 @@ where
         // 2. Set state to `Connecting` without a timer.
         let url = self.url.clone();
         let user_agent = self.user_agent.clone();
-        self.state = State::connect(url, user_agent);
+        self.state = State::connect(url, user_agent, self.socket_factory.clone());
 
         // 3. In case we were already re-connecting, we need to wake the suspended task.
         if let Some(waker) = self.waker.take() {
@@ -296,15 +363,9 @@ where
 
                         tracing::debug!(?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error: {e}");
 
-                        self.state = State::Connecting(Box::pin(async move {
-                            tokio::time::sleep(backoff).await;
+                        self.state =
+                            State::connect(secret_url, user_agent, self.socket_factory.clone());
 
-                            let (stream, _) = connect_async(make_request(secret_url, user_agent))
-                                .await
-                                .map_err(InternalError::WebSocket)?;
-
-                            Ok(stream)
-                        }));
                         continue;
                     }
                     Poll::Pending => {
