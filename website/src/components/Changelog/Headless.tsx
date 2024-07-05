@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Entry from "./Entry";
 import Entries from "./Entries";
 
@@ -7,6 +8,21 @@ export default function Headless() {
 
   return (
     <Entries href={href} arches={arches} title="Linux headless">
+      <Entry version="1.1.3" date={new Date("2024-07-05")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            Fixes an{" "}
+            <Link
+              href="https://github.com/firezone/firezone/pull/5700"
+              className="text-accent-500 underline hover:no-underline"
+            >
+              issue
+            </Link>{" "}
+            where a stale DNS cache could prevent traffic from routing to DNS
+            Resources if they were updated while the Client was signed in.
+          </li>
+        </ul>
+      </Entry>
       <Entry version="1.1.2" date={new Date("2024-07-03")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
