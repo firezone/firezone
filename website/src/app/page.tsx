@@ -41,7 +41,9 @@ export default function Page() {
       <section className="bg-neutral-100 pt-24">
         <div className="px-4 py-8 mx-auto max-w-screen-xl lg:py-16 lg:px-12">
           <h1 className="text-center mb-8 md:text-8xl text-5xl inline-block font-bold tracking-tight leading-none text-neutral-900">
-            Secure remote access.
+            <SlideIn direction="right" delay={0.0} className="md:inline-block">
+              Secure remote access.
+            </SlideIn>
             <SlideIn
               direction="left"
               delay={0.5}
@@ -62,13 +64,13 @@ export default function Page() {
             <div className="w-full max-w-screen-sm flex flex-wrap justify-between mt-8">
               <button
                 type="button"
-                className="mx-auto mb-8 w-64 inline-flex justify-center items-center py-3 px-5 font-semibold text-center text-primary-450 rounded border border-primary-450 bg-white hover:ring-2 hover:ring-primary-200 duration-50 transform transition"
+                className="text-xl mx-auto mb-8 w-64 inline-flex justify-center items-center py-3 px-5 font-semibold text-center text-primary-450 rounded border border-primary-450 bg-white hover:ring-2 hover:ring-primary-200 duration-50 transform transition"
               >
                 <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
               </button>
               <button
                 type="button"
-                className="mx-auto mb-8 w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-300 duration-50 transform transition"
+                className="text-xl mx-auto mb-8 w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-300 duration-50 transform transition"
               >
                 <Link href="/contact/sales">Book a demo</Link>
                 <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
@@ -100,8 +102,8 @@ export default function Page() {
 
       {/* Feature section 1: Secure access to your most sensitive resources in minutes. */}
       <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
-          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
+          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
             Upgrade to zero-trust access in{" "}
             <span className="text-primary-450">minutes</span>.
           </h3>
@@ -177,8 +179,8 @@ export default function Page() {
 
       {/* Feature section 2: Achieve compliance in minutes, not weeks. */}
       <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
-          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
+          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
             Achieve compliance{" "}
             <span className="text-primary-450">without </span>
             the headache.
@@ -213,8 +215,8 @@ export default function Page() {
 
       {/* Feature section 3: Add 2FA to WireGuard. */}
       <section className="bg-neutral-50 py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
-          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
+          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
             Add <span className="text-primary-450">two-factor </span>
             auth to WireGuard.
           </h3>
@@ -252,8 +254,8 @@ export default function Page() {
 
       {/* Feature section 4: Say goodbye to bandwidth problems. */}
       <section className="bg-neutral-900 text-neutral-50 py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
-          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
+          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
             <Strike>Bandwidth problems.</Strike>
           </h3>
         </div>
@@ -283,8 +285,8 @@ export default function Page() {
 
       {/* Feature section 5: No more open firewall ports. */}
       <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
-          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
+          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
             Say <span className="text-primary-450">goodbye</span> to firewall
             configuration.
           </h3>
@@ -315,8 +317,8 @@ export default function Page() {
 
       {/* Feature section 6: Runs everywhere your business does. */}
       <section className="bg-neutral-50 py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
-          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
+          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
             Runs <span className="text-primary-450">everywhere </span>
             your business does.
           </h3>
@@ -448,8 +450,8 @@ export default function Page() {
 
       {/* Feature section 7: Open source for transparency and trust. */}
       <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
-          <h3 className="text-xl sm:text-2xl md:text-4xl tracking-tight font-bold inline-block">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
+          <h3 className="text-xl sm:text-2xl md:text-6xl tracking-tight font-bold inline-block">
             <span className="text-primary-450">Open source</span> for
             transparency and trust.
           </h3>
@@ -701,26 +703,36 @@ export default function Page() {
 
       <section className="border-t border-neutral-200 py-24 bg-neutral-900">
         <div className="flex flex-col px-4 justify-center items-center">
-          <h3 className="mb-4 text-4xl tracking-tight text-center font-bold text-neutral-50">
+          <h3 className="mb-4 text-2xl md:text-6xl tracking-tight text-center font-bold text-neutral-50">
             Ready to get started?
           </h3>
           <h4 className="my-4 font-medium text-xl max-w-screen-md tracking-tight text-center text-neutral-200 ">
             Give your team secure access to company resources in minutes.
           </h4>
           <div className="w-full max-w-screen-sm flex flex-wrap justify-between mt-8">
-            <button
-              type="button"
-              className="mx-auto mb-8 w-64 inline-flex justify-center items-center py-3 px-5 font-semibold text-center text-primary-450 rounded border border-primary-450 bg-white hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
-            >
-              <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
-            </button>
-            <button
-              type="button"
-              className="mx-auto mb-8 w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
-            >
-              <Link href="/contact/sales">Book a demo</Link>
-              <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
-            </button>
+            <div className="mb-8 mx-auto w-64">
+              <button
+                type="button"
+                className="text-xl w-64 inline-flex justify-center items-center py-3 px-5 font-semibold text-center text-primary-450 rounded border border-primary-450 bg-white hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
+              >
+                <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
+              </button>
+              <p className="mt-3 text-sm text-neutral-400">
+                No credit card required. Cancel anytime.
+              </p>
+            </div>
+            <div className="mx-auto w-64">
+              <button
+                type="button"
+                className="text-xl w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
+              >
+                <Link href="/contact/sales">Book a demo</Link>
+                <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
+              </button>
+              <p className="mt-3 text-sm text-neutral-400">
+                Get a personalized walkthrough of Firezone.
+              </p>
+            </div>
           </div>
         </div>
       </section>
