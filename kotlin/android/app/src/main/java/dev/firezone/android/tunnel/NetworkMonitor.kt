@@ -2,7 +2,6 @@
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
-import android.util.Log
 import com.google.gson.Gson
 import dev.firezone.android.tunnel.ConnlibSession
 import dev.firezone.android.tunnel.TunnelService
@@ -17,8 +16,6 @@ class NetworkMonitor(private val tunnelService: TunnelService) : ConnectivityMan
         network: Network,
         linkProperties: LinkProperties,
     ) {
-        Log.d("NetworkMonitor", "OnLinkPropertiesChanged: $network: $linkProperties")
-
         // Acquire mutex lock
         if (tunnelService.lock.tryLock()) {
             if (tunnelService.tunnelState != TunnelService.Companion.State.UP) {
