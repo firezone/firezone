@@ -17,10 +17,11 @@ import { HiChevronDown } from "react-icons/hi2";
 import type { CustomFlowbiteTheme } from "flowbite-react";
 import { HiBars3 } from "react-icons/hi2";
 import { useDrawer } from "@/components/Providers/DrawerProvider";
+import { useScrollPosition } from "@/hooks/useScrollPosition";
 
 const navbarTheme: CustomFlowbiteTheme["navbar"] = {
   root: {
-    base: "fixed top-0 left-0 right-0 z-50 items-center bg-white px-2 py-2.5 sm:px-4",
+    base: "fixed top-0 left-0 right-0 z-50 items-center bg-white px-2 py-2.5 sm:px-4 transition-shadow",
     rounded: {
       on: "rounded",
       off: "",
@@ -150,9 +151,21 @@ function SidebarToggle() {
   }
 }
 
+function applyTheme(scrollPosition: number) {
+  return {
+    ...navbarTheme,
+    root: {
+      ...navbarTheme?.root,
+      base: `${navbarTheme?.root?.base} ${scrollPosition > 0 ? "shadow" : "shadow-none"}`,
+    },
+  };
+}
+
 export default function RootNavbar() {
+  const scrollPosition = useScrollPosition();
+
   return (
-    <Navbar theme={navbarTheme} fluid>
+    <Navbar theme={applyTheme(scrollPosition)} fluid>
       <SidebarToggle />
       <NavbarBrand as={Link} href="/">
         <Image
