@@ -40,6 +40,7 @@ subtle = "2.5.0"
 tauri = { version = "1.6.7", features = [ "dialog", "notification", "shell-open-api", "system-tray" ] }
 tauri-runtime = "0.14.2"
 tauri-utils = "1.5.3"
+time = { version = "0.3.36", features = ["formatting"] }
 thiserror = { version = "1.0", default-features = false }
 tokio = { version = "1.38.0", features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
 tokio-util = { version = "0.7.11", features = ["codec"] }
