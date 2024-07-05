@@ -191,8 +191,8 @@ pub fn run_only_headless_client() -> Result<()> {
                         is_authentication_error: _,
                     }) => return Err(anyhow!(error_msg).context("Firezone disconnected")),
                     InternalServerMsg::Ipc(IpcServerMsg::Ok)
-                    | InternalServerMsg::Ipc(IpcServerMsg::OnTunnelReady)
-                    | InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {
+                    | InternalServerMsg::Ipc(IpcServerMsg::OnTunnelReady) => {}
+                    InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {
                         // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                         dns_controller.flush()?;
                     }
