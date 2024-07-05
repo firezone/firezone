@@ -21,8 +21,9 @@ import { FaSlack } from "react-icons/fa";
 
 export default function _Page() {
   const openChat = (e: React.MouseEvent) => {
+    const winAny = window as any;
     e.preventDefault();
-    window.HubSpotConversations.widget.open();
+    winAny.HubSpotConversations.widget.open();
   };
 
   return (
