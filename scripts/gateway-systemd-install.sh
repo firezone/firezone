@@ -72,7 +72,7 @@ if [ ! -e /usr/local/bin/firezone-gateway ]; then
   echo "Downloading ${FIREZONE_VERSION} version from ${FIREZONE_ARTIFACT_URL}..."
   arch=\$(uname -m)
 
-  # See https://www.github.com/firezone/firezone/releases for available binaries
+  # See https://www.firezone.dev/changelog for available binaries
   curl -fsSL ${FIREZONE_ARTIFACT_URL}/${FIREZONE_VERSION}/\$arch -o /tmp/firezone-gateway
 
   if file /tmp/firezone-gateway | grep -q "ELF"; then
