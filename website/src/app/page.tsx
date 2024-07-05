@@ -39,8 +39,8 @@ export default function Page() {
   return (
     <>
       <section className="bg-neutral-100 pt-24">
-        <div className="px-4 py-8 mx-auto max-w-screen-xl text-center lg:py-16 lg:px-12">
-          <h1 className="mb-8 md:text-6xl text-5xl justify-center inline-block font-extrabold tracking-tight leading-none text-neutral-900">
+        <div className="px-4 py-8 mx-auto max-w-screen-xl lg:py-16 lg:px-12">
+          <h1 className="text-center mb-8 md:text-8xl text-5xl inline-block font-bold tracking-tight leading-none text-neutral-900">
             Secure remote access.
             <SlideIn
               direction="left"
@@ -51,7 +51,7 @@ export default function Page() {
             </SlideIn>
           </h1>
           <div className="max-w-screen-md mx-auto">
-            <h3 className="mb-8 text-xl tracking-tight justify-center font-medium text-neutral-900 inline-block">
+            <h3 className="text-center mb-8 text-xl tracking-tight font-medium text-neutral-900 inline-block">
               Firezone is a fast, flexible VPN replacement built on WireGuard®
               that{" "}
               <span className="text-primary-450 font-bold">eliminates</span>{" "}
