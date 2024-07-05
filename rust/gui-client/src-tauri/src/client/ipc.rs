@@ -49,37 +49,21 @@ pub(crate) struct Client {
     tx: ipc::ClientWrite,
 }
 
-impl Client {
-    pub(crate) async fn disconnect(mut self) -> Result<()> {
-        self.send_msg(&IpcClientMsg::Disconnect)
-            .await
-            .context("Couldn't send Disconnect")?;
-        self.tx.close().await?;
+impl Drop for Client {
+    // Might drop in-flight IPC messages
+    fn drop(&mut self) {
         self.task.abort();
-        Ok(())
     }
+}
 
-    pub(crate) async fn send_msg(&mut self, msg: &IpcClientMsg) -> Result<()> {
-        self.tx
-            .send(msg)
-            .await
-            .context("Couldn't send IPC message")?;
-        Ok(())
-    }
-
-    pub(crate) async fn connect(
-        api_url: &str,
-        token: SecretString,
-        callback_handler: CallbackHandler,
-        tokio_handle: tokio::runtime::Handle,
-    ) -> Result<Self, Error> {
+impl Client {
+    pub(crate) async fn new(callback_handler: CallbackHandler) -> Result<Self> {
         tracing::info!(
             client_pid = std::process::id(),
             "Connecting to IPC service..."
         );
         let (mut rx, tx) = ipc::connect_to_service(ipc::ServiceId::Prod).await?;
-
-        let task = tokio_handle.spawn(async move {
+        let task = tokio::task::spawn(async move {
             while let Some(msg) = rx.next().await.transpose()? {
                 match msg {
                     IpcServerMsg::Ok => {}
@@ -93,18 +77,44 @@ impl Client {
             }
             Ok(())
         });
+        Ok(Self { task, tx })
+    }
 
-        let mut client = Self { task, tx };
-        let token = token.expose_secret().clone();
-        client
-            .send_msg(&IpcClientMsg::Connect {
-                api_url: api_url.to_string(),
-                token,
-            })
+    pub(crate) async fn disconnect_from_ipc(mut self) -> Result<()> {
+        self.task.abort();
+        self.tx.close().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn disconnect_from_firezone(&mut self) -> Result<()> {
+        self.send_msg(&IpcClientMsg::Disconnect)
             .await
-            .context("Couldn't send Connect message")
-            .map_err(Error::Other)?;
-        Ok(client)
+            .context("Couldn't send Disconnect")?;
+        Ok(())
+    }
+
+    pub(crate) async fn send_msg(&mut self, msg: &IpcClientMsg) -> Result<()> {
+        self.tx
+            .send(msg)
+            .await
+            .context("Couldn't send IPC message")?;
+        Ok(())
+    }
+
+    pub(crate) async fn connect_to_firezone(
+        &mut self,
+        api_url: &str,
+        token: SecretString,
+    ) -> Result<(), Error> {
+        let token = token.expose_secret().clone();
+        self.send_msg(&IpcClientMsg::Connect {
+            api_url: api_url.to_string(),
+            token,
+        })
+        .await
+        .context("Couldn't send Connect message")
+        .map_err(Error::Other)?;
+        Ok(())
     }
 
     pub(crate) async fn reconnect(&mut self) -> Result<()> {
