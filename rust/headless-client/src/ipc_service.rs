@@ -136,7 +136,6 @@ fn run_smoke_test() -> Result<()> {
     })
 }
 
-// Keep this synced with `run_smoke_test`
 async fn ipc_listen() -> Result<std::convert::Infallible> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config

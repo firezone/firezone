@@ -1063,7 +1063,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-android"
-version = "1.1.2"
+version = "1.1.3"
 dependencies = [
  "android_log-sys",
  "connlib-client-shared",
@@ -1082,7 +1082,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.1.2"
+version = "1.1.3"
 dependencies = [
  "connlib-client-shared",
  "ip_network",
@@ -1884,7 +1884,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.1.3"
+version = "1.1.4"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1937,7 +1937,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.1.2"
+version = "1.1.3"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -1989,6 +1989,7 @@ dependencies = [
  "env_logger",
  "futures",
  "hex",
+ "hex-display",
  "http-health-check",
  "mio",
  "once_cell",
@@ -2697,6 +2698,12 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
+name = "hex-display"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b53d6a634507c5d9fdee77261ae54a8d1ff7887f5304389025b03c3292a1756"
 
 [[package]]
 name = "hickory-proto"
@@ -5764,6 +5771,7 @@ dependencies = [
  "bytes",
  "firezone-relay",
  "hex",
+ "hex-display",
  "ip-packet",
  "once_cell",
  "rand 0.8.5",

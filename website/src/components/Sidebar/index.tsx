@@ -6,6 +6,12 @@ import { Sidebar as FlowbiteSidebar } from "flowbite-react";
 import Link from "next/link";
 import { useDrawer } from "@/components/Providers/DrawerProvider";
 
+const ItemGroupLabelTheme: CustomFlowbiteTheme["sidebar"] = {
+  item: {
+    base: "flex items-center justify-center rounded p-2 text-sm font-semibold uppercase text-primary-450",
+  },
+};
+
 const FlowbiteSidebarTheme: CustomFlowbiteTheme["sidebar"] = {
   root: {
     base: "h-[calc(100vh)] left-0 top-0 z-40 sticky bg-white transition-transform pt-16 pb-8",
@@ -121,8 +127,23 @@ export function SidebarItems({ children }: { children: React.ReactNode }) {
   return <FlowbiteSidebar.Items>{children}</FlowbiteSidebar.Items>;
 }
 
-export function SidebarItemGroup({ children }: { children: React.ReactNode }) {
-  return <FlowbiteSidebar.ItemGroup>{children}</FlowbiteSidebar.ItemGroup>;
+export function SidebarItemGroup({
+  label,
+  children,
+}: {
+  label?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <FlowbiteSidebar.ItemGroup>
+      {label && (
+        <FlowbiteSidebar.Item theme={ItemGroupLabelTheme?.item}>
+          {label}
+        </FlowbiteSidebar.Item>
+      )}
+      {children}
+    </FlowbiteSidebar.ItemGroup>
+  );
 }
 
 export function SidebarCollapse({

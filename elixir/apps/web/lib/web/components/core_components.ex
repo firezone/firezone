@@ -771,16 +771,50 @@ defmodule Web.CoreComponents do
     assigns = assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
 
     ~H"""
-    <span
-      :if={not is_nil(@datetime)}
-      class="underline underline-offset-2 decoration-dotted"
-      title={@datetime}
-    >
-      <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to) %>
-    </span>
+    <.popover :if={not is_nil(@datetime)}>
+      <:target>
+        <span class="underline underline-offset-2 decoration-dashed">
+          <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to)
+          |> String.capitalize() %>
+        </span>
+      </:target>
+      <:content>
+        <%= @datetime %>
+      </:content>
+    </.popover>
     <span :if={is_nil(@datetime)}>
-      never
+      Never
     </span>
+    """
+  end
+
+  @doc """
+  Renders a popover element with title and content.
+  """
+  slot :target, required: true
+  slot :content, required: true
+
+  def popover(assigns) do
+    # Any id will do
+    target_id = "popover-#{System.unique_integer([:positive, :monotonic])}"
+    assigns = assign(assigns, :target_id, target_id)
+
+    ~H"""
+    <span data-popover-target={@target_id}>
+      <%= render_slot(@target) %>
+    </span>
+
+    <div data-popover id={@target_id} role="tooltip" class={~w[
+      absolute z-10 invisible inline-block
+      text-sm text-neutral-500 transition-opacity
+      duration-50 bg-white border border-neutral-200
+      rounded shadow-sm opacity-0
+      ]}>
+      <div class="px-3 py-2">
+        <%= render_slot(@content) %>
+      </div>
+      <div data-popper-arrow></div>
+    </div>
     """
   end
 
@@ -892,7 +926,7 @@ defmodule Web.CoreComponents do
           Web.Settings.IdentityProviders.Components.view_provider(@account, @identity.provider)
         }
         data-provider-id={@identity.provider.id}
-        title={get_identity_email(@identity)}
+        title={"View identity provider \"#{@identity.provider.adapter}\""}
         class={~w[
           text-xs
           rounded-l
@@ -944,7 +978,7 @@ defmodule Web.CoreComponents do
         :if={Actors.group_synced?(@group)}
         navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @group.provider)}
         data-provider-id={@group.provider_id}
-        title={@group.provider.adapter}
+        title={"View identity provider \"#{@group.provider.adapter}\""}
         class={~w[
           rounded-l
           py-0.5 px-1.5
@@ -956,7 +990,10 @@ defmodule Web.CoreComponents do
       >
         <.provider_icon adapter={@group.provider.adapter} class="h-3.5 w-3.5" />
       </.link>
-      <.link title={@group.name} navigate={~p"/#{@account}/groups/#{@group}"} class={~w[
+      <.link
+        title={"View Group \"#{@group.name}\""}
+        navigate={~p"/#{@account}/groups/#{@group}"}
+        class={~w[
           text-xs
           truncate
           min-w-0
@@ -964,7 +1001,8 @@ defmodule Web.CoreComponents do
           py-0.5
           text-neutral-800
           bg-neutral-100
-        ]}>
+        ]}
+      >
         <%= @group.name %>
       </.link>
     </span>

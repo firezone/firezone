@@ -44,7 +44,9 @@ variable "database_backups_enabled" {
 variable "database_read_replica_locations" {
   description = "List of read-only replicas to create."
   type = list(object({
-    region = string
+    region       = string
+    ipv4_enabled = bool
+    network      = string
   }))
   default = []
 }

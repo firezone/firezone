@@ -6,6 +6,7 @@ use crate::{
 };
 use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
+use hex_display::HexDisplayExt as _;
 use rand::random;
 use std::{
     borrow::Cow,
@@ -262,7 +263,7 @@ impl Allocation {
     /// Refresh this allocation.
     ///
     /// In case refreshing the allocation fails, we will attempt to make a new one.
-    #[tracing::instrument(level = "debug", skip_all, fields(relay = ?self.active_socket))]
+    #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
     pub fn refresh(&mut self, now: Instant) {
         self.update_now(now);
 
@@ -286,7 +287,7 @@ impl Allocation {
         self.send_binding_requests();
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(id, method, class, rtt))]
+    #[tracing::instrument(level = "debug", skip_all, fields(tid, method, class, rtt))]
     pub fn handle_input(
         &mut self,
         from: SocketAddr,
@@ -312,7 +313,10 @@ impl Allocation {
 
         let transaction_id = message.transaction_id();
 
-        Span::current().record("id", field::debug(transaction_id));
+        Span::current().record(
+            "tid",
+            field::display(format_args!("{:X}", transaction_id.as_bytes().hex())),
+        );
         Span::current().record("method", field::display(message.method()));
         Span::current().record("class", field::display(message.class()));
 
@@ -433,12 +437,16 @@ impl Allocation {
                 // We send 2 BINDING requests to start with (one for each IP version) and the first one coming back wins.
                 // Thus, if we already have a socket set, we are done with processing this binding request.
 
-                if self.active_socket.is_some() {
+                if let Some(active_socket) = self.active_socket {
+                    tracing::debug!(%active_socket, additional_socket = %original_dst, "Relay supports dual-stack but we've already picked a socket");
+
                     return true;
                 }
 
                 // If the socket isn't set yet, use the `original_dst` as the primary socket.
                 self.active_socket = Some(original_dst);
+
+                tracing::debug!(active_socket = %original_dst, "Updating active socket");
 
                 if self.has_allocation() {
                     self.authenticate_and_queue(make_refresh_request(), None);
@@ -528,7 +536,9 @@ impl Allocation {
         packet: &'p [u8],
         now: Instant,
     ) -> Option<(SocketAddr, &'p [u8], Socket)> {
-        if from != self.active_socket? {
+        if !self.server.matches(from) {
+            tracing::trace!(?self.server, "Packet is not for this allocation");
+
             return None;
         }
 
@@ -547,7 +557,7 @@ impl Allocation {
         Some((peer, payload, socket))
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(relay = ?self.active_socket))]
+    #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
     pub fn handle_timeout(&mut self, now: Instant) {
         self.update_now(now);
 
@@ -617,11 +627,7 @@ impl Allocation {
     }
 
     pub fn poll_event(&mut self) -> Option<CandidateEvent> {
-        let next_event = self.events.pop_front()?;
-
-        tracing::debug!(?next_event);
-
-        Some(next_event)
+        self.events.pop_front()
     }
 
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
@@ -642,7 +648,7 @@ impl Allocation {
         earliest_timeout
     }
 
-    #[tracing::instrument(level = "debug", skip(self, now), fields(relay = ?self.active_socket))]
+    #[tracing::instrument(level = "debug", skip(self, now), fields(active_socket = ?self.active_socket))]
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
         if self.is_suspended() {
             tracing::debug!("Allocation is suspended");
@@ -755,10 +761,10 @@ impl Allocation {
 
     fn log_update(&self) {
         tracing::info!(
-            srflx_ip4 = ?self.ip4_srflx_candidate,
-            srflx_ip6 = ?self.ip6_srflx_candidate,
-            relay_ip4 = ?self.ip4_allocation,
-            relay_ip6 = ?self.ip6_allocation,
+            srflx_ip4 = ?self.ip4_srflx_candidate.as_ref().map(|c| c.addr()),
+            srflx_ip6 = ?self.ip6_srflx_candidate.as_ref().map(|c| c.addr()),
+            relay_ip4 = ?self.ip4_allocation.as_ref().map(|c| c.addr()),
+            relay_ip6 = ?self.ip6_allocation.as_ref().map(|c| c.addr()),
             lifetime = ?self.allocation_lifetime,
             "Updated allocation"
         );
@@ -1144,8 +1150,13 @@ impl ChannelBindings {
     const LAST_CHANNEL: u16 = 0x4FFF;
 
     fn try_decode<'p>(&mut self, packet: &'p [u8], now: Instant) -> Option<(SocketAddr, &'p [u8])> {
-        let (channel_number, payload) = crate::channel_data::decode(packet).ok()?;
-        let channel = self.inner.get_mut(&channel_number)?;
+        let (channel_number, payload) = crate::channel_data::decode(packet)
+            .inspect_err(|e| tracing::debug!("Malformed channel data message: {e}"))
+            .ok()?;
+        let Some(channel) = self.inner.get_mut(&channel_number) else {
+            tracing::debug!(%channel_number, "Unknown channel");
+            return None;
+        };
 
         if !channel.bound {
             tracing::debug!(peer = %channel.peer, number = %channel_number, "Dropping message from channel because it is not yet bound");
