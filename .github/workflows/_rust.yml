@@ -74,7 +74,7 @@ jobs:
         name: "cargo test"
         shell: bash
 
-  # Runs the Windows client smoke test, built in debug mode. We can't run it in release
+  # Runs the Tauri client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
   gui-smoke-test:
     name: gui-smoke-test-${{ matrix.runs-on }}
@@ -114,12 +114,9 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: dump_syms,minidump-stackwalk
-      - name: Run smoke tests (Linux)
-        if: ${{ runner.os == 'Linux' }}
-        run: bash ../../scripts/tests/smoke-test-gui-linux.sh
-      - name: Run smoke tests (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        run: bash ../../scripts/tests/smoke-test-gui-windows.sh
+      - name: Run smoke test
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test
 
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}

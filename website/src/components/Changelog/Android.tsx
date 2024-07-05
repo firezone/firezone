@@ -7,6 +7,15 @@ export default function Android() {
       href="https://play.google.com/store/apps/details?id=dev.firezone.android"
       title="Android"
     >
+      <Entry version="1.1.2" date={new Date("2024-07-03")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            Prevents Firezone's stub resolver from intercepting DNS record types
+            besides A, AAAA, and PTR. These are now forwarded to your upstream
+            DNS resolver.
+          </li>
+        </ul>
+      </Entry>
       <Entry version="1.1.1" date={new Date("2024-06-29")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
