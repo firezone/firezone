@@ -32,7 +32,11 @@ export default function RootLayout({
         type="text/javascript"
         src="https://app.termly.io/resource-blocker/c4df1a31-22d9-4000-82e6-a86cbec0bba0?autoBlock=on"
       />
-      <body className={"text-neutral-900 " + source_sans_3.className}>
+      <body
+        className={
+          "subpixel-antialiased text-neutral-900 " + source_sans_3.className
+        }
+      >
         <Banner active={false}>
           <p className="mx-auto text-center">
             Firezone 1.0 is here!{" "}
