@@ -24,19 +24,6 @@ resource "google_dns_record_set" "website-ipv4" {
 
 # Website
 
-resource "google_dns_record_set" "website-caa" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  type = "CAA"
-  name = "www.${module.google-cloud-dns.dns_name}"
-  rrdatas = [
-    "0 issue \"letsencrypt.org\"",
-    "0 iodef \"mailto:security@firezone.dev\""
-  ]
-  ttl = 3600
-}
-
 resource "google_dns_record_set" "website-www-redirect" {
   project      = module.google-cloud-project.project.project_id
   managed_zone = module.google-cloud-dns.zone_name

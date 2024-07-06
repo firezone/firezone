@@ -67,7 +67,7 @@ resource "google_compute_url_map" "redirects" {
   }
 
   path_matcher {
-    name = "firezone-redirects"
+    name = "firezone-docs-redirects"
 
     default_url_redirect {
       host_redirect          = "www.firezone.dev"
@@ -85,7 +85,7 @@ resource "google_compute_url_map" "redirects" {
   }
 
   path_matcher {
-    name = "firezone-redirects"
+    name = "firezone-blog-redirects"
 
     default_url_redirect {
       host_redirect          = "www.firezone.dev"
