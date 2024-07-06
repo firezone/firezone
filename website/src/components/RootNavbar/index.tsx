@@ -208,7 +208,7 @@ export default function RootNavbar() {
         <ActionLink
           href="https://app.firezone.dev/"
           className="hidden md:inline-flex py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-700 md:border-transparent hover:text-primary-450 hover:bg-neutral-200 md:hover:bg-transparent md:border-b-2 md:hover:border-primary-450 duration-50 transition transform"
-          size="w-5 h-5"
+          size="w-5 h-5 ml-1"
         >
           Sign in
         </ActionLink>

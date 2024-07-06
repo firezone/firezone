@@ -5,11 +5,11 @@ import { HiCheck, HiXMark } from "react-icons/hi2";
 export default function BattleCard() {
   return (
     <div className="sm:mx-auto px-4">
-      <h2 className="text-2xl md:text-6xl tracking-tight font-bold sm:justify-center mb-4 md:mb-8">
+      <h3 className="text-2xl md:text-6xl tracking-tight font-bold sm:justify-center mb-4 md:mb-8">
         See how Firezone compares
-      </h2>
+      </h3>
 
-      <div className="mx-auto px-4 max-w-screen-md mb-4 md:mb-8">
+      <div className="mx-auto max-w-screen-md mb-4 md:mb-8">
         <p className="text-md md:text-xl sm:text-center tracking-tight">
           We're{" "}
           <span className="underline underline-offset-2">laser-focused</span> on
