@@ -57,7 +57,7 @@ resource "google_compute_managed_ssl_certificate" "tld" {
 resource "google_compute_managed_ssl_certificate" "docs" {
   project = module.google-cloud-project.project.project_id
 
-  name = replace(local.tld, ".", "-")
+  name = replace("docs.${local.tld}", ".", "-")
 
   type = "MANAGED"
 
@@ -76,7 +76,7 @@ resource "google_compute_managed_ssl_certificate" "docs" {
 resource "google_compute_managed_ssl_certificate" "blog" {
   project = module.google-cloud-project.project.project_id
 
-  name = replace(local.tld, ".", "-")
+  name = replace("blog.${local.tld}", ".", "-")
 
   type = "MANAGED"
 
