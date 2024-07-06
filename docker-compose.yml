@@ -192,7 +192,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/domain:main
       args:
         APPLICATION_NAME: domain
-    image: ${API_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/domain}:${API_TAG:-main}
+    image: ${DOMAIN_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/domain}:${DOMAIN_TAG:-main}
     hostname: domain.cluster.local
     environment:
       # Erlang
