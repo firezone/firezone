@@ -462,6 +462,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
 ///
 /// `dns_list` must not have any IPv6 scopes
 /// <https://github.com/firezone/firezone/issues/4350>
+/// <https://github.com/firezone/firezone/issues/5781>
 ///
 /// # Safety
 /// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
