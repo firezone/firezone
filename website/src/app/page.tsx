@@ -38,7 +38,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-neutral-100 pt-24">
+      <section className="bg-primary-900 pt-24">
         <div className="px-4 py-8 mx-auto max-w-screen-xl lg:py-16 lg:px-12">
           <h1 className="text-center mb-8 md:text-8xl text-5xl inline-block font-bold tracking-tight leading-none text-neutral-900">
             <SlideIn direction="right" delay={0.0} className="md:inline-block">
