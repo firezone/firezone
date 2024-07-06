@@ -23,7 +23,12 @@ import {
   DockerIcon,
 } from "@/components/Icons";
 
-import { SlideIn, RotatingWords, Strike } from "@/components/Animations";
+import {
+  SlideIn,
+  RotatingWords,
+  Strike,
+  FadeIn,
+} from "@/components/Animations";
 import SpeedChart from "@/components/Animations/SpeedChart";
 import UpgradeDiagram from "@/components/Animations/UpgradeDiagram";
 import ComplianceDiagram from "@/components/Animations/ComplianceDiagram";
@@ -38,60 +43,95 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-neutral-100 pt-24">
-        <div className="px-4 py-8 mx-auto max-w-screen-xl lg:py-16 lg:px-12">
-          <h1 className="text-center mb-8 md:text-8xl text-5xl inline-block font-bold tracking-tight leading-none text-neutral-900">
-            <SlideIn direction="right" delay={0.0} className="md:inline-block">
-              Secure remote access.
-            </SlideIn>
-            <SlideIn
-              direction="left"
-              delay={0.5}
-              className="ml-2 text-primary-450 underline md:inline-block"
-            >
-              That scales.
-            </SlideIn>
-          </h1>
-          <div className="max-w-screen-md mx-auto">
-            <h3 className="text-center mb-8 text-xl tracking-tight font-medium text-neutral-900 inline-block">
-              Firezone is a fast, flexible VPN replacement built on WireGuard®
-              that{" "}
-              <span className="text-primary-450 font-bold">eliminates</span>{" "}
-              tedious configuration and integrates with your identity provider.
-            </h3>
-          </div>
-          <div className="mb-12 flex flex-col px-4 justify-center items-center">
-            <div className="w-full max-w-screen-sm flex flex-wrap justify-between mt-8">
-              <button
-                type="button"
-                className="text-xl mx-auto mb-8 w-64 inline-flex justify-center items-center py-3 px-5 font-semibold text-center text-primary-450 rounded border border-primary-450 bg-white hover:ring-2 hover:ring-primary-200 duration-50 transform transition"
+      <section className="bg-neutral-900 pt-32 md:pt-48 pb-14 md:pb-22">
+        <div className="md:flex md:flex-wrap mx-auto max-w-screen-xl px-8 mb-8 md:mb-16">
+          <div className="md:w-2/3 px-4">
+            <h1 className="mb-8 md:text-7xl text-4xl inline-block font-semibold tracking-tight leading-none text-neutral-200">
+              <SlideIn
+                direction="right"
+                delay={0.0}
+                className="md:inline-block"
               >
-                <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
-              </button>
-              <button
-                type="button"
-                className="text-xl mx-auto mb-8 w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-300 duration-50 transform transition"
+                Secure, remote access.
+              </SlideIn>
+              <SlideIn
+                direction="left"
+                delay={0.25}
+                className="text-primary-450 underline md:inline-block"
               >
-                <Link href="/contact/sales">Book a demo</Link>
-                <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
-              </button>
+                That scales.
+              </SlideIn>
+            </h1>
+            <div className="flex items-center">
+              <SlideIn delay={0.5} direction="top" className="mr-4">
+                <Image
+                  src="/images/ross-oss.svg"
+                  width={250}
+                  height={100}
+                  alt="Ross OSS"
+                  className="bg-neutral-50 rounded shadow shadow-neutral-300"
+                />
+              </SlideIn>
+              <SlideIn delay={0.75} direction="top">
+                <Link href="https://www.ycombinator.com/companies/firezone">
+                  <Image
+                    width={125}
+                    height={125}
+                    src="/images/yc-logo.svg"
+                    alt="YC Logo"
+                    className="bg-neutral-50 rounded shadow shadow-neutral-300"
+                  />
+                </Link>
+              </SlideIn>
             </div>
           </div>
-          <div className="flex items-center justify-center">
-            <video
-              className="shadow-lg rounded"
-              width="960"
-              height="540"
-              loop
-              autoPlay
-              playsInline
-              muted
-            >
-              <source src="/images/overview-screencap.webm" type="video/webm" />
-              Your browser does not support the video tag with WebM-formatted
-              videos.
-            </video>
+          <div className="md:w-1/3 px-4 my-auto">
+            <h3 className="md:mt-0 my-4 text-xl tracking-tight font-medium text-neutral-200 inline-block">
+              Firezone is a fast, flexible VPN replacement built on WireGuard®
+              that{" "}
+              <span className="text-primary-450 font-semibold inline-block">
+                simplifies
+              </span>{" "}
+              access management for a{" "}
+              <span className="text-primary-450 font-semibold">fraction</span>{" "}
+              of the cost.
+            </h3>
+            <div className="flex flex-wrap justify-between mt-4">
+              <div className="my-4 mr-4 flex items-center">
+                <Link
+                  href="https://app.firezone.dev/sign_up"
+                  className="group inline-flex items-center py-0.5 text-neutral-200 text-lg font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
+                >
+                  Sign up now
+                  <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
+                </Link>
+              </div>
+              <div className="my-4 flex items-center">
+                <button
+                  type="button"
+                  className="group shadow-lg shadow-primary-700 text-lg w-48 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
+                >
+                  <Link href="/contact/sales">Book a demo</Link>
+                  <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
+                </button>
+              </div>
+            </div>
           </div>
+        </div>
+        <div className="flex items-center justify-center px-4 md:px-0">
+          <video
+            className="shadow-lg rounded"
+            width="960"
+            height="540"
+            loop
+            autoPlay
+            playsInline
+            muted
+          >
+            <source src="/images/overview-screencap.webm" type="video/webm" />
+            Your browser does not support the video tag with WebM-formatted
+            videos.
+          </video>
         </div>
       </section>
 
@@ -99,6 +139,8 @@ export default function Page() {
       <section className="py-24 bg-gradient-to-b to-white from-neutral-100 via-primary-100">
         <CustomerLogos />
       </section>
+
+      {/* TODO: ACLs for the rest of us */}
 
       {/* Feature section 1: Secure access to your most sensitive resources in minutes. */}
       <section className="bg-white py-8 md:py-16">
