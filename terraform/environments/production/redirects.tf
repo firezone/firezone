@@ -34,8 +34,8 @@ resource "google_compute_ssl_policy" "tld" {
   ]
 }
 
-# Create managed SSL certificates for the A records
-resource "google_compute_managed_ssl_certificate" "all" {
+# Create a managed SSL certificate
+resource "google_compute_managed_ssl_certificate" "tld" {
   project = module.google-cloud-project.project.project_id
 
   name = replace(local.tld, ".", "-")
@@ -45,8 +45,44 @@ resource "google_compute_managed_ssl_certificate" "all" {
   managed {
     domains = [
       local.tld,
-      "blog.${local.tld}",
+    ]
+  }
+
+  depends_on = [
+    google_project_service.compute,
+    google_project_service.servicenetworking,
+  ]
+}
+
+resource "google_compute_managed_ssl_certificate" "docs" {
+  project = module.google-cloud-project.project.project_id
+
+  name = replace(local.tld, ".", "-")
+
+  type = "MANAGED"
+
+  managed {
+    domains = [
       "docs.${local.tld}",
+    ]
+  }
+
+  depends_on = [
+    google_project_service.compute,
+    google_project_service.servicenetworking,
+  ]
+}
+
+resource "google_compute_managed_ssl_certificate" "blog" {
+  project = module.google-cloud-project.project.project_id
+
+  name = replace(local.tld, ".", "-")
+
+  type = "MANAGED"
+
+  managed {
+    domains = [
+      "blog.${local.tld}",
     ]
   }
 
@@ -126,7 +162,7 @@ resource "google_compute_target_https_proxy" "tld" {
 
   url_map = google_compute_url_map.redirects.self_link
 
-  ssl_certificates = [google_compute_managed_ssl_certificate.all.self_link]
+  ssl_certificates = [google_compute_managed_ssl_certificate.tld.self_link]
   ssl_policy       = google_compute_ssl_policy.tld.self_link
   quic_override    = "NONE"
 }
