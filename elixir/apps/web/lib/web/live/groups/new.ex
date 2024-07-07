@@ -33,7 +33,7 @@ defmodule Web.Groups.New do
                 <.input
                   label="Group name"
                   field={@form[:name]}
-                  placeholder="Enter a name for this Group, e.g. \"Engineering\""
+                  placeholder="Enter a name for this Group, e.g. Engineering"
                   required
                 />
               </div>
