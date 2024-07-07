@@ -204,10 +204,6 @@ locals {
     },
     # Secrets
     {
-      name  = "SECRET_KEY_BASE"
-      value = random_password.secret_key_base.result
-    },
-    {
       name  = "TOKENS_KEY_BASE"
       value = base64encode(random_password.tokens_key_base.result)
     },
