@@ -31,9 +31,9 @@ defmodule Web.Groups.New do
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <div>
                 <.input
-                  label="Name Prefix"
+                  label="Group name"
                   field={@form[:name]}
-                  placeholder="Name of this Actor Group"
+                  placeholder="Enter a name for this Group, e.g. Engineering"
                   required
                 />
               </div>
