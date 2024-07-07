@@ -53,7 +53,7 @@ android {
         applicationId = "dev.firezone.android"
         // Android 8
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
         versionName = "1.1.4"
