@@ -1,7 +1,9 @@
 use super::{sim_node::SimNode, sim_relay::SimRelay};
 use crate::{ClientState, GatewayState};
+use connlib_shared::messages::{ClientId, GatewayId, RelayId};
 use firezone_relay::AddressFamily;
-use ip_network::{Ipv4Network, Ipv6Network};
+use ip_network::IpNetwork;
+use ip_network_table::IpNetworkTable;
 use ip_packet::MutableIpPacket;
 use rand::rngs::StdRng;
 use snownet::Transmit;
@@ -239,21 +241,106 @@ impl PollTransmit for SimRelay<firezone_relay::Server<StdRng>> {
     }
 }
 
-/// An [`Iterator`] over [`Ipv4Addr`]s used for routing packets between components within our test.
-///
-/// This uses the `TEST-NET-3` (`203.0.113.0/24`) address space reserved for documentation and examples in [RFC5737](https://datatracker.ietf.org/doc/html/rfc5737).
-pub(crate) fn socket_ip4s() -> impl Iterator<Item = Ipv4Addr> {
-    Ipv4Network::new(Ipv4Addr::new(203, 0, 113, 0), 24)
-        .unwrap()
-        .hosts()
+#[derive(Debug, Clone)]
+pub(crate) struct RoutingTable {
+    routes: IpNetworkTable<ComponentId>,
 }
 
-/// An [`Iterator`] over [`Ipv6Addr`]s used for routing packets between components within our test.
-///
-/// This uses the `2001:DB8::/32` address space reserved for documentation and examples in [RFC3849](https://datatracker.ietf.org/doc/html/rfc3849).
-pub(crate) fn socket_ip6s() -> impl Iterator<Item = Ipv6Addr> {
-    Ipv6Network::new(Ipv6Addr::new(0x2001, 0xDB80, 0, 0, 0, 0, 0, 0), 32)
-        .unwrap()
-        .subnets_with_prefix(128)
-        .map(|n| n.network_address())
+impl Default for RoutingTable {
+    fn default() -> Self {
+        Self {
+            routes: IpNetworkTable::new(),
+        }
+    }
+}
+
+impl RoutingTable {
+    #[allow(private_bounds)]
+    pub(crate) fn add_host<T>(&mut self, host: &Host<T>) -> bool
+    where
+        T: Id,
+    {
+        match (host.ip4, host.ip6) {
+            (None, None) => panic!("Node must have at least one network IP"),
+            (None, Some(ip6)) => {
+                if self.contains(ip6) {
+                    return false;
+                }
+
+                self.routes.insert(ip6, host.inner.id());
+            }
+            (Some(ip4), None) => {
+                if self.contains(ip4) {
+                    return false;
+                }
+
+                self.routes.insert(ip4, host.inner.id());
+            }
+            (Some(ip4), Some(ip6)) => {
+                if self.contains(ip4) {
+                    return false;
+                }
+                if self.contains(ip6) {
+                    return false;
+                }
+
+                self.routes.insert(ip4, host.inner.id());
+                self.routes.insert(ip6, host.inner.id());
+            }
+        }
+
+        true
+    }
+
+    pub(crate) fn contains(&self, ip: impl Into<IpNetwork>) -> bool {
+        self.routes.exact_match(ip).is_some()
+    }
+
+    pub(crate) fn host_by_ip(&self, ip: IpAddr) -> Option<ComponentId> {
+        self.routes.exact_match(ip).copied()
+    }
+}
+
+trait Id {
+    fn id(&self) -> ComponentId;
+}
+
+impl<TId, S> Id for SimNode<TId, S>
+where
+    TId: Into<ComponentId> + Copy,
+{
+    fn id(&self) -> ComponentId {
+        self.id.into()
+    }
+}
+
+impl<S> Id for SimRelay<S> {
+    fn id(&self) -> ComponentId {
+        self.id.into()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
+pub(crate) enum ComponentId {
+    Client(ClientId),
+    Gateway(GatewayId),
+    Relay(RelayId),
+}
+
+impl From<RelayId> for ComponentId {
+    fn from(v: RelayId) -> Self {
+        Self::Relay(v)
+    }
+}
+
+impl From<GatewayId> for ComponentId {
+    fn from(v: GatewayId) -> Self {
+        Self::Gateway(v)
+    }
+}
+
+impl From<ClientId> for ComponentId {
+    fn from(v: ClientId) -> Self {
+        Self::Client(v)
+    }
 }

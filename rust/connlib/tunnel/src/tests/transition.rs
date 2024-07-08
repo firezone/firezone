@@ -215,14 +215,11 @@ pub(crate) fn question_mark_wildcard_dns_resource() -> impl Strategy<Value = Tra
     })
 }
 
-pub(crate) fn roam_client(
-    ip4_addr: impl Strategy<Value = Ipv4Addr> + Clone,
-    ip6_addr: impl Strategy<Value = Ipv6Addr> + Clone,
-) -> impl Strategy<Value = Transition> {
+pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {
     let ip_stack = prop_oneof![
-        ip4_addr.clone().prop_map(IpStack::Ip4),
-        ip6_addr.clone().prop_map(IpStack::Ip6),
-        (ip4_addr, ip6_addr).prop_map(|(ip4, ip6)| IpStack::Dual { ip4, ip6 })
+        socket_ip4s().prop_map(IpStack::Ip4),
+        socket_ip6s().prop_map(IpStack::Ip6),
+        (socket_ip4s(), socket_ip6s()).prop_map(|(ip4, ip6)| IpStack::Dual { ip4, ip6 })
     ];
 
     (

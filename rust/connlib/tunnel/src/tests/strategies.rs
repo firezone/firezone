@@ -1,5 +1,7 @@
 use connlib_shared::{messages::DnsServer, proptest::domain_name, DomainName};
-use proptest::{collection, prelude::*};
+use ip_network::{Ipv4Network, Ipv6Network};
+use itertools::Itertools as _;
+use proptest::{collection, prelude::*, sample};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -47,6 +49,33 @@ pub(crate) fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
             ip4_servers
         })
     ]
+}
+
+/// A [`Strategy`] of [`Ipv4Addr`]s used for routing packets between components within our test.
+///
+/// This uses the `TEST-NET-3` (`203.0.113.0/24`) address space reserved for documentation and examples in [RFC5737](https://datatracker.ietf.org/doc/html/rfc5737).
+pub(crate) fn socket_ip4s() -> impl Strategy<Value = Ipv4Addr> {
+    let ips = Ipv4Network::new(Ipv4Addr::new(203, 0, 113, 0), 24)
+        .unwrap()
+        .hosts()
+        .take(100)
+        .collect_vec();
+
+    sample::select(ips)
+}
+
+/// A [`Strategy`] of [`Ipv6Addr`]s used for routing packets between components within our test.
+///
+/// This uses the `2001:DB8::/32` address space reserved for documentation and examples in [RFC3849](https://datatracker.ietf.org/doc/html/rfc3849).
+pub(crate) fn socket_ip6s() -> impl Strategy<Value = Ipv6Addr> {
+    let ips = Ipv6Network::new(Ipv6Addr::new(0x2001, 0xDB80, 0, 0, 0, 0, 0, 0), 32)
+        .unwrap()
+        .subnets_with_prefix(128)
+        .map(|n| n.network_address())
+        .take(100)
+        .collect_vec();
+
+    sample::select(ips)
 }
 
 pub(crate) fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {

@@ -1,5 +1,5 @@
 use super::reference::ReferenceState;
-use super::sim_net::Host;
+use super::sim_net::{ComponentId, Host, RoutingTable};
 use super::sim_node::SimNode;
 use super::sim_portal::SimPortal;
 use super::sim_relay::SimRelay;
@@ -33,7 +33,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     net::{IpAddr, SocketAddr},
-    ops::ControlFlow,
     str::FromStr as _,
     sync::Arc,
     time::{Duration, Instant},
@@ -68,6 +67,8 @@ pub(crate) struct TunnelTest {
     pub(crate) client_sent_icmp_requests: HashMap<(u16, u16), IpPacket<'static>>,
     pub(crate) client_received_icmp_replies: HashMap<(u16, u16), IpPacket<'static>>,
     pub(crate) gateway_received_icmp_requests: VecDeque<IpPacket<'static>>,
+
+    network: RoutingTable,
 
     #[allow(dead_code)]
     logger: DefaultGuard,
@@ -126,6 +127,7 @@ impl StateMachineTest for TunnelTest {
         let mut this = Self {
             now: ref_state.now,
             utc_now: ref_state.utc_now,
+            network: ref_state.network.clone(),
             client,
             gateway,
             portal,
@@ -229,6 +231,7 @@ impl StateMachineTest for TunnelTest {
             }
             Transition::RoamClient { ip4, ip6, port } => {
                 state.client.update_interface(ip4, ip6, port);
+                debug_assert!(state.network.add_host(&state.client));
 
                 state.client.exec_mut(|c| {
                     c.state.reset();
@@ -323,21 +326,13 @@ impl TunnelTest {
                             .sending_socket_for(dst.ip())
                             .expect("relay to never emit packets without a matching socket");
 
-                        if let ControlFlow::Break(_) = self.try_handle_client(dst, src, &payload) {
-                            continue;
-                        }
-
-                        if let ControlFlow::Break(_) = self.try_handle_gateway(
+                        buffered_transmits.push_back(Transmit {
+                            src: Some(src),
                             dst,
-                            src,
-                            &payload,
-                            buffered_transmits,
-                            &ref_state.global_dns_records,
-                        ) {
-                            continue;
-                        }
+                            payload: payload.into(),
+                        });
 
-                        panic!("Unhandled packet: {src} -> {dst}")
+                        continue;
                     }
 
                     firezone_relay::Command::CreateAllocation { port, family } => {
@@ -470,128 +465,55 @@ impl TunnelTest {
         let dst = transmit.dst;
         let payload = &transmit.payload;
 
-        if self
-            .try_handle_relay(dst, src, payload, buffered_transmits)
-            .is_break()
-        {
-            return;
-        }
-
-        let src = transmit
-            .src
-            .expect("all packets without src should have been handled via relays");
-
-        if self.try_handle_client(dst, src, payload).is_break() {
-            return;
-        }
-
-        if self
-            .try_handle_gateway(dst, src, payload, buffered_transmits, global_dns_records)
-            .is_break()
-        {
-            return;
-        }
-
-        panic!("Unhandled packet: {src} -> {dst}")
-    }
-
-    fn try_handle_relay(
-        &mut self,
-        dst: SocketAddr,
-        src: SocketAddr,
-        payload: &[u8],
-        buffered_transmits: &mut VecDeque<Transmit<'static>>,
-    ) -> ControlFlow<()> {
-        if !self.relay.wants(dst) {
-            return ControlFlow::Continue(());
-        }
-
-        self.relay
-            .exec_mut(|relay| relay.handle_packet(payload, src, dst, self.now, buffered_transmits));
-
-        ControlFlow::Break(())
-    }
-
-    fn try_handle_client(
-        &mut self,
-        dst: SocketAddr,
-        src: SocketAddr,
-        payload: &[u8],
-    ) -> ControlFlow<()> {
-        let mut buffer = [0u8; 2000];
-
-        if self.client.old_ips.contains(&dst.ip()) {
-            tracing::debug!("Dropping packet to {dst} because the client roamed away from this network interface");
-            return ControlFlow::Break(());
-        }
-
-        if !self.client.wants(dst) {
-            return ControlFlow::Continue(());
-        }
-
-        if let Some(packet) = self.client.exec_mut(|client| {
-            client
-                .state
-                .decapsulate(dst, src, payload, self.now, &mut buffer)
-        }) {
-            self.on_client_received_packet(packet);
+        let Some(component) = self.network.host_by_ip(dst.ip()) else {
+            panic!("Unhandled packet: {src} -> {dst}")
         };
 
-        ControlFlow::Break(())
-    }
+        let mut buf = [0u8; 1000];
 
-    fn try_handle_gateway(
-        &mut self,
-        dst: SocketAddr,
-        src: SocketAddr,
-        payload: &[u8],
-        buffered_transmits: &mut VecDeque<Transmit<'static>>,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
-    ) -> ControlFlow<()> {
-        let mut buffer = [0u8; 2000];
+        match component {
+            ComponentId::Client(_) => {
+                if self.client.old_ips.contains(&dst.ip()) {
+                    tracing::debug!("Dropping packet to {dst} because the client roamed away from this network interface");
+                    return;
+                }
 
-        if !self.gateway.wants(dst) {
-            return ControlFlow::Continue(());
+                debug_assert!(self.client.wants(dst));
+
+                let Some(packet) = self
+                    .client
+                    .exec_mut(|c| c.state.decapsulate(dst, src, payload, self.now, &mut buf))
+                else {
+                    return;
+                };
+
+                self.on_client_received_packet(packet);
+            }
+            ComponentId::Gateway(_) => {
+                debug_assert!(self.gateway.wants(dst));
+
+                let Some(packet) = self
+                    .gateway
+                    .exec_mut(|g| g.state.decapsulate(dst, src, payload, self.now, &mut buf))
+                else {
+                    return;
+                };
+
+                self.on_gateway_received_packet(packet, global_dns_records, buffered_transmits);
+            }
+            ComponentId::Relay(_) => {
+                debug_assert!(self.relay.wants(dst));
+
+                let Some(transmit) = self
+                    .relay
+                    .exec_mut(|r| r.handle_packet(payload, src, dst, self.now))
+                else {
+                    return;
+                };
+
+                buffered_transmits.push_back(transmit);
+            }
         }
-
-        if let Some(packet) = self.gateway.exec_mut(|gateway| {
-            gateway
-                .state
-                .decapsulate(dst, src, payload, self.now, &mut buffer)
-        }) {
-            let packet = packet.to_owned();
-
-            if packet.as_icmp().is_some() {
-                self.gateway_received_icmp_requests
-                    .push_back(packet.clone());
-
-                let echo_response = ip_packet::make::icmp_response_packet(packet);
-                let maybe_transmit = self.send_ip_packet_gateway_to_client(echo_response);
-
-                buffered_transmits.extend(maybe_transmit);
-
-                return ControlFlow::Break(());
-            }
-
-            if packet.as_udp().is_some() {
-                let response = ip_packet::make::dns_ok_response(packet, |name| {
-                    global_dns_records
-                        .get(&hickory_name_to_domain(name.clone()))
-                        .cloned()
-                        .into_iter()
-                        .flatten()
-                });
-
-                let maybe_transmit = self.send_ip_packet_gateway_to_client(response);
-                buffered_transmits.extend(maybe_transmit);
-
-                return ControlFlow::Break(());
-            }
-
-            panic!("Unhandled packet")
-        };
-
-        ControlFlow::Break(())
     }
 
     fn on_client_event(
@@ -824,6 +746,45 @@ impl TunnelTest {
         }
 
         unimplemented!("Unhandled packet")
+    }
+
+    /// Process an IP packet received on the gateway.
+    fn on_gateway_received_packet(
+        &mut self,
+        packet: IpPacket<'_>,
+        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        buffered_transmits: &mut VecDeque<Transmit<'static>>,
+    ) {
+        let packet = packet.to_owned();
+
+        if packet.as_icmp().is_some() {
+            self.gateway_received_icmp_requests
+                .push_back(packet.clone());
+
+            let echo_response = ip_packet::make::icmp_response_packet(packet);
+            let maybe_transmit = self.send_ip_packet_gateway_to_client(echo_response);
+
+            buffered_transmits.extend(maybe_transmit);
+
+            return;
+        }
+
+        if packet.as_udp().is_some() {
+            let response = ip_packet::make::dns_ok_response(packet, |name| {
+                global_dns_records
+                    .get(&hickory_name_to_domain(name.clone()))
+                    .cloned()
+                    .into_iter()
+                    .flatten()
+            });
+
+            let maybe_transmit = self.send_ip_packet_gateway_to_client(response);
+            buffered_transmits.extend(maybe_transmit);
+
+            return;
+        }
+
+        panic!("Unhandled packet")
     }
 
     fn send_dns_query_for(

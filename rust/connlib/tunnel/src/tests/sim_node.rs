@@ -1,4 +1,8 @@
-use super::{sim_net::Host, sim_relay::SimRelay};
+use super::{
+    sim_net::Host,
+    sim_relay::SimRelay,
+    strategies::{socket_ip4s, socket_ip6s},
+};
 use crate::{ClientState, GatewayState};
 use connlib_shared::{
     messages::{ClientId, DnsServer, GatewayId, Interface},
@@ -120,8 +124,6 @@ impl fmt::Debug for PrivateKey {
 pub(crate) fn sim_node_prototype<ID, S>(
     id: impl Strategy<Value = ID>,
     state: impl Strategy<Value = S>,
-    socket_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
-    socket_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
     tunnel_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
     tunnel_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
 ) -> impl Strategy<Value = Host<SimNode<ID, S>>>
@@ -129,15 +131,10 @@ where
     ID: fmt::Debug,
     S: fmt::Debug,
 {
-    let socket_ip4 = socket_ip4s.next().unwrap();
-    let socket_ip6 = socket_ip6s.next().unwrap();
     let socket_ips = prop_oneof![
-        Just(IpStack::Ip4(socket_ip4)),
-        Just(IpStack::Ip6(socket_ip6)),
-        Just(IpStack::Dual {
-            ip4: socket_ip4,
-            ip6: socket_ip6
-        })
+        socket_ip4s().prop_map(IpStack::Ip4),
+        socket_ip6s().prop_map(IpStack::Ip6),
+        (socket_ip4s(), socket_ip6s()).prop_map(|(ip4, ip6)| IpStack::Dual { ip4, ip6 })
     ];
 
     let tunnel_ip4 = tunnel_ip4s.next().unwrap();
