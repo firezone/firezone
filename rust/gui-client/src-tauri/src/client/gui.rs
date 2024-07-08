@@ -522,7 +522,7 @@ impl Controller {
                         .context("Couldn't show Disconnected alert")?;
                 }
             }
-            IpcServerMsg::OnTunnelReady => {
+            IpcServerMsg::OnUpdateResources(resources) => {
                 if !matches!(self.status, Status::TunnelReady) {
                     self.status = Status::TunnelReady;
                     os::show_notification(
@@ -530,9 +530,6 @@ impl Controller {
                         "You are now signed in and able to access resources.",
                     )?;
                 }
-                self.refresh_system_tray_menu()?;
-            }
-            IpcServerMsg::OnUpdateResources(resources) => {
                 self.resources = resources;
                 tracing::debug!("Controller notified of new resources");
                 if let Err(error) = self.refresh_system_tray_menu() {
