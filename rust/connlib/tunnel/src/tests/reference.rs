@@ -85,9 +85,22 @@ impl ReferenceStateMachine for ReferenceState {
     type Transition = Transition;
 
     fn init_state() -> proptest::prelude::BoxedStrategy<Self::State> {
+        let mut tunnel_ip4 = tunnel_ip4s();
+        let mut tunnel_ip6 = tunnel_ip6s();
+
         (
-            sim_node_prototype(client_id(), client_state()),
-            sim_node_prototype(gateway_id(), gateway_state()),
+            sim_node_prototype(
+                client_id(),
+                client_state(),
+                &mut tunnel_ip4,
+                &mut tunnel_ip6,
+            ),
+            sim_node_prototype(
+                gateway_id(),
+                gateway_state(),
+                &mut tunnel_ip4,
+                &mut tunnel_ip6,
+            ),
             sim_relay_prototype(),
             system_dns_servers(),
             upstream_dns_servers(),

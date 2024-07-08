@@ -8,7 +8,7 @@ use connlib_shared::{
     StaticSecret,
 };
 use ip_network::{Ipv4Network, Ipv6Network};
-use proptest::{collection, prelude::*, sample};
+use proptest::{collection, prelude::*};
 use rand::rngs::StdRng;
 use std::{
     collections::{HashMap, HashSet},
@@ -210,61 +210,51 @@ impl fmt::Debug for PrivateKey {
 pub(crate) fn sim_node_prototype<ID, S>(
     id: impl Strategy<Value = ID>,
     state: impl Strategy<Value = S>,
+    tunnel_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
+    tunnel_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
 ) -> impl Strategy<Value = SimNode<ID, S>>
 where
     ID: fmt::Debug,
     S: fmt::Debug,
 {
+    let tunnel_ip4 = tunnel_ip4s.next().unwrap();
+    let tunnel_ip6 = tunnel_ip6s.next().unwrap();
+
     (
         id,
         state,
         firezone_relay::proptest::any_ip_stack(), // We are re-using the strategy here because it is exactly what we need although we are generating a node here and not a relay.
         any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
         any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
-        tunnel_ip4(),
-        tunnel_ip6(),
     )
-        .prop_map(
-            |(id, state, ip_stack, v4_port, v6_port, tunnel_ip4, tunnel_ip6)| {
-                let ip4_socket = ip_stack.as_v4().map(|ip| SocketAddrV4::new(*ip, v4_port));
-                let ip6_socket = ip_stack
-                    .as_v6()
-                    .map(|ip| SocketAddrV6::new(*ip, v6_port, 0, 0));
+        .prop_map(move |(id, state, ip_stack, v4_port, v6_port)| {
+            let ip4_socket = ip_stack.as_v4().map(|ip| SocketAddrV4::new(*ip, v4_port));
+            let ip6_socket = ip_stack
+                .as_v6()
+                .map(|ip| SocketAddrV6::new(*ip, v6_port, 0, 0));
 
-                SimNode::new(id, state, ip4_socket, ip6_socket, tunnel_ip4, tunnel_ip6)
-            },
-        )
+            SimNode::new(id, state, ip4_socket, ip6_socket, tunnel_ip4, tunnel_ip6)
+        })
 }
 
-/// Generates an IPv4 address for the tunnel interface.
+/// An [`Iterator`] over the possible IPv4 addresses of a tunnel interface.
 ///
 /// We use the CG-NAT range for IPv4.
 /// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L7>.
-pub(crate) fn tunnel_ip4() -> impl Strategy<Value = Ipv4Addr> {
-    any::<sample::Index>().prop_map(|idx| {
-        let cgnat_block = Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11).unwrap();
-
-        let mut hosts = cgnat_block.hosts();
-
-        hosts.nth(idx.index(hosts.len())).unwrap()
-    })
+pub(crate) fn tunnel_ip4s() -> impl Iterator<Item = Ipv4Addr> {
+    Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11)
+        .unwrap()
+        .hosts()
 }
 
-/// Generates an IPv6 address for the tunnel interface.
+/// An [`Iterator`] over the possible IPv6 addresses of a tunnel interface.
 ///
 /// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L8>.
-pub(crate) fn tunnel_ip6() -> impl Strategy<Value = Ipv6Addr> {
-    any::<sample::Index>().prop_map(|idx| {
-        let cgnat_block =
-            Ipv6Network::new(Ipv6Addr::new(64_768, 8_225, 4_369, 0, 0, 0, 0, 0), 107).unwrap();
-
-        let mut subnets = cgnat_block.subnets_with_prefix(128);
-
-        subnets
-            .nth(idx.index(subnets.len()))
-            .unwrap()
-            .network_address()
-    })
+pub(crate) fn tunnel_ip6s() -> impl Iterator<Item = Ipv6Addr> {
+    Ipv6Network::new(Ipv6Addr::new(64_768, 8_225, 4_369, 0, 0, 0, 0, 0), 107)
+        .unwrap()
+        .subnets_with_prefix(128)
+        .map(|n| n.network_address())
 }
 
 fn private_key() -> impl Strategy<Value = PrivateKey> {
