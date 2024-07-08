@@ -7,7 +7,10 @@ export default function GUI({ title }: { title: string }) {
     title === "Windows"
       ? "/dl/firezone-client-gui-windows/:version/:arch"
       : "/dl/firezone-client-gui-linux/:version/:arch";
-  const arches = ["x86_64"];
+  const arches =
+    title === "Windows"
+      ? ["x86_64"]
+      : ["x86_64", "aarch64"];
 
   return (
     <Entries href={href} arches={arches} title={title}>
