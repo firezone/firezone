@@ -1,11 +1,6 @@
 use super::{
-    composite_strategy::CompositeStrategy,
-    sim_net::{Host, RoutingTable},
-    sim_node::*,
-    sim_relay::*,
-    strategies::*,
-    transition::*,
-    IcmpIdentifier, IcmpSeq, QueryId,
+    composite_strategy::CompositeStrategy, sim_net::*, sim_node::*, sim_relay::*, strategies::*,
+    transition::*, IcmpIdentifier, IcmpSeq, QueryId,
 };
 use chrono::{DateTime, Utc};
 use connlib_shared::{
