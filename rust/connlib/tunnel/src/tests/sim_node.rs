@@ -19,7 +19,8 @@ use std::{
 };
 use tracing::Span;
 
-#[derive(Clone)]
+#[derive(Clone, derivative::Derivative)]
+#[derivative(Debug)]
 pub(crate) struct SimNode<ID, S> {
     pub(crate) id: ID,
     pub(crate) state: S,
@@ -32,6 +33,7 @@ pub(crate) struct SimNode<ID, S> {
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,
 
+    #[derivative(Debug = "ignore")]
     pub(crate) span: Span,
 }
 
@@ -174,20 +176,6 @@ impl<ID, S> SimNode<ID, S> {
 
     pub(crate) fn is_tunnel_ip(&self, ip: IpAddr) -> bool {
         self.tunnel_ip(ip) == ip
-    }
-}
-
-impl<ID: fmt::Debug, S: fmt::Debug> fmt::Debug for SimNode<ID, S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SimNode")
-            .field("id", &self.id)
-            .field("state", &self.state)
-            .field("ip4_socket", &self.ip4_socket)
-            .field("ip6_socket", &self.ip6_socket)
-            .field("tunnel_ip4", &self.tunnel_ip4)
-            .field("tunnel_ip6", &self.tunnel_ip6)
-            .field("old_sockets", &self.old_sockets)
-            .finish()
     }
 }
 

@@ -6,21 +6,24 @@ use snownet::{RelaySocket, Transmit};
 use std::{
     borrow::Cow,
     collections::{HashSet, VecDeque},
-    fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant, SystemTime},
 };
 use tracing::Span;
 
-#[derive(Clone)]
+#[derive(Clone, derivative::Derivative)]
+#[derivative(Debug)]
 pub(crate) struct SimRelay<S> {
     pub(crate) id: RelayId,
     pub(crate) state: S,
 
     ip_stack: firezone_relay::IpStack,
     pub(crate) allocations: HashSet<(AddressFamily, AllocationPort)>,
+
+    #[derivative(Debug = "ignore")]
     buffer: Vec<u8>,
 
+    #[derivative(Debug = "ignore")]
     pub(crate) span: Span,
 }
 
@@ -240,16 +243,6 @@ impl SimRelay<firezone_relay::Server<StdRng>> {
             firezone_relay::auth::generate_password(self.state.auth_secret(), expiry, username);
 
         (format!("{secs}:{username}"), password)
-    }
-}
-
-impl<S: fmt::Debug> fmt::Debug for SimRelay<S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SimRelay")
-            .field("id", &self.id)
-            .field("ip_stack", &self.ip_stack)
-            .field("allocations", &self.allocations)
-            .finish()
     }
 }
 
