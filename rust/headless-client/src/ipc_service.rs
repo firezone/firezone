@@ -91,26 +91,40 @@ pub fn run_only_ipc_service() -> Result<()> {
 
 fn run_debug_ipc_service() -> Result<()> {
     crate::setup_stdout_logging()?;
+    tracing::info!(
+        arch = std::env::consts::ARCH,
+        git_version = crate::GIT_VERSION,
+        system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
+    );
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
     let mut signals = Signals::new()?;
 
-    // Couldn't get the loop to work here yet, so SIGHUP is not implemented
-    rt.block_on(async {
-        let ipc_service = pin!(ipc_listen());
+    rt.block_on(ipc_listen_with_signals(&mut signals))
+}
 
-        match future::select(pin!(signals.recv()), ipc_service).await {
-            future::Either::Left((SignalKind::Hangup, _)) => {
-                bail!("Exiting, SIGHUP not implemented for the IPC service");
-            }
-            future::Either::Left((SignalKind::Interrupt, _)) => {
-                tracing::info!("Caught Interrupt signal");
-                Ok(())
-            }
-            future::Either::Right((Ok(impossible), _)) => match impossible {},
-            future::Either::Right((Err(error), _)) => Err(error).context("ipc_listen failed"),
+/// Run the IPC service, and exit if we catch any signals
+///
+/// Shared between the Linux systemd service and the debug subcommand
+/// TODO: Better name
+async fn ipc_listen_with_signals(signals: &mut Signals) -> Result<()> {
+    let ipc_service = pin!(ipc_listen());
+
+    match future::select(pin!(signals.recv()), ipc_service).await {
+        future::Either::Left((SignalKind::Hangup, _)) => {
+            bail!("Exiting, SIGHUP not implemented for the IPC service");
         }
-    })
+        future::Either::Left((SignalKind::Interrupt, _)) => {
+            tracing::info!("Caught SIGINT");
+            Ok(())
+        }
+        future::Either::Left((SignalKind::Terminate, _)) => {
+            tracing::info!("Caught SIGTERM");
+            Ok(())
+        }
+        future::Either::Right((Ok(impossible), _)) => match impossible {},
+        future::Either::Right((Err(error), _)) => Err(error).context("ipc_listen failed"),
+    }
 }
 
 #[cfg(not(debug_assertions))]
@@ -332,6 +346,7 @@ fn setup_logging(log_dir: Option<PathBuf>) -> Result<connlib_client_shared::file
     let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber).context("`set_global_default` should always work)")?;
     tracing::info!(
+        arch = std::env::consts::ARCH,
         git_version = crate::GIT_VERSION,
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
         ?directives
