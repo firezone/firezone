@@ -14,7 +14,6 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
     let _guard = rt.enter();
     let mut signals = Signals::new()?;
 
-    // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(super::ipc_listen_with_signals(&mut signals))
 }
 
