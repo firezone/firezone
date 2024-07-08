@@ -22,8 +22,6 @@ pub(crate) struct Host<T> {
     pub(crate) ip4: Option<Ipv4Addr>,
     pub(crate) ip6: Option<Ipv6Addr>,
 
-    pub(crate) old_ips: Vec<IpAddr>,
-
     // In production, we always rebind to a new port.
     // To mimic this, we track the used ports here to not sample an existing one.
     pub(crate) old_ports: HashSet<u16>,
@@ -41,7 +39,6 @@ impl<T> Host<T> {
             inner,
             ip4: None,
             ip6: None,
-            old_ips: Default::default(),
             span: Span::none(),
             default_port: 0,
             allocated_ports: HashSet::default(),
@@ -81,9 +78,7 @@ impl<T> Host<T> {
         ip6: Option<Ipv6Addr>,
         port: u16,
     ) {
-        // 1. Remember what the current IPs & port were.
-        self.old_ips.extend(self.ip4.map(IpAddr::V4));
-        self.old_ips.extend(self.ip6.map(IpAddr::V6));
+        // 1. Remember what the current port was.
         self.old_ports.insert(self.default_port);
 
         // 2. Update to the new IPs.
@@ -140,7 +135,6 @@ where
             inner: f(self.inner.clone(), self.ip4, self.ip6),
             ip4: self.ip4,
             ip6: self.ip6,
-            old_ips: self.old_ips.clone(),
             span,
             default_port: self.default_port,
             allocated_ports: self.allocated_ports.clone(),
