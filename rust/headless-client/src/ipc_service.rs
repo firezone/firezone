@@ -96,21 +96,31 @@ fn run_debug_ipc_service() -> Result<()> {
     let mut signals = Signals::new()?;
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
-    rt.block_on(async {
-        let ipc_service = pin!(ipc_listen());
+    rt.block_on(ipc_listen_with_signals(&mut signals))
+}
 
-        match future::select(pin!(signals.recv()), ipc_service).await {
-            future::Either::Left((SignalKind::Hangup, _)) => {
-                bail!("Exiting, SIGHUP not implemented for the IPC service");
-            }
-            future::Either::Left((SignalKind::Interrupt, _)) => {
-                tracing::info!("Caught Interrupt signal");
-                Ok(())
-            }
-            future::Either::Right((Ok(impossible), _)) => match impossible {},
-            future::Either::Right((Err(error), _)) => Err(error).context("ipc_listen failed"),
+/// Run the IPC service, and exit if we catch any signals
+///
+/// Shared between the Linux systemd service and the debug subcommand
+/// TODO: Better name
+async fn ipc_listen_with_signals(signals: &mut Signals) -> Result<()> {
+    let ipc_service = pin!(ipc_listen());
+
+    match future::select(pin!(signals.recv()), ipc_service).await {
+        future::Either::Left((SignalKind::Hangup, _)) => {
+            bail!("Exiting, SIGHUP not implemented for the IPC service");
         }
-    })
+        future::Either::Left((SignalKind::Interrupt, _)) => {
+            tracing::info!("Caught SIGINT");
+            Ok(())
+        }
+        future::Either::Left((SignalKind::Terminate, _)) => {
+            tracing::info!("Caught SIGTERM");
+            Ok(())
+        }
+        future::Either::Right((Ok(impossible), _)) => match impossible {},
+        future::Either::Right((Err(error), _)) => Err(error).context("ipc_listen failed"),
+    }
 }
 
 #[cfg(not(debug_assertions))]

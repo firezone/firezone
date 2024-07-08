@@ -164,6 +164,10 @@ enum SignalKind {
     Hangup,
     /// SIGINT
     Interrupt,
+    /// SIGTERM
+    ///
+    /// Not caught on Windows
+    Terminate,
 }
 
 /// Sets up logging for stdout only, with INFO level by default
