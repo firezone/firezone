@@ -224,17 +224,14 @@ where
         tunnel_ip4(),
         tunnel_ip6(),
     )
-        .prop_filter_map(
-            "must have at least one socket address",
+        .prop_map(
             |(id, state, ip_stack, v4_port, v6_port, tunnel_ip4, tunnel_ip6)| {
                 let ip4_socket = ip_stack.as_v4().map(|ip| SocketAddrV4::new(*ip, v4_port));
                 let ip6_socket = ip_stack
                     .as_v6()
                     .map(|ip| SocketAddrV6::new(*ip, v6_port, 0, 0));
 
-                Some(SimNode::new(
-                    id, state, ip4_socket, ip6_socket, tunnel_ip4, tunnel_ip6,
-                ))
+                SimNode::new(id, state, ip4_socket, ip6_socket, tunnel_ip4, tunnel_ip6)
             },
         )
 }
