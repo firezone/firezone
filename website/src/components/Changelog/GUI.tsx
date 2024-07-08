@@ -26,7 +26,7 @@ export default function GUI({ title }: { title: string }) {
             </Link>{" "}
           </li>
         </ul>
-      </Entry>-->*/}
+      </Entry>*/}
       <Entry version="1.1.4" date={new Date("2024-07-05")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
