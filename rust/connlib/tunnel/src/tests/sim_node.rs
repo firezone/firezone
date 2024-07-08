@@ -7,6 +7,7 @@ use connlib_shared::{
     proptest::domain_name,
     StaticSecret,
 };
+use firezone_relay::IpStack;
 use ip_network::{Ipv4Network, Ipv6Network};
 use proptest::{collection, prelude::*};
 use rand::rngs::StdRng;
@@ -210,6 +211,8 @@ impl fmt::Debug for PrivateKey {
 pub(crate) fn sim_node_prototype<ID, S>(
     id: impl Strategy<Value = ID>,
     state: impl Strategy<Value = S>,
+    socket_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
+    socket_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
     tunnel_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
     tunnel_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
 ) -> impl Strategy<Value = SimNode<ID, S>>
@@ -217,21 +220,31 @@ where
     ID: fmt::Debug,
     S: fmt::Debug,
 {
+    let socket_ip4 = socket_ip4s.next().unwrap();
+    let socket_ip6 = socket_ip6s.next().unwrap();
+    let socket_ips = prop_oneof![
+        Just(IpStack::Ip4(socket_ip4)),
+        Just(IpStack::Ip6(socket_ip6)),
+        Just(IpStack::Dual {
+            ip4: socket_ip4,
+            ip6: socket_ip6
+        })
+    ];
+
     let tunnel_ip4 = tunnel_ip4s.next().unwrap();
     let tunnel_ip6 = tunnel_ip6s.next().unwrap();
 
     (
         id,
         state,
-        firezone_relay::proptest::any_ip_stack(), // We are re-using the strategy here because it is exactly what we need although we are generating a node here and not a relay.
-        any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
+        socket_ips,
         any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
     )
-        .prop_map(move |(id, state, ip_stack, v4_port, v6_port)| {
-            let ip4_socket = ip_stack.as_v4().map(|ip| SocketAddrV4::new(*ip, v4_port));
+        .prop_map(move |(id, state, ip_stack, port)| {
+            let ip4_socket = ip_stack.as_v4().map(|ip| SocketAddrV4::new(*ip, port));
             let ip6_socket = ip_stack
                 .as_v6()
-                .map(|ip| SocketAddrV6::new(*ip, v6_port, 0, 0));
+                .map(|ip| SocketAddrV6::new(*ip, port, 0, 0));
 
             SimNode::new(id, state, ip4_socket, ip6_socket, tunnel_ip4, tunnel_ip6)
         })

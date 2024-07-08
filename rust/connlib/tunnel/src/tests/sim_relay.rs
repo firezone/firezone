@@ -7,7 +7,7 @@ use std::{
     borrow::Cow,
     collections::{HashSet, VecDeque},
     fmt,
-    net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant, SystemTime},
 };
 use tracing::Span;
@@ -34,10 +34,6 @@ impl<S> SimRelay<S> {
             buffer: vec![0u8; (1 << 16) - 1],
             span: Span::none(),
         }
-    }
-
-    pub(crate) fn ip_stack(&self) -> IpStack {
-        self.ip_stack
     }
 }
 
@@ -257,11 +253,19 @@ impl<S: fmt::Debug> fmt::Debug for SimRelay<S> {
     }
 }
 
-pub(crate) fn sim_relay_prototype() -> impl Strategy<Value = SimRelay<u64>> {
-    (
-        any::<u64>(),
-        firezone_relay::proptest::dual_ip_stack(), // For this test, our relays always run in dual-stack mode to ensure connectivity!
-        any::<u128>(),
-    )
+pub(crate) fn sim_relay_prototype(
+    socket_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
+    socket_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
+) -> impl Strategy<Value = SimRelay<u64>> {
+    let socket_ip4 = socket_ip4s.next().unwrap();
+    let socket_ip6 = socket_ip6s.next().unwrap();
+
+    // For this test, our relays always run in dual-stack mode to ensure connectivity!
+    let socket_ips = Just(IpStack::Dual {
+        ip4: socket_ip4,
+        ip6: socket_ip6,
+    });
+
+    (any::<u64>(), socket_ips, any::<u128>())
         .prop_map(|(seed, ip_stack, id)| SimRelay::new(RelayId::from_u128(id), seed, ip_stack))
 }

@@ -1,5 +1,10 @@
 use super::{
-    composite_strategy::CompositeStrategy, sim_node::*, sim_relay::*, strategies::*, transition::*,
+    composite_strategy::CompositeStrategy,
+    sim_net::{socket_ip4s, socket_ip6s},
+    sim_node::*,
+    sim_relay::*,
+    strategies::*,
+    transition::*,
     IcmpIdentifier, IcmpSeq, QueryId,
 };
 use chrono::{DateTime, Utc};
@@ -67,6 +72,9 @@ pub(crate) struct ReferenceState {
     pub(crate) expected_icmp_handshakes: VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>,
     /// The expected DNS handshakes.
     pub(crate) expected_dns_handshakes: VecDeque<QueryId>,
+
+    possible_roaming_ip4s: Vec<Ipv4Addr>,
+    possible_roaming_ip6s: Vec<Ipv6Addr>,
 }
 
 #[derive(Debug, Clone)]
@@ -85,57 +93,53 @@ impl ReferenceStateMachine for ReferenceState {
     type Transition = Transition;
 
     fn init_state() -> proptest::prelude::BoxedStrategy<Self::State> {
-        let mut tunnel_ip4 = tunnel_ip4s();
-        let mut tunnel_ip6 = tunnel_ip6s();
+        let mut tunnel_ip4s = tunnel_ip4s();
+        let mut tunnel_ip6s = tunnel_ip6s();
+
+        let mut socket_ip4s = socket_ip4s();
+        let mut socket_ip6s = socket_ip6s();
+
+        let client_prototype = sim_node_prototype(
+            client_id(),
+            client_state(),
+            &mut socket_ip4s,
+            &mut socket_ip6s,
+            &mut tunnel_ip4s,
+            &mut tunnel_ip6s,
+        );
+        let gateway_prototype = sim_node_prototype(
+            gateway_id(),
+            gateway_state(),
+            &mut socket_ip4s,
+            &mut socket_ip6s,
+            &mut tunnel_ip4s,
+            &mut tunnel_ip6s,
+        );
+        let relay_prototype = sim_relay_prototype(&mut socket_ip4s, &mut socket_ip6s);
+
+        // We pre-allocate a 100 IPs that we can roam too.
+        let next_ip4_socket_addresses = socket_ip4s.take(100).collect::<Vec<_>>();
+        let next_ip6_socket_addresses = socket_ip6s.take(100).collect::<Vec<_>>();
 
         (
-            sim_node_prototype(
-                client_id(),
-                client_state(),
-                &mut tunnel_ip4,
-                &mut tunnel_ip6,
-            ),
-            sim_node_prototype(
-                gateway_id(),
-                gateway_state(),
-                &mut tunnel_ip4,
-                &mut tunnel_ip6,
-            ),
-            sim_relay_prototype(),
+            client_prototype,
+            gateway_prototype,
+            relay_prototype,
             system_dns_servers(),
             upstream_dns_servers(),
             global_dns_records(), // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
             Just(Instant::now()),
             Just(Utc::now()),
+            Just(next_ip4_socket_addresses),
+            Just(next_ip6_socket_addresses),
         )
             .prop_filter(
                 "client and gateway priv key must be different",
-                |(c, g, _, _, _, _, _, _)| c.state.0 != g.state,
-            )
-            .prop_filter(
-                "client, gateway and relay ip must be different",
-                |(c, g, r, _, _, _, _, _)| {
-                    let c4 = c.ip4_socket.map(|s| *s.ip());
-                    let g4 = g.ip4_socket.map(|s| *s.ip());
-                    let r4 = r.ip_stack().as_v4().copied();
-
-                    let c6 = c.ip6_socket.map(|s| *s.ip());
-                    let g6 = g.ip6_socket.map(|s| *s.ip());
-                    let r6 = r.ip_stack().as_v6().copied();
-
-                    let c4_eq_g4 = c4.is_some_and(|c| g4.is_some_and(|g| c == g));
-                    let c6_eq_g6 = c6.is_some_and(|c| g6.is_some_and(|g| c == g));
-                    let c4_eq_r4 = c4.is_some_and(|c| r4.is_some_and(|r| c == r));
-                    let c6_eq_r6 = c6.is_some_and(|c| r6.is_some_and(|r| c == r));
-                    let g4_eq_r4 = g4.is_some_and(|g| r4.is_some_and(|r| g == r));
-                    let g6_eq_r6 = g6.is_some_and(|g| r6.is_some_and(|r| g == r));
-
-                    !c4_eq_g4 && !c6_eq_g6 && !c4_eq_r4 && !c6_eq_r6 && !g4_eq_r4 && !g6_eq_r6
-                },
+                |(c, g, _, _, _, _, _, __, _, _)| c.state.0 != g.state,
             )
             .prop_filter(
                 "at least one DNS server needs to be reachable",
-                |(c, _, _, system_dns, upstream_dns, _, _, _)| {
+                |(c, _, _, system_dns, upstream_dns, _, _, __, _, _)| {
                     // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
 
                     if !upstream_dns.is_empty() {
@@ -169,6 +173,8 @@ impl ReferenceStateMachine for ReferenceState {
                     global_dns_records,
                     now,
                     utc_now,
+                    next_ip4_socket_addresses,
+                    next_ip6_socket_addresses,
                 )| Self {
                     now,
                     utc_now,
@@ -186,6 +192,8 @@ impl ReferenceStateMachine for ReferenceState {
                     client_dns_records: Default::default(),
                     expected_dns_handshakes: Default::default(),
                     client_connected_dns_resources: Default::default(),
+                    possible_roaming_ip4s: next_ip4_socket_addresses,
+                    possible_roaming_ip6s: next_ip6_socket_addresses,
                 },
             )
             .boxed()
@@ -212,7 +220,16 @@ impl ReferenceStateMachine for ReferenceState {
                     .prop_map(|servers| Transition::UpdateUpstreamDnsServers { servers }),
             )
             .with(1, cidr_resource(8).prop_map(Transition::AddCidrResource))
-            .with(1, roam_client())
+            .with_if_not_empty(
+                1,
+                (
+                    state.possible_roaming_ip4s.clone(),
+                    state.possible_roaming_ip6s.clone(),
+                ),
+                |(ip4_addrs, ip6_addrs)| {
+                    roam_client(sample::select(ip4_addrs), sample::select(ip6_addrs))
+                },
+            )
             .with(
                 1,
                 prop_oneof![
@@ -396,6 +413,16 @@ impl ReferenceStateMachine for ReferenceState {
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
                 state.client_connected_cidr_resources.clear();
                 state.client_connected_dns_resources.clear();
+
+                // Remove the new address from the list of possible roaming IP.
+                state.possible_roaming_ip4s.retain(|ip4| match ip4_socket {
+                    Some(ip4_socket) => ip4_socket.ip() != ip4,
+                    None => true,
+                });
+                state.possible_roaming_ip6s.retain(|ip6| match ip6_socket {
+                    Some(ip6_socket) => ip6_socket.ip() != ip6,
+                    None => true,
+                });
             }
         };
 
