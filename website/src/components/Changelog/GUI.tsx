@@ -22,7 +22,7 @@ export default function GUI({ title }: { title: string }) {
               href="https://github.com/firezone/firezone/pull/5793"
               className="text-accent-500 underline hover:no-underline"
             >
-              built for aarch64
+              built for both x86-64 and ARM64
             </Link>{" "}
           </li>
         </ul>
