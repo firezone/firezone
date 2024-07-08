@@ -111,7 +111,10 @@ pub fn run_only_headless_client() -> Result<()> {
         .unzip();
     setup_global_subscriber(layer);
 
-    tracing::info!(git_version = crate::GIT_VERSION);
+    tracing::info!(
+        arch = std::env::consts::ARCH,
+        git_version = crate::GIT_VERSION
+    );
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()

@@ -91,6 +91,11 @@ pub fn run_only_ipc_service() -> Result<()> {
 
 fn run_debug_ipc_service() -> Result<()> {
     crate::setup_stdout_logging()?;
+    tracing::info!(
+        arch = std::env::consts::ARCH,
+        git_version = crate::GIT_VERSION,
+        system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
+    );
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
     let mut signals = Signals::new()?;
@@ -342,6 +347,7 @@ fn setup_logging(log_dir: Option<PathBuf>) -> Result<connlib_client_shared::file
     let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber).context("`set_global_default` should always work)")?;
     tracing::info!(
+        arch = std::env::consts::ARCH,
         git_version = crate::GIT_VERSION,
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
         ?directives
