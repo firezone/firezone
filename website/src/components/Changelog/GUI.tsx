@@ -11,6 +11,19 @@ export default function GUI({ title }: { title: string }) {
 
   return (
     <Entries href={href} arches={arches} title={title}>
+      {/*<Entry version="1.1.5" date={new Date("2024-07-08")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            The Linux GUI Client is now{" "}
+            <Link
+              href="https://github.com/firezone/firezone/pull/5793"
+              className="text-accent-500 underline hover:no-underline"
+            >
+              built for aarch64
+            </Link>{" "}
+          </li>
+        </ul>
+      </Entry>-->*/}
       <Entry version="1.1.4" date={new Date("2024-07-05")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
