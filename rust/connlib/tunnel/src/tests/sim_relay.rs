@@ -1,3 +1,4 @@
+use super::sim_net::Host;
 use connlib_shared::messages::RelayId;
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
 use proptest::prelude::*;
@@ -9,7 +10,6 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant, SystemTime},
 };
-use tracing::Span;
 
 #[derive(Clone, derivative::Derivative)]
 #[derivative(Debug)]
@@ -22,9 +22,6 @@ pub(crate) struct SimRelay<S> {
 
     #[derivative(Debug = "ignore")]
     buffer: Vec<u8>,
-
-    #[derivative(Debug = "ignore")]
-    pub(crate) span: Span,
 }
 
 impl<S> SimRelay<S> {
@@ -35,7 +32,6 @@ impl<S> SimRelay<S> {
             ip_stack,
             allocations: Default::default(),
             buffer: vec![0u8; (1 << 16) - 1],
-            span: Span::none(),
         }
     }
 }
@@ -44,41 +40,18 @@ impl<S> SimRelay<S>
 where
     S: Copy,
 {
-    pub(crate) fn map_state<T>(&self, f: impl FnOnce(S, IpStack) -> T, span: Span) -> SimRelay<T> {
+    pub(crate) fn map<T>(&self, f: impl FnOnce(S) -> T) -> SimRelay<T> {
         SimRelay {
             id: self.id,
-            state: f(self.state, self.ip_stack),
-            ip_stack: self.ip_stack,
+            state: f(self.state),
             allocations: self.allocations.clone(),
             buffer: self.buffer.clone(),
-            span,
+            ip_stack: self.ip_stack,
         }
     }
 }
 
 impl SimRelay<firezone_relay::Server<StdRng>> {
-    pub(crate) fn wants(&self, dst: SocketAddr) -> bool {
-        let is_direct = self.matching_listen_socket(dst).is_some_and(|s| s == dst);
-        let is_allocation_port = self.allocations.contains(&match dst {
-            SocketAddr::V4(_) => (AddressFamily::V4, AllocationPort::new(dst.port())),
-            SocketAddr::V6(_) => (AddressFamily::V6, AllocationPort::new(dst.port())),
-        });
-        let is_allocation_ip = self
-            .matching_listen_socket(dst)
-            .is_some_and(|s| s.ip() == dst.ip());
-
-        is_direct || (is_allocation_port && is_allocation_ip)
-    }
-
-    pub(crate) fn sending_socket_for(&self, dst: SocketAddr, port: u16) -> Option<SocketAddr> {
-        Some(match dst {
-            SocketAddr::V4(_) => SocketAddr::V4(SocketAddrV4::new(*self.ip_stack.as_v4()?, port)),
-            SocketAddr::V6(_) => {
-                SocketAddr::V6(SocketAddrV6::new(*self.ip_stack.as_v6()?, port, 0, 0))
-            }
-        })
-    }
-
     pub(crate) fn explode(&self, username: &str) -> (RelayId, RelaySocket, String, String, String) {
         let relay_socket = match self.ip_stack {
             firezone_relay::IpStack::Ip4(ip4) => RelaySocket::V4(SocketAddrV4::new(ip4, 3478)),
@@ -123,7 +96,7 @@ impl SimRelay<firezone_relay::Server<StdRng>> {
         sender: SocketAddr,
         dst: SocketAddr,
         now: Instant,
-        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+        buffered_transmits: &mut VecDeque<Transmit<'static>>,
     ) {
         if self.matching_listen_socket(dst).is_some_and(|s| s == dst) {
             self.handle_client_input(payload, ClientSocket::new(sender), now, buffered_transmits);
@@ -143,12 +116,9 @@ impl SimRelay<firezone_relay::Server<StdRng>> {
         payload: &[u8],
         client: ClientSocket,
         now: Instant,
-        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+        buffered_transmits: &mut VecDeque<Transmit<'static>>,
     ) {
-        if let Some((port, peer)) = self
-            .span
-            .in_scope(|| self.state.handle_client_input(payload, client, now))
-        {
+        if let Some((port, peer)) = self.state.handle_client_input(payload, client, now) {
             let payload = &payload[4..];
 
             // The `dst` of the relayed packet is what TURN calls a "peer".
@@ -177,25 +147,11 @@ impl SimRelay<firezone_relay::Server<StdRng>> {
             // The `src` of the relayed packet is the relay itself _from_ the allocated port.
             let src = SocketAddr::new(src_ip, port.value());
 
-            // Check if we need to relay to ourselves (from one allocation to another)
-            if self.wants(dst) {
-                // When relaying to ourselves, we become our own peer.
-                let peer_socket = PeerSocket::new(src);
-                // The allocation that the data is arriving on is the `dst`'s port.
-                let allocation_port = AllocationPort::new(dst.port());
-
-                self.handle_peer_traffic(payload, peer_socket, allocation_port, buffered_transmits);
-                return;
-            }
-
-            buffered_transmits.push_back((
-                Transmit {
-                    src: Some(src),
-                    dst,
-                    payload: Cow::Owned(payload.to_vec()),
-                },
-                Some(src),
-            ));
+            buffered_transmits.push_back(Transmit {
+                src: Some(src),
+                dst,
+                payload: Cow::Owned(payload.to_vec()),
+            });
         }
     }
 
@@ -204,12 +160,9 @@ impl SimRelay<firezone_relay::Server<StdRng>> {
         payload: &[u8],
         peer: PeerSocket,
         port: AllocationPort,
-        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+        buffered_transmits: &mut VecDeque<Transmit<'static>>,
     ) {
-        if let Some((client, channel)) = self
-            .span
-            .in_scope(|| self.state.handle_peer_traffic(payload, peer, port))
-        {
+        if let Some((client, channel)) = self.state.handle_peer_traffic(payload, peer, port) {
             let full_length = firezone_relay::ChannelData::encode_header_to_slice(
                 channel,
                 payload.len() as u16,
@@ -220,14 +173,11 @@ impl SimRelay<firezone_relay::Server<StdRng>> {
             let receiving_socket = client.into_socket();
             let sending_socket = self.matching_listen_socket(receiving_socket).unwrap();
 
-            buffered_transmits.push_back((
-                Transmit {
-                    src: Some(sending_socket),
-                    dst: receiving_socket,
-                    payload: Cow::Owned(self.buffer[..full_length].to_vec()),
-                },
-                Some(sending_socket),
-            ));
+            buffered_transmits.push_back(Transmit {
+                src: Some(sending_socket),
+                dst: receiving_socket,
+                payload: Cow::Owned(self.buffer[..full_length].to_vec()),
+            });
         }
     }
 
@@ -249,7 +199,7 @@ impl SimRelay<firezone_relay::Server<StdRng>> {
 pub(crate) fn sim_relay_prototype(
     socket_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
     socket_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
-) -> impl Strategy<Value = SimRelay<u64>> {
+) -> impl Strategy<Value = Host<SimRelay<u64>>> {
     let socket_ip4 = socket_ip4s.next().unwrap();
     let socket_ip6 = socket_ip6s.next().unwrap();
 
@@ -259,6 +209,10 @@ pub(crate) fn sim_relay_prototype(
         ip6: socket_ip6,
     });
 
-    (any::<u64>(), socket_ips, any::<u128>())
-        .prop_map(|(seed, ip_stack, id)| SimRelay::new(RelayId::from_u128(id), seed, ip_stack))
+    (any::<u64>(), socket_ips, any::<u128>()).prop_map(move |(seed, ip_stack, id)| {
+        let mut host = Host::new(SimRelay::new(RelayId::from_u128(id), seed, ip_stack));
+        host.update_interface(ip_stack.as_v4().copied(), ip_stack.as_v6().copied(), 3478);
+
+        host
+    })
 }

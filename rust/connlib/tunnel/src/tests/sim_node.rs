@@ -1,9 +1,7 @@
-use super::sim_relay::SimRelay;
+use super::{sim_net::Host, sim_relay::SimRelay};
 use crate::{ClientState, GatewayState};
 use connlib_shared::{
-    messages::{
-        client::ResourceDescription, ClientId, DnsServer, GatewayId, Interface, ResourceId,
-    },
+    messages::{ClientId, DnsServer, GatewayId, Interface},
     proptest::domain_name,
     StaticSecret,
 };
@@ -14,47 +12,26 @@ use rand::rngs::StdRng;
 use std::{
     collections::{HashMap, HashSet},
     fmt,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
     time::Instant,
 };
-use tracing::Span;
 
-#[derive(Clone, derivative::Derivative)]
-#[derivative(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct SimNode<ID, S> {
     pub(crate) id: ID,
     pub(crate) state: S,
 
-    pub(crate) ip4_socket: Option<SocketAddrV4>,
-    pub(crate) ip6_socket: Option<SocketAddrV6>,
-
-    pub(crate) old_sockets: Vec<SocketAddr>,
-
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,
-
-    #[derivative(Debug = "ignore")]
-    pub(crate) span: Span,
 }
 
 impl<ID, S> SimNode<ID, S> {
-    pub(crate) fn new(
-        id: ID,
-        state: S,
-        ip4_socket: Option<SocketAddrV4>,
-        ip6_socket: Option<SocketAddrV6>,
-        tunnel_ip4: Ipv4Addr,
-        tunnel_ip6: Ipv6Addr,
-    ) -> Self {
+    pub(crate) fn new(id: ID, state: S, tunnel_ip4: Ipv4Addr, tunnel_ip6: Ipv6Addr) -> Self {
         Self {
             id,
             state,
-            ip4_socket,
-            ip6_socket,
             tunnel_ip4,
             tunnel_ip6,
-            span: Span::none(),
-            old_sockets: Default::default(),
         }
     }
 }
@@ -64,16 +41,12 @@ where
     ID: Copy,
     S: Clone,
 {
-    pub(crate) fn map_state<T>(&self, f: impl FnOnce(S) -> T, span: Span) -> SimNode<ID, T> {
+    pub(crate) fn map<T>(&self, f: impl FnOnce(S) -> T) -> SimNode<ID, T> {
         SimNode {
             id: self.id,
             state: f(self.state.clone()),
-            ip4_socket: self.ip4_socket,
-            ip6_socket: self.ip6_socket,
             tunnel_ip4: self.tunnel_ip4,
             tunnel_ip6: self.tunnel_ip6,
-            old_sockets: self.old_sockets.clone(),
-            span,
         }
     }
 }
@@ -84,57 +57,19 @@ impl SimNode<ClientId, ClientState> {
         relays: [&SimRelay<firezone_relay::Server<StdRng>>; N],
         now: Instant,
     ) {
-        self.span.in_scope(|| {
-            self.state.update_relays(
-                HashSet::default(),
-                HashSet::from(relays.map(|r| r.explode("client"))),
-                now,
-            )
-        });
+        self.state.update_relays(
+            HashSet::default(),
+            HashSet::from(relays.map(|r| r.explode("client"))),
+            now,
+        )
     }
 
     pub(crate) fn update_upstream_dns(&mut self, upstream_dns_resolvers: Vec<DnsServer>) {
-        self.span.in_scope(|| {
-            let _ = self.state.update_interface_config(Interface {
-                ipv4: self.tunnel_ip4,
-                ipv6: self.tunnel_ip6,
-                upstream_dns: upstream_dns_resolvers,
-            });
+        let _ = self.state.update_interface_config(Interface {
+            ipv4: self.tunnel_ip4,
+            ipv6: self.tunnel_ip6,
+            upstream_dns: upstream_dns_resolvers,
         });
-    }
-
-    pub(crate) fn update_system_dns(&mut self, system_dns_resolvers: Vec<IpAddr>) {
-        self.span.in_scope(|| {
-            let _ = self.state.update_system_resolvers(system_dns_resolvers);
-        });
-    }
-
-    pub(crate) fn add_resource(&mut self, resource: ResourceDescription) {
-        self.span.in_scope(|| {
-            self.state.add_resources(&[resource]);
-        })
-    }
-
-    pub(crate) fn remove_resource(&mut self, resource: ResourceId) {
-        self.span.in_scope(|| {
-            self.state.remove_resources(&[resource]);
-        })
-    }
-
-    pub(crate) fn roam(
-        &mut self,
-        ip4_socket: Option<SocketAddrV4>,
-        ip6_socket: Option<SocketAddrV6>,
-    ) {
-        // 1. Remember what the current sockets were.
-        self.old_sockets.extend(self.ip4_socket.map(SocketAddr::V4));
-        self.old_sockets.extend(self.ip6_socket.map(SocketAddr::V6));
-
-        // 2. Update to the new sockets.
-        self.ip4_socket = ip4_socket;
-        self.ip6_socket = ip6_socket;
-
-        self.state.reset();
     }
 }
 
@@ -144,29 +79,15 @@ impl SimNode<GatewayId, GatewayState> {
         relays: [&SimRelay<firezone_relay::Server<StdRng>>; N],
         now: Instant,
     ) {
-        self.span.in_scope(|| {
-            self.state.update_relays(
-                HashSet::default(),
-                HashSet::from(relays.map(|r| r.explode("gateway"))),
-                now,
-            )
-        });
+        self.state.update_relays(
+            HashSet::default(),
+            HashSet::from(relays.map(|r| r.explode("gateway"))),
+            now,
+        )
     }
 }
 
 impl<ID, S> SimNode<ID, S> {
-    pub(crate) fn wants(&self, dst: SocketAddr) -> bool {
-        self.ip4_socket.is_some_and(|s| SocketAddr::V4(s) == dst)
-            || self.ip6_socket.is_some_and(|s| SocketAddr::V6(s) == dst)
-    }
-
-    pub(crate) fn sending_socket_for(&self, dst: impl Into<IpAddr>) -> Option<SocketAddr> {
-        Some(match dst.into() {
-            IpAddr::V4(_) => self.ip4_socket?.into(),
-            IpAddr::V6(_) => self.ip6_socket?.into(),
-        })
-    }
-
     pub(crate) fn tunnel_ip(&self, dst: impl Into<IpAddr>) -> IpAddr {
         match dst.into() {
             IpAddr::V4(_) => IpAddr::from(self.tunnel_ip4),
@@ -203,7 +124,7 @@ pub(crate) fn sim_node_prototype<ID, S>(
     socket_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
     tunnel_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
     tunnel_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
-) -> impl Strategy<Value = SimNode<ID, S>>
+) -> impl Strategy<Value = Host<SimNode<ID, S>>>
 where
     ID: fmt::Debug,
     S: fmt::Debug,
@@ -229,12 +150,10 @@ where
         any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
     )
         .prop_map(move |(id, state, ip_stack, port)| {
-            let ip4_socket = ip_stack.as_v4().map(|ip| SocketAddrV4::new(*ip, port));
-            let ip6_socket = ip_stack
-                .as_v6()
-                .map(|ip| SocketAddrV6::new(*ip, port, 0, 0));
+            let mut host = Host::new(SimNode::new(id, state, tunnel_ip4, tunnel_ip6));
+            host.update_interface(ip_stack.as_v4().copied(), ip_stack.as_v6().copied(), port);
 
-            SimNode::new(id, state, ip4_socket, ip6_socket, tunnel_ip4, tunnel_ip6)
+            host
         })
 }
 

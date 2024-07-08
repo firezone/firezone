@@ -12,7 +12,7 @@ use hickory_proto::rr::RecordType;
 use proptest::{prelude::*, sample};
 use std::{
     collections::{HashMap, HashSet},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
 
 /// The possible transitions of the state machine.
@@ -76,8 +76,9 @@ pub(crate) enum Transition {
 
     /// Roam the client to a new pair of sockets.
     RoamClient {
-        ip4_socket: Option<SocketAddrV4>,
-        ip6_socket: Option<SocketAddrV6>,
+        ip4: Option<Ipv4Addr>,
+        ip6: Option<Ipv6Addr>,
+        port: u16,
     },
 }
 
@@ -228,15 +229,9 @@ pub(crate) fn roam_client(
         ip_stack,
         any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
     )
-        .prop_map(move |(ip_stack, port)| {
-            let ip4_socket = ip_stack.as_v4().map(|ip| SocketAddrV4::new(*ip, port));
-            let ip6_socket = ip_stack
-                .as_v6()
-                .map(|ip| SocketAddrV6::new(*ip, port, 0, 0));
-
-            Transition::RoamClient {
-                ip4_socket,
-                ip6_socket,
-            }
+        .prop_map(move |(ip_stack, port)| Transition::RoamClient {
+            ip4: ip_stack.as_v4().copied(),
+            ip6: ip_stack.as_v6().copied(),
+            port,
         })
 }

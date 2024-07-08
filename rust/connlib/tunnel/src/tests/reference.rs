@@ -1,6 +1,6 @@
 use super::{
     composite_strategy::CompositeStrategy,
-    sim_net::{socket_ip4s, socket_ip6s},
+    sim_net::{socket_ip4s, socket_ip6s, Host},
     sim_node::*,
     sim_relay::*,
     strategies::*,
@@ -30,13 +30,15 @@ use std::{
 /// The reference state machine of the tunnel.
 ///
 /// This is the "expected" part of our test.
-#[derive(Clone, Debug)]
+#[derive(Clone, derivative::Derivative)]
+#[derivative(Debug)]
 pub(crate) struct ReferenceState {
     pub(crate) now: Instant,
     pub(crate) utc_now: DateTime<Utc>,
-    pub(crate) client: SimNode<ClientId, (PrivateKey, HashMap<String, Vec<IpAddr>>)>,
-    pub(crate) gateway: SimNode<GatewayId, PrivateKey>,
-    pub(crate) relay: SimRelay<u64>,
+    #[allow(clippy::type_complexity)]
+    pub(crate) client: Host<SimNode<ClientId, (PrivateKey, HashMap<String, Vec<IpAddr>>)>>,
+    pub(crate) gateway: Host<SimNode<GatewayId, PrivateKey>>,
+    pub(crate) relay: Host<SimRelay<u64>>,
 
     /// The DNS resolvers configured on the client outside of connlib.
     pub(crate) system_dns_resolvers: Vec<IpAddr>,
@@ -73,7 +75,9 @@ pub(crate) struct ReferenceState {
     /// The expected DNS handshakes.
     pub(crate) expected_dns_handshakes: VecDeque<QueryId>,
 
+    #[derivative(Debug = "ignore")]
     possible_roaming_ip4s: Vec<Ipv4Addr>,
+    #[derivative(Debug = "ignore")]
     possible_roaming_ip6s: Vec<Ipv6Addr>,
 }
 
@@ -135,7 +139,7 @@ impl ReferenceStateMachine for ReferenceState {
         )
             .prop_filter(
                 "client and gateway priv key must be different",
-                |(c, g, _, _, _, _, _, __, _, _)| c.state.0 != g.state,
+                |(c, g, _, _, _, _, _, __, _, _)| c.inner().state.0 != g.inner().state,
             )
             .prop_filter(
                 "at least one DNS server needs to be reachable",
@@ -143,20 +147,20 @@ impl ReferenceStateMachine for ReferenceState {
                     // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
 
                     if !upstream_dns.is_empty() {
-                        if c.ip4_socket.is_none() && upstream_dns.iter().all(|s| s.ip().is_ipv4()) {
+                        if c.ip4.is_none() && upstream_dns.iter().all(|s| s.ip().is_ipv4()) {
                             return false;
                         }
-                        if c.ip6_socket.is_none() && upstream_dns.iter().all(|s| s.ip().is_ipv6()) {
+                        if c.ip6.is_none() && upstream_dns.iter().all(|s| s.ip().is_ipv6()) {
                             return false;
                         }
 
                         return true;
                     }
 
-                    if c.ip4_socket.is_none() && system_dns.iter().all(|s| s.is_ipv4()) {
+                    if c.ip4.is_none() && system_dns.iter().all(|s| s.is_ipv4()) {
                         return false;
                     }
-                    if c.ip6_socket.is_none() && system_dns.iter().all(|s| s.is_ipv6()) {
+                    if c.ip6.is_none() && system_dns.iter().all(|s| s.is_ipv6()) {
                         return false;
                     }
 
@@ -184,7 +188,7 @@ impl ReferenceStateMachine for ReferenceState {
                     system_dns_resolvers,
                     upstream_dns_resolvers,
                     global_dns_records,
-                    client_known_host_records: client.state.1,
+                    client_known_host_records: client.inner().state.1.clone(),
                     client_cidr_resources: IpNetworkTable::new(),
                     client_connected_cidr_resources: Default::default(),
                     expected_icmp_handshakes: Default::default(),
@@ -240,25 +244,25 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .with_if_not_empty(10, state.ipv4_cidr_resource_dsts(), |ip4_resources| {
                 icmp_to_cidr_resource(
-                    packet_source_v4(state.client.tunnel_ip4),
+                    packet_source_v4(state.client.inner().tunnel_ip4),
                     sample::select(ip4_resources),
                 )
             })
             .with_if_not_empty(10, state.ipv6_cidr_resource_dsts(), |ip6_resources| {
                 icmp_to_cidr_resource(
-                    packet_source_v6(state.client.tunnel_ip6),
+                    packet_source_v6(state.client.inner().tunnel_ip6),
                     sample::select(ip6_resources),
                 )
             })
             .with_if_not_empty(10, state.resolved_v4_domains(), |dns_v4_domains| {
                 icmp_to_dns_resource(
-                    packet_source_v4(state.client.tunnel_ip4),
+                    packet_source_v4(state.client.inner().tunnel_ip4),
                     sample::select(dns_v4_domains),
                 )
             })
             .with_if_not_empty(10, state.resolved_v6_domains(), |dns_v6_domains| {
                 icmp_to_dns_resource(
-                    packet_source_v6(state.client.tunnel_ip6),
+                    packet_source_v6(state.client.inner().tunnel_ip6),
                     sample::select(dns_v6_domains),
                 )
             })
@@ -267,7 +271,7 @@ impl ReferenceStateMachine for ReferenceState {
                 (
                     state.all_domains(),
                     state.v4_dns_servers(),
-                    state.client.ip4_socket,
+                    state.client.ip4,
                 ),
                 |(domains, v4_dns_servers, _)| {
                     dns_query(sample::select(domains), sample::select(v4_dns_servers))
@@ -278,7 +282,7 @@ impl ReferenceStateMachine for ReferenceState {
                 (
                     state.all_domains(),
                     state.v6_dns_servers(),
-                    state.client.ip6_socket,
+                    state.client.ip6,
                 ),
                 |(domains, v6_dns_servers, _)| {
                     dns_query(sample::select(domains), sample::select(v6_dns_servers))
@@ -289,7 +293,7 @@ impl ReferenceStateMachine for ReferenceState {
                 state.resolved_ip4_for_non_resources(),
                 |resolved_non_resource_ip4s| {
                     ping_random_ip(
-                        packet_source_v4(state.client.tunnel_ip4),
+                        packet_source_v4(state.client.inner().tunnel_ip4),
                         sample::select(resolved_non_resource_ip4s),
                     )
                 },
@@ -299,7 +303,7 @@ impl ReferenceStateMachine for ReferenceState {
                 state.resolved_ip6_for_non_resources(),
                 |resolved_non_resource_ip6s| {
                     ping_random_ip(
-                        packet_source_v6(state.client.tunnel_ip6),
+                        packet_source_v6(state.client.inner().tunnel_ip6),
                         sample::select(resolved_non_resource_ip6s),
                     )
                 },
@@ -404,11 +408,12 @@ impl ReferenceStateMachine for ReferenceState {
                 state.upstream_dns_resolvers.clone_from(servers);
             }
             Transition::RoamClient {
-                ip4_socket,
-                ip6_socket,
+                ip4: ip4_socket,
+                ip6: ip6_socket,
+                ..
             } => {
-                state.client.ip4_socket.clone_from(ip4_socket);
-                state.client.ip6_socket.clone_from(ip6_socket);
+                state.client.ip4.clone_from(ip4_socket);
+                state.client.ip6.clone_from(ip6_socket);
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
                 state.client_connected_cidr_resources.clear();
@@ -416,11 +421,11 @@ impl ReferenceStateMachine for ReferenceState {
 
                 // Remove the new address from the list of possible roaming IP.
                 state.possible_roaming_ip4s.retain(|ip4| match ip4_socket {
-                    Some(ip4_socket) => ip4_socket.ip() != ip4,
+                    Some(ip4_socket) => ip4_socket != ip4,
                     None => true,
                 });
                 state.possible_roaming_ip6s.retain(|ip6| match ip6_socket {
-                    Some(ip6_socket) => ip6_socket.ip() != ip6,
+                    Some(ip6_socket) => ip6_socket != ip6,
                     None => true,
                 });
             }
@@ -435,11 +440,11 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::AddCidrResource(r) => {
                 // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
 
-                if r.address.is_ipv6() && state.gateway.ip6_socket.is_none() {
+                if r.address.is_ipv6() && state.gateway.ip6.is_none() {
                     return false;
                 }
 
-                if r.address.is_ipv4() && state.gateway.ip4_socket.is_none() {
+                if r.address.is_ipv4() && state.gateway.ip4.is_none() {
                     return false;
                 }
 
@@ -510,10 +515,10 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::UpdateSystemDnsServers { servers } => {
                 // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
 
-                if state.client.ip4_socket.is_none() && servers.iter().all(|s| s.is_ipv4()) {
+                if state.client.ip4.is_none() && servers.iter().all(|s| s.is_ipv4()) {
                     return false;
                 }
-                if state.client.ip6_socket.is_none() && servers.iter().all(|s| s.is_ipv6()) {
+                if state.client.ip6.is_none() && servers.iter().all(|s| s.is_ipv6()) {
                     return false;
                 }
 
@@ -522,10 +527,10 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::UpdateUpstreamDnsServers { servers } => {
                 // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
 
-                if state.client.ip4_socket.is_none() && servers.iter().all(|s| s.ip().is_ipv4()) {
+                if state.client.ip4.is_none() && servers.iter().all(|s| s.ip().is_ipv4()) {
                     return false;
                 }
-                if state.client.ip6_socket.is_none() && servers.iter().all(|s| s.ip().is_ipv6()) {
+                if state.client.ip6.is_none() && servers.iter().all(|s| s.ip().is_ipv6()) {
                     return false;
                 }
 
@@ -541,18 +546,16 @@ impl ReferenceStateMachine for ReferenceState {
                 state.client_cidr_resources.iter().any(|(_, r)| &r.id == id)
                     || state.client_dns_resources.contains_key(id)
             }
-            Transition::RoamClient {
-                ip4_socket,
-                ip6_socket,
-            } => {
+            Transition::RoamClient { ip4, ip6, port } => {
                 // In production, we always rebind to a new port so we never roam to our old existing IP / port combination.
 
-                let is_previous_ip4_socket = ip4_socket
-                    .is_some_and(|s| state.client.old_sockets.contains(&SocketAddr::V4(s)));
-                let is_previous_ip6_socket = ip6_socket
-                    .is_some_and(|s| state.client.old_sockets.contains(&SocketAddr::V6(s)));
+                let is_previous_ip4 =
+                    ip4.is_some_and(|ip| state.client.old_ips.contains(&IpAddr::V4(ip)));
+                let is_previous_ip6 =
+                    ip6.is_some_and(|ip| state.client.old_ips.contains(&IpAddr::V6(ip)));
+                let is_previous_port = state.client.old_ports.contains(port);
 
-                !is_previous_ip4_socket && !is_previous_ip6_socket
+                !is_previous_ip4 && !is_previous_ip6 && !is_previous_port
             }
         }
     }
@@ -594,7 +597,7 @@ impl ReferenceState {
         tracing::Span::current().record("resource", tracing::field::display(resource.id));
 
         if self.client_connected_cidr_resources.contains(&resource.id)
-            && self.client.is_tunnel_ip(src)
+            && self.client.inner().is_tunnel_ip(src)
         {
             tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
             self.expected_icmp_handshakes
@@ -621,7 +624,7 @@ impl ReferenceState {
         if self
             .client_connected_dns_resources
             .contains(&(resource, dst.clone()))
-            && self.client.is_tunnel_ip(src)
+            && self.client.inner().is_tunnel_ip(src)
         {
             tracing::debug!("Connected to DNS resource, expecting packet to be routed");
             self.expected_icmp_handshakes
