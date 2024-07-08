@@ -230,6 +230,7 @@ impl StateMachineTest for TunnelTest {
                 state.client.exec_mut(|c| c.update_upstream_dns(servers));
             }
             Transition::RoamClient { ip4, ip6, port } => {
+                state.network.remove_host(&state.client);
                 state.client.update_interface(ip4, ip6, port);
                 debug_assert!(state.network.add_host(&state.client));
 
@@ -473,11 +474,6 @@ impl TunnelTest {
 
         match component {
             ComponentId::Client(_) => {
-                if self.client.old_ips.contains(&dst.ip()) {
-                    tracing::debug!("Dropping packet to {dst} because the client roamed away from this network interface");
-                    return;
-                }
-
                 debug_assert!(self.client.wants(dst));
 
                 let Some(packet) = self
@@ -512,6 +508,9 @@ impl TunnelTest {
                 };
 
                 buffered_transmits.push_back(transmit);
+            }
+            ComponentId::Stale => {
+                tracing::debug!("Dropping packet because host roamed away or is offline");
             }
         }
     }

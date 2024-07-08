@@ -413,6 +413,7 @@ impl ReferenceStateMachine for ReferenceState {
                 ip6: ip6_socket,
                 ..
             } => {
+                state.network.remove_host(&state.client);
                 state.client.ip4.clone_from(ip4_socket);
                 state.client.ip6.clone_from(ip6_socket);
                 debug_assert!(state.network.add_host(&state.client));

@@ -292,6 +292,30 @@ impl RoutingTable {
         true
     }
 
+    #[allow(private_bounds)]
+    pub(crate) fn remove_host<T>(&mut self, host: &Host<T>) {
+        match (host.ip4, host.ip6) {
+            (None, None) => panic!("Node must have at least one network IP"),
+            (None, Some(ip6)) => {
+                debug_assert!(self.contains(ip6), "Cannot remove a non-existing host");
+
+                self.routes.insert(ip6, ComponentId::Stale);
+            }
+            (Some(ip4), None) => {
+                debug_assert!(self.contains(ip4), "Cannot remove a non-existing host");
+
+                self.routes.insert(ip4, ComponentId::Stale);
+            }
+            (Some(ip4), Some(ip6)) => {
+                debug_assert!(self.contains(ip4), "Cannot remove a non-existing host");
+                debug_assert!(self.contains(ip6), "Cannot remove a non-existing host");
+
+                self.routes.insert(ip4, ComponentId::Stale);
+                self.routes.insert(ip6, ComponentId::Stale);
+            }
+        }
+    }
+
     pub(crate) fn contains(&self, ip: impl Into<IpNetwork>) -> bool {
         self.routes.exact_match(ip).is_some()
     }
@@ -325,6 +349,7 @@ pub(crate) enum ComponentId {
     Client(ClientId),
     Gateway(GatewayId),
     Relay(RelayId),
+    Stale,
 }
 
 impl From<RelayId> for ComponentId {
