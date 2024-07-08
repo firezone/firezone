@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Entries from "./Entries";
 import Entry from "./Entry";
 
@@ -7,6 +8,21 @@ export default function Android() {
       href="https://play.google.com/store/apps/details?id=dev.firezone.android"
       title="Android"
     >
+      <Entry version="1.1.3" date={new Date("2024-07-06")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            Fixes{" "}
+            <Link
+              href="https://github.com/firezone/firezone/issues/5781"
+              className="text-accent-500 underline hover:no-underline"
+            >
+              an issue
+            </Link>{" "}
+            where the app would crash if IPv6 scopes were present in the DNS
+            servers discovered on the local system.
+          </li>
+        </ul>
+      </Entry>
       <Entry version="1.1.2" date={new Date("2024-07-03")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">

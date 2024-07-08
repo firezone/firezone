@@ -53,10 +53,10 @@ android {
         applicationId = "dev.firezone.android"
         // Android 8
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
-        versionName = "1.1.3"
+        versionName = "1.1.4"
         multiDexEnabled = true
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
     }
@@ -127,7 +127,7 @@ android {
             firebaseAppDistribution {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
                 artifactType = "AAB"
-                releaseNotes = "https://github.com/firezone/firezone/releases"
+                releaseNotes = "https://www.firezone.dev/changelog"
                 groups = "firezone-engineering"
                 artifactPath = "app/build/outputs/bundle/release/app-release.aab"
             }

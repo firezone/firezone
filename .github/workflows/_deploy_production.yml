@@ -184,18 +184,12 @@ jobs:
     needs: deploy-production
     runs-on: ubuntu-22.04
     env:
-      VERCEL_PROJECT: firezone
-      VERCEL_SLUG: firezone
-      # Fetched from Vercel's API. Not a secret.
-      VERCEL_ENV_VAR_ID: Ph436pR2So7nwrSI
+      VERCEL_TEAM_ID: firezone
+      VERCEL_EDGE_CONFIG_ID: ecfg_hmorgeez26rwyncgsuj1yaibfx4p
     steps:
       - name: Update FIREZONE_DEPLOYED_SHA
         run: |
-          curl --fail -X PATCH "https://api.vercel.com/v9/projects/${VERCEL_PROJECT}/env/${VERCEL_ENV_VAR_ID}?slug=${VERCEL_SLUG}" \
-            -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" -H "Content-Type: application/json" \
-            -d '{
-              "comment": "latest deployed SHA for control plane",
-              "key": "FIREZONE_DEPLOYED_SHA",
-              "type": "plain",
-              "value": "${{ inputs.tag }}"
-            }'
+          curl --fail -X PATCH "https://api.vercel.com/v1/edge-config/${VERCEL_EDGE_CONFIG_ID}/items?teamId=${VERCEL_TEAM_ID}" \
+            -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{ "items": [ { "operation": "upsert", "key": "deployed_sha", "value": "${{ inputs.tag }}" } ] }'

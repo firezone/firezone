@@ -25,7 +25,10 @@ class NetworkMonitor(private val tunnelService: TunnelService) : ConnectivityMan
 
             if (lastDns != linkProperties.dnsServers) {
                 lastDns = linkProperties.dnsServers
-                ConnlibSession.setDns(tunnelService.connlibSessionPtr!!, Gson().toJson(linkProperties.dnsServers))
+
+                // Strip the scope id from IPv6 addresses. See https://github.com/firezone/firezone/issues/5781
+                val dnsList = linkProperties.dnsServers.map { it.hostAddress!!.split("%")[0] }
+                ConnlibSession.setDns(tunnelService.connlibSessionPtr!!, Gson().toJson(dnsList))
             }
 
             if (lastNetwork != network) {

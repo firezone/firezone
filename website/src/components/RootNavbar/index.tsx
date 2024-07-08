@@ -17,10 +17,11 @@ import { HiChevronDown } from "react-icons/hi2";
 import type { CustomFlowbiteTheme } from "flowbite-react";
 import { HiBars3 } from "react-icons/hi2";
 import { useDrawer } from "@/components/Providers/DrawerProvider";
+import { useScrollPosition } from "@/hooks/useScrollPosition";
 
 const navbarTheme: CustomFlowbiteTheme["navbar"] = {
   root: {
-    base: "fixed top-0 left-0 right-0 z-50 items-center bg-white px-2 py-2.5 sm:px-4",
+    base: "fixed top-0 left-0 right-0 z-50 items-center bg-white px-2 py-2.5 sm:px-4 transition-shadow",
     rounded: {
       on: "rounded",
       off: "",
@@ -150,9 +151,21 @@ function SidebarToggle() {
   }
 }
 
+function applyTheme(scrollPosition: number) {
+  return {
+    ...navbarTheme,
+    root: {
+      ...navbarTheme?.root,
+      base: `${navbarTheme?.root?.base} ${scrollPosition > 0 ? "shadow" : "shadow-none"}`,
+    },
+  };
+}
+
 export default function RootNavbar() {
+  const scrollPosition = useScrollPosition();
+
   return (
-    <Navbar theme={navbarTheme} fluid>
+    <Navbar theme={applyTheme(scrollPosition)} fluid>
       <SidebarToggle />
       <NavbarBrand as={Link} href="/">
         <Image
@@ -173,9 +186,9 @@ export default function RootNavbar() {
       <NavbarToggle barIcon={HiBars3} />
       <NavbarCollapse>
         <Dropdown theme={dropdownTheme} label="Product" inline>
-          <DropdownItem href="/changelog">Changelog</DropdownItem>
           <DropdownItem href="/kb/user-guides">Download</DropdownItem>
           <DropdownItem href="/contact/sales">Book a demo</DropdownItem>
+          <DropdownItem href="/kb/use-cases">Use cases</DropdownItem>
           <DropdownItem href="https://www.github.com/firezone/firezone">
             Open source
           </DropdownItem>
@@ -183,6 +196,7 @@ export default function RootNavbar() {
             Roadmap
           </DropdownItem>
           <DropdownItem href="/product/newsletter">Newsletter</DropdownItem>
+          <DropdownItem href="/changelog">Changelog</DropdownItem>
         </Dropdown>
         <NavbarLink href="/kb">Docs</NavbarLink>
         <NavbarLink href="/pricing">Pricing</NavbarLink>
@@ -194,7 +208,7 @@ export default function RootNavbar() {
         <ActionLink
           href="https://app.firezone.dev/"
           className="hidden md:inline-flex py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-700 md:border-transparent hover:text-primary-450 hover:bg-neutral-200 md:hover:bg-transparent md:border-b-2 md:hover:border-primary-450 duration-50 transition transform"
-          size="w-5 h-5"
+          size="w-5 h-5 ml-1"
         >
           Sign in
         </ActionLink>

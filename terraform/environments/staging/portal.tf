@@ -204,10 +204,6 @@ locals {
     },
     # Secrets
     {
-      name  = "SECRET_KEY_BASE"
-      value = random_password.secret_key_base.result
-    },
-    {
       name  = "TOKENS_KEY_BASE"
       value = base64encode(random_password.tokens_key_base.result)
     },
@@ -355,7 +351,7 @@ locals {
     # Sign Up
     {
       name  = "SIGN_UP_WHITELISTED_DOMAINS"
-      value = "firezone.dev,firez.one,pentesters.oneleet.com"
+      value = "firezone.dev,firez.one,firezonedemo.com"
     },
     {
       name  = "FEATURE_REST_API_ENABLED"
