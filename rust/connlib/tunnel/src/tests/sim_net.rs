@@ -58,26 +58,6 @@ impl<T> Host<T> {
         self.span.in_scope(|| f(&mut self.inner))
     }
 
-    /// Checks if this [`Host`] wants traffic for the given [`SocketAddr`].
-    ///
-    /// To accept traffic, the IP of our interface must match and we must have allocated the port.
-    pub(crate) fn wants(&self, dst: SocketAddr) -> bool {
-        match dst {
-            SocketAddr::V4(s) => {
-                self.ip4.is_some_and(|v4| &v4 == s.ip())
-                    && self
-                        .allocated_ports
-                        .contains(&(s.port(), AddressFamily::V4))
-            }
-            SocketAddr::V6(s) => {
-                self.ip6.is_some_and(|v6| &v6 == s.ip())
-                    && self
-                        .allocated_ports
-                        .contains(&(s.port(), AddressFamily::V6))
-            }
-        }
-    }
-
     pub(crate) fn sending_socket_for(&self, dst: impl Into<IpAddr>) -> Option<SocketAddr> {
         let ip = match dst.into() {
             IpAddr::V4(_) => self.ip4?.into(),

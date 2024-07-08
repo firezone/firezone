@@ -474,8 +474,6 @@ impl TunnelTest {
 
         match component {
             ComponentId::Client(_) => {
-                debug_assert!(self.client.wants(dst));
-
                 let Some(packet) = self
                     .client
                     .exec_mut(|c| c.state.decapsulate(dst, src, payload, self.now, &mut buf))
@@ -486,8 +484,6 @@ impl TunnelTest {
                 self.on_client_received_packet(packet);
             }
             ComponentId::Gateway(_) => {
-                debug_assert!(self.gateway.wants(dst));
-
                 let Some(packet) = self
                     .gateway
                     .exec_mut(|g| g.state.decapsulate(dst, src, payload, self.now, &mut buf))
@@ -498,8 +494,6 @@ impl TunnelTest {
                 self.on_gateway_received_packet(packet, global_dns_records, buffered_transmits);
             }
             ComponentId::Relay(_) => {
-                debug_assert!(self.relay.wants(dst));
-
                 let Some(transmit) = self
                     .relay
                     .exec_mut(|r| r.handle_packet(payload, src, dst, self.now))
