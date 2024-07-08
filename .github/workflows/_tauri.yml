@@ -33,6 +33,15 @@ jobs:
             syms-artifact: rust/gui-client/firezone-client-gui-linux_1.1.5_x86_64.dwp
             # mark:next-gui-version
             pkg-artifact: rust/gui-client/firezone-client-gui-linux_1.1.5_x86_64.deb
+          - runs-on: ubuntu-20.04-arm
+            # mark:next-gui-version
+            binary-dest-path: firezone-client-gui-linux_1.1.5_aarch64
+            rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
+            upload-script: ../../scripts/build/tauri-upload-ubuntu.sh
+            # mark:next-gui-version
+            syms-artifact: rust/gui-client/firezone-client-gui-linux_1.1.5_aarch64.dwp
+            # mark:next-gui-version
+            pkg-artifact: rust/gui-client/firezone-client-gui-linux_1.1.5_aarch64.deb
           - runs-on: windows-2019
             # mark:next-gui-version
             binary-dest-path: firezone-client-gui-windows_1.1.5_x86_64
