@@ -2,11 +2,7 @@
 
 use super::TOKEN_ENV_KEY;
 use anyhow::{bail, Result};
-use futures::future::FutureExt as _;
-use std::{
-    path::{Path, PathBuf},
-    pin::pin,
-};
+use std::path::{Path, PathBuf};
 
 // The Client currently must run as root to control DNS
 // Root group and user are used to check file ownership on the token

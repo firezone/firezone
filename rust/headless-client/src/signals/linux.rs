@@ -1,4 +1,6 @@
 use anyhow::Result;
+use futures::FutureExt as _;
+use std::pin::pin;
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
 pub(crate) struct Terminate {
@@ -18,11 +20,7 @@ impl Terminate {
         let sigint = signal(SignalKind::interrupt())?;
         let sigterm = signal(SignalKind::terminate())?;
 
-        Ok(Self {
-            sighup,
-            sigint,
-            sigterm,
-        })
+        Ok(Self { sigint, sigterm })
     }
 
     /// Waits for SIGINT or SIGTERM
@@ -44,6 +42,5 @@ impl Hangup {
     /// Waits for SIGHUP
     pub(crate) async fn recv(&mut self) {
         self.sighup.recv().await;
-        Kind::Hangup
     }
 }
