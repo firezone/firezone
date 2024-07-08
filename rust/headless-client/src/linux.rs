@@ -2,7 +2,7 @@
 
 use super::{SignalKind, TOKEN_ENV_KEY};
 use anyhow::{bail, Result};
-use futures::future::{select, Either};
+use futures::future::FutureExt as _;
 use std::{
     path::{Path, PathBuf},
     pin::pin,
@@ -15,22 +15,32 @@ const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
 
 pub(crate) struct Signals {
+    /// For reloading settings in the standalone Client
     sighup: Signal,
+    /// For Ctrl+C from a terminal
     sigint: Signal,
+    /// For systemd service stopping
+    sigterm: Signal,
 }
 
 impl Signals {
     pub(crate) fn new() -> Result<Self> {
         let sighup = signal(TokioSignalKind::hangup())?;
         let sigint = signal(TokioSignalKind::interrupt())?;
+        let sigterm = signal(TokioSignalKind::terminate())?;
 
-        Ok(Self { sighup, sigint })
+        Ok(Self {
+            sighup,
+            sigint,
+            sigterm,
+        })
     }
 
     pub(crate) async fn recv(&mut self) -> SignalKind {
-        match select(pin!(self.sighup.recv()), pin!(self.sigint.recv())).await {
-            Either::Left((_, _)) => SignalKind::Hangup,
-            Either::Right((_, _)) => SignalKind::Interrupt,
+        futures::select! {
+            _ = pin!(self.sighup.recv().fuse()) => SignalKind::Hangup,
+            _ = pin!(self.sigint.recv().fuse()) => SignalKind::Interrupt,
+            _ = pin!(self.sigterm.recv().fuse()) => SignalKind::Terminate,
         }
     }
 }

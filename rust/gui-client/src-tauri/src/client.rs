@@ -158,6 +158,7 @@ fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
 fn start_logging(directives: &str) -> Result<logging::Handles> {
     let logging_handles = logging::setup(directives)?;
     tracing::info!(
+        arch = std::env::consts::ARCH,
         ?directives,
         ?GIT_VERSION,
         system_uptime_seconds = firezone_headless_client::uptime::get().map(|dur| dur.as_secs()),
