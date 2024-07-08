@@ -402,14 +402,10 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::UpdateUpstreamDnsServers { servers } => {
                 state.upstream_dns_resolvers.clone_from(servers);
             }
-            Transition::RoamClient {
-                ip4: ip4_socket,
-                ip6: ip6_socket,
-                ..
-            } => {
+            Transition::RoamClient { ip4, ip6, .. } => {
                 state.network.remove_host(&state.client);
-                state.client.ip4.clone_from(ip4_socket);
-                state.client.ip6.clone_from(ip6_socket);
+                state.client.ip4.clone_from(ip4);
+                state.client.ip6.clone_from(ip6);
                 debug_assert!(state.network.add_host(&state.client));
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
