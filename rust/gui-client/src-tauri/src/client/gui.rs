@@ -4,20 +4,18 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::client::{
-    self, about, deep_link,
-    ipc::{self, CallbackHandler},
-    logging, network_changes,
+    self, about, deep_link, ipc, logging, network_changes,
     settings::{self, AdvancedSettings},
     Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
-use arc_swap::ArcSwap;
 use connlib_client_shared::callbacks::ResourceDescription;
+use firezone_headless_client::IpcServerMsg;
 use secrecy::{ExposeSecret, SecretString};
-use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{path::PathBuf, str::FromStr, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
-use tokio::sync::{mpsc, oneshot, Notify};
+use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
 use url::Url;
 
@@ -410,10 +408,6 @@ pub(crate) enum ControllerRequest {
     ApplySettings(AdvancedSettings),
     /// Only used for smoke tests
     ClearLogs,
-    Disconnected {
-        error_msg: String,
-        is_authentication_error: bool,
-    },
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {
         path: PathBuf,
@@ -421,10 +415,10 @@ pub(crate) enum ControllerRequest {
     },
     Fail(Failure),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
+    Ipc(Option<Result<IpcServerMsg>>),
     SchemeRequest(SecretString),
     SignIn,
     SystemTrayMenu(TrayMenuEvent),
-    TunnelReady,
     UpdateAvailable(crate::client::updates::Release),
     UpdateNotificationClicked(Url),
 }
@@ -464,9 +458,7 @@ struct Controller {
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
     log_filter_reloader: logging::Reloader,
-    /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
-    notify_controller: Arc<Notify>,
-    resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
+    resources: Vec<ResourceDescription>,
     status: Status,
     uptime: client::uptime::Tracker,
 }
@@ -506,24 +498,10 @@ impl Controller {
         Ok(())
     }
 
-    async fn handle_request(&mut self, req: ControllerRequest) -> Result<(), Error> {
-        match req {
-            Req::ApplySettings(settings) => {
-                let filter =
-                    tracing_subscriber::EnvFilter::try_new(&self.advanced_settings.log_filter)
-                        .context("Couldn't parse new log filter directives")?;
-                self.advanced_settings = settings;
-                self.log_filter_reloader
-                    .reload(filter)
-                    .context("Couldn't reload log filter")?;
-                tracing::debug!(
-                    "Applied new settings. Log level will take effect immediately for the GUI and later for the IPC service."
-                );
-            }
-            Req::ClearLogs => logging::clear_logs_inner()
-                .await
-                .context("Failed to clear logs")?,
-            Req::Disconnected {
+    async fn handle_ipc(&mut self, msg: IpcServerMsg) -> Result<(), Error> {
+        match msg {
+            IpcServerMsg::Ok => {}
+            IpcServerMsg::OnDisconnect {
                 error_msg,
                 is_authentication_error,
             } => {
@@ -544,6 +522,44 @@ impl Controller {
                         .context("Couldn't show Disconnected alert")?;
                 }
             }
+            IpcServerMsg::OnTunnelReady => {
+                if !matches!(self.status, Status::TunnelReady) {
+                    self.status = Status::TunnelReady;
+                    os::show_notification(
+                        "Firezone connected",
+                        "You are now signed in and able to access resources.",
+                    )?;
+                }
+                self.refresh_system_tray_menu()?;
+            }
+            IpcServerMsg::OnUpdateResources(resources) => {
+                self.resources = resources;
+                tracing::debug!("Controller notified of new resources");
+                if let Err(error) = self.refresh_system_tray_menu() {
+                    tracing::error!(?error, "Failed to reload resource list");
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn handle_request(&mut self, req: ControllerRequest) -> Result<(), Error> {
+        match req {
+            Req::ApplySettings(settings) => {
+                let filter =
+                    tracing_subscriber::EnvFilter::try_new(&self.advanced_settings.log_filter)
+                        .context("Couldn't parse new log filter directives")?;
+                self.advanced_settings = settings;
+                self.log_filter_reloader
+                    .reload(filter)
+                    .context("Couldn't reload log filter")?;
+                tracing::debug!(
+                    "Applied new settings. Log level will take effect immediately for the GUI and later for the IPC service."
+                );
+            }
+            Req::ClearLogs => logging::clear_logs_inner()
+                .await
+                .context("Failed to clear logs")?,
             Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
                 .await
                 .context("Failed to export logs to zip")?,
@@ -552,6 +568,17 @@ impl Controller {
             ))?,
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
+            }
+            // IPC errors are always fatal
+            Req::Ipc(result) => match result {
+                Some(Ok(msg)) => if let Err(error) = self.handle_ipc(msg).await {
+                    tracing::error!(?error, "`handle_ipc` failed");
+                }
+                Some(Err(error)) => {
+                    tracing::error!(?error, "IPC read failure");
+                    Err(Error::IpcRead)?
+                }
+                None => Err(Error::IpcClosed)?,
             }
             Req::SchemeRequest(url) => {
                 if let Err(error) = self.handle_deep_link(&url).await {
@@ -623,16 +650,6 @@ impl Controller {
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => Err(anyhow!(
                 "Impossible error: `Quit` should be handled before this"
             ))?,
-            Req::TunnelReady => {
-                if ! matches!(self.status, Status::TunnelReady) {
-                    self.status = Status::TunnelReady;
-                    os::show_notification(
-                        "Firezone connected",
-                        "You are now signed in and able to access resources.",
-                    )?;
-                }
-                self.refresh_system_tray_menu()?;
-            }
             Req::UpdateAvailable(release) => {
                 let title = format!("Firezone {} available for download", release.version);
 
@@ -664,7 +681,7 @@ impl Controller {
                 }
                 Status::Connecting => system_tray_menu::signing_in("Signing In..."),
                 Status::TunnelReady => {
-                    system_tray_menu::signed_in(&auth_session.actor_name, &self.resources.load())
+                    system_tray_menu::signed_in(&auth_session.actor_name, &self.resources)
                 }
             }
         } else if self.auth.ongoing_request().is_ok() {
@@ -727,14 +744,7 @@ async fn run_controller(
     log_filter_reloader: logging::Reloader,
 ) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");
-    let notify_controller = Arc::new(Notify::new());
-    let resources = Default::default();
-    let callback_handler = CallbackHandler {
-        ctlr_tx: ctlr_tx.clone(),
-        notify_controller: Arc::clone(&notify_controller),
-        resources: Arc::clone(&resources),
-    };
-    let ipc_client = ipc::Client::new(callback_handler).await?;
+    let ipc_client = ipc::Client::new(ctlr_tx.clone()).await?;
     let mut controller = Controller {
         advanced_settings,
         app: app.clone(),
@@ -742,8 +752,7 @@ async fn run_controller(
         ctlr_tx,
         ipc_client,
         log_filter_reloader,
-        notify_controller, // TODO: Fix cancel-safety
-        resources,
+        resources: Default::default(),
         status: Default::default(),
         uptime: Default::default(),
     };
@@ -777,12 +786,6 @@ async fn run_controller(
 
     loop {
         tokio::select! {
-            () = controller.notify_controller.notified() => {
-                tracing::debug!("Controller notified of new resources");
-                if let Err(error) = controller.refresh_system_tray_menu() {
-                    tracing::error!(?error, "Failed to reload resource list");
-                }
-            }
             () = com_worker.notified() => {
                 let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
                 if new_have_internet != have_internet {
