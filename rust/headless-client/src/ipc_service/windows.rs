@@ -1,7 +1,9 @@
 use crate::CliCommon;
 use anyhow::{Context as _, Result};
 use connlib_client_shared::file_logger;
+use futures::future::{self, Either};
 use std::{ffi::OsString, time::Duration};
+use tokio::sync::oneshot;
 use windows_service::{
     service::{
         ServiceAccess, ServiceControl, ServiceControlAccept, ServiceErrorControl, ServiceExitCode,
@@ -78,7 +80,7 @@ fn fallible_windows_service_run(
     let rt = tokio::runtime::Runtime::new()?;
 
     let ipc_task = rt.spawn(super::ipc_listen());
-    let ipc_task_ah = ipc_task.abort_handle();
+    let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
         tracing::debug!(?control_event);
@@ -91,7 +93,9 @@ fn fallible_windows_service_run(
             }
             ServiceControl::Shutdown | ServiceControl::Stop => {
                 tracing::info!(?control_event, "Got stop signal from service controller");
-                ipc_task_ah.abort();
+                shutdown_tx
+                    .send(())
+                    .expect("Should be able to send shutdown signal");
                 ServiceControlHandlerResult::NoError
             }
             ServiceControl::UserEvent(_) => ServiceControlHandlerResult::NoError,
@@ -128,15 +132,21 @@ fn fallible_windows_service_run(
         process_id: None,
     })?;
 
-    let result = match rt.block_on(ipc_task) {
-        Err(join_error) if join_error.is_cancelled() => {
-            // We cancelled because Windows asked us to shut down.
-            Ok(())
-        }
-        Err(join_error) => Err(anyhow::Error::from(join_error).context("`ipc_listen` panicked")),
-        Ok(Err(error)) => Err(error.context("`ipc_listen` threw an error")),
-        Ok(Ok(impossible)) => match impossible {},
+    let result = match future::select(super::ipc_listen(), shutdown_rx.recv()) {
+        Either::Left((result, _)) => match result {
+            Err(join_error) if join_error.is_cancelled() => {
+                // We cancelled because Windows asked us to shut down.
+                Ok(())
+            }
+            Err(join_error) => {
+                Err(anyhow::Error::from(join_error).context("`ipc_listen` panicked"))
+            }
+            Ok(Err(error)) => Err(error.context("`ipc_listen` threw an error")),
+            Ok(Ok(impossible)) => match impossible {},
+        },
+        Either::Right(((), _)) => tracing::info!("Caught shutdown signal, stopping IPC listener"),
     };
+
     if let Err(error) = &result {
         tracing::error!(?error, "`ipc_listen` failed");
     }
