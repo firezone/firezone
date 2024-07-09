@@ -65,6 +65,13 @@ jobs:
         id: setup-rust
       - uses: ./.github/actions/setup-tauri
         timeout-minutes: 5
+      - run: cargo bench ${{ steps.setup-rust.outputs.bench-packages }}
+        env:
+          # <https://github.com/rust-lang/cargo/issues/5999>
+          # Needed to create tunnel interfaces in unit tests
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
+        name: "cargo bench"
+        shell: bash
       - run: cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>

@@ -50,6 +50,10 @@ hickory-proto = { workspace = true }
 derivative = "2.2.0"
 ip-packet = { workspace = true, features = ["proptest"] }
 
+[[bench]]
+name = "tunnel"
+harness = false
+
 [features]
 proptest = ["dep:proptest", "connlib-shared/proptest"]
 
