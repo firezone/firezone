@@ -171,7 +171,7 @@ module "google-cloud-dns" {
   project_id = module.google-cloud-project.project.project_id
 
   tld            = local.tld
-  dnssec_enabled = false
+  dnssec_enabled = true
 }
 
 # Create the Cloud SQL database
