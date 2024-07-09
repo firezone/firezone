@@ -340,39 +340,16 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::Result;
-    use ip_packet::{IpPacket, Packet as _};
-    use std::{
-        future::poll_fn,
-        net::{Ipv4Addr, Ipv6Addr},
-        time::Duration,
-    };
-    use tokio::{
-        net::UdpSocket,
-        time::{timeout, Instant},
-    };
     use tracing_subscriber::EnvFilter;
 
-    /// Runs multiple Wintun tests.
-    ///
-    /// We don't have test names and UUIDs for the interfaces, and some are performance
-    /// tests, so we don't want to run these in parallel in multiple tests.
+    /// Checks for regressions in issue #4765, un-initializing Wintun
     #[test]
     #[ignore = "Needs admin privileges"]
-    fn wintun() {
+    fn tunnel_drop() {
         let _ = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
             .with_test_writer()
             .try_init();
-        perf().unwrap();
-        tunnel_drop();
-    }
-
-    /// Checks for regressions in issue #4765, un-initializing Wintun
-    ///
-    /// This can't be `#[test]` because it would conflict with the perf test.
-    /// Both need to open a tunnel, and we can only have one tunnel per computer.
-    fn tunnel_drop() {
         // Each cycle takes about half a second, so this will take a fair bit to run.
         for _ in 0..50 {
             let _tun = Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.

@@ -53,7 +53,7 @@ mod platform {
         let mut device_manager =
             connlib_shared::tun_device_manager::platform::TunDeviceManager::new()?;
         device_manager.set_ips(ipv4, ipv6).await?;
-        tun.set_routes([ipv4.into()].into())?;
+        tun.add_route(ipv4.into())?;
 
         let server_addr = (ipv4, SERVER_PORT).into();
 

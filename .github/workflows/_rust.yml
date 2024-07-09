@@ -12,6 +12,26 @@ permissions:
   id-token: 'write'
 
 jobs:
+  bench:
+    name: bench-${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: windows-2019 # Only platform with a benchmark right now
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        id: setup-rust
+      - run: cargo bench ${{ steps.setup-rust.outputs.bench-packages }}
+        env:
+          # <https://github.com/rust-lang/cargo/issues/5999>
+          # Needed to create tunnel interfaces in unit tests
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
+        name: "cargo bench"
+        shell: bash
+
   static-analysis:
     name: static-analysis-${{ matrix.runs-on }}
     strategy:
@@ -65,13 +85,6 @@ jobs:
         id: setup-rust
       - uses: ./.github/actions/setup-tauri
         timeout-minutes: 5
-      - run: cargo bench ${{ steps.setup-rust.outputs.bench-packages }}
-        env:
-          # <https://github.com/rust-lang/cargo/issues/5999>
-          # Needed to create tunnel interfaces in unit tests
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
-        name: "cargo bench"
-        shell: bash
       - run: cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
