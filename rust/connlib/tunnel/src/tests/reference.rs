@@ -1,15 +1,15 @@
 use super::{
-    composite_strategy::CompositeStrategy, sim_net::*, sim_node::*, sim_relay::*, strategies::*,
-    transition::*, IcmpIdentifier, IcmpSeq, QueryId,
+    composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*, sim_relay::*,
+    strategies::*, transition::*, IcmpIdentifier, IcmpSeq, QueryId,
 };
 use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{
         client::{ResourceDescriptionCidr, ResourceDescriptionDns},
-        ClientId, DnsServer, GatewayId, RelayId, ResourceId,
+        DnsServer, RelayId, ResourceId,
     },
     proptest::*,
-    DomainName,
+    DomainName, StaticSecret,
 };
 use hickory_proto::rr::RecordType;
 use ip_network_table::IpNetworkTable;
@@ -19,6 +19,7 @@ use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
+    fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
 };
@@ -31,9 +32,9 @@ pub(crate) struct ReferenceState {
     pub(crate) now: Instant,
     pub(crate) utc_now: DateTime<Utc>,
     #[allow(clippy::type_complexity)]
-    pub(crate) client: Host<SimNode<ClientId, (PrivateKey, HashMap<String, Vec<IpAddr>>)>>,
-    pub(crate) gateway: Host<SimNode<GatewayId, PrivateKey>>,
-    pub(crate) relays: HashMap<RelayId, Host<SimRelay<u64>>>,
+    pub(crate) client: Host<(PrivateKey, HashMap<String, Vec<IpAddr>>), SimClient>,
+    pub(crate) gateway: Host<PrivateKey, SimGateway>,
+    pub(crate) relays: HashMap<RelayId, Host<u64, SimRelay>>,
 
     /// The DNS resolvers configured on the client outside of connlib.
     pub(crate) system_dns_resolvers: Vec<IpAddr>,
@@ -92,22 +93,10 @@ impl ReferenceStateMachine for ReferenceState {
         let mut tunnel_ip4s = tunnel_ip4s();
         let mut tunnel_ip6s = tunnel_ip6s();
 
-        let client_prototype = sim_node_prototype(
-            client_id(),
-            client_state(),
-            &mut tunnel_ip4s,
-            &mut tunnel_ip6s,
-        );
-        let gateway_prototype = sim_node_prototype(
-            gateway_id(),
-            gateway_state(),
-            &mut tunnel_ip4s,
-            &mut tunnel_ip6s,
-        );
         (
-            client_prototype,
-            gateway_prototype,
-            collection::hash_map(relay_id(), sim_relay_prototype(), 2),
+            client_prototype(&mut tunnel_ip4s, &mut tunnel_ip6s),
+            gateway_prototype(&mut tunnel_ip4s, &mut tunnel_ip6s),
+            collection::hash_map(relay_id(), relay_prototype(), 2),
             system_dns_servers(),
             upstream_dns_servers(),
             global_dns_records(), // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
@@ -119,10 +108,10 @@ impl ReferenceStateMachine for ReferenceState {
                 |(c, g, relays, system_dns, upstream_dns, global_dns, now, utc_now)| {
                     let mut routing_table = RoutingTable::default();
 
-                    if !routing_table.add_host(c.inner().id, &c) {
+                    if !routing_table.add_host(c.sim().id, &c) {
                         return None;
                     }
-                    if !routing_table.add_host(g.inner().id, &g) {
+                    if !routing_table.add_host(g.sim().id, &g) {
                         return None;
                     };
 
@@ -147,7 +136,7 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .prop_filter(
                 "client and gateway priv key must be different",
-                |(c, g, _, _, _, _, _, _, _)| c.inner().state.0 != g.inner().state,
+                |(c, g, _, _, _, _, _, _, _)| &c.inner().0 != g.inner(),
             )
             .prop_filter(
                 "at least one DNS server needs to be reachable",
@@ -195,7 +184,7 @@ impl ReferenceStateMachine for ReferenceState {
                     system_dns_resolvers,
                     upstream_dns_resolvers,
                     global_dns_records,
-                    client_known_host_records: client.inner().state.1.clone(),
+                    client_known_host_records: client.inner().1.clone(),
                     network,
                     client_cidr_resources: IpNetworkTable::new(),
                     client_connected_cidr_resources: Default::default(),
@@ -241,25 +230,25 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .with_if_not_empty(10, state.ipv4_cidr_resource_dsts(), |ip4_resources| {
                 icmp_to_cidr_resource(
-                    packet_source_v4(state.client.inner().tunnel_ip4),
+                    packet_source_v4(state.client.sim().tunnel_ip4),
                     sample::select(ip4_resources),
                 )
             })
             .with_if_not_empty(10, state.ipv6_cidr_resource_dsts(), |ip6_resources| {
                 icmp_to_cidr_resource(
-                    packet_source_v6(state.client.inner().tunnel_ip6),
+                    packet_source_v6(state.client.sim().tunnel_ip6),
                     sample::select(ip6_resources),
                 )
             })
             .with_if_not_empty(10, state.resolved_v4_domains(), |dns_v4_domains| {
                 icmp_to_dns_resource(
-                    packet_source_v4(state.client.inner().tunnel_ip4),
+                    packet_source_v4(state.client.sim().tunnel_ip4),
                     sample::select(dns_v4_domains),
                 )
             })
             .with_if_not_empty(10, state.resolved_v6_domains(), |dns_v6_domains| {
                 icmp_to_dns_resource(
-                    packet_source_v6(state.client.inner().tunnel_ip6),
+                    packet_source_v6(state.client.sim().tunnel_ip6),
                     sample::select(dns_v6_domains),
                 )
             })
@@ -290,7 +279,7 @@ impl ReferenceStateMachine for ReferenceState {
                 state.resolved_ip4_for_non_resources(),
                 |resolved_non_resource_ip4s| {
                     ping_random_ip(
-                        packet_source_v4(state.client.inner().tunnel_ip4),
+                        packet_source_v4(state.client.sim().tunnel_ip4),
                         sample::select(resolved_non_resource_ip4s),
                     )
                 },
@@ -300,7 +289,7 @@ impl ReferenceStateMachine for ReferenceState {
                 state.resolved_ip6_for_non_resources(),
                 |resolved_non_resource_ip6s| {
                     ping_random_ip(
-                        packet_source_v6(state.client.inner().tunnel_ip6),
+                        packet_source_v6(state.client.sim().tunnel_ip6),
                         sample::select(resolved_non_resource_ip6s),
                     )
                 },
@@ -408,9 +397,7 @@ impl ReferenceStateMachine for ReferenceState {
                 state.network.remove_host(&state.client);
                 state.client.ip4.clone_from(ip4);
                 state.client.ip6.clone_from(ip6);
-                debug_assert!(state
-                    .network
-                    .add_host(state.client.inner().id, &state.client));
+                debug_assert!(state.network.add_host(state.client.sim().id, &state.client));
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
                 state.client_connected_cidr_resources.clear();
@@ -582,7 +569,7 @@ impl ReferenceState {
         tracing::Span::current().record("resource", tracing::field::display(resource.id));
 
         if self.client_connected_cidr_resources.contains(&resource.id)
-            && self.client.inner().is_tunnel_ip(src)
+            && self.client.sim().is_tunnel_ip(src)
         {
             tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
             self.expected_icmp_handshakes
@@ -609,7 +596,7 @@ impl ReferenceState {
         if self
             .client_connected_dns_resources
             .contains(&(resource, dst.clone()))
-            && self.client.inner().is_tunnel_ip(src)
+            && self.client.sim().is_tunnel_ip(src)
         {
             tracing::debug!("Connected to DNS resource, expecting packet to be routed");
             self.expected_icmp_handshakes
@@ -832,5 +819,26 @@ fn is_subdomain(name: &str, record: &str) -> bool {
                     .is_some_and(|n| n.ends_with('.') && n.matches('.').count() == 1)
         }
         _ => false,
+    }
+}
+
+pub(crate) fn private_key() -> impl Strategy<Value = PrivateKey> {
+    any::<[u8; 32]>().prop_map(PrivateKey)
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) struct PrivateKey([u8; 32]);
+
+impl From<PrivateKey> for StaticSecret {
+    fn from(key: PrivateKey) -> Self {
+        StaticSecret::from(key.0)
+    }
+}
+
+impl fmt::Debug for PrivateKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("PrivateKey")
+            .field(&hex::encode(self.0))
+            .finish()
     }
 }

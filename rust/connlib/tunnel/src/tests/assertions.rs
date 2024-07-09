@@ -58,7 +58,7 @@ pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &Ref
             gateway_received_request.source(),
             ref_state
                 .client
-                .inner()
+                .sim()
                 .tunnel_ip(gateway_received_request.source()),
             "ICMP request on gateway to originate from client"
         );

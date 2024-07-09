@@ -1,23 +1,29 @@
-use super::{sim_node::SimNode, sim_relay::SimRelay};
 use crate::{ClientState, GatewayState};
 use connlib_shared::messages::{ClientId, GatewayId, RelayId};
-use firezone_relay::AddressFamily;
-use ip_network::IpNetwork;
+use firezone_relay::{AddressFamily, IpStack};
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::MutableIpPacket;
+use itertools::Itertools as _;
+use prop::sample;
+use proptest::prelude::*;
 use rand::rngs::StdRng;
 use snownet::Transmit;
 use std::{
     collections::HashSet,
+    fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    num::NonZeroU16,
     time::Instant,
 };
 use tracing::Span;
 
 #[derive(Clone, derivative::Derivative)]
 #[derivative(Debug)]
-pub(crate) struct Host<T> {
+pub(crate) struct Host<T, S> {
     inner: T,
+    /// Simulation state.
+    sim_state: S,
 
     pub(crate) ip4: Option<Ipv4Addr>,
     pub(crate) ip6: Option<Ipv6Addr>,
@@ -33,10 +39,11 @@ pub(crate) struct Host<T> {
     span: Span,
 }
 
-impl<T> Host<T> {
-    pub(crate) fn new(inner: T) -> Self {
+impl<T, S> Host<T, S> {
+    pub(crate) fn new(inner: T, test_state: S) -> Self {
         Self {
             inner,
+            sim_state: test_state,
             ip4: None,
             ip6: None,
             span: Span::none(),
@@ -50,9 +57,14 @@ impl<T> Host<T> {
         &self.inner
     }
 
-    /// Mutable access to `T` must go via this function to ensure the corresponding span is active and tracks all state modifications.
-    pub(crate) fn exec_mut<R>(&mut self, f: impl FnOnce(&mut T) -> R) -> R {
-        self.span.in_scope(|| f(&mut self.inner))
+    pub(crate) fn sim(&self) -> &S {
+        &self.sim_state
+    }
+
+    /// Mutable access to `T` & `S` must go via this function to ensure the corresponding span is active and tracks all state modifications.
+    pub(crate) fn exec_mut<R>(&mut self, f: impl FnOnce(&mut T, &mut S) -> R) -> R {
+        self.span
+            .in_scope(|| f(&mut self.inner, &mut self.sim_state))
     }
 
     pub(crate) fn sending_socket_for(&self, dst: impl Into<IpAddr>) -> Option<SocketAddr> {
@@ -122,17 +134,19 @@ impl<T> Host<T> {
     }
 }
 
-impl<T> Host<T>
+impl<T, S> Host<T, S>
 where
     T: Clone,
+    S: Clone,
 {
-    pub(crate) fn map<S>(
+    pub(crate) fn map<U>(
         &self,
-        f: impl FnOnce(T, Option<Ipv4Addr>, Option<Ipv6Addr>) -> S,
+        f: impl FnOnce(T, Option<Ipv4Addr>, Option<Ipv6Addr>) -> U,
         span: Span,
-    ) -> Host<S> {
+    ) -> Host<U, S> {
         Host {
             inner: f(self.inner.clone(), self.ip4, self.ip6),
+            sim_state: self.sim_state.clone(),
             ip4: self.ip4,
             ip6: self.ip6,
             span,
@@ -144,7 +158,7 @@ where
 }
 
 #[allow(private_bounds)]
-impl<T> Host<T>
+impl<T, S> Host<T, S>
 where
     T: PollTransmit,
 {
@@ -157,7 +171,7 @@ where
 }
 
 #[allow(private_bounds)]
-impl<T> Host<T>
+impl<T, S> Host<T, S>
 where
     T: Encapsulate,
 {
@@ -181,15 +195,15 @@ trait Encapsulate {
     fn encapsulate(&mut self, packet: MutableIpPacket<'_>, now: Instant) -> Option<Transmit<'_>>;
 }
 
-impl<TId> Encapsulate for SimNode<TId, ClientState> {
+impl Encapsulate for ClientState {
     fn encapsulate(&mut self, packet: MutableIpPacket<'_>, now: Instant) -> Option<Transmit<'_>> {
-        self.state.encapsulate(packet, now)
+        self.encapsulate(packet, now)
     }
 }
 
-impl<TId> Encapsulate for SimNode<TId, GatewayState> {
+impl Encapsulate for GatewayState {
     fn encapsulate(&mut self, packet: MutableIpPacket<'_>, now: Instant) -> Option<Transmit<'_>> {
-        self.state.encapsulate(packet, now)
+        self.encapsulate(packet, now)
     }
 }
 
@@ -197,19 +211,19 @@ trait PollTransmit {
     fn poll_transmit(&mut self) -> Option<Transmit<'static>>;
 }
 
-impl<TId> PollTransmit for SimNode<TId, ClientState> {
+impl PollTransmit for ClientState {
     fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
-        self.state.poll_transmit()
+        self.poll_transmit()
     }
 }
 
-impl<TId> PollTransmit for SimNode<TId, GatewayState> {
+impl PollTransmit for GatewayState {
     fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
-        self.state.poll_transmit()
+        self.poll_transmit()
     }
 }
 
-impl PollTransmit for SimRelay<firezone_relay::Server<StdRng>> {
+impl PollTransmit for firezone_relay::Server<StdRng> {
     fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
         None
     }
@@ -230,7 +244,7 @@ impl Default for RoutingTable {
 
 impl RoutingTable {
     #[allow(private_bounds)]
-    pub(crate) fn add_host<T>(&mut self, id: impl Into<HostId>, host: &Host<T>) -> bool {
+    pub(crate) fn add_host<T, S>(&mut self, id: impl Into<HostId>, host: &Host<T, S>) -> bool {
         let id = id.into();
 
         match (host.ip4, host.ip6) {
@@ -266,7 +280,7 @@ impl RoutingTable {
     }
 
     #[allow(private_bounds)]
-    pub(crate) fn remove_host<T>(&mut self, host: &Host<T>) {
+    pub(crate) fn remove_host<T, S>(&mut self, host: &Host<T, S>) {
         match (host.ip4, host.ip6) {
             (None, None) => panic!("Node must have at least one network IP"),
             (None, Some(ip6)) => {
@@ -322,4 +336,67 @@ impl From<ClientId> for HostId {
     fn from(v: ClientId) -> Self {
         Self::Client(v)
     }
+}
+
+pub(crate) fn host<S, T>(
+    socket_ips: impl Strategy<Value = IpStack>,
+    default_port: impl Strategy<Value = u16>,
+    state: impl Strategy<Value = S>,
+    sim_state: impl Strategy<Value = T>,
+) -> impl Strategy<Value = Host<S, T>>
+where
+    S: fmt::Debug,
+    T: fmt::Debug,
+{
+    (state, sim_state, socket_ips, default_port).prop_map(
+        move |(state, sim_state, ip_stack, port)| {
+            let mut host = Host::new(state, sim_state);
+            host.update_interface(ip_stack.as_v4().copied(), ip_stack.as_v6().copied(), port);
+
+            host
+        },
+    )
+}
+
+pub(crate) fn any_port() -> impl Strategy<Value = u16> {
+    any::<NonZeroU16>().prop_map(|v| v.into())
+}
+
+pub(crate) fn any_ip_stack() -> impl Strategy<Value = IpStack> {
+    prop_oneof![
+        host_ip4s().prop_map(IpStack::Ip4),
+        host_ip6s().prop_map(IpStack::Ip6),
+        dual_ip_stack()
+    ]
+}
+
+pub(crate) fn dual_ip_stack() -> impl Strategy<Value = IpStack> {
+    (host_ip4s(), host_ip6s()).prop_map(|(ip4, ip6)| IpStack::Dual { ip4, ip6 })
+}
+
+/// A [`Strategy`] of [`Ipv4Addr`]s used for routing packets between hosts within our test.
+///
+/// This uses the `TEST-NET-3` (`203.0.113.0/24`) address space reserved for documentation and examples in [RFC5737](https://datatracker.ietf.org/doc/html/rfc5737).
+pub(crate) fn host_ip4s() -> impl Strategy<Value = Ipv4Addr> {
+    let ips = Ipv4Network::new(Ipv4Addr::new(203, 0, 113, 0), 24)
+        .unwrap()
+        .hosts()
+        .take(100)
+        .collect_vec();
+
+    sample::select(ips)
+}
+
+/// A [`Strategy`] of [`Ipv6Addr`]s used for routing packets between hosts within our test.
+///
+/// This uses the `2001:DB8::/32` address space reserved for documentation and examples in [RFC3849](https://datatracker.ietf.org/doc/html/rfc3849).
+pub(crate) fn host_ip6s() -> impl Strategy<Value = Ipv6Addr> {
+    let ips = Ipv6Network::new(Ipv6Addr::new(0x2001, 0xDB80, 0, 0, 0, 0, 0, 0), 32)
+        .unwrap()
+        .subnets_with_prefix(128)
+        .map(|n| n.network_address())
+        .take(100)
+        .collect_vec();
+
+    sample::select(ips)
 }
