@@ -29,7 +29,7 @@ jobs:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
-          RUST_LOG=debug
+          RUST_LOG: "debug"
         name: "cargo bench"
         shell: bash
 
