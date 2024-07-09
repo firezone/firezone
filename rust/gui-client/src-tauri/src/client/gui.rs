@@ -678,6 +678,12 @@ impl Controller {
     /// Builds a new system tray menu and applies it to the app
     fn refresh_system_tray_menu(&self) -> Result<()> {
         let tray = self.app.tray_handle();
+        // Be careful with animating this, I think it may write a PNG to disk on Linux.
+        tray.set_icon(tauri::Icon::Rgba {
+            rgba: vec![255u8; 32 * 32 * 4],
+            width: 32,
+            height: 32,
+        })?;
         tray.set_tooltip(TRAY_ICON_TOOLTIP)?;
         tray.set_menu(self.build_system_tray_menu())?;
         Ok(())
