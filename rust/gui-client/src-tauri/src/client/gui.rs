@@ -678,7 +678,8 @@ impl Controller {
     /// Builds a new system tray menu and applies it to the app
     fn refresh_system_tray_menu(&self) -> Result<()> {
         let tray = self.app.tray_handle();
-        // Be careful with animating this, I think it may write a PNG to disk on Linux.
+        // Don't call `set_icon` too often. On Linux it writes a PNG to `/run/user/$UID/tao/tray-icon-*.png` every single time.
+        // <https://github.com/tauri-apps/tao/blob/tao-v0.16.7/src/platform_impl/linux/system_tray.rs#L119>
         tray.set_icon(tauri::Icon::Rgba {
             rgba: vec![255u8; 32 * 32 * 4],
             width: 32,
