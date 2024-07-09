@@ -54,7 +54,9 @@ mod platform {
         tokio::fs::create_dir_all(wintun_path.parent().unwrap())
             .await
             .unwrap();
-        tokio::fs::write(&wintun_path, wintun_bytes()).await.unwrap();
+        tokio::fs::write(&wintun_path, wintun_bytes())
+            .await
+            .unwrap();
 
         let mut tun = Tun::new()?;
 
