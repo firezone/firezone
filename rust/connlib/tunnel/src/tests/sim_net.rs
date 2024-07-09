@@ -7,7 +7,6 @@ use ip_packet::MutableIpPacket;
 use itertools::Itertools as _;
 use prop::sample;
 use proptest::prelude::*;
-use rand::rngs::StdRng;
 use snownet::Transmit;
 use std::{
     collections::HashSet,
@@ -220,12 +219,6 @@ impl PollTransmit for ClientState {
 impl PollTransmit for GatewayState {
     fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
         self.poll_transmit()
-    }
-}
-
-impl PollTransmit for firezone_relay::Server<StdRng> {
-    fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
-        None
     }
 }
 
