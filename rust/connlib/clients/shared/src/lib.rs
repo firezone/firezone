@@ -207,7 +207,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "Performs system-wide I/O, needs sudo"]
     async fn device_windows() {
-        // Install wintun so the test can run=
+        // Install wintun so the test can run
         let wintun_path = connlib_shared::windows::wintun_dll_path().unwrap();
         tokio::fs::create_dir_all(wintun_path.parent().unwrap())
             .await
