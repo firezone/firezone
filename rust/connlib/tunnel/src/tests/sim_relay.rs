@@ -1,6 +1,6 @@
 use super::sim_net::{dual_ip_stack, host, Host};
 use connlib_shared::messages::RelayId;
-use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, PeerSocket};
+use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
 use proptest::prelude::*;
 use rand::rngs::StdRng;
 use secrecy::SecretString;
@@ -8,13 +8,12 @@ use snownet::{RelaySocket, Transmit};
 use std::{
     borrow::Cow,
     collections::HashSet,
-    net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant, SystemTime},
 };
 
 #[derive(Debug, Clone)]
 pub(crate) struct SimRelay {
-    ip_stack: firezone_relay::IpStack,
     pub(crate) allocations: HashSet<(AddressFamily, AllocationPort)>,
     buffer: Vec<u8>,
 }
@@ -29,36 +28,31 @@ pub(crate) fn map_explode<'a>(
     username: &'static str,
 ) -> impl Iterator<Item = (RelayId, RelaySocket, String, String, String)> + 'a {
     relays.map(move |(id, r)| {
-        let (socket, username, password, realm) =
-            r.sim().explode(username, r.inner().auth_secret());
+        let (socket, username, password, realm) = r.sim().explode(
+            username,
+            r.inner().auth_secret(),
+            r.inner().public_address(),
+        );
 
         (*id, socket, username, password, realm)
     })
 }
 
 impl SimRelay {
-    fn new(ip_stack: firezone_relay::IpStack) -> Self {
+    fn new() -> Self {
         Self {
-            ip_stack,
             allocations: Default::default(),
             buffer: vec![0u8; (1 << 16) - 1],
         }
-    }
-
-    fn ip4(&self) -> Option<IpAddr> {
-        self.ip_stack.as_v4().copied().map(|i| i.into())
-    }
-
-    fn ip6(&self) -> Option<IpAddr> {
-        self.ip_stack.as_v6().copied().map(|i| i.into())
     }
 
     fn explode(
         &self,
         username: &str,
         auth_secret: &SecretString,
+        public_address: IpStack,
     ) -> (RelaySocket, String, String, String) {
-        let relay_socket = match self.ip_stack {
+        let relay_socket = match public_address {
             firezone_relay::IpStack::Ip4(ip4) => RelaySocket::V4(SocketAddrV4::new(ip4, 3478)),
             firezone_relay::IpStack::Ip6(ip6) => {
                 RelaySocket::V6(SocketAddrV6::new(ip6, 3478, 0, 0))
@@ -74,10 +68,14 @@ impl SimRelay {
         (relay_socket, username, password, "firezone".to_owned())
     }
 
-    fn matching_listen_socket(&self, other: SocketAddr) -> Option<SocketAddr> {
+    fn matching_listen_socket(
+        &self,
+        other: SocketAddr,
+        public_address: IpStack,
+    ) -> Option<SocketAddr> {
         match other {
-            SocketAddr::V4(_) => Some(SocketAddr::new((*self.ip_stack.as_v4()?).into(), 3478)),
-            SocketAddr::V6(_) => Some(SocketAddr::new((*self.ip_stack.as_v6()?).into(), 3478)),
+            SocketAddr::V4(_) => Some(SocketAddr::new((*public_address.as_v4()?).into(), 3478)),
+            SocketAddr::V6(_) => Some(SocketAddr::new((*public_address.as_v6()?).into(), 3478)),
         }
     }
 
@@ -89,7 +87,10 @@ impl SimRelay {
         dst: SocketAddr,
         now: Instant,
     ) -> Option<Transmit<'static>> {
-        if self.matching_listen_socket(dst).is_some_and(|s| s == dst) {
+        if self
+            .matching_listen_socket(dst, state.public_address())
+            .is_some_and(|s| s == dst)
+        {
             return self.handle_client_input(state, payload, ClientSocket::new(sender), now);
         }
 
@@ -123,7 +124,9 @@ impl SimRelay {
                     "IPv4 allocation to be present if we want to send to an IPv4 socket"
                 );
 
-                self.ip4().expect("listen on IPv4 if we have an allocation")
+                state
+                    .public_ip4()
+                    .expect("listen on IPv4 if we have an allocation")
             }
             SocketAddr::V6(_) => {
                 assert!(
@@ -131,7 +134,9 @@ impl SimRelay {
                     "IPv6 allocation to be present if we want to send to an IPv6 socket"
                 );
 
-                self.ip6().expect("listen on IPv6 if we have an allocation")
+                state
+                    .public_ip6()
+                    .expect("listen on IPv6 if we have an allocation")
             }
         };
 
@@ -162,7 +167,9 @@ impl SimRelay {
         self.buffer[4..full_length].copy_from_slice(payload);
 
         let receiving_socket = client.into_socket();
-        let sending_socket = self.matching_listen_socket(receiving_socket).unwrap();
+        let sending_socket = self
+            .matching_listen_socket(receiving_socket, state.public_address())
+            .unwrap();
 
         Some(Transmit {
             src: Some(sending_socket),
@@ -186,13 +193,10 @@ impl SimRelay {
 }
 
 pub(crate) fn relay_prototype() -> impl Strategy<Value = Host<u64, SimRelay>> {
-    // For this test, our relays always run in dual-stack mode to ensure connectivity!
-    dual_ip_stack().prop_flat_map(|ip_stack| {
-        host(
-            Just(ip_stack),
-            Just(3478),
-            any::<u64>(),
-            Just(SimRelay::new(ip_stack)),
-        )
-    })
+    host(
+        dual_ip_stack(), // For this test, our relays always run in dual-stack mode to ensure connectivity!
+        Just(3478),
+        any::<u64>(),
+        Just(SimRelay::new()),
+    )
 }
