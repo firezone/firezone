@@ -19,7 +19,7 @@ use tokio::io::unix::AsyncFd;
 const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
 
 #[derive(Debug)]
-pub(crate) struct Tun {
+pub struct Tun {
     name: String,
     fd: AsyncFd<RawFd>,
 }
