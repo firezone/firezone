@@ -118,7 +118,7 @@ impl Tun {
     }
 
     // It's okay if this blocks until the route is added in the OS.
-    pub fn set_routes(
+    pub(crate) fn set_routes(
         &mut self,
         new_routes: HashSet<IpNetwork>,
         _callbacks: &impl Callbacks,
