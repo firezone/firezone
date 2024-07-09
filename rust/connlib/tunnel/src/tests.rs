@@ -4,6 +4,7 @@ use proptest::test_runner::Config;
 mod assertions;
 mod composite_strategy;
 mod reference;
+mod sim_net;
 mod sim_node;
 mod sim_portal;
 mod sim_relay;
