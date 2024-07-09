@@ -2,220 +2,228 @@
 import Image from "next/image";
 import Link from "next/link";
 import ActionLink from "@/components/ActionLink";
-import DocsSidebarToggle from "./DocsSidebarToggle";
-import KbSidebarToggle from "./KbSidebarToggle";
-import { Navbar } from "flowbite-react";
+import {
+  Navbar,
+  NavbarBrand,
+  NavbarCollapse,
+  NavbarLink as FlowbiteNavbarLink,
+  NavbarToggle,
+  Dropdown,
+  DropdownItem as FlowbiteDropdownItem,
+} from "flowbite-react";
 import { usePathname } from "next/navigation";
-import { RequestDemoButton, SignUpButton } from "@/components/Buttons";
-import { useEffect } from "react";
-import { initFlowbite, Dropdown } from "flowbite";
+import Button from "@/components/Button";
 import { HiChevronDown } from "react-icons/hi2";
+import type { CustomFlowbiteTheme } from "flowbite-react";
+import { HiBars3 } from "react-icons/hi2";
+import { useDrawer } from "@/components/Providers/DrawerProvider";
+import { useScrollPosition } from "@/hooks/useScrollPosition";
 
-export default function RootNavbar() {
-  const p = usePathname() || "";
-  let productDropdown: any = null;
+const navbarTheme: CustomFlowbiteTheme["navbar"] = {
+  root: {
+    base: "fixed top-0 left-0 right-0 z-50 items-center bg-white px-2 py-2.5 sm:px-4 transition-shadow",
+    rounded: {
+      on: "rounded",
+      off: "",
+    },
+    bordered: {
+      on: "border",
+      off: "",
+    },
+    inner: {
+      base: "mx-auto flex flex-wrap items-center justify-between",
+      fluid: {
+        on: "",
+        off: "container",
+      },
+    },
+  },
+  brand: {
+    base: "flex items-center",
+  },
+  collapse: {
+    base: "w-full md:block md:w-auto shadow md:shadow-none",
+    list: "mt-4 flex flex-col md:mt-0 md:flex-row md:space-x-8 md:text-md md:font-medium",
+    hidden: {
+      on: "hidden",
+      off: "",
+    },
+  },
+  link: {
+    base: "block py-2 pl-3 pr-4 md:p-0 border-b border-neutral-200 md:border-transparent",
+    active: {
+      on: "bg-neutral-200 rounded text-white md:bg-transparent text-primary-450 font-semibold",
+      off: "text-neutral-700 hover:text-primary-450 hover:bg-neutral-100 transition transform duration-50 md:hover:bg-transparent md:hover:border-b-2 md:hover:border-primary-450",
+    },
+    disabled: {
+      on: "text-neutral-400 hover:cursor-not-allowed",
+      off: "",
+    },
+  },
+  toggle: {
+    base: "inline-flex items-center rounded p-2 text-neutral-700 hover:bg-neutral-100 md:hidden",
+    icon: "h-6 w-6 shrink-0",
+  },
+};
 
-  useEffect(() => {
-    if (!productDropdown) {
-      productDropdown = new Dropdown(
-        document.getElementById("product-dropdown-menu"),
-        document.getElementById("product-dropdown-link")
-      );
-    }
-    // Manually init flowbite's data-toggle listeners since we're using custom components
-    initFlowbite();
-  }, []);
+const dropdownTheme: CustomFlowbiteTheme["dropdown"] = {
+  arrowIcon: "ml-2 h-4 w-4",
+  content: "py-1 focus:outline-none",
+  floating: {
+    animation: "transition-opacity",
+    arrow: {
+      base: "absolute z-10 h-2 w-2 rotate-45",
+      style: {
+        dark: "bg-neutral-900 dark:bg-neutral-700",
+        light: "bg-white",
+        auto: "bg-white",
+      },
+      placement: "-4px",
+    },
+    base: "z-10 w-fit divide-y divide-neutral-100 rounded shadow focus:outline-none",
+    content: "py-1 text-base text-neutral-700",
+    divider: "my-1 h-px bg-neutral-100",
+    header: "block px-4 py-2 text-sm text-neutral-700",
+    hidden: "invisible opacity-0",
+    item: {
+      container: "",
+      base: "flex w-32 cursor-pointer items-center justify-start px-4 py-2 text-md font-medium text-neutral-700 hover:bg-neutral-100 focus:bg-neutral-100 focus:outline-none",
+      icon: "mr-2 h-4 w-4",
+    },
+    style: {
+      dark: "bg-neutral-900 text-white dark:bg-neutral-700",
+      light: "border border-neutral-200 bg-white text-neutral-900",
+      auto: "border border-neutral-200 bg-white text-neutral-900",
+    },
+    target: "w-fit",
+  },
+  inlineWrapper:
+    "flex items-center py-2 pl-3 pr-4 md:p-0 text-neutral-700 hover:text-primary-450 md:border-transparent md:border-b-2 md:hover:border-primary-450 duration-50 transition transform",
+};
 
-  const hideDropdown = () => {
-    if (!productDropdown) {
-      productDropdown = new Dropdown(
-        document.getElementById("product-dropdown-menu"),
-        document.getElementById("product-dropdown-link")
-      );
-    }
-
-    productDropdown.hide();
-  };
+function NavbarLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
+  const p = usePathname();
 
   return (
-    <header>
-      <nav className="h-14 fixed top-0 left-0 right-0 bg-white border-b items-center flex border-neutral-200 z-50">
-        <div className="w-full flex flex-wrap py-2 justify-between items-center">
-          <div className="flex justify-start items-center">
-            {p.startsWith("/docs") ? <DocsSidebarToggle /> : null}
-            {p.startsWith("/kb") ? <KbSidebarToggle /> : null}
-            <Link href="/">
-              <Image
-                width={150}
-                height={150}
-                src="/images/logo-main.svg"
-                className="lg:hidden w-9 ml-2 flex"
-                alt="Firezone Logo"
-              />
-            </Link>
-            <Link href="/">
-              <span className="hidden lg:flex w-32 sm:w-40 ml-2 mr-2 sm:mr-5">
-                <Image
-                  width={150}
-                  height={150}
-                  src="/images/logo-text.svg"
-                  alt="Firezone Logo"
-                />
-              </span>
-            </Link>
-            <span className="p-2"></span>
-            <button
-              id="product-dropdown-link"
-              className={
-                (p.startsWith("/product")
-                  ? "text-neutral-900"
-                  : "text-neutral-800") +
-                " hover:text-neutral-900 flex items-center justify-between p-0 sm:p-1 mr-1"
-              }
-            >
-              <span
-                className={
-                  "hover:underline font-medium " +
-                  (p.startsWith("/product") ? "underline" : "")
-                }
-              >
-                Product
-              </span>
-              <HiChevronDown className="w-3 h-3 mx-1" />
-            </button>
-            <div
-              id="product-dropdown-menu"
-              className="z-10 hidden bg-white divide-y divide-gray-100 rounded shadow-lg w-44"
-            >
-              <ul className="py-2" aria-labelledby="product-dropdown-link">
-                <li>
-                  <Link
-                    onClick={hideDropdown}
-                    href="/kb/user-guides"
-                    className={
-                      (p == "/kb/user-guides"
-                        ? "text-neutral-900 underline"
-                        : "text-neutral-800") +
-                      " block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
-                    }
-                  >
-                    Download
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    onClick={hideDropdown}
-                    href="/contact/sales"
-                    className="text-neutral-800 block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
-                  >
-                    Request Demo
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    onClick={hideDropdown}
-                    href="https://github.com/firezone/firezone"
-                    className="text-neutral-800 block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
-                  >
-                    Open Source
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    onClick={hideDropdown}
-                    href="https://github.com/orgs/firezone/projects/9"
-                    className="text-neutral-800 block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
-                  >
-                    Roadmap
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    onClick={hideDropdown}
-                    href="/product/newsletter"
-                    className={
-                      (p.startsWith("/product/newsletter")
-                        ? "text-neutral-900 underline"
-                        : "text-neutral-800") +
-                      " block px-4 py-2 font-medium hover:underline hover:bg-neutral-100 hover:text-neutral-900"
-                    }
-                  >
-                    Newsletter
-                  </Link>
-                </li>
-              </ul>
-            </div>
-            <Link
-              className={
-                (p.startsWith("/blog")
-                  ? "text-neutral-900 underline"
-                  : "text-neutral-800") +
-                " p-2 mr-4 font-medium hover:text-neutral-900 hover:underline"
-              }
-              href="/blog"
-            >
-              Blog
-            </Link>
-            <Link
-              className={
-                (p.startsWith("/kb")
-                  ? "text-neutral-900 underline"
-                  : "text-neutral-800") +
-                " p-2 mr-4 font-medium hover:text-neutral-900 hover:underline"
-              }
-              href="/kb"
-            >
-              Docs
-            </Link>
-            <Link
-              className={
-                (p == "/pricing"
-                  ? "text-neutral-900 underline"
-                  : "text-neutral-800") +
-                " p-2 mr-4 font-medium hover:text-neutral-900 hover:underline"
-              }
-              href="/pricing"
-            >
-              Pricing
-            </Link>
-            <Link
-              className={
-                (p == "/support"
-                  ? "text-neutral-900 underline"
-                  : "text-neutral-800") +
-                " p-0 sm:p-1 mr-1 font-medium hover:text-neutral-900 hover:underline"
-              }
-              href="/support"
-            >
-              Support
-            </Link>
-          </div>
-          <div className="hidden md:flex space-x-2.5 items-center md:order-2 mr-2">
-            <Link
-              href="https://github.com/firezone/firezone"
-              aria-label="GitHub Repository"
-            >
-              {/* NextJS's image component has issues with shields images */}
-              <span className="lg:w-24 w-16 flex">
-                <img
-                  className="grow"
-                  alt="Github Repo stars"
-                  src="https://img.shields.io/github/stars/firezone/firezone"
-                />
-              </span>
-            </Link>
-            <SignUpButton />
-            <RequestDemoButton />
-            <ActionLink
-              href="https://app.firezone.dev/"
-              className="hover:underline hidden sm:inline-flex"
-              size="ml-1 mr-1 w-5 h-5"
-            >
-              Sign in
-            </ActionLink>
-          </div>
+    <FlowbiteNavbarLink href={href} as={Link} active={p.startsWith(href)}>
+      {children}
+    </FlowbiteNavbarLink>
+  );
+}
+
+function DropdownItem({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <FlowbiteDropdownItem href={href} as={Link}>
+      {children}
+    </FlowbiteDropdownItem>
+  );
+}
+
+function SidebarToggle() {
+  const { toggle } = useDrawer();
+  const p = usePathname();
+
+  if (p.startsWith("/kb") || p.startsWith("/docs")) {
+    return (
+      <button
+        type="button"
+        onClick={toggle}
+        className="p-2 text-neutral-700 md:hidden hover:bg-neutral-100"
+      >
+        <HiBars3 aria-hidden="true" className="w-6 h-6 shrink-0" />
+        <span className="sr-only">Toggle sidebar</span>
+      </button>
+    );
+  } else {
+    return null;
+  }
+}
+
+function applyTheme(scrollPosition: number) {
+  return {
+    ...navbarTheme,
+    root: {
+      ...navbarTheme?.root,
+      base: `${navbarTheme?.root?.base} ${scrollPosition > 0 ? "shadow" : "shadow-none"}`,
+    },
+  };
+}
+
+export default function RootNavbar() {
+  const scrollPosition = useScrollPosition();
+
+  return (
+    <Navbar theme={applyTheme(scrollPosition)} fluid>
+      <SidebarToggle />
+      <NavbarBrand as={Link} href="/">
+        <Image
+          width={150}
+          height={150}
+          src="/images/logo-main.svg"
+          className="lg:hidden w-9 ml-2 flex"
+          alt="Firezone Logo"
+        />
+        <Image
+          width={150}
+          height={150}
+          src="/images/logo-text.svg"
+          alt="Firezone Logo"
+          className="hidden lg:flex w-32 sm:w-40 ml-2 mr-2 sm:mr-5"
+        />
+      </NavbarBrand>
+      <NavbarToggle barIcon={HiBars3} />
+      <NavbarCollapse>
+        <Dropdown theme={dropdownTheme} label="Product" inline>
+          <DropdownItem href="/kb/user-guides">Download</DropdownItem>
+          <DropdownItem href="/contact/sales">Book a demo</DropdownItem>
+          <DropdownItem href="/kb/use-cases">Use cases</DropdownItem>
+          <DropdownItem href="https://www.github.com/firezone/firezone">
+            Open source
+          </DropdownItem>
+          <DropdownItem href="https://github.com/orgs/firezone/projects/9">
+            Roadmap
+          </DropdownItem>
+          <DropdownItem href="/product/newsletter">Newsletter</DropdownItem>
+          <DropdownItem href="/changelog">Changelog</DropdownItem>
+        </Dropdown>
+        <NavbarLink href="/kb">Docs</NavbarLink>
+        <NavbarLink href="/pricing">Pricing</NavbarLink>
+        <NavbarLink href="/blog">Blog</NavbarLink>
+        <NavbarLink href="/support">Support</NavbarLink>
+        <div className="md:hidden">
+          <NavbarLink href="/contact/sales">Book a demo</NavbarLink>
         </div>
-      </nav>
-    </header>
+        <ActionLink
+          href="https://app.firezone.dev/"
+          className="hidden md:inline-flex py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-700 md:border-transparent hover:text-primary-450 hover:bg-neutral-200 md:hover:bg-transparent md:border-b-2 md:hover:border-primary-450 duration-50 transition transform"
+          size="w-5 h-5 ml-1"
+        >
+          Sign in
+        </ActionLink>
+      </NavbarCollapse>
+      <div className="hidden md:flex space-x-4 items-center">
+        <Link
+          className="block py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-700 md:border-transparent hover:text-primary-450 md:border-b-2 hover:border-primary-450 duration-50 transition transform"
+          href="https://app.firezone.dev/sign_up"
+        >
+          Sign up
+        </Link>
+        <Button type="cta" href="/contact/sales">
+          Book a demo
+        </Button>
+      </div>
+    </Navbar>
   );
 }

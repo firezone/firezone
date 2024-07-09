@@ -65,17 +65,16 @@ jobs:
         id: setup-rust
       - uses: ./.github/actions/setup-tauri
         timeout-minutes: 5
-      - run: cargo test --release --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored
+      - run: cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
           PROPTEST_VERBOSE: 0 # Otherwise the output is very long.
-          CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise proptests take forever.
         name: "cargo test"
         shell: bash
 
-  # Runs the Windows client smoke test, built in debug mode. We can't run it in release
+  # Runs the Tauri client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
   gui-smoke-test:
     name: gui-smoke-test-${{ matrix.runs-on }}
@@ -98,12 +97,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-rust
-        with:
-          cache_backend: 'github'
-          # Cache needs to be scoped per OS version
-          key: ${{ matrix.runs-on }}-${{ runner.arch }}
       - uses: ./.github/actions/setup-tauri
         timeout-minutes: 5
+        with:
+          runtime: true
       - name: pnpm install
         run: |
           pnpm install
@@ -114,12 +111,12 @@ jobs:
         run: pnpm tailwindcss -i src/input.css -o src/output.css
       - name: Build client
         run: cargo build -p firezone-gui-client
-      - name: Run smoke tests (Linux)
-        if: ${{ runner.os == 'Linux' }}
-        run: bash ../../scripts/tests/smoke-test-gui-linux.sh
-      - name: Run smoke tests (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        run: bash ../../scripts/tests/smoke-test-gui-windows.sh
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: dump_syms,minidump-stackwalk
+      - name: Run smoke test
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test
 
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}

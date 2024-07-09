@@ -3,22 +3,21 @@ import Entries from "./Entries";
 import Link from "next/link";
 
 export default function Gateway() {
+  const href = "/dl/firezone-gateway/:version/:arch";
+  const arches = ["x86_64", "aarch64", "armv7"];
+
   return (
-    <Entries title="Gateway">
+    <Entries href={href} arches={arches} title="Gateway">
+      <Entry version="1.1.2" date={new Date("2024-06-29")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">Reduces log noise for the default log level.</li>
+        </ul>
+      </Entry>
       <Entry version="1.1.1" date={new Date("2024-06-27")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
-            Extends Gateway NAT session mappings for ICMP, UDP, and TCP traffic
-            to reflect the defaults used in the Linux kernel. This should have a
-            minor impact on performance and stability.
-          </li>
-          <li className="pl-2">
-            Closes idle connections to Clients that have not seen traffic for
-            more than 5 minutes which can reduce power consumption and IOPS.
-          </li>
-          <li className="pl-2">
-            Fixes an issue that could prevent the Gateway from successfully
-            establishing Relayed connections after new Relays are deployed.
+            Fixes a minor connectivity issue that could occur for some DNS
+            Resources.
           </li>
         </ul>
       </Entry>

@@ -51,6 +51,7 @@ enum Cmd {
     Install,
     Run,
     RunDebug,
+    RunSmokeTest,
 }
 
 impl Default for Cmd {
@@ -84,31 +85,68 @@ pub fn run_only_ipc_service() -> Result<()> {
         Cmd::Install => platform::install_ipc_service(),
         Cmd::Run => platform::run_ipc_service(cli.common),
         Cmd::RunDebug => run_debug_ipc_service(),
+        Cmd::RunSmokeTest => run_smoke_test(),
     }
 }
 
 fn run_debug_ipc_service() -> Result<()> {
     crate::setup_stdout_logging()?;
+    tracing::info!(
+        arch = std::env::consts::ARCH,
+        git_version = crate::GIT_VERSION,
+        system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
+    );
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
-    rt.spawn(crate::heartbeat::heartbeat());
     let mut signals = Signals::new()?;
+
+    rt.block_on(ipc_listen_with_signals(&mut signals))
+}
+
+/// Run the IPC service, and exit if we catch any signals
+///
+/// Shared between the Linux systemd service and the debug subcommand
+/// TODO: Better name
+async fn ipc_listen_with_signals(signals: &mut Signals) -> Result<()> {
+    let ipc_service = pin!(ipc_listen());
+
+    match future::select(pin!(signals.recv()), ipc_service).await {
+        future::Either::Left((SignalKind::Hangup, _)) => {
+            bail!("Exiting, SIGHUP not implemented for the IPC service");
+        }
+        future::Either::Left((SignalKind::Interrupt, _)) => {
+            tracing::info!("Caught SIGINT");
+            Ok(())
+        }
+        future::Either::Left((SignalKind::Terminate, _)) => {
+            tracing::info!("Caught SIGTERM");
+            Ok(())
+        }
+        future::Either::Right((Ok(impossible), _)) => match impossible {},
+        future::Either::Right((Err(error), _)) => Err(error).context("ipc_listen failed"),
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn run_smoke_test() -> Result<()> {
+    anyhow::bail!("Smoke test is not built for release binaries.");
+}
+
+/// Listen for exactly one connection from a GUI, then exit
+///
+/// This makes the timing neater in case the GUI starts up slowly.
+#[cfg(debug_assertions)]
+fn run_smoke_test() -> Result<()> {
+    crate::setup_stdout_logging()?;
+    let rt = tokio::runtime::Runtime::new()?;
+    let _guard = rt.enter();
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
-        let ipc_service = pin!(ipc_listen());
-
-        match future::select(pin!(signals.recv()), ipc_service).await {
-            future::Either::Left((SignalKind::Hangup, _)) => {
-                bail!("Exiting, SIGHUP not implemented for the IPC service");
-            }
-            future::Either::Left((SignalKind::Interrupt, _)) => {
-                tracing::info!("Caught Interrupt signal");
-                Ok(())
-            }
-            future::Either::Right((Ok(impossible), _)) => match impossible {},
-            future::Either::Right((Err(error), _)) => Err(error).context("ipc_listen failed"),
-        }
+        device_id::get_or_create().context("Failed to read / create device ID")?;
+        let mut server = IpcServer::new(ServiceId::Prod).await?;
+        Handler::new(&mut server).await?.run().await;
+        Ok::<_, anyhow::Error>(())
     })
 }
 
@@ -118,12 +156,7 @@ async fn ipc_listen() -> Result<std::convert::Infallible> {
     device_id::get_or_create().context("Failed to read / create device ID")?;
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     loop {
-        dns_control::deactivate()?;
-        let (rx, tx) = server
-            .next_client_split()
-            .await
-            .context("Failed to wait for incoming IPC connection from a GUI")?;
-        Handler::new(rx, tx)?.run().await;
+        Handler::new(&mut server).await?.run().await;
     }
 }
 
@@ -145,7 +178,12 @@ enum Event {
 }
 
 impl Handler {
-    fn new(ipc_rx: ipc::ServerRead, ipc_tx: ipc::ServerWrite) -> Result<Self> {
+    async fn new(server: &mut IpcServer) -> Result<Self> {
+        dns_control::deactivate()?;
+        let (ipc_rx, ipc_tx) = server
+            .next_client_split()
+            .await
+            .context("Failed to wait for incoming IPC connection from a GUI")?;
         let (cb_tx, cb_rx) = mpsc::channel(10);
         let tun_device = tun_device_manager::TunDeviceManager::new()?;
 
@@ -210,6 +248,9 @@ impl Handler {
                         let dur = instant.elapsed();
                         tracing::info!(?dur, "Connlib started");
                     }
+
+                    // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
+                    self.dns_controller.flush()?;
                 }
                 self.ipc_tx
                     .send(&msg)
@@ -235,6 +276,9 @@ impl Handler {
         match msg {
             ClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);
+                // There isn't an airtight way to implement a "disconnect and reconnect"
+                // right now because `Session::disconnect` is fire-and-forget:
+                // <https://github.com/firezone/firezone/blob/663367b6055ced7432866a40a60f9525db13288b/rust/connlib/clients/shared/src/lib.rs#L98-L103>
                 assert!(self.connlib.is_none());
                 let device_id =
                     device_id::get_or_create().context("Failed to get / create device ID")?;
@@ -297,11 +341,16 @@ fn setup_logging(log_dir: Option<PathBuf>) -> Result<connlib_client_shared::file
     std::fs::create_dir_all(&log_dir)
         .context("We should have permissions to create our log dir")?;
     let (layer, handle) = file_logger::layer(&log_dir);
-    let log_filter = get_log_filter().context("Couldn't read log filter")?;
-    let filter = EnvFilter::new(&log_filter);
+    let directives = get_log_filter().context("Couldn't read log filter")?;
+    let filter = EnvFilter::new(&directives);
     let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber).context("`set_global_default` should always work)")?;
-    tracing::info!(git_version = crate::GIT_VERSION, ?log_filter);
+    tracing::info!(
+        arch = std::env::consts::ARCH,
+        git_version = crate::GIT_VERSION,
+        system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
+        ?directives
+    );
     Ok(handle)
 }
 

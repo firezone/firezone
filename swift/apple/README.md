@@ -126,6 +126,9 @@ Certs are only good for a year, then you need to generate new ones. Since we use
 GitHub CI, we have to use manually-managed signing and provisioning. Here's how
 you populate the required GitHub secrets.
 
+**Note**: Be sure to enter these variables for Dependabot as well, otherwise its
+CI runs will fail.
+
 ### Certificates
 
 You first need two certs: The build / signing cert (Apple Distribution) and the

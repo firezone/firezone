@@ -90,8 +90,8 @@ where
         })
     }
 
-    pub fn reconnect(&mut self) -> std::io::Result<()> {
-        self.role_state.reconnect(Instant::now());
+    pub fn reset(&mut self) -> std::io::Result<()> {
+        self.role_state.reset();
         self.io.sockets_mut().rebind()?;
 
         Ok(())
@@ -264,13 +264,13 @@ where
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClientEvent {
-    NewIceCandidate {
+    AddedIceCandidates {
         conn_id: GatewayId,
-        candidate: String,
+        candidates: HashSet<String>,
     },
-    InvalidatedIceCandidate {
+    RemovedIceCandidates {
         conn_id: GatewayId,
-        candidate: String,
+        candidates: HashSet<String>,
     },
     ConnectionIntent {
         resource: ResourceId,
@@ -296,13 +296,13 @@ pub enum ClientEvent {
 
 #[derive(Debug, Clone)]
 pub enum GatewayEvent {
-    NewIceCandidate {
+    AddedIceCandidates {
         conn_id: ClientId,
-        candidate: String,
+        candidates: HashSet<String>,
     },
-    InvalidIceCandidate {
+    RemovedIceCandidates {
         conn_id: ClientId,
-        candidate: String,
+        candidates: HashSet<String>,
     },
     RefreshDns {
         name: DomainName,

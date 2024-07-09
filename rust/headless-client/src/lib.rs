@@ -29,10 +29,10 @@ use platform::Signals;
 pub(crate) mod device_id;
 // Pub because the GUI reads the system resolvers
 pub mod dns_control;
-pub mod heartbeat;
 mod ipc_service;
 pub mod known_dirs;
 mod standalone;
+pub mod uptime;
 
 #[cfg(target_os = "linux")]
 #[path = "linux.rs"]
@@ -78,6 +78,7 @@ struct CliCommon {
     max_partition_time: Option<humantime::Duration>,
 }
 
+/// Messages we get from connlib, including ones that aren't sent to IPC clients
 enum InternalServerMsg {
     Ipc(IpcServerMsg),
     OnSetInterfaceConfig {
@@ -91,7 +92,8 @@ enum InternalServerMsg {
     },
 }
 
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+/// Messages that we can send to IPC clients
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum IpcServerMsg {
     Ok,
     OnDisconnect {
@@ -162,6 +164,10 @@ enum SignalKind {
     Hangup,
     /// SIGINT
     Interrupt,
+    /// SIGTERM
+    ///
+    /// Not caught on Windows
+    Terminate,
 }
 
 /// Sets up logging for stdout only, with INFO level by default

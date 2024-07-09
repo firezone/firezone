@@ -1,0 +1,132 @@
+import SupportOptions from "@/components/SupportOptions";
+import Alert from "@/components/DocsAlert";
+import Image from "next/image";
+
+# Deploy Firezone on Azure with Terraform
+
+In this guide, we'll deploy a cluster of Firezone Gateways in a private subnet
+on Azure that are configured to egress traffic to the internet through an
+[Azure NAT Gateway](https://azure.microsoft.com/en-us/products/azure-nat-gateway).
+
+## Common use cases
+
+Use this guide to give your Firezone Clients a static, public IP address for
+egress traffic to particular Resource(s). Here are some common use cases for
+this example:
+
+- Access your protected Azure workloads using with scalable, high-performance
+  WireGuard tunnels.
+- Use an IP allowlist to access a third-party or partner application such as a
+  client's DB or third-party API.
+- Use an IP allowlist with your identity provider to lock down access to a
+  public application.
+- Enabling a team of remote contractors access to a regionally-locked
+  application or service.
+
+## High availability
+
+All Firezone Gateways deployed in this example will automatically failover and
+load balance for each other.
+
+## Prerequisites
+
+1. [Terraform](https://www.terraform.io/downloads.html)
+1. [Azure account](https://portal.azure.com) with the necessary permissions to
+   create the resources.
+1. Set up your Terraform environment to work with Azure. See
+   [this tutorial](https://developer.hashicorp.com/terraform/tutorials/azure-get-started/azure-build)
+   if you haven't yet done so.
+1. A [Firezone Site](https://www.firezone.dev/kb/deploy/sites) dedicated to use
+   for this example. This Site should contain **only** the Firezone Gateway(s)
+   deployed in this example and any associated Resources.
+1. A Firezone Gateway token. This can be obtained by viewing your Site in the
+   admin portal, clicking the `Deploy Gateway` button, and navigating to the
+   instructions for the `Azure` tab. Gateway tokens support multi-use, so only a
+   single token is needed to provision the Firezone Gateways in this guide.
+
+## Sizing
+
+Simply update the number of `desired_capacity` to deploy more or fewer Firezone
+Gateways. There's no limit to the number of Firezone Gateways you can deploy in
+a single Vnet. A basic Azure Autoscale configuration is provisioned as part of
+the linked module.
+
+<Alert color="warning">
+  If you need more than 64,512 concurrent connections, you can increase the
+  number of public IP addresses reserved for the Azure NAT Gateway. See [Azure's
+  documentation](https://learn.microsoft.com/en-us/azure/nat-gateway/troubleshoot-nat-connectivity)
+  for more information.
+</Alert>
+
+We've tested with `Standard_B1ls` instances which still work quite well for most
+applications. However, you may want to consider a larger instance type if you
+have a high volume of traffic or lots of concurrent connections. See
+[Gateway sizing recommendations](/kb/deploy/gateeways#sizing-recommendations)
+for some general guidelines depending on your expected traffic.
+
+## Deployment
+
+1. [Download](https://raw.githubusercontent.com/firezone/firezone/main/terraform/examples/azure/nat-gateway/main.tf)
+   the `main.tf` from the example module.
+1. Customize it as desired. At a minimum, you will need to set the
+   `firezone_token` and change `admin_ssh_key` to match your environment.
+1. Run `terraform init` to initialize the working directory and download the
+   required providers.
+1. Run `terraform apply` to deploy the Firezone Gateway(s) into your AWS
+   project.
+
+You can see the IP address assigned to the NAT Gateway in the Terraform output.
+These are the IP address that your Firezone Gateway(s) will share to egress
+traffic.
+
+<Image
+  src="/images/kb/automate/terraform/azure/gateways.png"
+  alt="Firezone Gateways in the Azure portal"
+  width={800}
+  height={600}
+/>
+
+<Alert color="info">
+  It can take a few minutes for the Firezone Gateway(s) to provision and connect
+  to the portal. If you suspect the Gateway(s) are not connecting, follow the
+  instructions in the [troubleshooting guide](/kb/administer/troubleshooting) to
+  diagnose the issue.
+</Alert>
+
+<Alert color="warning">
+  Azure disables ICMP for VMs without a public IP attached, so you won't be able
+  to ping internet hosts from the Firezone Gateway(s) or vice versa. This is
+  normal and expected. TCP and UDP traffic will work as expected using the
+  example configuration in this guide.
+</Alert>
+
+After a few minutes, you should see the Firezone Gateway(s) appear in the
+Firezone admin portal. You can now configure your Resources to use the new
+Firezone Gateway(s) you just provisioned.
+
+## Upgrading
+
+To upgrade the Firezone Gateway(s) to the latest version, we recommend setting a
+version to deploy with the `firezone_version` variable. Then, whenever you want
+to upgrade, update this variable and run `terraform apply`, which will trigger a
+new deployment of the Firezone Gateway(s) with the new version.
+
+<Alert color="info">
+  You can follow the latest releases of the Gateway at our [changelog
+  page](https://www.firezone.dev/changelog).
+</Alert>
+
+This will incur a few minutes of downtime as Terraform destroys the existing
+Firezone Gateway(s) and deploys new ones in their place.
+
+## Output
+
+`nat_public_ip` will contain the public IP address of the NAT Gateway you can
+use to whitelist your Firezone Gateway(s) in your third-party or partner
+application.
+
+# Cleanup
+
+To clean up the resources created by this example, run `terraform destroy`.
+
+<SupportOptions />

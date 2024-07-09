@@ -29,6 +29,16 @@ use wintun::Adapter;
 
 // Not sure how this and `TUNNEL_NAME` differ
 const ADAPTER_NAME: &str = "Firezone";
+/// The ring buffer size used for Wintun.
+///
+/// Must be a power of two within a certain range <https://docs.rs/wintun/latest/wintun/struct.Adapter.html#method.start_session>
+/// 0x10_0000 is 1 MiB, which performs decently on the Cloudflare speed test.
+/// At 1 Gbps that's about 8 ms, so any delay where Firezone isn't scheduled by the OS
+/// onto a core for more than 8 ms would result in packet drops.
+///
+/// We think 1 MiB is similar to the buffer size on Linux / macOS but we're not sure
+/// where that is configured.
+const RING_BUFFER_SIZE: u32 = 0x10_0000;
 
 pub(crate) struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
@@ -91,7 +101,7 @@ impl Tun {
 
         set_iface_config(adapter.get_luid(), MTU as u32)?;
 
-        let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
+        let session = Arc::new(adapter.start_session(RING_BUFFER_SIZE)?);
         // 4 is a nice power of two. Wintun already queues packets for us, so we don't
         // need much capacity here.
         let (packet_tx, packet_rx) = mpsc::channel(4);
@@ -124,8 +134,6 @@ impl Tun {
             self.remove_route(*old_route)?;
         }
 
-        // TODO: Might be calling this more often than it needs
-        flush_dns().expect("Should be able to flush Windows' DNS cache");
         self.routes = new_routes;
         Ok(())
     }
@@ -235,16 +243,6 @@ impl Tun {
     }
 }
 
-/// Flush Windows' system-wide DNS cache
-pub(crate) fn flush_dns() -> Result<()> {
-    tracing::info!("Flushing Windows DNS cache");
-    Command::new("powershell")
-        .creation_flags(CREATE_NO_WINDOW)
-        .args(["-Command", "Clear-DnsClientCache"])
-        .status()?;
-    Ok(())
-}
-
 // Moves packets from the user towards the Internet
 fn start_recv_thread(
     packet_tx: mpsc::Sender<wintun::Packet>,
@@ -252,31 +250,33 @@ fn start_recv_thread(
 ) -> io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()
         .name("Firezone wintun worker".into())
-        .spawn(move || {
-            loop {
-                match session.receive_blocking() {
-                    Ok(pkt) => {
-                        // Use `blocking_send` so that if connlib is behind by a few packets,
-                        // Wintun will queue up new packets in its ring buffer while we
-                        // wait for our MPSC channel to clear.
-                        match packet_tx.blocking_send(pkt) {
-                            Ok(()) => {}
-                            Err(_) => {
-                                tracing::info!(
-                                    "Stopping outbound worker thread because the packet channel closed"
-                                );
-                                break;
-                            }
-                        }
-                    }
-                    Err(wintun::Error::ShuttingDown) => {
-                        tracing::info!("Stopping outbound worker thread because Wintun is shutting down");
-                        break;
-                    }
-                    Err(e) => {
-                        tracing::error!("wintun::Session::receive_blocking: {e:#?}");
-                        break;
-                    }
+        .spawn(move || loop {
+            let pkt = match session.receive_blocking() {
+                Ok(pkt) => pkt,
+                Err(wintun::Error::ShuttingDown) => {
+                    tracing::info!(
+                        "Stopping outbound worker thread because Wintun is shutting down"
+                    );
+                    break;
+                }
+                Err(e) => {
+                    tracing::error!("wintun::Session::receive_blocking: {e:#?}");
+                    break;
+                }
+            };
+
+            // Use `blocking_send` so that if connlib is behind by a few packets,
+            // Wintun will queue up new packets in its ring buffer while we
+            // wait for our MPSC channel to clear.
+            // Unfortunately we don't know if Wintun is dropping packets, since
+            // it doesn't expose a sequence number or anything.
+            match packet_tx.blocking_send(pkt) {
+                Ok(()) => {}
+                Err(_) => {
+                    tracing::info!(
+                        "Stopping outbound worker thread because the packet channel closed"
+                    );
+                    break;
                 }
             }
         })
@@ -338,7 +338,7 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::Tun;
+    use super::*;
     use anyhow::Result;
     use ip_packet::{
         udp::MutableUdpPacket, IpPacket, MutableIpPacket, MutablePacket as _, Packet as _,
@@ -535,9 +535,11 @@ mod tests {
     }
 
     /// Checks for regressions in issue #4765, un-initializing Wintun
+    #[test]
+    #[ignore = "Needs admin privileges"]
     fn tunnel_drop() {
-        // Each cycle takes about half a second, so this will need over a minute to run.
-        for _ in 0..150 {
+        // Each cycle takes about half a second, so this will take a fair bit to run.
+        for _ in 0..50 {
             let _tun = Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
         }
     }

@@ -1,9 +1,48 @@
+import Link from "next/link";
 import Entry from "./Entry";
 import Entries from "./Entries";
 
 export default function Headless() {
+  const href = "/dl/firezone-client-headless-linux/:version/:arch";
+  const arches = ["x86_64", "aarch64", "armv7"];
+
   return (
-    <Entries title="Linux headless">
+    <Entries href={href} arches={arches} title="Linux headless">
+      <Entry version="1.1.3" date={new Date("2024-07-05")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            Fixes an{" "}
+            <Link
+              href="https://github.com/firezone/firezone/pull/5700"
+              className="text-accent-500 underline hover:no-underline"
+            >
+              issue
+            </Link>{" "}
+            where a stale DNS cache could prevent traffic from routing to DNS
+            Resources if they were updated while the Client was signed in.
+          </li>
+        </ul>
+      </Entry>
+      <Entry version="1.1.2" date={new Date("2024-07-03")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            Prevents Firezone's stub resolver from intercepting DNS record types
+            besides A, AAAA, and PTR. These are now forwarded to your upstream
+            DNS resolver.
+          </li>
+        </ul>
+      </Entry>
+      <Entry version="1.1.1" date={new Date("2024-06-29")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            Fixes an issue that could cause Resources to be unreachable a few
+            hours after roaming networks.
+          </li>
+          <li className="pl-2">
+            Reduces noise in logs for the default log level.
+          </li>
+        </ul>
+      </Entry>
       <Entry version="1.1.0" date={new Date("2024-06-27")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">

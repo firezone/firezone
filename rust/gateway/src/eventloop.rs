@@ -107,27 +107,27 @@ impl Eventloop {
 
     fn handle_tunnel_event(&mut self, event: firezone_tunnel::GatewayEvent) {
         match event {
-            firezone_tunnel::GatewayEvent::NewIceCandidate {
+            firezone_tunnel::GatewayEvent::AddedIceCandidates {
                 conn_id: client,
-                candidate,
+                candidates,
             } => {
                 self.portal.send(
                     PHOENIX_TOPIC,
                     EgressMessages::BroadcastIceCandidates(ClientsIceCandidates {
                         client_ids: vec![client],
-                        candidates: vec![candidate],
+                        candidates,
                     }),
                 );
             }
-            firezone_tunnel::GatewayEvent::InvalidIceCandidate {
+            firezone_tunnel::GatewayEvent::RemovedIceCandidates {
                 conn_id: client,
-                candidate,
+                candidates,
             } => {
                 self.portal.send(
                     PHOENIX_TOPIC,
                     EgressMessages::BroadcastInvalidatedIceCandidates(ClientsIceCandidates {
                         client_ids: vec![client],
-                        candidates: vec![candidate],
+                        candidates,
                     }),
                 );
             }
@@ -276,7 +276,6 @@ impl Eventloop {
             PublicKey::from(req.client.peer.public_key.0),
             req.client.peer.ipv4,
             req.client.peer.ipv6,
-            req.relays,
             req.client.payload.domain.as_ref().map(|r| r.as_tuple()),
             req.expires_at,
             req.resource.into_resolved(addresses.clone()),

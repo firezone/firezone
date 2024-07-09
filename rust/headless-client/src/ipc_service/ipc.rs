@@ -232,7 +232,7 @@ mod tests {
                         .await
                         .expect("Should have gotten a reply from the IPC server")
                         .expect("Error while reading from IPC server");
-                    ensure!(resp == IpcServerMsg::OnTunnelReady);
+                    ensure!(matches!(resp, IpcServerMsg::OnTunnelReady));
                 }
             }
             Ok(())
