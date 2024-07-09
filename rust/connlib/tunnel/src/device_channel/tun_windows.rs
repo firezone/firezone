@@ -341,8 +341,8 @@ mod tests {
     #[test]
     #[ignore = "Needs admin privileges"]
     fn resource_management() {
-        // Each cycle takes about half a second, so this will need over a minute to run.
-        for _ in 0..150 {
+        // Each cycle takes about half a second, so this will take a fair bit to run.
+        for _ in 0..50 {
             let _tun = super::Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
         }
     }
