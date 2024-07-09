@@ -22,7 +22,6 @@ jobs:
           - runs-on: ubuntu-20.04-arm
           - runs-on: ubuntu-22.04
           - runs-on: macos-14
-          - runs-on: windows-11-arm
           - runs-on: windows-2022
     runs-on: ${{ matrix.runs-on }}
     steps:
@@ -59,7 +58,6 @@ jobs:
           - runs-on: macos-12
           - runs-on: macos-13
           - runs-on: macos-14
-          - runs-on: windows-11-arm
           - runs-on: windows-2019
           - runs-on: windows-2022
     runs-on: ${{ matrix.runs-on }}
@@ -89,7 +87,6 @@ jobs:
           - runs-on: ubuntu-20.04-arm
           # Broken on 22.04 <https://github.com/firezone/firezone/issues/3699>
           - runs-on: ubuntu-22.04
-          - runs-on: windows-11-arm
           - runs-on: windows-2019
           - runs-on: windows-2022
     runs-on: ${{ matrix.runs-on }}
