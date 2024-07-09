@@ -7,14 +7,11 @@ export default function GUI({ title }: { title: string }) {
     title === "Windows"
       ? "/dl/firezone-client-gui-windows/:version/:arch"
       : "/dl/firezone-client-gui-linux/:version/:arch";
-  const arches =
-    title === "Windows"
-      ? ["x86_64"]
-      : ["x86_64", "aarch64"];
+  const arches = title === "Windows" ? ["x86_64"] : ["x86_64", "aarch64"];
 
   return (
     <Entries href={href} arches={arches} title={title}>
-      {/*<Entry version="1.1.5" date={new Date("2024-07-08")}>
+      <Entry version="1.1.5" date={new Date("2024-07-08")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
             The Linux GUI Client is now{" "}
@@ -23,10 +20,10 @@ export default function GUI({ title }: { title: string }) {
               className="text-accent-500 underline hover:no-underline"
             >
               built for both x86-64 and ARM64
-            </Link>{" "}
+            </Link>
           </li>
         </ul>
-      </Entry>*/}
+      </Entry>
       <Entry version="1.1.4" date={new Date("2024-07-05")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
@@ -37,10 +34,9 @@ export default function GUI({ title }: { title: string }) {
             >
               issue
             </Link>{" "}
-            where a stale DNS cache could prevent traffic from
-            routing to DNS Resources if they were updated while the Client was
-            signed in.
             where a stale DNS cache could prevent traffic from routing to DNS
+            Resources if they were updated while the Client was signed in. where
+            a stale DNS cache could prevent traffic from routing to DNS
             Resources if they were updated while the Client was signed in.
           </li>
         </ul>
