@@ -38,7 +38,24 @@ mod platform {
         time::{timeout, Instant},
     };
 
+    #[cfg(target_arch = "aarch64")]
+    fn wintun_bytes() -> &'static [u8] {
+        include_bytes!("../../../headless-client/src/windows/wintun/bin/arm64/wintun.dll")
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    fn wintun_bytes() -> &'static [u8] {
+        include_bytes!("../../../headless-client/src/windows/wintun/bin/amd64/wintun.dll")
+    }
+
     pub(crate) async fn perf() -> Result<()> {
+        // Install wintun so the test can run
+        let wintun_path = connlib_shared::windows::wintun_dll_path().unwrap();
+        tokio::fs::create_dir_all(wintun_path.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&wintun_path, wintun_bytes()).await.unwrap();
+
         let mut tun = Tun::new()?;
 
         const MTU: usize = 1_280;
