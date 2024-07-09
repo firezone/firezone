@@ -63,7 +63,8 @@ jobs:
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri
-        timeout-minutes: 5
+        # Installing new packages can take time
+        timeout-minutes: 10
       # the arm64 images don't have the GH cli installed.
       # Remove this when https://github.com/actions/runner-images/issues/10192 is resolved.
       - name: Ubuntu arm workaround
