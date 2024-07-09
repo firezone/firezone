@@ -535,8 +535,9 @@ mod tests {
     }
 
     /// Checks for regressions in issue #4765, un-initializing Wintun
-    #[test]
-    #[ignore = "Needs admin privileges"]
+    ///
+    /// This can't be `#[test]` because it would conflict with the perf test.
+    /// Both need to open a tunnel, and we can only have one tunnel per computer.
     fn tunnel_drop() {
         // Each cycle takes about half a second, so this will take a fair bit to run.
         for _ in 0..50 {
