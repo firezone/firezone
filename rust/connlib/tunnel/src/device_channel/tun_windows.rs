@@ -340,10 +340,7 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
 mod tests {
     use super::*;
     use anyhow::Result;
-    use ip_packet::{
-        udp::MutableUdpPacket, IpPacket, MutableIpPacket, MutablePacket as _, Packet as _,
-        PacketSize as _,
-    };
+    use ip_packet::{IpPacket, Packet as _};
     use std::{
         future::poll_fn,
         net::{Ipv4Addr, Ipv6Addr},
@@ -383,7 +380,6 @@ mod tests {
             const REQ_CODE: u8 = 42;
             const REQ_LEN: usize = 1_000;
             const RESP_CODE: u8 = 43;
-            const UDP_HEADER_SIZE: usize = 8;
             const SERVER_PORT: u16 = 3000;
 
             let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
@@ -407,55 +403,30 @@ mod tests {
                     let mut req_buf = [0u8; MTU];
                     poll_fn(|cx| tun.poll_read(&mut req_buf, cx)).await?;
                     let start = Instant::now();
-                    // Copied from the DNS module in `firezone-tunnel`
-                    let mut answer = vec![RESP_CODE];
-                    let response_len = answer.len();
                     let original_pkt = IpPacket::new(&req_buf).unwrap();
-                    let Some(original_dgm) = original_pkt.as_udp() else {
+                    let Some(original_udp) = original_pkt.as_udp() else {
                         continue;
                     };
-                    if original_dgm.get_destination() != SERVER_PORT {
+                    if original_udp.get_destination() != SERVER_PORT {
                         continue;
                     }
-                    if original_dgm.payload()[0] != REQ_CODE {
+                    if original_udp.payload()[0] != REQ_CODE {
                         panic!("Wrong request code");
                     }
-                    let res_buf = response_pkt.get_or_insert_with(|| {
-                        let hdr_len = original_pkt.packet_size() - original_dgm.payload().len();
-                        let mut res_buf = Vec::with_capacity(hdr_len + response_len + 20);
 
-                        // TODO: this is some weirdness due to how MutableIpPacket is implemented
-                        // we need an extra 20 bytes padding.
-                        res_buf.extend_from_slice(&[0; 20]);
-                        res_buf.extend_from_slice(&original_pkt.packet()[..hdr_len]);
-                        res_buf.append(&mut answer);
-
-                        let mut pkt = MutableIpPacket::new(&mut res_buf).unwrap();
-                        let dgm_len = UDP_HEADER_SIZE + response_len;
-                        match &mut pkt {
-                            MutableIpPacket::Ipv4(p) => {
-                                p.set_total_length((hdr_len + response_len) as u16)
-                            }
-                            MutableIpPacket::Ipv6(p) => p.set_payload_length(dgm_len as u16),
-                        }
-                        pkt.swap_src_dst();
-
-                        let mut dgm = MutableUdpPacket::new(pkt.payload_mut()).unwrap();
-                        dgm.set_length(dgm_len as u16);
-                        dgm.set_source(original_dgm.get_destination());
-                        dgm.set_destination(original_dgm.get_source());
-
-                        let mut pkt = MutableIpPacket::new(&mut res_buf).unwrap();
-                        let udp_checksum = pkt
-                            .to_immutable()
-                            .udp_checksum(&pkt.to_immutable().unwrap_as_udp());
-                        pkt.unwrap_as_udp().set_checksum(udp_checksum);
-                        pkt.set_ipv4_checksum();
-
-                        // TODO: more of this weirdness
-                        res_buf.drain(0..20);
-                        res_buf
-                    });
+                    // Only generate the response packet on the first loop,
+                    // then just reuse it.
+                    let res_buf = response_pkt
+                        .get_or_insert_with(|| {
+                            ip_packet::make::udp_packet(
+                                original_pkt.destination(),
+                                original_pkt.source(),
+                                original_udp.get_destination(),
+                                original_udp.get_source(),
+                                vec![RESP_CODE],
+                            )
+                        })
+                        .packet();
                     tun.write(res_buf)?;
                     requests_served += 1;
                     time_spent += start.elapsed();
