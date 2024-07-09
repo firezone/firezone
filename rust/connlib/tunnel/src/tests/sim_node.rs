@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{ClientState, GatewayState};
 use connlib_shared::{
-    messages::{ClientId, DnsServer, GatewayId, Interface},
+    messages::{ClientId, DnsServer, GatewayId, Interface, RelayId},
     proptest::domain_name,
     StaticSecret,
 };
@@ -56,14 +56,23 @@ where
 }
 
 impl SimNode<ClientId, ClientState> {
-    pub(crate) fn init_relays<const N: usize>(
+    pub(crate) fn init_relays<'a>(
         &mut self,
-        relays: [&SimRelay<firezone_relay::Server<StdRng>>; N],
+        relays: impl Iterator<
+            Item = (
+                &'a RelayId,
+                &'a Host<SimRelay<firezone_relay::Server<StdRng>>>,
+            ),
+        >,
         now: Instant,
     ) {
         self.state.update_relays(
             HashSet::default(),
-            HashSet::from(relays.map(|r| r.explode("client"))),
+            HashSet::from_iter(relays.map(|(id, r)| {
+                let (socket, username, password, realm) = r.inner().explode("client");
+
+                (*id, socket, username, password, realm)
+            })),
             now,
         )
     }
@@ -78,14 +87,23 @@ impl SimNode<ClientId, ClientState> {
 }
 
 impl SimNode<GatewayId, GatewayState> {
-    pub(crate) fn init_relays<const N: usize>(
+    pub(crate) fn init_relays<'a>(
         &mut self,
-        relays: [&SimRelay<firezone_relay::Server<StdRng>>; N],
+        relays: impl Iterator<
+            Item = (
+                &'a RelayId,
+                &'a Host<SimRelay<firezone_relay::Server<StdRng>>>,
+            ),
+        >,
         now: Instant,
     ) {
         self.state.update_relays(
             HashSet::default(),
-            HashSet::from(relays.map(|r| r.explode("gateway"))),
+            HashSet::from_iter(relays.map(|(id, r)| {
+                let (socket, username, password, realm) = r.inner().explode("gateway");
+
+                (*id, socket, username, password, realm)
+            })),
             now,
         )
     }
