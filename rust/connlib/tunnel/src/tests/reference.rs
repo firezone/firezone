@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{
         client::{ResourceDescriptionCidr, ResourceDescriptionDns},
-        ClientId, DnsServer, GatewayId, ResourceId,
+        ClientId, DnsServer, GatewayId, RelayId, ResourceId,
     },
     proptest::*,
     DomainName,
@@ -14,6 +14,7 @@ use connlib_shared::{
 use hickory_proto::rr::RecordType;
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools;
+use prop::collection;
 use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;
 use std::{
@@ -32,7 +33,7 @@ pub(crate) struct ReferenceState {
     #[allow(clippy::type_complexity)]
     pub(crate) client: Host<SimNode<ClientId, (PrivateKey, HashMap<String, Vec<IpAddr>>)>>,
     pub(crate) gateway: Host<SimNode<GatewayId, PrivateKey>>,
-    pub(crate) relay: Host<SimRelay<u64>>,
+    pub(crate) relays: HashMap<RelayId, Host<SimRelay<u64>>>,
 
     /// The DNS resolvers configured on the client outside of connlib.
     pub(crate) system_dns_resolvers: Vec<IpAddr>,
@@ -103,12 +104,10 @@ impl ReferenceStateMachine for ReferenceState {
             &mut tunnel_ip4s,
             &mut tunnel_ip6s,
         );
-        let relay_prototype = sim_relay_prototype();
-
         (
             client_prototype,
             gateway_prototype,
-            relay_prototype,
+            collection::hash_map(relay_id(), sim_relay_prototype(), 2),
             system_dns_servers(),
             upstream_dns_servers(),
             global_dns_records(), // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
@@ -117,23 +116,26 @@ impl ReferenceStateMachine for ReferenceState {
         )
             .prop_filter_map(
                 "network IPs must be unique",
-                |(c, g, r, system_dns, upstream_dns, global_dns, now, utc_now)| {
+                |(c, g, relays, system_dns, upstream_dns, global_dns, now, utc_now)| {
                     let mut routing_table = RoutingTable::default();
 
-                    if !routing_table.add_host(&c) {
+                    if !routing_table.add_host(c.inner().id, &c) {
                         return None;
                     }
-                    if !routing_table.add_host(&g) {
+                    if !routing_table.add_host(g.inner().id, &g) {
                         return None;
                     };
-                    if !routing_table.add_host(&r) {
-                        return None;
-                    };
+
+                    for (id, relay) in &relays {
+                        if !routing_table.add_host(*id, relay) {
+                            return None;
+                        };
+                    }
 
                     Some((
                         c,
                         g,
-                        r,
+                        relays,
                         system_dns,
                         upstream_dns,
                         global_dns,
@@ -177,7 +179,7 @@ impl ReferenceStateMachine for ReferenceState {
                 |(
                     client,
                     gateway,
-                    relay,
+                    relays,
                     system_dns_resolvers,
                     upstream_dns_resolvers,
                     global_dns_records,
@@ -189,7 +191,7 @@ impl ReferenceStateMachine for ReferenceState {
                     utc_now,
                     client: client.clone(),
                     gateway,
-                    relay,
+                    relays,
                     system_dns_resolvers,
                     upstream_dns_resolvers,
                     global_dns_records,
@@ -406,7 +408,9 @@ impl ReferenceStateMachine for ReferenceState {
                 state.network.remove_host(&state.client);
                 state.client.ip4.clone_from(ip4);
                 state.client.ip6.clone_from(ip6);
-                debug_assert!(state.network.add_host(&state.client));
+                debug_assert!(state
+                    .network
+                    .add_host(state.client.inner().id, &state.client));
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
                 state.client_connected_cidr_resources.clear();

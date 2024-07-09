@@ -9,6 +9,7 @@ use crate::tests::transition::Transition;
 use crate::{dns::DnsQuery, ClientEvent, ClientState, GatewayEvent, GatewayState, Request};
 use bimap::BiMap;
 use chrono::{DateTime, Utc};
+use connlib_shared::messages::RelayId;
 use connlib_shared::{
     messages::{
         client::{ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns},
@@ -50,7 +51,7 @@ pub(crate) struct TunnelTest {
 
     client: Host<SimNode<ClientId, ClientState>>,
     gateway: Host<SimNode<GatewayId, GatewayState>>,
-    relay: Host<SimRelay<firezone_relay::Server<StdRng>>>,
+    relays: HashMap<RelayId, Host<SimRelay<firezone_relay::Server<StdRng>>>>,
     portal: SimPortal,
 
     /// The DNS records created on the client as a result of received DNS responses.
@@ -98,25 +99,33 @@ impl StateMachineTest for TunnelTest {
             debug_span!("gateway"),
         );
 
-        let relay = ref_state.relay.map(
-            |relay, ip4, ip6| {
-                relay.map(|seed| {
-                    firezone_relay::Server::new(
-                        IpStack::from((ip4, ip6)),
-                        rand::rngs::StdRng::seed_from_u64(seed),
-                        3478,
-                        49152,
-                        65535,
-                    )
-                })
-            },
-            debug_span!("relay"),
-        );
-        let portal = SimPortal::new(client.inner().id, gateway.inner().id, relay.inner().id);
+        let relays = ref_state
+            .relays
+            .iter()
+            .map(|(id, relay)| {
+                let relay = relay.map(
+                    |relay, ip4, ip6| {
+                        relay.map(|seed| {
+                            firezone_relay::Server::new(
+                                IpStack::from((ip4, ip6)),
+                                rand::rngs::StdRng::seed_from_u64(seed),
+                                3478,
+                                49152,
+                                65535,
+                            )
+                        })
+                    },
+                    debug_span!("relay", rid = %id),
+                );
 
-        // Configure client and gateway with the relay.
-        client.exec_mut(|c| c.init_relays([relay.inner()], ref_state.now));
-        gateway.exec_mut(|g| g.init_relays([relay.inner()], ref_state.now));
+                (*id, relay)
+            })
+            .collect::<HashMap<_, _>>();
+        let portal = SimPortal::new(client.inner().id, gateway.inner().id);
+
+        // Configure client and gateway with the relays.
+        client.exec_mut(|c| c.init_relays(relays.iter(), ref_state.now));
+        gateway.exec_mut(|g| g.init_relays(relays.iter(), ref_state.now));
 
         client.exec_mut(|c| c.update_upstream_dns(ref_state.upstream_dns_resolvers.clone()));
         client.exec_mut(|c| {
@@ -132,7 +141,7 @@ impl StateMachineTest for TunnelTest {
             gateway,
             portal,
             logger,
-            relay,
+            relays,
             client_dns_records: Default::default(),
             client_dns_by_sentinel: Default::default(),
             client_sent_icmp_requests: Default::default(),
@@ -144,6 +153,8 @@ impl StateMachineTest for TunnelTest {
 
         let mut buffered_transmits = VecDeque::new();
         this.advance(ref_state, &mut buffered_transmits); // Perform initial setup before we apply the first transition.
+
+        debug_assert!(buffered_transmits.is_empty());
 
         this
     }
@@ -232,13 +243,15 @@ impl StateMachineTest for TunnelTest {
             Transition::RoamClient { ip4, ip6, port } => {
                 state.network.remove_host(&state.client);
                 state.client.update_interface(ip4, ip6, port);
-                debug_assert!(state.network.add_host(&state.client));
+                debug_assert!(state
+                    .network
+                    .add_host(state.client.inner().id, &state.client));
 
                 state.client.exec_mut(|c| {
                     c.state.reset();
 
                     // In prod, we reconnect to the portal and receive a new `init` message.
-                    c.init_relays([state.relay.inner()], ref_state.now);
+                    c.init_relays(state.relays.iter(), ref_state.now);
                 });
             }
         };
@@ -318,12 +331,20 @@ impl TunnelTest {
                 self.on_gateway_event(self.gateway.inner().id, event);
                 continue;
             }
-            if let Some(message) = self.relay.exec_mut(|relay| relay.state.next_command()) {
+
+            let mut any_relay_advanced = false;
+
+            for (_, relay) in self.relays.iter_mut() {
+                let Some(message) = relay.exec_mut(|relay| relay.state.next_command()) else {
+                    continue;
+                };
+
+                any_relay_advanced = true;
+
                 match message {
                     firezone_relay::Command::SendMessage { payload, recipient } => {
                         let dst = recipient.into_socket();
-                        let src = self
-                            .relay
+                        let src = relay
                             .sending_socket_for(dst.ip())
                             .expect("relay to never emit packets without a matching socket");
 
@@ -332,21 +353,20 @@ impl TunnelTest {
                             dst,
                             payload: payload.into(),
                         });
-
-                        continue;
                     }
 
                     firezone_relay::Command::CreateAllocation { port, family } => {
-                        self.relay.allocate_port(port.value(), family);
-                        self.relay
-                            .exec_mut(|r| r.allocations.insert((family, port)));
+                        relay.allocate_port(port.value(), family);
+                        relay.exec_mut(|r| r.allocations.insert((family, port)));
                     }
                     firezone_relay::Command::FreeAllocation { port, family } => {
-                        self.relay.deallocate_port(port.value(), family);
-                        self.relay
-                            .exec_mut(|r| r.allocations.remove(&(family, port)));
+                        relay.deallocate_port(port.value(), family);
+                        relay.exec_mut(|r| r.allocations.remove(&(family, port)));
                     }
                 }
+            }
+
+            if any_relay_advanced {
                 continue;
             }
 
@@ -394,15 +414,16 @@ impl TunnelTest {
                 .exec_mut(|gateway| gateway.state.handle_timeout(now, utc_now))
         };
 
-        if self
-            .relay
-            .exec_mut(|relay| relay.state.poll_timeout())
-            .is_some_and(|t| t <= now)
-        {
-            any_advanced = true;
+        for (_, relay) in self.relays.iter_mut() {
+            if relay
+                .exec_mut(|relay| relay.state.poll_timeout())
+                .is_some_and(|t| t <= now)
+            {
+                any_advanced = true;
 
-            self.relay.exec_mut(|relay| relay.state.handle_timeout(now))
-        };
+                relay.exec_mut(|relay| relay.state.handle_timeout(now))
+            };
+        }
 
         any_advanced
     }
@@ -493,10 +514,11 @@ impl TunnelTest {
 
                 self.on_gateway_received_packet(packet, global_dns_records, buffered_transmits);
             }
-            HostId::Relay(_) => {
-                let Some(transmit) = self
-                    .relay
-                    .exec_mut(|r| r.handle_packet(payload, src, dst, self.now))
+            HostId::Relay(id) => {
+                let relay = self.relays.get_mut(&id).expect("unknown relay");
+
+                let Some(transmit) =
+                    relay.exec_mut(|r| r.handle_packet(payload, src, dst, self.now))
                 else {
                     return;
                 };

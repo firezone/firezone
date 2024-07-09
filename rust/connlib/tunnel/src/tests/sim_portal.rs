@@ -1,6 +1,6 @@
 use connlib_shared::messages::{
     client::{ResourceDescriptionCidr, ResourceDescriptionDns, SiteId},
-    ClientId, GatewayId, RelayId, ResourceId,
+    ClientId, GatewayId, ResourceId,
 };
 use ip_network_table::IpNetworkTable;
 use std::collections::{BTreeMap, HashSet};
@@ -12,16 +12,11 @@ use std::collections::{BTreeMap, HashSet};
 pub(crate) struct SimPortal {
     _client: ClientId,
     gateway: GatewayId,
-    _relay: RelayId,
 }
 
 impl SimPortal {
-    pub(crate) fn new(_client: ClientId, gateway: GatewayId, _relay: RelayId) -> Self {
-        Self {
-            _client,
-            gateway,
-            _relay,
-        }
+    pub(crate) fn new(_client: ClientId, gateway: GatewayId) -> Self {
+        Self { _client, gateway }
     }
 
     /// Picks, which gateway and site we should connect to for the given resource.

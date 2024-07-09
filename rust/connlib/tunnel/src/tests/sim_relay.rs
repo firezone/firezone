@@ -1,6 +1,5 @@
 use super::sim_net::Host;
 use super::strategies::{host_ip4s, host_ip6s};
-use connlib_shared::messages::RelayId;
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
 use proptest::prelude::*;
 use rand::rngs::StdRng;
@@ -15,7 +14,6 @@ use std::{
 #[derive(Clone, derivative::Derivative)]
 #[derivative(Debug)]
 pub(crate) struct SimRelay<S> {
-    pub(crate) id: RelayId,
     pub(crate) state: S,
 
     ip_stack: firezone_relay::IpStack,
@@ -26,9 +24,8 @@ pub(crate) struct SimRelay<S> {
 }
 
 impl<S> SimRelay<S> {
-    pub(crate) fn new(id: RelayId, state: S, ip_stack: firezone_relay::IpStack) -> Self {
+    pub(crate) fn new(state: S, ip_stack: firezone_relay::IpStack) -> Self {
         Self {
-            id,
             state,
             ip_stack,
             allocations: Default::default(),
@@ -51,7 +48,6 @@ where
 {
     pub(crate) fn map<T>(&self, f: impl FnOnce(S) -> T) -> SimRelay<T> {
         SimRelay {
-            id: self.id,
             state: f(self.state),
             allocations: self.allocations.clone(),
             buffer: self.buffer.clone(),
@@ -61,7 +57,7 @@ where
 }
 
 impl SimRelay<firezone_relay::Server<StdRng>> {
-    pub(crate) fn explode(&self, username: &str) -> (RelayId, RelaySocket, String, String, String) {
+    pub(crate) fn explode(&self, username: &str) -> (RelaySocket, String, String, String) {
         let relay_socket = match self.ip_stack {
             firezone_relay::IpStack::Ip4(ip4) => RelaySocket::V4(SocketAddrV4::new(ip4, 3478)),
             firezone_relay::IpStack::Ip6(ip6) => {
@@ -75,13 +71,7 @@ impl SimRelay<firezone_relay::Server<StdRng>> {
 
         let (username, password) = self.make_credentials(username);
 
-        (
-            self.id,
-            relay_socket,
-            username,
-            password,
-            "firezone".to_owned(),
-        )
+        (relay_socket, username, password, "firezone".to_owned())
     }
 
     fn matching_listen_socket(&self, other: SocketAddr) -> Option<SocketAddr> {
@@ -196,8 +186,8 @@ pub(crate) fn sim_relay_prototype() -> impl Strategy<Value = Host<SimRelay<u64>>
     // For this test, our relays always run in dual-stack mode to ensure connectivity!
     let socket_ips = (host_ip4s(), host_ip6s()).prop_map(|(ip4, ip6)| IpStack::Dual { ip4, ip6 });
 
-    (any::<u64>(), socket_ips, any::<u128>()).prop_map(move |(seed, ip_stack, id)| {
-        let mut host = Host::new(SimRelay::new(RelayId::from_u128(id), seed, ip_stack));
+    (any::<u64>(), socket_ips).prop_map(move |(seed, ip_stack)| {
+        let mut host = Host::new(SimRelay::new(seed, ip_stack));
         host.update_interface(ip_stack.as_v4().copied(), ip_stack.as_v6().copied(), 3478);
 
         host

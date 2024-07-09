@@ -230,10 +230,9 @@ impl Default for RoutingTable {
 
 impl RoutingTable {
     #[allow(private_bounds)]
-    pub(crate) fn add_host<T>(&mut self, host: &Host<T>) -> bool
-    where
-        T: Id,
-    {
+    pub(crate) fn add_host<T>(&mut self, id: impl Into<HostId>, host: &Host<T>) -> bool {
+        let id = id.into();
+
         match (host.ip4, host.ip6) {
             (None, None) => panic!("Node must have at least one network IP"),
             (None, Some(ip6)) => {
@@ -241,14 +240,14 @@ impl RoutingTable {
                     return false;
                 }
 
-                self.routes.insert(ip6, host.inner.id());
+                self.routes.insert(ip6, id);
             }
             (Some(ip4), None) => {
                 if self.contains(ip4) {
                     return false;
                 }
 
-                self.routes.insert(ip4, host.inner.id());
+                self.routes.insert(ip4, id);
             }
             (Some(ip4), Some(ip6)) => {
                 if self.contains(ip4) {
@@ -258,8 +257,8 @@ impl RoutingTable {
                     return false;
                 }
 
-                self.routes.insert(ip4, host.inner.id());
-                self.routes.insert(ip6, host.inner.id());
+                self.routes.insert(ip4, id);
+                self.routes.insert(ip6, id);
             }
         }
 
@@ -296,25 +295,6 @@ impl RoutingTable {
 
     pub(crate) fn host_by_ip(&self, ip: IpAddr) -> Option<HostId> {
         self.routes.exact_match(ip).copied()
-    }
-}
-
-trait Id {
-    fn id(&self) -> HostId;
-}
-
-impl<TId, S> Id for SimNode<TId, S>
-where
-    TId: Into<HostId> + Copy,
-{
-    fn id(&self) -> HostId {
-        self.id.into()
-    }
-}
-
-impl<S> Id for SimRelay<S> {
-    fn id(&self) -> HostId {
-        self.id.into()
     }
 }
 
