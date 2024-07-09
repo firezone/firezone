@@ -168,7 +168,7 @@ pub(crate) fn tunnel_ip4s() -> impl Iterator<Item = Ipv4Addr> {
 ///
 /// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L8>.
 pub(crate) fn tunnel_ip6s() -> impl Iterator<Item = Ipv6Addr> {
-    Ipv6Network::new(Ipv6Addr::new(64_768, 8_225, 4_369, 0, 0, 0, 0, 0), 107)
+    Ipv6Network::new(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 0), 107)
         .unwrap()
         .subnets_with_prefix(128)
         .map(|n| n.network_address())
