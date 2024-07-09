@@ -1,5 +1,6 @@
 use super::sim_net::Host;
 use super::strategies::{host_ip4s, host_ip6s};
+use connlib_shared::messages::RelayId;
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
 use proptest::prelude::*;
 use rand::rngs::StdRng;
@@ -56,8 +57,24 @@ where
     }
 }
 
+pub(crate) fn map_explode<'a>(
+    relays: impl Iterator<
+            Item = (
+                &'a RelayId,
+                &'a Host<SimRelay<firezone_relay::Server<StdRng>>>,
+            ),
+        > + 'a,
+    username: &'static str,
+) -> impl Iterator<Item = (RelayId, RelaySocket, String, String, String)> + 'a {
+    relays.map(move |(id, r)| {
+        let (socket, username, password, realm) = r.inner().explode(username);
+
+        (*id, socket, username, password, realm)
+    })
+}
+
 impl SimRelay<firezone_relay::Server<StdRng>> {
-    pub(crate) fn explode(&self, username: &str) -> (RelaySocket, String, String, String) {
+    fn explode(&self, username: &str) -> (RelaySocket, String, String, String) {
         let relay_socket = match self.ip_stack {
             firezone_relay::IpStack::Ip4(ip4) => RelaySocket::V4(SocketAddrV4::new(ip4, 3478)),
             firezone_relay::IpStack::Ip6(ip6) => {

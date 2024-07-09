@@ -5,6 +5,7 @@ use super::sim_portal::SimPortal;
 use super::sim_relay::SimRelay;
 use super::QueryId;
 use crate::tests::assertions::*;
+use crate::tests::sim_relay::map_explode;
 use crate::tests::transition::Transition;
 use crate::{dns::DnsQuery, ClientEvent, ClientState, GatewayEvent, GatewayState, Request};
 use bimap::BiMap;
@@ -124,8 +125,20 @@ impl StateMachineTest for TunnelTest {
         let portal = SimPortal::new(client.inner().id, gateway.inner().id);
 
         // Configure client and gateway with the relays.
-        client.exec_mut(|c| c.init_relays(relays.iter(), ref_state.now));
-        gateway.exec_mut(|g| g.init_relays(relays.iter(), ref_state.now));
+        client.exec_mut(|c| {
+            c.state.update_relays(
+                HashSet::default(),
+                HashSet::from_iter(map_explode(relays.iter(), "client")),
+                ref_state.now,
+            )
+        });
+        gateway.exec_mut(|g| {
+            g.state.update_relays(
+                HashSet::default(),
+                HashSet::from_iter(map_explode(relays.iter(), "gateway")),
+                ref_state.now,
+            )
+        });
 
         client.exec_mut(|c| c.update_upstream_dns(ref_state.upstream_dns_resolvers.clone()));
         client.exec_mut(|c| {
@@ -251,7 +264,11 @@ impl StateMachineTest for TunnelTest {
                     c.state.reset();
 
                     // In prod, we reconnect to the portal and receive a new `init` message.
-                    c.init_relays(state.relays.iter(), ref_state.now);
+                    c.state.update_relays(
+                        HashSet::default(),
+                        HashSet::from_iter(map_explode(state.relays.iter(), "client")),
+                        ref_state.now,
+                    )
                 });
             }
         };

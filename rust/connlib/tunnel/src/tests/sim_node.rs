@@ -1,23 +1,20 @@
 use super::{
     sim_net::Host,
-    sim_relay::SimRelay,
     strategies::{host_ip4s, host_ip6s},
 };
-use crate::{ClientState, GatewayState};
+use crate::ClientState;
 use connlib_shared::{
-    messages::{ClientId, DnsServer, GatewayId, Interface, RelayId},
+    messages::{ClientId, DnsServer, Interface},
     proptest::domain_name,
     StaticSecret,
 };
 use firezone_relay::IpStack;
 use ip_network::{Ipv4Network, Ipv6Network};
 use proptest::{collection, prelude::*};
-use rand::rngs::StdRng;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    time::Instant,
 };
 
 #[derive(Clone, Debug)]
@@ -56,56 +53,12 @@ where
 }
 
 impl SimNode<ClientId, ClientState> {
-    pub(crate) fn init_relays<'a>(
-        &mut self,
-        relays: impl Iterator<
-            Item = (
-                &'a RelayId,
-                &'a Host<SimRelay<firezone_relay::Server<StdRng>>>,
-            ),
-        >,
-        now: Instant,
-    ) {
-        self.state.update_relays(
-            HashSet::default(),
-            HashSet::from_iter(relays.map(|(id, r)| {
-                let (socket, username, password, realm) = r.inner().explode("client");
-
-                (*id, socket, username, password, realm)
-            })),
-            now,
-        )
-    }
-
     pub(crate) fn update_upstream_dns(&mut self, upstream_dns_resolvers: Vec<DnsServer>) {
         let _ = self.state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,
             upstream_dns: upstream_dns_resolvers,
         });
-    }
-}
-
-impl SimNode<GatewayId, GatewayState> {
-    pub(crate) fn init_relays<'a>(
-        &mut self,
-        relays: impl Iterator<
-            Item = (
-                &'a RelayId,
-                &'a Host<SimRelay<firezone_relay::Server<StdRng>>>,
-            ),
-        >,
-        now: Instant,
-    ) {
-        self.state.update_relays(
-            HashSet::default(),
-            HashSet::from_iter(relays.map(|(id, r)| {
-                let (socket, username, password, realm) = r.inner().explode("gateway");
-
-                (*id, socket, username, password, realm)
-            })),
-            now,
-        )
     }
 }
 
