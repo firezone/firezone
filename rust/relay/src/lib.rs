@@ -73,6 +73,17 @@ impl From<(Ipv4Addr, Ipv6Addr)> for IpStack {
     }
 }
 
+impl From<(Option<Ipv4Addr>, Option<Ipv6Addr>)> for IpStack {
+    fn from((ip4, ip6): (Option<Ipv4Addr>, Option<Ipv6Addr>)) -> Self {
+        match (ip4, ip6) {
+            (None, None) => panic!("must have at least one IP"),
+            (None, Some(ip6)) => IpStack::from(ip6),
+            (Some(ip4), None) => IpStack::from(ip4),
+            (Some(ip4), Some(ip6)) => IpStack::from((ip4, ip6)),
+        }
+    }
+}
+
 /// New-type for a client's socket.
 ///
 /// From the [spec](https://www.rfc-editor.org/rfc/rfc8656#section-2-4.4):
