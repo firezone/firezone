@@ -217,7 +217,7 @@ impl PollTransmit for SimRelay<firezone_relay::Server<StdRng>> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RoutingTable {
-    routes: IpNetworkTable<ComponentId>,
+    routes: IpNetworkTable<HostId>,
 }
 
 impl Default for RoutingTable {
@@ -273,19 +273,19 @@ impl RoutingTable {
             (None, Some(ip6)) => {
                 debug_assert!(self.contains(ip6), "Cannot remove a non-existing host");
 
-                self.routes.insert(ip6, ComponentId::Stale);
+                self.routes.insert(ip6, HostId::Stale);
             }
             (Some(ip4), None) => {
                 debug_assert!(self.contains(ip4), "Cannot remove a non-existing host");
 
-                self.routes.insert(ip4, ComponentId::Stale);
+                self.routes.insert(ip4, HostId::Stale);
             }
             (Some(ip4), Some(ip6)) => {
                 debug_assert!(self.contains(ip4), "Cannot remove a non-existing host");
                 debug_assert!(self.contains(ip6), "Cannot remove a non-existing host");
 
-                self.routes.insert(ip4, ComponentId::Stale);
-                self.routes.insert(ip6, ComponentId::Stale);
+                self.routes.insert(ip4, HostId::Stale);
+                self.routes.insert(ip6, HostId::Stale);
             }
         }
     }
@@ -294,51 +294,51 @@ impl RoutingTable {
         self.routes.exact_match(ip).is_some()
     }
 
-    pub(crate) fn host_by_ip(&self, ip: IpAddr) -> Option<ComponentId> {
+    pub(crate) fn host_by_ip(&self, ip: IpAddr) -> Option<HostId> {
         self.routes.exact_match(ip).copied()
     }
 }
 
 trait Id {
-    fn id(&self) -> ComponentId;
+    fn id(&self) -> HostId;
 }
 
 impl<TId, S> Id for SimNode<TId, S>
 where
-    TId: Into<ComponentId> + Copy,
+    TId: Into<HostId> + Copy,
 {
-    fn id(&self) -> ComponentId {
+    fn id(&self) -> HostId {
         self.id.into()
     }
 }
 
 impl<S> Id for SimRelay<S> {
-    fn id(&self) -> ComponentId {
+    fn id(&self) -> HostId {
         self.id.into()
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
-pub(crate) enum ComponentId {
+pub(crate) enum HostId {
     Client(ClientId),
     Gateway(GatewayId),
     Relay(RelayId),
     Stale,
 }
 
-impl From<RelayId> for ComponentId {
+impl From<RelayId> for HostId {
     fn from(v: RelayId) -> Self {
         Self::Relay(v)
     }
 }
 
-impl From<GatewayId> for ComponentId {
+impl From<GatewayId> for HostId {
     fn from(v: GatewayId) -> Self {
         Self::Gateway(v)
     }
 }
 
-impl From<ClientId> for ComponentId {
+impl From<ClientId> for HostId {
     fn from(v: ClientId) -> Self {
         Self::Client(v)
     }

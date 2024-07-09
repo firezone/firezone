@@ -217,9 +217,9 @@ pub(crate) fn question_mark_wildcard_dns_resource() -> impl Strategy<Value = Tra
 
 pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {
     let ip_stack = prop_oneof![
-        socket_ip4s().prop_map(IpStack::Ip4),
-        socket_ip6s().prop_map(IpStack::Ip6),
-        (socket_ip4s(), socket_ip6s()).prop_map(|(ip4, ip6)| IpStack::Dual { ip4, ip6 })
+        host_ip4s().prop_map(IpStack::Ip4),
+        host_ip6s().prop_map(IpStack::Ip6),
+        (host_ip4s(), host_ip6s()).prop_map(|(ip4, ip6)| IpStack::Dual { ip4, ip6 })
     ];
 
     (

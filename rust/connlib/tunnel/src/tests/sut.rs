@@ -1,5 +1,5 @@
 use super::reference::ReferenceState;
-use super::sim_net::{ComponentId, Host, RoutingTable};
+use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_node::SimNode;
 use super::sim_portal::SimPortal;
 use super::sim_relay::SimRelay;
@@ -270,9 +270,9 @@ impl TunnelTest {
     ///
     /// For our tests to work properly, each [`Transition`] needs to advance the state as much as possible.
     /// For example, upon the first packet to a resource, we need to trigger the connection intent and fully establish a connection.
-    /// Dispatching a [`Transmit`] (read: packet) to a component can trigger more packets, i.e. receiving a STUN request may trigger a STUN response.
+    /// Dispatching a [`Transmit`] (read: packet) to a host can trigger more packets, i.e. receiving a STUN request may trigger a STUN response.
     ///
-    /// Consequently, this function needs to loop until no component can make progress at which point we consider the [`Transition`] complete.
+    /// Consequently, this function needs to loop until no host can make progress at which point we consider the [`Transition`] complete.
     fn advance(
         &mut self,
         ref_state: &ReferenceState,
@@ -366,7 +366,7 @@ impl TunnelTest {
             .collect()
     }
 
-    /// Forwards time to the given instant iff the corresponding component would like that (i.e. returns a timestamp <= from `poll_timeout`).
+    /// Forwards time to the given instant iff the corresponding host would like that (i.e. returns a timestamp <= from `poll_timeout`).
     ///
     /// Tying the forwarding of time to the result of `poll_timeout` gives us better coverage because in production, we suspend until the value of `poll_timeout`.
     fn handle_timeout(&mut self, now: Instant, utc_now: DateTime<Utc>) -> bool {
@@ -448,12 +448,12 @@ impl TunnelTest {
         self.gateway.encapsulate(packet, self.now)
     }
 
-    /// Dispatches a [`Transmit`] to the correct component.
+    /// Dispatches a [`Transmit`] to the correct host.
     ///
     /// This function is basically the "network layer" of our tests.
-    /// It takes a [`Transmit`] and checks, which component accepts it, i.e. has configured the correct IP address.
-    /// Our tests don't have a concept of a network topology.
-    /// This means, components can have IP addresses in completely different subnets, yet this function will still "route" them correctly.
+    /// It takes a [`Transmit`] and checks, which host accepts it, i.e. has configured the correct IP address.
+    ///
+    /// Currently, the network topology of our tests are a single subnet without NAT.
     fn dispatch_transmit(
         &mut self,
         transmit: Transmit,
@@ -466,14 +466,14 @@ impl TunnelTest {
         let dst = transmit.dst;
         let payload = &transmit.payload;
 
-        let Some(component) = self.network.host_by_ip(dst.ip()) else {
+        let Some(host) = self.network.host_by_ip(dst.ip()) else {
             panic!("Unhandled packet: {src} -> {dst}")
         };
 
         let mut buf = [0u8; 1000];
 
-        match component {
-            ComponentId::Client(_) => {
+        match host {
+            HostId::Client(_) => {
                 let Some(packet) = self
                     .client
                     .exec_mut(|c| c.state.decapsulate(dst, src, payload, self.now, &mut buf))
@@ -483,7 +483,7 @@ impl TunnelTest {
 
                 self.on_client_received_packet(packet);
             }
-            ComponentId::Gateway(_) => {
+            HostId::Gateway(_) => {
                 let Some(packet) = self
                     .gateway
                     .exec_mut(|g| g.state.decapsulate(dst, src, payload, self.now, &mut buf))
@@ -493,7 +493,7 @@ impl TunnelTest {
 
                 self.on_gateway_received_packet(packet, global_dns_records, buffered_transmits);
             }
-            ComponentId::Relay(_) => {
+            HostId::Relay(_) => {
                 let Some(transmit) = self
                     .relay
                     .exec_mut(|r| r.handle_packet(payload, src, dst, self.now))
@@ -503,8 +503,8 @@ impl TunnelTest {
 
                 buffered_transmits.push_back(transmit);
             }
-            ComponentId::Stale => {
-                tracing::debug!("Dropping packet because host roamed away or is offline");
+            HostId::Stale => {
+                tracing::debug!(%dst, "Dropping packet because host roamed away or is offline");
             }
         }
     }

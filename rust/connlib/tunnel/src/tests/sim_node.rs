@@ -1,7 +1,7 @@
 use super::{
     sim_net::Host,
     sim_relay::SimRelay,
-    strategies::{socket_ip4s, socket_ip6s},
+    strategies::{host_ip4s, host_ip6s},
 };
 use crate::{ClientState, GatewayState};
 use connlib_shared::{
@@ -132,9 +132,9 @@ where
     S: fmt::Debug,
 {
     let socket_ips = prop_oneof![
-        socket_ip4s().prop_map(IpStack::Ip4),
-        socket_ip6s().prop_map(IpStack::Ip6),
-        (socket_ip4s(), socket_ip6s()).prop_map(|(ip4, ip6)| IpStack::Dual { ip4, ip6 })
+        host_ip4s().prop_map(IpStack::Ip4),
+        host_ip6s().prop_map(IpStack::Ip6),
+        (host_ip4s(), host_ip6s()).prop_map(|(ip4, ip6)| IpStack::Dual { ip4, ip6 })
     ];
 
     let tunnel_ip4 = tunnel_ip4s.next().unwrap();

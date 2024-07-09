@@ -1,5 +1,5 @@
 use super::sim_net::Host;
-use super::strategies::{socket_ip4s, socket_ip6s};
+use super::strategies::{host_ip4s, host_ip6s};
 use connlib_shared::messages::RelayId;
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
 use proptest::prelude::*;
@@ -194,8 +194,7 @@ impl SimRelay<firezone_relay::Server<StdRng>> {
 
 pub(crate) fn sim_relay_prototype() -> impl Strategy<Value = Host<SimRelay<u64>>> {
     // For this test, our relays always run in dual-stack mode to ensure connectivity!
-    let socket_ips =
-        (socket_ip4s(), socket_ip6s()).prop_map(|(ip4, ip6)| IpStack::Dual { ip4, ip6 });
+    let socket_ips = (host_ip4s(), host_ip6s()).prop_map(|(ip4, ip6)| IpStack::Dual { ip4, ip6 });
 
     (any::<u64>(), socket_ips, any::<u128>()).prop_map(move |(seed, ip_stack, id)| {
         let mut host = Host::new(SimRelay::new(RelayId::from_u128(id), seed, ip_stack));
