@@ -26,9 +26,6 @@ jobs:
         id: setup-rust
       - run: cargo bench ${{ steps.setup-rust.outputs.bench-packages }}
         env:
-          # <https://github.com/rust-lang/cargo/issues/5999>
-          # Needed to create tunnel interfaces in unit tests
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
           RUST_LOG: "debug"
         name: "cargo bench"
         shell: bash
@@ -40,7 +37,6 @@ jobs:
       matrix:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
-          - runs-on: ubuntu-20.04-arm
           - runs-on: ubuntu-22.04
           - runs-on: macos-14
           - runs-on: windows-2022
@@ -74,7 +70,6 @@ jobs:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         include:
           - runs-on: ubuntu-20.04
-          - runs-on: ubuntu-20.04-arm
           - runs-on: ubuntu-22.04
           - runs-on: macos-12
           - runs-on: macos-13
@@ -87,12 +82,10 @@ jobs:
       - uses: ./.github/actions/setup-rust
         id: setup-rust
       - uses: ./.github/actions/setup-tauri
-        timeout-minutes: 5
       - run: cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
           PROPTEST_VERBOSE: 0 # Otherwise the output is very long.
         name: "cargo test"
@@ -107,7 +100,6 @@ jobs:
       matrix:
         include:
           - runs-on: ubuntu-20.04
-          - runs-on: ubuntu-20.04-arm
           # Broken on 22.04 <https://github.com/firezone/firezone/issues/3699>
           - runs-on: ubuntu-22.04
           - runs-on: windows-2019
@@ -149,7 +141,7 @@ jobs:
       fail-fast: false
       matrix:
         # TODO: Add Windows as part of issue #3782
-        runs-on: [ubuntu-20.04, ubuntu-22.04, ubuntu-20.04-arm]
+        runs-on: [ubuntu-20.04, ubuntu-22.04]
         test: [linux-group, token-path]
     runs-on: ${{ matrix.runs-on }}
     steps:
