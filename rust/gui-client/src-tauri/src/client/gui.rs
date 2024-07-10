@@ -415,7 +415,9 @@ pub(crate) enum ControllerRequest {
     },
     Fail(Failure),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
-    Ipc(Option<Result<IpcServerMsg>>),
+    Ipc(IpcServerMsg),
+    IpcClosed,
+    IpcReadFailed(anyhow::Error),
     SchemeRequest(SecretString),
     SignIn,
     SystemTrayMenu(TrayMenuEvent),
@@ -523,17 +525,15 @@ impl Controller {
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
-            // IPC errors are always fatal
-            Req::Ipc(result) => match result {
-                Some(Ok(msg)) => if let Err(error) = self.handle_ipc(msg).await {
-                    tracing::error!(?error, "`handle_ipc` failed");
-                }
-                Some(Err(error)) => {
-                    tracing::error!(?error, "IPC read failure");
-                    Err(Error::IpcRead)?
-                }
-                None => Err(Error::IpcClosed)?,
+            Req::Ipc(msg) => if let Err(error) = self.handle_ipc(msg).await {
+                tracing::error!(?error, "`handle_ipc` failed");
             }
+            Req::IpcReadFailed(error) => {
+                // IPC errors are always fatal
+                tracing::error!(?error, "IPC read failure");
+                Err(Error::IpcRead)?
+            }
+            Req::IpcClosed => Err(Error::IpcClosed)?,
             Req::SchemeRequest(url) => {
                 if let Err(error) = self.handle_deep_link(&url).await {
                     tracing::error!(?error, "`handle_deep_link` failed");
