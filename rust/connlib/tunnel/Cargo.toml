@@ -50,6 +50,10 @@ hickory-proto = { workspace = true }
 derivative = "2.2.0"
 ip-packet = { workspace = true, features = ["proptest"] }
 
+[[bench]]
+name = "tunnel"
+harness = false
+
 [features]
 proptest = ["dep:proptest", "connlib-shared/proptest"]
 
@@ -65,7 +69,7 @@ uuid = { version = "1.7.0", features = ["v4"] }
 wintun = "0.4.0"
 
 # Windows Win32 API
-[target.'cfg(windows)'.dependencies.windows]
+[target.'cfg(target_os = "windows")'.dependencies.windows]
 version = "0.57.0"
 features = [
   "Win32_Foundation",
