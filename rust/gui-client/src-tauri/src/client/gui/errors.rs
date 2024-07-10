@@ -14,6 +14,10 @@ pub(crate) enum Error {
     // `client.rs` provides a more user-friendly message when showing the error dialog box for certain variants
     #[error("IPC")]
     Ipc(#[from] ipc::Error),
+    #[error("IPC closed")]
+    IpcClosed,
+    #[error("IPC read failed")]
+    IpcRead,
     #[error("UserNotInFirezoneGroup")]
     UserNotInFirezoneGroup,
     #[error("WebViewNotInstalled")]
@@ -41,6 +45,8 @@ pub(crate) fn show_error_dialog(error: &Error) -> Result<()> {
         }
         Error::Ipc(ipc::Error::PermissionDenied) => "Permission denied for Firezone IPC service. This should only happen on dev systems.".to_string(),
         Error::Ipc(ipc::Error::Other(error)) => error.to_string(),
+        Error::IpcClosed => "IPC connection closed".to_string(),
+        Error::IpcRead => "IPC read failure".to_string(),
         Error::Logging(_) => "Logging error".to_string(),
         Error::UserNotInFirezoneGroup => format!("You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo usermod -aG {FIREZONE_GROUP} $USER` and then reboot"),
         Error::Other(error) => error.to_string(),
