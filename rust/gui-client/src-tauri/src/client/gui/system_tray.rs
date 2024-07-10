@@ -43,7 +43,7 @@ pub(crate) enum Menu<'a> {
 }
 
 #[derive(PartialEq)]
-enum Icon {
+pub(crate) enum Icon {
     /// Must be equivalent to the default app icon, since we assume this is set when we start
     Busy,
     SignedIn,
@@ -71,19 +71,23 @@ impl Tray {
             Menu::SignedIn { .. } => Icon::SignedIn,
         };
 
-        let handle = &self.handle;
-        handle.set_tooltip(TOOLTIP)?;
-        handle.set_menu(menu.build())?;
+        self.handle.set_tooltip(TOOLTIP)?;
+        self.handle.set_menu(menu.build())?;
+        self.set_icon(new_icon)?;
 
-        if new_icon != self.last_icon_set {
+        Ok(())
+    }
+
+    // Normally only needed for the stress test
+    pub(crate) fn set_icon(&mut self, icon: Icon) -> Result<()> {
+        if icon != self.last_icon_set {
             // Don't call `set_icon` too often. On Linux it writes a PNG to `/run/user/$UID/tao/tray-icon-*.png` every single time.
             // <https://github.com/tauri-apps/tao/blob/tao-v0.16.7/src/platform_impl/linux/system_tray.rs#L119>
             // Yes, even if you use `Icon::File` and tell Tauri that the icon is already
             // on disk.
-            handle.set_icon(new_icon.tauri_icon())?;
-            self.last_icon_set = new_icon;
+            self.handle.set_icon(icon.tauri_icon())?;
+            self.last_icon_set = icon;
         }
-
         Ok(())
     }
 }
