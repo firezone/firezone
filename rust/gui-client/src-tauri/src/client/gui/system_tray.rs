@@ -3,11 +3,113 @@
 //! "Notification Area" is Microsoft's official name instead of "System tray":
 //! <https://learn.microsoft.com/en-us/windows/win32/shell/notification-area?redirectedfrom=MSDN#notifications-and-the-notification-area>
 
-use super::Status;
+use anyhow::Result;
 use connlib_client_shared::callbacks::{ResourceDescription, Status};
 use serde::{Deserialize, Serialize};
-use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem, SystemTraySubmenu};
+use tauri::{
+    CustomMenuItem, SystemTray, SystemTrayHandle, SystemTrayMenu, SystemTrayMenuItem,
+    SystemTraySubmenu,
+};
 use url::Url;
+
+const SIGNED_IN_ICON: &[u8] = include_bytes!("../../../icons/icon.ico");
+const SIGNED_OUT_ICON: &[u8] = include_bytes!("../../../icons/icon-signed-out.ico");
+const TOOLTIP: &str = "Firezone";
+
+pub(crate) fn loading() -> SystemTray {
+    SystemTray::new()
+        .with_menu(Menu::Loading.build())
+        .with_tooltip(TOOLTIP)
+}
+
+pub(crate) struct Tray {
+    handle: SystemTrayHandle,
+    last_icon_set: Icon,
+}
+
+pub(crate) enum Menu<'a> {
+    Loading,
+    SignedOut,
+    WaitingForBrowser,
+    WaitingForConnlib,
+    SignedIn {
+        actor_name: &'a str,
+        resources: &'a [ResourceDescription],
+    },
+}
+
+#[derive(PartialEq)]
+enum Icon {
+    SignedIn,
+    /// Must be equivalent to the default app icon, since we assume this is set when we start
+    SignedOut,
+}
+
+impl Tray {
+    pub(crate) fn new(handle: SystemTrayHandle) -> Self {
+        Self {
+            handle,
+            last_icon_set: Default::default(),
+        }
+    }
+
+    pub(crate) fn update(&mut self, menu: Menu) -> Result<()> {
+        let new_icon = match &menu {
+            Menu::Loading | Menu::SignedOut | Menu::WaitingForBrowser | Menu::WaitingForConnlib => {
+                Icon::SignedOut
+            }
+            Menu::SignedIn { .. } => Icon::SignedIn,
+        };
+
+        let handle = &self.handle;
+        handle.set_tooltip(TOOLTIP)?;
+        handle.set_menu(menu.build())?;
+
+        if new_icon != self.last_icon_set {
+            // Don't call `set_icon` too often. On Linux it writes a PNG to `/run/user/$UID/tao/tray-icon-*.png` every single time.
+            // <https://github.com/tauri-apps/tao/blob/tao-v0.16.7/src/platform_impl/linux/system_tray.rs#L119>
+            // Yes, even if you use `Icon::File` and tell Tauri that the icon is already
+            // on disk.
+            handle.set_icon(new_icon.tauri_icon())?;
+            self.last_icon_set = new_icon;
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for Icon {
+    fn default() -> Self {
+        Self::SignedOut
+    }
+}
+
+impl Icon {
+    fn tauri_icon(&self) -> tauri::Icon {
+        let bytes = match self {
+            Self::SignedIn => SIGNED_IN_ICON,
+            Self::SignedOut => SIGNED_OUT_ICON,
+        };
+        tauri::Icon::Raw(bytes.into())
+    }
+}
+
+impl<'a> Menu<'a> {
+    fn build(self) -> SystemTrayMenu {
+        match self {
+            Menu::Loading => SystemTrayMenu::new().disabled("Loading..."),
+            Menu::SignedOut => SystemTrayMenu::new()
+                .item(Event::SignIn, "Sign In")
+                .add_bottom_section(QUIT_TEXT_SIGNED_OUT),
+            Menu::WaitingForBrowser => signing_in("Waiting for browser..."),
+            Menu::WaitingForConnlib => signing_in("Signing In..."),
+            Menu::SignedIn {
+                actor_name,
+                resources,
+            } => signed_in(actor_name, resources),
+        }
+    }
+}
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub(crate) enum Event {
@@ -29,29 +131,6 @@ pub(crate) enum Window {
 
 const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
 
-/// Returns a new system tray menu
-pub(crate) fn build_system_tray_menu(actor_name: Option<&str>) -> tauri::SystemTrayMenu {
-    // TODO: Refactor this and the auth module so that "Are we logged in"
-    // doesn't require such complicated control flow to answer.
-    // TODO: Show some "Waiting for portal..." state if we got the deep link but
-    // haven't got `on_tunnel_ready` yet.
-    if let Some(actor_name) = actor_name {
-        match &self.status {
-            Status::Disconnected => {
-                tracing::error!("We have an auth session but no connlib session");
-                signed_out()
-            }
-            Status::Connecting => signing_in("Signing In..."),
-            Status::TunnelReady => signed_in(actor_name, &self.resources.load()),
-        }
-    } else if self.auth.ongoing_request().is_ok() {
-        // Signing in, waiting on deep link callback
-        signing_in("Waiting for browser...")
-    } else {
-        signed_out()
-    }
-}
-
 fn get_submenu(res: &ResourceDescription) -> SystemTrayMenu {
     let submenu = SystemTrayMenu::new();
 
@@ -70,11 +149,7 @@ fn get_submenu(res: &ResourceDescription) -> SystemTrayMenu {
     submenu.item(Event::Url(url), address_description)
 }
 
-pub(crate) fn loading() -> SystemTrayMenu {
-    SystemTrayMenu::new().disabled("Loading...")
-}
-
-pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> SystemTrayMenu {
+fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> SystemTrayMenu {
     let mut menu = SystemTrayMenu::new()
         .disabled(format!("Signed in as {user_name}"))
         .item(Event::SignOut, "Sign out")
@@ -116,65 +191,11 @@ pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> S
     menu.add_bottom_section("Disconnect and quit Firezone")
 }
 
-pub(crate) fn signing_in(waiting_message: &str) -> SystemTrayMenu {
+fn signing_in(waiting_message: &str) -> SystemTrayMenu {
     SystemTrayMenu::new()
         .disabled(waiting_message)
         .item(Event::CancelSignIn, "Cancel sign-in")
         .add_bottom_section(QUIT_TEXT_SIGNED_OUT)
-}
-
-pub(crate) fn signed_out() -> SystemTrayMenu {
-    SystemTrayMenu::new()
-        .item(Event::SignIn, "Sign In")
-        .add_bottom_section(QUIT_TEXT_SIGNED_OUT)
-}
-
-pub(crate) fn debug() -> SystemTrayMenu {
-    let mut menu = SystemTrayMenu::new()
-        .disabled("Debug tray menu")
-        .item(None, "Fake sign out button")
-        .separator()
-        .disabled("Resources");
-
-    let submenu = SystemTrayMenu::new().copyable("Fake submenu");
-    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 1", submenu));
-
-    let submenu = SystemTrayMenu::new()
-        .copyable("Fake Copyable")
-        .item(None, "Fake description")
-        .separator()
-        .disabled("Resource")
-        .copyable("Fake name")
-        .copyable("Fake pastable")
-        .separator()
-        .disabled("Site")
-        .item(None, "Fake name")
-        .item(None, "[-] No activity");
-    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 2", submenu));
-
-    let submenu = SystemTrayMenu::new()
-        .copyable("Fake Copyable")
-        .item(None, "Fake description")
-        .separator()
-        .disabled("Resource")
-        .copyable("Fake name")
-        .copyable("Fake pastable")
-        .separator()
-        .disabled("Site")
-        .item(None, "Fake name")
-        .item(None, "⭕🟢🟥 Fake status");
-    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 3", submenu));
-
-    let submenu = SystemTrayMenu::new().copyable("Fake Copyable ⭕");
-    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 4", submenu));
-
-    let submenu = SystemTrayMenu::new().copyable("Fake Copyable 🟢");
-    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 5", submenu));
-
-    let submenu = SystemTrayMenu::new().copyable("Fake Copyable 🟥");
-    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 6", submenu));
-
-    menu
 }
 
 trait FirezoneMenu {

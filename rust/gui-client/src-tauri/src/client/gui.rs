@@ -4,20 +4,17 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::client::{
-    self, about, deep_link,
-    ipc::{self, CallbackHandler},
-    logging, network_changes,
+    self, about, deep_link, ipc, logging, network_changes,
     settings::{self, AdvancedSettings},
     Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
-use arc_swap::ArcSwap;
 use connlib_client_shared::callbacks::ResourceDescription;
 use secrecy::{ExposeSecret, SecretString};
-use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
-use system_tray_menu::Event as TrayMenuEvent;
-use tauri::{Manager, SystemTray, SystemTrayEvent};
-use tokio::sync::{mpsc, oneshot, Notify};
+use std::{path::PathBuf, str::FromStr, time::Duration};
+use system_tray::Event as TrayMenuEvent;
+use tauri::{Manager, SystemTrayEvent};
+use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
 use url::Url;
 
@@ -25,7 +22,7 @@ use ControllerRequest as Req;
 
 mod errors;
 mod ran_before;
-pub(crate) mod system_tray_menu;
+pub(crate) mod system_tray;
 
 #[cfg(target_os = "linux")]
 #[path = "gui/os_linux.rs"]
@@ -47,10 +44,6 @@ pub(crate) use errors::{show_error_dialog, Error};
 pub(crate) use os::set_autostart;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
-
-const SIGNED_IN_ICON: &[u8] = include_bytes!("../../icons/icon.ico");
-const SIGNED_OUT_ICON: &[u8] = include_bytes!("../../icons/icon-signed-out.ico");
-const TRAY_ICON_TOOLTIP: &str = "Firezone";
 
 /// All managed state that we might need to access from odd places like Tauri commands.
 ///
@@ -97,12 +90,6 @@ pub(crate) fn run(
         inject_faults: cli.inject_faults,
     };
 
-    // We can't call `refresh_system_tray_menu` yet because `Controller`
-    // is built inside Tauri's setup
-    let tray = SystemTray::new()
-        .with_menu(system_tray_menu::loading())
-        .with_tooltip(TRAY_ICON_TOOLTIP);
-
     tracing::info!("Setting up Tauri app instance...");
     let (setup_result_tx, mut setup_result_rx) =
         tokio::sync::oneshot::channel::<Result<(), Error>>();
@@ -129,7 +116,7 @@ pub(crate) fn run(
             settings::get_advanced_settings,
             crate::client::welcome::sign_in,
         ])
-        .system_tray(tray)
+        .system_tray(system_tray::loading())
         .on_system_tray_event(|app, event| {
             if let SystemTrayEvent::MenuItemClick { id, .. } = event {
                 tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
@@ -426,9 +413,9 @@ pub(crate) enum ControllerRequest {
     SchemeRequest(SecretString),
     SignIn,
     SystemTrayMenu(TrayMenuEvent),
-    TunnelReady,
     UpdateAvailable(crate::client::updates::Release),
     UpdateNotificationClicked(Url),
+    UpdateResources(Vec<ResourceDescription>),
 }
 
 enum Status {
@@ -437,7 +424,7 @@ enum Status {
     /// Firezone is signing in and raising the tunnel.
     Connecting,
     /// Firezone is ready to use.
-    TunnelReady,
+    TunnelReady { resources: Vec<ResourceDescription> },
 }
 
 impl Default for Status {
@@ -452,7 +439,7 @@ impl Status {
         match self {
             Self::Disconnected => false,
             Self::Connecting => true,
-            Self::TunnelReady => true,
+            Self::TunnelReady { .. } => true,
         }
     }
 }
@@ -466,10 +453,8 @@ struct Controller {
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
     log_filter_reloader: logging::Reloader,
-    /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
-    notify_controller: Arc<Notify>,
-    resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
     status: Status,
+    tray: system_tray::Tray,
     uptime: client::uptime::Tracker,
 }
 
@@ -599,7 +584,7 @@ impl Controller {
                         );
                         self.sign_out().await?;
                     }
-                    Status::TunnelReady => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
+                    Status::TunnelReady{..} => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
                 }
             }
             Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
@@ -625,16 +610,6 @@ impl Controller {
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => Err(anyhow!(
                 "Impossible error: `Quit` should be handled before this"
             ))?,
-            Req::TunnelReady => {
-                if ! matches!(self.status, Status::TunnelReady) {
-                    self.status = Status::TunnelReady;
-                    os::show_notification(
-                        "Firezone connected",
-                        "You are now signed in and able to access resources.",
-                    )?;
-                }
-                self.refresh_system_tray_menu()?;
-            }
             Req::UpdateAvailable(release) => {
                 let title = format!("Firezone {} available for download", release.version);
 
@@ -648,20 +623,53 @@ impl Controller {
                 tauri::api::shell::open(&self.app.shell_scope(), download_url, None)
                     .context("Couldn't open update page")?;
             }
+            Req::UpdateResources(resources) => {
+                if self.auth.session().is_none() {
+                    // This could happen if the user cancels the sign-in
+                    // before it completes. This is because the state machine
+                    // between the GUI, the IPC service, and connlib isn't  perfectly synced.
+                    tracing::error!("Got `UpdateResources` while signed out");
+                    return Ok(());
+                }
+                tracing::debug!(len = resources.len(), "Got new Resources");
+                if !matches!(self.status, Status::TunnelReady{..}) {
+                    os::show_notification(
+                        "Firezone connected",
+                        "You are now signed in and able to access resources.",
+                    )?;
+                }
+                self.status = Status::TunnelReady{resources};
+                if let Err(error) = self.refresh_system_tray_menu() {
+                    tracing::error!(?error, "Failed to refresh Resource list");
+                }
+            }
         }
         Ok(())
     }
 
     /// Builds a new system tray menu and applies it to the app
-    fn refresh_system_tray_menu(&self) -> Result<()> {
-        let tray = self.app.tray_handle();
-        // Don't call `set_icon` too often. On Linux it writes a PNG to `/run/user/$UID/tao/tray-icon-*.png` every single time.
-        // <https://github.com/tauri-apps/tao/blob/tao-v0.16.7/src/platform_impl/linux/system_tray.rs#L119>
-        // Yes, even if you use `Icon::File` and tell Tauri that the icon is already
-        // on disk.
-        tray.set_icon(tauri::Icon::Raw(SIGNED_OUT_ICON.into()))?;
-        tray.set_tooltip(TRAY_ICON_TOOLTIP)?;
-        tray.set_menu(self.build_system_tray_menu())?;
+    fn refresh_system_tray_menu(&mut self) -> Result<()> {
+        // TODO: Refactor `Controller` and the auth module so that "Are we logged in"
+        // doesn't require such complicated control flow to answer.
+        let menu = if let Some(auth_session) = self.auth.session() {
+            match &self.status {
+                Status::Disconnected => {
+                    tracing::error!("We have an auth session but no connlib session");
+                    system_tray::Menu::SignedOut
+                }
+                Status::Connecting => system_tray::Menu::WaitingForConnlib,
+                Status::TunnelReady { resources } => system_tray::Menu::SignedIn {
+                    actor_name: &auth_session.actor_name,
+                    resources,
+                },
+            }
+        } else if self.auth.ongoing_request().is_ok() {
+            // Signing in, waiting on deep link callback
+            system_tray::Menu::WaitingForBrowser
+        } else {
+            system_tray::Menu::SignedOut
+        };
+        self.tray.update(menu)?;
         Ok(())
     }
 
@@ -683,10 +691,10 @@ impl Controller {
         Ok(())
     }
 
-    fn show_window(&self, window: system_tray_menu::Window) -> Result<()> {
+    fn show_window(&self, window: system_tray::Window) -> Result<()> {
         let id = match window {
-            system_tray_menu::Window::About => "about",
-            system_tray_menu::Window::Settings => "settings",
+            system_tray::Window::About => "about",
+            system_tray::Window::Settings => "settings",
         };
 
         let win = self
@@ -709,14 +717,8 @@ async fn run_controller(
     log_filter_reloader: logging::Reloader,
 ) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");
-    let notify_controller = Arc::new(Notify::new());
-    let resources = Default::default();
-    let callback_handler = CallbackHandler {
-        ctlr_tx: ctlr_tx.clone(),
-        notify_controller: Arc::clone(&notify_controller),
-        resources: Arc::clone(&resources),
-    };
-    let ipc_client = ipc::Client::new(callback_handler).await?;
+    let ipc_client = ipc::Client::new(ctlr_tx.clone()).await?;
+    let tray = system_tray::Tray::new(app.tray_handle());
     let mut controller = Controller {
         advanced_settings,
         app: app.clone(),
@@ -724,9 +726,8 @@ async fn run_controller(
         ctlr_tx,
         ipc_client,
         log_filter_reloader,
-        notify_controller, // TODO: Fix cancel-safety
-        resources,
         status: Default::default(),
+        tray,
         uptime: Default::default(),
     };
 
@@ -759,12 +760,6 @@ async fn run_controller(
 
     loop {
         tokio::select! {
-            () = controller.notify_controller.notified() => {
-                tracing::debug!("Controller notified of new resources");
-                if let Err(error) = controller.refresh_system_tray_menu() {
-                    tracing::error!(?error, "Failed to reload resource list");
-                }
-            }
             () = com_worker.notified() => {
                 let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
                 if new_have_internet != have_internet {

@@ -1,7 +1,6 @@
 use crate::messages::{
-    client::ResourceDescriptionCidr,
-    client::{ResourceDescription, ResourceDescriptionDns, Site, SiteId},
-    ClientId, GatewayId, ResourceId,
+    client::{ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns, Site, SiteId},
+    ClientId, GatewayId, RelayId, ResourceId,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
@@ -138,6 +137,10 @@ pub fn gateway_id() -> impl Strategy<Value = GatewayId> + Clone {
 
 pub fn client_id() -> impl Strategy<Value = ClientId> {
     any::<u128>().prop_map(ClientId::from_u128)
+}
+
+pub fn relay_id() -> impl Strategy<Value = RelayId> {
+    any::<u128>().prop_map(RelayId::from_u128)
 }
 
 pub fn resource_name() -> impl Strategy<Value = String> {

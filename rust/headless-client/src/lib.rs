@@ -100,7 +100,6 @@ pub enum IpcServerMsg {
         error_msg: String,
         is_authentication_error: bool,
     },
-    OnTunnelReady,
     OnUpdateResources(Vec<callbacks::ResourceDescription>),
 }
 
