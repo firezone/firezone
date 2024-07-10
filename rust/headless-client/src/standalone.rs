@@ -1,21 +1,22 @@
 //! AKA "Headless"
 
 use crate::{
-    default_token_path, device_id, dns_control, platform, CallbackHandler, CliCommon,
-    DnsController, InternalServerMsg, IpcServerMsg, SignalKind, Signals, TOKEN_ENV_KEY,
+    default_token_path, device_id, dns_control, platform, signals, CallbackHandler, CliCommon,
+    DnsController, InternalServerMsg, IpcServerMsg, TOKEN_ENV_KEY,
 };
 use anyhow::{anyhow, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets};
 use connlib_shared::tun_device_manager;
 use firezone_cli_utils::setup_global_subscriber;
-use futures::future;
+use futures::{FutureExt as _, StreamExt as _};
 use secrecy::SecretString;
 use std::{
     path::{Path, PathBuf},
     pin::pin,
 };
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 /// Command-line args for the headless Client
 #[derive(clap::Parser)]
@@ -127,7 +128,6 @@ pub fn run_only_headless_client() -> Result<()> {
         )
     })?;
     tracing::info!("Running in headless / standalone mode");
-    let _guard = rt.enter();
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.common.max_partition_time.map(|d| d.into());
 
@@ -151,7 +151,7 @@ pub fn run_only_headless_client() -> Result<()> {
         return Ok(());
     }
 
-    let (cb_tx, mut cb_rx) = mpsc::channel(10);
+    let (cb_tx, cb_rx) = mpsc::channel(10);
     let callbacks = CallbackHandler { cb_tx };
 
     platform::setup_before_connlib()?;
@@ -170,47 +170,47 @@ pub fn run_only_headless_client() -> Result<()> {
     platform::notify_service_controller()?;
 
     let result = rt.block_on(async {
+        let mut terminate = signals::Terminate::new()?;
+        let mut hangup = signals::Hangup::new()?;
+        let mut terminate = pin!(terminate.recv().fuse());
+        let mut hangup = pin!(hangup.recv().fuse());
         let mut dns_controller = DnsController::default();
         let mut tun_device = tun_device_manager::TunDeviceManager::new()?;
-        let mut signals = Signals::new()?;
+        let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
         loop {
-            match future::select(pin!(signals.recv()), pin!(cb_rx.recv())).await {
-                future::Either::Left((SignalKind::Hangup, _)) => {
+            let cb = futures::select! {
+                () = terminate => {
+                    tracing::info!("Caught SIGINT / SIGTERM / Ctrl+C");
+                    return Ok(());
+                },
+                () = hangup => {
                     tracing::info!("Caught SIGHUP");
                     session.reconnect();
-                }
-                future::Either::Left((SignalKind::Interrupt, _)) => {
-                    tracing::info!("Caught SIGINT");
-                    return Ok(());
-                }
-                future::Either::Left((SignalKind::Terminate, _)) => {
-                    tracing::info!("Caught SIGTERM");
-                    return Ok(());
-                }
-                future::Either::Right((None, _)) => {
-                    return Err(anyhow::anyhow!("cb_rx unexpectedly ran empty"));
-                }
-                future::Either::Right((Some(msg), _)) => match msg {
-                    // TODO: Headless Client shouldn't be using messages labelled `Ipc`
-                    InternalServerMsg::Ipc(IpcServerMsg::OnDisconnect {
-                        error_msg,
-                        is_authentication_error: _,
-                    }) => return Err(anyhow!(error_msg).context("Firezone disconnected")),
-                    InternalServerMsg::Ipc(IpcServerMsg::Ok)
-                    | InternalServerMsg::Ipc(IpcServerMsg::OnTunnelReady) => {}
-                    InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {
-                        // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
-                        dns_controller.flush()?;
-                    }
-                    InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                        tun_device.set_ips(ipv4, ipv6).await?;
-                        dns_controller.set_dns(&dns).await?;
-                    }
-                    InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                        tun_device.set_routes(ipv4, ipv6).await?
-                    }
+                    continue;
                 },
+                cb = cb_rx.next() => cb.context("cb_rx unexpectedly ran empty")?,
+            };
+
+            match cb {
+                // TODO: Headless Client shouldn't be using messages labelled `Ipc`
+                InternalServerMsg::Ipc(IpcServerMsg::OnDisconnect {
+                    error_msg,
+                    is_authentication_error: _,
+                }) => return Err(anyhow!(error_msg).context("Firezone disconnected")),
+                InternalServerMsg::Ipc(IpcServerMsg::Ok)
+                | InternalServerMsg::Ipc(IpcServerMsg::OnTunnelReady) => {}
+                InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {
+                    // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
+                    dns_controller.flush()?;
+                }
+                InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
+                    tun_device.set_ips(ipv4, ipv6).await?;
+                    dns_controller.set_dns(&dns).await?;
+                }
+                InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
+                    tun_device.set_routes(ipv4, ipv6).await?
+                }
             }
         }
     });
