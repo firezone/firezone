@@ -27,14 +27,10 @@ impl RefGateway {
     }
 }
 
-pub(crate) fn ref_gateway_host() -> impl Strategy<Value = Host<RefGateway, SimGateway>> {
-    host(any_ip_stack(), any_port(), ref_gateway(), sim_gateway())
+pub(crate) fn ref_gateway_host() -> impl Strategy<Value = Host<RefGateway, GatewayId>> {
+    host(any_ip_stack(), any_port(), ref_gateway(), gateway_id())
 }
 
 fn ref_gateway() -> impl Strategy<Value = RefGateway> {
     private_key().prop_map(move |key| RefGateway { key })
-}
-
-fn sim_gateway() -> impl Strategy<Value = SimGateway> {
-    gateway_id().prop_map(move |id| SimGateway { id })
 }

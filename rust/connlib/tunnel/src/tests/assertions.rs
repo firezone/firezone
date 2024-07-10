@@ -16,7 +16,7 @@ use std::{
 /// 3. For DNS resources, the mapping of proxy IP to actual resource IP must be stable.
 pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &ReferenceState) {
     let unexpected_icmp_replies = find_unexpected_entries(
-        &ref_state.expected_icmp_handshakes,
+        &ref_state.client.inner().expected_icmp_handshakes,
         &state.client_received_icmp_replies,
         |(_, seq_a, id_a), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
     );
@@ -27,7 +27,7 @@ pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &Ref
     );
 
     assert_eq!(
-        ref_state.expected_icmp_handshakes.len(),
+        ref_state.client.inner().expected_icmp_handshakes.len(),
         state.gateway_received_icmp_requests.len(),
         "Unexpected ICMP requests on gateway"
     );
@@ -37,6 +37,8 @@ pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &Ref
     let mut mapping = HashMap::new();
 
     for ((resource_dst, seq, identifier), gateway_received_request) in ref_state
+        .client
+        .inner()
         .expected_icmp_handshakes
         .iter()
         .zip(state.gateway_received_icmp_requests.iter())
@@ -99,7 +101,7 @@ pub(crate) fn assert_known_hosts_are_valid(state: &TunnelTest, ref_state: &Refer
 
 pub(crate) fn assert_dns_packets_properties(state: &TunnelTest, ref_state: &ReferenceState) {
     let unexpected_icmp_replies = find_unexpected_entries(
-        &ref_state.expected_dns_handshakes,
+        &ref_state.client.inner().expected_dns_handshakes,
         &state.client_received_dns_responses,
         |id_a, id_b| id_a == id_b,
     );
@@ -110,7 +112,7 @@ pub(crate) fn assert_dns_packets_properties(state: &TunnelTest, ref_state: &Refe
         "Unexpected DNS replies on client"
     );
 
-    for query_id in ref_state.expected_dns_handshakes.iter() {
+    for query_id in ref_state.client.inner().expected_dns_handshakes.iter() {
         let _guard = tracing::info_span!(target: "assertions", "dns", %query_id).entered();
 
         let client_sent_query = state

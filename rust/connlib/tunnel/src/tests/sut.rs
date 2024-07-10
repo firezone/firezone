@@ -93,13 +93,13 @@ impl StateMachineTest for TunnelTest {
 
         // Construct client, gateway and relay from the initial state.
         let mut client = ref_state.client.map(
-            |ref_client, _, _| ref_client.init(ref_state.upstream_dns_resolvers.clone()),
-            |sim| sim,
+            |ref_client, _, _| ref_client.init(),
+            |id| SimClient { id },
             debug_span!("client"),
         );
         let mut gateway = ref_state.gateway.map(
             |ref_gateway, _, _| ref_gateway.init(),
-            |sim| sim,
+            |id| SimGateway { id },
             debug_span!("gateway"),
         );
 
@@ -141,8 +141,6 @@ impl StateMachineTest for TunnelTest {
                 ref_state.now,
             )
         });
-
-        client.exec_mut(|c, _| c.update_system_resolvers(ref_state.system_dns_resolvers.clone()));
 
         let mut this = Self {
             now: ref_state.now,
@@ -291,7 +289,7 @@ impl StateMachineTest for TunnelTest {
         assert_known_hosts_are_valid(state, ref_state);
         assert_eq!(
             state.effective_dns_servers(),
-            ref_state.expected_dns_servers(),
+            ref_state.client.inner().expected_dns_servers(),
             "Effective DNS servers should match either system or upstream DNS"
         );
     }
@@ -324,8 +322,8 @@ impl TunnelTest {
                 self.on_client_event(
                     self.client.sim().id,
                     event,
-                    &ref_state.client_cidr_resources,
-                    &ref_state.client_dns_resources,
+                    &ref_state.client.inner().cidr_resources,
+                    &ref_state.client.inner().dns_resources,
                     &ref_state.global_dns_records,
                 );
                 continue;
