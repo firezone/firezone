@@ -33,7 +33,7 @@ pub(crate) struct ReferenceState {
     pub(crate) utc_now: DateTime<Utc>,
     #[allow(clippy::type_complexity)]
     pub(crate) client: Host<RefClient, SimClient>,
-    pub(crate) gateway: Host<PrivateKey, SimGateway>,
+    pub(crate) gateway: Host<RefGateway, SimGateway>,
     pub(crate) relays: HashMap<RelayId, Host<u64, ()>>,
 
     /// The DNS resolvers configured on the client outside of connlib.
@@ -92,7 +92,7 @@ impl ReferenceStateMachine for ReferenceState {
 
         (
             ref_client_host(&mut tunnel_ip4s, &mut tunnel_ip6s),
-            gateway_prototype(&mut tunnel_ip4s, &mut tunnel_ip6s),
+            ref_gateway_host(),
             collection::hash_map(relay_id(), relay_prototype(), 2),
             system_dns_servers(),
             upstream_dns_servers(),
@@ -133,7 +133,7 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .prop_filter(
                 "client and gateway priv key must be different",
-                |(c, g, _, _, _, _, _, _, _)| &c.inner().key != g.inner(),
+                |(c, g, _, _, _, _, _, _, _)| c.inner().key != g.inner().key,
             )
             .prop_filter(
                 "at least one DNS server needs to be reachable",

@@ -2,39 +2,39 @@ use super::{
     reference::{private_key, PrivateKey},
     sim_net::{any_ip_stack, any_port, host, Host},
 };
+use crate::GatewayState;
 use connlib_shared::{messages::GatewayId, proptest::gateway_id};
 use proptest::prelude::*;
-use std::net::{Ipv4Addr, Ipv6Addr};
 
+/// Simulation state for a particular client.
 #[derive(Debug, Clone)]
 pub(crate) struct SimGateway {
     pub(crate) id: GatewayId,
-    pub(crate) _tunnel_ip4: Ipv4Addr,
-    pub(crate) _tunnel_ip6: Ipv6Addr,
 }
 
-pub(crate) fn gateway_prototype(
-    tunnel_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
-    tunnel_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
-) -> impl Strategy<Value = Host<PrivateKey, SimGateway>> {
-    host(
-        any_ip_stack(),
-        any_port(),
-        private_key(),
-        sim_gateway(tunnel_ip4s, tunnel_ip6s),
-    )
+/// Reference state for a particular gateway.
+#[derive(Debug, Clone)]
+pub struct RefGateway {
+    pub(crate) key: PrivateKey,
 }
 
-fn sim_gateway(
-    tunnel_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
-    tunnel_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
-) -> impl Strategy<Value = SimGateway> {
-    let tunnel_ip4 = tunnel_ip4s.next().unwrap();
-    let tunnel_ip6 = tunnel_ip6s.next().unwrap();
+impl RefGateway {
+    /// Initialize the [`GatewayState`].
+    ///
+    /// This simulates receiving the `init` message from the portal.
+    pub(crate) fn init(self) -> GatewayState {
+        GatewayState::new(self.key)
+    }
+}
 
-    gateway_id().prop_map(move |id| SimGateway {
-        id,
-        _tunnel_ip4: tunnel_ip4,
-        _tunnel_ip6: tunnel_ip6,
-    })
+pub(crate) fn ref_gateway_host() -> impl Strategy<Value = Host<RefGateway, SimGateway>> {
+    host(any_ip_stack(), any_port(), ref_gateway(), sim_gateway())
+}
+
+fn ref_gateway() -> impl Strategy<Value = RefGateway> {
+    private_key().prop_map(move |key| RefGateway { key })
+}
+
+fn sim_gateway() -> impl Strategy<Value = SimGateway> {
+    gateway_id().prop_map(move |id| SimGateway { id })
 }

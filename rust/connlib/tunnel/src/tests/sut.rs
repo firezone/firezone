@@ -98,7 +98,7 @@ impl StateMachineTest for TunnelTest {
             debug_span!("client"),
         );
         let mut gateway = ref_state.gateway.map(
-            |key, _, _| GatewayState::new(key),
+            |ref_gateway, _, _| ref_gateway.init(),
             |sim| sim,
             debug_span!("gateway"),
         );
