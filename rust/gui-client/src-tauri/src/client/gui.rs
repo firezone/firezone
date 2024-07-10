@@ -4,20 +4,17 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::client::{
-    self, about, deep_link,
-    ipc::{self, CallbackHandler},
-    logging, network_changes,
+    self, about, deep_link, ipc, logging, network_changes,
     settings::{self, AdvancedSettings},
     Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
-use arc_swap::ArcSwap;
 use connlib_client_shared::callbacks::ResourceDescription;
 use secrecy::{ExposeSecret, SecretString};
-use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{path::PathBuf, str::FromStr, time::Duration};
 use system_tray_menu::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTray, SystemTrayEvent};
-use tokio::sync::{mpsc, oneshot, Notify};
+use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
 use url::Url;
 
@@ -424,9 +421,9 @@ pub(crate) enum ControllerRequest {
     SchemeRequest(SecretString),
     SignIn,
     SystemTrayMenu(TrayMenuEvent),
-    TunnelReady,
     UpdateAvailable(crate::client::updates::Release),
     UpdateNotificationClicked(Url),
+    UpdateResources(Vec<ResourceDescription>),
 }
 
 enum Status {
@@ -435,7 +432,7 @@ enum Status {
     /// Firezone is signing in and raising the tunnel.
     Connecting,
     /// Firezone is ready to use.
-    TunnelReady,
+    TunnelReady { resources: Vec<ResourceDescription> },
 }
 
 impl Default for Status {
@@ -450,7 +447,7 @@ impl Status {
         match self {
             Self::Disconnected => false,
             Self::Connecting => true,
-            Self::TunnelReady => true,
+            Self::TunnelReady { .. } => true,
         }
     }
 }
@@ -464,9 +461,6 @@ struct Controller {
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
     log_filter_reloader: logging::Reloader,
-    /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
-    notify_controller: Arc<Notify>,
-    resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
     status: Status,
     uptime: client::uptime::Tracker,
 }
@@ -597,7 +591,7 @@ impl Controller {
                         );
                         self.sign_out().await?;
                     }
-                    Status::TunnelReady => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
+                    Status::TunnelReady{..} => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
                 }
             }
             Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
@@ -623,16 +617,6 @@ impl Controller {
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => Err(anyhow!(
                 "Impossible error: `Quit` should be handled before this"
             ))?,
-            Req::TunnelReady => {
-                if ! matches!(self.status, Status::TunnelReady) {
-                    self.status = Status::TunnelReady;
-                    os::show_notification(
-                        "Firezone connected",
-                        "You are now signed in and able to access resources.",
-                    )?;
-                }
-                self.refresh_system_tray_menu()?;
-            }
             Req::UpdateAvailable(release) => {
                 let title = format!("Firezone {} available for download", release.version);
 
@@ -645,6 +629,26 @@ impl Controller {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
                 tauri::api::shell::open(&self.app.shell_scope(), download_url, None)
                     .context("Couldn't open update page")?;
+            }
+            Req::UpdateResources(resources) => {
+                if self.auth.session().is_none() {
+                    // This could happen if the user cancels the sign-in
+                    // before it completes. This is because the state machine
+                    // between the GUI, the IPC service, and connlib isn't  perfectly synced.
+                    tracing::error!("Got `UpdateResources` while signed out");
+                    return Ok(());
+                }
+                tracing::debug!(len = resources.len(), "Got new Resources");
+                if !matches!(self.status, Status::TunnelReady{..}) {
+                    os::show_notification(
+                        "Firezone connected",
+                        "You are now signed in and able to access resources.",
+                    )?;
+                }
+                self.status = Status::TunnelReady{resources};
+                if let Err(error) = self.refresh_system_tray_menu() {
+                    tracing::error!(?error, "Failed to refresh Resource list");
+                }
             }
         }
         Ok(())
@@ -663,8 +667,8 @@ impl Controller {
                     system_tray_menu::signed_out()
                 }
                 Status::Connecting => system_tray_menu::signing_in("Signing In..."),
-                Status::TunnelReady => {
-                    system_tray_menu::signed_in(&auth_session.actor_name, &self.resources.load())
+                Status::TunnelReady { resources } => {
+                    system_tray_menu::signed_in(&auth_session.actor_name, resources)
                 }
             }
         } else if self.auth.ongoing_request().is_ok() {
@@ -727,14 +731,7 @@ async fn run_controller(
     log_filter_reloader: logging::Reloader,
 ) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");
-    let notify_controller = Arc::new(Notify::new());
-    let resources = Default::default();
-    let callback_handler = CallbackHandler {
-        ctlr_tx: ctlr_tx.clone(),
-        notify_controller: Arc::clone(&notify_controller),
-        resources: Arc::clone(&resources),
-    };
-    let ipc_client = ipc::Client::new(callback_handler).await?;
+    let ipc_client = ipc::Client::new(ctlr_tx.clone()).await?;
     let mut controller = Controller {
         advanced_settings,
         app: app.clone(),
@@ -742,8 +739,6 @@ async fn run_controller(
         ctlr_tx,
         ipc_client,
         log_filter_reloader,
-        notify_controller, // TODO: Fix cancel-safety
-        resources,
         status: Default::default(),
         uptime: Default::default(),
     };
@@ -777,12 +772,6 @@ async fn run_controller(
 
     loop {
         tokio::select! {
-            () = controller.notify_controller.notified() => {
-                tracing::debug!("Controller notified of new resources");
-                if let Err(error) = controller.refresh_system_tray_menu() {
-                    tracing::error!(?error, "Failed to reload resource list");
-                }
-            }
             () = com_worker.notified() => {
                 let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
                 if new_have_internet != have_internet {

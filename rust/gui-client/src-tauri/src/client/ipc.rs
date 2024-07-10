@@ -1,47 +1,12 @@
 use crate::client::gui::{ControllerRequest, CtlrTx};
 use anyhow::{Context as _, Result};
-use arc_swap::ArcSwap;
-use connlib_client_shared::callbacks::ResourceDescription;
 use firezone_headless_client::{
     ipc::{self, Error},
     IpcClientMsg, IpcServerMsg,
 };
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
-use std::{net::IpAddr, sync::Arc};
-use tokio::sync::Notify;
-
-#[derive(Clone)]
-pub(crate) struct CallbackHandler {
-    pub notify_controller: Arc<Notify>,
-    pub ctlr_tx: CtlrTx,
-    pub resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
-}
-
-// Almost but not quite implements `Callbacks` from connlib.
-// Because of the IPC boundary, we can deviate.
-impl CallbackHandler {
-    fn on_disconnect(&self, error_msg: String, is_authentication_error: bool) {
-        self.ctlr_tx
-            .try_send(ControllerRequest::Disconnected {
-                error_msg,
-                is_authentication_error,
-            })
-            .expect("controller channel failed");
-    }
-
-    fn on_tunnel_ready(&self) {
-        self.ctlr_tx
-            .try_send(ControllerRequest::TunnelReady)
-            .expect("controller channel failed");
-    }
-
-    fn on_update_resources(&self, resources: Vec<ResourceDescription>) {
-        tracing::debug!("on_update_resources");
-        self.resources.store(resources.into());
-        self.notify_controller.notify_one();
-    }
-}
+use std::net::IpAddr;
 
 pub(crate) struct Client {
     task: tokio::task::JoinHandle<Result<()>>,
@@ -57,7 +22,7 @@ impl Drop for Client {
 }
 
 impl Client {
-    pub(crate) async fn new(callback_handler: CallbackHandler) -> Result<Self> {
+    pub(crate) async fn new(ctlr_tx: CtlrTx) -> Result<Self> {
         tracing::info!(
             client_pid = std::process::id(),
             "Connecting to IPC service..."
@@ -70,9 +35,17 @@ impl Client {
                     IpcServerMsg::OnDisconnect {
                         error_msg,
                         is_authentication_error,
-                    } => callback_handler.on_disconnect(error_msg, is_authentication_error),
-                    IpcServerMsg::OnTunnelReady => callback_handler.on_tunnel_ready(),
-                    IpcServerMsg::OnUpdateResources(v) => callback_handler.on_update_resources(v),
+                    } => {
+                        ctlr_tx
+                            .send(ControllerRequest::Disconnected {
+                                error_msg,
+                                is_authentication_error,
+                            })
+                            .await?
+                    }
+                    IpcServerMsg::OnUpdateResources(v) => {
+                        ctlr_tx.send(ControllerRequest::UpdateResources(v)).await?
+                    }
                 }
             }
             Ok(())
