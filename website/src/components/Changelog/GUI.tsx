@@ -19,7 +19,7 @@ export default function GUI({ title }: { title: string }) {
               href="https://github.com/firezone/firezone/pull/5827"
               className="text-accent-500 underline hover:no-underline"
             >
-              a bug where the Windows Client doesn't deactivate DNS control when you sign out.
+              a bug where DNS could stop working when you sign out.
             </Link>
           </li>
         </ul>
