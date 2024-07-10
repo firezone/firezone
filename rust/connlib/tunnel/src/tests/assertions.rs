@@ -86,7 +86,12 @@ pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &Ref
 
 pub(crate) fn assert_known_hosts_are_valid(state: &TunnelTest, ref_state: &ReferenceState) {
     for (record, actual_addrs) in &state.client_dns_records {
-        if let Some(expected_addrs) = ref_state.client_known_host_records.get(&record.to_string()) {
+        if let Some(expected_addrs) = ref_state
+            .client
+            .inner()
+            .known_hosts
+            .get(&record.to_string())
+        {
             assert_eq!(actual_addrs, expected_addrs);
         }
     }

@@ -13,6 +13,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
+/// Simulation state for a particular client.
 #[derive(Debug, Clone)]
 pub(crate) struct SimClient {
     pub(crate) id: ClientId,
@@ -33,16 +34,27 @@ impl SimClient {
     }
 }
 
-pub(crate) fn client_prototype(
+/// Reference state for a particular client.
+#[derive(Debug, Clone)]
+pub struct RefClient {
+    pub(crate) key: PrivateKey,
+    pub(crate) known_hosts: HashMap<String, Vec<IpAddr>>,
+}
+
+pub(crate) fn ref_client_host(
     tunnel_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
     tunnel_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
-) -> impl Strategy<Value = Host<(PrivateKey, HashMap<String, Vec<IpAddr>>), SimClient>> {
+) -> impl Strategy<Value = Host<RefClient, SimClient>> {
     host(
         any_ip_stack(),
         any_port(),
-        (private_key(), known_hosts()),
+        ref_client(),
         sim_client(tunnel_ip4s, tunnel_ip6s),
     )
+}
+
+fn ref_client() -> impl Strategy<Value = RefClient> {
+    (private_key(), known_hosts()).prop_map(|(key, known_hosts)| RefClient { key, known_hosts })
 }
 
 fn sim_client(

@@ -32,7 +32,7 @@ pub(crate) struct ReferenceState {
     pub(crate) now: Instant,
     pub(crate) utc_now: DateTime<Utc>,
     #[allow(clippy::type_complexity)]
-    pub(crate) client: Host<(PrivateKey, HashMap<String, Vec<IpAddr>>), SimClient>,
+    pub(crate) client: Host<RefClient, SimClient>,
     pub(crate) gateway: Host<PrivateKey, SimGateway>,
     pub(crate) relays: HashMap<RelayId, Host<u64, ()>>,
 
@@ -63,9 +63,6 @@ pub(crate) struct ReferenceState {
     /// This is used to e.g. mock DNS resolution on the gateway.
     pub(crate) global_dns_records: BTreeMap<DomainName, HashSet<IpAddr>>,
 
-    /// Ips that the client know about without querying the global records
-    pub(crate) client_known_host_records: HashMap<String, Vec<IpAddr>>,
-
     /// The expected ICMP handshakes.
     pub(crate) expected_icmp_handshakes: VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>,
     /// The expected DNS handshakes.
@@ -94,7 +91,7 @@ impl ReferenceStateMachine for ReferenceState {
         let mut tunnel_ip6s = tunnel_ip6s();
 
         (
-            client_prototype(&mut tunnel_ip4s, &mut tunnel_ip6s),
+            ref_client_host(&mut tunnel_ip4s, &mut tunnel_ip6s),
             gateway_prototype(&mut tunnel_ip4s, &mut tunnel_ip6s),
             collection::hash_map(relay_id(), relay_prototype(), 2),
             system_dns_servers(),
@@ -136,7 +133,7 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .prop_filter(
                 "client and gateway priv key must be different",
-                |(c, g, _, _, _, _, _, _, _)| &c.inner().0 != g.inner(),
+                |(c, g, _, _, _, _, _, _, _)| &c.inner().key != g.inner(),
             )
             .prop_filter(
                 "at least one DNS server needs to be reachable",
@@ -178,13 +175,12 @@ impl ReferenceStateMachine for ReferenceState {
                 )| Self {
                     now,
                     utc_now,
-                    client: client.clone(),
+                    client,
                     gateway,
                     relays,
                     system_dns_resolvers,
                     upstream_dns_resolvers,
                     global_dns_records,
-                    client_known_host_records: client.inner().1.clone(),
                     network,
                     client_cidr_resources: IpNetworkTable::new(),
                     client_connected_cidr_resources: Default::default(),
@@ -353,7 +349,9 @@ impl ReferenceStateMachine for ReferenceState {
                 Some(resource)
                     if !state.client_connected_cidr_resources.contains(&resource)
                         && !state
-                            .client_known_host_records
+                            .client
+                            .inner()
+                            .known_hosts
                             .contains_key(&domain.to_string()) =>
                 {
                     state.client_connected_cidr_resources.insert(resource);
@@ -677,7 +675,9 @@ impl ReferenceState {
             .keys()
             .cloned()
             .chain(
-                self.client_known_host_records
+                self.client
+                    .inner()
+                    .known_hosts
                     .keys()
                     .map(|h| DomainName::vec_from_str(h).unwrap()),
             )
