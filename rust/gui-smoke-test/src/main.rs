@@ -115,14 +115,12 @@ impl App {
             gui_path
                 .to_str()
                 .context("Should be able to convert Path to &str")?, // For some reason `xvfb-run` doesn't just use our current working dir
-                "--no-deep-links",
+            "--no-deep-links",
         ]
         .into_iter()
         .chain(args.iter().copied())
         .collect();
-        let xvfb = Exec::cmd("xvfb-run")
-            .args(&args)
-            .to_cmdline_lossy();
+        let xvfb = Exec::cmd("xvfb-run").args(&args).to_cmdline_lossy();
 
         tracing::debug!(?xvfb);
 

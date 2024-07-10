@@ -14,9 +14,9 @@ use url::Url;
 
 // Figma is the source of truth for the tray icons
 // <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=OGFabKWPx7PRUZmq-0>
-const BUSY_ICON: &[u8] = include_bytes!("../../../icons/tray/busy.png");
-const SIGNED_IN_ICON: &[u8] = include_bytes!("../../../icons/tray/signed-in.png");
-const SIGNED_OUT_ICON: &[u8] = include_bytes!("../../../icons/tray/signed-out.png");
+const BUSY_ICON: &[u8] = include_bytes!("../../../icons/tray/Busy.png");
+const SIGNED_IN_ICON: &[u8] = include_bytes!("../../../icons/tray/Signed In.png");
+const SIGNED_OUT_ICON: &[u8] = include_bytes!("../../../icons/tray/Signed Out.png");
 const TOOLTIP: &str = "Firezone";
 
 pub(crate) fn loading() -> SystemTray {
