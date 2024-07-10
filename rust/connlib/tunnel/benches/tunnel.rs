@@ -26,7 +26,7 @@ mod platform {
 #[cfg(target_os = "windows")]
 mod platform {
     use anyhow::Result;
-    use firezone_tunnel::device_channel::Tun;
+    use firezone_tunnel::Tun;
     use ip_packet::{IpPacket, Packet as _};
     use std::{
         future::poll_fn,
@@ -110,7 +110,7 @@ mod platform {
                 }
             }
 
-            tracing::info!(time_spent = format!("{:?}", time_spent), "Server all good");
+            tracing::info!(?time_spent, "Server all good");
             Ok::<_, anyhow::Error>(())
         });
 

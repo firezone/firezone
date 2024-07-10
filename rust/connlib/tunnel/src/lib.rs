@@ -25,7 +25,7 @@ pub use sockets::Sockets;
 use utils::turn;
 
 mod client;
-pub mod device_channel;
+mod device_channel;
 mod dns;
 mod gateway;
 mod io;
@@ -33,6 +33,8 @@ mod peer;
 mod peer_store;
 mod sockets;
 mod utils;
+
+pub use device_channel::Tun;
 
 #[cfg(all(test, feature = "proptest"))]
 mod tests;

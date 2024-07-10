@@ -17,8 +17,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - runs-on: windows-2019 # Only platform with a benchmark right now
+        runs-on: [
+          windows-2019 # Only platform with a benchmark right now
+        ]
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
@@ -36,10 +37,11 @@ jobs:
       fail-fast: false
       matrix:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
-        include:
-          - runs-on: ubuntu-22.04
-          - runs-on: macos-14
-          - runs-on: windows-2022
+        runs-on: [
+          ubuntu-22.04,
+          macos-14,
+          windows-2022
+        ]
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
@@ -68,14 +70,15 @@ jobs:
       fail-fast: false
       matrix:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
-        include:
-          - runs-on: ubuntu-20.04
-          - runs-on: ubuntu-22.04
-          - runs-on: macos-12
-          - runs-on: macos-13
-          - runs-on: macos-14
-          - runs-on: windows-2019
-          - runs-on: windows-2022
+        runs-on: [
+          ubuntu-20.04,
+          ubuntu-22.04,
+          macos-12,
+          macos-13,
+          macos-14,
+          windows-2019,
+          windows-2022
+        ]
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
@@ -98,12 +101,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - runs-on: ubuntu-20.04
-          # Broken on 22.04 <https://github.com/firezone/firezone/issues/3699>
-          - runs-on: ubuntu-22.04
-          - runs-on: windows-2019
-          - runs-on: windows-2022
+        runs-on: [
+          ubuntu-20.04,
+          ubuntu-22.04,
+          windows-2019,
+          windows-2022
+        ]
     runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
