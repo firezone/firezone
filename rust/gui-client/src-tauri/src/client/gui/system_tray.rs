@@ -1,4 +1,6 @@
-//! Code for the Windows notification area
+//! Code for the system tray AKA notification area
+//!
+//! This manages the icon, menu, and tooltip.
 //!
 //! "Notification Area" is Microsoft's official name instead of "System tray":
 //! <https://learn.microsoft.com/en-us/windows/win32/shell/notification-area?redirectedfrom=MSDN#notifications-and-the-notification-area>
