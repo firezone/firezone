@@ -226,25 +226,25 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .with_if_not_empty(10, state.ipv4_cidr_resource_dsts(), |ip4_resources| {
                 icmp_to_cidr_resource(
-                    packet_source_v4(state.client.sim().tunnel_ip4),
+                    packet_source_v4(state.client.inner().tunnel_ip4),
                     sample::select(ip4_resources),
                 )
             })
             .with_if_not_empty(10, state.ipv6_cidr_resource_dsts(), |ip6_resources| {
                 icmp_to_cidr_resource(
-                    packet_source_v6(state.client.sim().tunnel_ip6),
+                    packet_source_v6(state.client.inner().tunnel_ip6),
                     sample::select(ip6_resources),
                 )
             })
             .with_if_not_empty(10, state.resolved_v4_domains(), |dns_v4_domains| {
                 icmp_to_dns_resource(
-                    packet_source_v4(state.client.sim().tunnel_ip4),
+                    packet_source_v4(state.client.inner().tunnel_ip4),
                     sample::select(dns_v4_domains),
                 )
             })
             .with_if_not_empty(10, state.resolved_v6_domains(), |dns_v6_domains| {
                 icmp_to_dns_resource(
-                    packet_source_v6(state.client.sim().tunnel_ip6),
+                    packet_source_v6(state.client.inner().tunnel_ip6),
                     sample::select(dns_v6_domains),
                 )
             })
@@ -275,7 +275,7 @@ impl ReferenceStateMachine for ReferenceState {
                 state.resolved_ip4_for_non_resources(),
                 |resolved_non_resource_ip4s| {
                     ping_random_ip(
-                        packet_source_v4(state.client.sim().tunnel_ip4),
+                        packet_source_v4(state.client.inner().tunnel_ip4),
                         sample::select(resolved_non_resource_ip4s),
                     )
                 },
@@ -285,7 +285,7 @@ impl ReferenceStateMachine for ReferenceState {
                 state.resolved_ip6_for_non_resources(),
                 |resolved_non_resource_ip6s| {
                     ping_random_ip(
-                        packet_source_v6(state.client.sim().tunnel_ip6),
+                        packet_source_v6(state.client.inner().tunnel_ip6),
                         sample::select(resolved_non_resource_ip6s),
                     )
                 },
@@ -567,7 +567,7 @@ impl ReferenceState {
         tracing::Span::current().record("resource", tracing::field::display(resource.id));
 
         if self.client_connected_cidr_resources.contains(&resource.id)
-            && self.client.sim().is_tunnel_ip(src)
+            && self.client.inner().is_tunnel_ip(src)
         {
             tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
             self.expected_icmp_handshakes
@@ -594,7 +594,7 @@ impl ReferenceState {
         if self
             .client_connected_dns_resources
             .contains(&(resource, dst.clone()))
-            && self.client.sim().is_tunnel_ip(src)
+            && self.client.inner().is_tunnel_ip(src)
         {
             tracing::debug!("Connected to DNS resource, expecting packet to be routed");
             self.expected_icmp_handshakes

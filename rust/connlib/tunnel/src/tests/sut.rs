@@ -93,7 +93,7 @@ impl StateMachineTest for TunnelTest {
 
         // Construct client, gateway and relay from the initial state.
         let mut client = ref_state.client.map(
-            |ref_client, _, _| ref_client.into_sut(),
+            |ref_client, _, _| ref_client.init(ref_state.upstream_dns_resolvers.clone()),
             |sim| sim,
             debug_span!("client"),
         );
@@ -142,13 +142,6 @@ impl StateMachineTest for TunnelTest {
             )
         });
 
-        client.exec_mut(|c, sim| {
-            c.update_interface_config(Interface {
-                ipv4: sim.tunnel_ip4,
-                ipv6: sim.tunnel_ip6,
-                upstream_dns: ref_state.upstream_dns_resolvers.clone(),
-            })
-        });
         client.exec_mut(|c, _| c.update_system_resolvers(ref_state.system_dns_resolvers.clone()));
 
         let mut this = Self {
@@ -256,10 +249,10 @@ impl StateMachineTest for TunnelTest {
                     .exec_mut(|c, _| c.update_system_resolvers(servers));
             }
             Transition::UpdateUpstreamDnsServers { servers } => {
-                state.client.exec_mut(|c, sim| {
+                state.client.exec_mut(|c, _| {
                     c.update_interface_config(Interface {
-                        ipv4: sim.tunnel_ip4,
-                        ipv6: sim.tunnel_ip6,
+                        ipv4: c.tunnel_ip4().unwrap(),
+                        ipv6: c.tunnel_ip6().unwrap(),
                         upstream_dns: servers,
                     })
                 });
@@ -635,8 +628,8 @@ impl TunnelTest {
                                         },
                                     },
                                     self.client.inner().public_key(),
-                                    self.client.sim().tunnel_ip4,
-                                    self.client.sim().tunnel_ip6,
+                                    self.client.inner().tunnel_ip4().unwrap(),
+                                    self.client.inner().tunnel_ip6().unwrap(),
                                     new_connection
                                         .client_payload
                                         .domain
@@ -840,7 +833,11 @@ impl TunnelTest {
 
         let name = domain_to_hickory_name(domain);
 
-        let src = self.client.sim().tunnel_ip(dns_server);
+        let src = self
+            .client
+            .inner()
+            .tunnel_ip_for(dns_server)
+            .expect("tunnel should be initialised");
 
         let packet = ip_packet::make::dns_query(
             name,
