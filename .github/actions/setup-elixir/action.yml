@@ -6,8 +6,12 @@ inputs:
     type: string
     required: true
 outputs:
-  otp-version: ${{ steps.versions.outputs.erlang }}
-  elixir-version: ${{ steps.versions.outputs.elixir }}
+  otp-version:
+    description: "The OTP version"
+    value: ${{ steps.versions.outputs.erlang }}
+  elixir-version:
+    description: "The Elixir version"
+    value: ${{ steps.versions.outputs.elixir }}
 runs:
   using: "composite"
   steps:
