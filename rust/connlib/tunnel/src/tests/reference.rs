@@ -3,11 +3,7 @@ use super::{
     strategies::*, transition::*,
 };
 use chrono::{DateTime, Utc};
-use connlib_shared::{
-    messages::{ClientId, GatewayId, RelayId},
-    proptest::*,
-    DomainName, StaticSecret,
-};
+use connlib_shared::{messages::RelayId, proptest::*, DomainName, StaticSecret};
 use hickory_proto::rr::RecordType;
 use prop::collection;
 use proptest::{prelude::*, sample};
@@ -26,9 +22,9 @@ use std::{
 pub(crate) struct ReferenceState {
     pub(crate) now: Instant,
     pub(crate) utc_now: DateTime<Utc>,
-    pub(crate) client: Host<RefClient, ClientId>, // TODO: ID will go away once we use a `HashMap` here.
-    pub(crate) gateway: Host<RefGateway, GatewayId>,
-    pub(crate) relays: HashMap<RelayId, Host<u64, ()>>,
+    pub(crate) client: Host<RefClient>,
+    pub(crate) gateway: Host<RefGateway>,
+    pub(crate) relays: HashMap<RelayId, Host<u64>>,
 
     /// All IP addresses a domain resolves to in our test.
     ///
@@ -70,10 +66,10 @@ impl ReferenceStateMachine for ReferenceState {
                 |(c, g, relays, global_dns, now, utc_now)| {
                     let mut routing_table = RoutingTable::default();
 
-                    if !routing_table.add_host(*c.sim(), &c) {
+                    if !routing_table.add_host(c.inner().id, &c) {
                         return None;
                     }
-                    if !routing_table.add_host(*g.sim(), &g) {
+                    if !routing_table.add_host(g.inner().id, &g) {
                         return None;
                     };
 
@@ -228,24 +224,24 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::AddCidrResource(r) => {
                 state
                     .client
-                    .exec_mut(|client, _| client.cidr_resources.insert(r.address, r.clone()));
+                    .exec_mut(|client| client.cidr_resources.insert(r.address, r.clone()));
             }
             Transition::RemoveResource(id) => {
                 state
                     .client
-                    .exec_mut(|client, _| client.cidr_resources.retain(|_, r| &r.id != id));
+                    .exec_mut(|client| client.cidr_resources.retain(|_, r| &r.id != id));
                 state
                     .client
-                    .exec_mut(|client, _| client.connected_cidr_resources.remove(id));
+                    .exec_mut(|client| client.connected_cidr_resources.remove(id));
                 state
                     .client
-                    .exec_mut(|client, _| client.dns_resources.remove(id));
+                    .exec_mut(|client| client.dns_resources.remove(id));
             }
             Transition::AddDnsResource {
                 resource: new_resource,
                 records,
             } => {
-                let existing_resource = state.client.exec_mut(|client, _| {
+                let existing_resource = state.client.exec_mut(|client| {
                     client
                         .dns_resources
                         .insert(new_resource.id, new_resource.clone())
@@ -258,7 +254,7 @@ impl ReferenceStateMachine for ReferenceState {
                 // If a resource is updated (i.e. same ID but different address) and we are currently connected, we disconnect from it.
                 if let Some(resource) = existing_resource {
                     if new_resource.address != resource.address {
-                        state.client.exec_mut(|client, _| {
+                        state.client.exec_mut(|client| {
                             client.connected_cidr_resources.remove(&resource.id)
                         });
 
@@ -269,7 +265,7 @@ impl ReferenceStateMachine for ReferenceState {
                         // TODO: IN PRODUCTION, WE CANNOT DO THIS.
                         // CHANGING A DNS RESOURCE BREAKS CLIENT UNTIL THEY DECIDE TO RE-QUERY THE RESOURCE.
                         // WE DO THIS HERE TO ENSURE THE TEST DOESN'T RUN INTO THIS.
-                        state.client.exec_mut(|client, _| {
+                        state.client.exec_mut(|client| {
                             client
                                 .dns_records
                                 .retain(|name, _| !matches_domain(&resource.address, name))
@@ -302,10 +298,10 @@ impl ReferenceStateMachine for ReferenceState {
                 {
                     state
                         .client
-                        .exec_mut(|client, _| client.connected_cidr_resources.insert(resource));
+                        .exec_mut(|client| client.connected_cidr_resources.insert(resource));
                 }
                 Some(_) | None => {
-                    state.client.exec_mut(|client, _| {
+                    state.client.exec_mut(|client| {
                         client
                             .dns_records
                             .entry(domain.clone())
@@ -314,7 +310,7 @@ impl ReferenceStateMachine for ReferenceState {
                     });
                     state
                         .client
-                        .exec_mut(|client, _| client.expected_dns_handshakes.push_back(*query_id));
+                        .exec_mut(|client| client.expected_dns_handshakes.push_back(*query_id));
                 }
             },
             Transition::SendICMPPacketToNonResourceIp { .. } => {
@@ -327,7 +323,7 @@ impl ReferenceStateMachine for ReferenceState {
                 identifier,
                 ..
             } => {
-                state.client.exec_mut(|client, _| {
+                state.client.exec_mut(|client| {
                     client.on_icmp_packet_to_cidr(*src, *dst, *seq, *identifier)
                 });
             }
@@ -337,33 +333,35 @@ impl ReferenceStateMachine for ReferenceState {
                 seq,
                 identifier,
                 ..
-            } => state.client.exec_mut(|client, _| {
+            } => state.client.exec_mut(|client| {
                 client.on_icmp_packet_to_dns(*src, dst.clone(), *seq, *identifier)
             }),
             Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
             Transition::UpdateSystemDnsServers { servers } => {
                 state
                     .client
-                    .exec_mut(|client, _| client.system_dns_resolvers.clone_from(servers));
+                    .exec_mut(|client| client.system_dns_resolvers.clone_from(servers));
             }
             Transition::UpdateUpstreamDnsServers { servers } => {
                 state
                     .client
-                    .exec_mut(|client, _| client.upstream_dns_resolvers.clone_from(servers));
+                    .exec_mut(|client| client.upstream_dns_resolvers.clone_from(servers));
             }
             Transition::RoamClient { ip4, ip6, .. } => {
                 state.network.remove_host(&state.client);
                 state.client.ip4.clone_from(ip4);
                 state.client.ip6.clone_from(ip6);
-                debug_assert!(state.network.add_host(*state.client.sim(), &state.client));
+                debug_assert!(state
+                    .network
+                    .add_host(state.client.inner().id, &state.client));
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
                 state
                     .client
-                    .exec_mut(|client, _| client.connected_cidr_resources.clear());
+                    .exec_mut(|client| client.connected_cidr_resources.clear());
                 state
                     .client
-                    .exec_mut(|client, _| client.connected_dns_resources.clear());
+                    .exec_mut(|client| client.connected_dns_resources.clear());
             }
         };
 

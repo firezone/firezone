@@ -33,9 +33,10 @@ use std::{
 };
 
 /// Simulation state for a particular client.
-#[derive(Debug, Clone)]
 pub(crate) struct SimClient {
     pub(crate) id: ClientId,
+
+    pub(crate) sut: ClientState,
 
     /// The DNS records created on the client as a result of received DNS responses.
     ///
@@ -55,9 +56,10 @@ pub(crate) struct SimClient {
 }
 
 impl SimClient {
-    pub(crate) fn new(id: ClientId) -> Self {
+    pub(crate) fn new(id: ClientId, sut: ClientState) -> Self {
         Self {
             id,
+            sut,
             dns_records: Default::default(),
             dns_by_sentinel: Default::default(),
             sent_dns_queries: Default::default(),
@@ -75,7 +77,6 @@ impl SimClient {
 
     pub(crate) fn send_dns_query_for(
         &mut self,
-        sut: &mut ClientState,
         domain: DomainName,
         r_type: RecordType,
         query_id: u16,
@@ -89,7 +90,8 @@ impl SimClient {
 
         let name = domain_to_hickory_name(domain);
 
-        let src = sut
+        let src = self
+            .sut
             .tunnel_ip_for(dns_server)
             .expect("tunnel should be initialised");
 
@@ -101,12 +103,11 @@ impl SimClient {
             query_id,
         );
 
-        self.encapsulate(sut, packet, now)
+        self.encapsulate(packet, now)
     }
 
     pub(crate) fn encapsulate(
         &mut self,
-        sut: &mut ClientState,
         packet: MutableIpPacket<'static>,
         now: Instant,
     ) -> Option<snownet::Transmit<'static>> {
@@ -137,18 +138,20 @@ impl SimClient {
             }
         }
 
-        Some(sut.encapsulate(packet, now)?.into_owned())
+        Some(self.sut.encapsulate(packet, now)?.into_owned())
     }
 
     pub(crate) fn handle_packet(
         &mut self,
-        state: &mut ClientState,
         payload: &[u8],
         src: SocketAddr,
         dst: SocketAddr,
         now: Instant,
     ) {
-        let Some(packet) = state.decapsulate(dst, src, payload, now, &mut self.buffer) else {
+        let Some(packet) = self
+            .sut
+            .decapsulate(dst, src, payload, now, &mut self.buffer)
+        else {
             return;
         };
         let packet = packet.to_owned();
@@ -207,6 +210,7 @@ impl SimClient {
 /// Reference state for a particular client.
 #[derive(Debug, Clone)]
 pub struct RefClient {
+    pub(crate) id: ClientId,
     pub(crate) key: PrivateKey,
     pub(crate) known_hosts: HashMap<String, Vec<IpAddr>>,
     pub(crate) tunnel_ip4: Ipv4Addr,
@@ -244,7 +248,7 @@ impl RefClient {
     /// Initialize the [`ClientState`].
     ///
     /// This simulates receiving the `init` message from the portal.
-    pub(crate) fn init(self) -> ClientState {
+    pub(crate) fn init(self) -> SimClient {
         let mut client_state = ClientState::new(self.key, self.known_hosts);
         let _ = client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
@@ -253,7 +257,7 @@ impl RefClient {
         });
         let _ = client_state.update_system_resolvers(self.system_dns_resolvers);
 
-        client_state
+        SimClient::new(self.id, client_state)
     }
 
     pub(crate) fn is_tunnel_ip(&self, ip: IpAddr) -> bool {
@@ -513,12 +517,11 @@ fn is_subdomain(name: &str, record: &str) -> bool {
 pub(crate) fn ref_client_host(
     tunnel_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
     tunnel_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
-) -> impl Strategy<Value = Host<RefClient, ClientId>> {
+) -> impl Strategy<Value = Host<RefClient>> {
     host(
         any_ip_stack(),
         any_port(),
         ref_client(tunnel_ip4s, tunnel_ip6s),
-        client_id(),
     )
     .prop_filter("at least one DNS server needs to be reachable", |host| {
         // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
@@ -556,13 +559,15 @@ fn ref_client(
     let tunnel_ip6 = tunnel_ip6s.next().unwrap();
 
     (
+        client_id(),
         private_key(),
         known_hosts(),
         system_dns_servers(),
         upstream_dns_servers(),
     )
         .prop_map(
-            move |(key, known_hosts, system_dns_resolvers, upstream_dns_resolvers)| RefClient {
+            move |(id, key, known_hosts, system_dns_resolvers, upstream_dns_resolvers)| RefClient {
+                id,
                 key,
                 known_hosts,
                 tunnel_ip4,

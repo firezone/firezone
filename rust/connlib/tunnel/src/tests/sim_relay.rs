@@ -12,26 +12,21 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-#[derive(Debug, Clone)]
 pub(crate) struct SimRelay {
+    pub(crate) sut: firezone_relay::Server<StdRng>,
     pub(crate) allocations: HashSet<(AddressFamily, AllocationPort)>,
     buffer: Vec<u8>,
 }
 
 pub(crate) fn map_explode<'a>(
-    relays: impl Iterator<
-            Item = (
-                &'a RelayId,
-                &'a Host<firezone_relay::Server<StdRng>, SimRelay>,
-            ),
-        > + 'a,
+    relays: impl Iterator<Item = (&'a RelayId, &'a Host<SimRelay>)> + 'a,
     username: &'static str,
 ) -> impl Iterator<Item = (RelayId, RelaySocket, String, String, String)> + 'a {
     relays.map(move |(id, r)| {
-        let (socket, username, password, realm) = r.sim().explode(
+        let (socket, username, password, realm) = r.inner().explode(
             username,
-            r.inner().auth_secret(),
-            r.inner().public_address(),
+            r.inner().sut.auth_secret(),
+            r.inner().sut.public_address(),
         );
 
         (*id, socket, username, password, realm)
@@ -39,6 +34,14 @@ pub(crate) fn map_explode<'a>(
 }
 
 impl SimRelay {
+    pub(crate) fn new(sut: firezone_relay::Server<StdRng>) -> Self {
+        Self {
+            sut,
+            allocations: Default::default(),
+            buffer: vec![0u8; (1 << 16) - 1],
+        }
+    }
+
     fn explode(
         &self,
         username: &str,
@@ -74,21 +77,19 @@ impl SimRelay {
 
     pub(crate) fn handle_packet(
         &mut self,
-        state: &mut firezone_relay::Server<StdRng>,
         payload: &[u8],
         sender: SocketAddr,
         dst: SocketAddr,
         now: Instant,
     ) -> Option<Transmit<'static>> {
         if self
-            .matching_listen_socket(dst, state.public_address())
+            .matching_listen_socket(dst, self.sut.public_address())
             .is_some_and(|s| s == dst)
         {
-            return self.handle_client_input(state, payload, ClientSocket::new(sender), now);
+            return self.handle_client_input(payload, ClientSocket::new(sender), now);
         }
 
         self.handle_peer_traffic(
-            state,
             payload,
             PeerSocket::new(sender),
             AllocationPort::new(dst.port()),
@@ -97,12 +98,11 @@ impl SimRelay {
 
     fn handle_client_input(
         &mut self,
-        state: &mut firezone_relay::Server<StdRng>,
         payload: &[u8],
         client: ClientSocket,
         now: Instant,
     ) -> Option<Transmit<'static>> {
-        let (port, peer) = state.handle_client_input(payload, client, now)?;
+        let (port, peer) = self.sut.handle_client_input(payload, client, now)?;
 
         let payload = &payload[4..];
 
@@ -117,7 +117,7 @@ impl SimRelay {
                     "IPv4 allocation to be present if we want to send to an IPv4 socket"
                 );
 
-                state
+                self.sut
                     .public_ip4()
                     .expect("listen on IPv4 if we have an allocation")
             }
@@ -127,7 +127,7 @@ impl SimRelay {
                     "IPv6 allocation to be present if we want to send to an IPv6 socket"
                 );
 
-                state
+                self.sut
                     .public_ip6()
                     .expect("listen on IPv6 if we have an allocation")
             }
@@ -145,12 +145,11 @@ impl SimRelay {
 
     fn handle_peer_traffic(
         &mut self,
-        state: &mut firezone_relay::Server<StdRng>,
         payload: &[u8],
         peer: PeerSocket,
         port: AllocationPort,
     ) -> Option<Transmit<'static>> {
-        let (client, channel) = state.handle_peer_traffic(payload, peer, port)?;
+        let (client, channel) = self.sut.handle_peer_traffic(payload, peer, port)?;
 
         let full_length = firezone_relay::ChannelData::encode_header_to_slice(
             channel,
@@ -161,7 +160,7 @@ impl SimRelay {
 
         let receiving_socket = client.into_socket();
         let sending_socket = self
-            .matching_listen_socket(receiving_socket, state.public_address())
+            .matching_listen_socket(receiving_socket, self.sut.public_address())
             .unwrap();
 
         Some(Transmit {
@@ -185,20 +184,10 @@ impl SimRelay {
     }
 }
 
-impl Default for SimRelay {
-    fn default() -> Self {
-        Self {
-            allocations: Default::default(),
-            buffer: vec![0u8; (1 << 16) - 1],
-        }
-    }
-}
-
-pub(crate) fn relay_prototype() -> impl Strategy<Value = Host<u64, ()>> {
+pub(crate) fn relay_prototype() -> impl Strategy<Value = Host<u64>> {
     host(
         dual_ip_stack(), // For this test, our relays always run in dual-stack mode to ensure connectivity!
         Just(3478),
         any::<u64>(),
-        Just(()),
     )
 }

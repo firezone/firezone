@@ -17,7 +17,7 @@ use std::{
 pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &ReferenceState) {
     let unexpected_icmp_replies = find_unexpected_entries(
         &ref_state.client.inner().expected_icmp_handshakes,
-        &state.client.sim().received_icmp_replies,
+        &state.client.inner().received_icmp_replies,
         |(_, seq_a, id_a), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
     );
     assert_eq!(
@@ -28,11 +28,11 @@ pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &Ref
 
     assert_eq!(
         ref_state.client.inner().expected_icmp_handshakes.len(),
-        state.gateway.sim().received_icmp_requests.len(),
+        state.gateway.inner().received_icmp_requests.len(),
         "Unexpected ICMP requests on gateway"
     );
 
-    tracing::info!(target: "assertions", "✅ Performed the expected {} ICMP handshakes", state.gateway.sim().received_icmp_requests.len());
+    tracing::info!(target: "assertions", "✅ Performed the expected {} ICMP handshakes", state.gateway.inner().received_icmp_requests.len());
 
     let mut mapping = HashMap::new();
 
@@ -41,19 +41,19 @@ pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &Ref
         .inner()
         .expected_icmp_handshakes
         .iter()
-        .zip(state.gateway.sim().received_icmp_requests.iter())
+        .zip(state.gateway.inner().received_icmp_requests.iter())
     {
         let _guard = tracing::info_span!(target: "assertions", "icmp", %seq, %identifier).entered();
 
         let client_sent_request = &state
             .client
-            .sim()
+            .inner()
             .sent_icmp_requests
             .get(&(*seq, *identifier))
             .expect("to have ICMP request on client");
         let client_received_reply = &state
             .client
-            .sim()
+            .inner()
             .received_icmp_replies
             .get(&(*seq, *identifier))
             .expect("to have ICMP reply on client");
@@ -91,7 +91,7 @@ pub(crate) fn assert_icmp_packets_properties(state: &TunnelTest, ref_state: &Ref
 }
 
 pub(crate) fn assert_known_hosts_are_valid(state: &TunnelTest, ref_state: &ReferenceState) {
-    for (record, actual_addrs) in &state.client.sim().dns_records {
+    for (record, actual_addrs) in &state.client.inner().dns_records {
         if let Some(expected_addrs) = ref_state
             .client
             .inner()
@@ -106,7 +106,7 @@ pub(crate) fn assert_known_hosts_are_valid(state: &TunnelTest, ref_state: &Refer
 pub(crate) fn assert_dns_packets_properties(state: &TunnelTest, ref_state: &ReferenceState) {
     let unexpected_icmp_replies = find_unexpected_entries(
         &ref_state.client.inner().expected_dns_handshakes,
-        &state.client.sim().received_dns_responses,
+        &state.client.inner().received_dns_responses,
         |id_a, id_b| id_a == id_b,
     );
 
@@ -121,13 +121,13 @@ pub(crate) fn assert_dns_packets_properties(state: &TunnelTest, ref_state: &Refe
 
         let client_sent_query = state
             .client
-            .sim()
+            .inner()
             .sent_dns_queries
             .get(query_id)
             .expect("to have DNS query on client");
         let client_received_response = state
             .client
-            .sim()
+            .inner()
             .received_dns_responses
             .get(query_id)
             .expect("to have DNS response on client");

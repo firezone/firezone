@@ -16,10 +16,8 @@ use tracing::Span;
 
 #[derive(Clone, derivative::Derivative)]
 #[derivative(Debug)]
-pub(crate) struct Host<T, S> {
+pub(crate) struct Host<T> {
     inner: T,
-    /// Simulation state.
-    sim_state: S,
 
     pub(crate) ip4: Option<Ipv4Addr>,
     pub(crate) ip6: Option<Ipv6Addr>,
@@ -35,11 +33,10 @@ pub(crate) struct Host<T, S> {
     span: Span,
 }
 
-impl<T, S> Host<T, S> {
-    pub(crate) fn new(inner: T, test_state: S) -> Self {
+impl<T> Host<T> {
+    pub(crate) fn new(inner: T) -> Self {
         Self {
             inner,
-            sim_state: test_state,
             ip4: None,
             ip6: None,
             span: Span::none(),
@@ -53,14 +50,9 @@ impl<T, S> Host<T, S> {
         &self.inner
     }
 
-    pub(crate) fn sim(&self) -> &S {
-        &self.sim_state
-    }
-
-    /// Mutable access to `T` & `S` must go via this function to ensure the corresponding span is active and tracks all state modifications.
-    pub(crate) fn exec_mut<R>(&mut self, f: impl FnOnce(&mut T, &mut S) -> R) -> R {
-        self.span
-            .in_scope(|| f(&mut self.inner, &mut self.sim_state))
+    /// Mutable access to `T` must go via this function to ensure the corresponding span is active and tracks all state modifications.
+    pub(crate) fn exec_mut<R>(&mut self, f: impl FnOnce(&mut T) -> R) -> R {
+        self.span.in_scope(|| f(&mut self.inner))
     }
 
     pub(crate) fn sending_socket_for(&self, dst: impl Into<IpAddr>) -> Option<SocketAddr> {
@@ -133,20 +125,17 @@ impl<T, S> Host<T, S> {
     }
 }
 
-impl<T, S> Host<T, S>
+impl<T> Host<T>
 where
     T: Clone,
-    S: Clone,
 {
-    pub(crate) fn map<U, V>(
+    pub(crate) fn map<U>(
         &self,
-        map_inner: impl FnOnce(T, Option<Ipv4Addr>, Option<Ipv6Addr>) -> U,
-        map_sim: impl FnOnce(S) -> V,
+        f: impl FnOnce(T, Option<Ipv4Addr>, Option<Ipv6Addr>) -> U,
         span: Span,
-    ) -> Host<U, V> {
+    ) -> Host<U> {
         Host {
-            inner: map_inner(self.inner.clone(), self.ip4, self.ip6),
-            sim_state: map_sim(self.sim_state.clone()),
+            inner: f(self.inner.clone(), self.ip4, self.ip6),
             ip4: self.ip4,
             ip6: self.ip6,
             span,
@@ -172,7 +161,7 @@ impl Default for RoutingTable {
 
 impl RoutingTable {
     #[allow(private_bounds)]
-    pub(crate) fn add_host<T, S>(&mut self, id: impl Into<HostId>, host: &Host<T, S>) -> bool {
+    pub(crate) fn add_host<T>(&mut self, id: impl Into<HostId>, host: &Host<T>) -> bool {
         let id = id.into();
 
         match (host.ip4, host.ip6) {
@@ -208,7 +197,7 @@ impl RoutingTable {
     }
 
     #[allow(private_bounds)]
-    pub(crate) fn remove_host<T, S>(&mut self, host: &Host<T, S>) {
+    pub(crate) fn remove_host<T>(&mut self, host: &Host<T>) {
         match (host.ip4, host.ip6) {
             (None, None) => panic!("Node must have at least one network IP"),
             (None, Some(ip6)) => {
@@ -266,24 +255,20 @@ impl From<ClientId> for HostId {
     }
 }
 
-pub(crate) fn host<S, T>(
+pub(crate) fn host<T>(
     socket_ips: impl Strategy<Value = IpStack>,
     default_port: impl Strategy<Value = u16>,
-    state: impl Strategy<Value = S>,
-    sim_state: impl Strategy<Value = T>,
-) -> impl Strategy<Value = Host<S, T>>
+    state: impl Strategy<Value = T>,
+) -> impl Strategy<Value = Host<T>>
 where
-    S: fmt::Debug,
     T: fmt::Debug,
 {
-    (state, sim_state, socket_ips, default_port).prop_map(
-        move |(state, sim_state, ip_stack, port)| {
-            let mut host = Host::new(state, sim_state);
-            host.update_interface(ip_stack.as_v4().copied(), ip_stack.as_v6().copied(), port);
+    (state, socket_ips, default_port).prop_map(move |(state, ip_stack, port)| {
+        let mut host = Host::new(state);
+        host.update_interface(ip_stack.as_v4().copied(), ip_stack.as_v6().copied(), port);
 
-            host
-        },
-    )
+        host
+    })
 }
 
 pub(crate) fn any_port() -> impl Strategy<Value = u16> {

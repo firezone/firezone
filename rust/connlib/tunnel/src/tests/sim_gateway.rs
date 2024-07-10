@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{tests::sut::hickory_name_to_domain, GatewayState};
 use connlib_shared::{messages::GatewayId, proptest::gateway_id, DomainName};
-use ip_packet::{IpPacket, MutableIpPacket};
+use ip_packet::IpPacket;
 use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
@@ -14,9 +14,9 @@ use std::{
 };
 
 /// Simulation state for a particular client.
-#[derive(Debug, Clone)]
 pub(crate) struct SimGateway {
     pub(crate) id: GatewayId,
+    pub(crate) sut: GatewayState,
 
     pub(crate) received_icmp_requests: VecDeque<IpPacket<'static>>,
 
@@ -24,43 +24,34 @@ pub(crate) struct SimGateway {
 }
 
 impl SimGateway {
-    pub(crate) fn new(id: GatewayId) -> Self {
+    pub(crate) fn new(id: GatewayId, sut: GatewayState) -> Self {
         Self {
             id,
+            sut,
             received_icmp_requests: Default::default(),
             buffer: vec![0u8; (1 << 16) - 1],
         }
     }
 
-    pub(crate) fn encapsulate(
-        &mut self,
-        sut: &mut GatewayState,
-        packet: MutableIpPacket<'static>,
-        now: Instant,
-    ) -> Option<snownet::Transmit<'static>> {
-        Some(sut.encapsulate(packet, now)?.into_owned())
-    }
-
     pub(crate) fn handle_packet(
         &mut self,
-        sut: &mut GatewayState,
         global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
         payload: &[u8],
         src: SocketAddr,
         dst: SocketAddr,
         now: Instant,
     ) -> Option<Transmit<'static>> {
-        let packet = sut
+        let packet = self
+            .sut
             .decapsulate(dst, src, payload, now, &mut self.buffer)?
             .to_owned();
 
-        self.on_received_packet(sut, global_dns_records, packet, now)
+        self.on_received_packet(global_dns_records, packet, now)
     }
 
     /// Process an IP packet received on the gateway.
     fn on_received_packet(
         &mut self,
-        sut: &mut GatewayState,
         global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
         packet: IpPacket<'_>,
         now: Instant,
@@ -71,9 +62,9 @@ impl SimGateway {
             self.received_icmp_requests.push_back(packet.clone());
 
             let echo_response = ip_packet::make::icmp_response_packet(packet);
-            let maybe_transmit = self.encapsulate(sut, echo_response, now);
+            let transmit = self.sut.encapsulate(echo_response, now)?.into_owned();
 
-            return maybe_transmit;
+            return Some(transmit);
         }
 
         if packet.as_udp().is_some() {
@@ -85,9 +76,9 @@ impl SimGateway {
                     .flatten()
             });
 
-            let maybe_transmit = self.encapsulate(sut, response, now);
+            let transmit = self.sut.encapsulate(response, now)?.into_owned();
 
-            return maybe_transmit;
+            return Some(transmit);
         }
 
         panic!("Unhandled packet")
@@ -97,6 +88,7 @@ impl SimGateway {
 /// Reference state for a particular gateway.
 #[derive(Debug, Clone)]
 pub struct RefGateway {
+    pub(crate) id: GatewayId,
     pub(crate) key: PrivateKey,
 }
 
@@ -104,15 +96,15 @@ impl RefGateway {
     /// Initialize the [`GatewayState`].
     ///
     /// This simulates receiving the `init` message from the portal.
-    pub(crate) fn init(self) -> GatewayState {
-        GatewayState::new(self.key)
+    pub(crate) fn init(self) -> SimGateway {
+        SimGateway::new(self.id, GatewayState::new(self.key))
     }
 }
 
-pub(crate) fn ref_gateway_host() -> impl Strategy<Value = Host<RefGateway, GatewayId>> {
-    host(any_ip_stack(), any_port(), ref_gateway(), gateway_id())
+pub(crate) fn ref_gateway_host() -> impl Strategy<Value = Host<RefGateway>> {
+    host(any_ip_stack(), any_port(), ref_gateway())
 }
 
 fn ref_gateway() -> impl Strategy<Value = RefGateway> {
-    private_key().prop_map(move |key| RefGateway { key })
+    (gateway_id(), private_key()).prop_map(move |(id, key)| RefGateway { id, key })
 }
