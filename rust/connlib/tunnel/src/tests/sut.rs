@@ -266,13 +266,22 @@ impl StateMachineTest for TunnelTest {
         state: &Self::SystemUnderTest,
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
     ) {
+        let ref_client = ref_state.client.inner();
+        let sim_client = state.client.inner();
+        let sim_gateway = state.gateway.inner();
+
         // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
-        assert_icmp_packets_properties(state, ref_state);
-        assert_dns_packets_properties(state, ref_state);
-        assert_known_hosts_are_valid(state, ref_state);
+        assert_icmp_packets_properties(
+            ref_client,
+            sim_client,
+            sim_gateway,
+            &ref_state.global_dns_records,
+        );
+        assert_dns_packets_properties(ref_client, sim_client);
+        assert_known_hosts_are_valid(ref_client, sim_client);
         assert_eq!(
-            state.client.inner().effective_dns_servers(),
-            ref_state.client.inner().expected_dns_servers(),
+            sim_client.effective_dns_servers(),
+            ref_client.expected_dns_servers(),
             "Effective DNS servers should match either system or upstream DNS"
         );
     }
