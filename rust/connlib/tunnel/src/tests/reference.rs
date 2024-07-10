@@ -26,7 +26,6 @@ use std::{
 pub(crate) struct ReferenceState {
     pub(crate) now: Instant,
     pub(crate) utc_now: DateTime<Utc>,
-    #[allow(clippy::type_complexity)]
     pub(crate) client: Host<RefClient, ClientId>, // TODO: ID will go away once we use a `HashMap` here.
     pub(crate) gateway: Host<RefGateway, GatewayId>,
     pub(crate) relays: HashMap<RelayId, Host<u64, ()>>,
