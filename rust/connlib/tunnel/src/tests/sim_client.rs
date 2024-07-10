@@ -2,9 +2,11 @@ use super::{
     reference::{private_key, PrivateKey, ResourceDst},
     sim_net::{any_ip_stack, any_port, host, Host},
     strategies::{system_dns_servers, upstream_dns_servers},
+    sut::domain_to_hickory_name,
     IcmpIdentifier, IcmpSeq, QueryId,
 };
-use crate::ClientState;
+use crate::{tests::sut::hickory_name_to_domain, ClientState};
+use bimap::BiMap;
 use connlib_shared::{
     messages::{
         client::{ResourceDescriptionCidr, ResourceDescriptionDns},
@@ -13,20 +15,193 @@ use connlib_shared::{
     proptest::{client_id, domain_name},
     DomainName,
 };
-use hickory_proto::rr::RecordType;
+use hickory_proto::{
+    op::MessageType,
+    rr::{rdata, RData, RecordType},
+    serialize::binary::BinDecodable as _,
+};
 use ip_network_table::IpNetworkTable;
+use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use itertools::Itertools as _;
 use prop::collection;
 use proptest::prelude::*;
+use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    time::Instant,
 };
 
 /// Simulation state for a particular client.
 #[derive(Debug, Clone)]
 pub(crate) struct SimClient {
     pub(crate) id: ClientId,
+
+    /// The DNS records created on the client as a result of received DNS responses.
+    ///
+    /// This contains results from both, queries to DNS resources and non-resources.
+    pub(crate) dns_records: HashMap<DomainName, Vec<IpAddr>>,
+
+    /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
+    pub(crate) dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+
+    pub(crate) sent_dns_queries: HashMap<QueryId, IpPacket<'static>>,
+    pub(crate) received_dns_responses: HashMap<QueryId, IpPacket<'static>>,
+
+    pub(crate) sent_icmp_requests: HashMap<(u16, u16), IpPacket<'static>>,
+    pub(crate) received_icmp_replies: HashMap<(u16, u16), IpPacket<'static>>,
+
+    buffer: Vec<u8>,
+}
+
+impl SimClient {
+    pub(crate) fn new(id: ClientId) -> Self {
+        Self {
+            id,
+            dns_records: Default::default(),
+            dns_by_sentinel: Default::default(),
+            sent_dns_queries: Default::default(),
+            received_dns_responses: Default::default(),
+            sent_icmp_requests: Default::default(),
+            received_icmp_replies: Default::default(),
+            buffer: vec![0u8; (1 << 16) - 1],
+        }
+    }
+
+    /// Returns the _effective_ DNS servers that connlib is using.
+    pub(crate) fn effective_dns_servers(&self) -> BTreeSet<SocketAddr> {
+        self.dns_by_sentinel.right_values().copied().collect()
+    }
+
+    pub(crate) fn send_dns_query_for(
+        &mut self,
+        sut: &mut ClientState,
+        domain: DomainName,
+        r_type: RecordType,
+        query_id: u16,
+        dns_server: SocketAddr,
+        now: Instant,
+    ) -> Option<Transmit<'static>> {
+        let dns_server = *self
+            .dns_by_sentinel
+            .get_by_right(&dns_server)
+            .expect("to have a sentinel DNS server for the sampled one");
+
+        let name = domain_to_hickory_name(domain);
+
+        let src = sut
+            .tunnel_ip_for(dns_server)
+            .expect("tunnel should be initialised");
+
+        let packet = ip_packet::make::dns_query(
+            name,
+            r_type,
+            SocketAddr::new(src, 9999), // An application would pick a random source port that is free.
+            SocketAddr::new(dns_server, 53),
+            query_id,
+        );
+
+        self.encapsulate(sut, packet, now)
+    }
+
+    pub(crate) fn encapsulate(
+        &mut self,
+        sut: &mut ClientState,
+        packet: MutableIpPacket<'static>,
+        now: Instant,
+    ) -> Option<snownet::Transmit<'static>> {
+        {
+            let packet = packet.to_owned().into_immutable();
+
+            if let Some(icmp) = packet.as_icmp() {
+                let echo_request = icmp.as_echo_request().expect("to be echo request");
+
+                self.sent_icmp_requests
+                    .insert((echo_request.sequence(), echo_request.identifier()), packet);
+            }
+        }
+
+        {
+            let packet = packet.to_owned().into_immutable();
+
+            if let Some(udp) = packet.as_udp() {
+                if let Ok(message) = hickory_proto::op::Message::from_bytes(udp.payload()) {
+                    debug_assert_eq!(
+                        message.message_type(),
+                        MessageType::Query,
+                        "every DNS message sent from the client should be a DNS query"
+                    );
+
+                    self.sent_dns_queries.insert(message.id(), packet);
+                }
+            }
+        }
+
+        Some(sut.encapsulate(packet, now)?.into_owned())
+    }
+
+    pub(crate) fn handle_packet(
+        &mut self,
+        state: &mut ClientState,
+        payload: &[u8],
+        src: SocketAddr,
+        dst: SocketAddr,
+        now: Instant,
+    ) {
+        let Some(packet) = state.decapsulate(dst, src, payload, now, &mut self.buffer) else {
+            return;
+        };
+        let packet = packet.to_owned();
+
+        self.on_received_packet(packet);
+    }
+
+    /// Process an IP packet received on the client.
+    pub(crate) fn on_received_packet(&mut self, packet: IpPacket<'_>) {
+        if let Some(icmp) = packet.as_icmp() {
+            let echo_reply = icmp.as_echo_reply().expect("to be echo reply");
+
+            self.received_icmp_replies.insert(
+                (echo_reply.sequence(), echo_reply.identifier()),
+                packet.to_owned(),
+            );
+
+            return;
+        };
+
+        if let Some(udp) = packet.as_udp() {
+            if udp.get_source() == 53 {
+                let mut message = hickory_proto::op::Message::from_bytes(udp.payload())
+                    .expect("ip packets on port 53 to be DNS packets");
+
+                self.received_dns_responses
+                    .insert(message.id(), packet.to_owned());
+
+                for record in message.take_answers().into_iter() {
+                    let domain = hickory_name_to_domain(record.name().clone());
+
+                    let ip = match record.data() {
+                        Some(RData::A(rdata::A(ip4))) => IpAddr::from(*ip4),
+                        Some(RData::AAAA(rdata::AAAA(ip6))) => IpAddr::from(*ip6),
+                        unhandled => {
+                            panic!("Unexpected record data: {unhandled:?}")
+                        }
+                    };
+
+                    self.dns_records.entry(domain).or_default().push(ip);
+                }
+
+                // Ensure all IPs are always sorted.
+                for ips in self.dns_records.values_mut() {
+                    ips.sort()
+                }
+
+                return;
+            }
+        }
+
+        unimplemented!("Unhandled packet")
+    }
 }
 
 /// Reference state for a particular client.

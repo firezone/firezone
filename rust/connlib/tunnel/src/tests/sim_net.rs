@@ -1,9 +1,7 @@
-use crate::{ClientState, GatewayState};
 use connlib_shared::messages::{ClientId, GatewayId, RelayId};
 use firezone_relay::{AddressFamily, IpStack};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::MutableIpPacket;
 use itertools::Itertools as _;
 use prop::sample;
 use proptest::prelude::*;
@@ -13,7 +11,6 @@ use std::{
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     num::NonZeroU16,
-    time::Instant,
 };
 use tracing::Span;
 
@@ -115,7 +112,10 @@ impl<T, S> Host<T, S> {
     /// The `src` of a [`Transmit`] is empty if we want to send if via the default interface.
     /// In production, the kernel does this for us.
     /// In this test, we need to always set a `src` so that the remote peer knows where the packet is coming from.
-    fn set_transmit_src(&self, transmit: Transmit<'static>) -> Option<Transmit<'static>> {
+    pub(crate) fn set_transmit_src(
+        &self,
+        transmit: Transmit<'static>,
+    ) -> Option<Transmit<'static>> {
         if transmit.src.is_some() {
             return Some(transmit);
         }
@@ -154,72 +154,6 @@ where
             allocated_ports: self.allocated_ports.clone(),
             old_ports: self.old_ports.clone(),
         }
-    }
-}
-
-#[allow(private_bounds)]
-impl<T, S> Host<T, S>
-where
-    T: PollTransmit,
-{
-    pub(crate) fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
-        let _guard = self.span.enter();
-        let transmit = self.span.in_scope(|| self.inner.poll_transmit())?;
-
-        self.set_transmit_src(transmit)
-    }
-}
-
-#[allow(private_bounds)]
-impl<T, S> Host<T, S>
-where
-    T: Encapsulate,
-{
-    pub(crate) fn encapsulate(
-        &mut self,
-        packet: MutableIpPacket<'_>,
-        now: Instant,
-    ) -> Option<Transmit<'static>> {
-        let _guard = self.span.enter();
-
-        let transmit = self
-            .span
-            .in_scope(|| self.inner.encapsulate(packet, now))?
-            .into_owned();
-
-        self.set_transmit_src(transmit)
-    }
-}
-
-trait Encapsulate {
-    fn encapsulate(&mut self, packet: MutableIpPacket<'_>, now: Instant) -> Option<Transmit<'_>>;
-}
-
-impl Encapsulate for ClientState {
-    fn encapsulate(&mut self, packet: MutableIpPacket<'_>, now: Instant) -> Option<Transmit<'_>> {
-        self.encapsulate(packet, now)
-    }
-}
-
-impl Encapsulate for GatewayState {
-    fn encapsulate(&mut self, packet: MutableIpPacket<'_>, now: Instant) -> Option<Transmit<'_>> {
-        self.encapsulate(packet, now)
-    }
-}
-
-trait PollTransmit {
-    fn poll_transmit(&mut self) -> Option<Transmit<'static>>;
-}
-
-impl PollTransmit for ClientState {
-    fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
-        self.poll_transmit()
-    }
-}
-
-impl PollTransmit for GatewayState {
-    fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
-        self.poll_transmit()
     }
 }
 
