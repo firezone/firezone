@@ -39,13 +39,6 @@ pub(crate) fn map_explode<'a>(
 }
 
 impl SimRelay {
-    fn new() -> Self {
-        Self {
-            allocations: Default::default(),
-            buffer: vec![0u8; (1 << 16) - 1],
-        }
-    }
-
     fn explode(
         &self,
         username: &str,
@@ -192,11 +185,20 @@ impl SimRelay {
     }
 }
 
-pub(crate) fn relay_prototype() -> impl Strategy<Value = Host<u64, SimRelay>> {
+impl Default for SimRelay {
+    fn default() -> Self {
+        Self {
+            allocations: Default::default(),
+            buffer: vec![0u8; (1 << 16) - 1],
+        }
+    }
+}
+
+pub(crate) fn relay_prototype() -> impl Strategy<Value = Host<u64, ()>> {
     host(
         dual_ip_stack(), // For this test, our relays always run in dual-stack mode to ensure connectivity!
         Just(3478),
         any::<u64>(),
-        Just(SimRelay::new()),
+        Just(()),
     )
 }

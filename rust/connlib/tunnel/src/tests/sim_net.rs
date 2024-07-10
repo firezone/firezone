@@ -138,14 +138,15 @@ where
     T: Clone,
     S: Clone,
 {
-    pub(crate) fn map<U>(
+    pub(crate) fn map<U, V>(
         &self,
-        f: impl FnOnce(T, Option<Ipv4Addr>, Option<Ipv6Addr>) -> U,
+        map_inner: impl FnOnce(T, Option<Ipv4Addr>, Option<Ipv6Addr>) -> U,
+        map_sim: impl FnOnce(S) -> V,
         span: Span,
-    ) -> Host<U, S> {
+    ) -> Host<U, V> {
         Host {
-            inner: f(self.inner.clone(), self.ip4, self.ip6),
-            sim_state: self.sim_state.clone(),
+            inner: map_inner(self.inner.clone(), self.ip4, self.ip6),
+            sim_state: map_sim(self.sim_state.clone()),
             ip4: self.ip4,
             ip6: self.ip6,
             span,

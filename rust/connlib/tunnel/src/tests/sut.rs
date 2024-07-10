@@ -94,11 +94,14 @@ impl StateMachineTest for TunnelTest {
         // Construct client, gateway and relay from the initial state.
         let mut client = ref_state.client.map(
             |(key, known_hosts), _, _| ClientState::new(key, known_hosts),
+            |sim| sim,
             debug_span!("client"),
         );
-        let mut gateway = ref_state
-            .gateway
-            .map(|key, _, _| GatewayState::new(key), debug_span!("gateway"));
+        let mut gateway = ref_state.gateway.map(
+            |key, _, _| GatewayState::new(key),
+            |sim| sim,
+            debug_span!("gateway"),
+        );
 
         let relays = ref_state
             .relays
@@ -114,6 +117,7 @@ impl StateMachineTest for TunnelTest {
                             65535,
                         )
                     },
+                    |_| SimRelay::default(),
                     debug_span!("relay", rid = %id),
                 );
 

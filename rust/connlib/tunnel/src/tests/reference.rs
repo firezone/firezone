@@ -34,7 +34,7 @@ pub(crate) struct ReferenceState {
     #[allow(clippy::type_complexity)]
     pub(crate) client: Host<(PrivateKey, HashMap<String, Vec<IpAddr>>), SimClient>,
     pub(crate) gateway: Host<PrivateKey, SimGateway>,
-    pub(crate) relays: HashMap<RelayId, Host<u64, SimRelay>>,
+    pub(crate) relays: HashMap<RelayId, Host<u64, ()>>,
 
     /// The DNS resolvers configured on the client outside of connlib.
     pub(crate) system_dns_resolvers: Vec<IpAddr>,
