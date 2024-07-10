@@ -810,7 +810,7 @@ where
     }
 
     fn max_available_ports(&self) -> u16 {
-        self.ports.end() - self.ports.start()
+        self.ports.clone().count() as u16
     }
 
     fn create_channel_binding(
