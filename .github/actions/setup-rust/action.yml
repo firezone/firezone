@@ -17,6 +17,12 @@ inputs:
     default: ""
 
 outputs:
+  bench-packages:
+    description: Benchmarkable packages for the current OS
+    value: ${{
+      (runner.os == 'Linux' && '--help') ||
+      (runner.os == 'macOS' && '--help') ||
+      (runner.os == 'Windows' && '-p firezone-tunnel') }}
   packages:
     description: Compilable / testable packages for the current OS
     value: ${{

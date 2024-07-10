@@ -1,10 +1,10 @@
 use crate::{
     device_id,
     dns_control::{self, DnsController},
-    known_dirs, CallbackHandler, CliCommon, InternalServerMsg, IpcServerMsg, SignalKind, Signals,
+    known_dirs, signals, CallbackHandler, CliCommon, InternalServerMsg, IpcServerMsg,
     TOKEN_ENV_KEY,
 };
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets};
 use connlib_shared::tun_device_manager;
@@ -98,7 +98,7 @@ fn run_debug_ipc_service() -> Result<()> {
     );
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
-    let mut signals = Signals::new()?;
+    let mut signals = signals::Terminate::new()?;
 
     rt.block_on(ipc_listen_with_signals(&mut signals))
 }
@@ -107,19 +107,12 @@ fn run_debug_ipc_service() -> Result<()> {
 ///
 /// Shared between the Linux systemd service and the debug subcommand
 /// TODO: Better name
-async fn ipc_listen_with_signals(signals: &mut Signals) -> Result<()> {
+async fn ipc_listen_with_signals(signals: &mut signals::Terminate) -> Result<()> {
     let ipc_service = pin!(ipc_listen());
 
     match future::select(pin!(signals.recv()), ipc_service).await {
-        future::Either::Left((SignalKind::Hangup, _)) => {
-            bail!("Exiting, SIGHUP not implemented for the IPC service");
-        }
-        future::Either::Left((SignalKind::Interrupt, _)) => {
-            tracing::info!("Caught SIGINT");
-            Ok(())
-        }
-        future::Either::Left((SignalKind::Terminate, _)) => {
-            tracing::info!("Caught SIGTERM");
+        future::Either::Left(((), _)) => {
+            tracing::info!("Caught SIGINT / SIGTERM / Ctrl+C");
             Ok(())
         }
         future::Either::Right((Ok(impossible), _)) => match impossible {},
@@ -305,6 +298,7 @@ impl Handler {
             ClientMsg::Disconnect => {
                 if let Some(connlib) = self.connlib.take() {
                     connlib.disconnect();
+                    dns_control::deactivate()?;
                 } else {
                     tracing::error!("Error - Got Disconnect when we're already not connected");
                 }

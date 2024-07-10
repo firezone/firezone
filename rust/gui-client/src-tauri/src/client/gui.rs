@@ -675,7 +675,7 @@ impl Controller {
 
     /// Builds a new system tray menu and applies it to the app
     fn refresh_system_tray_menu(&mut self) -> Result<()> {
-        // TODO: Refactor `Controller` and the auth module so that "Are we logged in"
+        // TODO: Refactor `Controller` and the auth module so that "Are we logged in?"
         // doesn't require such complicated control flow to answer.
         let menu = if let Some(auth_session) = self.auth.session() {
             match &self.status {

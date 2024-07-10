@@ -15,19 +15,30 @@ export default function GUI({ title }: { title: string }) {
       <Entry version="1.1.6" date={new Date("2024-07-10")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
-            The Linux and Windows GUI Client now{" "}
             <Link
               href="https://github.com/firezone/firezone/pull/5817"
               className="text-accent-500 underline hover:no-underline"
             >
-              set different tray icons when signing in and when signed out
+              Sets different tray icons
+            </Link>
+            {" "}when signing in and when signed out
+          </li>
+          {title === "Windows" && (
+          <li className="pl-2">
+            Fixes{" "}
+            <Link
+              href="https://github.com/firezone/firezone/pull/5827"
+              className="text-accent-500 underline hover:no-underline"
+            >
+              a bug where DNS could stop working when you sign out.
             </Link>
           </li>
+          )}
         </ul>
-      </Entry>
-      */}
+      </Entry>*/}
       <Entry version="1.1.5" date={new Date("2024-07-08")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
+          {title === "Linux GUI" && (
           <li className="pl-2">
             The Linux GUI Client is now{" "}
             <Link
@@ -37,6 +48,12 @@ export default function GUI({ title }: { title: string }) {
               built for both x86-64 and ARM64
             </Link>
           </li>
+          )}
+          {title === "Windows" && (
+            <li className="pl-2">
+              <p>This is a maintenance release with no user-facing changes.</p>
+            </li>
+          )}
         </ul>
       </Entry>
       <Entry version="1.1.4" date={new Date("2024-07-05")}>
@@ -50,8 +67,6 @@ export default function GUI({ title }: { title: string }) {
               issue
             </Link>{" "}
             where a stale DNS cache could prevent traffic from routing to DNS
-            Resources if they were updated while the Client was signed in. where
-            a stale DNS cache could prevent traffic from routing to DNS
             Resources if they were updated while the Client was signed in.
           </li>
         </ul>
