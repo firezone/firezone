@@ -358,6 +358,85 @@ defmodule Web.FormComponents do
     """
   end
 
+  ### Dialogs ###
+
+  attr :id, :string, required: true, doc: "The id of the dialog"
+  attr :class, :string, default: "", doc: "Custom classes to be added to the button"
+  attr :style, :string, default: "danger", doc: "The style of the button"
+  attr :icon, :string, default: "hero-trash-solid", doc: "The icon of the button"
+  attr :size, :string, default: "md", doc: "The size of the button"
+  attr :on_confirm, :string, required: true, doc: "The phx event to broadcast on confirm"
+
+  attr :on_confirm_id, :string,
+    default: nil,
+    doc: "The phx event id value to broadcast on confirm"
+
+  slot :dialog_title, doc: "The title of the dialog"
+  slot :dialog_content, doc: "The content of the dialog"
+  slot :dialog_confirm_button, doc: "The content of the confirm button of the dialog"
+  slot :dialog_cancel_button, doc: "The content of the cancel button of the dialog"
+  slot :inner_block, required: true, doc: "The label for the button"
+
+  def button_with_confirmation(assigns) do
+    ~H"""
+    <dialog
+      id={"#{@id}_dialog"}
+      class={[
+        "backdrop:bg-slate-800/75 bg-transparent",
+        "p-4 w-full max-w-2xl md:inset-0 max-h-full",
+        "overflow-y-auto overflow-x-hidden",
+        "justify-center items-center"
+      ]}
+    >
+      <form method="dialog">
+        <div class="relative bg-white rounded-lg shadow">
+          <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+            <h3 class="text-xl font-semibold text-neutral-900">
+              <%= render_slot(@dialog_title) %>
+            </h3>
+            <button
+              class="text-neutral-400 bg-transparent hover:text-accent-900"
+              type="submit"
+              value="cancel"
+            >
+              <.icon name="hero-x-mark" class="h-4 w-4" />
+              <span class="sr-only">Close modal</span>
+            </button>
+          </div>
+          <div class="p-4 md:p-5 text-neutral-500">
+            <%= render_slot(@dialog_content) %>
+          </div>
+          <div class="flex items-center justify-end p-4 md:p-5 border-t border-gray-200 rounded-b">
+            <.button
+              data-dialog-action="cancel"
+              type="submit"
+              value="cancel"
+              style="info"
+              class="px-5 py-2.5"
+            >
+              <%= render_slot(@dialog_cancel_button) %>
+            </.button>
+            <.button
+              data-dialog-action="confirm"
+              phx-click={@on_confirm}
+              phx-value-id={@on_confirm_id}
+              type="submit"
+              style="danger"
+              value="confirm"
+              class="py-2.5 px-5 ms-3"
+            >
+              <%= render_slot(@dialog_confirm_button) %>
+            </.button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+    <.button id={@id} style={@style} size={@size} icon={@icon} class={@class} phx-hook="ConfirmDialog">
+      <%= render_slot(@inner_block) %>
+    </.button>
+    """
+  end
+
   ### Buttons ###
 
   @doc """

@@ -209,13 +209,25 @@ defmodule Web.Policies.Show do
 
     <.danger_zone :if={is_nil(@policy.deleted_at)}>
       <:action>
-        <.delete_button
-          phx-click="delete"
-          phx-value-id={@policy.id}
-          data-confirm="Are you sure you want to delete this policy?"
+        <.button_with_confirmation
+          id="delete_policy"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
+          on_confirm_id={@policy.id}
         >
+          <:dialog_title>Delete Policy</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to delete this Policy? All tunnel sessions authorized by it will be expired.
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Policy
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete Policy
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """

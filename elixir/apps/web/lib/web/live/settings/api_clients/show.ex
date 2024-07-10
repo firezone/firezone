@@ -170,12 +170,24 @@ defmodule Web.Settings.ApiClients.Show do
 
     <.danger_zone :if={is_nil(@actor.deleted_at)}>
       <:action>
-        <.delete_button
-          phx-click="delete"
-          data-confirm="Are you sure want to delete this API Client along with all associated tokens?"
+        <.button_with_confirmation
+          id="delete_api_client"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
         >
+          <:dialog_title>Delete API Client</:dialog_title>
+          <:dialog_content>
+            Are you sure want to delete this API Client along with all associated tokens?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete API Client
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete API Client
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """

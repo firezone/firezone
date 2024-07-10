@@ -260,12 +260,24 @@ defmodule Web.Sites.Show do
 
     <.danger_zone :if={is_nil(@group.deleted_at)}>
       <:action>
-        <.delete_button
-          phx-click="delete"
-          data-confirm="Are you sure you want to delete this Site and disconnect all its Gateways?"
+        <.button_with_confirmation
+          id="delete_site"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
         >
+          <:dialog_title>Delete Site</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to delete this Site and disconnect all its Gateways?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Site
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete Site
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """

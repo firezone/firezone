@@ -143,12 +143,24 @@ defmodule Web.RelayGroups.Show do
 
     <.danger_zone :if={not is_nil(@group.account_id) and is_nil(@group.deleted_at)}>
       <:action :if={@group.account_id}>
-        <.delete_button
-          phx-click="delete"
-          data-confirm="Are you sure want to delete this relay group and disconnect all it's relays?"
+        <.button_with_confirmation
+          id="delete_relay_group"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
         >
+          <:dialog_title>Delete Instance Group</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to delete this Instance Group? All relay instances will be disconnected.
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Instance Group
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete Instance Group
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """

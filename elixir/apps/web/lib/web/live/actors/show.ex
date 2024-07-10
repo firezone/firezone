@@ -489,12 +489,24 @@ defmodule Web.Actors.Show do
 
     <.danger_zone :if={is_nil(@actor.deleted_at)}>
       <:action :if={not Actors.actor_synced?(@actor) or @identities == []}>
-        <.delete_button
-          phx-click="delete"
-          data-confirm={"Are you sure want to delete this #{actor_type(@actor.type)} along with all associated identities?"}
+        <.button_with_confirmation
+          id="delete_actor"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
         >
+          <:dialog_title>Delete <%= actor_type(@actor.type) %></:dialog_title>
+          <:dialog_content>
+            Are you sure want to delete this <%= String.downcase(actor_type(@actor.type)) %> along with all associated identities?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete <%= actor_type(@actor.type) %>
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete <%= actor_type(@actor.type) %>
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """
