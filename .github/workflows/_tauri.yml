@@ -26,31 +26,31 @@ jobs:
         include:
           - runs-on: ubuntu-20.04
             # mark:next-gui-version
-            binary-dest-path: firezone-client-gui-linux_1.1.5_x86_64
+            binary-dest-path: firezone-client-gui-linux_1.1.6_x86_64
             rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
             upload-script: ../../scripts/build/tauri-upload-ubuntu.sh
             # mark:next-gui-version
-            syms-artifact: rust/gui-client/firezone-client-gui-linux_1.1.5_x86_64.dwp
+            syms-artifact: rust/gui-client/firezone-client-gui-linux_1.1.6_x86_64.dwp
             # mark:next-gui-version
-            pkg-artifact: rust/gui-client/firezone-client-gui-linux_1.1.5_x86_64.deb
+            pkg-artifact: rust/gui-client/firezone-client-gui-linux_1.1.6_x86_64.deb
           - runs-on: ubuntu-20.04-arm
             # mark:next-gui-version
-            binary-dest-path: firezone-client-gui-linux_1.1.5_aarch64
+            binary-dest-path: firezone-client-gui-linux_1.1.6_aarch64
             rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
             upload-script: ../../scripts/build/tauri-upload-ubuntu.sh
             # mark:next-gui-version
-            syms-artifact: rust/gui-client/firezone-client-gui-linux_1.1.5_aarch64.dwp
+            syms-artifact: rust/gui-client/firezone-client-gui-linux_1.1.6_aarch64.dwp
             # mark:next-gui-version
-            pkg-artifact: rust/gui-client/firezone-client-gui-linux_1.1.5_aarch64.deb
+            pkg-artifact: rust/gui-client/firezone-client-gui-linux_1.1.6_aarch64.deb
           - runs-on: windows-2019
             # mark:next-gui-version
-            binary-dest-path: firezone-client-gui-windows_1.1.5_x86_64
+            binary-dest-path: firezone-client-gui-windows_1.1.6_x86_64
             rename-script: ../../scripts/build/tauri-rename-windows.sh
             upload-script: ../../scripts/build/tauri-upload-windows.sh
             # mark:next-gui-version
-            syms-artifact: rust/gui-client/firezone-client-gui-windows_1.1.5_x86_64.pdb
+            syms-artifact: rust/gui-client/firezone-client-gui-windows_1.1.6_x86_64.pdb
             # mark:next-gui-version
-            pkg-artifact: rust/gui-client/firezone-client-gui-windows_1.1.5_x86_64.msi
+            pkg-artifact: rust/gui-client/firezone-client-gui-windows_1.1.6_x86_64.msi
     env:
       BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
       AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
@@ -63,7 +63,20 @@ jobs:
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri
-        timeout-minutes: 5
+        # Installing new packages can take time
+        timeout-minutes: 10
+      # the arm64 images don't have the GH cli installed.
+      # Remove this when https://github.com/actions/runner-images/issues/10192 is resolved.
+      - name: Ubuntu arm workaround
+        if: ${{ matrix.runs-on == 'ubuntu-20.04-arm' }}
+        run: |
+          (type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)) \
+          && sudo mkdir -p -m 755 /etc/apt/keyrings \
+          && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+          && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+          && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+          && sudo apt update \
+          && sudo apt install gh -y
       - name: Install pnpm deps
         run: pnpm install
       - name: Install AzureSignTool
@@ -83,7 +96,7 @@ jobs:
         if: ${{ runner.os == 'Windows' }}
         shell: bash
         # mark:next-gui-version
-        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_1.1.5_x64_en-US.msi
+        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_1.1.6_x64_en-US.msi
       - name: Rename artifacts and compute SHA256
         shell: bash
         run: ${{ matrix.rename-script }}
@@ -108,6 +121,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           # mark:next-gui-version
-          TAG_NAME: gui-client-1.1.5
+          TAG_NAME: gui-client-1.1.6
         shell: bash
         run: ${{ matrix.upload-script }}
