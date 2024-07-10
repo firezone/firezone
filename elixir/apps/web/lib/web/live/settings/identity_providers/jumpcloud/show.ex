@@ -171,12 +171,24 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Show do
 
     <.danger_zone :if={is_nil(@provider.deleted_at)}>
       <:action>
-        <.delete_button
-          data-confirm="Are you sure want to delete this provider along with all related data?"
-          phx-click="delete"
+        <.button_with_confirmation
+          id="delete_identity_provider"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
         >
+          <:dialog_title>Delete Identity Provider</:dialog_title>
+          <:dialog_content>
+            Are you sure want to delete this provider along with all related data?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Identity Provider
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete Identity Provider
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """

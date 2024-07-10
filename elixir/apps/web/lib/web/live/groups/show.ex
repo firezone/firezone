@@ -240,12 +240,24 @@ defmodule Web.Groups.Show do
 
     <.danger_zone :if={is_nil(@group.deleted_at) and Actors.group_editable?(@group)}>
       <:action>
-        <.delete_button
-          phx-click="delete"
-          data-confirm="Are you sure want to delete this group and all related policies?"
+        <.button_with_confirmation
+          id="delete_group"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
         >
+          <:dialog_title>Delete Group</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to delete this group and all related policies?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Group
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete Group
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """

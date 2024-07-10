@@ -304,13 +304,25 @@ defmodule Web.Resources.Show do
 
     <.danger_zone :if={is_nil(@resource.deleted_at)}>
       <:action>
-        <.delete_button
-          data-confirm="Are you sure want to delete this resource along with all associated policies?"
-          phx-click="delete"
-          phx-value-id={@resource.id}
+        <.button_with_confirmation
+          id="delete_resource"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
+          on_confirm_id={@resource.id}
         >
+          <:dialog_title>Delete Resource</:dialog_title>
+          <:dialog_content>
+            Are you sure want to delete this resource along with all associated policies and tunnel sessions?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Resource
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete Resource
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """

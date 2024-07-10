@@ -119,6 +119,7 @@ const handleDisableSubmit = (ev) => {
     submit.removeAttribute("disabled");
   }, 5000);
 };
+
 Hooks.AttachDisableSubmit = {
   mounted() {
     this.el.addEventListener("form:disable_and_submit", handleDisableSubmit);
@@ -126,6 +127,24 @@ Hooks.AttachDisableSubmit = {
 
   destroyed() {
     this.el.removeEventListener("form:disable_and_submit", handleDisableSubmit);
+  },
+};
+
+Hooks.ConfirmDialog = {
+  mounted() {
+    this.el.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+
+      let id = ev.currentTarget.getAttribute("id");
+      let dialog_el = document.getElementById(id + "_dialog");
+      dialog_el.returnValue = "cancel";
+      dialog_el.close();
+      dialog_el.showModal();
+
+      let close_button = dialog_el.querySelector("[data-dialog-action=cancel]");
+      close_button.focus();
+    });
   },
 };
 
