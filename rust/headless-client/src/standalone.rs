@@ -111,7 +111,10 @@ pub fn run_only_headless_client() -> Result<()> {
         .unzip();
     setup_global_subscriber(layer);
 
-    tracing::info!(git_version = crate::GIT_VERSION);
+    tracing::info!(
+        arch = std::env::consts::ARCH,
+        git_version = crate::GIT_VERSION
+    );
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -174,11 +177,15 @@ pub fn run_only_headless_client() -> Result<()> {
         loop {
             match future::select(pin!(signals.recv()), pin!(cb_rx.recv())).await {
                 future::Either::Left((SignalKind::Hangup, _)) => {
-                    tracing::info!("Caught Hangup signal");
+                    tracing::info!("Caught SIGHUP");
                     session.reconnect();
                 }
                 future::Either::Left((SignalKind::Interrupt, _)) => {
-                    tracing::info!("Caught Interrupt signal");
+                    tracing::info!("Caught SIGINT");
+                    return Ok(());
+                }
+                future::Either::Left((SignalKind::Terminate, _)) => {
+                    tracing::info!("Caught SIGTERM");
                     return Ok(());
                 }
                 future::Either::Right((None, _)) => {
@@ -190,7 +197,6 @@ pub fn run_only_headless_client() -> Result<()> {
                         error_msg,
                         is_authentication_error: _,
                     }) => return Err(anyhow!(error_msg).context("Firezone disconnected")),
-                    InternalServerMsg::Ipc(IpcServerMsg::Ok) => {}
                     InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {
                         // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                         dns_controller.flush()?;

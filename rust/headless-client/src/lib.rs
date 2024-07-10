@@ -95,7 +95,6 @@ enum InternalServerMsg {
 /// Messages that we can send to IPC clients
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum IpcServerMsg {
-    Ok,
     OnDisconnect {
         error_msg: String,
         is_authentication_error: bool,
@@ -163,6 +162,10 @@ enum SignalKind {
     Hangup,
     /// SIGINT
     Interrupt,
+    /// SIGTERM
+    ///
+    /// Not caught on Windows
+    Terminate,
 }
 
 /// Sets up logging for stdout only, with INFO level by default

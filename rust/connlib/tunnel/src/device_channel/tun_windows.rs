@@ -336,14 +336,17 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 mod tests {
+    use super::*;
+
     /// Checks for regressions in issue #4765, un-initializing Wintun
     #[test]
     #[ignore = "Needs admin privileges"]
     fn resource_management() {
-        // Each cycle takes about half a second, so this will need over a minute to run.
-        for _ in 0..150 {
-            let _tun = super::Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
+        // Each cycle takes about half a second, so this will take a fair bit to run.
+        for _ in 0..50 {
+            let _tun = Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
         }
     }
 }

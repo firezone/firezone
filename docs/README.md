@@ -103,24 +103,15 @@ product documentation, organized as follows:
 - [kotlin/](../kotlin/android): Android / ChromeOS clients.
 - [website/](../website): Marketing website and product documentation.
 - [terraform/](../terraform): Terraform files for various example deployments.
-  - [terraform/examples/aws/nat-gateway](../terraform/examples/aws/nat-gateway):
-    Example Terraform configuration for deploying a cluster of Firezone Gateways
-    behind a NAT gateway on AWS with a single egress IP.
   - [terraform/examples/google-cloud/nat-gateway](../terraform/examples/google-cloud/nat-gateway):
     Example Terraform configuration for deploying a cluster of Firezone Gateways
     behind a NAT gateway on GCP with a single egress IP.
   - [terraform/examples/azure/nat-gateway](../terraform/examples/azure/nat-gateway):
     Example Terraform configuration for deploying a cluster of Firezone Gateways
     behind a NAT gateway on Azure with a single egress IP.
-  - [terraform/modules/aws/firezone-gateway](../terraform/modules/aws/firezone-gateway):
-    Production-ready Terraform module for deploying Firezone Gateways to AWS
-    using Auto Scaling Groups.
   - [terraform/modules/google-cloud/apps/gateway-region-instance-group](../terraform/modules/google-cloud/apps/gateway-region-instance-group):
     Production-ready Terraform module for deploying regional Firezone Gateways
     to Google Cloud Compute using Regional Instance Groups.
-  - [terraform/modules/aws/firezone-gateway](../terraform/modules/aws/firezone-gateway):
-    Production-ready Terraform module for deploying Firezone Gateways to AWS
-    using Auto Scaling Groups.
   - [terraform/modules/azure/firezone-gateway](../terraform/modules/azure/firezone-gateway):
     Production-ready Terraform module for deploying Firezone Gateways to Azure
     using Azure Orchestrated Virtual Machine Scale Sets.

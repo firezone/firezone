@@ -429,7 +429,7 @@ enum Status {
     /// Firezone is signing in and raising the tunnel.
     Connecting,
     /// Firezone is ready to use.
-    TunnelReady,
+    TunnelReady { resources: Vec<ResourceDescription> },
 }
 
 impl Default for Status {
@@ -444,7 +444,7 @@ impl Status {
         match self {
             Self::Disconnected => false,
             Self::Connecting => true,
-            Self::TunnelReady => true,
+            Self::TunnelReady { .. } => true,
         }
     }
 }
@@ -458,7 +458,6 @@ struct Controller {
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
     log_filter_reloader: logging::Reloader,
-    resources: Vec<ResourceDescription>,
     status: Status,
     uptime: client::uptime::Tracker,
 }
@@ -495,48 +494,6 @@ impl Controller {
             .handle_response(auth_response)
             .context("Couldn't handle auth response")?;
         self.start_session(token).await?;
-        Ok(())
-    }
-
-    async fn handle_ipc(&mut self, msg: IpcServerMsg) -> Result<(), Error> {
-        match msg {
-            IpcServerMsg::Ok => {}
-            IpcServerMsg::OnDisconnect {
-                error_msg,
-                is_authentication_error,
-            } => {
-                self.sign_out().await?;
-                if is_authentication_error {
-                    tracing::info!(?error_msg, "Auth error");
-                    os::show_notification(
-                        "Firezone disconnected",
-                        "To access resources, sign in again.",
-                    )?;
-                } else {
-                    tracing::error!(?error_msg, "Disconnected");
-                    native_dialog::MessageDialog::new()
-                        .set_title("Firezone Error")
-                        .set_text(&error_msg)
-                        .set_type(native_dialog::MessageType::Error)
-                        .show_alert()
-                        .context("Couldn't show Disconnected alert")?;
-                }
-            }
-            IpcServerMsg::OnUpdateResources(resources) => {
-                if !matches!(self.status, Status::TunnelReady) {
-                    self.status = Status::TunnelReady;
-                    os::show_notification(
-                        "Firezone connected",
-                        "You are now signed in and able to access resources.",
-                    )?;
-                }
-                self.resources = resources;
-                tracing::debug!("Controller notified of new resources");
-                if let Err(error) = self.refresh_system_tray_menu() {
-                    tracing::error!(?error, "Failed to reload resource list");
-                }
-            }
-        }
         Ok(())
     }
 
@@ -621,7 +578,7 @@ impl Controller {
                         );
                         self.sign_out().await?;
                     }
-                    Status::TunnelReady => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
+                    Status::TunnelReady{..} => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
                 }
             }
             Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
@@ -664,6 +621,53 @@ impl Controller {
         Ok(())
     }
 
+    async fn handle_ipc(&mut self, msg: IpcServerMsg) -> Result<()> {
+        match msg {
+            IpcServerMsg::OnDisconnect {
+                error_msg,
+                is_authentication_error,
+            } => {
+                self.sign_out().await?;
+                if is_authentication_error {
+                    tracing::info!(?error_msg, "Auth error");
+                    os::show_notification(
+                        "Firezone disconnected",
+                        "To access resources, sign in again.",
+                    )?;
+                } else {
+                    tracing::error!(?error_msg, "Disconnected");
+                    native_dialog::MessageDialog::new()
+                        .set_title("Firezone Error")
+                        .set_text(&error_msg)
+                        .set_type(native_dialog::MessageType::Error)
+                        .show_alert()
+                        .context("Couldn't show Disconnected alert")?;
+                }
+            }
+            IpcServerMsg::OnUpdateResources(resources) => {
+                if self.auth.session().is_none() {
+                    // This could happen if the user cancels the sign-in
+                    // before it completes. This is because the state machine
+                    // between the GUI, the IPC service, and connlib isn't  perfectly synced.
+                    tracing::error!("Got `UpdateResources` while signed out");
+                    return Ok(());
+                }
+                tracing::debug!(len = resources.len(), "Got new Resources");
+                if !matches!(self.status, Status::TunnelReady { .. }) {
+                    os::show_notification(
+                        "Firezone connected",
+                        "You are now signed in and able to access resources.",
+                    )?;
+                }
+                self.status = Status::TunnelReady { resources };
+                if let Err(error) = self.refresh_system_tray_menu() {
+                    tracing::error!(?error, "Failed to refresh Resource list");
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Returns a new system tray menu
     fn build_system_tray_menu(&self) -> tauri::SystemTrayMenu {
         // TODO: Refactor this and the auth module so that "Are we logged in"
@@ -677,8 +681,8 @@ impl Controller {
                     system_tray_menu::signed_out()
                 }
                 Status::Connecting => system_tray_menu::signing_in("Signing In..."),
-                Status::TunnelReady => {
-                    system_tray_menu::signed_in(&auth_session.actor_name, &self.resources)
+                Status::TunnelReady { resources } => {
+                    system_tray_menu::signed_in(&auth_session.actor_name, resources)
                 }
             }
         } else if self.auth.ongoing_request().is_ok() {
@@ -749,7 +753,6 @@ async fn run_controller(
         ctlr_tx,
         ipc_client,
         log_filter_reloader,
-        resources: Default::default(),
         status: Default::default(),
         uptime: Default::default(),
     };
