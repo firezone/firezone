@@ -22,9 +22,17 @@ export default function GUI({ title }: { title: string }) {
               reported as "IPC connection closed"
             </Link>{" "}
           </li>
+          <li className="pl-2">
+            Fixes{" "}
+            <Link
+              href="https://github.com/firezone/firezone/pull/5827"
+              className="text-accent-500 underline hover:no-underline"
+            >
+              a bug where DNS could stop working when you sign out.
+            </Link>
+          </li>
         </ul>
-      </Entry>
-      */}
+      </Entry>*/}
       <Entry version="1.1.5" date={new Date("2024-07-08")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">

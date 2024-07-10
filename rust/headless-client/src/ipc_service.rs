@@ -298,6 +298,7 @@ impl Handler {
             ClientMsg::Disconnect => {
                 if let Some(connlib) = self.connlib.take() {
                     connlib.disconnect();
+                    dns_control::deactivate()?;
                 } else {
                     tracing::error!("Error - Got Disconnect when we're already not connected");
                 }
