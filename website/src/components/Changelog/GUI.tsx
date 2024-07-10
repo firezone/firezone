@@ -34,15 +34,14 @@ export default function GUI({ title }: { title: string }) {
       <Entry version="1.1.5" date={new Date("2024-07-08")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           {title === "Linux GUI" && (
-          <li className="pl-2">
-            The Linux GUI Client is now{" "}
+          <p>The Linux GUI Client is now{" "}
             <Link
               href="https://github.com/firezone/firezone/pull/5793"
               className="text-accent-500 underline hover:no-underline"
             >
               built for both x86-64 and ARM64
             </Link>
-          </li>
+          </p>
           )}
           {title === "Windows" && (
             <p>This is a maintenance release with no user-facing changes.</p>
