@@ -45,9 +45,7 @@ export default function GUI({ title }: { title: string }) {
           </li>
           )}
           {title === "Windows" && (
-            <li className="pl-2">
-              <p>This is a maintenance release with no user-facing changes.</p>
-            </li>
+            <p>This is a maintenance release with no user-facing changes.</p>
           )}
         </ul>
       </Entry>
