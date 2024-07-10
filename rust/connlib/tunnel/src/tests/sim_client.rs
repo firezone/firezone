@@ -10,7 +10,7 @@ use bimap::BiMap;
 use connlib_shared::{
     messages::{
         client::{ResourceDescriptionCidr, ResourceDescriptionDns},
-        ClientId, DnsServer, Interface, ResourceId,
+        ClientId, DnsServer, GatewayId, Interface, ResourceId,
     },
     proptest::{client_id, domain_name},
     DomainName,
@@ -83,10 +83,12 @@ impl SimClient {
         dns_server: SocketAddr,
         now: Instant,
     ) -> Option<Transmit<'static>> {
-        let dns_server = *self
-            .dns_by_sentinel
-            .get_by_right(&dns_server)
-            .expect("to have a sentinel DNS server for the sampled one");
+        let Some(dns_server) = self.dns_by_sentinel.get_by_right(&dns_server).copied() else {
+            tracing::error!(%dns_server, "Unknown DNS server");
+            return None;
+        };
+
+        tracing::debug!(%dns_server, %domain, "Sending DNS query");
 
         let name = domain_to_hickory_name(domain);
 
@@ -208,6 +210,9 @@ impl SimClient {
 }
 
 /// Reference state for a particular client.
+///
+/// The reference state machine is designed to be as abstract as possible over connlib's functionality.
+/// For example, we try to model connectivity to _resources_ and don't really care, which gateway is being used to route us there.
 #[derive(Debug, Clone)]
 pub struct RefClient {
     pub(crate) id: ClientId,
@@ -239,9 +244,14 @@ pub struct RefClient {
     pub(crate) connected_dns_resources: HashSet<(ResourceId, DomainName)>,
 
     /// The expected ICMP handshakes.
-    pub(crate) expected_icmp_handshakes: VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>,
+    ///
+    /// This is indexed by gateway because our assertions rely on the order of the sent packets.
+    pub(crate) expected_icmp_handshakes:
+        HashMap<GatewayId, VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>>,
     /// The expected DNS handshakes.
     pub(crate) expected_dns_handshakes: VecDeque<QueryId>,
+
+    pub(crate) gateways_by_resource: HashMap<ResourceId, GatewayId>,
 }
 
 impl RefClient {
@@ -291,9 +301,13 @@ impl RefClient {
         };
         tracing::Span::current().record("resource", tracing::field::display(resource.id));
 
+        let gateway = *self.gateways_by_resource.get(&resource.id).unwrap();
+
         if self.is_connected_to_cidr(resource.id) && self.is_tunnel_ip(src) {
             tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
             self.expected_icmp_handshakes
+                .entry(gateway)
+                .or_default()
                 .push_back((ResourceDst::Cidr(dst), seq, identifier));
             return;
         }
@@ -320,6 +334,8 @@ impl RefClient {
 
         tracing::Span::current().record("resource", tracing::field::display(resource));
 
+        let gateway = *self.gateways_by_resource.get(&resource).unwrap();
+
         if self
             .connected_dns_resources
             .contains(&(resource, dst.clone()))
@@ -327,6 +343,8 @@ impl RefClient {
         {
             tracing::debug!("Connected to DNS resource, expecting packet to be routed");
             self.expected_icmp_handshakes
+                .entry(gateway)
+                .or_default()
                 .push_back((ResourceDst::Dns(dst), seq, identifier));
             return;
         }
@@ -404,11 +422,25 @@ impl RefClient {
 
     /// An ICMP packet is valid if we didn't yet send an ICMP packet with the same seq and identifier.
     pub(crate) fn is_valid_icmp_packet(&self, seq: &u16, identifier: &u16) -> bool {
-        self.expected_icmp_handshakes
-            .iter()
-            .all(|(_, existing_seq, existing_identifer)| {
+        self.expected_icmp_handshakes.values().flatten().all(
+            |(_, existing_seq, existing_identifer)| {
                 existing_seq != seq && existing_identifer != identifier
-            })
+            },
+        )
+    }
+
+    pub(crate) fn gateway_by_cidr_resource_ip(&self, dst: IpAddr) -> Option<GatewayId> {
+        let resource_id = self.cidr_resource_by_ip(dst)?;
+        let gateway_id = self.gateways_by_resource.get(&resource_id)?;
+
+        Some(*gateway_id)
+    }
+
+    pub(crate) fn gateway_by_domain_name(&self, dst: &DomainName) -> Option<GatewayId> {
+        let resource_id = self.dns_resource_by_domain(dst)?;
+        let gateway_id = self.gateways_by_resource.get(&resource_id)?;
+
+        Some(*gateway_id)
     }
 
     pub(crate) fn resolved_v4_domains(&self) -> Vec<DomainName> {
@@ -626,6 +658,7 @@ fn ref_client(
                 connected_dns_resources: Default::default(),
                 expected_icmp_handshakes: Default::default(),
                 expected_dns_handshakes: Default::default(),
+                gateways_by_resource: Default::default(),
             },
         )
 }
