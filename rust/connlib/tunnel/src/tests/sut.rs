@@ -756,11 +756,25 @@ impl BufferedTransmits {
             return;
         };
 
-        let Some(transmit) = sending_host.set_transmit_src(transmit) else {
+        if transmit.src.is_some() {
+            self.inner.push_back(transmit);
+            return;
+        }
+
+        // The `src` of a [`Transmit`] is empty if we want to send if via the default interface.
+        // In production, the kernel does this for us.
+        // In this test, we need to always set a `src` so that the remote peer knows where the packet is coming from.
+
+        let Some(src) = sending_host.sending_socket_for(transmit.dst.ip()) else {
+            tracing::debug!(dst = %transmit.dst, "No socket");
+
             return;
         };
 
-        self.inner.push_back(transmit);
+        self.inner.push_back(Transmit {
+            src: Some(src),
+            ..transmit
+        });
     }
 
     fn pop(&mut self) -> Option<Transmit<'static>> {

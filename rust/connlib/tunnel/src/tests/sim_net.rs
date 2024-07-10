@@ -5,7 +5,6 @@ use ip_network_table::IpNetworkTable;
 use itertools::Itertools as _;
 use prop::sample;
 use proptest::prelude::*;
-use snownet::Transmit;
 use std::{
     collections::HashSet,
     fmt,
@@ -97,31 +96,6 @@ impl<T> Host<T> {
         if ip6.is_some() {
             self.allocate_port(port, AddressFamily::V6);
         }
-    }
-
-    /// Sets the `src` of the given [`Transmit`] in case it is missing.
-    ///
-    /// The `src` of a [`Transmit`] is empty if we want to send if via the default interface.
-    /// In production, the kernel does this for us.
-    /// In this test, we need to always set a `src` so that the remote peer knows where the packet is coming from.
-    pub(crate) fn set_transmit_src(
-        &self,
-        transmit: Transmit<'static>,
-    ) -> Option<Transmit<'static>> {
-        if transmit.src.is_some() {
-            return Some(transmit);
-        }
-
-        let Some(src) = self.sending_socket_for(transmit.dst.ip()) else {
-            tracing::debug!(dst = %transmit.dst, "No socket");
-
-            return None;
-        };
-
-        Some(Transmit {
-            src: Some(src),
-            ..transmit
-        })
     }
 }
 
