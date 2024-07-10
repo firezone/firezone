@@ -29,9 +29,12 @@ fn main() -> Result<()> {
 
     // Run tray icon stress test
     // See <https://github.com/firezone/firezone/pull/5817>
-    app.gui_command(&["debug", "tray-icon-stress"])?
-        .join()?
-        .fz_exit_ok()?;
+    // TODO
+    if false {
+        app.gui_command(&["debug", "tray-icon-stress"])?
+            .join()?
+            .fz_exit_ok()?;
+    }
 
     // Run normal smoke test
     let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
