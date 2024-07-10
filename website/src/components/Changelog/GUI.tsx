@@ -11,6 +11,21 @@ export default function GUI({ title }: { title: string }) {
 
   return (
     <Entries href={href} arches={arches} title={title}>
+    {/*
+      <Entry version="1.1.6" date={new Date("2024-07-10")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            The Linux and Windows GUI Client now{" "}
+            <Link
+              href="https://github.com/firezone/firezone/pull/5817"
+              className="text-accent-500 underline hover:no-underline"
+            >
+              set different tray icons when signing in and when signed out
+            </Link>
+          </li>
+        </ul>
+      </Entry>
+      */}
       <Entry version="1.1.5" date={new Date("2024-07-08")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
