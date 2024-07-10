@@ -48,8 +48,6 @@ export default function GUI({ title }: { title: string }) {
               issue
             </Link>{" "}
             where a stale DNS cache could prevent traffic from routing to DNS
-            Resources if they were updated while the Client was signed in. where
-            a stale DNS cache could prevent traffic from routing to DNS
             Resources if they were updated while the Client was signed in.
           </li>
         </ul>
