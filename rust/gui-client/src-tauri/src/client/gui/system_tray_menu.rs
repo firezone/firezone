@@ -3,6 +3,7 @@
 //! "Notification Area" is Microsoft's official name instead of "System tray":
 //! <https://learn.microsoft.com/en-us/windows/win32/shell/notification-area?redirectedfrom=MSDN#notifications-and-the-notification-area>
 
+use super::Status;
 use connlib_client_shared::callbacks::{ResourceDescription, Status};
 use serde::{Deserialize, Serialize};
 use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem, SystemTraySubmenu};
@@ -27,6 +28,29 @@ pub(crate) enum Window {
 }
 
 const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
+
+/// Returns a new system tray menu
+pub(crate) fn build_system_tray_menu(actor_name: Option<&str>) -> tauri::SystemTrayMenu {
+    // TODO: Refactor this and the auth module so that "Are we logged in"
+    // doesn't require such complicated control flow to answer.
+    // TODO: Show some "Waiting for portal..." state if we got the deep link but
+    // haven't got `on_tunnel_ready` yet.
+    if let Some(actor_name) = actor_name {
+        match &self.status {
+            Status::Disconnected => {
+                tracing::error!("We have an auth session but no connlib session");
+                signed_out()
+            }
+            Status::Connecting => signing_in("Signing In..."),
+            Status::TunnelReady => signed_in(actor_name, &self.resources.load()),
+        }
+    } else if self.auth.ongoing_request().is_ok() {
+        // Signing in, waiting on deep link callback
+        signing_in("Waiting for browser...")
+    } else {
+        signed_out()
+    }
+}
 
 fn get_submenu(res: &ResourceDescription) -> SystemTrayMenu {
     let submenu = SystemTrayMenu::new();

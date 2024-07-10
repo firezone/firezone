@@ -48,6 +48,8 @@ pub(crate) use os::set_autostart;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
 
+const SIGNED_IN_ICON: &[u8] = include_bytes!("../../icons/icon.ico");
+const SIGNED_OUT_ICON: &[u8] = include_bytes!("../../icons/icon-signed-out.ico");
 const TRAY_ICON_TOOLTIP: &str = "Firezone";
 
 /// All managed state that we might need to access from odd places like Tauri commands.
@@ -650,41 +652,14 @@ impl Controller {
         Ok(())
     }
 
-    /// Returns a new system tray menu
-    fn build_system_tray_menu(&self) -> tauri::SystemTrayMenu {
-        // TODO: Refactor this and the auth module so that "Are we logged in"
-        // doesn't require such complicated control flow to answer.
-        // TODO: Show some "Waiting for portal..." state if we got the deep link but
-        // haven't got `on_tunnel_ready` yet.
-        if let Some(auth_session) = self.auth.session() {
-            match &self.status {
-                Status::Disconnected => {
-                    tracing::error!("We have an auth session but no connlib session");
-                    system_tray_menu::signed_out()
-                }
-                Status::Connecting => system_tray_menu::signing_in("Signing In..."),
-                Status::TunnelReady => {
-                    system_tray_menu::signed_in(&auth_session.actor_name, &self.resources.load())
-                }
-            }
-        } else if self.auth.ongoing_request().is_ok() {
-            // Signing in, waiting on deep link callback
-            system_tray_menu::signing_in("Waiting for browser...")
-        } else {
-            system_tray_menu::signed_out()
-        }
-    }
-
     /// Builds a new system tray menu and applies it to the app
     fn refresh_system_tray_menu(&self) -> Result<()> {
         let tray = self.app.tray_handle();
         // Don't call `set_icon` too often. On Linux it writes a PNG to `/run/user/$UID/tao/tray-icon-*.png` every single time.
         // <https://github.com/tauri-apps/tao/blob/tao-v0.16.7/src/platform_impl/linux/system_tray.rs#L119>
-        tray.set_icon(tauri::Icon::Rgba {
-            rgba: vec![255u8; 32 * 32 * 4],
-            width: 32,
-            height: 32,
-        })?;
+        // Yes, even if you use `Icon::File` and tell Tauri that the icon is already
+        // on disk.
+        tray.set_icon(tauri::Icon::Raw(SIGNED_OUT_ICON.into()))?;
         tray.set_tooltip(TRAY_ICON_TOOLTIP)?;
         tray.set_menu(self.build_system_tray_menu())?;
         Ok(())
