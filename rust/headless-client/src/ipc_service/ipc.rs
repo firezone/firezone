@@ -207,7 +207,7 @@ mod tests {
                 while let Some(req) = rx.next().await {
                     let req = req.expect("Error while reading from IPC client");
                     ensure!(req == IpcClientMsg::Reconnect);
-                    tx.send(&IpcServerMsg::OnTunnelReady)
+                    tx.send(&IpcServerMsg::OnUpdateResources(vec![]))
                         .await
                         .expect("Error while writing to IPC client");
                 }
@@ -232,7 +232,7 @@ mod tests {
                         .await
                         .expect("Should have gotten a reply from the IPC server")
                         .expect("Error while reading from IPC server");
-                    ensure!(matches!(resp, IpcServerMsg::OnTunnelReady));
+                    ensure!(matches!(resp, IpcServerMsg::OnUpdateResources(_)));
                 }
             }
             Ok(())
