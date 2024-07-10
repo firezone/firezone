@@ -5,6 +5,13 @@ inputs:
     description: "Limit deps to mix env"
     type: string
     required: true
+outputs:
+  otp-version:
+    description: "The OTP version"
+    value: ${{ steps.versions.outputs.erlang }}
+  elixir-version:
+    description: "The Elixir version"
+    value: ${{ steps.versions.outputs.elixir }}
 runs:
   using: "composite"
   steps:
@@ -29,7 +36,7 @@ runs:
         path: |
           elixir/deps
           elixir/_build/${{ inputs.mix_env }}
-        key: ${{ runner.os }}-${{ inputs.mix_env }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
+        key: elixir-deps-${{ runner.os }}-${{ runner.arch }}-${{ inputs.mix_env }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
     - name: Install Dependencies
       if: ${{ steps.cache.outputs.cache-hit != 'true' }}
       shell: bash
@@ -42,7 +49,7 @@ runs:
       run: mix deps.compile --skip-umbrella-children
     - uses: actions/cache/save@v4
       name: Save Elixir Deps Cache
-      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      if: ${{ github.ref_name == 'main' }}
       with:
         path: |
           elixir/deps
