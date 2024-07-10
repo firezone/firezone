@@ -2,6 +2,7 @@ use super::{
     reference::{private_key, PrivateKey},
     sim_net::{any_ip_stack, any_port, host, Host},
 };
+use crate::ClientState;
 use connlib_shared::{
     messages::ClientId,
     proptest::{client_id, domain_name},
@@ -39,6 +40,12 @@ impl SimClient {
 pub struct RefClient {
     pub(crate) key: PrivateKey,
     pub(crate) known_hosts: HashMap<String, Vec<IpAddr>>,
+}
+
+impl RefClient {
+    pub(crate) fn into_sut(self) -> ClientState {
+        ClientState::new(self.key, self.known_hosts)
+    }
 }
 
 pub(crate) fn ref_client_host(
