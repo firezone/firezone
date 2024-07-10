@@ -291,7 +291,7 @@ impl RefClient {
         };
         tracing::Span::current().record("resource", tracing::field::display(resource.id));
 
-        if self.connected_cidr_resources.contains(&resource.id) && self.is_tunnel_ip(src) {
+        if self.is_connected_to_cidr(resource.id) && self.is_tunnel_ip(src) {
             tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
             self.expected_icmp_handshakes
                 .push_back((ResourceDst::Cidr(dst), seq, identifier));
@@ -375,6 +375,14 @@ impl RefClient {
         }
 
         ips
+    }
+
+    pub(crate) fn is_connected_to_cidr(&self, id: ResourceId) -> bool {
+        self.connected_cidr_resources.contains(&id)
+    }
+
+    pub(crate) fn is_known_host(&self, name: &str) -> bool {
+        self.known_hosts.contains_key(name)
     }
 
     fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {

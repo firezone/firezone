@@ -293,16 +293,8 @@ impl ReferenceStateMachine for ReferenceState {
                 .dns_query_via_cidr_resource(dns_server.ip(), domain)
             {
                 Some(resource)
-                    if !state
-                        .client
-                        .inner()
-                        .connected_cidr_resources
-                        .contains(&resource)
-                        && !state
-                            .client
-                            .inner()
-                            .known_hosts
-                            .contains_key(&domain.to_string()) =>
+                    if !state.client.inner().is_connected_to_cidr(resource)
+                        && !state.client.inner().is_known_host(&domain.to_string()) =>
                 {
                     state
                         .client
@@ -501,15 +493,7 @@ impl ReferenceStateMachine for ReferenceState {
                         .expected_dns_servers()
                         .contains(dns_server)
             }
-            Transition::RemoveResource(id) => {
-                state
-                    .client
-                    .inner()
-                    .cidr_resources
-                    .iter()
-                    .any(|(_, r)| &r.id == id)
-                    || state.client.inner().dns_resources.contains_key(id)
-            }
+            Transition::RemoveResource(id) => state.client.inner().all_resources().contains(id),
             Transition::RoamClient { ip4, ip6, port } => {
                 // In production, we always rebind to a new port so we never roam to our old existing IP / port combination.
 
