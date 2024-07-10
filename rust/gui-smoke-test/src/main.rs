@@ -25,16 +25,15 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     let app = App::new()?;
 
-    // Run `cargo build`
-    build_binary(GUI_NAME)?;
-    build_binary(IPC_NAME)?;
-
     dump_syms()?;
+
+    // Run tray icon stress test
+    // See <https://github.com/firezone/firezone/pull/5817>
 
     // Run normal smoke test
     let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
     let mut gui = app
-        .gui_command(&["--no-deep-links", "smoke-test"])? // Disable deep links because they don't work in the headless CI environment
+        .gui_command(&["smoke-test"])? // Disable deep links because they don't work in the headless CI environment
         .popen()?;
 
     gui.wait()?.fz_exit_ok().context("GUI process")?;
@@ -42,7 +41,7 @@ fn main() -> Result<()> {
 
     // Force the GUI to crash and then try to read the crash dump
     let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
-    let mut gui = app.gui_command(&["--no-deep-links", "--crash"])?.popen()?;
+    let mut gui = app.gui_command(&["--crash"])?.popen()?;
 
     // Ignore exit status here since we asked the GUI to crash on purpose
     gui.wait()?;
@@ -114,7 +113,10 @@ impl App {
         .into_iter()
         .chain(args.iter().copied())
         .collect();
-        let xvfb = Exec::cmd("xvfb-run").args(&args).to_cmdline_lossy();
+        let xvfb = Exec::cmd("xvfb-run")
+            .arg("--no-deep-links")
+            .args(&args)
+            .to_cmdline_lossy();
 
         tracing::debug!(?xvfb);
 
@@ -148,16 +150,8 @@ impl App {
 
     // Strange signature needed to match Linux
     fn gui_command(&self, args: &[&str]) -> Result<Exec> {
-        Ok(Exec::cmd(gui_path()).args(args))
+        Ok(Exec::cmd(gui_path()).arg("--no-deep-links").args(args))
     }
-}
-
-fn build_binary(name: &str) -> Result<()> {
-    Exec::cmd("cargo")
-        .args(&["build", "--bin", name])
-        .join()?
-        .fz_exit_ok()?;
-    Ok(())
 }
 
 // Get debug symbols from the exe / pdb
