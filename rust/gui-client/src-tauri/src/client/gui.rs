@@ -10,6 +10,7 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use connlib_client_shared::callbacks::ResourceDescription;
+use firezone_headless_client::IpcServerMsg;
 use secrecy::{ExposeSecret, SecretString};
 use std::{path::PathBuf, str::FromStr, time::Duration};
 use system_tray::Event as TrayMenuEvent;
@@ -399,10 +400,6 @@ pub(crate) enum ControllerRequest {
     ApplySettings(AdvancedSettings),
     /// Only used for smoke tests
     ClearLogs,
-    Disconnected {
-        error_msg: String,
-        is_authentication_error: bool,
-    },
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {
         path: PathBuf,
@@ -410,12 +407,12 @@ pub(crate) enum ControllerRequest {
     },
     Fail(Failure),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
+    Ipc(IpcServerMsg),
     SchemeRequest(SecretString),
     SignIn,
     SystemTrayMenu(TrayMenuEvent),
     UpdateAvailable(crate::client::updates::Release),
     UpdateNotificationClicked(Url),
-    UpdateResources(Vec<ResourceDescription>),
 }
 
 enum Status {
@@ -510,27 +507,6 @@ impl Controller {
             Req::ClearLogs => logging::clear_logs_inner()
                 .await
                 .context("Failed to clear logs")?,
-            Req::Disconnected {
-                error_msg,
-                is_authentication_error,
-            } => {
-                self.sign_out().await?;
-                if is_authentication_error {
-                    tracing::info!(?error_msg, "Auth error");
-                    os::show_notification(
-                        "Firezone disconnected",
-                        "To access resources, sign in again.",
-                    )?;
-                } else {
-                    tracing::error!(?error_msg, "Disconnected");
-                    native_dialog::MessageDialog::new()
-                        .set_title("Firezone Error")
-                        .set_text(&error_msg)
-                        .set_type(native_dialog::MessageType::Error)
-                        .show_alert()
-                        .context("Couldn't show Disconnected alert")?;
-                }
-            }
             Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
                 .await
                 .context("Failed to export logs to zip")?,
@@ -539,6 +515,9 @@ impl Controller {
             ))?,
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
+            }
+            Req::Ipc(msg) => if let Err(error) = self.handle_ipc(msg).await {
+                tracing::error!(?error, "Failed to handle IPC message");
             }
             Req::SchemeRequest(url) => {
                 if let Err(error) = self.handle_deep_link(&url).await {
@@ -623,7 +602,34 @@ impl Controller {
                 tauri::api::shell::open(&self.app.shell_scope(), download_url, None)
                     .context("Couldn't open update page")?;
             }
-            Req::UpdateResources(resources) => {
+        }
+        Ok(())
+    }
+
+    async fn handle_ipc(&mut self, msg: IpcServerMsg) -> Result<()> {
+        match msg {
+            IpcServerMsg::OnDisconnect {
+                error_msg,
+                is_authentication_error,
+            } => {
+                self.sign_out().await?;
+                if is_authentication_error {
+                    tracing::info!(?error_msg, "Auth error");
+                    os::show_notification(
+                        "Firezone disconnected",
+                        "To access resources, sign in again.",
+                    )?;
+                } else {
+                    tracing::error!(?error_msg, "Disconnected");
+                    native_dialog::MessageDialog::new()
+                        .set_title("Firezone Error")
+                        .set_text(&error_msg)
+                        .set_type(native_dialog::MessageType::Error)
+                        .show_alert()
+                        .context("Couldn't show Disconnected alert")?;
+                }
+            }
+            IpcServerMsg::OnUpdateResources(resources) => {
                 if self.auth.session().is_none() {
                     // This could happen if the user cancels the sign-in
                     // before it completes. This is because the state machine
@@ -632,13 +638,13 @@ impl Controller {
                     return Ok(());
                 }
                 tracing::debug!(len = resources.len(), "Got new Resources");
-                if !matches!(self.status, Status::TunnelReady{..}) {
+                if !matches!(self.status, Status::TunnelReady { .. }) {
                     os::show_notification(
                         "Firezone connected",
                         "You are now signed in and able to access resources.",
                     )?;
                 }
-                self.status = Status::TunnelReady{resources};
+                self.status = Status::TunnelReady { resources };
                 if let Err(error) = self.refresh_system_tray_menu() {
                     tracing::error!(?error, "Failed to refresh Resource list");
                 }
