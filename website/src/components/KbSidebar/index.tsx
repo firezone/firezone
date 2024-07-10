@@ -104,7 +104,7 @@ export default function KbSidebar() {
               Android & ChromeOS
             </SidebarItem>
             <SidebarItem href="/kb/user-guides/linux-client">
-              Linux headless
+              Linux Headless
             </SidebarItem>
             <SidebarItem href="/kb/user-guides/linux-gui-client">
               Linux GUI
