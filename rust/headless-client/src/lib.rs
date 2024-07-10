@@ -20,10 +20,6 @@ use tracing::subscriber::set_global_default;
 use tracing_subscriber::{fmt, layer::SubscriberExt as _, EnvFilter, Layer as _, Registry};
 
 use platform::default_token_path;
-/// SIGINT and, on Linux, SIGHUP.
-///
-/// Must be constructed inside a Tokio runtime context.
-use platform::Signals;
 
 /// Generate a persistent device ID, stores it to disk, and reads it back.
 pub(crate) mod device_id;
@@ -31,6 +27,7 @@ pub(crate) mod device_id;
 pub mod dns_control;
 mod ipc_service;
 pub mod known_dirs;
+mod signals;
 mod standalone;
 pub mod uptime;
 
@@ -154,20 +151,6 @@ impl Callbacks for CallbackHandler {
             .expect("Should be able to send messages");
         None
     }
-}
-
-#[allow(dead_code)]
-enum SignalKind {
-    /// SIGHUP
-    ///
-    /// Not caught on Windows
-    Hangup,
-    /// SIGINT
-    Interrupt,
-    /// SIGTERM
-    ///
-    /// Not caught on Windows
-    Terminate,
 }
 
 /// Sets up logging for stdout only, with INFO level by default

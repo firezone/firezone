@@ -4,30 +4,11 @@
 //! service to be stopped even if its only process ends, for some reason.
 //! We must tell Windows explicitly when our service is stopping.
 
-use crate::SignalKind;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 #[path = "windows/wintun_install.rs"]
 mod wintun_install;
-
-// This looks like a pointless wrapper around `CtrlC`, because it must match
-// the Linux signatures
-pub(crate) struct Signals {
-    sigint: tokio::signal::windows::CtrlC,
-}
-
-impl Signals {
-    pub(crate) fn new() -> Result<Self> {
-        let sigint = tokio::signal::windows::ctrl_c()?;
-        Ok(Self { sigint })
-    }
-
-    pub(crate) async fn recv(&mut self) -> SignalKind {
-        self.sigint.recv().await;
-        SignalKind::Interrupt
-    }
-}
 
 // The return value is useful on Linux
 #[allow(clippy::unnecessary_wraps)]
