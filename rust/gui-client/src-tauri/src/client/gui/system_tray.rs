@@ -14,12 +14,14 @@ use url::Url;
 
 // Figma is the source of truth for the tray icons
 // <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=OGFabKWPx7PRUZmq-0>
-const SIGNED_IN_ICON: &[u8] = include_bytes!("../../../icons/icon.ico");
-const SIGNED_OUT_ICON: &[u8] = include_bytes!("../../../icons/icon-signed-out.ico");
+const BUSY_ICON: &[u8] = include_bytes!("../../../icons/tray/busy.png");
+const SIGNED_IN_ICON: &[u8] = include_bytes!("../../../icons/tray/signed-in.png");
+const SIGNED_OUT_ICON: &[u8] = include_bytes!("../../../icons/tray/signed-out.png");
 const TOOLTIP: &str = "Firezone";
 
 pub(crate) fn loading() -> SystemTray {
     SystemTray::new()
+        .with_icon(tauri::Icon::Raw(BUSY_ICON.into()))
         .with_menu(Menu::Loading.build())
         .with_tooltip(TOOLTIP)
 }
@@ -42,9 +44,16 @@ pub(crate) enum Menu<'a> {
 
 #[derive(PartialEq)]
 enum Icon {
-    SignedIn,
     /// Must be equivalent to the default app icon, since we assume this is set when we start
+    Busy,
+    SignedIn,
     SignedOut,
+}
+
+impl Default for Icon {
+    fn default() -> Self {
+        Self::Busy
+    }
 }
 
 impl Tray {
@@ -57,9 +66,8 @@ impl Tray {
 
     pub(crate) fn update(&mut self, menu: Menu) -> Result<()> {
         let new_icon = match &menu {
-            Menu::Loading | Menu::SignedOut | Menu::WaitingForBrowser | Menu::WaitingForConnlib => {
-                Icon::SignedOut
-            }
+            Menu::Loading | Menu::WaitingForBrowser | Menu::WaitingForConnlib => Icon::Busy,
+            Menu::SignedOut => Icon::SignedOut,
             Menu::SignedIn { .. } => Icon::SignedIn,
         };
 
@@ -80,15 +88,10 @@ impl Tray {
     }
 }
 
-impl Default for Icon {
-    fn default() -> Self {
-        Self::SignedOut
-    }
-}
-
 impl Icon {
     fn tauri_icon(&self) -> tauri::Icon {
         let bytes = match self {
+            Self::Busy => BUSY_ICON,
             Self::SignedIn => SIGNED_IN_ICON,
             Self::SignedOut => SIGNED_OUT_ICON,
         };

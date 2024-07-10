@@ -50,7 +50,7 @@
       "csp": null
     },
     "systemTray": {
-      "iconPath": "icons/icon-signed-out.ico",
+      "iconPath": "icons/tray/busy.png",
       "iconAsTemplate": true
     },
     "windows": [
