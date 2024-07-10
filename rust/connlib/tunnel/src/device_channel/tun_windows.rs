@@ -40,7 +40,8 @@ const ADAPTER_NAME: &str = "Firezone";
 /// where that is configured.
 const RING_BUFFER_SIZE: u32 = 0x10_0000;
 
-pub(crate) struct Tun {
+// Must be public so the benchmark binary can find it
+pub struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
     /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
@@ -117,7 +118,7 @@ impl Tun {
     }
 
     // It's okay if this blocks until the route is added in the OS.
-    pub fn set_routes(
+    pub(crate) fn set_routes(
         &mut self,
         new_routes: HashSet<IpNetwork>,
         _callbacks: &impl Callbacks,
@@ -195,7 +196,7 @@ impl Tun {
     }
 
     // It's okay if this blocks until the route is added in the OS.
-    fn add_route(&self, route: IpNetwork) -> Result<()> {
+    pub fn add_route(&self, route: IpNetwork) -> Result<()> {
         const DUPLICATE_ERR: u32 = 0x80071392;
         let entry = self.forward_entry(route);
 
@@ -339,11 +340,16 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tracing_subscriber::EnvFilter;
 
     /// Checks for regressions in issue #4765, un-initializing Wintun
     #[test]
     #[ignore = "Needs admin privileges"]
-    fn resource_management() {
+    fn tunnel_drop() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::from_default_env())
+            .with_test_writer()
+            .try_init();
         // Each cycle takes about half a second, so this will take a fair bit to run.
         for _ in 0..50 {
             let _tun = Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.

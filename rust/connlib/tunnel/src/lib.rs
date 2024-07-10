@@ -34,6 +34,8 @@ mod peer_store;
 mod sockets;
 mod utils;
 
+pub use device_channel::Tun;
+
 #[cfg(all(test, feature = "proptest"))]
 mod tests;
 

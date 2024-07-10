@@ -32,3 +32,13 @@ pub fn wintun_dll_path() -> Result<PathBuf, Error> {
     let path = app_local_data_dir()?.join("data").join("wintun.dll");
     Ok(path)
 }
+
+#[cfg(target_arch = "aarch64")]
+pub fn wintun_bytes() -> &'static [u8] {
+    include_bytes!("../../../headless-client/src/windows/wintun/bin/arm64/wintun.dll")
+}
+
+#[cfg(target_arch = "x86_64")]
+pub fn wintun_bytes() -> &'static [u8] {
+    include_bytes!("../../../headless-client/src/windows/wintun/bin/amd64/wintun.dll")
+}
