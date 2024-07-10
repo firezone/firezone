@@ -340,6 +340,43 @@ impl RefClient {
         self.connected_dns_resources.insert((resource, dst));
     }
 
+    pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Addr> {
+        let mut ips = vec![];
+
+        // This is an imperative loop on purpose because `ip-network` appears to have a bug with its `size_hint` and thus `.extend` does not work reliably?
+        for (network, _) in self.cidr_resources.iter_ipv4() {
+            if network.netmask() == 31 || network.netmask() == 32 {
+                ips.push(network.network_address());
+            } else {
+                for ip in network.hosts() {
+                    ips.push(ip)
+                }
+            }
+        }
+
+        ips
+    }
+
+    pub(crate) fn ipv6_cidr_resource_dsts(&self) -> Vec<Ipv6Addr> {
+        let mut ips = vec![];
+
+        // This is an imperative loop on purpose because `ip-network` appears to have a bug with its `size_hint` and thus `.extend` does not work reliably?
+        for (network, _) in self.cidr_resources.iter_ipv6() {
+            if network.netmask() == 127 || network.netmask() == 128 {
+                ips.push(network.network_address());
+            } else {
+                for ip in network
+                    .subnets_with_prefix(128)
+                    .map(|i| i.network_address())
+                {
+                    ips.push(ip)
+                }
+            }
+        }
+
+        ips
+    }
+
     fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
         self.dns_resources
             .values()

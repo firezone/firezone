@@ -11,7 +11,7 @@ use proptest_state_machine::ReferenceStateMachine;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::IpAddr,
     time::{Duration, Instant},
 };
 
@@ -130,18 +130,26 @@ impl ReferenceStateMachine for ReferenceState {
                     question_mark_wildcard_dns_resource(),
                 ],
             )
-            .with_if_not_empty(10, state.ipv4_cidr_resource_dsts(), |ip4_resources| {
-                icmp_to_cidr_resource(
-                    packet_source_v4(state.client.inner().tunnel_ip4),
-                    sample::select(ip4_resources),
-                )
-            })
-            .with_if_not_empty(10, state.ipv6_cidr_resource_dsts(), |ip6_resources| {
-                icmp_to_cidr_resource(
-                    packet_source_v6(state.client.inner().tunnel_ip6),
-                    sample::select(ip6_resources),
-                )
-            })
+            .with_if_not_empty(
+                10,
+                state.client.inner().ipv4_cidr_resource_dsts(),
+                |ip4_resources| {
+                    icmp_to_cidr_resource(
+                        packet_source_v4(state.client.inner().tunnel_ip4),
+                        sample::select(ip4_resources),
+                    )
+                },
+            )
+            .with_if_not_empty(
+                10,
+                state.client.inner().ipv6_cidr_resource_dsts(),
+                |ip6_resources| {
+                    icmp_to_cidr_resource(
+                        packet_source_v6(state.client.inner().tunnel_ip6),
+                        sample::select(ip6_resources),
+                    )
+                },
+            )
             .with_if_not_empty(
                 10,
                 state.client.inner().resolved_v4_domains(),
@@ -165,7 +173,7 @@ impl ReferenceStateMachine for ReferenceState {
             .with_if_not_empty(
                 10,
                 (
-                    state.all_domains(),
+                    state.all_domains(state.client.inner()),
                     state.client.inner().v4_dns_servers(),
                     state.client.ip4,
                 ),
@@ -176,7 +184,7 @@ impl ReferenceStateMachine for ReferenceState {
             .with_if_not_empty(
                 10,
                 (
-                    state.all_domains(),
+                    state.all_domains(state.client.inner()),
                     state.client.inner().v6_dns_servers(),
                     state.client.ip6,
                 ),
@@ -517,50 +525,12 @@ impl ReferenceStateMachine for ReferenceState {
 
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
-    fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Addr> {
-        let mut ips = vec![];
-
-        // This is an imperative loop on purpose because `ip-network` appears to have a bug with its `size_hint` and thus `.extend` does not work reliably?
-        for (network, _) in self.client.inner().cidr_resources.iter_ipv4() {
-            if network.netmask() == 31 || network.netmask() == 32 {
-                ips.push(network.network_address());
-            } else {
-                for ip in network.hosts() {
-                    ips.push(ip)
-                }
-            }
-        }
-
-        ips
-    }
-
-    fn ipv6_cidr_resource_dsts(&self) -> Vec<Ipv6Addr> {
-        let mut ips = vec![];
-
-        // This is an imperative loop on purpose because `ip-network` appears to have a bug with its `size_hint` and thus `.extend` does not work reliably?
-        for (network, _) in self.client.inner().cidr_resources.iter_ipv6() {
-            if network.netmask() == 127 || network.netmask() == 128 {
-                ips.push(network.network_address());
-            } else {
-                for ip in network
-                    .subnets_with_prefix(128)
-                    .map(|i| i.network_address())
-                {
-                    ips.push(ip)
-                }
-            }
-        }
-
-        ips
-    }
-
-    fn all_domains(&self) -> Vec<DomainName> {
+    fn all_domains(&self, client: &RefClient) -> Vec<DomainName> {
         self.global_dns_records
             .keys()
             .cloned()
             .chain(
-                self.client
-                    .inner()
+                client
                     .known_hosts
                     .keys()
                     .map(|h| DomainName::vec_from_str(h).unwrap()),
