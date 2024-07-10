@@ -106,15 +106,9 @@ product documentation, organized as follows:
   - [terraform/examples/google-cloud/nat-gateway](../terraform/examples/google-cloud/nat-gateway):
     Example Terraform configuration for deploying a cluster of Firezone Gateways
     behind a NAT gateway on GCP with a single egress IP.
-  - [terraform/examples/azure/nat-gateway](../terraform/examples/azure/nat-gateway):
-    Example Terraform configuration for deploying a cluster of Firezone Gateways
-    behind a NAT gateway on Azure with a single egress IP.
   - [terraform/modules/google-cloud/apps/gateway-region-instance-group](../terraform/modules/google-cloud/apps/gateway-region-instance-group):
     Production-ready Terraform module for deploying regional Firezone Gateways
     to Google Cloud Compute using Regional Instance Groups.
-  - [terraform/modules/azure/firezone-gateway](../terraform/modules/azure/firezone-gateway):
-    Production-ready Terraform module for deploying Firezone Gateways to Azure
-    using Azure Orchestrated Virtual Machine Scale Sets.
 
 ## Quickstart
 
