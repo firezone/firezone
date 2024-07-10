@@ -158,9 +158,9 @@ defmodule Web.Policies.Show do
     </.section>
 
     <.section>
-      <:title>Authorized Activity</:title>
+      <:title>Tunnel Sessions</:title>
       <:help>
-        Authorized attempts by actors to access the resource governed by this policy.
+        Authorized attempts by an actors to access the resource governed by this policy.
       </:help>
       <:content>
         <.live_table
