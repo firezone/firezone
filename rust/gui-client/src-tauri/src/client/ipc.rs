@@ -2,7 +2,7 @@ use crate::client::gui::{ControllerRequest, CtlrTx};
 use anyhow::{Context as _, Result};
 use firezone_headless_client::{
     ipc::{self, Error},
-    IpcClientMsg, IpcServerMsg,
+    IpcClientMsg,
 };
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
@@ -30,23 +30,7 @@ impl Client {
         let (mut rx, tx) = ipc::connect_to_service(ipc::ServiceId::Prod).await?;
         let task = tokio::task::spawn(async move {
             while let Some(msg) = rx.next().await.transpose()? {
-                match msg {
-                    IpcServerMsg::Ok => {}
-                    IpcServerMsg::OnDisconnect {
-                        error_msg,
-                        is_authentication_error,
-                    } => {
-                        ctlr_tx
-                            .send(ControllerRequest::Disconnected {
-                                error_msg,
-                                is_authentication_error,
-                            })
-                            .await?
-                    }
-                    IpcServerMsg::OnUpdateResources(v) => {
-                        ctlr_tx.send(ControllerRequest::UpdateResources(v)).await?
-                    }
-                }
+                ctlr_tx.send(ControllerRequest::Ipc(msg)).await?;
             }
             Ok(())
         });
