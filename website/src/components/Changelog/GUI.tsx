@@ -13,6 +13,12 @@ export default function GUI({ title }: { title: string }) {
     <Entries href={href} arches={arches} title={title}>
       {/*<Entry version="1.1.6" date={new Date("2024-07-10")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
+          {title === "Linux" && (
+          <li className="pl-2">
+            <p>This is a maintenance release with no user-facing changes.</p>
+          </li>
+          )}
+          {title === "Windows" && (
           <li className="pl-2">
             Fixes{" "}
             <Link
@@ -22,10 +28,12 @@ export default function GUI({ title }: { title: string }) {
               a bug where DNS could stop working when you sign out.
             </Link>
           </li>
+          )}
         </ul>
       </Entry>*/}
       <Entry version="1.1.5" date={new Date("2024-07-08")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
+          {title === "Linux" && (
           <li className="pl-2">
             The Linux GUI Client is now{" "}
             <Link
@@ -35,6 +43,10 @@ export default function GUI({ title }: { title: string }) {
               built for both x86-64 and ARM64
             </Link>
           </li>
+          )}
+          {title === "Windows" && (
+            <p>This is a maintenance release with no user-facing changes.</p>
+          )}
         </ul>
       </Entry>
       <Entry version="1.1.4" date={new Date("2024-07-05")}>
