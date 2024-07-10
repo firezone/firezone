@@ -12,6 +12,8 @@ use tauri::{
 };
 use url::Url;
 
+// Figma is the source of truth for the tray icons
+// <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=OGFabKWPx7PRUZmq-0>
 const SIGNED_IN_ICON: &[u8] = include_bytes!("../../../icons/icon.ico");
 const SIGNED_OUT_ICON: &[u8] = include_bytes!("../../../icons/icon-signed-out.ico");
 const TOOLTIP: &str = "Firezone";
