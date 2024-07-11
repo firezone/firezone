@@ -291,7 +291,6 @@ where
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
     /// - `Ok(Some)` if the packet was an encrypted wireguard packet from a peer.
     ///   The `Option` contains the connection on which the packet was decrypted.
-    #[tracing::instrument(level = "debug", skip_all, fields(%from))]
     pub fn decapsulate<'s>(
         &mut self,
         local: SocketAddr,
@@ -330,7 +329,6 @@ where
     /// Wireguard is an IP tunnel, so we "enforce" that only IP packets are sent through it.
     /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
     /// Nevertheless, using [`IpPacket`] in our API has good documentation value.
-    #[tracing::instrument(level = "debug", skip_all, fields(id = %connection))]
     pub fn encapsulate<'s>(
         &'s mut self,
         connection: TId,

@@ -196,6 +196,7 @@ impl ClientOnGateway {
         self.recalculate_filters();
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(cid = %self.id))]
     fn assign_translations(
         &mut self,
         name: DomainName,
@@ -220,7 +221,7 @@ impl ClientOnGateway {
         let ip_maps = ipv4_maps.chain(ipv6_maps);
 
         for (proxy_ip, real_ip) in ip_maps {
-            tracing::debug!(%proxy_ip, %real_ip, %name, "Assigned translation");
+            tracing::debug!(%name, %proxy_ip, %real_ip);
 
             self.permanent_translations.insert(
                 *proxy_ip,
@@ -441,10 +442,10 @@ impl ClientOnGateway {
         &self,
         packet: &MutableIpPacket<'_>,
     ) -> Result<(), connlib_shared::Error> {
-        if !self.allowed_ips().contains(&packet.source()) {
-            return Err(connlib_shared::Error::UnallowedPacket {
-                src: packet.source(),
-            });
+        let src = packet.source();
+
+        if !self.allowed_ips().contains(&src) {
+            return Err(connlib_shared::Error::SrcNotAllowed { src });
         }
 
         Ok(())
@@ -461,8 +462,7 @@ impl ClientOnGateway {
             .longest_match(dst)
             .is_some_and(|(_, filter)| filter.is_allowed(&packet.to_immutable()))
         {
-            tracing::warn!(%dst, "unallowed packet");
-            return Err(connlib_shared::Error::InvalidDst);
+            return Err(connlib_shared::Error::DstNotAllowed { dst });
         };
 
         Ok(())
@@ -476,10 +476,12 @@ impl ClientOnGateway {
 impl GatewayOnClient {
     pub(crate) fn ensure_allowed_src(
         &self,
-        pkt: &MutableIpPacket,
+        packet: &MutableIpPacket,
     ) -> Result<(), connlib_shared::Error> {
-        if self.allowed_ips.longest_match(pkt.source()).is_none() {
-            return Err(connlib_shared::Error::UnallowedPacket { src: pkt.source() });
+        let src = packet.source();
+
+        if self.allowed_ips.longest_match(src).is_none() {
+            return Err(connlib_shared::Error::SrcNotAllowed { src });
         }
 
         Ok(())
@@ -669,7 +671,7 @@ mod tests {
 
         assert!(matches!(
             peer.ensure_allowed_dst(&tcp_packet),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::DstNotAllowed { .. })
         ));
         assert!(peer.ensure_allowed_dst(&udp_packet).is_ok());
 
@@ -677,11 +679,11 @@ mod tests {
 
         assert!(matches!(
             peer.ensure_allowed_dst(&tcp_packet),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::DstNotAllowed { .. })
         ));
         assert!(matches!(
             peer.ensure_allowed_dst(&udp_packet),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::DstNotAllowed { .. })
         ));
     }
 
@@ -1210,7 +1212,7 @@ mod proptests {
 
         assert!(matches!(
             peer.ensure_allowed_dst(&packet),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::DstNotAllowed { .. })
         ));
     }
 
@@ -1272,7 +1274,7 @@ mod proptests {
         assert!(peer.ensure_allowed_dst(&packet_allowed).is_ok());
         assert!(matches!(
             peer.ensure_allowed_dst(&packet_rejected),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::DstNotAllowed { .. })
         ));
     }
 
