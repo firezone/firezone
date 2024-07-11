@@ -25,16 +25,12 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     let app = App::new()?;
 
-    // Run `cargo build`
-    build_binary(GUI_NAME)?;
-    build_binary(IPC_NAME)?;
-
     dump_syms()?;
 
     // Run normal smoke test
     let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
     let mut gui = app
-        .gui_command(&["--no-deep-links", "smoke-test"])? // Disable deep links because they don't work in the headless CI environment
+        .gui_command(&["smoke-test"])? // Disable deep links because they don't work in the headless CI environment
         .popen()?;
 
     gui.wait()?.fz_exit_ok().context("GUI process")?;
@@ -42,7 +38,7 @@ fn main() -> Result<()> {
 
     // Force the GUI to crash and then try to read the crash dump
     let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
-    let mut gui = app.gui_command(&["--no-deep-links", "--crash"])?.popen()?;
+    let mut gui = app.gui_command(&["--crash"])?.popen()?;
 
     // Ignore exit status here since we asked the GUI to crash on purpose
     gui.wait()?;
@@ -110,6 +106,7 @@ impl App {
             gui_path
                 .to_str()
                 .context("Should be able to convert Path to &str")?, // For some reason `xvfb-run` doesn't just use our current working dir
+            "--no-deep-links",
         ]
         .into_iter()
         .chain(args.iter().copied())
@@ -148,16 +145,8 @@ impl App {
 
     // Strange signature needed to match Linux
     fn gui_command(&self, args: &[&str]) -> Result<Exec> {
-        Ok(Exec::cmd(gui_path()).args(args))
+        Ok(Exec::cmd(gui_path()).arg("--no-deep-links").args(args))
     }
-}
-
-fn build_binary(name: &str) -> Result<()> {
-    Exec::cmd("cargo")
-        .args(&["build", "--bin", name])
-        .join()?
-        .fz_exit_ok()?;
-    Ok(())
 }
 
 // Get debug symbols from the exe / pdb
