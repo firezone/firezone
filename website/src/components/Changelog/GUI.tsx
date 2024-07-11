@@ -11,14 +11,8 @@ export default function GUI({ title }: { title: string }) {
 
   return (
     <Entries href={href} arches={arches} title={title}>
-      {/*<Entry version="1.1.6" date={new Date("2024-07-10")}>
+      {/*<Entry version="1.1.6" date={new Date("2024-07-11")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          {title === "Linux GUI" && (
-          <li className="pl-2">
-            This is a maintenance release with no user-facing changes.
-          </li>
-          )}
-          {title === "Windows" && (
           <li className="pl-2">
             Unexpected IPC service stops are now{" "}
             <Link
@@ -28,6 +22,9 @@ export default function GUI({ title }: { title: string }) {
               reported as "IPC connection closed"
             </Link>{" "}
           </li>
+          {title === "Linux GUI" && (
+          )}
+          {title === "Windows" && (
           <li className="pl-2">
             Fixes{" "}
             <Link
