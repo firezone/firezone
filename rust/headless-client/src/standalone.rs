@@ -8,7 +8,7 @@ use anyhow::{anyhow, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets};
 use connlib_shared::tun_device_manager;
-use firezone_cli_utils::setup_global_subscriber;
+use firezone_bin_shared::setup_global_subscriber;
 use futures::{FutureExt as _, StreamExt as _};
 use secrecy::SecretString;
 use std::{

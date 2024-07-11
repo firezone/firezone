@@ -1831,7 +1831,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "firezone-cli-utils"
+name = "firezone-bin-shared"
 version = "0.1.0"
 dependencies = [
  "clap",
@@ -1855,7 +1855,7 @@ dependencies = [
  "dns-lookup",
  "domain",
  "either",
- "firezone-cli-utils",
+ "firezone-bin-shared",
  "firezone-tunnel",
  "futures",
  "futures-bounded",
@@ -1939,7 +1939,7 @@ dependencies = [
  "connlib-client-shared",
  "connlib-shared",
  "dirs",
- "firezone-cli-utils",
+ "firezone-bin-shared",
  "futures",
  "git-version",
  "humantime",
