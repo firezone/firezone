@@ -5,7 +5,7 @@ pub use connlib_shared::{
     callbacks, keypair, Callbacks, Error, LoginUrl, LoginUrlError, StaticSecret,
 };
 pub use eventloop::Eventloop;
-pub use firezone_tunnel::Sockets;
+pub use firezone_tunnel::{Sockets, Tun};
 pub use tracing_appender::non_blocking::WorkerGuard;
 
 use backoff::ExponentialBackoffBuilder;
@@ -31,6 +31,7 @@ use tokio::task::JoinHandle;
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
+#[derive(Clone)]
 pub struct Session {
     channel: tokio::sync::mpsc::UnboundedSender<Command>,
 }
@@ -95,6 +96,11 @@ impl Session {
     /// The implementation is idempotent; calling it with the same set of servers is safe.
     pub fn set_dns(&self, new_dns: Vec<IpAddr>) {
         let _ = self.channel.send(Command::SetDns(new_dns));
+    }
+
+    /// Sets a new [`Tun`] device handle.
+    pub fn set_tun(&self, new_tun: Tun) {
+        let _ = self.channel.send(Command::SetTun(new_tun));
     }
 
     /// Disconnect a [`Session`].
@@ -223,6 +229,7 @@ mod tests {
 
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     async fn device_common() {
+        use firezone_tunnel::Tun;
         use std::collections::HashMap;
 
         let (private_key, _public_key) = connlib_shared::keypair();
@@ -237,6 +244,7 @@ mod tests {
             ipv6: [0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0019, 0x6538].into(),
             upstream_dns,
         };
+        tunnel.set_tun(Tun::new().unwrap());
         tunnel.set_new_interface_config(interface).unwrap();
         let resources = vec![];
         tunnel.add_resources(&resources).unwrap();

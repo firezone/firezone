@@ -5,7 +5,7 @@ mod make_writer;
 
 use connlib_client_shared::{
     callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
-    Session, Sockets, V4RouteList, V6RouteList,
+    Session, Sockets, Tun, V4RouteList, V6RouteList,
 };
 use ip_network::{Ipv4Network, Ipv6Network};
 use secrecy::SecretString;
@@ -213,6 +213,7 @@ impl WrappedSession {
             max_partition_time: Some(MAX_PARTITION_TIME),
         };
         let session = Session::connect(args, runtime.handle().clone());
+        session.set_tun(Tun::new().map_err(|e| e.to_string())?);
 
         Ok(Self {
             inner: session,

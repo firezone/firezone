@@ -1,6 +1,6 @@
 use super::utils;
 use crate::device_channel::{ipv4, ipv6};
-use connlib_shared::{Callbacks, Error, Result};
+use connlib_shared::{Callbacks, Result};
 use ip_network::IpNetwork;
 use libc::{
     ctl_info, fcntl, getpeername, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg, sockaddr_ctl,
@@ -25,11 +25,11 @@ pub struct Tun {
 }
 
 impl Tun {
-    pub fn write4(&self, src: &[u8]) -> std::io::Result<usize> {
+    pub fn write4(&self, src: &[u8]) -> io::Result<usize> {
         self.write(src, AF_INET as u8)
     }
 
-    pub fn write6(&self, src: &[u8]) -> std::io::Result<usize> {
+    pub fn write6(&self, src: &[u8]) -> io::Result<usize> {
         self.write(src, AF_INET6 as u8)
     }
 
@@ -37,7 +37,7 @@ impl Tun {
         utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
     }
 
-    fn write(&self, src: &[u8], af: u8) -> std::io::Result<usize> {
+    fn write(&self, src: &[u8], af: u8) -> io::Result<usize> {
         let mut hdr = [0, 0, 0, af];
         let mut iov = [
             iovec {
@@ -66,7 +66,7 @@ impl Tun {
         }
     }
 
-    pub fn new() -> Result<Self> {
+    pub fn new() -> io::Result<Self> {
         let mut info = ctl_info {
             ctl_id: 0,
             ctl_name: [0; 96],
@@ -151,11 +151,11 @@ impl Tun {
     }
 }
 
-fn get_last_error() -> Error {
-    Error::Io(io::Error::last_os_error())
+fn get_last_error() -> io::Error {
+    io::Error::last_os_error()
 }
 
-fn set_non_blocking(fd: RawFd) -> Result<()> {
+fn set_non_blocking(fd: RawFd) -> io::Result<()> {
     match unsafe { fcntl(fd, F_GETFL) } {
         -1 => Err(get_last_error()),
         flags => match unsafe { fcntl(fd, F_SETFL, flags | O_NONBLOCK) } {
@@ -165,7 +165,7 @@ fn set_non_blocking(fd: RawFd) -> Result<()> {
     }
 }
 
-fn read(fd: RawFd, dst: &mut [u8]) -> std::io::Result<usize> {
+fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
     let mut hdr = [0u8; 4];
 
     let mut iov = [
@@ -197,7 +197,7 @@ fn read(fd: RawFd, dst: &mut [u8]) -> std::io::Result<usize> {
     }
 }
 
-fn name(fd: RawFd) -> Result<String> {
+fn name(fd: RawFd) -> io::Result<String> {
     let mut tunnel_name = [0u8; IF_NAMESIZE];
     let mut tunnel_name_len = tunnel_name.len() as socklen_t;
     if unsafe {

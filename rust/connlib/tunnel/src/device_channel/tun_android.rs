@@ -1,11 +1,7 @@
 use super::utils;
 use crate::device_channel::{ioctl, ipv4, ipv6};
-use connlib_shared::{messages::Interface as InterfaceConfig, Callbacks, Error, Result};
-use ip_network::IpNetwork;
-use std::net::IpAddr;
 use std::task::{Context, Poll};
 use std::{
-    collections::HashSet,
     io,
     os::fd::{AsRawFd, RawFd},
 };
@@ -36,21 +32,22 @@ impl Tun {
         utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
     }
 
-    pub fn new(
-        config: &InterfaceConfig,
-        dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks,
-    ) -> Result<Self> {
-        let fd = callbacks
-            .on_set_interface_config(config.ipv4, config.ipv6, dns_config)
-            .ok_or(Error::NoFd)?;
-        // Safety: File descriptor is open.
-        let name = unsafe { interface_name(fd)? };
+    /// Create a new [`Tun`] from a raw file descriptor.
+    ///
+    /// # Safety
+    ///
+    /// The file descriptor must be open.
+    pub unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
+        let name = interface_name(fd)?;
 
         Ok(Tun {
             fd: AsyncFd::new(fd)?,
             name,
         })
+    }
+
+    pub fn new() -> Result<Self> {
+        unimplemented!("Stub! Android TUN needs to be initialised using `from_fd`")
     }
 
     pub fn name(&self) -> &str {
@@ -62,26 +59,10 @@ impl Tun {
         routes: HashSet<IpNetwork>,
         callbacks: &impl Callbacks,
     ) -> Result<()> {
-        let fd = callbacks
-            .on_update_routes(
-                routes.iter().copied().filter_map(ipv4).collect(),
-                routes.iter().copied().filter_map(ipv6).collect(),
-            )
-            .ok_or(Error::NoFd)?;
-
-        // SAFETY: we expect the callback to return a valid file descriptor
-        unsafe { self.replace_fd(fd)? };
-
-        Ok(())
-    }
-
-    // SAFETY: must be called with a valid file descriptor
-    unsafe fn replace_fd(&mut self, fd: RawFd) -> Result<()> {
-        if self.fd.as_raw_fd() != fd {
-            unsafe { libc::close(self.fd.as_raw_fd()) };
-            self.fd = AsyncFd::new(fd)?;
-            self.name = interface_name(fd)?;
-        }
+        callbacks.on_update_routes(
+            routes.iter().copied().filter_map(ipv4).collect(),
+            routes.iter().copied().filter_map(ipv6).collect(),
+        );
 
         Ok(())
     }
@@ -92,7 +73,7 @@ impl Tun {
 /// # Safety
 ///
 /// The file descriptor must be open.
-unsafe fn interface_name(fd: RawFd) -> Result<String> {
+unsafe fn interface_name(fd: RawFd) -> io::Result<String> {
     const TUNGETIFF: libc::c_ulong = 0x800454d2;
     let mut request = ioctl::Request::<GetInterfaceNamePayload>::new();
 

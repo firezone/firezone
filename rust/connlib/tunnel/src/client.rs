@@ -22,7 +22,7 @@ use tracing::Level;
 
 use crate::peer::GatewayOnClient;
 use crate::utils::{earliest, turn};
-use crate::{ClientEvent, ClientTunnel};
+use crate::{ClientEvent, ClientTunnel, Tun};
 use core::fmt;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, RelaySocket};
@@ -62,6 +62,10 @@ where
             .on_update_resources(self.role_state.resources());
 
         Ok(())
+    }
+
+    pub fn set_tun(&mut self, tun: Tun) {
+        self.io.device_mut().set_tun(tun);
     }
 
     pub fn update_relays(&mut self, to_remove: HashSet<RelayId>, to_add: Vec<Relay>) {
@@ -142,14 +146,12 @@ where
         config: InterfaceConfig,
         dns_mapping: BiMap<IpAddr, DnsServer>,
     ) -> connlib_shared::Result<()> {
-        let callbacks = self.callbacks.clone();
+        // We can just sort in here because sentinel ips are created in order
+        let dns_config = dns_mapping.left_values().copied().sorted().collect();
 
-        self.io.device_mut().set_config(
-            &config,
-            // We can just sort in here because sentinel ips are created in order
-            dns_mapping.left_values().copied().sorted().collect(),
-            &callbacks,
-        )?;
+        self.callbacks
+            .clone()
+            .on_set_interface_config(config.ipv4, config.ipv6, dns_config);
 
         self.io
             .device_mut()

@@ -5,7 +5,7 @@
 
 use connlib_client_shared::{
     callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
-    LoginUrlError, Session, Sockets, V4RouteList, V6RouteList,
+    LoginUrlError, Session, Sockets, Tun, V4RouteList, V6RouteList,
 };
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
@@ -176,18 +176,20 @@ impl Callbacks for CallbackHandler {
             env.call_method(
                 &self.callback_handler,
                 name,
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
                 &[
                     JValue::from(&tunnel_address_v4),
                     JValue::from(&tunnel_address_v6),
                     JValue::from(&dns_addresses),
                 ],
             )
-            .and_then(|val| val.i())
-            .map(Some)
-            .map_err(|source| CallbackError::CallMethodFailed { name, source })
+            .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
+
+            Ok(())
         })
-        .expect("onSetInterfaceConfig callback failed")
+        .expect("onSetInterfaceConfig callback failed");
+
+        None
     }
 
     fn on_update_routes(
@@ -213,14 +215,16 @@ impl Callbacks for CallbackHandler {
             env.call_method(
                 &self.callback_handler,
                 name,
-                "(Ljava/lang/String;Ljava/lang/String;)I",
+                "(Ljava/lang/String;Ljava/lang/String;)V",
                 &[JValue::from(&route_list_4), JValue::from(&route_list_6)],
             )
-            .and_then(|val| val.i())
-            .map(Some)
-            .map_err(|source| CallbackError::CallMethodFailed { name, source })
+            .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
+
+            Ok(())
         })
-        .expect("onUpdateRoutes callback failed")
+        .expect("onUpdateRoutes callback failed");
+
+        None
     }
 
     fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
@@ -340,7 +344,6 @@ fn connect(
     let log_filter = string_from_jstring!(env, log_filter);
 
     let handle = init_logging(&PathBuf::from(log_dir), log_filter);
-
     let callbacks = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
@@ -501,4 +504,30 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_re
 ) {
     let session = &*(session_ptr as *const SessionWrapper);
     session.inner.reconnect();
+}
+
+/// # Safety
+/// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
+/// at any point before or during operation of this function.
+#[allow(non_snake_case)]
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setTun(
+    mut env: JNIEnv,
+    _: JClass,
+    session_ptr: jlong,
+    fd: RawFd,
+) {
+    let session = &*(session_ptr as *const SessionWrapper);
+
+    // Enter tokio RT context to construct `Tun`.
+    let _enter = session.runtime.enter();
+    let tun = match Tun::from_fd(fd) {
+        Ok(t) => t,
+        Err(e) => {
+            throw(&mut env, "java/lang/Exception", e.to_string());
+            return;
+        }
+    };
+
+    session.inner.set_tun(tun);
 }

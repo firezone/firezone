@@ -6,7 +6,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets};
+use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets, Tun};
 use firezone_bin_shared::{setup_global_subscriber, TunDeviceManager};
 use futures::{FutureExt as _, StreamExt as _};
 use secrecy::SecretString;
@@ -166,9 +166,12 @@ pub fn run_only_headless_client() -> Result<()> {
     let session = Session::connect(args, rt.handle().clone());
     // TODO: DNS should be added dynamically
     session.set_dns(dns_control::system_resolvers().unwrap_or_default());
+
     platform::notify_service_controller()?;
 
     let result = rt.block_on(async {
+        session.set_tun(Tun::new()?);
+
         let mut terminate = signals::Terminate::new()?;
         let mut hangup = signals::Hangup::new()?;
         let mut terminate = pin!(terminate.recv().fuse());
