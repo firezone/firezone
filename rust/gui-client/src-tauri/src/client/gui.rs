@@ -679,12 +679,7 @@ impl Controller {
             }
             IpcServerMsg::TerminatingGracefully => {
                 tracing::info!("Caught TerminatingGracefully");
-                // TODO: After <https://github.com/firezone/firezone/pull/5817>
-                // merges, make this change the tray icon to the signed-out icon
-                self.app
-                    .tray_handle()
-                    .set_menu(system_tray_menu::signed_out())
-                    .ok();
+                self.tray.set_icon(system_tray::Icon::SignedOut).ok();
                 Err(Error::IpcServiceTerminating)
             }
         }

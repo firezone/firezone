@@ -3,7 +3,6 @@ use futures::{
     future::poll_fn,
     task::{Context, Poll},
 };
-use std::pin::pin;
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
 pub(crate) struct Terminate {
@@ -27,9 +26,7 @@ impl Terminate {
     }
 
     pub(crate) fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        if let Poll::Ready(_) = self.sigint.poll_recv(cx) {
-            Poll::Ready(())
-        } else if let Poll::Ready(_) = self.sigterm.poll_recv(cx) {
+        if self.sigint.poll_recv(cx).is_ready() || self.sigterm.poll_recv(cx).is_ready() {
             Poll::Ready(())
         } else {
             Poll::Pending
