@@ -26,6 +26,7 @@ mod platform {
 #[cfg(target_os = "windows")]
 mod platform {
     use anyhow::Result;
+    use firezone_bin_shared::TunDeviceManager;
     use firezone_tunnel::Tun;
     use ip_packet::{IpPacket, Packet as _};
     use std::{
@@ -59,8 +60,7 @@ mod platform {
 
         let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
         let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
-        let mut device_manager =
-            connlib_shared::tun_device_manager::platform::TunDeviceManager::new()?;
+        let mut device_manager = TunDeviceManager::new()?;
         device_manager.set_ips(ipv4, ipv6).await?;
         tun.add_route(ipv4.into())?;
 

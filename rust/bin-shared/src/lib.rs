@@ -1,9 +1,14 @@
+mod tun_device_manager;
+
 use clap::Args;
 use tracing_log::LogTracer;
 use tracing_subscriber::{
     fmt, prelude::__tracing_subscriber_SubscriberExt, EnvFilter, Layer, Registry,
 };
 use url::Url;
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub use tun_device_manager::TunDeviceManager;
 
 pub fn setup_global_subscriber<L>(additional_layer: L)
 where

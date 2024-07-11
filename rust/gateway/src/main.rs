@@ -2,10 +2,10 @@ use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_shared::messages::Interface;
-use connlib_shared::tun_device_manager::TunDeviceManager;
-use connlib_shared::{get_user_agent, keypair, Callbacks, LoginUrl, StaticSecret};
-use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
+use connlib_shared::{
+    get_user_agent, keypair, messages::Interface, Callbacks, LoginUrl, StaticSecret,
+};
+use firezone_bin_shared::{setup_global_subscriber, CommonArgs, TunDeviceManager};
 use firezone_tunnel::{GatewayTunnel, Sockets};
 use futures::channel::mpsc;
 use futures::{future, StreamExt, TryFutureExt};

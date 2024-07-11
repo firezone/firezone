@@ -7,7 +7,7 @@ members = [
   "connlib/tunnel",
   "connlib/snownet",
   "gateway",
-  "firezone-cli-utils",
+  "bin-shared",
   "gui-smoke-test",
   "headless-client",
   "snownet-tests",
@@ -45,7 +45,7 @@ connlib-client-shared = { path = "connlib/clients/shared"}
 firezone-gateway = { path = "gateway"}
 firezone-headless-client = { path = "headless-client"}
 firezone-gui-client = { path = "gui-client/src-tauri"}
-firezone-cli-utils = { path = "firezone-cli-utils"}
+firezone-bin-shared = { path = "bin-shared"}
 snownet = { path = "connlib/snownet"}
 firezone-relay = { path = "relay"}
 connlib-shared = { path = "connlib/shared"}

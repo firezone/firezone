@@ -50,18 +50,15 @@ hickory-proto = { workspace = true }
 derivative = "2.2.0"
 ip-packet = { workspace = true, features = ["proptest"] }
 
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+firezone-bin-shared = { workspace = true } # Required for benchmark.
+
 [[bench]]
 name = "tunnel"
 harness = false
 
 [features]
 proptest = ["dep:proptest", "connlib-shared/proptest"]
-
-# Linux tunnel dependencies
-[target.'cfg(target_os = "linux")'.dependencies]
-netlink-packet-route = { version = "0.19", default-features = false }
-netlink-packet-core = { version = "0.7", default-features = false }
-rtnetlink = { workspace = true }
 
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
