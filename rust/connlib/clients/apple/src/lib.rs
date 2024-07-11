@@ -4,9 +4,10 @@
 mod make_writer;
 
 use connlib_client_shared::{
-    callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6, ConnectArgs,
-    Error, LoginUrl, Session, Sockets,
+    callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
+    Session, Sockets, V4RouteList, V6RouteList,
 };
+use ip_network::{Ipv4Network, Ipv6Network};
 use secrecy::SecretString;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -122,12 +123,12 @@ impl Callbacks for CallbackHandler {
 
     fn on_update_routes(
         &self,
-        route_list_4: Vec<Cidrv4>,
-        route_list_6: Vec<Cidrv6>,
+        route_list_4: Vec<Ipv4Network>,
+        route_list_6: Vec<Ipv6Network>,
     ) -> Option<RawFd> {
         self.inner.on_update_routes(
-            serde_json::to_string(&route_list_4).unwrap(),
-            serde_json::to_string(&route_list_6).unwrap(),
+            serde_json::to_string(&V4RouteList::new(route_list_4)).unwrap(),
+            serde_json::to_string(&V6RouteList::new(route_list_6)).unwrap(),
         );
 
         None
