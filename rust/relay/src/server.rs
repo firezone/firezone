@@ -204,6 +204,18 @@ where
         &self.auth_secret
     }
 
+    pub fn public_address(&self) -> IpStack {
+        self.public_address
+    }
+
+    pub fn public_ip4(&self) -> Option<IpAddr> {
+        Some(IpAddr::V4(*self.public_address.as_v4()?))
+    }
+
+    pub fn public_ip6(&self) -> Option<IpAddr> {
+        Some(IpAddr::V6(*self.public_address.as_v6()?))
+    }
+
     pub fn listen_port(&self) -> u16 {
         self.listen_port
     }

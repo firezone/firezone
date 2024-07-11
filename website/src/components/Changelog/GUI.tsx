@@ -11,6 +11,28 @@ export default function GUI({ title }: { title: string }) {
 
   return (
     <Entries href={href} arches={arches} title={title}>
+      {/*<Entry version="1.1.6" date={new Date("2024-07-10")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            Unexpected IPC service stops are now{" "}
+            <Link
+              href="https://github.com/firezone/firezone/pull/5795"
+              className="text-accent-500 underline hover:no-underline"
+            >
+              reported as "IPC connection closed"
+            </Link>{" "}
+          </li>
+          <li className="pl-2">
+            Fixes{" "}
+            <Link
+              href="https://github.com/firezone/firezone/pull/5827"
+              className="text-accent-500 underline hover:no-underline"
+            >
+              a bug where DNS could stop working when you sign out.
+            </Link>
+          </li>
+        </ul>
+      </Entry>*/}
       <Entry version="1.1.5" date={new Date("2024-07-08")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
@@ -35,8 +57,6 @@ export default function GUI({ title }: { title: string }) {
               issue
             </Link>{" "}
             where a stale DNS cache could prevent traffic from routing to DNS
-            Resources if they were updated while the Client was signed in. where
-            a stale DNS cache could prevent traffic from routing to DNS
             Resources if they were updated while the Client was signed in.
           </li>
         </ul>

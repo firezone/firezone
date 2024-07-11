@@ -24,7 +24,8 @@ serde_json = "1.0.117"
 thiserror = { version = "1.0", default-features = false }
 # This actually relies on many other features in Tokio, so this will probably
 # fail to build outside the workspace. <https://github.com/firezone/firezone/pull/4328#discussion_r1540342142>
-tokio = { version = "1.38.0", features = ["macros", "signal"] }
+tokio = { workspace = true, features = ["macros", "signal", "process"] }
+tokio-stream = "0.1.15"
 tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }

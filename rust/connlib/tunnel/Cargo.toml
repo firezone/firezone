@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 secrecy = { workspace = true }
 async-trait = { version = "0.1", default-features = false }
-tokio = { version = "1.38", default-features = false, features = ["rt", "rt-multi-thread", "sync", "process"] }
+tokio = { workspace = true }
 thiserror = { version = "1.0", default-features = false }
 rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
@@ -50,6 +50,10 @@ hickory-proto = { workspace = true }
 derivative = "2.2.0"
 ip-packet = { workspace = true, features = ["proptest"] }
 
+[[bench]]
+name = "tunnel"
+harness = false
+
 [features]
 proptest = ["dep:proptest", "connlib-shared/proptest"]
 
@@ -61,11 +65,12 @@ rtnetlink = { workspace = true }
 
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
+tokio = { workspace = true, features = ["sync"] }
 uuid = { version = "1.7.0", features = ["v4"] }
 wintun = "0.4.0"
 
 # Windows Win32 API
-[target.'cfg(windows)'.dependencies.windows]
+[target.'cfg(target_os = "windows")'.dependencies.windows]
 version = "0.57.0"
 features = [
   "Win32_Foundation",

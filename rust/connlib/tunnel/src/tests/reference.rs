@@ -1,25 +1,17 @@
 use super::{
-    composite_strategy::CompositeStrategy, sim_net::*, sim_node::*, sim_relay::*, strategies::*,
-    transition::*, IcmpIdentifier, IcmpSeq, QueryId,
+    composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*, sim_relay::*,
+    strategies::*, transition::*,
 };
 use chrono::{DateTime, Utc};
-use connlib_shared::{
-    messages::{
-        client::{ResourceDescriptionCidr, ResourceDescriptionDns},
-        ClientId, DnsServer, GatewayId, RelayId, ResourceId,
-    },
-    proptest::*,
-    DomainName,
-};
+use connlib_shared::{messages::RelayId, proptest::*, DomainName, StaticSecret};
 use hickory_proto::rr::RecordType;
-use ip_network_table::IpNetworkTable;
-use itertools::Itertools;
 use prop::collection;
 use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    collections::{BTreeMap, HashMap, HashSet},
+    fmt,
+    net::IpAddr,
     time::{Duration, Instant},
 };
 
@@ -30,45 +22,14 @@ use std::{
 pub(crate) struct ReferenceState {
     pub(crate) now: Instant,
     pub(crate) utc_now: DateTime<Utc>,
-    #[allow(clippy::type_complexity)]
-    pub(crate) client: Host<SimNode<ClientId, (PrivateKey, HashMap<String, Vec<IpAddr>>)>>,
-    pub(crate) gateway: Host<SimNode<GatewayId, PrivateKey>>,
-    pub(crate) relays: HashMap<RelayId, Host<SimRelay<u64>>>,
-
-    /// The DNS resolvers configured on the client outside of connlib.
-    pub(crate) system_dns_resolvers: Vec<IpAddr>,
-    /// The upstream DNS resolvers configured in the portal.
-    pub(crate) upstream_dns_resolvers: Vec<DnsServer>,
-
-    /// The CIDR resources the client is aware of.
-    pub(crate) client_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
-    /// The DNS resources the client is aware of.
-    pub(crate) client_dns_resources: BTreeMap<ResourceId, ResourceDescriptionDns>,
-
-    /// The client's DNS records.
-    ///
-    /// The IPs assigned to a domain by connlib are an implementation detail that we don't want to model in these tests.
-    /// Instead, we just remember what _kind_ of records we resolved to be able to sample a matching src IP.
-    client_dns_records: BTreeMap<DomainName, HashSet<RecordType>>,
-
-    /// The CIDR resources the client is connected to.
-    client_connected_cidr_resources: HashSet<ResourceId>,
-
-    /// The DNS resources the client is connected to.
-    client_connected_dns_resources: HashSet<(ResourceId, DomainName)>,
+    pub(crate) client: Host<RefClient>,
+    pub(crate) gateway: Host<RefGateway>,
+    pub(crate) relays: HashMap<RelayId, Host<u64>>,
 
     /// All IP addresses a domain resolves to in our test.
     ///
     /// This is used to e.g. mock DNS resolution on the gateway.
     pub(crate) global_dns_records: BTreeMap<DomainName, HashSet<IpAddr>>,
-
-    /// Ips that the client know about without querying the global records
-    pub(crate) client_known_host_records: HashMap<String, Vec<IpAddr>>,
-
-    /// The expected ICMP handshakes.
-    pub(crate) expected_icmp_handshakes: VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>,
-    /// The expected DNS handshakes.
-    pub(crate) expected_dns_handshakes: VecDeque<QueryId>,
 
     pub(crate) network: RoutingTable,
 }
@@ -92,31 +53,17 @@ impl ReferenceStateMachine for ReferenceState {
         let mut tunnel_ip4s = tunnel_ip4s();
         let mut tunnel_ip6s = tunnel_ip6s();
 
-        let client_prototype = sim_node_prototype(
-            client_id(),
-            client_state(),
-            &mut tunnel_ip4s,
-            &mut tunnel_ip6s,
-        );
-        let gateway_prototype = sim_node_prototype(
-            gateway_id(),
-            gateway_state(),
-            &mut tunnel_ip4s,
-            &mut tunnel_ip6s,
-        );
         (
-            client_prototype,
-            gateway_prototype,
-            collection::hash_map(relay_id(), sim_relay_prototype(), 2),
-            system_dns_servers(),
-            upstream_dns_servers(),
+            ref_client_host(&mut tunnel_ip4s, &mut tunnel_ip6s),
+            ref_gateway_host(),
+            collection::hash_map(relay_id(), relay_prototype(), 2),
             global_dns_records(), // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
             Just(Instant::now()),
             Just(Utc::now()),
         )
             .prop_filter_map(
                 "network IPs must be unique",
-                |(c, g, relays, system_dns, upstream_dns, global_dns, now, utc_now)| {
+                |(c, g, relays, global_dns, now, utc_now)| {
                     let mut routing_table = RoutingTable::default();
 
                     if !routing_table.add_host(c.inner().id, &c) {
@@ -132,78 +79,22 @@ impl ReferenceStateMachine for ReferenceState {
                         };
                     }
 
-                    Some((
-                        c,
-                        g,
-                        relays,
-                        system_dns,
-                        upstream_dns,
-                        global_dns,
-                        now,
-                        utc_now,
-                        routing_table,
-                    ))
+                    Some((c, g, relays, global_dns, now, utc_now, routing_table))
                 },
             )
             .prop_filter(
                 "client and gateway priv key must be different",
-                |(c, g, _, _, _, _, _, _, _)| c.inner().state.0 != g.inner().state,
-            )
-            .prop_filter(
-                "at least one DNS server needs to be reachable",
-                |(c, _, _, system_dns, upstream_dns, _, _, _, _)| {
-                    // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
-
-                    if !upstream_dns.is_empty() {
-                        if c.ip4.is_none() && upstream_dns.iter().all(|s| s.ip().is_ipv4()) {
-                            return false;
-                        }
-                        if c.ip6.is_none() && upstream_dns.iter().all(|s| s.ip().is_ipv6()) {
-                            return false;
-                        }
-
-                        return true;
-                    }
-
-                    if c.ip4.is_none() && system_dns.iter().all(|s| s.is_ipv4()) {
-                        return false;
-                    }
-                    if c.ip6.is_none() && system_dns.iter().all(|s| s.is_ipv6()) {
-                        return false;
-                    }
-
-                    true
-                },
+                |(c, g, _, _, _, _, _)| c.inner().key != g.inner().key,
             )
             .prop_map(
-                |(
+                |(client, gateway, relays, global_dns_records, now, utc_now, network)| Self {
+                    now,
+                    utc_now,
                     client,
                     gateway,
                     relays,
-                    system_dns_resolvers,
-                    upstream_dns_resolvers,
                     global_dns_records,
-                    now,
-                    utc_now,
                     network,
-                )| Self {
-                    now,
-                    utc_now,
-                    client: client.clone(),
-                    gateway,
-                    relays,
-                    system_dns_resolvers,
-                    upstream_dns_resolvers,
-                    global_dns_records,
-                    client_known_host_records: client.inner().state.1.clone(),
-                    network,
-                    client_cidr_resources: IpNetworkTable::new(),
-                    client_connected_cidr_resources: Default::default(),
-                    expected_icmp_handshakes: Default::default(),
-                    client_dns_resources: Default::default(),
-                    client_dns_records: Default::default(),
-                    expected_dns_handshakes: Default::default(),
-                    client_connected_dns_resources: Default::default(),
                 },
             )
             .boxed()
@@ -239,35 +130,51 @@ impl ReferenceStateMachine for ReferenceState {
                     question_mark_wildcard_dns_resource(),
                 ],
             )
-            .with_if_not_empty(10, state.ipv4_cidr_resource_dsts(), |ip4_resources| {
-                icmp_to_cidr_resource(
-                    packet_source_v4(state.client.inner().tunnel_ip4),
-                    sample::select(ip4_resources),
-                )
-            })
-            .with_if_not_empty(10, state.ipv6_cidr_resource_dsts(), |ip6_resources| {
-                icmp_to_cidr_resource(
-                    packet_source_v6(state.client.inner().tunnel_ip6),
-                    sample::select(ip6_resources),
-                )
-            })
-            .with_if_not_empty(10, state.resolved_v4_domains(), |dns_v4_domains| {
-                icmp_to_dns_resource(
-                    packet_source_v4(state.client.inner().tunnel_ip4),
-                    sample::select(dns_v4_domains),
-                )
-            })
-            .with_if_not_empty(10, state.resolved_v6_domains(), |dns_v6_domains| {
-                icmp_to_dns_resource(
-                    packet_source_v6(state.client.inner().tunnel_ip6),
-                    sample::select(dns_v6_domains),
-                )
-            })
+            .with_if_not_empty(
+                10,
+                state.client.inner().ipv4_cidr_resource_dsts(),
+                |ip4_resources| {
+                    icmp_to_cidr_resource(
+                        packet_source_v4(state.client.inner().tunnel_ip4),
+                        sample::select(ip4_resources),
+                    )
+                },
+            )
+            .with_if_not_empty(
+                10,
+                state.client.inner().ipv6_cidr_resource_dsts(),
+                |ip6_resources| {
+                    icmp_to_cidr_resource(
+                        packet_source_v6(state.client.inner().tunnel_ip6),
+                        sample::select(ip6_resources),
+                    )
+                },
+            )
+            .with_if_not_empty(
+                10,
+                state.client.inner().resolved_v4_domains(),
+                |dns_v4_domains| {
+                    icmp_to_dns_resource(
+                        packet_source_v4(state.client.inner().tunnel_ip4),
+                        sample::select(dns_v4_domains),
+                    )
+                },
+            )
+            .with_if_not_empty(
+                10,
+                state.client.inner().resolved_v6_domains(),
+                |dns_v6_domains| {
+                    icmp_to_dns_resource(
+                        packet_source_v6(state.client.inner().tunnel_ip6),
+                        sample::select(dns_v6_domains),
+                    )
+                },
+            )
             .with_if_not_empty(
                 10,
                 (
-                    state.all_domains(),
-                    state.v4_dns_servers(),
+                    state.all_domains(state.client.inner()),
+                    state.client.inner().v4_dns_servers(),
                     state.client.ip4,
                 ),
                 |(domains, v4_dns_servers, _)| {
@@ -277,8 +184,8 @@ impl ReferenceStateMachine for ReferenceState {
             .with_if_not_empty(
                 10,
                 (
-                    state.all_domains(),
-                    state.v6_dns_servers(),
+                    state.all_domains(state.client.inner()),
+                    state.client.inner().v6_dns_servers(),
                     state.client.ip6,
                 ),
                 |(domains, v6_dns_servers, _)| {
@@ -287,7 +194,10 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .with_if_not_empty(
                 1,
-                state.resolved_ip4_for_non_resources(),
+                state
+                    .client
+                    .inner()
+                    .resolved_ip4_for_non_resources(&state.global_dns_records),
                 |resolved_non_resource_ip4s| {
                     ping_random_ip(
                         packet_source_v4(state.client.inner().tunnel_ip4),
@@ -297,7 +207,10 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .with_if_not_empty(
                 1,
-                state.resolved_ip6_for_non_resources(),
+                state
+                    .client
+                    .inner()
+                    .resolved_ip6_for_non_resources(&state.global_dns_records),
                 |resolved_non_resource_ip6s| {
                     ping_random_ip(
                         packet_source_v6(state.client.inner().tunnel_ip6),
@@ -305,7 +218,7 @@ impl ReferenceStateMachine for ReferenceState {
                     )
                 },
             )
-            .with_if_not_empty(1, state.all_resources(), |resources| {
+            .with_if_not_empty(1, state.client.inner().all_resources(), |resources| {
                 sample::select(resources).prop_map(Transition::RemoveResource)
             })
             .boxed()
@@ -317,20 +230,30 @@ impl ReferenceStateMachine for ReferenceState {
     fn apply(mut state: Self::State, transition: &Self::Transition) -> Self::State {
         match transition {
             Transition::AddCidrResource(r) => {
-                state.client_cidr_resources.insert(r.address, r.clone());
+                state
+                    .client
+                    .exec_mut(|client| client.cidr_resources.insert(r.address, r.clone()));
             }
             Transition::RemoveResource(id) => {
-                state.client_cidr_resources.retain(|_, r| &r.id != id);
-                state.client_connected_cidr_resources.remove(id);
-                state.client_dns_resources.remove(id);
+                state
+                    .client
+                    .exec_mut(|client| client.cidr_resources.retain(|_, r| &r.id != id));
+                state
+                    .client
+                    .exec_mut(|client| client.connected_cidr_resources.remove(id));
+                state
+                    .client
+                    .exec_mut(|client| client.dns_resources.remove(id));
             }
             Transition::AddDnsResource {
                 resource: new_resource,
                 records,
             } => {
-                let existing_resource = state
-                    .client_dns_resources
-                    .insert(new_resource.id, new_resource.clone());
+                let existing_resource = state.client.exec_mut(|client| {
+                    client
+                        .dns_resources
+                        .insert(new_resource.id, new_resource.clone())
+                });
 
                 // For the client, there is no difference between a DNS resource and a truly global DNS name.
                 // We store all records in the same map to follow the same model.
@@ -339,7 +262,9 @@ impl ReferenceStateMachine for ReferenceState {
                 // If a resource is updated (i.e. same ID but different address) and we are currently connected, we disconnect from it.
                 if let Some(resource) = existing_resource {
                     if new_resource.address != resource.address {
-                        state.client_connected_cidr_resources.remove(&resource.id);
+                        state.client.exec_mut(|client| {
+                            client.connected_cidr_resources.remove(&resource.id)
+                        });
 
                         state
                             .global_dns_records
@@ -348,9 +273,11 @@ impl ReferenceStateMachine for ReferenceState {
                         // TODO: IN PRODUCTION, WE CANNOT DO THIS.
                         // CHANGING A DNS RESOURCE BREAKS CLIENT UNTIL THEY DECIDE TO RE-QUERY THE RESOURCE.
                         // WE DO THIS HERE TO ENSURE THE TEST DOESN'T RUN INTO THIS.
-                        state
-                            .client_dns_records
-                            .retain(|name, _| !matches_domain(&resource.address, name));
+                        state.client.exec_mut(|client| {
+                            client
+                                .dns_records
+                                .retain(|name, _| !matches_domain(&resource.address, name))
+                        });
                     }
                 }
             }
@@ -360,22 +287,30 @@ impl ReferenceStateMachine for ReferenceState {
                 dns_server,
                 query_id,
                 ..
-            } => match state.dns_query_via_cidr_resource(dns_server.ip(), domain) {
+            } => match state
+                .client
+                .inner()
+                .dns_query_via_cidr_resource(dns_server.ip(), domain)
+            {
                 Some(resource)
-                    if !state.client_connected_cidr_resources.contains(&resource)
-                        && !state
-                            .client_known_host_records
-                            .contains_key(&domain.to_string()) =>
+                    if !state.client.inner().is_connected_to_cidr(resource)
+                        && !state.client.inner().is_known_host(&domain.to_string()) =>
                 {
-                    state.client_connected_cidr_resources.insert(resource);
+                    state
+                        .client
+                        .exec_mut(|client| client.connected_cidr_resources.insert(resource));
                 }
                 Some(_) | None => {
+                    state.client.exec_mut(|client| {
+                        client
+                            .dns_records
+                            .entry(domain.clone())
+                            .or_default()
+                            .insert(*r_type)
+                    });
                     state
-                        .client_dns_records
-                        .entry(domain.clone())
-                        .or_default()
-                        .insert(*r_type);
-                    state.expected_dns_handshakes.push_back(*query_id);
+                        .client
+                        .exec_mut(|client| client.expected_dns_handshakes.push_back(*query_id));
                 }
             },
             Transition::SendICMPPacketToNonResourceIp { .. } => {
@@ -388,7 +323,9 @@ impl ReferenceStateMachine for ReferenceState {
                 identifier,
                 ..
             } => {
-                state.on_icmp_packet_to_cidr(*src, *dst, *seq, *identifier);
+                state.client.exec_mut(|client| {
+                    client.on_icmp_packet_to_cidr(*src, *dst, *seq, *identifier)
+                });
             }
             Transition::SendICMPPacketToDnsResource {
                 src,
@@ -396,13 +333,19 @@ impl ReferenceStateMachine for ReferenceState {
                 seq,
                 identifier,
                 ..
-            } => state.on_icmp_packet_to_dns(*src, dst.clone(), *seq, *identifier),
+            } => state.client.exec_mut(|client| {
+                client.on_icmp_packet_to_dns(*src, dst.clone(), *seq, *identifier)
+            }),
             Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
             Transition::UpdateSystemDnsServers { servers } => {
-                state.system_dns_resolvers.clone_from(servers);
+                state
+                    .client
+                    .exec_mut(|client| client.system_dns_resolvers.clone_from(servers));
             }
             Transition::UpdateUpstreamDnsServers { servers } => {
-                state.upstream_dns_resolvers.clone_from(servers);
+                state
+                    .client
+                    .exec_mut(|client| client.upstream_dns_resolvers.clone_from(servers));
             }
             Transition::RoamClient { ip4, ip6, .. } => {
                 state.network.remove_host(&state.client);
@@ -413,8 +356,12 @@ impl ReferenceStateMachine for ReferenceState {
                     .add_host(state.client.inner().id, &state.client));
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
-                state.client_connected_cidr_resources.clear();
-                state.client_connected_dns_resources.clear();
+                state
+                    .client
+                    .exec_mut(|client| client.connected_cidr_resources.clear());
+                state
+                    .client
+                    .exec_mut(|client| client.connected_dns_resources.clear());
             }
         };
 
@@ -457,9 +404,14 @@ impl ReferenceStateMachine for ReferenceState {
                     }
 
                     // TODO: PRODUCTION CODE DOES NOT HANDLE THIS.
-                    let any_real_ip_overlaps_with_cidr_resource = resolved_ips
-                        .iter()
-                        .any(|resolved_ip| state.cidr_resource_by_ip(*resolved_ip).is_some());
+                    let any_real_ip_overlaps_with_cidr_resource =
+                        resolved_ips.iter().any(|resolved_ip| {
+                            state
+                                .client
+                                .inner()
+                                .cidr_resource_by_ip(*resolved_ip)
+                                .is_some()
+                        });
 
                     if any_real_ip_overlaps_with_cidr_resource {
                         return false;
@@ -475,14 +427,20 @@ impl ReferenceStateMachine for ReferenceState {
                 identifier,
                 ..
             } => {
-                let is_valid_icmp_packet = state.is_valid_icmp_packet(seq, identifier);
-                let is_cidr_resource = state.client_cidr_resources.longest_match(*dst).is_some();
+                let is_valid_icmp_packet =
+                    state.client.inner().is_valid_icmp_packet(seq, identifier);
+                let is_cidr_resource = state
+                    .client
+                    .inner()
+                    .cidr_resources
+                    .longest_match(*dst)
+                    .is_some();
 
                 is_valid_icmp_packet && !is_cidr_resource
             }
             Transition::SendICMPPacketToCidrResource {
                 seq, identifier, ..
-            } => state.is_valid_icmp_packet(seq, identifier),
+            } => state.client.inner().is_valid_icmp_packet(seq, identifier),
             Transition::SendICMPPacketToDnsResource {
                 seq,
                 identifier,
@@ -490,9 +448,11 @@ impl ReferenceStateMachine for ReferenceState {
                 src,
                 ..
             } => {
-                state.is_valid_icmp_packet(seq, identifier)
+                state.client.inner().is_valid_icmp_packet(seq, identifier)
                     && state
-                        .client_dns_records
+                        .client
+                        .inner()
+                        .dns_records
                         .get(dst)
                         .is_some_and(|r| match src {
                             IpAddr::V4(_) => r.contains(&RecordType::A),
@@ -527,12 +487,13 @@ impl ReferenceStateMachine for ReferenceState {
                 domain, dns_server, ..
             } => {
                 state.global_dns_records.contains_key(domain)
-                    && state.expected_dns_servers().contains(dns_server)
+                    && state
+                        .client
+                        .inner()
+                        .expected_dns_servers()
+                        .contains(dns_server)
             }
-            Transition::RemoveResource(id) => {
-                state.client_cidr_resources.iter().any(|(_, r)| &r.id == id)
-                    || state.client_dns_resources.contains_key(id)
-            }
+            Transition::RemoveResource(id) => state.client.inner().all_resources().contains(id),
             Transition::RoamClient { ip4, ip6, port } => {
                 // In production, we always rebind to a new port so we never roam to our old existing IP / port combination.
 
@@ -546,261 +507,19 @@ impl ReferenceStateMachine for ReferenceState {
     }
 }
 
-/// Pub(crate) functions used across the test suite.
-impl ReferenceState {
-    /// Returns the DNS servers that we expect connlib to use.
-    ///
-    /// If there are upstream DNS servers configured in the portal, it should use those.
-    /// Otherwise it should use whatever was configured on the system prior to connlib starting.
-    pub(crate) fn expected_dns_servers(&self) -> BTreeSet<SocketAddr> {
-        if !self.upstream_dns_resolvers.is_empty() {
-            return self
-                .upstream_dns_resolvers
-                .iter()
-                .map(|s| s.address())
-                .collect();
-        }
-
-        self.system_dns_resolvers
-            .iter()
-            .map(|ip| SocketAddr::new(*ip, 53))
-            .collect()
-    }
-}
-
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
-    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
-    fn on_icmp_packet_to_cidr(&mut self, src: IpAddr, dst: IpAddr, seq: u16, identifier: u16) {
-        tracing::Span::current().record("dst", tracing::field::display(dst));
-
-        // Second, if we are not yet connected, check if we have a resource for this IP.
-        let Some((_, resource)) = self.client_cidr_resources.longest_match(dst) else {
-            tracing::debug!("No resource corresponds to IP");
-            return;
-        };
-        tracing::Span::current().record("resource", tracing::field::display(resource.id));
-
-        if self.client_connected_cidr_resources.contains(&resource.id)
-            && self.client.inner().is_tunnel_ip(src)
-        {
-            tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
-            self.expected_icmp_handshakes
-                .push_back((ResourceDst::Cidr(dst), seq, identifier));
-            return;
-        }
-
-        // If we have a resource, the first packet will initiate a connection to the gateway.
-        tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.client_connected_cidr_resources.insert(resource.id);
-    }
-
-    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
-    fn on_icmp_packet_to_dns(&mut self, src: IpAddr, dst: DomainName, seq: u16, identifier: u16) {
-        tracing::Span::current().record("dst", tracing::field::display(&dst));
-
-        let Some(resource) = self.dns_resource_by_domain(&dst) else {
-            tracing::debug!("No resource corresponds to IP");
-            return;
-        };
-
-        tracing::Span::current().record("resource", tracing::field::display(resource));
-
-        if self
-            .client_connected_dns_resources
-            .contains(&(resource, dst.clone()))
-            && self.client.inner().is_tunnel_ip(src)
-        {
-            tracing::debug!("Connected to DNS resource, expecting packet to be routed");
-            self.expected_icmp_handshakes
-                .push_back((ResourceDst::Dns(dst), seq, identifier));
-            return;
-        }
-
-        debug_assert!(
-            self.client_dns_records.iter().any(|(name, _)| name == &dst),
-            "Should only sample ICMPs to domains that we resolved"
-        );
-
-        tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.client_connected_dns_resources.insert((resource, dst));
-    }
-
-    fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Addr> {
-        let mut ips = vec![];
-
-        // This is an imperative loop on purpose because `ip-network` appears to have a bug with its `size_hint` and thus `.extend` does not work reliably?
-        for (network, _) in self.client_cidr_resources.iter_ipv4() {
-            if network.netmask() == 31 || network.netmask() == 32 {
-                ips.push(network.network_address());
-            } else {
-                for ip in network.hosts() {
-                    ips.push(ip)
-                }
-            }
-        }
-
-        ips
-    }
-
-    fn ipv6_cidr_resource_dsts(&self) -> Vec<Ipv6Addr> {
-        let mut ips = vec![];
-
-        // This is an imperative loop on purpose because `ip-network` appears to have a bug with its `size_hint` and thus `.extend` does not work reliably?
-        for (network, _) in self.client_cidr_resources.iter_ipv6() {
-            if network.netmask() == 127 || network.netmask() == 128 {
-                ips.push(network.network_address());
-            } else {
-                for ip in network
-                    .subnets_with_prefix(128)
-                    .map(|i| i.network_address())
-                {
-                    ips.push(ip)
-                }
-            }
-        }
-
-        ips
-    }
-
-    fn resolved_v4_domains(&self) -> Vec<DomainName> {
-        self.resolved_domains()
-            .filter_map(|(domain, records)| {
-                records
-                    .iter()
-                    .any(|r| matches!(r, RecordType::A))
-                    .then_some(domain)
-            })
-            .collect()
-    }
-
-    fn resolved_v6_domains(&self) -> Vec<DomainName> {
-        self.resolved_domains()
-            .filter_map(|(domain, records)| {
-                records
-                    .iter()
-                    .any(|r| matches!(r, RecordType::AAAA))
-                    .then_some(domain)
-            })
-            .collect()
-    }
-
-    fn all_domains(&self) -> Vec<DomainName> {
+    fn all_domains(&self, client: &RefClient) -> Vec<DomainName> {
         self.global_dns_records
             .keys()
             .cloned()
             .chain(
-                self.client_known_host_records
+                client
+                    .known_hosts
                     .keys()
                     .map(|h| DomainName::vec_from_str(h).unwrap()),
             )
             .collect()
-    }
-
-    fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, HashSet<RecordType>)> + '_ {
-        self.client_dns_records
-            .iter()
-            .filter(|(domain, _)| self.dns_resource_by_domain(domain).is_some())
-            .map(|(domain, ips)| (domain.clone(), ips.clone()))
-    }
-
-    /// An ICMP packet is valid if we didn't yet send an ICMP packet with the same seq and identifier.
-    fn is_valid_icmp_packet(&self, seq: &u16, identifier: &u16) -> bool {
-        self.expected_icmp_handshakes
-            .iter()
-            .all(|(_, existing_seq, existing_identifer)| {
-                existing_seq != seq && existing_identifer != identifier
-            })
-    }
-
-    fn v4_dns_servers(&self) -> Vec<SocketAddrV4> {
-        self.expected_dns_servers()
-            .into_iter()
-            .filter_map(|s| match s {
-                SocketAddr::V4(v4) => Some(v4),
-                SocketAddr::V6(_) => None,
-            })
-            .collect()
-    }
-
-    fn v6_dns_servers(&self) -> Vec<SocketAddrV6> {
-        self.expected_dns_servers()
-            .into_iter()
-            .filter_map(|s| match s {
-                SocketAddr::V6(v6) => Some(v6),
-                SocketAddr::V4(_) => None,
-            })
-            .collect()
-    }
-
-    fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
-        self.client_dns_resources
-            .values()
-            .filter(|r| is_subdomain(&domain.to_string(), &r.address))
-            .sorted_by_key(|r| r.address.len())
-            .rev()
-            .map(|r| r.id)
-            .next()
-    }
-
-    fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
-        self.client_cidr_resources
-            .longest_match(ip)
-            .map(|(_, r)| r.id)
-    }
-
-    fn resolved_ip4_for_non_resources(&self) -> Vec<Ipv4Addr> {
-        self.resolved_ips_for_non_resources()
-            .filter_map(|ip| match ip {
-                IpAddr::V4(v4) => Some(v4),
-                IpAddr::V6(_) => None,
-            })
-            .collect()
-    }
-
-    fn resolved_ip6_for_non_resources(&self) -> Vec<Ipv6Addr> {
-        self.resolved_ips_for_non_resources()
-            .filter_map(|ip| match ip {
-                IpAddr::V6(v6) => Some(v6),
-                IpAddr::V4(_) => None,
-            })
-            .collect()
-    }
-
-    fn resolved_ips_for_non_resources(&self) -> impl Iterator<Item = IpAddr> + '_ {
-        self.client_dns_records
-            .iter()
-            .filter_map(|(domain, _)| {
-                self.dns_resource_by_domain(domain)
-                    .is_none()
-                    .then_some(self.global_dns_records.get(domain))
-            })
-            .flatten()
-            .flatten()
-            .copied()
-    }
-
-    /// Returns the CIDR resource we will forward the DNS query for the given name to.
-    ///
-    /// DNS servers may be resources, in which case queries that need to be forwarded actually need to be encapsulated.
-    fn dns_query_via_cidr_resource(
-        &self,
-        dns_server: IpAddr,
-        domain: &DomainName,
-    ) -> Option<ResourceId> {
-        // If we are querying a DNS resource, we will issue a connection intent to the DNS resource, not the CIDR resource.
-        if self.dns_resource_by_domain(domain).is_some() {
-            return None;
-        }
-
-        self.cidr_resource_by_ip(dns_server)
-    }
-
-    fn all_resources(&self) -> Vec<ResourceId> {
-        let cidr_resources = self.client_cidr_resources.iter().map(|(_, r)| r.id);
-        let dns_resources = self.client_dns_resources.keys().copied();
-
-        Vec::from_iter(cidr_resources.chain(dns_resources))
     }
 }
 
@@ -816,21 +535,23 @@ fn matches_domain(resource_address: &str, domain: &DomainName) -> bool {
     name == resource_address
 }
 
-fn is_subdomain(name: &str, record: &str) -> bool {
-    if name == record {
-        return true;
+pub(crate) fn private_key() -> impl Strategy<Value = PrivateKey> {
+    any::<[u8; 32]>().prop_map(PrivateKey)
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) struct PrivateKey([u8; 32]);
+
+impl From<PrivateKey> for StaticSecret {
+    fn from(key: PrivateKey) -> Self {
+        StaticSecret::from(key.0)
     }
-    let Some((first, end)) = record.split_once('.') else {
-        return false;
-    };
-    match first {
-        "*" => name.ends_with(end) && name.strip_suffix(end).is_some_and(|n| n.ends_with('.')),
-        "?" => {
-            name.ends_with(end)
-                && name
-                    .strip_suffix(end)
-                    .is_some_and(|n| n.ends_with('.') && n.matches('.').count() == 1)
-        }
-        _ => false,
+}
+
+impl fmt::Debug for PrivateKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("PrivateKey")
+            .field(&hex::encode(self.0))
+            .finish()
     }
 }
