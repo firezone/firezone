@@ -130,7 +130,7 @@ jobs:
       - name: Compile Tailwind
         run: pnpm tailwindcss -i src/input.css -o src/output.css
       - name: Build client
-        run: cargo build -p firezone-gui-client
+        run: cargo build -p firezone-gui-client --all-targets
       - uses: taiki-e/install-action@v2
         with:
           tool: dump_syms,minidump-stackwalk

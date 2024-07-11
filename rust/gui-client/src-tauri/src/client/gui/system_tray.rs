@@ -1,12 +1,126 @@
-//! Code for the Windows notification area
+//! Code for the system tray AKA notification area
+//!
+//! This manages the icon, menu, and tooltip.
 //!
 //! "Notification Area" is Microsoft's official name instead of "System tray":
 //! <https://learn.microsoft.com/en-us/windows/win32/shell/notification-area?redirectedfrom=MSDN#notifications-and-the-notification-area>
 
+use anyhow::Result;
 use connlib_client_shared::callbacks::{ResourceDescription, Status};
 use serde::{Deserialize, Serialize};
-use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem, SystemTraySubmenu};
+use tauri::{
+    CustomMenuItem, SystemTray, SystemTrayHandle, SystemTrayMenu, SystemTrayMenuItem,
+    SystemTraySubmenu,
+};
 use url::Url;
+
+// Figma is the source of truth for the tray icons
+// <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=OGFabKWPx7PRUZmq-0>
+const BUSY_ICON: &[u8] = include_bytes!("../../../icons/tray/Busy.png");
+const SIGNED_IN_ICON: &[u8] = include_bytes!("../../../icons/tray/Signed in.png");
+const SIGNED_OUT_ICON: &[u8] = include_bytes!("../../../icons/tray/Signed out.png");
+const TOOLTIP: &str = "Firezone";
+
+pub(crate) fn loading() -> SystemTray {
+    SystemTray::new()
+        .with_icon(tauri::Icon::Raw(BUSY_ICON.into()))
+        .with_menu(Menu::Loading.build())
+        .with_tooltip(TOOLTIP)
+}
+
+pub(crate) struct Tray {
+    handle: SystemTrayHandle,
+    last_icon_set: Icon,
+}
+
+pub(crate) enum Menu<'a> {
+    Loading,
+    SignedOut,
+    WaitingForBrowser,
+    WaitingForConnlib,
+    SignedIn {
+        actor_name: &'a str,
+        resources: &'a [ResourceDescription],
+    },
+}
+
+#[derive(PartialEq)]
+pub(crate) enum Icon {
+    /// Must be equivalent to the default app icon, since we assume this is set when we start
+    Busy,
+    SignedIn,
+    SignedOut,
+}
+
+impl Default for Icon {
+    fn default() -> Self {
+        Self::Busy
+    }
+}
+
+impl Tray {
+    pub(crate) fn new(handle: SystemTrayHandle) -> Self {
+        Self {
+            handle,
+            last_icon_set: Default::default(),
+        }
+    }
+
+    pub(crate) fn update(&mut self, menu: Menu) -> Result<()> {
+        let new_icon = match &menu {
+            Menu::Loading | Menu::WaitingForBrowser | Menu::WaitingForConnlib => Icon::Busy,
+            Menu::SignedOut => Icon::SignedOut,
+            Menu::SignedIn { .. } => Icon::SignedIn,
+        };
+
+        self.handle.set_tooltip(TOOLTIP)?;
+        self.handle.set_menu(menu.build())?;
+        self.set_icon(new_icon)?;
+
+        Ok(())
+    }
+
+    // Normally only needed for the stress test
+    pub(crate) fn set_icon(&mut self, icon: Icon) -> Result<()> {
+        if icon != self.last_icon_set {
+            // Don't call `set_icon` too often. On Linux it writes a PNG to `/run/user/$UID/tao/tray-icon-*.png` every single time.
+            // <https://github.com/tauri-apps/tao/blob/tao-v0.16.7/src/platform_impl/linux/system_tray.rs#L119>
+            // Yes, even if you use `Icon::File` and tell Tauri that the icon is already
+            // on disk.
+            self.handle.set_icon(icon.tauri_icon())?;
+            self.last_icon_set = icon;
+        }
+        Ok(())
+    }
+}
+
+impl Icon {
+    fn tauri_icon(&self) -> tauri::Icon {
+        let bytes = match self {
+            Self::Busy => BUSY_ICON,
+            Self::SignedIn => SIGNED_IN_ICON,
+            Self::SignedOut => SIGNED_OUT_ICON,
+        };
+        tauri::Icon::Raw(bytes.into())
+    }
+}
+
+impl<'a> Menu<'a> {
+    fn build(self) -> SystemTrayMenu {
+        match self {
+            Menu::Loading => SystemTrayMenu::new().disabled("Loading..."),
+            Menu::SignedOut => SystemTrayMenu::new()
+                .item(Event::SignIn, "Sign In")
+                .add_bottom_section(QUIT_TEXT_SIGNED_OUT),
+            Menu::WaitingForBrowser => signing_in("Waiting for browser..."),
+            Menu::WaitingForConnlib => signing_in("Signing In..."),
+            Menu::SignedIn {
+                actor_name,
+                resources,
+            } => signed_in(actor_name, resources),
+        }
+    }
+}
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub(crate) enum Event {
@@ -46,11 +160,7 @@ fn get_submenu(res: &ResourceDescription) -> SystemTrayMenu {
     submenu.item(Event::Url(url), address_description)
 }
 
-pub(crate) fn loading() -> SystemTrayMenu {
-    SystemTrayMenu::new().disabled("Loading...")
-}
-
-pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> SystemTrayMenu {
+fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> SystemTrayMenu {
     let mut menu = SystemTrayMenu::new()
         .disabled(format!("Signed in as {user_name}"))
         .item(Event::SignOut, "Sign out")
@@ -92,65 +202,11 @@ pub(crate) fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> S
     menu.add_bottom_section("Disconnect and quit Firezone")
 }
 
-pub(crate) fn signing_in(waiting_message: &str) -> SystemTrayMenu {
+fn signing_in(waiting_message: &str) -> SystemTrayMenu {
     SystemTrayMenu::new()
         .disabled(waiting_message)
         .item(Event::CancelSignIn, "Cancel sign-in")
         .add_bottom_section(QUIT_TEXT_SIGNED_OUT)
-}
-
-pub(crate) fn signed_out() -> SystemTrayMenu {
-    SystemTrayMenu::new()
-        .item(Event::SignIn, "Sign In")
-        .add_bottom_section(QUIT_TEXT_SIGNED_OUT)
-}
-
-pub(crate) fn debug() -> SystemTrayMenu {
-    let mut menu = SystemTrayMenu::new()
-        .disabled("Debug tray menu")
-        .item(None, "Fake sign out button")
-        .separator()
-        .disabled("Resources");
-
-    let submenu = SystemTrayMenu::new().copyable("Fake submenu");
-    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 1", submenu));
-
-    let submenu = SystemTrayMenu::new()
-        .copyable("Fake Copyable")
-        .item(None, "Fake description")
-        .separator()
-        .disabled("Resource")
-        .copyable("Fake name")
-        .copyable("Fake pastable")
-        .separator()
-        .disabled("Site")
-        .item(None, "Fake name")
-        .item(None, "[-] No activity");
-    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 2", submenu));
-
-    let submenu = SystemTrayMenu::new()
-        .copyable("Fake Copyable")
-        .item(None, "Fake description")
-        .separator()
-        .disabled("Resource")
-        .copyable("Fake name")
-        .copyable("Fake pastable")
-        .separator()
-        .disabled("Site")
-        .item(None, "Fake name")
-        .item(None, "⭕🟢🟥 Fake status");
-    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 3", submenu));
-
-    let submenu = SystemTrayMenu::new().copyable("Fake Copyable ⭕");
-    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 4", submenu));
-
-    let submenu = SystemTrayMenu::new().copyable("Fake Copyable 🟢");
-    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 5", submenu));
-
-    let submenu = SystemTrayMenu::new().copyable("Fake Copyable 🟥");
-    menu = menu.add_submenu(SystemTraySubmenu::new("Fake resource 6", submenu));
-
-    menu
 }
 
 trait FirezoneMenu {
