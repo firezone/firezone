@@ -117,19 +117,6 @@ impl ResourceDescription {
     }
 }
 
-impl From<ResourceDescription> for crate::messages::client::ResourceDescription {
-    fn from(value: ResourceDescription) -> Self {
-        match value {
-            ResourceDescription::Dns(r) => {
-                crate::messages::client::ResourceDescription::Dns(r.into())
-            }
-            ResourceDescription::Cidr(r) => {
-                crate::messages::client::ResourceDescription::Cidr(r.into())
-            }
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceDescriptionDns {
     /// Resource's id.
@@ -145,18 +132,6 @@ pub struct ResourceDescriptionDns {
     pub sites: Vec<Site>,
 
     pub status: Status,
-}
-
-impl From<ResourceDescriptionDns> for crate::messages::client::ResourceDescriptionDns {
-    fn from(r: ResourceDescriptionDns) -> Self {
-        crate::messages::client::ResourceDescriptionDns {
-            id: r.id,
-            address: r.address,
-            address_description: r.address_description,
-            name: r.name,
-            sites: r.sites,
-        }
-    }
 }
 
 /// Description of a resource that maps to a CIDR.
@@ -175,18 +150,6 @@ pub struct ResourceDescriptionCidr {
     pub sites: Vec<Site>,
 
     pub status: Status,
-}
-
-impl From<ResourceDescriptionCidr> for crate::messages::client::ResourceDescriptionCidr {
-    fn from(r: ResourceDescriptionCidr) -> Self {
-        crate::messages::client::ResourceDescriptionCidr {
-            id: r.id,
-            address: r.address,
-            address_description: r.address_description,
-            name: r.name,
-            sites: r.sites,
-        }
-    }
 }
 
 /// Traits that will be used by connlib to callback the client upper layers.
