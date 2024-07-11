@@ -29,9 +29,14 @@ impl Client {
         );
         let (mut rx, tx) = ipc::connect_to_service(ipc::ServiceId::Prod).await?;
         let task = tokio::task::spawn(async move {
-            while let Some(msg) = rx.next().await.transpose()? {
-                ctlr_tx.send(ControllerRequest::Ipc(msg)).await?;
+            while let Some(result) = rx.next().await {
+                let msg = match result {
+                    Ok(msg) => ControllerRequest::Ipc(msg),
+                    Err(e) => ControllerRequest::IpcReadFailed(e),
+                };
+                ctlr_tx.send(msg).await?;
             }
+            ctlr_tx.send(ControllerRequest::IpcClosed).await?;
             Ok(())
         });
         Ok(Self { task, tx })

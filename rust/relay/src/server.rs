@@ -20,6 +20,7 @@ use secrecy::SecretString;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
+use std::ops::RangeInclusive;
 use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,
@@ -62,8 +63,8 @@ pub struct Server<R> {
         HashMap<(AllocationPort, PeerSocket), (ClientSocket, ChannelNumber)>,
 
     listen_port: u16,
-    lowest_port: u16,
-    highest_port: u16,
+
+    ports: RangeInclusive<u16>,
 
     /// Channel numbers are unique by client, thus indexed by both.
     channels_by_client_and_number: HashMap<(ClientSocket, ChannelNumber), Channel>,
@@ -157,8 +158,7 @@ where
         public_address: impl Into<IpStack>,
         mut rng: R,
         listen_port: u16,
-        lowest_port: u16,
-        highest_port: u16,
+        ports: RangeInclusive<u16>,
     ) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
@@ -185,8 +185,7 @@ where
             allocations: Default::default(),
             clients_by_allocation: Default::default(),
             listen_port,
-            lowest_port,
-            highest_port,
+            ports,
             channels_by_client_and_number: Default::default(),
             channel_numbers_by_client_and_peer: Default::default(),
             pending_commands: Default::default(),
@@ -203,6 +202,18 @@ where
 
     pub fn auth_secret(&self) -> &SecretString {
         &self.auth_secret
+    }
+
+    pub fn public_address(&self) -> IpStack {
+        self.public_address
+    }
+
+    pub fn public_ip4(&self) -> Option<IpAddr> {
+        Some(IpAddr::V4(*self.public_address.as_v4()?))
+    }
+
+    pub fn public_ip6(&self) -> Option<IpAddr> {
+        Some(IpAddr::V6(*self.public_address.as_v6()?))
     }
 
     pub fn listen_port(&self) -> u16 {
@@ -795,7 +806,7 @@ where
         );
 
         let port = loop {
-            let candidate = AllocationPort(self.rng.gen_range(self.lowest_port..self.highest_port));
+            let candidate = AllocationPort(self.rng.gen_range(self.ports.clone()));
 
             if !self.clients_by_allocation.contains_key(&candidate) {
                 break candidate;
@@ -811,7 +822,7 @@ where
     }
 
     fn max_available_ports(&self) -> u16 {
-        self.highest_port - self.lowest_port
+        self.ports.clone().count() as u16
     }
 
     fn create_channel_binding(
