@@ -28,7 +28,7 @@ pub struct ResourceDescriptionDns {
 }
 
 impl ResourceDescriptionDns {
-    fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionDns {
+    pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionDns {
         crate::callbacks::ResourceDescriptionDns {
             id: self.id,
             address: self.address,
@@ -58,7 +58,7 @@ pub struct ResourceDescriptionCidr {
 }
 
 impl ResourceDescriptionCidr {
-    fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionCidr {
+    pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionCidr {
         crate::callbacks::ResourceDescriptionCidr {
             id: self.id,
             address: self.address,
