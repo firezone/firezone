@@ -98,3 +98,24 @@ export function Strike({
     </span>
   );
 }
+
+export function FadeIn({
+  delay = 0,
+  duration = 0.5,
+  children,
+}: {
+  delay?: number;
+  duration?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      viewport={{ once: true }}
+      transition={{ delay, duration }}
+    >
+      {children}
+    </motion.div>
+  );
+}

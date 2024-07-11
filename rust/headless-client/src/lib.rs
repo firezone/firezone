@@ -10,7 +10,7 @@
 
 use anyhow::{Context as _, Result};
 use connlib_client_shared::{Callbacks, Error as ConnlibError};
-use connlib_shared::{callbacks, Cidrv4, Cidrv6};
+use connlib_shared::callbacks;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::PathBuf,
@@ -20,19 +20,16 @@ use tracing::subscriber::set_global_default;
 use tracing_subscriber::{fmt, layer::SubscriberExt as _, EnvFilter, Layer as _, Registry};
 
 use platform::default_token_path;
-/// SIGINT and, on Linux, SIGHUP.
-///
-/// Must be constructed inside a Tokio runtime context.
-use platform::Signals;
 
 /// Generate a persistent device ID, stores it to disk, and reads it back.
 pub(crate) mod device_id;
 // Pub because the GUI reads the system resolvers
 pub mod dns_control;
-pub mod heartbeat;
 mod ipc_service;
 pub mod known_dirs;
+mod signals;
 mod standalone;
+pub mod uptime;
 
 #[cfg(target_os = "linux")]
 #[path = "linux.rs"]
@@ -46,6 +43,7 @@ pub use ipc_service::{ipc, run_only_ipc_service, ClientMsg as IpcClientMsg};
 pub use standalone::run_only_headless_client;
 
 use dns_control::DnsController;
+use ip_network::{Ipv4Network, Ipv6Network};
 
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
@@ -78,6 +76,7 @@ struct CliCommon {
     max_partition_time: Option<humantime::Duration>,
 }
 
+/// Messages we get from connlib, including ones that aren't sent to IPC clients
 enum InternalServerMsg {
     Ipc(IpcServerMsg),
     OnSetInterfaceConfig {
@@ -86,19 +85,18 @@ enum InternalServerMsg {
         dns: Vec<IpAddr>,
     },
     OnUpdateRoutes {
-        ipv4: Vec<Cidrv4>,
-        ipv6: Vec<Cidrv6>,
+        ipv4: Vec<Ipv4Network>,
+        ipv6: Vec<Ipv6Network>,
     },
 }
 
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+/// Messages that we can send to IPC clients
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum IpcServerMsg {
-    Ok,
     OnDisconnect {
         error_msg: String,
         is_authentication_error: bool,
     },
-    OnTunnelReady,
     OnUpdateResources(Vec<callbacks::ResourceDescription>),
 }
 
@@ -146,22 +144,12 @@ impl Callbacks for CallbackHandler {
             .expect("Should be able to send OnUpdateResources");
     }
 
-    fn on_update_routes(&self, ipv4: Vec<Cidrv4>, ipv6: Vec<Cidrv6>) -> Option<i32> {
+    fn on_update_routes(&self, ipv4: Vec<Ipv4Network>, ipv6: Vec<Ipv6Network>) -> Option<i32> {
         self.cb_tx
             .try_send(InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 })
             .expect("Should be able to send messages");
         None
     }
-}
-
-#[allow(dead_code)]
-enum SignalKind {
-    /// SIGHUP
-    ///
-    /// Not caught on Windows
-    Hangup,
-    /// SIGINT
-    Interrupt,
 }
 
 /// Sets up logging for stdout only, with INFO level by default

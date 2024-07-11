@@ -1,39 +1,13 @@
 //! Implementation, Linux-specific
 
-use super::{SignalKind, TOKEN_ENV_KEY};
+use super::TOKEN_ENV_KEY;
 use anyhow::{bail, Result};
-use futures::future::{select, Either};
-use std::{
-    path::{Path, PathBuf},
-    pin::pin,
-};
-use tokio::signal::unix::{signal, Signal, SignalKind as TokioSignalKind};
+use std::path::{Path, PathBuf};
 
 // The Client currently must run as root to control DNS
 // Root group and user are used to check file ownership on the token
 const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
-
-pub(crate) struct Signals {
-    sighup: Signal,
-    sigint: Signal,
-}
-
-impl Signals {
-    pub(crate) fn new() -> Result<Self> {
-        let sighup = signal(TokioSignalKind::hangup())?;
-        let sigint = signal(TokioSignalKind::interrupt())?;
-
-        Ok(Self { sighup, sigint })
-    }
-
-    pub(crate) async fn recv(&mut self) -> SignalKind {
-        match select(pin!(self.sighup.recv()), pin!(self.sigint.recv())).await {
-            Either::Left((_, _)) => SignalKind::Hangup,
-            Either::Right((_, _)) => SignalKind::Interrupt,
-        }
-    }
-}
 
 pub(crate) fn default_token_path() -> PathBuf {
     PathBuf::from("/etc")

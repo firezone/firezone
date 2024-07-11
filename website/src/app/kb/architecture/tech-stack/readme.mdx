@@ -57,6 +57,12 @@ These manage the control path and hot paths of the Client, respectively. They
 interact through a thin software layer to exchange WireGuard keys and STUN
 information between the control plane API and the TUN interface.
 
+<Alert color="warning">
+  For a deep dive into Firezone's data plane architecture and its sans-IO
+  design, we recommend reading [sans-IO: The secret to effective Rust for
+  network services](/blog/sans-io).
+</Alert>
+
 Here's a high-level diagram of the various software components used in the
 Client applications:
 

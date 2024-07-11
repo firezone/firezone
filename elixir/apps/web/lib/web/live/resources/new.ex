@@ -90,6 +90,7 @@ defmodule Web.Resources.New do
                     true -> "Please select a Type from the options first"
                   end
                 }
+                class={is_nil(@form[:type].value) && "cursor-not-allowed"}
                 disabled={is_nil(@form[:type].value)}
                 required
               />

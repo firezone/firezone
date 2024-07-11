@@ -21,16 +21,16 @@ defmodule API.Client.Channel do
       opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
       opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 
-      gateway_version_requirement = select_gateway_version_requirement(socket.assigns.client)
+      with {:ok, socket} <- schedule_expiration(socket),
+           {:ok, gateway_version_requirement} <-
+             select_gateway_version_requirement(socket.assigns.client) do
+        socket =
+          assign(socket,
+            opentelemetry_ctx: opentelemetry_ctx,
+            opentelemetry_span_ctx: opentelemetry_span_ctx,
+            gateway_version_requirement: gateway_version_requirement
+          )
 
-      socket =
-        assign(socket,
-          opentelemetry_ctx: opentelemetry_ctx,
-          opentelemetry_span_ctx: opentelemetry_span_ctx,
-          gateway_version_requirement: gateway_version_requirement
-        )
-
-      with {:ok, socket} <- schedule_expiration(socket) do
         send(self(), {:after_join, {opentelemetry_ctx, opentelemetry_span_ctx}})
         {:ok, socket}
       end
@@ -640,10 +640,10 @@ defmodule API.Client.Channel do
             end
           )
 
-        gateway_version_requirement || "> 0.0.0"
+        {:ok, gateway_version_requirement || "> 0.0.0"}
 
       :error ->
-        "> 0.0.0"
+        {:error, %{reason: :invalid_version}}
     end
   end
 

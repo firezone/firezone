@@ -4,12 +4,14 @@
 // ecosystem, so it's used here for consistency.
 
 use connlib_client_shared::{
-    callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6, ConnectArgs,
-    Error, LoginUrl, LoginUrlError, Session, Sockets,
+    callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
+    LoginUrlError, Session, Sockets, V4RouteList, V6RouteList,
 };
+use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
     strings::JNIString,
+    sys::jlong,
     JNIEnv, JavaVM,
 };
 use secrecy::SecretString;
@@ -24,6 +26,8 @@ use thiserror::Error;
 use tokio::runtime::Runtime;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
+
+mod make_writer;
 
 /// The Android client doesn't use platform APIs to detect network connectivity changes,
 /// so we rely on connlib to do so. We have valid use cases for headless Android clients
@@ -107,22 +111,6 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-#[cfg(target_os = "android")]
-fn android_layer<S>() -> impl tracing_subscriber::Layer<S>
-where
-    S: tracing::Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
-{
-    tracing_android::layer("connlib").unwrap()
-}
-
-#[cfg(not(target_os = "android"))]
-fn android_layer<S>() -> impl tracing_subscriber::Layer<S>
-where
-    S: tracing::Subscriber,
-{
-    tracing_subscriber::layer::Identity::new()
-}
-
 fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
@@ -145,7 +133,14 @@ fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
 
     let _ = tracing_subscriber::registry()
         .with(file_layer.with_filter(EnvFilter::new(log_filter.clone())))
-        .with(android_layer().with_filter(EnvFilter::new(log_filter)))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .without_time()
+                .with_level(false)
+                .with_writer(make_writer::MakeWriter::new("connlib"))
+                .with_filter(EnvFilter::new(log_filter)),
+        )
         .try_init();
 
     handle
@@ -197,18 +192,18 @@ impl Callbacks for CallbackHandler {
 
     fn on_update_routes(
         &self,
-        route_list_4: Vec<Cidrv4>,
-        route_list_6: Vec<Cidrv6>,
+        route_list_4: Vec<Ipv4Network>,
+        route_list_6: Vec<Ipv6Network>,
     ) -> Option<RawFd> {
         self.env(|mut env| {
             let route_list_4 = env
-                .new_string(serde_json::to_string(&route_list_4)?)
+                .new_string(serde_json::to_string(&V4RouteList::new(route_list_4))?)
                 .map_err(|source| CallbackError::NewStringFailed {
                     name: "route_list_4",
                     source,
                 })?;
             let route_list_6 = env
-                .new_string(serde_json::to_string(&route_list_6)?)
+                .new_string(serde_json::to_string(&V6RouteList::new(route_list_6))?)
                 .map_err(|source| CallbackError::NewStringFailed {
                     name: "route_list_6",
                     source,
@@ -437,6 +432,8 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
         None => return std::ptr::null(),
     };
 
+    // Note: this pointer will probably be casted into a jlong after it is received by android.
+    // jlong is 64bits so the worst case scenario it will be padded, in that case, when casting it back to a pointer we expect `as` to select only the relevant bytes
     Box::into_raw(Box::new(session))
 }
 
@@ -448,14 +445,15 @@ pub struct SessionWrapper {
 }
 
 /// # Safety
-/// Pointers must be valid
+/// session_ptr should have been obtained from `connect` function
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_disconnect(
     mut env: JNIEnv,
     _: JClass,
-    session: *mut SessionWrapper,
+    session_ptr: jlong,
 ) {
+    let session = session_ptr as *mut SessionWrapper;
     catch_and_throw(&mut env, |_| {
         Box::from_raw(session).inner.disconnect();
     });
@@ -465,15 +463,17 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
 ///
 /// `dns_list` must not have any IPv6 scopes
 /// <https://github.com/firezone/firezone/issues/4350>
+/// <https://github.com/firezone/firezone/issues/5781>
 ///
 /// # Safety
-/// Pointers must be valid
+/// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
+/// at any point before or during operation of this function.
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setDns(
     mut env: JNIEnv,
     _: JClass,
-    session: *const SessionWrapper,
+    session_ptr: jlong,
     dns_list: JString,
 ) {
     let dns = String::from(
@@ -485,18 +485,20 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
             .expect("Invalid string returned from android client"),
     );
     let dns: Vec<IpAddr> = serde_json::from_str(&dns).unwrap();
-    let session = &*session;
+    let session = &*(session_ptr as *const SessionWrapper);
     session.inner.set_dns(dns);
 }
 
 /// # Safety
-/// Pointers must be valid
+/// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
+/// at any point before or during operation of this function.
 #[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reconnect(
     _: JNIEnv,
     _: JClass,
-    session: *const SessionWrapper,
+    session_ptr: jlong,
 ) {
-    (*session).inner.reconnect();
+    let session = &*(session_ptr as *const SessionWrapper);
+    session.inner.reconnect();
 }

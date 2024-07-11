@@ -64,7 +64,7 @@ where
                 }
                 Poll::Ready(Some(Command::Reconnect)) => {
                     self.portal.reconnect();
-                    if let Err(e) = self.tunnel.reconnect() {
+                    if let Err(e) = self.tunnel.reset() {
                         tracing::warn!("Failed to reconnect tunnel: {e}");
                     }
 
@@ -99,31 +99,31 @@ where
 
     fn handle_tunnel_event(&mut self, event: firezone_tunnel::ClientEvent) {
         match event {
-            firezone_tunnel::ClientEvent::NewIceCandidate {
+            firezone_tunnel::ClientEvent::AddedIceCandidates {
                 conn_id: gateway,
-                candidate,
+                candidates,
             } => {
-                tracing::debug!(%gateway, %candidate, "Sending new ICE candidate to gateway");
+                tracing::debug!(%gateway, ?candidates, "Sending new ICE candidates to gateway");
 
                 self.portal.send(
                     PHOENIX_TOPIC,
                     EgressMessages::BroadcastIceCandidates(GatewaysIceCandidates {
                         gateway_ids: vec![gateway],
-                        candidates: vec![candidate],
+                        candidates,
                     }),
                 );
             }
-            firezone_tunnel::ClientEvent::InvalidatedIceCandidate {
+            firezone_tunnel::ClientEvent::RemovedIceCandidates {
                 conn_id: gateway,
-                candidate,
+                candidates,
             } => {
-                tracing::debug!(%gateway, %candidate, "Sending invalidated ICE candidate to gateway");
+                tracing::debug!(%gateway, ?candidates, "Sending invalidated ICE candidates to gateway");
 
                 self.portal.send(
                     PHOENIX_TOPIC,
                     EgressMessages::BroadcastInvalidatedIceCandidates(GatewaysIceCandidates {
                         gateway_ids: vec![gateway],
-                        candidates: vec![candidate],
+                        candidates,
                     }),
                 );
             }
@@ -273,7 +273,6 @@ where
             ReplyMessages::ConnectionDetails(ConnectionDetails {
                 gateway_id,
                 resource_id,
-                relays,
                 site_id,
                 ..
             }) => {
@@ -286,12 +285,10 @@ where
                     return;
                 }
 
-                match self.tunnel.create_or_reuse_connection(
-                    resource_id,
-                    gateway_id,
-                    relays,
-                    site_id,
-                ) {
+                match self
+                    .tunnel
+                    .create_or_reuse_connection(resource_id, gateway_id, site_id)
+                {
                     Ok(Some(firezone_tunnel::Request::NewConnection(connection_request))) => {
                         // TODO: keep track for the response
                         let _id = self.portal.send(
@@ -340,7 +337,9 @@ where
             ErrorReply::UnmatchedTopic => {
                 self.portal.join(topic, ());
             }
-            ErrorReply::NotFound | ErrorReply::Other => {}
+            reason @ (ErrorReply::InvalidVersion | ErrorReply::NotFound | ErrorReply::Other) => {
+                tracing::debug!(%req_id, %reason, "Request failed");
+            }
         }
     }
 }

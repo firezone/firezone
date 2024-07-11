@@ -1,8 +1,8 @@
 import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 
 plugins {
-    id("com.android.application")
     id("org.mozilla.rust-android-gradle.rust-android")
+    id("com.android.application")
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
@@ -53,10 +53,10 @@ android {
         applicationId = "dev.firezone.android"
         // Android 8
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
-        versionName = "1.1.0"
+        versionName = "1.1.4"
         multiDexEnabled = true
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
     }
@@ -127,7 +127,7 @@ android {
             firebaseAppDistribution {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
                 artifactType = "AAB"
-                releaseNotes = "https://github.com/firezone/firezone/releases"
+                releaseNotes = "https://www.firezone.dev/changelog"
                 groups = "firezone-engineering"
                 artifactPath = "app/build/outputs/bundle/release/app-release.aab"
             }
@@ -165,10 +165,10 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
 
     // Lifecycle
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
     implementation("androidx.lifecycle:lifecycle-extensions:2.2.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.1")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.1")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.2")
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.2")
 
     // Navigation
     implementation("androidx.navigation:navigation-fragment-ktx:2.7.7")
@@ -210,11 +210,11 @@ dependencies {
 
     // JUnit
     testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.fragment:fragment-testing:1.6.2")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
+    implementation(platform("com.google.firebase:firebase-bom:33.1.1"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies

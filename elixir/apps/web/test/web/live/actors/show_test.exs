@@ -359,7 +359,7 @@ defmodule Web.Live.Actors.ShowTest do
         fn row ->
           assert row["actions"] =~ "Delete"
           assert row["created"] =~ "by #{actor.name}"
-          assert row["last signed in"] == "never"
+          assert row["last signed in"] == "Never"
         end
       )
       |> with_table_row(
@@ -368,7 +368,7 @@ defmodule Web.Live.Actors.ShowTest do
         fn row ->
           refute row["actions"]
           assert row["created"] =~ "by #{synced_identity.provider.name} sync"
-          assert row["last signed in"] == "never"
+          assert row["last signed in"] == "Never"
         end
       )
     end
@@ -501,7 +501,34 @@ defmodule Web.Live.Actors.ShowTest do
           }
         )
 
-      oidc_identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      {oidc_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      oidc_manually_provisioned_identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          actor: actor,
+          provider: oidc_provider,
+          provider_identifier: Fixtures.Auth.email()
+        )
+
+      oidc_identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          actor: actor,
+          provider: oidc_provider,
+          provider_state: %{
+            "userinfo" => %{"email" => Fixtures.Auth.email()}
+          }
+        )
+
+      oidc_identity_with_no_email =
+        Fixtures.Auth.create_identity(
+          account: account,
+          actor: actor,
+          provider: oidc_provider,
+          provider_identifier: "sub123"
+        )
 
       email_identity =
         Fixtures.Auth.create_identity(account: account, actor: actor, provider: email_provider)
@@ -524,8 +551,22 @@ defmodule Web.Live.Actors.ShowTest do
              |> element("#identity-#{google_identity.id} button", "Send Welcome Email")
              |> has_element?()
 
-      refute lv
+      assert lv
+             |> element(
+               "#identity-#{oidc_manually_provisioned_identity.id} button",
+               "Send Welcome Email"
+             )
+             |> has_element?()
+
+      assert lv
              |> element("#identity-#{oidc_identity.id} button", "Send Welcome Email")
+             |> has_element?()
+
+      refute lv
+             |> element(
+               "#identity-#{oidc_identity_with_no_email.id} button",
+               "Send Welcome Email"
+             )
              |> has_element?()
     end
 
@@ -620,14 +661,20 @@ defmodule Web.Live.Actors.ShowTest do
         |> table_to_map()
 
       assert row1["type"] == "browser"
-      assert row1["expires"] in ["tomorrow", "in 24 hours"]
-      assert row1["last used"] == "never"
+
+      assert String.contains?(row1["expires"], "Tomorrow") ||
+               String.contains?(row1["expires"], "In 24 hours")
+
+      assert row1["last used"] == "Never"
       assert around_now?(row1["created"])
       assert row1["actions"] == "Revoke"
 
       assert row2["type"] == "client"
-      assert row2["expires"] in ["tomorrow", "in 24 hours"]
-      assert row2["last used"] == "never"
+
+      assert String.contains?(row2["expires"], "Tomorrow") ||
+               String.contains?(row2["expires"], "In 24 hours")
+
+      assert row2["last used"] == "Never"
       assert around_now?(row2["created"])
       assert row2["actions"] == "Revoke"
     end
@@ -887,7 +934,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> element("#actor")
              |> render()
              |> vertical_table_to_map() == %{
-               "last signed in" => "never",
+               "last signed in" => "Never",
                "name" => actor.name,
                "role" => "service account"
              }
@@ -1043,14 +1090,20 @@ defmodule Web.Live.Actors.ShowTest do
         |> table_to_map()
 
       assert row1["type"] == "browser"
-      assert row1["expires"] in ["tomorrow", "in 24 hours"]
-      assert row1["last used"] == "never"
+
+      assert String.contains?(row1["expires"], "Tomorrow") ||
+               String.contains?(row1["expires"], "In 24 hours")
+
+      assert row1["last used"] == "Never"
       assert around_now?(row1["created"])
       assert row1["actions"] == "Revoke"
 
       assert row2["type"] == "client"
-      assert row2["expires"] in ["tomorrow", "in 24 hours"]
-      assert row2["last used"] == "never"
+
+      assert String.contains?(row2["expires"], "Tomorrow") ||
+               String.contains?(row2["expires"], "In 24 hours")
+
+      assert row2["last used"] == "Never"
       assert around_now?(row2["created"])
       assert row2["actions"] == "Revoke"
     end

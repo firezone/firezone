@@ -15,7 +15,6 @@ import android.os.Binder
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
-import android.util.Log
 import androidx.lifecycle.MutableLiveData
 import com.google.firebase.crashlytics.ktx.crashlytics
 import com.google.firebase.ktx.Firebase
@@ -29,6 +28,7 @@ import dev.firezone.android.tunnel.model.Resource
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.UUID
+import java.util.concurrent.locks.ReentrantLock
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -50,6 +50,10 @@ class TunnelService : VpnService() {
     private var _tunnelResources: List<Resource> = emptyList()
     private var _tunnelState: State = State.DOWN
     private var networkCallback: NetworkMonitor? = null
+
+    // General purpose mutex lock for preventing network monitoring from calling connlib
+    // during shutdown.
+    val lock = ReentrantLock()
 
     var startedByUser: Boolean = false
     var connlibSessionPtr: Long? = null
@@ -85,8 +89,6 @@ class TunnelService : VpnService() {
     private val callback: ConnlibCallback =
         object : ConnlibCallback {
             override fun onUpdateResources(resourceListJSON: String) {
-                Log.d(TAG, "onUpdateResources: $resourceListJSON")
-                Firebase.crashlytics.log("onUpdateResources: $resourceListJSON")
                 moshi.adapter<List<Resource>>().fromJson(resourceListJSON)?.let {
                     tunnelResources = it
                 }
@@ -97,9 +99,6 @@ class TunnelService : VpnService() {
                 addressIPv6: String,
                 dnsAddresses: String,
             ): Int {
-                Log.d(TAG, "onSetInterfaceConfig: $addressIPv4, $addressIPv6, $dnsAddresses")
-                Firebase.crashlytics.log("onSetInterfaceConfig: $addressIPv4, $addressIPv6, $dnsAddresses")
-
                 // init tunnel config
                 tunnelDnsAddresses = moshi.adapter<MutableList<String>>().fromJson(dnsAddresses)!!
                 tunnelIpv4Address = addressIPv4
@@ -113,8 +112,6 @@ class TunnelService : VpnService() {
                 routes4JSON: String,
                 routes6JSON: String,
             ): Int {
-                Log.d(TAG, "onUpdateRoutes: $routes4JSON, $routes6JSON")
-                Firebase.crashlytics.log("onUpdateRoutes: $routes4JSON, $routes6JSON")
                 val routes4 = moshi.adapter<MutableList<Cidr>>().fromJson(routes4JSON)!!
                 val routes6 = moshi.adapter<MutableList<Cidr>>().fromJson(routes6JSON)!!
 
@@ -128,8 +125,7 @@ class TunnelService : VpnService() {
             // Unexpected disconnect, most likely a 401. Clear the token and initiate a stop of the
             // service.
             override fun onDisconnect(error: String): Boolean {
-                Log.d(TAG, "onDisconnect: $error")
-                Firebase.crashlytics.log("onDisconnect: $error")
+                stopNetworkMonitoring()
 
                 // Clear any user tokens and actorNames
                 repo.clearToken()
@@ -155,7 +151,6 @@ class TunnelService : VpnService() {
                 context: Context,
                 intent: Intent,
             ) {
-                Log.d(TAG, "onReceive")
                 val restrictionsManager = context.getSystemService(Context.RESTRICTIONS_SERVICE) as android.content.RestrictionsManager
                 val newAppRestrictions = restrictionsManager.applicationRestrictions
                 val changed = MANAGED_CONFIGURATIONS.any { newAppRestrictions.getString(it) != appRestrictions.getString(it) }
@@ -179,7 +174,6 @@ class TunnelService : VpnService() {
         flags: Int,
         startId: Int,
     ): Int {
-        Log.d(TAG, "onStartCommand")
         if (intent?.getBooleanExtra("startedByUser", false) == true) {
             startedByUser = true
         }
@@ -189,39 +183,37 @@ class TunnelService : VpnService() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "onCreate")
         registerReceiver(restrictionsReceiver, restrictionsFilter)
     }
 
     override fun onDestroy() {
-        Log.d(TAG, "onDestroy")
         unregisterReceiver(restrictionsReceiver)
         super.onDestroy()
     }
 
     override fun onRevoke() {
-        Log.d(TAG, "onRevoke")
         disconnect()
         super.onRevoke()
     }
 
     // Call this to stop the tunnel and shutdown the service, leaving the token intact.
     fun disconnect() {
-        Log.d(TAG, "disconnect")
+        // Acquire mutex lock
+        lock.lock()
 
-        // Connlib should call onDisconnect() when it's done, with no error.
+        stopNetworkMonitoring()
+
         connlibSessionPtr?.let {
             ConnlibSession.disconnect(it)
         }
 
         shutdown()
+
+        // Release mutex lock
+        lock.unlock()
     }
 
     private fun shutdown() {
-        Log.d(TAG, "shutdown")
-
-        stopNetworkMonitoring()
-
         connlibSessionPtr = null
         stopSelf()
         tunnelState = State.DOWN
@@ -234,7 +226,6 @@ class TunnelService : VpnService() {
         if (!token.isNullOrBlank()) {
             tunnelState = State.CONNECTING
             updateStatusNotification(TunnelStatusNotification.Connecting)
-            System.loadLibrary("connlib")
 
             connlibSessionPtr =
                 ConnlibSession.connect(
@@ -303,8 +294,6 @@ class TunnelService : VpnService() {
                 repo.saveDeviceIdSync(newDeviceId)
                 newDeviceId
             }
-        Log.d(TAG, "Device ID: $deviceId")
-
         return deviceId
     }
 
@@ -317,36 +306,24 @@ class TunnelService : VpnService() {
 
     private fun buildVpnService(): Int {
         Builder().apply {
-            Firebase.crashlytics.log("Building VPN service")
             // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
             allowBypass()
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                Firebase.crashlytics.log("Setting transport info")
                 setMetered(false) // Inherit the metered status from the underlying networks.
             }
 
-            Firebase.crashlytics.log("Setting underlying networks")
             setUnderlyingNetworks(null) // Use all available networks.
 
-            Log.d(TAG, "Routes: $tunnelRoutes")
-            Firebase.crashlytics.log("Routes: $tunnelRoutes")
             tunnelRoutes.forEach {
                 addRoute(it.address, it.prefix)
             }
 
-            Log.d(TAG, "DNS Servers: $tunnelDnsAddresses")
-            Firebase.crashlytics.log("DNS Servers: $tunnelDnsAddresses")
             tunnelDnsAddresses.forEach { dns ->
                 addDnsServer(dns)
             }
 
-            Log.d(TAG, "IPv4 Address: $tunnelIpv4Address")
-            Firebase.crashlytics.log("IPv4 Address: $tunnelIpv4Address")
             addAddress(tunnelIpv4Address!!, 32)
-
-            Log.d(TAG, "IPv6 Address: $tunnelIpv6Address")
-            Firebase.crashlytics.log("IPv6 Address: $tunnelIpv6Address")
             addAddress(tunnelIpv6Address!!, 128)
 
             updateAllowedDisallowedApplications("allowedApplications", ::addAllowedApplication)
@@ -367,7 +344,6 @@ class TunnelService : VpnService() {
         allowOrDisallow: (String) -> Unit,
     ) {
         val applications = appRestrictions.getString(key)
-        Log.d(TAG, "$key: $applications")
         Firebase.crashlytics.log("$key: $applications")
         applications?.let {
             if (it.isNotBlank()) {
@@ -421,7 +397,6 @@ class TunnelService : VpnService() {
         }
 
         fun start(context: Context) {
-            Log.d(TAG, "Starting TunnelService")
             val intent = Intent(context, TunnelService::class.java)
             intent.putExtra("startedByUser", true)
             context.startService(intent)

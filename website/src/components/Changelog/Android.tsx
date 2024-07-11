@@ -1,9 +1,74 @@
+import Link from "next/link";
 import Entries from "./Entries";
 import Entry from "./Entry";
 
 export default function Android() {
   return (
-    <Entries title="Android">
+    <Entries
+      href="https://play.google.com/store/apps/details?id=dev.firezone.android"
+      title="Android"
+    >
+      <Entry version="1.1.3" date={new Date("2024-07-06")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            Fixes{" "}
+            <Link
+              href="https://github.com/firezone/firezone/issues/5781"
+              className="text-accent-500 underline hover:no-underline"
+            >
+              an issue
+            </Link>{" "}
+            where the app would crash if IPv6 scopes were present in the DNS
+            servers discovered on the local system.
+          </li>
+        </ul>
+      </Entry>
+      <Entry version="1.1.2" date={new Date("2024-07-03")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            Prevents Firezone's stub resolver from intercepting DNS record types
+            besides A, AAAA, and PTR. These are now forwarded to your upstream
+            DNS resolver.
+          </li>
+        </ul>
+      </Entry>
+      <Entry version="1.1.1" date={new Date("2024-06-29")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            Fixes an issue that could cause Resources to be unreachable a few
+            hours after roaming networks.
+          </li>
+          <li className="pl-2">
+            Reduces noise in logs for the default log level.
+          </li>
+        </ul>
+      </Entry>
+      <Entry version="1.1.0" date={new Date("2024-06-27")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            Introduces the new DNS routing system supported by 1.1.0 Gateways
+            which results in much more stable connections for DNS Resources,
+            especially when wildcards are used.
+          </li>
+          <li className="pl-2">
+            Improves reliability when roaming between networks.
+          </li>
+          <li className="pl-2">
+            Closes idle connections to Gateways that have not seen traffic for
+            more than 5 minutes which reduces power consumption when not
+            accessing Resources.
+          </li>
+          <li className="pl-2">
+            Updates log file endings to JSONL and adds syslog-style logs for
+            easier readability.
+          </li>
+          <li className="pl-2">Fixes various crashes.</li>
+        </ul>
+        <p>
+          <strong>Note:</strong> Client versions 1.1.x are incompatible with
+          Gateways running 1.0.x.
+        </p>
+      </Entry>
       <Entry version="1.0.4" date={new Date("2024-06-13")}>
         This release fixes a bug where the incorrect Client version could be
         reported to the admin portal.

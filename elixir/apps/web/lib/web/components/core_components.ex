@@ -130,6 +130,7 @@ defmodule Web.CoreComponents do
   slot :tab, required: true, doc: "Tab content" do
     attr :id, :string, required: true, doc: "ID of the tab"
     attr :label, :any, required: true, doc: "Display label for the tab"
+    attr :icon, :string, doc: "Icon for the tab"
     attr :selected, :boolean, doc: "Whether the tab is selected"
     attr :phx_click, :any, doc: "Phoenix click event"
   end
@@ -138,9 +139,9 @@ defmodule Web.CoreComponents do
 
   def tabs(assigns) do
     ~H"""
-    <div class="mb-4">
+    <div class="mb-4 rounded shadow">
       <div
-        class="border-neutral-200 bg-neutral-50 rounded-t"
+        class="border-neutral-100 border-b-2 bg-neutral-50 rounded-t"
         id={"#{@id}-container"}
         phx-hook="Tabs"
         {@rest}
@@ -152,13 +153,18 @@ defmodule Web.CoreComponents do
           role="tablist"
         >
           <%= for tab <- @tab do %>
+            <% tab = Map.put(tab, :icon, Map.get(tab, :icon, nil)) %>
             <li class="mr-2" role="presentation">
               <button
-                class={[
-                  (Map.get(tab, :selected) && "rounded-t text-accent-600 border-accent-600") ||
-                    "text-neutral-500 hover:border-accent-200 hover:text-accent-600",
-                  "inline-block p-4 border-b-2"
-                ]}
+                class={
+                  [
+                    # ! is needed to override Flowbite's default styles
+                    (Map.get(tab, :selected) &&
+                       "!rounded-t-lg !font-medium !text-accent-600 !border-accent-600") ||
+                      "!text-neutral-500 !hover:border-accent-700 !hover:text-accent-600",
+                    "inline-block p-4 border-b-2"
+                  ]
+                }
                 id={"#{tab.id}-tab"}
                 data-tabs-target={"##{tab.id}"}
                 type="button"
@@ -168,7 +174,12 @@ defmodule Web.CoreComponents do
                 phx-click={Map.get(tab, :phx_click)}
                 phx-value-id={tab.id}
               >
-                <%= tab.label %>
+                <span class="flex items-center">
+                  <%= if tab.icon do %>
+                    <.icon name={tab.icon} class="h-4 w-4 mr-2" />
+                  <% end %>
+                  <%= tab.label %>
+                </span>
               </button>
             </li>
           <% end %>
@@ -177,7 +188,7 @@ defmodule Web.CoreComponents do
       <div id={@id}>
         <%= for tab <- @tab do %>
           <div
-            class="hidden rounded-b bg-neutral-50"
+            class="hidden rounded-b bg-white"
             id={tab.id}
             role="tabpanel"
             aria-labelledby={"#{tab.id}-tab"}
@@ -420,7 +431,7 @@ defmodule Web.CoreComponents do
   Renders a [Hero Icon](https://heroicons.com).
 
   Hero icons come in three styles – outline, solid, and mini.
-  By default, the outline style is used, but solid an mini may
+  By default, the outline style is used, but solid and mini may
   be applied by using the `-solid` and `-mini` suffix.
 
   You can customize the size and colors of the icons by setting
@@ -462,6 +473,44 @@ defmodule Web.CoreComponents do
       >
       </path>
     </svg>
+    """
+  end
+
+  def icon(%{name: "terraform"} = assigns) do
+    ~H"""
+    <span class={"inline-flex " <> @class} @rest>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+        <g fill-rule="evenodd">
+          <path d="M77.941 44.5v36.836L46.324 62.918V26.082zm0 0" fill="currentColor" />
+          <path d="M81.41 81.336l31.633-18.418V26.082L81.41 44.5zm0 0" fill="currentColor" />
+          <path
+            d="M11.242 42.36L42.86 60.776V23.941L11.242 5.523zm0 0M77.941 85.375L46.324 66.957v36.82l31.617 18.418zm0 0"
+            fill="currentColor"
+          />
+        </g>
+      </svg>
+    </span>
+    """
+  end
+
+  def icon(%{name: "docker"} = assigns) do
+    ~H"""
+    <span class={"inline-flex " <> @class} @rest>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 756.26 596.9">
+        <defs>
+          <style>
+            .cls-1 {
+              stroke-width: 0px;
+            }
+          </style>
+        </defs>
+        <path
+          fill="currentColor"
+          class="cls-1"
+          d="M743.96,245.25c-18.54-12.48-67.26-17.81-102.68-8.27-1.91-35.28-20.1-65.01-53.38-90.95l-12.32-8.27-8.21,12.4c-16.14,24.5-22.94,57.14-20.53,86.81,1.9,18.28,8.26,38.83,20.53,53.74-46.1,26.74-88.59,20.67-276.77,20.67H.06c-.85,42.49,5.98,124.23,57.96,190.77,5.74,7.35,12.04,14.46,18.87,21.31,42.26,42.32,106.11,73.35,201.59,73.44,145.66.13,270.46-78.6,346.37-268.97,24.98.41,90.92,4.48,123.19-57.88.79-1.05,8.21-16.54,8.21-16.54l-12.3-8.27ZM189.67,206.39h-81.7v81.7h81.7v-81.7ZM295.22,206.39h-81.7v81.7h81.7v-81.7ZM400.77,206.39h-81.7v81.7h81.7v-81.7ZM506.32,206.39h-81.7v81.7h81.7v-81.7ZM84.12,206.39H2.42v81.7h81.7v-81.7ZM189.67,103.2h-81.7v81.7h81.7v-81.7ZM295.22,103.2h-81.7v81.7h81.7v-81.7ZM400.77,103.2h-81.7v81.7h81.7v-81.7ZM400.77,0h-81.7v81.7h81.7V0Z"
+        />
+      </svg>
+    </span>
     """
   end
 
@@ -722,16 +771,50 @@ defmodule Web.CoreComponents do
     assigns = assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
 
     ~H"""
-    <span
-      :if={not is_nil(@datetime)}
-      class="underline underline-offset-2 decoration-dotted"
-      title={@datetime}
-    >
-      <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to) %>
-    </span>
+    <.popover :if={not is_nil(@datetime)}>
+      <:target>
+        <span class="underline underline-offset-2 decoration-dashed">
+          <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to)
+          |> String.capitalize() %>
+        </span>
+      </:target>
+      <:content>
+        <%= @datetime %>
+      </:content>
+    </.popover>
     <span :if={is_nil(@datetime)}>
-      never
+      Never
     </span>
+    """
+  end
+
+  @doc """
+  Renders a popover element with title and content.
+  """
+  slot :target, required: true
+  slot :content, required: true
+
+  def popover(assigns) do
+    # Any id will do
+    target_id = "popover-#{System.unique_integer([:positive, :monotonic])}"
+    assigns = assign(assigns, :target_id, target_id)
+
+    ~H"""
+    <span data-popover-target={@target_id}>
+      <%= render_slot(@target) %>
+    </span>
+
+    <div data-popover id={@target_id} role="tooltip" class={~w[
+      absolute z-10 invisible inline-block
+      text-sm text-neutral-500 transition-opacity
+      duration-50 bg-white border border-neutral-200
+      rounded shadow-sm opacity-0
+      ]}>
+      <div class="px-3 py-2">
+        <%= render_slot(@content) %>
+      </div>
+      <div data-popper-arrow></div>
+    </div>
     """
   end
 
@@ -843,7 +926,7 @@ defmodule Web.CoreComponents do
           Web.Settings.IdentityProviders.Components.view_provider(@account, @identity.provider)
         }
         data-provider-id={@identity.provider.id}
-        title={get_identity_email(@identity)}
+        title={"View identity provider \"#{@identity.provider.adapter}\""}
         class={~w[
           text-xs
           rounded-l
@@ -877,7 +960,8 @@ defmodule Web.CoreComponents do
   end
 
   def identity_has_email?(identity) do
-    not is_nil(provider_email(identity)) or identity.provider.adapter == :email
+    not is_nil(provider_email(identity)) or identity.provider.adapter == :email or
+      identity.provider_identifier =~ "@"
   end
 
   defp provider_email(identity) do
@@ -894,7 +978,7 @@ defmodule Web.CoreComponents do
         :if={Actors.group_synced?(@group)}
         navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @group.provider)}
         data-provider-id={@group.provider_id}
-        title={@group.provider.adapter}
+        title={"View identity provider \"#{@group.provider.adapter}\""}
         class={~w[
           rounded-l
           py-0.5 px-1.5
@@ -906,7 +990,10 @@ defmodule Web.CoreComponents do
       >
         <.provider_icon adapter={@group.provider.adapter} class="h-3.5 w-3.5" />
       </.link>
-      <.link title={@group.name} navigate={~p"/#{@account}/groups/#{@group}"} class={~w[
+      <.link
+        title={"View Group \"#{@group.name}\""}
+        navigate={~p"/#{@account}/groups/#{@group}"}
+        class={~w[
           text-xs
           truncate
           min-w-0
@@ -914,7 +1001,8 @@ defmodule Web.CoreComponents do
           py-0.5
           text-neutral-800
           bg-neutral-100
-        ]}>
+        ]}
+      >
         <%= @group.name %>
       </.link>
     </span>

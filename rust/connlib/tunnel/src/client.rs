@@ -21,7 +21,7 @@ use itertools::Itertools;
 use tracing::Level;
 
 use crate::peer::GatewayOnClient;
-use crate::utils::{earliest, stun, turn};
+use crate::utils::{earliest, turn};
 use crate::{ClientEvent, ClientTunnel};
 use core::fmt;
 use secrecy::{ExposeSecret as _, Secret};
@@ -187,16 +187,10 @@ where
         &mut self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
-        relays: Vec<Relay>,
         site_id: SiteId,
     ) -> anyhow::Result<Option<Request>> {
-        self.role_state.create_or_reuse_connection(
-            resource_id,
-            gateway_id,
-            site_id,
-            stun(&relays, |addr| self.io.sockets_ref().can_handle(addr)),
-            turn(&relays),
-        )
+        self.role_state
+            .create_or_reuse_connection(resource_id, gateway_id, site_id)
     }
 
     pub fn received_offer_response(
@@ -299,7 +293,10 @@ pub(crate) struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
-    pub(crate) fn new(private_key: impl Into<StaticSecret>) -> Self {
+    pub(crate) fn new(
+        private_key: impl Into<StaticSecret>,
+        known_hosts: HashMap<String, Vec<IpAddr>>,
+    ) -> Self {
         Self {
             awaiting_connection_details: Default::default(),
             resources_gateways: Default::default(),
@@ -316,8 +313,26 @@ impl ClientState {
             sites_status: Default::default(),
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
-            stub_resolver: StubResolver::new(),
+            stub_resolver: StubResolver::new(known_hosts),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tunnel_ip4(&self) -> Option<Ipv4Addr> {
+        Some(self.interface_config.as_ref()?.ipv4)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tunnel_ip6(&self) -> Option<Ipv6Addr> {
+        Some(self.interface_config.as_ref()?.ipv6)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> Option<IpAddr> {
+        Some(match dst {
+            IpAddr::V4(_) => self.tunnel_ip4()?.into(),
+            IpAddr::V6(_) => self.tunnel_ip6()?.into(),
+        })
     }
 
     pub(crate) fn resources(&self) -> Vec<callbacks::ResourceDescription> {
@@ -463,7 +478,7 @@ impl ClientState {
             now,
             buffer,
         )
-        .inspect_err(|e| tracing::warn!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;
 
         let Some(peer) = self.peers.get_mut(&conn_id) else {
@@ -473,7 +488,7 @@ impl ClientState {
         };
 
         peer.ensure_allowed_src(&packet)
-            .inspect_err(|e| tracing::warn!(%conn_id, %local, %from, "{e}"))
+            .inspect_err(|e| tracing::debug!(%conn_id, %local, %from, "{e}"))
             .ok()?;
 
         let packet = maybe_mangle_dns_response_from_cidr_resource(
@@ -519,8 +534,6 @@ impl ClientState {
         resource_id: ResourceId,
         gateway_id: GatewayId,
         site_id: SiteId,
-        allowed_stun_servers: HashSet<SocketAddr>,
-        allowed_turn_servers: HashSet<(RelayId, RelaySocket, String, String, String)>,
     ) -> anyhow::Result<Option<Request>> {
         tracing::trace!("Creating or reusing connection");
 
@@ -567,8 +580,6 @@ impl ClientState {
 
         let offer = self.node.new_connection(
             gateway_id,
-            allowed_stun_servers,
-            allowed_turn_servers,
             awaiting_connection_details.last_intent_sent_at,
             Instant::now(),
         );
@@ -809,50 +820,66 @@ impl ClientState {
         self.node.handle_timeout(now);
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
 
+        self.drain_node_events();
+    }
+
+    fn drain_node_events(&mut self) {
+        let mut resources_changed = false; // Track this separately to batch together `ResourcesChanged` events.
+        let mut added_ice_candidates = HashMap::<GatewayId, HashSet<String>>::default();
+        let mut removed_ice_candidates = HashMap::<GatewayId, HashSet<String>>::default();
+
         while let Some(event) = self.node.poll_event() {
             match event {
-                snownet::Event::ConnectionFailed(id) => {
+                snownet::Event::ConnectionFailed(id) | snownet::Event::ConnectionClosed(id) => {
                     self.cleanup_connected_gateway(&id);
-                    self.buffered_events
-                        .push_back(ClientEvent::ResourcesChanged {
-                            resources: self.resources(),
-                        });
-                }
-                snownet::Event::ConnectionsCleared(ids) => {
-                    for id in ids {
-                        self.cleanup_connected_gateway(&id);
-                    }
-                    self.buffered_events
-                        .push_back(ClientEvent::ResourcesChanged {
-                            resources: self.resources(),
-                        });
+                    resources_changed = true;
                 }
                 snownet::Event::NewIceCandidate {
                     connection,
                     candidate,
-                } => self
-                    .buffered_events
-                    .push_back(ClientEvent::NewIceCandidate {
-                        conn_id: connection,
-                        candidate,
-                    }),
+                } => {
+                    added_ice_candidates
+                        .entry(connection)
+                        .or_default()
+                        .insert(candidate);
+                }
                 snownet::Event::InvalidateIceCandidate {
                     connection,
                     candidate,
-                } => self
-                    .buffered_events
-                    .push_back(ClientEvent::InvalidatedIceCandidate {
-                        conn_id: connection,
-                        candidate,
-                    }),
+                } => {
+                    removed_ice_candidates
+                        .entry(connection)
+                        .or_default()
+                        .insert(candidate);
+                }
                 snownet::Event::ConnectionEstablished(id) => {
                     self.update_site_status_by_gateway(&id, Status::Online);
-                    self.buffered_events
-                        .push_back(ClientEvent::ResourcesChanged {
-                            resources: self.resources(),
-                        });
+                    resources_changed = true;
                 }
             }
+        }
+
+        if resources_changed {
+            self.buffered_events
+                .push_back(ClientEvent::ResourcesChanged {
+                    resources: self.resources(),
+                });
+        }
+
+        for (conn_id, candidates) in added_ice_candidates.drain() {
+            self.buffered_events
+                .push_back(ClientEvent::AddedIceCandidates {
+                    conn_id,
+                    candidates,
+                })
+        }
+
+        for (conn_id, candidates) in removed_ice_candidates.drain() {
+            self.buffered_events
+                .push_back(ClientEvent::RemovedIceCandidates {
+                    conn_id,
+                    candidates,
+                })
         }
     }
 
@@ -871,10 +898,11 @@ impl ClientState {
         self.buffered_events.pop_front()
     }
 
-    pub(crate) fn reconnect(&mut self, now: Instant) {
-        tracing::info!("Network change detected");
-        self.node.reconnect(now);
-        self.handle_timeout(now); // Ensure we process all events.
+    pub(crate) fn reset(&mut self) {
+        tracing::info!("Resetting network state");
+
+        self.node.reset();
+        self.drain_node_events();
     }
 
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {
@@ -1458,7 +1486,7 @@ mod tests {
 
     impl ClientState {
         pub fn for_test() -> ClientState {
-            ClientState::new(StaticSecret::random_from_rng(OsRng))
+            ClientState::new(StaticSecret::random_from_rng(OsRng), HashMap::new())
         }
     }
 
@@ -1556,6 +1584,8 @@ mod proptests {
         #[strategy(dns_resource())] resource2: ResourceDescriptionDns,
         #[strategy(cidr_resource(8))] resource3: ResourceDescriptionCidr,
     ) {
+        use callbacks as cb;
+
         let mut client_state = ClientState::for_test();
 
         client_state.add_resources(&[
@@ -1564,31 +1594,21 @@ mod proptests {
         ]);
 
         assert_eq!(
-            hashset(
-                client_state
-                    .resources()
-                    .into_iter()
-                    .map_into::<ResourceDescription>()
-            ),
+            hashset(client_state.resources()),
             hashset([
-                ResourceDescription::Cidr(resource1.clone()),
-                ResourceDescription::Dns(resource2.clone())
+                cb::ResourceDescription::Cidr(resource1.clone().with_status(Status::Unknown)),
+                cb::ResourceDescription::Dns(resource2.clone().with_status(Status::Unknown))
             ])
         );
 
         client_state.add_resources(&[ResourceDescription::Cidr(resource3.clone())]);
 
         assert_eq!(
-            hashset(
-                client_state
-                    .resources()
-                    .into_iter()
-                    .map_into::<ResourceDescription>()
-            ),
+            hashset(client_state.resources()),
             hashset([
-                ResourceDescription::Cidr(resource1),
-                ResourceDescription::Dns(resource2),
-                ResourceDescription::Cidr(resource3)
+                cb::ResourceDescription::Cidr(resource1.with_status(Status::Unknown)),
+                cb::ResourceDescription::Dns(resource2.with_status(Status::Unknown)),
+                cb::ResourceDescription::Cidr(resource3.with_status(Status::Unknown)),
             ])
         );
     }
@@ -1598,6 +1618,8 @@ mod proptests {
         #[strategy(cidr_resource(8))] resource: ResourceDescriptionCidr,
         #[strategy(ip_network(8))] new_address: IpNetwork,
     ) {
+        use callbacks as cb;
+
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[ResourceDescription::Cidr(resource.clone())]);
 
@@ -1609,13 +1631,10 @@ mod proptests {
         client_state.add_resources(&[ResourceDescription::Cidr(updated_resource.clone())]);
 
         assert_eq!(
-            hashset(
-                client_state
-                    .resources()
-                    .into_iter()
-                    .map_into::<ResourceDescription>()
-            ),
-            hashset([ResourceDescription::Cidr(updated_resource),])
+            hashset(client_state.resources()),
+            hashset([cb::ResourceDescription::Cidr(
+                updated_resource.with_status(Status::Unknown)
+            )])
         );
         assert_eq!(
             hashset(client_state.routes()),
@@ -1628,6 +1647,8 @@ mod proptests {
         #[strategy(dns_resource())] resource: ResourceDescriptionDns,
         #[strategy(ip_network(8))] address: IpNetwork,
     ) {
+        use callbacks as cb;
+
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[ResourceDescription::Dns(resource.clone())]);
 
@@ -1642,13 +1663,10 @@ mod proptests {
         client_state.add_resources(&[ResourceDescription::Cidr(dns_as_cidr_resource.clone())]);
 
         assert_eq!(
-            hashset(
-                client_state
-                    .resources()
-                    .into_iter()
-                    .map_into::<ResourceDescription>()
-            ),
-            hashset([ResourceDescription::Cidr(dns_as_cidr_resource),])
+            hashset(client_state.resources()),
+            hashset([cb::ResourceDescription::Cidr(
+                dns_as_cidr_resource.with_status(Status::Unknown)
+            )])
         );
         assert_eq!(
             hashset(client_state.routes()),
@@ -1661,6 +1679,8 @@ mod proptests {
         #[strategy(dns_resource())] dns_resource: ResourceDescriptionDns,
         #[strategy(cidr_resource(8))] cidr_resource: ResourceDescriptionCidr,
     ) {
+        use callbacks as cb;
+
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[
             ResourceDescription::Dns(dns_resource.clone()),
@@ -1670,13 +1690,10 @@ mod proptests {
         client_state.remove_resources(&[dns_resource.id]);
 
         assert_eq!(
-            hashset(
-                client_state
-                    .resources()
-                    .into_iter()
-                    .map_into::<ResourceDescription>()
-            ),
-            hashset([ResourceDescription::Cidr(cidr_resource.clone())])
+            hashset(client_state.resources()),
+            hashset([cb::ResourceDescription::Cidr(
+                cidr_resource.clone().with_status(Status::Unknown)
+            )])
         );
         assert_eq!(
             hashset(client_state.routes()),
@@ -1696,6 +1713,8 @@ mod proptests {
         #[strategy(cidr_resource(8))] cidr_resource1: ResourceDescriptionCidr,
         #[strategy(cidr_resource(8))] cidr_resource2: ResourceDescriptionCidr,
     ) {
+        use callbacks as cb;
+
         let mut client_state = ClientState::for_test();
         client_state.add_resources(&[
             ResourceDescription::Dns(dns_resource1),
@@ -1708,15 +1727,10 @@ mod proptests {
         ]);
 
         assert_eq!(
-            hashset(
-                client_state
-                    .resources()
-                    .into_iter()
-                    .map_into::<ResourceDescription>()
-            ),
+            hashset(client_state.resources()),
             hashset([
-                ResourceDescription::Dns(dns_resource2),
-                ResourceDescription::Cidr(cidr_resource2.clone()),
+                cb::ResourceDescription::Dns(dns_resource2.with_status(Status::Unknown)),
+                cb::ResourceDescription::Cidr(cidr_resource2.clone().with_status(Status::Unknown)),
             ])
         );
         assert_eq!(

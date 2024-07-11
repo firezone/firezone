@@ -241,7 +241,8 @@ defmodule Web.FormComponents do
           "bg-neutral-50",
           "border border-neutral-300 rounded",
           "min-h-[6rem]",
-          @errors != [] && "border-rose-400 focus:border-rose-400"
+          @errors != [] && "border-rose-400 focus:border-rose-400",
+          @class
         ]}
         {@rest}
       ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
@@ -317,7 +318,8 @@ defmodule Web.FormComponents do
           class={[
             "text-sm text-neutral-900 bg-transparent border-0",
             "flex-1 min-w-0 p-2.5 block w-full",
-            "focus:outline-none focus:border-0 focus:ring-0"
+            "focus:outline-none focus:border-0 focus:ring-0",
+            @class
           ]}
           {@rest}
         />
@@ -344,7 +346,8 @@ defmodule Web.FormComponents do
           "bg-neutral-50 text-neutral-900 text-sm",
           "border border-neutral-300",
           "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-200 disabled:shadow-none",
-          @errors != [] && "border-rose-400 focus:border-rose-400"
+          @errors != [] && "border-rose-400 focus:border-rose-400",
+          @class
         ]}
         {@rest}
       />

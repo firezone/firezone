@@ -8,7 +8,7 @@
 import Foundation
 
 #if os(iOS)
-  import UIKit.UIDevice
+import UIKit
 #endif
 
 public class DeviceMetadata {
@@ -22,21 +22,24 @@ public class DeviceMetadata {
     return !fileExists
   }
 
-  public static func getDeviceName() -> String? {
+  public static func getDeviceName() -> String {
     // Returns a generic device name on iOS 16 and higher
     // See https://github.com/firezone/firezone/issues/3034
-    #if os(iOS)
-      return UIDevice.current.name
-    #else
-      // Fallback to connlib's gethostname()
-      return nil
-    #endif
+#if os(iOS)
+    return UIDevice.current.name
+#else
+    // Use hostname
+    return ProcessInfo.processInfo.hostName
+#endif
   }
 
-  public static func getOSVersion() -> String? {
-    // Returns the OS version
+  public static func getOSVersion() -> String {
+    // Returns the OS version. Must be valid ASCII.
     // See https://github.com/firezone/firezone/issues/3034
-    return ProcessInfo.processInfo.operatingSystemVersionString
+    // See https://github.com/firezone/firezone/issues/5467
+    let os = ProcessInfo.processInfo.operatingSystemVersion
+
+    return "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"
   }
 
   // Returns the Firezone ID as cached by the application or generates and persists a new one

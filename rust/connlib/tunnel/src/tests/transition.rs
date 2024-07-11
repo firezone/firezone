@@ -1,4 +1,7 @@
-use super::strategies::*;
+use super::{
+    sim_net::{any_ip_stack, any_port},
+    strategies::*,
+};
 use connlib_shared::{
     messages::{
         client::{ResourceDescriptionCidr, ResourceDescriptionDns},
@@ -11,7 +14,7 @@ use hickory_proto::rr::RecordType;
 use proptest::{prelude::*, sample};
 use std::{
     collections::{HashMap, HashSet},
-    net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
 
 /// The possible transitions of the state machine.
@@ -75,8 +78,9 @@ pub(crate) enum Transition {
 
     /// Roam the client to a new pair of sockets.
     RoamClient {
-        ip4_socket: Option<SocketAddrV4>,
-        ip6_socket: Option<SocketAddrV6>,
+        ip4: Option<Ipv4Addr>,
+        ip6: Option<Ipv6Addr>,
+        port: u16,
     },
 }
 
@@ -214,20 +218,9 @@ pub(crate) fn question_mark_wildcard_dns_resource() -> impl Strategy<Value = Tra
 }
 
 pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {
-    (
-        firezone_relay::proptest::any_ip_stack(), // We are re-using the strategy here because it is exactly what we need although we are generating a node here and not a relay.
-        any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
-        any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
-    )
-        .prop_map(move |(ip_stack, v4_port, v6_port)| {
-            let ip4_socket = ip_stack.as_v4().map(|ip| SocketAddrV4::new(*ip, v4_port));
-            let ip6_socket = ip_stack
-                .as_v6()
-                .map(|ip| SocketAddrV6::new(*ip, v6_port, 0, 0));
-
-            Transition::RoamClient {
-                ip4_socket,
-                ip6_socket,
-            }
-        })
+    (any_ip_stack(), any_port()).prop_map(move |(ip_stack, port)| Transition::RoamClient {
+        ip4: ip_stack.as_v4().copied(),
+        ip6: ip_stack.as_v6().copied(),
+        port,
+    })
 }

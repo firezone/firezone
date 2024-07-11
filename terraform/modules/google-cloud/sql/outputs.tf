@@ -15,5 +15,5 @@ output "read-replicas" {
 }
 
 output "bi_instance_ip_address" {
-  value = length(var.database_read_replica_locations) > 0 ? lookup(values(google_sql_database_instance.read-replica)[0], "ip_address", google_sql_database_instance.master.private_ip_address) : google_sql_database_instance.master.private_ip_address
+  value = try(google_sql_database_instance.read-replica[var.database_read_replica_locations[0].region].ip_address[0], google_sql_database_instance.master.private_ip_address)
 }

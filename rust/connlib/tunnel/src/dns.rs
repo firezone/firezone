@@ -5,8 +5,9 @@ use connlib_shared::DomainName;
 use domain::base::RelativeName;
 use domain::base::{
     iana::{Class, Rcode, Rtype},
-    Message, MessageBuilder, Question, ToName,
+    Message, MessageBuilder, ToName,
 };
+use domain::rdata::AllRecordData;
 use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::error::{ProtoError, ProtoErrorKind};
 use hickory_resolver::proto::op::MessageType;
@@ -72,31 +73,90 @@ impl Clone for DnsQuery<'static> {
     }
 }
 
+struct KnownHosts {
+    fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
+    ips_to_fqdn: HashMap<IpAddr, DomainName>,
+}
+
+impl KnownHosts {
+    fn new(hosts: HashMap<String, Vec<IpAddr>>) -> KnownHosts {
+        KnownHosts {
+            fqdn_to_ips: fqdn_to_ips_for_known_hosts(&hosts),
+            ips_to_fqdn: ips_to_fqdn_for_known_hosts(&hosts),
+        }
+    }
+
+    fn get_records(
+        &self,
+        qtype: Rtype,
+        domain: &DomainName,
+    ) -> Option<Vec<AllRecordData<Vec<u8>, DomainName>>> {
+        match qtype {
+            Rtype::A => {
+                let ips = self.fqdn_to_ips.get::<DomainName>(domain)?;
+
+                Some(to_a_records(ips.iter().copied()))
+            }
+
+            Rtype::AAAA => {
+                let ips = self.fqdn_to_ips.get::<DomainName>(domain)?;
+
+                Some(to_aaaa_records(ips.iter().copied()))
+            }
+            Rtype::PTR => {
+                let ip = reverse_dns_addr(&domain.to_string())?;
+                let fqdn = self.ips_to_fqdn.get(&ip)?;
+
+                Some(vec![AllRecordData::Ptr(domain::rdata::Ptr::new(
+                    fqdn.clone(),
+                ))])
+            }
+            _ => None,
+        }
+    }
+}
+
 pub struct StubResolver {
     fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
     ips_to_fqdn: HashMap<IpAddr, DomainName>,
     ip_provider: IpProvider,
     /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
     dns_resources: HashMap<String, ResourceDescriptionDns>,
+    /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
+    known_hosts: KnownHosts,
 }
 
-// We don't need to support multiple questions/qname in a single query because
-// nobody does it and since this run with each packet we want to squeeze as much optimization
-// as we can therefore we won't do it.
-//
-// See: https://stackoverflow.com/a/55093896
-/// Parses an incoming packet as a DNS query and decides how to respond to it
-///
-/// Returns:
-/// - `None` if the packet is not a valid DNS query destined for one of our sentinel resolvers
-/// - Otherwise, a strategy for responding to the query
+fn fqdn_to_ips_for_known_hosts(
+    hosts: &HashMap<String, Vec<IpAddr>>,
+) -> HashMap<DomainName, Vec<IpAddr>> {
+    hosts
+        .iter()
+        .filter_map(|(d, a)| DomainName::vec_from_str(d).ok().map(|d| (d, a.clone())))
+        .collect()
+}
+
+fn ips_to_fqdn_for_known_hosts(
+    hosts: &HashMap<String, Vec<IpAddr>>,
+) -> HashMap<IpAddr, DomainName> {
+    hosts
+        .iter()
+        .filter_map(|(d, a)| {
+            DomainName::vec_from_str(d)
+                .ok()
+                .map(|d| a.iter().map(move |a| (*a, d.clone())))
+        })
+        .flatten()
+        .collect()
+}
+
 impl StubResolver {
-    pub(crate) fn new() -> StubResolver {
+    pub(crate) fn new(known_hosts: HashMap<String, Vec<IpAddr>>) -> StubResolver {
         StubResolver {
             fqdn_to_ips: Default::default(),
             ips_to_fqdn: Default::default(),
             ip_provider: IpProvider::for_resources(),
             dns_resources: Default::default(),
+            known_hosts: KnownHosts::new(known_hosts),
         }
     }
 
@@ -131,6 +191,20 @@ impl StubResolver {
         });
     }
 
+    fn get_or_assign_a_records(
+        &mut self,
+        fqdn: DomainName,
+    ) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
+        to_a_records(self.get_or_assign_ips(fqdn).into_iter())
+    }
+
+    fn get_or_assign_aaaa_records(
+        &mut self,
+        fqdn: DomainName,
+    ) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
+        to_aaaa_records(self.get_or_assign_ips(fqdn).into_iter())
+    }
+
     fn get_or_assign_ips(&mut self, fqdn: DomainName) -> Vec<IpAddr> {
         let ips = self
             .fqdn_to_ips
@@ -150,50 +224,30 @@ impl StubResolver {
         ips
     }
 
-    // This function will panic if it's called with an invalid PTR question
-    fn get_records<N: ToName>(&mut self, question: &Question<N>) -> Vec<RecordData<DomainName>> {
-        match question.qtype() {
-            Rtype::A => self
-                .get_or_assign_ips(question.qname().to_name())
-                .iter()
-                .copied()
-                .filter_map(get_v4)
-                .map(domain::rdata::A::new)
-                .map(RecordData::A)
-                .collect_vec(),
-
-            Rtype::AAAA => self
-                .get_or_assign_ips(question.qname().to_name())
-                .iter()
-                .copied()
-                .filter_map(get_v6)
-                .map(domain::rdata::Aaaa::new)
-                .map(RecordData::Aaaa)
-                .collect_vec(),
-            Rtype::PTR => {
-                let ip = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())
-                    .expect("ptr isn't a valid");
-                let Some(fqdn) = self.ips_to_fqdn.get(&ip) else {
-                    debug_assert!(false, "we expect this function to be called only with PTR records for resource ips");
-                    return Vec::new();
-                };
-
-                vec![RecordData::Ptr(domain::rdata::Ptr::new(fqdn.clone()))]
-            }
-            _ => Vec::new(),
-        }
+    fn is_fqdn_resource(&self, domain_name: &DomainName) -> bool {
+        get_description(domain_name, &self.dns_resources).is_some()
     }
 
-    fn is_resource(&self, question: &Question<impl ToName>) -> bool {
-        // TODO: we can shave off time from the lookup if we keep a hashset of ips
-        match question.qtype() {
-            Rtype::PTR => reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())
-                .is_some_and(|addr| self.fqdn_to_ips.values().flatten().contains(&addr)),
-            _ => get_description(&question.qname().to_name(), &self.dns_resources).is_some(),
-        }
+    fn resource_address_name_by_reservse_dns(
+        &self,
+        reverse_dns_name: &DomainName,
+    ) -> Option<DomainName> {
+        let address = reverse_dns_addr(&reverse_dns_name.to_string())?;
+
+        self.ips_to_fqdn.get(&address).cloned()
     }
 
     // TODO: we can save a few allocations here still
+    // We don't need to support multiple questions/qname in a single query because
+    // nobody does it and since this run with each packet we want to squeeze as much optimization
+    // as we can therefore we won't do it.
+    //
+    // See: https://stackoverflow.com/a/55093896
+    /// Parses an incoming packet as a DNS query and decides how to respond to it
+    ///
+    /// Returns:
+    /// - `None` if the packet is not a valid DNS query destined for one of our sentinel resolvers
+    /// - Otherwise, a strategy for responding to the query
     pub(crate) fn handle<'a>(
         &mut self,
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
@@ -207,24 +261,59 @@ impl StubResolver {
         }
 
         let question = message.first_question()?;
+        let domain = question.qname().to_vec();
+        let qtype = question.qtype();
 
-        tracing::trace!("Parsed packet as DNS query: '{question}'");
+        tracing::trace!("Parsed packet as DNS query: '{qtype} {domain}'");
 
-        if !self.is_resource(&question) {
-            return Some(ResolveStrategy::ForwardQuery(DnsQuery {
-                name: ToName::to_vec(question.qname()),
-                record_type: u16::from(question.qtype()).into(),
-                query: packet,
-            }));
+        if let Some(records) = self.known_hosts.get_records(qtype, &domain) {
+            let response = build_dns_with_answer(message, domain, records)?;
+            return Some(ResolveStrategy::LocalResponse(build_response(
+                packet, response,
+            )));
         }
 
-        let resource_records = self.get_records(&question);
+        let resource_records = match qtype {
+            Rtype::A if self.is_fqdn_resource(&domain) => {
+                self.get_or_assign_a_records(domain.clone())
+            }
+            Rtype::AAAA if self.is_fqdn_resource(&domain) => {
+                self.get_or_assign_aaaa_records(domain.clone())
+            }
+            Rtype::PTR => {
+                let fqdn = self.resource_address_name_by_reservse_dns(&domain)?;
 
-        let response = build_dns_with_answer(message, question.qname(), resource_records)?;
+                vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
+            }
+            _ => {
+                return Some(ResolveStrategy::ForwardQuery(DnsQuery {
+                    name: domain,
+                    record_type: u16::from(qtype).into(),
+                    query: packet,
+                }))
+            }
+        };
+
+        let response = build_dns_with_answer(message, domain, resource_records)?;
+
         Some(ResolveStrategy::LocalResponse(build_response(
             packet, response,
         )))
     }
+}
+
+fn to_a_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
+    ips.filter_map(get_v4)
+        .map(domain::rdata::A::new)
+        .map(AllRecordData::A)
+        .collect_vec()
+}
+
+fn to_aaaa_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
+    ips.filter_map(get_v6)
+        .map(domain::rdata::Aaaa::new)
+        .map(AllRecordData::Aaaa)
+        .collect_vec()
 }
 
 pub(crate) fn build_response_from_resolve_result(
@@ -300,44 +389,23 @@ fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> IpPack
     IpPacket::owned(res_buf).unwrap()
 }
 
-fn build_dns_with_answer<N>(
+fn build_dns_with_answer(
     message: &Message<[u8]>,
-    qname: &N,
-    records: Vec<RecordData<DomainName>>,
-) -> Option<Vec<u8>>
-where
-    N: ToName + ?Sized,
-{
+    qname: DomainName,
+    records: Vec<AllRecordData<Vec<u8>, DomainName>>,
+) -> Option<Vec<u8>> {
     let msg_buf = Vec::with_capacity(message.as_slice().len() * 2);
     let msg_builder = MessageBuilder::from_target(msg_buf).expect(
         "Developer error: we should be always be able to create a MessageBuilder from a Vec",
     );
 
-    if records.is_empty() {
-        tracing::debug!("No records for {}, returning NXDOMAIN", qname.to_vec());
-        return Some(
-            msg_builder
-                .start_answer(message, Rcode::NXDOMAIN)
-                .ok()?
-                .finish(),
-        );
-    }
-
     let mut answer_builder = msg_builder.start_answer(message, Rcode::NOERROR).ok()?;
     answer_builder.header_mut().set_ra(true);
 
     for record in records {
-        match record {
-            RecordData::A(record) => answer_builder
-                .push((qname, Class::IN, DNS_TTL, record))
-                .ok()?,
-            RecordData::Aaaa(record) => answer_builder
-                .push((qname, Class::IN, DNS_TTL, record))
-                .ok()?,
-            RecordData::Ptr(record) => answer_builder
-                .push((qname, Class::IN, DNS_TTL, record))
-                .ok()?,
-        }
+        answer_builder
+            .push((&qname, Class::IN, DNS_TTL, record))
+            .ok()?;
     }
 
     Some(answer_builder.finish())
@@ -347,15 +415,6 @@ pub fn as_dns<'a>(pkt: &'a UdpPacket<'a>) -> Option<&'a Message<[u8]>> {
     (pkt.get_destination() == DNS_PORT)
         .then(|| Message::from_slice(pkt.payload()).ok())
         .flatten()
-}
-
-// No object safety for ComposeRecordData
-// meaning we need to have this enum to move them around
-#[derive(Clone)]
-enum RecordData<T> {
-    A(domain::rdata::A),
-    Aaaa(domain::rdata::Aaaa),
-    Ptr(domain::rdata::Ptr<T>),
 }
 
 pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {

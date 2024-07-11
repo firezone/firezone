@@ -6,6 +6,7 @@ use crate::{
 };
 use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
+use hex_display::HexDisplayExt as _;
 use rand::random;
 use std::{
     borrow::Cow,
@@ -262,7 +263,7 @@ impl Allocation {
     /// Refresh this allocation.
     ///
     /// In case refreshing the allocation fails, we will attempt to make a new one.
-    #[tracing::instrument(level = "debug", skip_all, fields(relay = ?self.active_socket))]
+    #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
     pub fn refresh(&mut self, now: Instant) {
         self.update_now(now);
 
@@ -286,7 +287,7 @@ impl Allocation {
         self.send_binding_requests();
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(id, method, class, rtt))]
+    #[tracing::instrument(level = "debug", skip_all, fields(tid, method, class, rtt))]
     pub fn handle_input(
         &mut self,
         from: SocketAddr,
@@ -312,7 +313,10 @@ impl Allocation {
 
         let transaction_id = message.transaction_id();
 
-        Span::current().record("id", field::debug(transaction_id));
+        Span::current().record(
+            "tid",
+            field::display(format_args!("{:X}", transaction_id.as_bytes().hex())),
+        );
         Span::current().record("method", field::display(message.method()));
         Span::current().record("class", field::display(message.class()));
 
@@ -427,18 +431,22 @@ impl Allocation {
                 let maybe_candidate = message.attributes().find_map(|a| srflx_candidate(local, a));
                 update_candidate(maybe_candidate, current_srflx_candidate, &mut self.events);
 
-                self.log_update();
+                self.log_update(now);
 
                 // Second, check if we have already determined which socket to use for this relay.
                 // We send 2 BINDING requests to start with (one for each IP version) and the first one coming back wins.
                 // Thus, if we already have a socket set, we are done with processing this binding request.
 
-                if self.active_socket.is_some() {
+                if let Some(active_socket) = self.active_socket {
+                    tracing::debug!(%active_socket, additional_socket = %original_dst, "Relay supports dual-stack but we've already picked a socket");
+
                     return true;
                 }
 
                 // If the socket isn't set yet, use the `original_dst` as the primary socket.
                 self.active_socket = Some(original_dst);
+
+                tracing::debug!(active_socket = %original_dst, "Updating active socket");
 
                 if self.has_allocation() {
                     self.authenticate_and_queue(make_refresh_request(), None);
@@ -477,7 +485,7 @@ impl Allocation {
                     &mut self.events,
                 );
 
-                self.log_update();
+                self.log_update(now);
 
                 while let Some(peer) = self.buffered_channel_bindings.pop() {
                     debug_assert!(
@@ -495,7 +503,7 @@ impl Allocation {
 
                 self.allocation_lifetime = Some((now, lifetime.lifetime()));
 
-                self.log_update();
+                self.log_update(now);
             }
             CHANNEL_BIND => {
                 let Some(channel) = original_request
@@ -528,7 +536,9 @@ impl Allocation {
         packet: &'p [u8],
         now: Instant,
     ) -> Option<(SocketAddr, &'p [u8], Socket)> {
-        if from != self.active_socket? {
+        if !self.server.matches(from) {
+            tracing::trace!(?self.server, "Packet is not for this allocation");
+
             return None;
         }
 
@@ -547,7 +557,7 @@ impl Allocation {
         Some((peer, payload, socket))
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(relay = ?self.active_socket))]
+    #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
     pub fn handle_timeout(&mut self, now: Instant) {
         self.update_now(now);
 
@@ -617,11 +627,7 @@ impl Allocation {
     }
 
     pub fn poll_event(&mut self) -> Option<CandidateEvent> {
-        let next_event = self.events.pop_front()?;
-
-        tracing::debug!(?next_event);
-
-        Some(next_event)
+        self.events.pop_front()
     }
 
     pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
@@ -642,7 +648,7 @@ impl Allocation {
         earliest_timeout
     }
 
-    #[tracing::instrument(level = "debug", skip(self, now), fields(relay = ?self.active_socket))]
+    #[tracing::instrument(level = "debug", skip(self, now), fields(active_socket = ?self.active_socket))]
     pub fn bind_channel(&mut self, peer: SocketAddr, now: Instant) {
         if self.is_suspended() {
             tracing::debug!("Allocation is suspended");
@@ -753,13 +759,13 @@ impl Allocation {
         self.credentials.is_some()
     }
 
-    fn log_update(&self) {
+    fn log_update(&self, now: Instant) {
         tracing::info!(
-            srflx_ip4 = ?self.ip4_srflx_candidate,
-            srflx_ip6 = ?self.ip6_srflx_candidate,
-            relay_ip4 = ?self.ip4_allocation,
-            relay_ip6 = ?self.ip6_allocation,
-            lifetime = ?self.allocation_lifetime,
+            srflx_ip4 = ?self.ip4_srflx_candidate.as_ref().map(|c| c.addr()),
+            srflx_ip6 = ?self.ip6_srflx_candidate.as_ref().map(|c| c.addr()),
+            relay_ip4 = ?self.ip4_allocation.as_ref().map(|c| c.addr()),
+            relay_ip6 = ?self.ip6_allocation.as_ref().map(|c| c.addr()),
+            remaining_lifetime = ?self.allocation_lifetime.and_then(|(created_at, d)| d.checked_sub(now.checked_duration_since(created_at)?)),
             "Updated allocation"
         );
     }
@@ -1132,7 +1138,7 @@ impl Default for ChannelBindings {
     fn default() -> Self {
         Self {
             inner: Default::default(),
-            next_channel: ChannelBindings::FIRST_CHANNEL,
+            next_channel: Self::FIRST_CHANNEL,
         }
     }
 }
@@ -1144,8 +1150,13 @@ impl ChannelBindings {
     const LAST_CHANNEL: u16 = 0x4FFF;
 
     fn try_decode<'p>(&mut self, packet: &'p [u8], now: Instant) -> Option<(SocketAddr, &'p [u8])> {
-        let (channel_number, payload) = crate::channel_data::decode(packet).ok()?;
-        let channel = self.inner.get_mut(&channel_number)?;
+        let (channel_number, payload) = crate::channel_data::decode(packet)
+            .inspect_err(|e| tracing::debug!("Malformed channel data message: {e}"))
+            .ok()?;
+        let Some(channel) = self.inner.get_mut(&channel_number) else {
+            tracing::debug!(%channel_number, "Unknown channel");
+            return None;
+        };
 
         if !channel.bound {
             tracing::debug!(peer = %channel.peer, number = %channel_number, "Dropping message from channel because it is not yet bound");
@@ -1158,26 +1169,16 @@ impl ChannelBindings {
     }
 
     fn new_channel_to_peer(&mut self, peer: SocketAddr, now: Instant) -> Option<u16> {
-        if self.next_channel == Self::LAST_CHANNEL {
-            self.next_channel = Self::FIRST_CHANNEL;
+        let number = self.next_channel_number(now)?;
+
+        if number == Self::LAST_CHANNEL {
+            self.next_channel = Self::FIRST_CHANNEL
+        } else {
+            self.next_channel = number + 1;
         }
 
-        let channel = loop {
-            match self.inner.get(&self.next_channel) {
-                Some(channel) if channel.can_rebind(now) => break self.next_channel,
-                None => break self.next_channel,
-                _ => {}
-            }
-
-            self.next_channel += 1;
-
-            if self.next_channel >= Self::LAST_CHANNEL {
-                return None;
-            }
-        };
-
         self.inner.insert(
-            channel,
+            number,
             Channel {
                 peer,
                 bound: false,
@@ -1186,7 +1187,24 @@ impl ChannelBindings {
             },
         );
 
-        Some(channel)
+        Some(number)
+    }
+
+    /// Picks the next channel number to use.
+    fn next_channel_number(&self, now: Instant) -> Option<u16> {
+        // Cycle through all channel numbers, starting with `self.next_channel`.
+        let candidates =
+            (self.next_channel..=Self::LAST_CHANNEL).chain(Self::FIRST_CHANNEL..self.next_channel);
+
+        for number in candidates {
+            match self.inner.get(&number) {
+                Some(channel) if channel.can_rebind(now) => return Some(number),
+                None => return Some(number),
+                _ => {}
+            }
+        }
+
+        None
     }
 
     fn channels_to_refresh<'s>(
@@ -1228,7 +1246,6 @@ impl ChannelBindings {
 
     fn clear(&mut self) {
         self.inner.clear();
-        self.next_channel = Self::FIRST_CHANNEL;
     }
 }
 
@@ -1348,7 +1365,7 @@ mod tests {
         let mut channel_bindings = ChannelBindings::default();
         let start = Instant::now();
 
-        for channel in ChannelBindings::FIRST_CHANNEL..ChannelBindings::LAST_CHANNEL {
+        for channel in ChannelBindings::FIRST_CHANNEL..=ChannelBindings::LAST_CHANNEL {
             let allocated_channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
 
             assert_eq!(channel, allocated_channel)
@@ -1364,6 +1381,49 @@ mod tests {
             )
             .unwrap();
         assert_eq!(channel, ChannelBindings::FIRST_CHANNEL);
+    }
+
+    #[test]
+    fn uses_unused_channels_first_before_reusing_expired_one() {
+        let mut channel_bindings = ChannelBindings::default();
+        let mut now = Instant::now();
+
+        for _ in 0..100 {
+            let allocated_channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+            channel_bindings.set_confirmed(allocated_channel, now);
+        }
+
+        now += Duration::from_secs(60 * 20); // All channels are expired and could be re-bound.
+
+        let channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+
+        assert_eq!(channel, ChannelBindings::FIRST_CHANNEL + 100)
+    }
+
+    #[test]
+    fn uses_next_channel_as_long_as_its_available_before_reusing() {
+        let mut channel_bindings = ChannelBindings::default();
+        let mut now = Instant::now();
+
+        for _ in 0..=4095 {
+            let allocated_channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+            channel_bindings.set_confirmed(allocated_channel, now);
+        }
+
+        now += Duration::from_secs(15 * 60); // All channels are expired and could be re-bound.
+        channel_bindings.set_confirmed(ChannelBindings::LAST_CHANNEL, now); // Last channel is in use
+
+        let channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+        channel_bindings.set_confirmed(channel, now);
+
+        assert_eq!(channel, ChannelBindings::FIRST_CHANNEL);
+
+        now += Duration::from_secs(15 * 60); // All channels are expired and could be re-bound.
+        channel_bindings.set_confirmed(ChannelBindings::LAST_CHANNEL, now); // Last channel is in use
+        let channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+
+        // We don't reuse the first channel, instead we should prefer the second channel
+        assert_ne!(channel, ChannelBindings::FIRST_CHANNEL)
     }
 
     #[test]

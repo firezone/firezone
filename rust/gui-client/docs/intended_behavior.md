@@ -68,7 +68,7 @@ x86_64 only, see issue #2992. Best performed on a clean VM.
 1. Expect "Firezone connected" notification
 1. Check the IP again, expect the gateway's IP
 1. Export the logs
-1. Expect the zip file to start with "firezone_logs_"
+1. Expect the zip file to start with `firezone_logs_`
 1. Expect the zip to contain a single directory in the root of the zip, to prevent zip bombing
 1. Expect two subdirectories in the zip, "connlib", and "app", with 2 files each, totalling 4 files
 

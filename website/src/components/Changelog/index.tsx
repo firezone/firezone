@@ -9,8 +9,20 @@ import GUI from "./GUI";
 import Headless from "./Headless";
 import { HiServerStack } from "react-icons/hi2";
 import { FaApple, FaAndroid, FaWindows, FaLinux } from "react-icons/fa";
+import { useEffect, useState } from "react";
 
-export default function Changelog({ sha }: { sha: string | undefined }) {
+export default function Changelog() {
+  const [sha, setSha] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    const fetchSha = async () => {
+      const response = await fetch("/api/deployed-sha");
+      const data = await response.json();
+      setSha(data.sha);
+    };
+    fetchSha();
+  }, []);
+
   return (
     <section className="mx-auto max-w-xl md:max-w-screen-xl">
       <TabsGroup>

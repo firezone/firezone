@@ -29,8 +29,19 @@ use wintun::Adapter;
 
 // Not sure how this and `TUNNEL_NAME` differ
 const ADAPTER_NAME: &str = "Firezone";
+/// The ring buffer size used for Wintun.
+///
+/// Must be a power of two within a certain range <https://docs.rs/wintun/latest/wintun/struct.Adapter.html#method.start_session>
+/// 0x10_0000 is 1 MiB, which performs decently on the Cloudflare speed test.
+/// At 1 Gbps that's about 8 ms, so any delay where Firezone isn't scheduled by the OS
+/// onto a core for more than 8 ms would result in packet drops.
+///
+/// We think 1 MiB is similar to the buffer size on Linux / macOS but we're not sure
+/// where that is configured.
+const RING_BUFFER_SIZE: u32 = 0x10_0000;
 
-pub(crate) struct Tun {
+// Must be public so the benchmark binary can find it
+pub struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
     /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
@@ -42,6 +53,11 @@ pub(crate) struct Tun {
 
 impl Drop for Tun {
     fn drop(&mut self) {
+        tracing::debug!(
+            channel_capacity = self.packet_rx.capacity(),
+            "Shutting down packet channel..."
+        );
+        self.packet_rx.close(); // This avoids a deadlock when we join the worker thread, see PR 5571
         if let Err(error) = self.session.shutdown() {
             tracing::error!(?error, "wintun::Session::shutdown");
         }
@@ -85,8 +101,10 @@ impl Tun {
 
         set_iface_config(adapter.get_luid(), MTU as u32)?;
 
-        let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
-        let (packet_tx, packet_rx) = mpsc::channel(5);
+        let session = Arc::new(adapter.start_session(RING_BUFFER_SIZE)?);
+        // 4 is a nice power of two. Wintun already queues packets for us, so we don't
+        // need much capacity here.
+        let (packet_tx, packet_rx) = mpsc::channel(4);
         let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session))?;
 
         Ok(Self {
@@ -101,7 +119,7 @@ impl Tun {
     // It's okay if this blocks until the route is added in the OS.
     // TODO 5026: 540 + 370 ms
     #[logging_timer::time]
-    pub fn set_routes(
+    pub(crate) fn set_routes(
         &mut self,
         new_routes: HashSet<IpNetwork>,
         _callbacks: &impl Callbacks,
@@ -118,12 +136,11 @@ impl Tun {
             self.remove_route(*old_route)?;
         }
 
-        // TODO: Might be calling this more often than it needs
-        flush_dns().expect("Should be able to flush Windows' DNS cache");
         self.routes = new_routes;
         Ok(())
     }
 
+    // Moves packets from the user towards the Internet
     pub fn poll_read(&mut self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
         let pkt = ready!(self.packet_rx.poll_recv(cx));
 
@@ -159,6 +176,7 @@ impl Tun {
         self.write(bytes)
     }
 
+    // Moves packets from the Internet towards the user
     #[allow(clippy::unnecessary_wraps)] // Fn signature must align with other platform implementations.
     fn write(&self, bytes: &[u8]) -> io::Result<usize> {
         let len = bytes
@@ -179,7 +197,7 @@ impl Tun {
     }
 
     // It's okay if this blocks until the route is added in the OS.
-    fn add_route(&self, route: IpNetwork) -> Result<()> {
+    pub fn add_route(&self, route: IpNetwork) -> Result<()> {
         const DUPLICATE_ERR: u32 = 0x80071392;
         let entry = self.forward_entry(route);
 
@@ -227,39 +245,42 @@ impl Tun {
     }
 }
 
-/// Flush Windows' system-wide DNS cache
-#[logging_timer::time]
-fn flush_dns() -> Result<()> {
-    Command::new("ipconfig")
-        .creation_flags(CREATE_NO_WINDOW)
-        .args(["/flushdns"])
-        .status()?;
-    Ok(())
-}
-
+// Moves packets from the user towards the Internet
 fn start_recv_thread(
     packet_tx: mpsc::Sender<wintun::Packet>,
     session: Arc<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()
         .name("Firezone wintun worker".into())
-        .spawn(move || {
-            loop {
-                match session.receive_blocking() {
-                    Ok(pkt) => {
-                        if packet_tx.blocking_send(pkt).is_err() {
-                            // Most likely the receiver was dropped and we're closing down the connlib session.
-                            break;
-                        }
-                    }
-                    Err(wintun::Error::ShuttingDown) => break,
-                    Err(e) => {
-                        tracing::error!("wintun::Session::receive_blocking: {e:#?}");
-                        break;
-                    }
+        .spawn(move || loop {
+            let pkt = match session.receive_blocking() {
+                Ok(pkt) => pkt,
+                Err(wintun::Error::ShuttingDown) => {
+                    tracing::info!(
+                        "Stopping outbound worker thread because Wintun is shutting down"
+                    );
+                    break;
+                }
+                Err(e) => {
+                    tracing::error!("wintun::Session::receive_blocking: {e:#?}");
+                    break;
+                }
+            };
+
+            // Use `blocking_send` so that if connlib is behind by a few packets,
+            // Wintun will queue up new packets in its ring buffer while we
+            // wait for our MPSC channel to clear.
+            // Unfortunately we don't know if Wintun is dropping packets, since
+            // it doesn't expose a sequence number or anything.
+            match packet_tx.blocking_send(pkt) {
+                Ok(()) => {}
+                Err(_) => {
+                    tracing::info!(
+                        "Stopping outbound worker thread because the packet channel closed"
+                    );
+                    break;
                 }
             }
-            tracing::debug!("recv_task exiting gracefully");
         })
 }
 
@@ -318,14 +339,22 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 mod tests {
+    use super::*;
+    use tracing_subscriber::EnvFilter;
+
     /// Checks for regressions in issue #4765, un-initializing Wintun
     #[test]
     #[ignore = "Needs admin privileges"]
-    fn resource_management() {
-        // Each cycle takes about half a second, so this will need over a minute to run.
-        for _ in 0..150 {
-            let _tun = super::Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
+    fn tunnel_drop() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::from_default_env())
+            .with_test_writer()
+            .try_init();
+        // Each cycle takes about half a second, so this will take a fair bit to run.
+        for _ in 0..50 {
+            let _tun = Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
         }
     }
 }

@@ -108,10 +108,6 @@ impl Io {
         &mut self.device
     }
 
-    pub fn sockets_ref(&self) -> &Sockets {
-        &self.sockets
-    }
-
     pub fn sockets_mut(&mut self) -> &mut Sockets {
         &mut self.sockets
     }

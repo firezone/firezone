@@ -1,8 +1,10 @@
 //! Main connlib library for clients.
+pub use crate::serde_routelist::{V4RouteList, V6RouteList};
 pub use connlib_shared::messages::client::ResourceDescription;
 pub use connlib_shared::{
-    callbacks, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError, StaticSecret,
+    callbacks, keypair, Callbacks, Error, LoginUrl, LoginUrlError, StaticSecret,
 };
+pub use eventloop::Eventloop;
 pub use firezone_tunnel::Sockets;
 pub use tracing_appender::non_blocking::WorkerGuard;
 
@@ -10,6 +12,7 @@ use backoff::ExponentialBackoffBuilder;
 use connlib_shared::get_user_agent;
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::PhoenixChannel;
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -17,11 +20,11 @@ use tokio::sync::mpsc::UnboundedReceiver;
 mod eventloop;
 pub mod file_logger;
 mod messages;
+mod serde_routelist;
 
 const PHOENIX_TOPIC: &str = "client";
 
 use eventloop::Command;
-pub use eventloop::Eventloop;
 use secrecy::Secret;
 use tokio::task::JoinHandle;
 
@@ -119,7 +122,21 @@ where
         max_partition_time,
     } = args;
 
-    let tunnel = ClientTunnel::new(private_key, sockets, callbacks)?;
+    // Note on the first connect these addresses won't be used yet, though coincidentally phoenix_channel might resolve to the same ones, however thereafter they will.
+    // also we don't care that we are blocking here.
+    let addrs = url
+        .inner()
+        .socket_addrs(|| None)?
+        .iter()
+        .map(|addr| addr.ip())
+        .collect();
+
+    let tunnel = ClientTunnel::new(
+        private_key,
+        sockets,
+        callbacks,
+        HashMap::from([(url.host().to_string(), addrs)]),
+    )?;
 
     let portal = PhoenixChannel::connect(
         Secret::new(url),
@@ -193,25 +210,27 @@ mod tests {
     #[ignore = "Performs system-wide I/O, needs sudo"]
     async fn device_windows() {
         // Install wintun so the test can run
-        // CI only needs x86_64 for now
-        let wintun_bytes =
-            include_bytes!("../../../../headless-client/src/windows/wintun/bin/amd64/wintun.dll");
         let wintun_path = connlib_shared::windows::wintun_dll_path().unwrap();
         tokio::fs::create_dir_all(wintun_path.parent().unwrap())
             .await
             .unwrap();
-        tokio::fs::write(&wintun_path, wintun_bytes).await.unwrap();
+        tokio::fs::write(&wintun_path, connlib_shared::windows::wintun_bytes())
+            .await
+            .unwrap();
 
         device_common().await;
     }
 
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     async fn device_common() {
+        use std::collections::HashMap;
+
         let (private_key, _public_key) = connlib_shared::keypair();
         let sockets = crate::Sockets::new();
         let callbacks = Callbacks::default();
         let mut tunnel =
-            firezone_tunnel::ClientTunnel::new(private_key, sockets, callbacks).unwrap();
+            firezone_tunnel::ClientTunnel::new(private_key, sockets, callbacks, HashMap::new())
+                .unwrap();
         let upstream_dns = vec![([192, 168, 1, 1], 53).into()];
         let interface = connlib_shared::messages::Interface {
             ipv4: [100, 71, 96, 96].into(),

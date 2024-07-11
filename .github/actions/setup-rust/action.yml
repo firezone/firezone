@@ -17,12 +17,18 @@ inputs:
     default: ""
 
 outputs:
+  bench-packages:
+    description: Benchmarkable packages for the current OS
+    value: ${{
+      (runner.os == 'Linux' && '--help') ||
+      (runner.os == 'macOS' && '--help') ||
+      (runner.os == 'Windows' && '-p firezone-tunnel') }}
   packages:
     description: Compilable / testable packages for the current OS
     value: ${{
       (runner.os == 'Linux' && '--workspace') ||
       (runner.os == 'macOS' && '-p connlib-client-apple -p connlib-client-shared -p firezone-tunnel -p snownet') ||
-      (runner.os == 'Windows' && '-p connlib-client-shared -p firezone-headless-client -p firezone-gui-client -p firezone-tunnel -p snownet') }}
+      (runner.os == 'Windows' && '-p connlib-client-shared -p firezone-headless-client -p firezone-gui-client -p firezone-tunnel -p gui-smoke-test -p snownet') }}
 
 runs:
   using: "composite"
@@ -47,7 +53,6 @@ runs:
       run: echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
       shell: bash
 
-    # Setup GH actions cache, works better for Tauri clients and some libs
     - if: ${{ inputs.cache_backend == 'github' }}
       uses: Swatinem/rust-cache@v2
       with:
@@ -57,6 +62,11 @@ runs:
       # Download from GitHub actions can sometimes fail and it has a very long default timeout.
       env:
         SEGMENT_DOWNLOAD_TIMEOUT_MINS: 2
+
+    - name: Disable Windows Defender
+      if: ${{ inputs.cache_backend == 'sccache' && runner.os == 'Windows' }}
+      run: Set-MpPreference -DisableRealtimeMonitoring $true
+      shell: powershell
 
     # Common to either cache backend
     - name: Extract Rust version

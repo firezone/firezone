@@ -1,9 +1,6 @@
 //! Virtual network interface
 
-use crate::{
-    callbacks::{Cidrv4, Cidrv6},
-    DEFAULT_MTU,
-};
+use crate::DEFAULT_MTU;
 use anyhow::{anyhow, Context as _, Result};
 use futures::TryStreamExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -132,7 +129,11 @@ impl TunDeviceManager {
         Ok(())
     }
 
-    pub async fn set_routes(&mut self, ipv4: Vec<Cidrv4>, ipv6: Vec<Cidrv6>) -> Result<()> {
+    pub async fn set_routes(
+        &mut self,
+        ipv4: Vec<Ipv4Network>,
+        ipv6: Vec<Ipv6Network>,
+    ) -> Result<()> {
         let new_routes: HashSet<IpNetwork> = ipv4
             .into_iter()
             .map(IpNetwork::from)
@@ -164,7 +165,7 @@ impl TunDeviceManager {
         }
 
         for route in self.routes.difference(&new_routes) {
-            delete_route(route, index, handle).await?;
+            remove_route(route, index, handle).await?;
         }
 
         self.routes = new_routes;
@@ -232,7 +233,7 @@ async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) -> Result<()> {
     Ok(())
 }
 
-async fn delete_route(route: &IpNetwork, idx: u32, handle: &Handle) -> Result<()> {
+async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) -> Result<()> {
     let message = match route {
         IpNetwork::V4(ipnet) => make_route_v4(idx, handle, *ipnet).message_mut().clone(),
         IpNetwork::V6(ipnet) => make_route_v6(idx, handle, *ipnet).message_mut().clone(),
