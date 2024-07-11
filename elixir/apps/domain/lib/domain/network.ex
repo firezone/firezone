@@ -2,7 +2,7 @@ defmodule Domain.Network do
   alias Domain.Repo
   alias Domain.Network.Address
 
-  # Encompasses all CIDR and DNS Resource addresses
+  # Encompasses all of CGNAT and our reserved IPv6 unique local prefix
   @reserved_cidrs %{
     ipv4: %Postgrex.INET{address: {100, 64, 0, 0}, netmask: 10},
     ipv6: %Postgrex.INET{address: {64_768, 8_225, 4_369, 0, 0, 0, 0, 0}, netmask: 48}
