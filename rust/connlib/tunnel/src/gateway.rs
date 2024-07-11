@@ -158,7 +158,6 @@ impl GatewayState {
         self.node.public_key()
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(src, dst))]
     pub(crate) fn encapsulate<'s>(
         &'s mut self,
         packet: MutableIpPacket<'_>,
@@ -166,24 +165,22 @@ impl GatewayState {
     ) -> Option<snownet::Transmit<'s>> {
         let dst = packet.destination();
 
-        tracing::Span::current().record("src", tracing::field::display(packet.source()));
-        tracing::Span::current().record("dst", tracing::field::display(dst));
-
         let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
-            tracing::warn!("Couldn't find connection by IP");
+            tracing::warn!(%dst, "Couldn't find connection by IP");
 
             return None;
         };
+        let cid = peer.id();
 
         let packet = peer
             .encapsulate(packet, now)
-            .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
+            .inspect_err(|e| tracing::debug!(%cid, "Failed to encapsulate: {e}"))
             .ok()??;
 
         let transmit = self
             .node
             .encapsulate(peer.id(), packet.as_immutable(), now)
-            .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
+            .inspect_err(|e| tracing::debug!(%cid, "Failed to encapsulate: {e}"))
             .ok()??;
 
         Some(transmit)
