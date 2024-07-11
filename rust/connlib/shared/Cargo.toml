@@ -32,7 +32,7 @@ domain = { workspace = true }
 libc = "0.2"
 phoenix-channel = { workspace = true }
 ip-packet = { workspace = true }
-proptest = { version = "1.4.0", optional = true }
+proptest = { version = "1", optional = true }
 itertools = "0.13"
 
 # Needed for Android logging until tracing is working

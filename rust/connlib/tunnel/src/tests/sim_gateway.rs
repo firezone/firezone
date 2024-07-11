@@ -3,7 +3,7 @@ use super::{
     sim_net::{any_ip_stack, any_port, host, Host},
 };
 use crate::{tests::sut::hickory_name_to_domain, GatewayState};
-use connlib_shared::{messages::GatewayId, proptest::gateway_id, DomainName};
+use connlib_shared::DomainName;
 use ip_packet::IpPacket;
 use proptest::prelude::*;
 use snownet::Transmit;
@@ -15,7 +15,6 @@ use std::{
 
 /// Simulation state for a particular client.
 pub(crate) struct SimGateway {
-    pub(crate) id: GatewayId,
     pub(crate) sut: GatewayState,
 
     pub(crate) received_icmp_requests: VecDeque<IpPacket<'static>>,
@@ -24,9 +23,8 @@ pub(crate) struct SimGateway {
 }
 
 impl SimGateway {
-    pub(crate) fn new(id: GatewayId, sut: GatewayState) -> Self {
+    pub(crate) fn new(sut: GatewayState) -> Self {
         Self {
-            id,
             sut,
             received_icmp_requests: Default::default(),
             buffer: vec![0u8; (1 << 16) - 1],
@@ -88,7 +86,6 @@ impl SimGateway {
 /// Reference state for a particular gateway.
 #[derive(Debug, Clone)]
 pub struct RefGateway {
-    pub(crate) id: GatewayId,
     pub(crate) key: PrivateKey,
 }
 
@@ -97,7 +94,7 @@ impl RefGateway {
     ///
     /// This simulates receiving the `init` message from the portal.
     pub(crate) fn init(self) -> SimGateway {
-        SimGateway::new(self.id, GatewayState::new(self.key))
+        SimGateway::new(GatewayState::new(self.key))
     }
 }
 
@@ -106,5 +103,5 @@ pub(crate) fn ref_gateway_host() -> impl Strategy<Value = Host<RefGateway>> {
 }
 
 fn ref_gateway() -> impl Strategy<Value = RefGateway> {
-    (gateway_id(), private_key()).prop_map(move |(id, key)| RefGateway { id, key })
+    private_key().prop_map(move |key| RefGateway { key })
 }

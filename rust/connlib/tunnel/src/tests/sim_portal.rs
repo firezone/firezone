@@ -1,22 +1,27 @@
 use connlib_shared::messages::{
     client::{ResourceDescriptionCidr, ResourceDescriptionDns, SiteId},
-    ClientId, GatewayId, ResourceId,
+    GatewayId, ResourceId,
 };
 use ip_network_table::IpNetworkTable;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Stub implementation of the portal.
 ///
 /// Currently, we only simulate a connection between a single client and a single gateway on a single site.
 #[derive(Debug, Clone)]
 pub(crate) struct SimPortal {
-    _client: ClientId,
-    gateway: GatewayId,
+    gateways_by_site: HashMap<SiteId, GatewayId>, // TODO: Technically, this is wrong because a site has multiple gateways but not the other way round.
 }
 
 impl SimPortal {
-    pub(crate) fn new(_client: ClientId, gateway: GatewayId) -> Self {
-        Self { _client, gateway }
+    pub(crate) fn new() -> Self {
+        Self {
+            gateways_by_site: HashMap::default(),
+        }
+    }
+
+    pub(crate) fn register_site(&mut self, site: SiteId, gateway: GatewayId) {
+        self.gateways_by_site.insert(site, gateway);
     }
 
     /// Picks, which gateway and site we should connect to for the given resource.
@@ -38,11 +43,12 @@ impl SimPortal {
             .get(&resource)
             .and_then(|r| Some(r.sites.first()?.id));
 
-        (
-            self.gateway,
-            cidr_site
-                .or(dns_site)
-                .expect("resource to be a known CIDR or DNS resource"),
-        )
+        let site_id = cidr_site
+            .or(dns_site)
+            .expect("resource to be a known CIDR or DNS resource");
+
+        let gateway_id = self.gateways_by_site.get(&site_id).unwrap();
+
+        (*gateway_id, site_id)
     }
 }

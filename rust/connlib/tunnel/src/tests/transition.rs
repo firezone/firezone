@@ -5,7 +5,7 @@ use super::{
 use connlib_shared::{
     messages::{
         client::{ResourceDescriptionCidr, ResourceDescriptionDns},
-        DnsServer, ResourceId,
+        DnsServer, GatewayId, ResourceId,
     },
     proptest::*,
     DomainName,
@@ -23,7 +23,10 @@ use std::{
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum Transition {
     /// Add a new CIDR resource to the client.
-    AddCidrResource(ResourceDescriptionCidr),
+    AddCidrResource {
+        resource: ResourceDescriptionCidr,
+        gateway: GatewayId,
+    },
     /// Send an ICMP packet to non-resource IP.
     SendICMPPacketToNonResourceIp {
         src: IpAddr,
@@ -54,6 +57,7 @@ pub(crate) enum Transition {
         resource: ResourceDescriptionDns,
         /// The DNS records to add together with the resource.
         records: HashMap<DomainName, HashSet<IpAddr>>,
+        gateway: GatewayId,
     },
     /// Send a DNS query.
     SendDnsQuery {
@@ -178,17 +182,22 @@ where
         )
 }
 
-pub(crate) fn non_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
-    (dns_resource(), resolved_ips()).prop_map(|(resource, resolved_ips)| {
+pub(crate) fn non_wildcard_dns_resource(
+    gateway: impl Strategy<Value = GatewayId>,
+) -> impl Strategy<Value = Transition> {
+    (dns_resource(), resolved_ips(), gateway).prop_map(|(resource, resolved_ips, gateway)| {
         Transition::AddDnsResource {
             records: HashMap::from([(resource.address.parse().unwrap(), resolved_ips)]),
             resource,
+            gateway,
         }
     })
 }
 
-pub(crate) fn star_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
-    dns_resource().prop_flat_map(move |r| {
+pub(crate) fn star_wildcard_dns_resource(
+    gateway: impl Strategy<Value = GatewayId>,
+) -> impl Strategy<Value = Transition> {
+    (dns_resource(), gateway).prop_flat_map(move |(r, gateway)| {
         let wildcard_address = format!("*.{}", r.address);
 
         let records = subdomain_records(r.address, domain_name(1..3));
@@ -197,13 +206,20 @@ pub(crate) fn star_wildcard_dns_resource() -> impl Strategy<Value = Transition> 
             ..r
         });
 
-        (resource, records)
-            .prop_map(|(resource, records)| Transition::AddDnsResource { records, resource })
+        (resource, records, Just(gateway)).prop_map(|(resource, records, gateway)| {
+            Transition::AddDnsResource {
+                records,
+                resource,
+                gateway,
+            }
+        })
     })
 }
 
-pub(crate) fn question_mark_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
-    dns_resource().prop_flat_map(move |r| {
+pub(crate) fn question_mark_wildcard_dns_resource(
+    gateway: impl Strategy<Value = GatewayId>,
+) -> impl Strategy<Value = Transition> {
+    (dns_resource(), gateway).prop_flat_map(move |(r, gateway)| {
         let wildcard_address = format!("?.{}", r.address);
 
         let records = subdomain_records(r.address, domain_label());
@@ -212,8 +228,13 @@ pub(crate) fn question_mark_wildcard_dns_resource() -> impl Strategy<Value = Tra
             ..r
         });
 
-        (resource, records)
-            .prop_map(|(resource, records)| Transition::AddDnsResource { records, resource })
+        (resource, records, Just(gateway)).prop_map(|(resource, records, gateway)| {
+            Transition::AddDnsResource {
+                records,
+                resource,
+                gateway,
+            }
+        })
     })
 }
 

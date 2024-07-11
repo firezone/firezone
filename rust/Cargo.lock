@@ -3416,7 +3416,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.5",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -4825,9 +4825,8 @@ dependencies = [
 
 [[package]]
 name = "proptest"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31b476131c3c86cb68032fdc5cb6d5a1045e3e42d96b69fa599fd77701e1f5bf"
+version = "1.5.0"
+source = "git+https://github.com/thomaseizinger/proptest?branch=fix/always-check-acceptable-current-state#26c036b5ca832726d7f0c8438a750c8efa2f0f8b"
 dependencies = [
  "bit-set",
  "bit-vec",
@@ -4846,8 +4845,7 @@ dependencies = [
 [[package]]
 name = "proptest-state-machine"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28278d6a11102264b0c569c33dbe5286ba00d2dd6d96ff2a94296e0e5b3d1e04"
+source = "git+https://github.com/thomaseizinger/proptest?branch=fix/always-check-acceptable-current-state#26c036b5ca832726d7f0c8438a750c8efa2f0f8b"
 dependencies = [
  "proptest",
 ]
