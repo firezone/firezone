@@ -12,7 +12,7 @@ export default function Headless() {
       {/*
       <Entry version="1.1.4" date={new Date("2024-07-11")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem >
+          <ChangeItem pull="5850">
             The env var `FIREZONE_DNS_CONTROL` or CLI arg `--dns-control` is now required.
           </ChangeItem>
         </ul>
