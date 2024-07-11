@@ -1,8 +1,10 @@
 //! Main connlib library for clients.
+pub use crate::serde_routelist::{V4RouteList, V6RouteList};
 pub use connlib_shared::messages::client::ResourceDescription;
 pub use connlib_shared::{
-    callbacks, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError, StaticSecret,
+    callbacks, keypair, Callbacks, Error, LoginUrl, LoginUrlError, StaticSecret,
 };
+pub use eventloop::Eventloop;
 pub use firezone_tunnel::Sockets;
 pub use tracing_appender::non_blocking::WorkerGuard;
 
@@ -18,11 +20,11 @@ use tokio::sync::mpsc::UnboundedReceiver;
 mod eventloop;
 pub mod file_logger;
 mod messages;
+mod serde_routelist;
 
 const PHOENIX_TOPIC: &str = "client";
 
 use eventloop::Command;
-pub use eventloop::Eventloop;
 use secrecy::Secret;
 use tokio::task::JoinHandle;
 

@@ -4,9 +4,10 @@
 // ecosystem, so it's used here for consistency.
 
 use connlib_client_shared::{
-    callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6, ConnectArgs,
-    Error, LoginUrl, LoginUrlError, Session, Sockets,
+    callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
+    LoginUrlError, Session, Sockets, V4RouteList, V6RouteList,
 };
+use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
     strings::JNIString,
@@ -191,18 +192,18 @@ impl Callbacks for CallbackHandler {
 
     fn on_update_routes(
         &self,
-        route_list_4: Vec<Cidrv4>,
-        route_list_6: Vec<Cidrv6>,
+        route_list_4: Vec<Ipv4Network>,
+        route_list_6: Vec<Ipv6Network>,
     ) -> Option<RawFd> {
         self.env(|mut env| {
             let route_list_4 = env
-                .new_string(serde_json::to_string(&route_list_4)?)
+                .new_string(serde_json::to_string(&V4RouteList::new(route_list_4))?)
                 .map_err(|source| CallbackError::NewStringFailed {
                     name: "route_list_4",
                     source,
                 })?;
             let route_list_6 = env
-                .new_string(serde_json::to_string(&route_list_6)?)
+                .new_string(serde_json::to_string(&V6RouteList::new(route_list_6))?)
                 .map_err(|source| CallbackError::NewStringFailed {
                     name: "route_list_6",
                     source,

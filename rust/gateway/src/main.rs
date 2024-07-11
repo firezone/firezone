@@ -4,7 +4,7 @@ use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_shared::messages::Interface;
 use connlib_shared::tun_device_manager::TunDeviceManager;
-use connlib_shared::{get_user_agent, keypair, Callbacks, Cidrv4, Cidrv6, LoginUrl, StaticSecret};
+use connlib_shared::{get_user_agent, keypair, Callbacks, LoginUrl, StaticSecret};
 use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
 use firezone_tunnel::{GatewayTunnel, Sockets};
 use futures::channel::mpsc;
@@ -139,8 +139,8 @@ async fn update_device_task(
 
         if let Err(e) = tun_device
             .set_routes(
-                vec![Cidrv4::from(PEERS_IPV4.parse::<Ipv4Network>().unwrap())],
-                vec![Cidrv6::from(PEERS_IPV6.parse::<Ipv6Network>().unwrap())],
+                vec![PEERS_IPV4.parse::<Ipv4Network>().unwrap()],
+                vec![PEERS_IPV6.parse::<Ipv6Network>().unwrap()],
             )
             .await
         {

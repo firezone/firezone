@@ -16,7 +16,7 @@ pub mod proptest;
 
 pub use boringtun::x25519::PublicKey;
 pub use boringtun::x25519::StaticSecret;
-pub use callbacks::{Callbacks, Cidrv4, Cidrv6};
+pub use callbacks::Callbacks;
 pub use error::ConnlibError as Error;
 pub use error::Result;
 pub use phoenix_channel::{LoginUrl, LoginUrlError};

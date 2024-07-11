@@ -1,9 +1,6 @@
 //! Virtual network interface
 
-use crate::{
-    callbacks::{Cidrv4, Cidrv6},
-    DEFAULT_MTU,
-};
+use crate::DEFAULT_MTU;
 use anyhow::{anyhow, Context as _, Result};
 use futures::TryStreamExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -132,7 +129,11 @@ impl TunDeviceManager {
         Ok(())
     }
 
-    pub async fn set_routes(&mut self, ipv4: Vec<Cidrv4>, ipv6: Vec<Cidrv6>) -> Result<()> {
+    pub async fn set_routes(
+        &mut self,
+        ipv4: Vec<Ipv4Network>,
+        ipv6: Vec<Ipv6Network>,
+    ) -> Result<()> {
         let new_routes: HashSet<IpNetwork> = ipv4
             .into_iter()
             .map(IpNetwork::from)

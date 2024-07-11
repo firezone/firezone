@@ -10,54 +10,6 @@ use crate::messages::ResourceId;
 // Avoids having to map types for Windows
 type RawFd = i32;
 
-#[derive(Serialize, Clone, Copy, Debug)]
-/// Identical to `ip_network::Ipv4Network` except we implement `Serialize` on the Rust side and the equivalent of `Deserialize` on the Swift / Kotlin side to avoid manually serializing and deserializing.
-pub struct Cidrv4 {
-    address: Ipv4Addr,
-    prefix: u8,
-}
-
-/// Identical to `ip_network::Ipv6Network` except we implement `Serialize` on the Rust side and the equivalent of `Deserialize` on the Swift / Kotlin side to avoid manually serializing and deserializing.
-#[derive(Serialize, Clone, Copy, Debug)]
-pub struct Cidrv6 {
-    address: Ipv6Addr,
-    prefix: u8,
-}
-
-impl From<Ipv4Network> for Cidrv4 {
-    fn from(value: Ipv4Network) -> Self {
-        Self {
-            address: value.network_address(),
-            prefix: value.netmask(),
-        }
-    }
-}
-
-impl From<Ipv6Network> for Cidrv6 {
-    fn from(value: Ipv6Network) -> Self {
-        Self {
-            address: value.network_address(),
-            prefix: value.netmask(),
-        }
-    }
-}
-
-impl From<Cidrv4> for IpNetwork {
-    fn from(x: Cidrv4) -> Self {
-        Ipv4Network::new(x.address, x.prefix)
-            .expect("A Cidrv4 should always translate to a valid Ipv4Network")
-            .into()
-    }
-}
-
-impl From<Cidrv6> for IpNetwork {
-    fn from(x: Cidrv6) -> Self {
-        Ipv6Network::new(x.address, x.prefix)
-            .expect("A Cidrv6 should always translate to a valid Ipv6Network")
-            .into()
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Status {
     Unknown,
@@ -163,7 +115,7 @@ pub trait Callbacks: Clone + Send + Sync {
     }
 
     /// Called when the route list changes.
-    fn on_update_routes(&self, _: Vec<Cidrv4>, _: Vec<Cidrv6>) -> Option<RawFd> {
+    fn on_update_routes(&self, _: Vec<Ipv4Network>, _: Vec<Ipv6Network>) -> Option<RawFd> {
         None
     }
 
