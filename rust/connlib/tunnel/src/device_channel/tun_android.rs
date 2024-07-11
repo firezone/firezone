@@ -1,5 +1,5 @@
 use super::utils;
-use crate::device_channel::{ioctl, ipv4, ipv6};
+use crate::device_channel::ioctl;
 use std::task::{Context, Poll};
 use std::{
     io,
@@ -46,25 +46,8 @@ impl Tun {
         })
     }
 
-    pub fn new() -> Result<Self> {
-        unimplemented!("Stub! Android TUN needs to be initialised using `from_fd`")
-    }
-
     pub fn name(&self) -> &str {
         self.name.as_str()
-    }
-
-    pub fn set_routes(
-        &mut self,
-        routes: HashSet<IpNetwork>,
-        callbacks: &impl Callbacks,
-    ) -> Result<()> {
-        callbacks.on_update_routes(
-            routes.iter().copied().filter_map(ipv4).collect(),
-            routes.iter().copied().filter_map(ipv6).collect(),
-        );
-
-        Ok(())
     }
 }
 

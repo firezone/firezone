@@ -6,7 +6,7 @@ use crate::{
 };
 use anyhow::{Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets, Tun};
+use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets};
 use futures::{future, SinkExt as _, StreamExt as _};
 use std::{net::IpAddr, path::PathBuf, pin::pin, time::Duration};
 use tokio::{sync::mpsc, time::Instant};
@@ -292,7 +292,7 @@ impl Handler {
                     max_partition_time: Some(Duration::from_secs(60 * 60 * 24 * 30)),
                 };
                 let new_session = Session::connect(args, tokio::runtime::Handle::try_current()?);
-                new_session.set_tun(Tun::new()?);
+                new_session.set_tun(self.tun_device.make_tun()?);
                 new_session.set_dns(dns_control::system_resolvers().unwrap_or_default());
                 self.connlib = Some(new_session);
             }

@@ -1,7 +1,4 @@
 use super::utils;
-use crate::device_channel::{ipv4, ipv6};
-use connlib_shared::{Callbacks, Result};
-use ip_network::IpNetwork;
 use libc::{
     ctl_info, fcntl, getpeername, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg, sockaddr_ctl,
     socklen_t, AF_INET, AF_INET6, AF_SYSTEM, CTLIOCGINFO, F_GETFL, F_SETFL, IF_NAMESIZE,
@@ -9,7 +6,6 @@ use libc::{
 };
 use std::task::{Context, Poll};
 use std::{
-    collections::HashSet,
     io,
     mem::size_of,
     os::fd::{AsRawFd, RawFd},
@@ -133,17 +129,6 @@ impl Tun {
         }
 
         Err(get_last_error())
-    }
-
-    #[allow(clippy::unnecessary_wraps)] // fn signature needs to align with other platforms.
-    pub fn set_routes(&self, routes: HashSet<IpNetwork>, callbacks: &impl Callbacks) -> Result<()> {
-        // This will always be None in macos
-        callbacks.on_update_routes(
-            routes.iter().copied().filter_map(ipv4).collect(),
-            routes.iter().copied().filter_map(ipv6).collect(),
-        );
-
-        Ok(())
     }
 
     pub fn name(&self) -> &str {

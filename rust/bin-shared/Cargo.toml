@@ -17,6 +17,7 @@ tracing = { workspace = true }
 tracing-log = "0.2"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { version = "2.3.1", default-features = false }
+firezone-tunnel = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 netlink-packet-core = { version = "0.7", default-features = false }
@@ -27,6 +28,9 @@ rtnetlink = { workspace = true }
 version = "0.57.0"
 features = [
   "Win32_Foundation",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_NetworkManagement_Ndis",
+  "Win32_Networking_WinSock",
 ]
 
 [lints]

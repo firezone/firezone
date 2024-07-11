@@ -22,10 +22,7 @@ use tun_android as tun;
 #[cfg(target_family = "unix")]
 mod utils;
 
-use connlib_shared::{Callbacks, Error};
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
-use std::collections::HashSet;
 use std::io;
 use std::task::{Context, Poll, Waker};
 
@@ -34,22 +31,6 @@ pub use tun::Tun;
 pub struct Device {
     tun: Option<Tun>,
     waker: Option<Waker>,
-}
-
-#[allow(dead_code)]
-fn ipv4(ip: IpNetwork) -> Option<Ipv4Network> {
-    match ip {
-        IpNetwork::V4(v4) => Some(v4),
-        IpNetwork::V6(_) => None,
-    }
-}
-
-#[allow(dead_code)]
-fn ipv6(ip: IpNetwork) -> Option<Ipv6Network> {
-    match ip {
-        IpNetwork::V4(_) => None,
-        IpNetwork::V6(v6) => Some(v6),
-    }
 }
 
 impl Device {
@@ -143,15 +124,6 @@ impl Device {
             .unwrap_or("uninitialized")
     }
 
-    pub(crate) fn set_routes(
-        &mut self,
-        routes: HashSet<IpNetwork>,
-        callbacks: &impl Callbacks,
-    ) -> Result<(), Error> {
-        self.tun_mut()?.set_routes(routes, callbacks)?;
-        Ok(())
-    }
-
     pub fn write(&self, packet: IpPacket<'_>) -> io::Result<usize> {
         tracing::trace!(target: "wire::dev::send", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
@@ -163,10 +135,6 @@ impl Device {
 
     fn tun(&self) -> io::Result<&Tun> {
         self.tun.as_ref().ok_or_else(io_error_not_initialized)
-    }
-
-    fn tun_mut(&mut self) -> io::Result<&mut Tun> {
-        self.tun.as_mut().ok_or_else(io_error_not_initialized)
     }
 }
 

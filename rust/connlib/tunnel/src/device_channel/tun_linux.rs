@@ -1,12 +1,9 @@
 use super::utils;
 use crate::device_channel::ioctl;
-use connlib_shared::{Callbacks, Result};
-use ip_network::IpNetwork;
 use libc::{
     close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, IFF_NO_PI, IFF_TUN, O_NONBLOCK, O_RDWR,
     S_IFCHR,
 };
-use std::collections::HashSet;
 use std::path::Path;
 use std::task::{Context, Poll};
 use std::{
@@ -83,20 +80,6 @@ impl Tun {
 
         // Safety: We just opened the fd.
         unsafe { Self::from_fd(fd) }
-    }
-
-    #[allow(clippy::unnecessary_wraps)] // fn signature needs to align with other platforms.
-    pub fn set_routes(
-        &mut self,
-        new_routes: HashSet<IpNetwork>,
-        callbacks: &impl Callbacks,
-    ) -> Result<()> {
-        callbacks.on_update_routes(
-            new_routes.iter().copied().filter_map(super::ipv4).collect(),
-            new_routes.iter().copied().filter_map(super::ipv6).collect(),
-        );
-
-        Ok(())
     }
 
     pub fn name(&self) -> &str {
