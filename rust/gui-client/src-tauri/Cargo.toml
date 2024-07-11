@@ -43,7 +43,7 @@ time = { version = "0.3.36", features = ["formatting"] }
 thiserror = { version = "1.0", default-features = false }
 tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
 tokio-util = { version = "0.7.11", features = ["codec"] }
-tracing = { workspace = true, features = ["std"] }
+tracing = { workspace = true }
 tracing-log = "0.2"
 tracing-panic = "0.1.2"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }

@@ -663,9 +663,7 @@ impl Controller {
                 if let Status::Connecting { start_instant } =
                     std::mem::replace(&mut self.status, Status::TunnelReady { resources })
                 {
-                    // If I write this in-line it won't compile
-                    let elapsed = start_instant.elapsed();
-                    tracing::info!(?elapsed, "Tunnel ready");
+                    tracing::info!(elapsed = ?start_instant.elapsed(), "Tunnel ready");
                     os::show_notification(
                         "Firezone connected",
                         "You are now signed in and able to access resources.",
