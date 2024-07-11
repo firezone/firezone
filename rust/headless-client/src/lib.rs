@@ -10,7 +10,7 @@
 
 use anyhow::{Context as _, Result};
 use connlib_client_shared::{Callbacks, Error as ConnlibError};
-use connlib_shared::{callbacks, Cidrv4, Cidrv6};
+use connlib_shared::callbacks;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::PathBuf,
@@ -43,6 +43,7 @@ pub use ipc_service::{ipc, run_only_ipc_service, ClientMsg as IpcClientMsg};
 pub use standalone::run_only_headless_client;
 
 use dns_control::DnsController;
+use ip_network::{Ipv4Network, Ipv6Network};
 
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
@@ -84,8 +85,8 @@ enum InternalServerMsg {
         dns: Vec<IpAddr>,
     },
     OnUpdateRoutes {
-        ipv4: Vec<Cidrv4>,
-        ipv6: Vec<Cidrv6>,
+        ipv4: Vec<Ipv4Network>,
+        ipv6: Vec<Ipv6Network>,
     },
 }
 
@@ -143,7 +144,7 @@ impl Callbacks for CallbackHandler {
             .expect("Should be able to send OnUpdateResources");
     }
 
-    fn on_update_routes(&self, ipv4: Vec<Cidrv4>, ipv6: Vec<Cidrv6>) -> Option<i32> {
+    fn on_update_routes(&self, ipv4: Vec<Ipv4Network>, ipv6: Vec<Ipv6Network>) -> Option<i32> {
         self.cb_tx
             .try_send(InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 })
             .expect("Should be able to send messages");

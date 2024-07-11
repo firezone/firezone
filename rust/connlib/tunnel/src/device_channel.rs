@@ -23,8 +23,7 @@ use tun_android as tun;
 mod utils;
 
 use connlib_shared::{error::ConnlibError, messages::Interface, Callbacks, Error};
-use connlib_shared::{Cidrv4, Cidrv6};
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use std::collections::HashSet;
 use std::io;
@@ -38,18 +37,18 @@ pub struct Device {
 }
 
 #[allow(dead_code)]
-fn ipv4(ip: IpNetwork) -> Option<Cidrv4> {
+fn ipv4(ip: IpNetwork) -> Option<Ipv4Network> {
     match ip {
-        IpNetwork::V4(v4) => Some(v4.into()),
+        IpNetwork::V4(v4) => Some(v4),
         IpNetwork::V6(_) => None,
     }
 }
 
 #[allow(dead_code)]
-fn ipv6(ip: IpNetwork) -> Option<Cidrv6> {
+fn ipv6(ip: IpNetwork) -> Option<Ipv6Network> {
     match ip {
         IpNetwork::V4(_) => None,
-        IpNetwork::V6(v6) => Some(v6.into()),
+        IpNetwork::V6(v6) => Some(v6),
     }
 }
 
