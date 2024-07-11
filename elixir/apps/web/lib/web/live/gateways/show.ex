@@ -117,7 +117,7 @@ defmodule Web.Gateways.Show do
           <:dialog_title>Delete Gateway</:dialog_title>
           <:dialog_content>
             <p>
-              Are you sure you want to delete this gateway?
+              Are you sure you want to delete this Gateway?
             </p>
             <p class="mt-4 text-sm">
               Deleting the gateway does not remove it's access token so it can be re-created again,

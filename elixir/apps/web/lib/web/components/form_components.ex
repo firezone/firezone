@@ -406,7 +406,7 @@ defmodule Web.FormComponents do
     <dialog
       id={"#{@id}_dialog"}
       class={[
-        "backdrop:bg-slate-800/75 bg-transparent",
+        "backdrop:bg-gray-800/75 bg-transparent",
         "p-4 w-full max-w-2xl md:inset-0 max-h-full",
         "overflow-y-auto overflow-x-hidden",
         "justify-center items-center"

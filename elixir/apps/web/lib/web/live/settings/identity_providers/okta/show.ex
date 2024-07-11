@@ -185,7 +185,8 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
         >
           <:dialog_title>Delete Identity Provider</:dialog_title>
           <:dialog_content>
-            Are you sure want to delete this provider along with all related data?
+            Are you sure want to delete this provider? This will remove
+            <strong>all</strong> Actors and Groups associated with this provider.
           </:dialog_content>
           <:dialog_confirm_button>
             Delete Identity Provider
