@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 axum = { version = "0.7.5", features = ["http1", "tokio"] }
-tokio = { version = "1.38.0", features = ["net"] }
+tokio = { workspace = true, features = ["net"] }
 serde = {version = "1", features = ["derive"]}
 futures = "0.3"
 

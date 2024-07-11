@@ -114,8 +114,7 @@ async fn main() -> Result<()> {
         public_addr,
         make_rng(args.rng_seed),
         args.listen_port,
-        args.lowest_port,
-        args.highest_port,
+        args.lowest_port..=args.highest_port,
     );
 
     let last_heartbeat_sent = Arc::new(Mutex::new(Option::<Instant>::None));

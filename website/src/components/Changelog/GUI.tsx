@@ -25,6 +25,15 @@ export default function GUI({ title }: { title: string }) {
           </li>
           {title === "Windows" && (
           <li className="pl-2">
+            Unexpected IPC service stops are now{" "}
+            <Link
+              href="https://github.com/firezone/firezone/pull/5795"
+              className="text-accent-500 underline hover:no-underline"
+            >
+              reported as "IPC connection closed"
+            </Link>{" "}
+          </li>
+          <li className="pl-2">
             Fixes{" "}
             <Link
               href="https://github.com/firezone/firezone/pull/5827"
@@ -50,7 +59,9 @@ export default function GUI({ title }: { title: string }) {
           </li>
           )}
           {title === "Windows" && (
-            <p>This is a maintenance release with no user-facing changes.</p>
+          <li className="pl-2">
+            This is a maintenance release with no user-facing changes.
+          </li>
           )}
         </ul>
       </Entry>
