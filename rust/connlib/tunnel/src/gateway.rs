@@ -158,14 +158,22 @@ impl GatewayState {
         self.node.public_key()
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(src, dst))]
     pub(crate) fn encapsulate<'s>(
         &'s mut self,
         packet: MutableIpPacket<'_>,
         now: Instant,
     ) -> Option<snownet::Transmit<'s>> {
-        let dest = packet.destination();
+        let dst = packet.destination();
 
-        let peer = self.peers.peer_by_ip_mut(dest)?;
+        tracing::Span::current().record("src", tracing::field::display(packet.source()));
+        tracing::Span::current().record("dst", tracing::field::display(dst));
+
+        let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
+            tracing::warn!("Couldn't find connection by IP");
+
+            return None;
+        };
 
         let packet = peer
             .encapsulate(packet, now)
@@ -181,7 +189,6 @@ impl GatewayState {
         Some(transmit)
     }
 
-    #[tracing::instrument(level = "trace", skip_all, fields(src, dst))]
     pub(crate) fn decapsulate<'b>(
         &mut self,
         local: SocketAddr,
@@ -190,28 +197,25 @@ impl GatewayState {
         now: Instant,
         buffer: &'b mut [u8],
     ) -> Option<IpPacket<'b>> {
-        let (conn_id, packet) = self.node.decapsulate(
+        let (cid, packet) = self.node.decapsulate(
             local,
             from,
             packet,
             now,
             buffer,
         )
-        .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .inspect_err(|e| tracing::debug!(%from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;
 
-        tracing::Span::current().record("src", tracing::field::display(packet.source()));
-        tracing::Span::current().record("dst", tracing::field::display(packet.destination()));
-
-        let Some(peer) = self.peers.get_mut(&conn_id) else {
-            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
+        let Some(peer) = self.peers.get_mut(&cid) else {
+            tracing::warn!(%cid, "Couldn't find connection by ID");
 
             return None;
         };
 
         let packet = peer
             .decapsulate(packet, now)
-            .inspect_err(|e| tracing::debug!(%conn_id, %local, %from, "Invalid packet: {e}"))
+            .inspect_err(|e| tracing::debug!(%cid, "Invalid packet: {e}"))
             .ok()?;
 
         Some(packet.into_immutable())

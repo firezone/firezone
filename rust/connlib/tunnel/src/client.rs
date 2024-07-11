@@ -408,13 +408,12 @@ impl ClientState {
         })
     }
 
-    #[tracing::instrument(level = "trace", skip_all, fields(dst))]
     pub(crate) fn encapsulate<'s>(
         &'s mut self,
         packet: MutableIpPacket<'_>,
         now: Instant,
     ) -> Option<snownet::Transmit<'s>> {
-        let (packet, dest) = match self.handle_dns(packet) {
+        let (packet, dst) = match self.handle_dns(packet) {
             Ok(response) => {
                 self.buffered_packets.push_back(response?.to_owned());
                 return None;
@@ -422,20 +421,18 @@ impl ClientState {
             Err(non_dns_packet) => non_dns_packet,
         };
 
-        tracing::Span::current().record("dst", tracing::field::display(dest));
-
-        if is_definitely_not_a_resource(dest) {
+        if is_definitely_not_a_resource(dst) {
             return None;
         }
 
-        let Some(resource) = self.get_resource_by_destination(dest) else {
-            tracing::trace!("Unknown resource");
+        let Some(resource) = self.get_resource_by_destination(dst) else {
+            tracing::trace!(%dst, "Unknown resource");
             return None;
         };
 
         let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
         else {
-            self.on_not_connected_resource(resource, &dest, now);
+            self.on_not_connected_resource(resource, &dst, now);
             return None;
         };
 
@@ -446,18 +443,18 @@ impl ClientState {
             now,
         );
 
-        if peer.allowed_ips.longest_match(dest).is_none() {
+        if peer.allowed_ips.longest_match(dst).is_none() {
             let gateway_id = peer.id();
-            self.send_proxy_ips(&dest, resource, gateway_id);
+            self.send_proxy_ips(&dst, resource, gateway_id);
             return None;
         }
 
-        let gateway_id = peer.id();
+        let gid = peer.id();
 
         let transmit = self
             .node
-            .encapsulate(gateway_id, packet.as_immutable(), now)
-            .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
+            .encapsulate(gid, packet.as_immutable(), now)
+            .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
             .ok()??;
 
         Some(transmit)
@@ -471,24 +468,24 @@ impl ClientState {
         now: Instant,
         buffer: &'b mut [u8],
     ) -> Option<IpPacket<'b>> {
-        let (conn_id, packet) = self.node.decapsulate(
+        let (gid, packet) = self.node.decapsulate(
             local,
             from,
             packet.as_ref(),
             now,
             buffer,
         )
-        .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .inspect_err(|e| tracing::debug!(%local, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;
 
-        let Some(peer) = self.peers.get_mut(&conn_id) else {
-            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
+        let Some(peer) = self.peers.get_mut(&gid) else {
+            tracing::error!(%gid, "Couldn't find connection by ID");
 
             return None;
         };
 
         peer.ensure_allowed_src(&packet)
-            .inspect_err(|e| tracing::debug!(%conn_id, %local, %from, "{e}"))
+            .inspect_err(|e| tracing::debug!(%gid, %local, %from, "{e}"))
             .ok()?;
 
         let packet = maybe_mangle_dns_response_from_cidr_resource(

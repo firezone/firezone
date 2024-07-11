@@ -50,9 +50,6 @@ pub enum ConnlibError {
     /// A panic occurred with a non-string payload.
     #[error("Panicked with a non-string payload")]
     PanicNonStringPayload,
-    /// Invalid destination for packet
-    #[error("Invalid dest address")]
-    InvalidDst,
     /// Exhausted nat table
     #[error("exhausted nat")]
     ExhaustedNat,
@@ -79,8 +76,11 @@ pub enum ConnlibError {
     #[error("Error while rewriting `/etc/resolv.conf`: {0}")]
     ResolvConf(anyhow::Error),
 
-    #[error("Packet not allowed; source = {src}")]
-    UnallowedPacket { src: IpAddr },
+    #[error("Source not allowed: {src}")]
+    SrcNotAllowed { src: IpAddr },
+
+    #[error("Destination not allowed: {dst}")]
+    DstNotAllowed { dst: IpAddr },
 
     // Error variants for `systemd-resolved` DNS control
     #[error("Failed to control system DNS with `resolvectl`")]

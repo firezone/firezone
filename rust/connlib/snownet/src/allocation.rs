@@ -287,7 +287,7 @@ impl Allocation {
         self.send_binding_requests();
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(tid, method, class, rtt))]
+    #[tracing::instrument(level = "debug", skip_all, fields(%from, tid, method, class, rtt))]
     pub fn handle_input(
         &mut self,
         from: SocketAddr,
