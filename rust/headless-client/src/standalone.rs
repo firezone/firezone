@@ -202,6 +202,9 @@ pub fn run_only_headless_client() -> Result<()> {
                     // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                     dns_controller.flush()?;
                 }
+                InternalServerMsg::Ipc(IpcServerMsg::TerminatingGracefully) => unimplemented!(
+                    "The standalone Client does not send `TerminatingGracefully` messages"
+                ),
                 InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                     tun_device.set_ips(ipv4, ipv6).await?;
                     dns_controller.set_dns(&dns).await?;
