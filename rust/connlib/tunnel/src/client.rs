@@ -34,8 +34,8 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
-const IPV4_RESOURCES: &str = "100.96.0.0/11";
-const IPV6_RESOURCES: &str = "fd00:2021:1111:8000::/107";
+pub(crate) const IPV4_RESOURCES: &str = "100.96.0.0/11";
+pub(crate) const IPV6_RESOURCES: &str = "fd00:2021:1111:8000::/107";
 
 const DNS_PORT: u16 = 53;
 const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
@@ -1592,7 +1592,7 @@ mod proptests {
     #[test_strategy::proptest]
     fn adding_same_resource_with_different_address_updates_the_address(
         #[strategy(cidr_resource(8))] resource: ResourceDescriptionCidr,
-        #[strategy(ip_network(8))] new_address: IpNetwork,
+        #[strategy(any_ip_network(8))] new_address: IpNetwork,
     ) {
         use callbacks as cb;
 
@@ -1621,7 +1621,7 @@ mod proptests {
     #[test_strategy::proptest]
     fn adding_cidr_resource_with_same_id_as_dns_resource_replaces_dns_resource(
         #[strategy(dns_resource())] resource: ResourceDescriptionDns,
-        #[strategy(ip_network(8))] address: IpNetwork,
+        #[strategy(any_ip_network(8))] address: IpNetwork,
     ) {
         use callbacks as cb;
 
