@@ -1,7 +1,4 @@
-use crate::{
-    windows::{CREATE_NO_WINDOW, TUNNEL_NAME},
-    Cidrv4, Cidrv6,
-};
+use crate::windows::{CREATE_NO_WINDOW, TUNNEL_NAME};
 use anyhow::Result;
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
@@ -53,7 +50,7 @@ impl TunDeviceManager {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_routes(&mut self, _: Vec<Cidrv4>, _: Vec<Cidrv6>) -> Result<()> {
+    pub async fn set_routes(&mut self, _: Vec<Ipv4Network>, _: Vec<Ipv6Network>) -> Result<()> {
         // TODO: Windows still does route updates in `tun_windows.rs`. I can move it up
         // here, but since the Client and Gateway don't know the index of the WinTun
         // interface, I'd have to use the Windows API
