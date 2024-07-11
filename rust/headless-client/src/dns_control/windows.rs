@@ -48,8 +48,9 @@ impl Method {
     }
 }
 
-#[derive(Default)]
-pub(crate) struct DnsController {}
+pub(crate) struct DnsController {
+    pub(crate) method: Method,
+}
 
 // Unique magic number that we can use to delete our well-known NRPT rule.
 // Copied from the deep link schema
