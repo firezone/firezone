@@ -109,7 +109,7 @@ where
         span: Span,
     ) -> Host<U> {
         Host {
-            inner: f(self.inner.clone(), self.ip4, self.ip6),
+            inner: span.in_scope(|| f(self.inner.clone(), self.ip4, self.ip6)),
             ip4: self.ip4,
             ip6: self.ip6,
             span,
