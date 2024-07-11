@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Entry from "./Entry";
 import Entries from "./Entries";
-import GuiChangeItem from "./GuiChangeItem";
+import ChangeItem from "./ChangeItem";
 
 export default function GUI({ title }: { title: string }) {
   const href =
@@ -14,48 +14,32 @@ export default function GUI({ title }: { title: string }) {
     <Entries href={href} arches={arches} title={title}>
       {/*<Entry version="1.1.6" date={new Date("2024-07-11")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <GuiChangeItem enable={true} pull="5795">
+          <ChangeItem pull="5795">
             Unexpected IPC service stops are now reported as "IPC connection closed".
-          </GuiChangeItem>
-          <GuiChangeItem enable={title === "Windows"} pull="5827">
+          </ChangeItem>
+          <ChangeItem enable={title === "Windows"} pull="5827">
             Fixes a bug where DNS could stop working when you sign out.
-          </GuiChangeItem>
+          </ChangeItem>
           )}
         </ul>
       </Entry>*/}
       <Entry version="1.1.5" date={new Date("2024-07-08")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          {title === "Linux GUI" && (
-            <li className="pl-2">
-              The Linux GUI Client is now{" "}
-              <Link
-                href="https://github.com/firezone/firezone/pull/5793"
-                className="text-accent-500 underline hover:no-underline"
-              >
-                built for both x86-64 and ARM64
-              </Link>
-            </li>
-          )}
-          {title === "Windows" && (
-            <li className="pl-2">
-              This is a maintenance release with no user-facing changes.
-            </li>
-          )}
+          <ChangeItem enable={title === "Linux GUI"} pull="5793">
+            The Linux GUI Client is now built for both x86-64 and ARM64.
+          </ChangeItem>
+          <ChangeItem enable={title === "Windows"}>
+            This is a maintenance release with no user-facing changes.
+          </ChangeItem>
         </ul>
       </Entry>
       <Entry version="1.1.4" date={new Date("2024-07-05")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <li className="pl-2">
-            Fixes an{" "}
-            <Link
-              href="https://github.com/firezone/firezone/pull/5700"
-              className="text-accent-500 underline hover:no-underline"
-            >
-              issue
-            </Link>{" "}
-            where a stale DNS cache could prevent traffic from routing to DNS
-            Resources if they were updated while the Client was signed in.
-          </li>
+          <ChangeItem pull="5700">
+            Fixes an issue where a stale DNS cache could prevent traffic from
+            routing to DNS Resources if they were updated while the Client was
+            signed in.
+          </ChangeItem>
         </ul>
       </Entry>
       <Entry version="1.1.3" date={new Date("2024-07-03")}>
