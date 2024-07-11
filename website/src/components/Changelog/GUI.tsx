@@ -37,6 +37,14 @@ export default function GUI({ title }: { title: string }) {
               a bug where DNS could stop working when you sign out.
             </Link>
           </li>
+          <li className="pl-2">
+            <Link
+              href="https://github.com/firezone/firezone/pull/5375"
+              className="text-accent-500 underline hover:no-underline"
+            >
+              Faster sign-ins
+            </Link>
+          </li>
           )}
         </ul>
       </Entry>*/}
