@@ -91,8 +91,7 @@ impl StateMachineTest for TunnelTest {
                             IpStack::from((ip4, ip6)),
                             rand::rngs::StdRng::seed_from_u64(seed),
                             3478,
-                            49152,
-                            65535,
+                            49152..=65535,
                         ))
                     },
                     debug_span!("relay", rid = %id),
