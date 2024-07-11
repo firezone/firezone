@@ -158,9 +158,9 @@ defmodule Web.Policies.Show do
     </.section>
 
     <.section>
-      <:title>Tunnel Sessions</:title>
+      <:title>Authorized Sessions</:title>
       <:help>
-        Authorized attempts by an actors to access the resource governed by this policy.
+        Authorized sessions opened by Actors to access the Resources governed by this Policy.
       </:help>
       <:content>
         <.live_table
@@ -218,7 +218,7 @@ defmodule Web.Policies.Show do
         >
           <:dialog_title>Delete Policy</:dialog_title>
           <:dialog_content>
-            Are you sure you want to delete this Policy? All tunnel sessions authorized by it will be expired.
+            Are you sure you want to delete this Policy? All sessions authorized by it will be expired.
           </:dialog_content>
           <:dialog_confirm_button>
             Delete Policy

@@ -248,9 +248,9 @@ defmodule Web.Resources.Show do
     </.section>
 
     <.section>
-      <:title>Tunnel Sessions</:title>
+      <:title>Authorized Sessions</:title>
       <:help>
-        Authorized attempts by actors to access the resource.
+        Authorized sessions opened by Actors to access this Resource.
       </:help>
       <:content>
         <.live_table
@@ -313,7 +313,8 @@ defmodule Web.Resources.Show do
         >
           <:dialog_title>Delete Resource</:dialog_title>
           <:dialog_content>
-            Are you sure want to delete this resource along with all associated policies and tunnel sessions?
+            Are you sure want to delete this Resource along with all associated Policies?
+            This will immediately end all active sessions opened for this Resource.
           </:dialog_content>
           <:dialog_confirm_button>
             Delete Resource

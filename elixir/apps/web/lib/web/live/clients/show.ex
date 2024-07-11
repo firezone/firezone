@@ -156,9 +156,9 @@ defmodule Web.Clients.Show do
     </.section>
 
     <.section>
-      <:title>Tunnel Sessions</:title>
+      <:title>Authorized Sessions</:title>
       <:help>
-        Authorized attempts by the client to access a resource.
+        Authorized sessions opened by this Client to access a Resource.
       </:help>
       <:content>
         <.live_table

@@ -405,9 +405,9 @@ defmodule Web.Actors.Show do
     </.section>
 
     <.section>
-      <:title>Tunnel Sessions</:title>
+      <:title>Authorized Sessions</:title>
       <:help>
-        Authorized attempts by the actor to access a resource.
+        Authorized sessions opened by this Actor to access a Resource.
       </:help>
       <:content>
         <.live_table

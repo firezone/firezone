@@ -248,7 +248,7 @@ defmodule Web.Groups.Show do
         >
           <:dialog_title>Delete Group</:dialog_title>
           <:dialog_content>
-            Are you sure you want to delete this group and all related policies?
+            Are you sure you want to delete this Group and all related Policies?
           </:dialog_content>
           <:dialog_confirm_button>
             Delete Group

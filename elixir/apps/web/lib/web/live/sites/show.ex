@@ -268,7 +268,8 @@ defmodule Web.Sites.Show do
         >
           <:dialog_title>Delete Site</:dialog_title>
           <:dialog_content>
-            Are you sure you want to delete this Site and disconnect all its Gateways?
+            Are you sure you want to delete this Site? This will
+            <strong>immediately</strong> disconnect all associated Gateways.
           </:dialog_content>
           <:dialog_confirm_button>
             Delete Site
