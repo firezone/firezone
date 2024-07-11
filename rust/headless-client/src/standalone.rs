@@ -7,8 +7,7 @@ use crate::{
 use anyhow::{anyhow, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets};
-use connlib_shared::tun_device_manager;
-use firezone_bin_shared::setup_global_subscriber;
+use firezone_bin_shared::{setup_global_subscriber, TunDeviceManager};
 use futures::{FutureExt as _, StreamExt as _};
 use secrecy::SecretString;
 use std::{
@@ -175,7 +174,7 @@ pub fn run_only_headless_client() -> Result<()> {
         let mut terminate = pin!(terminate.recv().fuse());
         let mut hangup = pin!(hangup.recv().fuse());
         let mut dns_controller = DnsController::default();
-        let mut tun_device = tun_device_manager::TunDeviceManager::new()?;
+        let mut tun_device = TunDeviceManager::new()?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
         loop {

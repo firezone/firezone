@@ -3,10 +3,9 @@ use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_shared::{
-    get_user_agent, keypair, messages::Interface, tun_device_manager::TunDeviceManager, Callbacks,
-    LoginUrl, StaticSecret,
+    get_user_agent, keypair, messages::Interface, Callbacks, LoginUrl, StaticSecret,
 };
-use firezone_bin_shared::{setup_global_subscriber, CommonArgs};
+use firezone_bin_shared::{setup_global_subscriber, CommonArgs, TunDeviceManager};
 use firezone_tunnel::{GatewayTunnel, Sockets};
 use futures::channel::mpsc;
 use futures::{future, StreamExt, TryFutureExt};
