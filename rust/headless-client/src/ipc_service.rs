@@ -184,7 +184,9 @@ impl Handler {
             callback_handler: CallbackHandler { cb_tx },
             cb_rx,
             connlib: None,
-            dns_controller: Default::default(),
+            dns_controller: DnsController {
+                method: dns_control::Method::for_gui(),
+            },
             ipc_rx,
             ipc_tx,
             last_connlib_start_instant: None,
@@ -292,7 +294,7 @@ impl Handler {
                     max_partition_time: Some(Duration::from_secs(60 * 60 * 24 * 30)),
                 };
                 let new_session = Session::connect(args, tokio::runtime::Handle::try_current()?);
-                new_session.set_dns(dns_control::system_resolvers().unwrap_or_default());
+                new_session.set_dns(dns_control::system_resolvers_for_gui().unwrap_or_default());
                 self.connlib = Some(new_session);
             }
             ClientMsg::Disconnect => {

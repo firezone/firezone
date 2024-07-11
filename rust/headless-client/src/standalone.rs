@@ -46,6 +46,10 @@ struct Cli {
     #[arg(long)]
     check: bool,
 
+    /// Method for controlling the system's DNS (Linux only)
+    #[arg(long, env = "FIREZONE_DNS_CONTROL")]
+    dns_control: dns_control::Method,
+
     /// Friendly name for this client to display in the UI.
     #[arg(long, env = "FIREZONE_NAME")]
     firezone_name: Option<String>,
@@ -166,7 +170,7 @@ pub fn run_only_headless_client() -> Result<()> {
     };
     let session = Session::connect(args, rt.handle().clone());
     // TODO: DNS should be added dynamically
-    session.set_dns(dns_control::system_resolvers().unwrap_or_default());
+    session.set_dns(cli.dns_control.system_resolvers().unwrap_or_default());
     platform::notify_service_controller()?;
 
     let result = rt.block_on(async {
@@ -174,7 +178,9 @@ pub fn run_only_headless_client() -> Result<()> {
         let mut hangup = signals::Hangup::new()?;
         let mut terminate = pin!(terminate.recv().fuse());
         let mut hangup = pin!(hangup.recv().fuse());
-        let mut dns_controller = DnsController::default();
+        let mut dns_controller = DnsController {
+            method: cli.dns_control,
+        };
         let mut tun_device = tun_device_manager::TunDeviceManager::new()?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
@@ -283,14 +289,27 @@ mod tests {
     fn cli() {
         let exe_name = "firezone-headless-client";
 
-        let actual = Cli::parse_from([exe_name, "--api-url", "wss://api.firez.one"]);
+        let actual = Cli::parse_from([
+            exe_name,
+            "--dns-control",
+            "disabled",
+            "--api-url",
+            "wss://api.firez.one",
+        ]);
         assert_eq!(
             actual.api_url,
             Url::parse("wss://api.firez.one").expect("Hard-coded URL should always be parsable")
         );
         assert!(!actual.check);
 
-        let actual = Cli::parse_from([exe_name, "--check", "--log-dir", "bogus_log_dir"]);
+        let actual = Cli::parse_from([
+            exe_name,
+            "--dns-control",
+            "disabled",
+            "--check",
+            "--log-dir",
+            "bogus_log_dir",
+        ]);
         assert!(actual.check);
         assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
     }

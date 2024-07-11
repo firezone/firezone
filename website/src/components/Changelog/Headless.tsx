@@ -1,3 +1,4 @@
+import ChangeItem from "./ChangeItem";
 import Link from "next/link";
 import Entry from "./Entry";
 import Entries from "./Entries";
@@ -8,6 +9,15 @@ export default function Headless() {
 
   return (
     <Entries href={href} arches={arches} title="Linux headless">
+      {/*
+      <Entry version="1.1.4" date={new Date("2024-07-11")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem >
+            The env var `FIREZONE_DNS_CONTROL` or CLI arg `--dns-control` is now required.
+          </ChangeItem>
+        </ul>
+      </Entry>
+      */}
       <Entry version="1.1.3" date={new Date("2024-07-05")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">

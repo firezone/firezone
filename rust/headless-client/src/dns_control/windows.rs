@@ -17,8 +17,35 @@ use anyhow::{Context as _, Result};
 use connlib_shared::windows::{CREATE_NO_WINDOW, TUNNEL_NAME};
 use std::{net::IpAddr, os::windows::process::CommandExt, process::Command};
 
-pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
-    system_resolvers()
+/// Methods to control the system's DNS resolution
+#[derive(clap::ValueEnum, Clone, Debug)]
+pub(crate) enum Method {
+    /// Don't control DNS
+    Disabled,
+    /// Use Windows' NRPT feature
+    Nrpt,
+}
+
+impl Method {
+    pub(crate) fn for_gui() -> Self {
+        Self::Nrpt
+    }
+
+    pub(crate) fn system_resolvers(&self) -> Result<Vec<IpAddr>> {
+        let resolvers = ipconfig::get_adapters()?
+            .iter()
+            .flat_map(|adapter| adapter.dns_servers())
+            .filter(|ip| match ip {
+                IpAddr::V4(_) => true,
+                // Filter out bogus DNS resolvers on my dev laptop that start with fec0:
+                IpAddr::V6(ip) => !ip.octets().starts_with(&[0xfe, 0xc0]),
+            })
+            .copied()
+            .collect();
+        // This is private, so keep it at `debug` or `trace`
+        tracing::debug!(?resolvers);
+        Ok(resolvers)
+    }
 }
 
 #[derive(Default)]
@@ -48,7 +75,10 @@ impl DnsController {
     #[allow(clippy::unused_async)]
     pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
         deactivate().context("Failed to deactivate DNS control")?;
-        activate(dns_config).context("Failed to activate DNS control")?;
+        match self.method {
+            Method::Disabled => (),
+            Method::Nrpt => configure_nrpt(dns_config).context("Failed to activate DNS control")?,
+        }
         Ok(())
     }
 
@@ -66,27 +96,11 @@ impl DnsController {
     }
 }
 
-pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
-    let resolvers = ipconfig::get_adapters()?
-        .iter()
-        .flat_map(|adapter| adapter.dns_servers())
-        .filter(|ip| match ip {
-            IpAddr::V4(_) => true,
-            // Filter out bogus DNS resolvers on my dev laptop that start with fec0:
-            IpAddr::V6(ip) => !ip.octets().starts_with(&[0xfe, 0xc0]),
-        })
-        .copied()
-        .collect();
-    // This is private, so keep it at `debug` or `trace`
-    tracing::debug!(?resolvers);
-    Ok(resolvers)
-}
-
 /// Tells Windows to send all DNS queries to our sentinels
 ///
 /// Parameters:
 /// - `dns_config_string`: Comma-separated IP addresses of DNS servers, e.g. "1.1.1.1,8.8.8.8"
-pub(crate) fn activate(dns_config: &[IpAddr]) -> Result<()> {
+fn configure_nrpt(dns_config: &[IpAddr]) -> Result<()> {
     let dns_config_string = dns_config
         .iter()
         .map(|ip| format!("\"{ip}\""))

@@ -4,45 +4,53 @@ use std::{net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;
 
-const FIREZONE_DNS_CONTROL: &str = "FIREZONE_DNS_CONTROL";
-
-pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
-    get_system_default_resolvers_systemd_resolved()
-}
-
-#[derive(Clone, Debug)]
-enum DnsControlMethod {
+/// Methods to control the system's DNS resolution
+#[derive(clap::ValueEnum, Clone, Debug)]
+pub(crate) enum Method {
+    /// Explicitly disable DNS control
+    ///
+    /// This is for avoiding surprise if a user runs the Client and it implicitly
+    /// doesn't control DNS. The user must tell the headless Client how to control DNS.
+    ///
+    /// We don't use an `Option<Method>` because then `clap` may treat the arg as
+    /// optional.
+    Disabled,
     /// Back up `/etc/resolv.conf` and replace it with our own
     ///
     /// Only suitable for the Alpine CI containers and maybe something like an
     /// embedded system
     EtcResolvConf,
-    /// Cooperate with NetworkManager (TODO)
-    NetworkManager,
-    /// Cooperate with `systemd-resolved`
+    /// Use `systemd-resolved`
     ///
-    /// Suitable for most Ubuntu systems, probably
+    /// Suitable for most Ubuntu systems. The IPC service for the GUI always picks this.
     Systemd,
 }
 
-pub(crate) struct DnsController {
-    dns_control_method: Option<DnsControlMethod>,
+impl Method {
+    /// The GUI only uses `systemd-resolved` on Linux
+    pub(crate) fn for_gui() -> Self {
+        Self::Systemd
+    }
+
+    pub(crate) fn system_resolvers(&self) -> Result<Vec<IpAddr>> {
+        match self {
+            // Even if DNS control is disabled, we still read `/etc/resolv.conf`
+            // to learn the system's resolvers
+            Method::Disabled => get_system_default_resolvers_resolv_conf(),
+            Method::EtcResolvConf => get_system_default_resolvers_resolv_conf(),
+            Method::Systemd => get_system_default_resolvers_systemd_resolved(),
+        }
+    }
 }
 
-impl Default for DnsController {
-    fn default() -> Self {
-        // We'll remove `get_dns_control_from_env` in #5068
-        let dns_control_method = get_dns_control_from_env();
-        tracing::info!(?dns_control_method);
-
-        Self { dns_control_method }
-    }
+pub(crate) struct DnsController {
+    pub(crate) method: Method,
 }
 
 impl Drop for DnsController {
     fn drop(&mut self) {
         tracing::debug!("Reverting DNS control...");
-        if let Some(DnsControlMethod::EtcResolvConf) = self.dns_control_method {
+        if matches!(self.method, Method::EtcResolvConf) {
             // TODO: Check that nobody else modified the file while we were running.
             etc_resolv_conf::revert().ok();
         }
@@ -55,11 +63,10 @@ impl DnsController {
     /// The `mut` in `&mut self` is not needed by Rust's rules, but
     /// it would be bad if this was called from 2 threads at once.
     pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
-        match self.dns_control_method {
-            None => Ok(()),
-            Some(DnsControlMethod::EtcResolvConf) => etc_resolv_conf::configure(dns_config).await,
-            Some(DnsControlMethod::NetworkManager) => configure_network_manager(dns_config),
-            Some(DnsControlMethod::Systemd) => configure_systemd_resolved(dns_config).await,
+        match self.method {
+            Method::Disabled => Ok(()),
+            Method::EtcResolvConf => etc_resolv_conf::configure(dns_config).await,
+            Method::Systemd => configure_systemd_resolved(dns_config).await,
         }
         .context("Failed to control DNS")
     }
@@ -69,27 +76,16 @@ impl DnsController {
     /// Does nothing if we're using other DNS control methods or none at all
     pub(crate) fn flush(&self) -> Result<()> {
         // Flushing is only implemented for systemd-resolved
-        if matches!(self.dns_control_method, Some(DnsControlMethod::Systemd)) {
-            tracing::debug!("Flushing systemd-resolved DNS cache...");
-            Command::new("resolvectl").arg("flush-caches").status()?;
-            tracing::debug!("Flushed DNS.");
+        match self.method {
+            Method::Disabled | Method::EtcResolvConf => (),
+            Method::Systemd => {
+                tracing::debug!("Flushing systemd-resolved DNS cache...");
+                Command::new("resolvectl").arg("flush-caches").status()?;
+                tracing::debug!("Flushed DNS.");
+            }
         }
         Ok(())
     }
-}
-
-/// Reads FIREZONE_DNS_CONTROL. Returns None if invalid or not set
-fn get_dns_control_from_env() -> Option<DnsControlMethod> {
-    match std::env::var(FIREZONE_DNS_CONTROL).as_deref() {
-        Ok("etc-resolv-conf") => Some(DnsControlMethod::EtcResolvConf),
-        Ok("network-manager") => Some(DnsControlMethod::NetworkManager),
-        Ok("systemd-resolved") => Some(DnsControlMethod::Systemd),
-        _ => None,
-    }
-}
-
-fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
-    anyhow::bail!("DNS control with NetworkManager is not implemented yet",)
 }
 
 async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
@@ -120,15 +116,6 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
-    match crate::dns_control::platform::get_dns_control_from_env() {
-        None => get_system_default_resolvers_resolv_conf(),
-        Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf(),
-        Some(DnsControlMethod::NetworkManager) => get_system_default_resolvers_network_manager(),
-        Some(DnsControlMethod::Systemd) => get_system_default_resolvers_systemd_resolved(),
-    }
-}
-
 fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
     // Assume that `configure_resolv_conf` has run in `tun_linux.rs`
 
@@ -144,12 +131,6 @@ fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
         .map(|addr| addr.into())
         .collect();
     Ok(nameservers)
-}
-
-#[allow(clippy::unnecessary_wraps)]
-fn get_system_default_resolvers_network_manager() -> Result<Vec<IpAddr>> {
-    tracing::error!("get_system_default_resolvers_network_manager not implemented yet");
-    Ok(vec![])
 }
 
 /// Returns the DNS servers listed in `resolvectl dns`
