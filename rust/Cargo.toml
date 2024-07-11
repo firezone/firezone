@@ -54,16 +54,18 @@ phoenix-channel = { path = "phoenix-channel"}
 http-health-check = { path = "http-health-check"}
 ip-packet = { path = "ip-packet"}
 
-[workspace.lints]
-clippy.dbg_macro = "warn"
-clippy.print_stdout = "warn"
-clippy.print_stderr = "warn"
-clippy.unnecessary_wraps = "warn"
-clippy.unused_async = "warn"
-clippy.wildcard_enum_match_arm = "warn" # Ensures we match on all combinations of `Poll`, preventing erroneous suspensions.
-clippy.redundant_else = "warn"
-clippy.redundant_clone = "warn"
-rustdoc.private-intra-doc-links = "allow" # We don't publish any of our docs but want to catch dead links.
+[workspace.lints.clippy]
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+unnecessary_wraps = "warn"
+unused_async = "warn"
+wildcard_enum_match_arm = "warn" # Ensures we match on all combinations of `Poll`, preventing erroneous suspensions.
+redundant_else = "warn"
+redundant_clone = "warn"
+
+[workspace.lints.rustdoc]
+private-intra-doc-links = "allow" # We don't publish any of our docs but want to catch dead links.
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
