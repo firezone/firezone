@@ -58,7 +58,7 @@ impl TunDeviceManager {
         let index = handle
             .link()
             .get()
-            .match_name(Self::IFACE_NAME.to_string())
+            .match_name(name.to_string())
             .execute()
             .try_next()
             .await?
