@@ -152,7 +152,7 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-    ) -> Option<RawFd> {
+    ) {
         self.env(|mut env| {
             let tunnel_address_v4 =
                 env.new_string(tunnel_address_v4.to_string())
@@ -188,15 +188,9 @@ impl Callbacks for CallbackHandler {
             Ok(())
         })
         .expect("onSetInterfaceConfig callback failed");
-
-        None
     }
 
-    fn on_update_routes(
-        &self,
-        route_list_4: Vec<Ipv4Network>,
-        route_list_6: Vec<Ipv6Network>,
-    ) -> Option<RawFd> {
+    fn on_update_routes(&self, route_list_4: Vec<Ipv4Network>, route_list_6: Vec<Ipv6Network>) {
         self.env(|mut env| {
             let route_list_4 = env
                 .new_string(serde_json::to_string(&V4RouteList::new(route_list_4))?)
@@ -223,8 +217,6 @@ impl Callbacks for CallbackHandler {
             Ok(())
         })
         .expect("onUpdateRoutes callback failed");
-
-        None
     }
 
     fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
