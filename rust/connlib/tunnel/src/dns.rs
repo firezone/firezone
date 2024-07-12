@@ -526,13 +526,8 @@ fn ips_to_fqdn_for_known_hosts(
 }
 
 #[cfg(test)]
-mod test {
-    use connlib_shared::DomainName;
-
-    use crate::dns::is_subdomain;
-
-    use super::{match_domain, reverse_dns_addr};
-    use std::{collections::HashMap, net::Ipv4Addr};
+mod tests {
+    use super::*;
 
     #[test]
     fn reverse_dns_addr_works_v4() {
