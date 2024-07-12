@@ -31,7 +31,7 @@ pub struct StubResolver {
     ips_to_fqdn: HashMap<IpAddr, DomainName>,
     ip_provider: IpProvider,
     /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
-    dns_resources: HashMap<String, ResourceDescriptionDns>,
+    dns_resources: HashMap<String, ResourceId>,
     /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
     known_hosts: KnownHosts,
 }
@@ -108,9 +108,11 @@ impl StubResolver {
         }
     }
 
-    pub(crate) fn get_description(&self, ip: &IpAddr) -> Option<ResourceDescriptionDns> {
+    pub(crate) fn get_description(&self, ip: &IpAddr) -> Option<ResourceId> {
         let name = self.ips_to_fqdn.get(ip)?;
-        get_description(name, &self.dns_resources)
+        let resource_id = get_description(name, &self.dns_resources)?;
+
+        Some(resource_id)
     }
 
     pub(crate) fn get_fqdn(&self, ip: &IpAddr) -> Option<(&DomainName, &Vec<IpAddr>)> {
@@ -121,7 +123,7 @@ impl StubResolver {
     pub(crate) fn add_resource(&mut self, resource: &ResourceDescriptionDns) {
         let existing = self
             .dns_resources
-            .insert(resource.address.clone(), resource.clone());
+            .insert(resource.address.clone(), resource.id);
 
         if existing.is_none() {
             tracing::info!(address = %resource.address, "Activating DNS resource");
@@ -129,9 +131,9 @@ impl StubResolver {
     }
 
     pub(crate) fn remove_resource(&mut self, id: ResourceId) {
-        self.dns_resources.retain(|_, r| {
-            if r.id == id {
-                tracing::info!(address = %r.address, "Deactivating DNS resource");
+        self.dns_resources.retain(|address, r| {
+            if *r == id {
+                tracing::info!(%address, "Deactivating DNS resource");
                 return false;
             }
 
@@ -418,10 +420,10 @@ pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
 
 fn get_description(
     name: &DomainName,
-    dns_resources: &HashMap<String, ResourceDescriptionDns>,
-) -> Option<ResourceDescriptionDns> {
+    dns_resources: &HashMap<String, ResourceId>,
+) -> Option<ResourceId> {
     if let Some(resource) = dns_resources.get(&name.to_string()) {
-        return Some(resource.clone());
+        return Some(*resource);
     }
 
     if let Some(resource) = dns_resources.get(
@@ -431,7 +433,7 @@ fn get_description(
             .ok()?
             .to_string(),
     ) {
-        return Some(resource.clone());
+        return Some(*resource);
     }
 
     if let Some(parent) = name.parent() {
@@ -442,7 +444,7 @@ fn get_description(
                 .ok()?
                 .to_string(),
         ) {
-            return Some(resource.clone());
+            return Some(*resource);
         }
     }
 
@@ -525,59 +527,12 @@ fn ips_to_fqdn_for_known_hosts(
 
 #[cfg(test)]
 mod test {
-    use connlib_shared::{messages::client::ResourceDescriptionDns, DomainName};
+    use connlib_shared::{messages::ResourceId, DomainName};
 
     use crate::dns::is_subdomain;
 
     use super::{get_description, reverse_dns_addr};
     use std::{collections::HashMap, net::Ipv4Addr};
-
-    fn foo() -> ResourceDescriptionDns {
-        serde_json::from_str(
-            r#"{
-                "id": "c4bb3d79-afa7-4660-8918-06c38fda3a4a",
-                "address": "*.foo.com",
-                "name": "foo.com wildcard",
-                "address_description": "foo",
-                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}]
-            }"#,
-        )
-        .unwrap()
-    }
-
-    fn bar() -> ResourceDescriptionDns {
-        serde_json::from_str(
-            r#"{
-                "id": "c4bb3d79-afa7-4660-8918-06c38fda3a4b",
-                "address": "*.bar.com",
-                "name": "bar.com wildcard",
-                "address_description": "bar",
-                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}]
-            }"#,
-        )
-        .unwrap()
-    }
-
-    fn baz() -> ResourceDescriptionDns {
-        serde_json::from_str(
-            r#"{
-                "id": "c4bb3d79-afa7-4660-8918-06c38fda3a4c",
-                "address": "baz.com",
-                "name": "baz.com",
-                "address_description": "baz",
-                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}]
-            }"#,
-        )
-        .unwrap()
-    }
-
-    fn dns_resource_fixture() -> HashMap<String, ResourceDescriptionDns> {
-        HashMap::from([
-            ("*.foo.com".to_string(), foo()),
-            ("?.bar.com".to_string(), bar()),
-            ("baz.com".to_string(), baz()),
-        ])
-    }
 
     #[test]
     fn reverse_dns_addr_works_v4() {
@@ -634,7 +589,8 @@ mod test {
 
     #[test]
     fn wildcard_matching() {
-        let dns_resources_fixture = dns_resource_fixture();
+        let dns_resources_fixture =
+            HashMap::from([("*.foo.com".to_string(), ResourceId::from_u128(0))]);
 
         assert_eq!(
             get_description(
@@ -642,7 +598,7 @@ mod test {
                 &dns_resources_fixture,
             )
             .unwrap(),
-            foo(),
+            ResourceId::from_u128(0),
         );
 
         assert_eq!(
@@ -651,7 +607,7 @@ mod test {
                 &dns_resources_fixture,
             )
             .unwrap(),
-            foo(),
+            ResourceId::from_u128(0),
         );
 
         assert_eq!(
@@ -660,7 +616,7 @@ mod test {
                 &dns_resources_fixture,
             )
             .unwrap(),
-            foo(),
+            ResourceId::from_u128(0),
         );
 
         assert!(get_description(
@@ -672,7 +628,8 @@ mod test {
 
     #[test]
     fn question_mark_matching() {
-        let dns_resources_fixture = dns_resource_fixture();
+        let dns_resources_fixture =
+            HashMap::from([("?.bar.com".to_string(), ResourceId::from_u128(1))]);
 
         assert_eq!(
             get_description(
@@ -680,7 +637,7 @@ mod test {
                 &dns_resources_fixture,
             )
             .unwrap(),
-            bar(),
+            ResourceId::from_u128(1),
         );
 
         assert_eq!(
@@ -689,7 +646,7 @@ mod test {
                 &dns_resources_fixture,
             )
             .unwrap(),
-            bar(),
+            ResourceId::from_u128(1),
         );
 
         assert!(get_description(
@@ -701,7 +658,8 @@ mod test {
 
     #[test]
     fn exact_matching() {
-        let dns_resources_fixture = dns_resource_fixture();
+        let dns_resources_fixture =
+            HashMap::from([("baz.com".to_string(), ResourceId::from_u128(2))]);
 
         assert_eq!(
             get_description(
@@ -709,7 +667,7 @@ mod test {
                 &dns_resources_fixture,
             )
             .unwrap(),
-            baz(),
+            ResourceId::from_u128(2),
         );
 
         assert!(get_description(

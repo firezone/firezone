@@ -774,10 +774,7 @@ impl ClientState {
             .longest_match(destination)
             .map(|(_, res)| res.id);
 
-        let maybe_dns_resource_id = self
-            .stub_resolver
-            .get_description(&destination)
-            .map(|r| r.id);
+        let maybe_dns_resource_id = self.stub_resolver.get_description(&destination);
 
         maybe_cidr_resource_id.or(maybe_dns_resource_id)
     }
