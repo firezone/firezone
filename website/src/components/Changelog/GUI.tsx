@@ -12,7 +12,14 @@ export default function GUI({ title }: { title: string }) {
 
   return (
     <Entries href={href} arches={arches} title={title}>
-      {/*<Entry version="1.1.6" date={new Date("2024-07-11")}>
+      {/*<Entry version="1.1.7" date={new Date("2024-07-12")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem enable={title === "Windows"}>
+            This is a maintenance release with no user-facing changes.
+          </ChangeItem>
+        </ul>
+      </Entry>*/}
+      <Entry version="1.1.6" date={new Date("2024-07-12")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="5795">
             Unexpected IPC service stops are now reported as "IPC connection closed".
@@ -24,7 +31,7 @@ export default function GUI({ title }: { title: string }) {
             Shows different tray icons when signed out, signing in, and signed in.
           </ChangeItem>
         </ul>
-      </Entry>*/}
+      </Entry>
       <Entry version="1.1.5" date={new Date("2024-07-08")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem enable={title === "Linux GUI"} pull="5793">
