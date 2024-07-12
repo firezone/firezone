@@ -815,13 +815,13 @@ async fn run_controller(
                 }
             },
             resolvers = dns_listener.notified() => {
-                let resolvers = resolvers?;
-                let resolver_set = HashSet::from_iter(resolvers.iter().cloned());
-                if resolver_set != last_resolvers_sent {
-                    last_resolvers_sent = resolver_set;
-                    if controller.status.connlib_is_up() {
+                if controller.status.connlib_is_up() {
+                    let resolvers = resolvers?;
+                    let resolver_set = HashSet::from_iter(resolvers.iter().cloned());
+                    if resolver_set != last_resolvers_sent {
                         tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
                         controller.ipc_client.set_dns(resolvers).await?;
+                        last_resolvers_sent = resolver_set;
                     } else {
                         tracing::debug!("Resolvers stayed the same");
                     }

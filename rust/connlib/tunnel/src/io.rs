@@ -21,7 +21,6 @@ use std::{
     task::{ready, Context, Poll},
     time::{Duration, Instant},
 };
-use tracing::instrument;
 
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
 
@@ -112,7 +111,7 @@ impl Io {
         &mut self.sockets
     }
 
-    #[instrument(ret, skip_all)]
+    #[logging_timer::time]
     pub fn set_upstream_dns_servers(
         &mut self,
         dns_servers: impl IntoIterator<Item = (IpAddr, DnsServer)>,
