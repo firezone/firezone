@@ -130,7 +130,7 @@ defmodule Domain.Resources.Resource.Changeset do
         changeset
 
       true ->
-        Network.cidrs()
+        Network.reserved_cidrs()
         |> Enum.reduce(changeset, fn {_type, cidr}, changeset ->
           validate_not_in_cidr(changeset, :address, cidr)
         end)

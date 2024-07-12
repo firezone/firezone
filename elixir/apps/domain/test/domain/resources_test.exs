@@ -938,11 +938,19 @@ defmodule Domain.ResourcesTest do
 
       attrs = %{"address" => "100.64.0.0/8", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      assert "cannot be in the CIDR 100.64.0.0/11" in errors_on(changeset).address
+      assert "cannot be in the CIDR 100.64.0.0/10" in errors_on(changeset).address
+
+      attrs = %{"address" => "100.96.0.0/11", "type" => "cidr"}
+      assert {:error, changeset} = create_resource(attrs, subject)
+      assert "cannot be in the CIDR 100.64.0.0/10" in errors_on(changeset).address
 
       attrs = %{"address" => "fd00:2021:1111::/102", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
-      assert "cannot be in the CIDR fd00:2021:1111::/107" in errors_on(changeset).address
+      assert "cannot be in the CIDR fd00:2021:1111::/48" in errors_on(changeset).address
+
+      attrs = %{"address" => "fd00:2021:1111:8000::/96", "type" => "cidr"}
+      assert {:error, changeset} = create_resource(attrs, subject)
+      assert "cannot be in the CIDR fd00:2021:1111::/48" in errors_on(changeset).address
 
       attrs = %{"address" => "::/0", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
