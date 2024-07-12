@@ -1,22 +1,22 @@
 [workspace]
 members = [
+  "bin-shared",
   "connlib/clients/android",
   "connlib/clients/apple",
   "connlib/clients/shared",
   "connlib/shared",
-  "connlib/tunnel",
   "connlib/snownet",
+  "connlib/tunnel",
   "gateway",
-  "bin-shared",
+  "gui-client/src-tauri",
   "gui-smoke-test",
   "headless-client",
-  "snownet-tests",
-  "phoenix-channel",
-  "relay",
-  "gui-client/src-tauri",
   "http-health-check",
   "http-test-server",
   "ip-packet",
+  "phoenix-channel",
+  "relay",
+  "snownet-tests",
 ]
 
 resolver = "2"
@@ -39,20 +39,20 @@ tokio-tungstenite = "0.21"
 rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_socket"] }
 tokio = "1.38"
 
-connlib-client-android = { path = "connlib/clients/android"}
-connlib-client-apple = { path = "connlib/clients/apple"}
-connlib-client-shared = { path = "connlib/clients/shared"}
-firezone-gateway = { path = "gateway"}
-firezone-headless-client = { path = "headless-client"}
-firezone-gui-client = { path = "gui-client/src-tauri"}
-firezone-bin-shared = { path = "bin-shared"}
-snownet = { path = "connlib/snownet"}
-firezone-relay = { path = "relay"}
-connlib-shared = { path = "connlib/shared"}
-firezone-tunnel = { path = "connlib/tunnel"}
-phoenix-channel = { path = "phoenix-channel"}
-http-health-check = { path = "http-health-check"}
-ip-packet = { path = "ip-packet"}
+connlib-client-android = { path = "connlib/clients/android" }
+connlib-client-apple = { path = "connlib/clients/apple" }
+connlib-client-shared = { path = "connlib/clients/shared" }
+firezone-gateway = { path = "gateway" }
+firezone-headless-client = { path = "headless-client" }
+firezone-gui-client = { path = "gui-client/src-tauri" }
+firezone-bin-shared = { path = "bin-shared" }
+snownet = { path = "connlib/snownet" }
+firezone-relay = { path = "relay" }
+connlib-shared = { path = "connlib/shared" }
+firezone-tunnel = { path = "connlib/tunnel" }
+phoenix-channel = { path = "phoenix-channel" }
+http-health-check = { path = "http-health-check" }
+ip-packet = { path = "ip-packet" }
 
 [workspace.lints.clippy]
 dbg_macro = "warn"
