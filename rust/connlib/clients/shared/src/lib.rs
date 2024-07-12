@@ -172,16 +172,18 @@ where
         }
         Err(e) => match e.try_into_panic() {
             Ok(panic) => {
-                tracing::error!("connlib panicked");
                 if let Some(msg) = panic.downcast_ref::<&str>() {
+                    tracing::error!("connlib panicked: {msg}");
                     callbacks.on_disconnect(&Error::Panic(msg.to_string()));
                     return;
                 }
                 if let Some(msg) = panic.downcast_ref::<String>() {
+                    tracing::error!("connlib panicked: {msg}");
                     callbacks.on_disconnect(&Error::Panic(msg.to_string()));
                     return;
                 }
 
+                tracing::error!("connlib panicked with a non-string payload");
                 callbacks.on_disconnect(&Error::PanicNonStringPayload);
             }
             Err(_) => {
