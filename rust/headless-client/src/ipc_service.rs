@@ -7,7 +7,7 @@ use crate::{
 use anyhow::{Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets};
-use futures::{Future as _, SinkExt as _, Stream as _};
+use futures::{future::poll_fn, task::Poll, Future as _, SinkExt as _, Stream as _};
 use std::{net::IpAddr, path::PathBuf, pin::pin, time::Duration};
 use tokio::{sync::mpsc, time::Instant};
 use tracing::subscriber::set_global_default;
