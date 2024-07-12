@@ -590,34 +590,33 @@ mod tests {
             match_domain(
                 &DomainName::vec_from_str("a.foo.com").unwrap(),
                 &dns_resources_fixture,
-            )
-            .unwrap(),
-            0,
+            ),
+            Some(0),
         );
 
         assert_eq!(
             match_domain(
                 &DomainName::vec_from_str("foo.com").unwrap(),
                 &dns_resources_fixture,
-            )
-            .unwrap(),
-            0,
+            ),
+            Some(0),
         );
 
         assert_eq!(
             match_domain(
                 &DomainName::vec_from_str("a.b.foo.com").unwrap(),
                 &dns_resources_fixture,
-            )
-            .unwrap(),
-            0,
+            ),
+            Some(0),
         );
 
-        assert!(match_domain(
-            &DomainName::vec_from_str("oo.com").unwrap(),
-            &dns_resources_fixture,
-        )
-        .is_none(),);
+        assert_eq!(
+            match_domain(
+                &DomainName::vec_from_str("oo.com").unwrap(),
+                &dns_resources_fixture,
+            ),
+            None
+        );
     }
 
     #[test]
@@ -628,25 +627,25 @@ mod tests {
             match_domain(
                 &DomainName::vec_from_str("a.bar.com").unwrap(),
                 &dns_resources_fixture,
-            )
-            .unwrap(),
-            1,
+            ),
+            Some(1),
         );
 
         assert_eq!(
             match_domain(
                 &DomainName::vec_from_str("bar.com").unwrap(),
                 &dns_resources_fixture,
-            )
-            .unwrap(),
-            1,
+            ),
+            Some(1),
         );
 
-        assert!(match_domain(
-            &DomainName::vec_from_str("a.b.bar.com").unwrap(),
-            &dns_resources_fixture,
-        )
-        .is_none(),);
+        assert_eq!(
+            match_domain(
+                &DomainName::vec_from_str("a.b.bar.com").unwrap(),
+                &dns_resources_fixture,
+            ),
+            None
+        );
     }
 
     #[test]
@@ -657,22 +656,25 @@ mod tests {
             match_domain(
                 &DomainName::vec_from_str("baz.com").unwrap(),
                 &dns_resources_fixture,
-            )
-            .unwrap(),
-            2,
+            ),
+            Some(2),
         );
 
-        assert!(match_domain(
-            &DomainName::vec_from_str("a.baz.com").unwrap(),
-            &dns_resources_fixture,
-        )
-        .is_none());
+        assert_eq!(
+            match_domain(
+                &DomainName::vec_from_str("a.baz.com").unwrap(),
+                &dns_resources_fixture,
+            ),
+            None
+        );
 
-        assert!(match_domain(
-            &DomainName::vec_from_str("a.b.baz.com").unwrap(),
-            &dns_resources_fixture,
-        )
-        .is_none(),);
+        assert_eq!(
+            match_domain(
+                &DomainName::vec_from_str("a.b.baz.com").unwrap(),
+                &dns_resources_fixture,
+            ),
+            None,
+        );
     }
 
     #[test]
