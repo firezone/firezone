@@ -34,6 +34,7 @@ socket2 = { version = "0.5" }
 thiserror = { version = "1.0", default-features = false }
 tokio = { workspace = true }
 tracing = { workspace = true }
+wildmatch = "2.3.4"
 
 [dev-dependencies]
 derivative = "2.2.0"

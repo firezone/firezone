@@ -15,6 +15,7 @@ use ip_packet::udp::UdpPacket;
 use ip_packet::Packet as _;
 use ip_packet::{udp::MutableUdpPacket, IpPacket, MutableIpPacket, MutablePacket, PacketSize};
 use itertools::Itertools;
+use pattern::Pattern;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -29,8 +30,8 @@ pub struct StubResolver {
     fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
     ips_to_fqdn: HashMap<IpAddr, (DomainName, ResourceId)>,
     ip_provider: IpProvider,
-    /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
-    dns_resources: HashMap<String, ResourceId>,
+    /// All DNS resources we know about, indexed by their domain (pattern).
+    resources: HashMap<Pattern, ResourceId>,
     /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
     known_hosts: KnownHosts,
 }
@@ -102,7 +103,7 @@ impl StubResolver {
             fqdn_to_ips: Default::default(),
             ips_to_fqdn: Default::default(),
             ip_provider: IpProvider::for_resources(),
-            dns_resources: Default::default(),
+            resources: Default::default(),
             known_hosts: KnownHosts::new(known_hosts),
         }
     }
@@ -123,7 +124,7 @@ impl StubResolver {
     }
 
     pub(crate) fn add_resource(&mut self, id: ResourceId, address: String) {
-        let existing = self.dns_resources.insert(address.clone(), id);
+        let existing = self.resources.insert(Pattern::new(address.clone()), id);
 
         if existing.is_none() {
             tracing::info!(%address, "Activating DNS resource");
@@ -131,7 +132,7 @@ impl StubResolver {
     }
 
     pub(crate) fn remove_resource(&mut self, id: ResourceId) {
-        self.dns_resources.retain(|address, r| {
+        self.resources.retain(|address, r| {
             if *r == id {
                 tracing::info!(%address, "Deactivating DNS resource");
                 return false;
@@ -177,7 +178,7 @@ impl StubResolver {
     }
 
     fn match_resource(&self, domain_name: &DomainName) -> Option<ResourceId> {
-        match_domain(domain_name, &self.dns_resources)
+        match_domain(domain_name, &self.resources)
     }
 
     fn resource_address_name_by_reservse_dns(
@@ -421,41 +422,20 @@ pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
     name == &resource
 }
 
-fn match_domain<T>(name: &DomainName, dns_resources: &HashMap<String, T>) -> Option<T>
+fn match_domain<T>(name: &DomainName, resources: &HashMap<Pattern, T>) -> Option<T>
 where
     T: Copy,
 {
-    if let Some(resource) = dns_resources.get(&name.to_string()) {
+    let name = name.to_string();
+
+    // Attempt literal match first.
+    if let Some(resource) = resources.get(name.as_str()) {
         return Some(*resource);
     }
 
-    if let Some(resource) = dns_resources.get(
-        &RelativeName::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
-            .ok()?
-            .chain(name)
-            .ok()?
-            .to_string(),
-    ) {
-        return Some(*resource);
-    }
-
-    if let Some(parent) = name.parent() {
-        if let Some(resource) = dns_resources.get(
-            &RelativeName::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
-                .ok()?
-                .chain(parent)
-                .ok()?
-                .to_string(),
-        ) {
-            return Some(*resource);
-        }
-    }
-
-    name.iter_suffixes().find_map(|n| {
-        dns_resources
-            .get(&RelativeName::wildcard_vec().chain(n).ok()?.to_string())
-            .copied()
-    })
+    resources
+        .iter()
+        .find_map(|(pattern, resource)| pattern.matches(&name).then_some(*resource))
 }
 
 fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
@@ -528,9 +508,63 @@ fn ips_to_fqdn_for_known_hosts(
         .collect()
 }
 
+mod pattern {
+    use core::fmt;
+    use std::{borrow::Borrow, hash::Hash};
+    use wildmatch::WildMatch;
+
+    #[derive(Debug)]
+    pub struct Pattern {
+        matcher: WildMatch,
+        raw: String,
+    }
+
+    impl Pattern {
+        pub fn new(pattern: String) -> Self {
+            Self {
+                matcher: WildMatch::new(&pattern),
+                raw: pattern,
+            }
+        }
+
+        pub fn matches(&self, input: &str) -> bool {
+            self.matcher.matches(input)
+        }
+    }
+
+    impl PartialEq for Pattern {
+        fn eq(&self, other: &Self) -> bool {
+            self.raw == other.raw
+        }
+    }
+
+    impl Eq for Pattern {}
+
+    // Implement `Hash` by only hashing `raw`.
+    // This allows us to directly look up values in maps based on the original string which is useful for full-domain matching.
+    impl Hash for Pattern {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            self.raw.hash(state);
+        }
+    }
+
+    impl fmt::Display for Pattern {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.raw.fmt(f)
+        }
+    }
+
+    impl Borrow<str> for Pattern {
+        fn borrow(&self) -> &str {
+            &self.raw
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wildmatch::WildMatch;
 
     #[test]
     fn reverse_dns_addr_works_v4() {
@@ -587,67 +621,30 @@ mod tests {
 
     #[test]
     fn wildcard_matching() {
-        let dns_resources_fixture = HashMap::from([("*.foo.com".to_string(), 0)]);
+        let resources = HashMap::from([(pattern("*.foo.com"), 0)]);
 
-        assert_eq!(
-            match_domain(&domain("a.foo.com"), &dns_resources_fixture),
-            Some(0),
-        );
-
-        assert_eq!(
-            match_domain(&domain("foo.com"), &dns_resources_fixture),
-            Some(0),
-        );
-
-        assert_eq!(
-            match_domain(&domain("a.b.foo.com"), &dns_resources_fixture),
-            Some(0),
-        );
-
-        assert_eq!(
-            match_domain(&domain("oo.com"), &dns_resources_fixture),
-            None
-        );
+        assert_eq!(match_domain(&domain("a.foo.com"), &resources), Some(0));
+        assert_eq!(match_domain(&domain("foo.com"), &resources), Some(0));
+        assert_eq!(match_domain(&domain("a.b.foo.com"), &resources), Some(0));
+        assert_eq!(match_domain(&domain("oo.com"), &resources), None);
     }
 
     #[test]
     fn question_mark_matching() {
-        let dns_resources_fixture = HashMap::from([("?.bar.com".to_string(), 1)]);
+        let resources = HashMap::from([(pattern("?.bar.com"), 1)]);
 
-        assert_eq!(
-            match_domain(&domain("a.bar.com"), &dns_resources_fixture),
-            Some(1),
-        );
-
-        assert_eq!(
-            match_domain(&domain("bar.com"), &dns_resources_fixture),
-            Some(1),
-        );
-
-        assert_eq!(
-            match_domain(&domain("a.b.bar.com"), &dns_resources_fixture),
-            None
-        );
+        assert_eq!(match_domain(&domain("a.bar.com"), &resources), Some(1));
+        assert_eq!(match_domain(&domain("bar.com"), &resources), Some(1));
+        assert_eq!(match_domain(&domain("a.b.bar.com"), &resources), None);
     }
 
     #[test]
     fn exact_matching() {
-        let dns_resources_fixture = HashMap::from([("baz.com".to_string(), 2)]);
+        let resources = HashMap::from([(pattern("baz.com"), 2)]);
 
-        assert_eq!(
-            match_domain(&domain("baz.com"), &dns_resources_fixture),
-            Some(2),
-        );
-
-        assert_eq!(
-            match_domain(&domain("a.baz.com"), &dns_resources_fixture),
-            None
-        );
-
-        assert_eq!(
-            match_domain(&domain("a.b.baz.com"), &dns_resources_fixture),
-            None,
-        );
+        assert_eq!(match_domain(&domain("baz.com"), &resources), Some(2));
+        assert_eq!(match_domain(&domain("a.baz.com"), &resources), None);
+        assert_eq!(match_domain(&domain("a.b.baz.com"), &resources), None);
     }
 
     #[test]
@@ -679,6 +676,10 @@ mod tests {
         assert!(!is_subdomain(&domain("bar.com"), "?.foo.com"));
         assert!(!is_subdomain(&domain("foo.com"), "?.a.foo.com"));
         assert!(!is_subdomain(&domain("afoo.com"), "?.foo.com"));
+    }
+
+    fn pattern(name: &str) -> Pattern {
+        Pattern::new(name.to_owned())
     }
 
     fn domain(name: &str) -> DomainName {
