@@ -28,7 +28,7 @@ const DNS_PORT: u16 = 53;
 
 pub struct StubResolver {
     fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
-    ips_to_fqdn: HashMap<IpAddr, DomainName>,
+    ips_to_fqdn: HashMap<IpAddr, (DomainName, ResourceId)>,
     ip_provider: IpProvider,
     /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
     dns_resources: HashMap<String, ResourceId>,
@@ -109,14 +109,13 @@ impl StubResolver {
     }
 
     pub(crate) fn get_description(&self, ip: &IpAddr) -> Option<ResourceId> {
-        let name = self.ips_to_fqdn.get(ip)?;
-        let resource_id = match_domain(name, &self.dns_resources)?;
+        let (_, resource_id) = self.ips_to_fqdn.get(ip)?;
 
-        Some(resource_id)
+        Some(*resource_id)
     }
 
     pub(crate) fn get_fqdn(&self, ip: &IpAddr) -> Option<(&DomainName, &Vec<IpAddr>)> {
-        let fqdn = self.ips_to_fqdn.get(ip)?;
+        let (fqdn, _) = self.ips_to_fqdn.get(ip)?;
         Some((fqdn, self.fqdn_to_ips.get(fqdn).unwrap()))
     }
 
@@ -144,18 +143,20 @@ impl StubResolver {
     fn get_or_assign_a_records(
         &mut self,
         fqdn: DomainName,
+        resource_id: ResourceId,
     ) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
-        to_a_records(self.get_or_assign_ips(fqdn).into_iter())
+        to_a_records(self.get_or_assign_ips(fqdn, resource_id).into_iter())
     }
 
     fn get_or_assign_aaaa_records(
         &mut self,
         fqdn: DomainName,
+        resource_id: ResourceId,
     ) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
-        to_aaaa_records(self.get_or_assign_ips(fqdn).into_iter())
+        to_aaaa_records(self.get_or_assign_ips(fqdn, resource_id).into_iter())
     }
 
-    fn get_or_assign_ips(&mut self, fqdn: DomainName) -> Vec<IpAddr> {
+    fn get_or_assign_ips(&mut self, fqdn: DomainName, resource_id: ResourceId) -> Vec<IpAddr> {
         let ips = self
             .fqdn_to_ips
             .entry(fqdn.clone())
@@ -168,14 +169,14 @@ impl StubResolver {
             })
             .clone();
         for ip in &ips {
-            self.ips_to_fqdn.insert(*ip, fqdn.clone());
+            self.ips_to_fqdn.insert(*ip, (fqdn.clone(), resource_id));
         }
 
         ips
     }
 
-    fn is_fqdn_resource(&self, domain_name: &DomainName) -> bool {
-        match_domain(domain_name, &self.dns_resources).is_some()
+    fn match_resource(&self, domain_name: &DomainName) -> Option<ResourceId> {
+        match_domain(domain_name, &self.dns_resources)
     }
 
     fn resource_address_name_by_reservse_dns(
@@ -183,8 +184,9 @@ impl StubResolver {
         reverse_dns_name: &DomainName,
     ) -> Option<DomainName> {
         let address = reverse_dns_addr(&reverse_dns_name.to_string())?;
+        let (domain, _) = self.ips_to_fqdn.get(&address)?;
 
-        self.ips_to_fqdn.get(&address).cloned()
+        Some(domain.clone())
     }
 
     // TODO: we can save a few allocations here still
@@ -223,14 +225,14 @@ impl StubResolver {
             )));
         }
 
-        let resource_records = match qtype {
-            Rtype::A if self.is_fqdn_resource(&domain) => {
-                self.get_or_assign_a_records(domain.clone())
+        let maybe_resource = self.match_resource(&domain);
+
+        let resource_records = match (qtype, maybe_resource) {
+            (Rtype::A, Some(resource)) => self.get_or_assign_a_records(domain.clone(), resource),
+            (Rtype::AAAA, Some(resource)) => {
+                self.get_or_assign_aaaa_records(domain.clone(), resource)
             }
-            Rtype::AAAA if self.is_fqdn_resource(&domain) => {
-                self.get_or_assign_aaaa_records(domain.clone())
-            }
-            Rtype::PTR => {
+            (Rtype::PTR, _) => {
                 let fqdn = self.resource_address_name_by_reservse_dns(&domain)?;
 
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
