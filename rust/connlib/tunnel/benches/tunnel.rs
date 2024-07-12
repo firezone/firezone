@@ -27,7 +27,6 @@ mod platform {
 mod platform {
     use anyhow::Result;
     use firezone_bin_shared::TunDeviceManager;
-    use firezone_tunnel::Tun;
     use ip_packet::{IpPacket, Packet as _};
     use std::{
         future::poll_fn,
@@ -49,8 +48,6 @@ mod platform {
             .await
             .unwrap();
 
-        let mut tun = Tun::new()?;
-
         const MTU: usize = 1_280;
         const NUM_REQUESTS: u64 = 1_000;
         const REQ_CODE: u8 = 42;
@@ -61,8 +58,10 @@ mod platform {
         let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
         let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
         let mut device_manager = TunDeviceManager::new()?;
+        let mut tun = device_manager.make_tun()?;
+
         device_manager.set_ips(ipv4, ipv6).await?;
-        tun.add_route(ipv4.into())?;
+        device_manager.set_routes(vec![ipv4.into()], vec![]).await?;
 
         let server_addr = (ipv4, SERVER_PORT).into();
 

@@ -164,8 +164,6 @@ pub fn run_only_headless_client() -> Result<()> {
         max_partition_time,
     };
     let session = Session::connect(args, rt.handle().clone());
-    // TODO: DNS should be added dynamically
-    session.set_dns(dns_control::system_resolvers().unwrap_or_default());
     platform::notify_service_controller()?;
 
     let result = rt.block_on(async {
@@ -176,6 +174,10 @@ pub fn run_only_headless_client() -> Result<()> {
         let mut dns_controller = DnsController::default();
         let mut tun_device = TunDeviceManager::new()?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
+
+        session.set_tun(tun_device.make_tun()?);
+        // TODO: DNS should be added dynamically
+        session.set_dns(dns_control::system_resolvers().unwrap_or_default());
 
         loop {
             let cb = futures::select! {

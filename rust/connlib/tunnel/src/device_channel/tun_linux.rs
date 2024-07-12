@@ -1,12 +1,9 @@
 use super::utils;
 use crate::device_channel::ioctl;
-use connlib_shared::{Callbacks, Error, Result};
-use ip_network::IpNetwork;
 use libc::{
     close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, IFF_NO_PI, IFF_TUN, O_NONBLOCK, O_RDWR,
     S_IFCHR,
 };
-use std::collections::HashSet;
 use std::path::Path;
 use std::task::{Context, Poll};
 use std::{
@@ -51,7 +48,18 @@ impl Tun {
         utils::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
     }
 
-    pub fn new() -> Result<Self> {
+    /// Create a new [`Tun`] from a raw file descriptor.
+    ///
+    /// # Safety
+    ///
+    /// The file descriptor must be open.
+    pub unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
+        Ok(Tun {
+            fd: AsyncFd::new(fd)?,
+        })
+    }
+
+    pub fn new() -> io::Result<Self> {
         create_tun_device()?;
 
         let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
@@ -70,23 +78,8 @@ impl Tun {
 
         set_non_blocking(fd)?;
 
-        Ok(Self {
-            fd: AsyncFd::new(fd)?,
-        })
-    }
-
-    #[allow(clippy::unnecessary_wraps)] // fn signature needs to align with other platforms.
-    pub fn set_routes(
-        &mut self,
-        new_routes: HashSet<IpNetwork>,
-        callbacks: &impl Callbacks,
-    ) -> Result<()> {
-        callbacks.on_update_routes(
-            new_routes.iter().copied().filter_map(super::ipv4).collect(),
-            new_routes.iter().copied().filter_map(super::ipv6).collect(),
-        );
-
-        Ok(())
+        // Safety: We just opened the fd.
+        unsafe { Self::from_fd(fd) }
     }
 
     pub fn name(&self) -> &str {
@@ -94,11 +87,11 @@ impl Tun {
     }
 }
 
-fn get_last_error() -> Error {
-    Error::Io(io::Error::last_os_error())
+fn get_last_error() -> io::Error {
+    io::Error::last_os_error()
 }
 
-fn set_non_blocking(fd: RawFd) -> Result<()> {
+fn set_non_blocking(fd: RawFd) -> io::Result<()> {
     match unsafe { fcntl(fd, F_GETFL) } {
         -1 => Err(get_last_error()),
         flags => match unsafe { fcntl(fd, F_SETFL, flags | O_NONBLOCK) } {
@@ -108,7 +101,7 @@ fn set_non_blocking(fd: RawFd) -> Result<()> {
     }
 }
 
-fn create_tun_device() -> Result<()> {
+fn create_tun_device() -> io::Result<()> {
     let path = Path::new(TUN_FILE.to_str().expect("path is valid utf-8"));
 
     if path.exists() {

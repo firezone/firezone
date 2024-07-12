@@ -5,13 +5,12 @@ mod make_writer;
 
 use connlib_client_shared::{
     callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
-    Session, Sockets, V4RouteList, V6RouteList,
+    Session, Sockets, Tun, V4RouteList, V6RouteList,
 };
 use ip_network::{Ipv4Network, Ipv6Network};
 use secrecy::SecretString;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    os::fd::RawFd,
     path::PathBuf,
     sync::Arc,
     time::Duration,
@@ -110,28 +109,20 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-    ) -> Option<RawFd> {
+    ) {
         self.inner.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
             serde_json::to_string(&dns_addresses)
                 .expect("developer error: a list of ips should always be serializable"),
         );
-
-        None
     }
 
-    fn on_update_routes(
-        &self,
-        route_list_4: Vec<Ipv4Network>,
-        route_list_6: Vec<Ipv6Network>,
-    ) -> Option<RawFd> {
+    fn on_update_routes(&self, route_list_4: Vec<Ipv4Network>, route_list_6: Vec<Ipv6Network>) {
         self.inner.on_update_routes(
             serde_json::to_string(&V4RouteList::new(route_list_4)).unwrap(),
             serde_json::to_string(&V6RouteList::new(route_list_6)).unwrap(),
         );
-
-        None
     }
 
     fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
@@ -213,6 +204,8 @@ impl WrappedSession {
             max_partition_time: Some(MAX_PARTITION_TIME),
         };
         let session = Session::connect(args, runtime.handle().clone());
+        let _enter = runtime.enter();
+        session.set_tun(Tun::new().map_err(|e| e.to_string())?);
 
         Ok(Self {
             inner: session,

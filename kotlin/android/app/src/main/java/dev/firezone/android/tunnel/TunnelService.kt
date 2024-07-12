@@ -98,20 +98,24 @@ class TunnelService : VpnService() {
                 addressIPv4: String,
                 addressIPv6: String,
                 dnsAddresses: String,
-            ): Int {
+            ) {
                 // init tunnel config
                 tunnelDnsAddresses = moshi.adapter<MutableList<String>>().fromJson(dnsAddresses)!!
                 tunnelIpv4Address = addressIPv4
                 tunnelIpv6Address = addressIPv6
 
                 // start VPN
-                return buildVpnService()
+                val fd = buildVpnService()
+
+                connlibSessionPtr?.let {
+                    ConnlibSession.setTun(it, fd)
+                }
             }
 
             override fun onUpdateRoutes(
                 routes4JSON: String,
                 routes6JSON: String,
-            ): Int {
+            ) {
                 val routes4 = moshi.adapter<MutableList<Cidr>>().fromJson(routes4JSON)!!
                 val routes6 = moshi.adapter<MutableList<Cidr>>().fromJson(routes6JSON)!!
 
@@ -119,7 +123,11 @@ class TunnelService : VpnService() {
                 tunnelRoutes.addAll(routes4)
                 tunnelRoutes.addAll(routes6)
 
-                return buildVpnService()
+                val fd = buildVpnService()
+
+                connlibSessionPtr?.let {
+                    ConnlibSession.setTun(it, fd)
+                }
             }
 
             // Unexpected disconnect, most likely a 401. Clear the token and initiate a stop of the

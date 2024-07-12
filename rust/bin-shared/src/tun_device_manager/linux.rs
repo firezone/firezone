@@ -2,6 +2,7 @@
 
 use anyhow::{anyhow, Context as _, Result};
 use connlib_shared::DEFAULT_MTU;
+use firezone_tunnel::Tun;
 use futures::TryStreamExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
@@ -48,6 +49,10 @@ impl TunDeviceManager {
             connection,
             routes: Default::default(),
         })
+    }
+
+    pub fn make_tun(&mut self) -> Result<Tun> {
+        Ok(Tun::new()?)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

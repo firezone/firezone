@@ -230,9 +230,6 @@ impl Eventloop {
                 msg: IngressMessages::Init(init),
                 ..
             } => {
-                if let Err(e) = self.tunnel.set_interface(&init.interface) {
-                    tracing::warn!("Failed to set interface: {e}");
-                };
                 self.tunnel.update_relays(HashSet::default(), init.relays);
 
                 // FIXME(tech-debt): Currently, the `Tunnel` creates the TUN device as part of `set_interface`.
