@@ -26,13 +26,14 @@ const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
 const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
 const DNS_PORT: u16 = 53;
 
-/// Tells the Client how to reply to a single DNS query
-#[derive(Debug)]
-pub(crate) enum ResolveStrategy<'a> {
-    /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
-    LocalResponse(IpPacket<'static>),
-    /// The query is for a non-Resource, forward it to an upstream or system resolver
-    ForwardQuery(DnsQuery<'a>),
+pub struct StubResolver {
+    fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
+    ips_to_fqdn: HashMap<IpAddr, DomainName>,
+    ip_provider: IpProvider,
+    /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
+    dns_resources: HashMap<String, ResourceDescriptionDns>,
+    /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
+    known_hosts: KnownHosts,
 }
 
 #[derive(Debug)]
@@ -44,33 +45,13 @@ pub struct DnsQuery<'a> {
     pub query: ip_packet::IpPacket<'a>,
 }
 
-impl<'a> DnsQuery<'a> {
-    pub(crate) fn into_owned(self) -> DnsQuery<'static> {
-        let Self {
-            name,
-            record_type,
-            query,
-        } = self;
-        let buf = query.packet().to_vec();
-        let query = ip_packet::IpPacket::owned(buf)
-            .expect("We are constructing the ip packet from an ip packet");
-
-        DnsQuery {
-            name,
-            record_type,
-            query,
-        }
-    }
-}
-
-impl Clone for DnsQuery<'static> {
-    fn clone(&self) -> Self {
-        Self {
-            name: self.name.clone(),
-            record_type: self.record_type,
-            query: self.query.clone(),
-        }
-    }
+/// Tells the Client how to reply to a single DNS query
+#[derive(Debug)]
+pub(crate) enum ResolveStrategy<'a> {
+    /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
+    LocalResponse(IpPacket<'static>),
+    /// The query is for a non-Resource, forward it to an upstream or system resolver
+    ForwardQuery(DnsQuery<'a>),
 }
 
 struct KnownHosts {
@@ -114,39 +95,6 @@ impl KnownHosts {
             _ => None,
         }
     }
-}
-
-pub struct StubResolver {
-    fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
-    ips_to_fqdn: HashMap<IpAddr, DomainName>,
-    ip_provider: IpProvider,
-    /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
-    dns_resources: HashMap<String, ResourceDescriptionDns>,
-    /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
-    known_hosts: KnownHosts,
-}
-
-fn fqdn_to_ips_for_known_hosts(
-    hosts: &HashMap<String, Vec<IpAddr>>,
-) -> HashMap<DomainName, Vec<IpAddr>> {
-    hosts
-        .iter()
-        .filter_map(|(d, a)| DomainName::vec_from_str(d).ok().map(|d| (d, a.clone())))
-        .collect()
-}
-
-fn ips_to_fqdn_for_known_hosts(
-    hosts: &HashMap<String, Vec<IpAddr>>,
-) -> HashMap<IpAddr, DomainName> {
-    hosts
-        .iter()
-        .filter_map(|(d, a)| {
-            DomainName::vec_from_str(d)
-                .ok()
-                .map(|d| a.iter().map(move |a| (*a, d.clone())))
-        })
-        .flatten()
-        .collect()
 }
 
 impl StubResolver {
@@ -299,6 +247,35 @@ impl StubResolver {
         Some(ResolveStrategy::LocalResponse(build_response(
             packet, response,
         )))
+    }
+}
+
+impl<'a> DnsQuery<'a> {
+    pub(crate) fn into_owned(self) -> DnsQuery<'static> {
+        let Self {
+            name,
+            record_type,
+            query,
+        } = self;
+        let buf = query.packet().to_vec();
+        let query = ip_packet::IpPacket::owned(buf)
+            .expect("We are constructing the ip packet from an ip packet");
+
+        DnsQuery {
+            name,
+            record_type,
+            query,
+        }
+    }
+}
+
+impl Clone for DnsQuery<'static> {
+    fn clone(&self) -> Self {
+        Self {
+            name: self.name.clone(),
+            record_type: self.record_type,
+            query: self.query.clone(),
+        }
     }
 }
 
@@ -521,6 +498,29 @@ fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
         IpAddr::V4(_) => None,
         IpAddr::V6(v6) => Some(v6),
     }
+}
+
+fn fqdn_to_ips_for_known_hosts(
+    hosts: &HashMap<String, Vec<IpAddr>>,
+) -> HashMap<DomainName, Vec<IpAddr>> {
+    hosts
+        .iter()
+        .filter_map(|(d, a)| DomainName::vec_from_str(d).ok().map(|d| (d, a.clone())))
+        .collect()
+}
+
+fn ips_to_fqdn_for_known_hosts(
+    hosts: &HashMap<String, Vec<IpAddr>>,
+) -> HashMap<IpAddr, DomainName> {
+    hosts
+        .iter()
+        .filter_map(|(d, a)| {
+            DomainName::vec_from_str(d)
+                .ok()
+                .map(|d| a.iter().map(move |a| (*a, d.clone())))
+        })
+        .flatten()
+        .collect()
 }
 
 #[cfg(test)]
