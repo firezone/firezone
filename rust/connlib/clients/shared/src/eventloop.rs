@@ -10,7 +10,7 @@ use connlib_shared::{
     messages::{ConnectionAccepted, GatewayResponse, RelaysPresence, ResourceAccepted, ResourceId},
     Callbacks,
 };
-use firezone_tunnel::ClientTunnel;
+use firezone_tunnel::{ClientTunnel, Tun};
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
     collections::{HashMap, HashSet},
@@ -32,6 +32,7 @@ pub enum Command {
     Stop,
     Reconnect,
     SetDns(Vec<IpAddr>),
+    SetTun(Tun),
 }
 
 impl<C: Callbacks> Eventloop<C> {
@@ -58,9 +59,13 @@ where
             match self.rx.poll_recv(cx) {
                 Poll::Ready(Some(Command::Stop)) | Poll::Ready(None) => return Poll::Ready(Ok(())),
                 Poll::Ready(Some(Command::SetDns(dns))) => {
-                    if let Err(e) = self.tunnel.set_new_dns(dns) {
-                        tracing::warn!("Failed to update DNS: {e}");
-                    }
+                    self.tunnel.set_new_dns(dns);
+
+                    continue;
+                }
+                Poll::Ready(Some(Command::SetTun(tun))) => {
+                    self.tunnel.set_tun(tun);
+                    continue;
                 }
                 Poll::Ready(Some(Command::Reconnect)) => {
                     self.portal.reconnect();
@@ -217,15 +222,11 @@ where
                 }
 
                 tracing::info!("Firezone Started!");
-                let _ = self.tunnel.set_resources(resources);
+                self.tunnel.set_resources(resources);
                 self.tunnel.update_relays(HashSet::default(), relays)
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
-                let resource_id = resource.id();
-
-                if let Err(e) = self.tunnel.add_resources(&[resource]) {
-                    tracing::warn!(%resource_id, "Failed to add resource: {e}");
-                }
+                self.tunnel.add_resources(&[resource]);
             }
             IngressMessages::ResourceDeleted(resource) => {
                 self.tunnel.remove_resources(&[resource]);
