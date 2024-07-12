@@ -50,6 +50,12 @@ impl Drop for DnsController {
 }
 
 impl DnsController {
+    // Does nothing on Linux, needed to match the Windows interface
+    #[allow(clippy::unnecessary_wraps)]
+    pub(crate) fn deactivate(&mut self) -> Result<()> {
+        Ok(())
+    }
+
     /// Set the computer's system-wide DNS servers
     ///
     /// The `mut` in `&mut self` is not needed by Rust's rules, but
@@ -177,12 +183,6 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
         .flat_map(|line| line.split(' '))
         .filter_map(|word| IpAddr::from_str(word).ok())
         .collect()
-}
-
-// Does nothing on Linux, needed to match the Windows interface
-#[allow(clippy::unnecessary_wraps)]
-pub(crate) fn deactivate() -> Result<()> {
-    Ok(())
 }
 
 #[cfg(test)]
