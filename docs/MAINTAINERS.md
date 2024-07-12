@@ -7,7 +7,8 @@ Table of Contents:
 
 - [Releasing](#releasing)
 - [Publishing Clients](#publishing-clients)
-  - [Apple Client](#apple-client)
+- [Apple Client](#apple-client)
+- [Breaking API Changes](#breaking-api-changes)
 
 ## Releasing
 
@@ -24,16 +25,23 @@ Table of Contents:
 
 ### GitHub-released components (Linux, Windows, and Gateway)
 
-1. Go the drafted release of the component you want to publish
+Given that `main` is tested:
+
+1. Go to the draft release of the component you want to publish
 1. Double-check that the assets attached are from a recent CI and include the
    correct changes.
 1. Publish the release. Tags and release name should be auto generated. This will trigger pushing Docker images to `ghcr.io`.
+1. Open a PR and making the following changes.
 1. Update [scripts/Makefile](../scripts/Makefile) with the new version number(s). Run `make -f scripts/Makefile version` to update the version in the Makefile.
-1. Update the [Changelog](../website/src/components/Changelog/<COMPONENT>.tsx) with the new version number(s) and
-   and release notes.
-1. Open a PR with these changes. Upon merging, website will now redirect to the new version.
+1. Update the Changelog (e.g. `../website/src/components/Changelog/GUI.tsx`) with the new version number(s) and release notes.
+1. Update the known issues in `website/src/app/kb/user-guides/*`
+1. When the PR merges, the website will now redirect to the new version(s).
 
-#### Apple Client
+This results in a gap where GitHub knows about the release but nobody else does.
+This is okay because we can undo the GitHub release, and it prevents any queued PRs
+from landing in the release while you execute this process.
+
+### Apple Client
 
 - Log in to the following URL: https://appstoreconnect.apple.com/
 - Go to Apps
