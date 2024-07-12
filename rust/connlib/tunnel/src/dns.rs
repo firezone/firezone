@@ -587,34 +587,22 @@ mod tests {
         let dns_resources_fixture = HashMap::from([("*.foo.com".to_string(), 0)]);
 
         assert_eq!(
-            match_domain(
-                &DomainName::vec_from_str("a.foo.com").unwrap(),
-                &dns_resources_fixture,
-            ),
+            match_domain(&domain("a.foo.com"), &dns_resources_fixture),
             Some(0),
         );
 
         assert_eq!(
-            match_domain(
-                &DomainName::vec_from_str("foo.com").unwrap(),
-                &dns_resources_fixture,
-            ),
+            match_domain(&domain("foo.com"), &dns_resources_fixture),
             Some(0),
         );
 
         assert_eq!(
-            match_domain(
-                &DomainName::vec_from_str("a.b.foo.com").unwrap(),
-                &dns_resources_fixture,
-            ),
+            match_domain(&domain("a.b.foo.com"), &dns_resources_fixture),
             Some(0),
         );
 
         assert_eq!(
-            match_domain(
-                &DomainName::vec_from_str("oo.com").unwrap(),
-                &dns_resources_fixture,
-            ),
+            match_domain(&domain("oo.com"), &dns_resources_fixture),
             None
         );
     }
@@ -624,26 +612,17 @@ mod tests {
         let dns_resources_fixture = HashMap::from([("?.bar.com".to_string(), 1)]);
 
         assert_eq!(
-            match_domain(
-                &DomainName::vec_from_str("a.bar.com").unwrap(),
-                &dns_resources_fixture,
-            ),
+            match_domain(&domain("a.bar.com"), &dns_resources_fixture),
             Some(1),
         );
 
         assert_eq!(
-            match_domain(
-                &DomainName::vec_from_str("bar.com").unwrap(),
-                &dns_resources_fixture,
-            ),
+            match_domain(&domain("bar.com"), &dns_resources_fixture),
             Some(1),
         );
 
         assert_eq!(
-            match_domain(
-                &DomainName::vec_from_str("a.b.bar.com").unwrap(),
-                &dns_resources_fixture,
-            ),
+            match_domain(&domain("a.b.bar.com"), &dns_resources_fixture),
             None
         );
     }
@@ -653,131 +632,53 @@ mod tests {
         let dns_resources_fixture = HashMap::from([("baz.com".to_string(), 2)]);
 
         assert_eq!(
-            match_domain(
-                &DomainName::vec_from_str("baz.com").unwrap(),
-                &dns_resources_fixture,
-            ),
+            match_domain(&domain("baz.com"), &dns_resources_fixture),
             Some(2),
         );
 
         assert_eq!(
-            match_domain(
-                &DomainName::vec_from_str("a.baz.com").unwrap(),
-                &dns_resources_fixture,
-            ),
+            match_domain(&domain("a.baz.com"), &dns_resources_fixture),
             None
         );
 
         assert_eq!(
-            match_domain(
-                &DomainName::vec_from_str("a.b.baz.com").unwrap(),
-                &dns_resources_fixture,
-            ),
+            match_domain(&domain("a.b.baz.com"), &dns_resources_fixture),
             None,
         );
     }
 
     #[test]
     fn exact_subdomain_match() {
-        assert!(is_subdomain(
-            &DomainName::vec_from_str("foo.com").unwrap(),
-            "foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("a.foo.com").unwrap(),
-            "foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("a.b.foo.com").unwrap(),
-            "foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("foo.com").unwrap(),
-            "a.foo.com"
-        ));
+        assert!(is_subdomain(&domain("foo.com"), "foo.com"));
+        assert!(!is_subdomain(&domain("a.foo.com"), "foo.com"));
+        assert!(!is_subdomain(&domain("a.b.foo.com"), "foo.com"));
+        assert!(!is_subdomain(&domain("foo.com"), "a.foo.com"));
     }
 
     #[test]
     fn wildcard_subdomain_match() {
-        assert!(is_subdomain(
-            &DomainName::vec_from_str("foo.com").unwrap(),
-            "*.foo.com"
-        ));
-
-        assert!(is_subdomain(
-            &DomainName::vec_from_str("a.foo.com").unwrap(),
-            "*.foo.com"
-        ));
-
-        assert!(is_subdomain(
-            &DomainName::vec_from_str("a.foo.com").unwrap(),
-            "*.a.foo.com"
-        ));
-
-        assert!(is_subdomain(
-            &DomainName::vec_from_str("b.a.foo.com").unwrap(),
-            "*.a.foo.com"
-        ));
-
-        assert!(is_subdomain(
-            &DomainName::vec_from_str("a.b.foo.com").unwrap(),
-            "*.foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("afoo.com").unwrap(),
-            "*.foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("b.afoo.com").unwrap(),
-            "*.foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("bar.com").unwrap(),
-            "*.foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("foo.com").unwrap(),
-            "*.a.foo.com"
-        ));
+        assert!(is_subdomain(&domain("foo.com"), "*.foo.com"));
+        assert!(is_subdomain(&domain("a.foo.com"), "*.foo.com"));
+        assert!(is_subdomain(&domain("a.foo.com"), "*.a.foo.com"));
+        assert!(is_subdomain(&domain("b.a.foo.com"), "*.a.foo.com"));
+        assert!(is_subdomain(&domain("a.b.foo.com"), "*.foo.com"));
+        assert!(!is_subdomain(&domain("afoo.com"), "*.foo.com"));
+        assert!(!is_subdomain(&domain("b.afoo.com"), "*.foo.com"));
+        assert!(!is_subdomain(&domain("bar.com"), "*.foo.com"));
+        assert!(!is_subdomain(&domain("foo.com"), "*.a.foo.com"));
     }
 
     #[test]
     fn question_mark_subdomain_match() {
-        assert!(is_subdomain(
-            &DomainName::vec_from_str("foo.com").unwrap(),
-            "?.foo.com"
-        ));
+        assert!(is_subdomain(&domain("foo.com"), "?.foo.com"));
+        assert!(is_subdomain(&domain("a.foo.com"), "?.foo.com"));
+        assert!(!is_subdomain(&domain("a.b.foo.com"), "?.foo.com"));
+        assert!(!is_subdomain(&domain("bar.com"), "?.foo.com"));
+        assert!(!is_subdomain(&domain("foo.com"), "?.a.foo.com"));
+        assert!(!is_subdomain(&domain("afoo.com"), "?.foo.com"));
+    }
 
-        assert!(is_subdomain(
-            &DomainName::vec_from_str("a.foo.com").unwrap(),
-            "?.foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("a.b.foo.com").unwrap(),
-            "?.foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("bar.com").unwrap(),
-            "?.foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("foo.com").unwrap(),
-            "?.a.foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("afoo.com").unwrap(),
-            "?.foo.com"
-        ));
+    fn domain(name: &str) -> DomainName {
+        DomainName::vec_from_str(name).unwrap()
     }
 }
