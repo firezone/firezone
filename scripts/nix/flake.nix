@@ -4,9 +4,10 @@
     naersk.url = "github:nix-community/naersk";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
+    android.url = "github:tadfisher/android-nixpkgs";
   };
 
-  outputs = { nixpkgs, flake-utils, rust-overlay, ... } @ inputs:
+  outputs = { nixpkgs, flake-utils, rust-overlay, android, ... } @ inputs:
     flake-utils.lib.eachDefaultSystem
       (
         system:
@@ -52,8 +53,47 @@
             desktop-file-utils
           ];
 
+          android-sdk = android.sdk.${system} (sdkPkgs: with sdkPkgs; [
+            build-tools-34-0-0
+            cmdline-tools-latest
+            # emulator
+            platform-tools
+            platforms-android-34
+            ndk-25-2-9519653 # Needs to match what is defined in `kotlin/android/app/build.gradle.kts`
+          ]);
+          jdk = pkgs.zulu17;
+
+          pinnedRust = pkgs.rust-bin.fromRustupToolchainFile ../../rust/rust-toolchain.toml;
+
+          androidEnv = pkgs.buildFHSUserEnv {
+            name = "android-env";
+            targetPkgs = pkgs: (with pkgs; [
+              glibc
+              zlib
+              jdk
+              android-sdk
+            ]);
+            profile = ''
+              export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath (with pkgs; [ glibc zlib ])}:$LD_LIBRARY_PATH
+              export NDK_HOME="${android-sdk}/share/android-sdk/ndk/25.2.9519653";
+              export ANDROID_HOME="${android-sdk}/share/android-sdk";
+              export ANDROID_SDK_ROOT="${android-sdk}/share/android-sdk";
+              export JAVA_HOME="${jdk.home}";
+            '';
+          };
+
+          gradleWrapper = pkgs.writeShellScriptBin "gradleWrapper" ''
+              export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath (with pkgs; [ glibc zlib ])}:$LD_LIBRARY_PATH
+              export NDK_HOME="${android-sdk}/share/android-sdk/ndk/25.2.9519653";
+              export ANDROID_HOME="${android-sdk}/share/android-sdk";
+              export ANDROID_SDK_ROOT="${android-sdk}/share/android-sdk";
+              export JAVA_HOME="${jdk.home}";
+
+            ${androidEnv}/bin/android-env ./gradlew "$@"
+          '';
+
           mkShellWithRustVersion = rustVersion: pkgs.mkShell {
-            packages = [ pkgs.cargo-tauri pkgs.iptables pkgs.nodePackages.pnpm cargo-udeps ];
+            packages = [ pkgs.cargo-tauri pkgs.iptables pkgs.nodePackages.pnpm cargo-udeps gradleWrapper ];
             buildInputs = rustVersion ++ packages;
             name = "rust-env";
             src = ../../rust;
@@ -65,13 +105,16 @@
           };
         in
         {
-          packages.firezone-headless-client = naersk.buildPackage {
-            name = "foo";
-            src = ../../rust/headless-client;
-          };
-
           devShells.default = mkShellWithRustVersion [
-            (pkgs.rust-bin.fromRustupToolchainFile ../../rust/rust-toolchain.toml)
+            (pinnedRust.override {
+              targets = [
+                "aarch64-linux-android"
+                "arm-linux-androideabi"
+                "armv7-linux-androideabi"
+                "i686-linux-android"
+                "x86_64-linux-android"
+              ];
+            })
           ];
 
           devShells.nightly = mkShellWithRustVersion [
