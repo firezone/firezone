@@ -1,5 +1,5 @@
-use crate::windows::{CREATE_NO_WINDOW, TUNNEL_NAME};
 use anyhow::Result;
+use connlib_shared::windows::{CREATE_NO_WINDOW, TUNNEL_NAME};
 use ip_network::{Ipv4Network, Ipv6Network};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},

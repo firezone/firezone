@@ -1135,17 +1135,13 @@ dependencies = [
  "itertools 0.13.0",
  "known-folders",
  "libc",
- "log",
  "logging_timer",
- "netlink-packet-core",
- "netlink-packet-route",
  "os_info",
  "phoenix-channel",
  "proptest",
  "rand 0.8.5",
  "rand_core 0.6.4",
  "ring",
- "rtnetlink",
  "secrecy",
  "serde",
  "serde_json",
@@ -1832,14 +1828,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "firezone-cli-utils"
+name = "firezone-bin-shared"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "clap",
+ "connlib-shared",
+ "futures",
+ "ip_network",
+ "logging_timer",
+ "netlink-packet-core",
+ "netlink-packet-route",
+ "rtnetlink",
+ "tokio",
  "tracing",
  "tracing-log",
  "tracing-subscriber",
  "url",
+ "windows 0.57.0",
 ]
 
 [[package]]
@@ -1856,7 +1862,7 @@ dependencies = [
  "dns-lookup",
  "domain",
  "either",
- "firezone-cli-utils",
+ "firezone-bin-shared",
  "firezone-tunnel",
  "futures",
  "futures-bounded",
@@ -1879,7 +1885,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.1.6"
+version = "1.1.7"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1940,7 +1946,7 @@ dependencies = [
  "connlib-client-shared",
  "connlib-shared",
  "dirs",
- "firezone-cli-utils",
+ "firezone-bin-shared",
  "futures",
  "git-version",
  "humantime",
@@ -2028,6 +2034,7 @@ dependencies = [
  "connlib-shared",
  "derivative",
  "domain",
+ "firezone-bin-shared",
  "firezone-relay",
  "futures",
  "futures-bounded",
@@ -2040,10 +2047,7 @@ dependencies = [
  "ip_network_table",
  "itertools 0.13.0",
  "libc",
- "log",
  "logging_timer",
- "netlink-packet-core",
- "netlink-packet-route",
  "pretty_assertions",
  "proptest",
  "proptest-state-machine",
@@ -2051,7 +2055,6 @@ dependencies = [
  "rand 0.8.5",
  "rand_core 0.6.4",
  "rangemap",
- "rtnetlink",
  "secrecy",
  "serde",
  "serde_json",
@@ -3105,6 +3108,15 @@ dependencies = [
 
 [[package]]
 name = "infer"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f178e61cdbfe084aa75a2f4f7a25a5bb09701a47ae1753608f194b15783c937a"
+dependencies = [
+ "cfb",
+]
+
+[[package]]
+name = "infer"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f551f8c3a39f68f986517db0d1759de85881894fdc7db798bd2a9df9cb04b7fc"
@@ -3408,7 +3420,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.5",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -4839,9 +4851,8 @@ dependencies = [
 
 [[package]]
 name = "proptest"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31b476131c3c86cb68032fdc5cb6d5a1045e3e42d96b69fa599fd77701e1f5bf"
+version = "1.5.0"
+source = "git+https://github.com/thomaseizinger/proptest?branch=fix/always-check-acceptable-current-state#26c036b5ca832726d7f0c8438a750c8efa2f0f8b"
 dependencies = [
  "bit-set",
  "bit-vec",
@@ -4860,8 +4871,7 @@ dependencies = [
 [[package]]
 name = "proptest-state-machine"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28278d6a11102264b0c569c33dbe5286ba00d2dd6d96ff2a94296e0e5b3d1e04"
+source = "git+https://github.com/thomaseizinger/proptest?branch=fix/always-check-acceptable-current-state#26c036b5ca832726d7f0c8438a750c8efa2f0f8b"
 dependencies = [
  "proptest",
 ]
@@ -6226,12 +6236,14 @@ dependencies = [
  "heck 0.5.0",
  "http 0.2.12",
  "ignore",
+ "infer 0.9.0",
  "nix 0.26.4",
  "notify-rust",
  "objc",
  "once_cell",
  "open",
  "percent-encoding",
+ "png",
  "rand 0.8.5",
  "raw-window-handle",
  "regex",
@@ -6369,7 +6381,7 @@ dependencies = [
  "glob",
  "heck 0.5.0",
  "html5ever",
- "infer",
+ "infer 0.13.0",
  "json-patch",
  "kuchikiki",
  "log",

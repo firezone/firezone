@@ -1,0 +1,33 @@
+[package]
+name = "firezone-bin-shared"
+version = "0.1.0"
+edition = "2021"
+description = "Firezone-specific modules shared between binaries."
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.82"
+clap = { version = "4.5", features = ["derive",  "env"] }
+connlib-shared = { workspace = true }
+futures = "0.3"
+ip_network = { version = "0.4", default-features = false, features = ["serde"] }
+logging_timer = "1.1.1"
+tokio = { workspace = true, features = ["rt"] }
+tracing = { workspace = true }
+tracing-log = "0.2"
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+url = { version = "2.3.1", default-features = false }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+netlink-packet-core = { version = "0.7", default-features = false }
+netlink-packet-route = { version = "0.19", default-features = false }
+rtnetlink = { workspace = true }
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.57.0"
+features = [
+  "Win32_Foundation",
+]
+
+[lints]
+workspace = true

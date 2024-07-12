@@ -19,8 +19,8 @@ use std::{
     str::FromStr,
     time::{Duration, Instant},
 };
-use system_tray_menu::Event as TrayMenuEvent;
-use tauri::{Manager, SystemTray, SystemTrayEvent};
+use system_tray::Event as TrayMenuEvent;
+use tauri::{Manager, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
 use url::Url;
@@ -29,7 +29,7 @@ use ControllerRequest as Req;
 
 mod errors;
 mod ran_before;
-pub(crate) mod system_tray_menu;
+pub(crate) mod system_tray;
 
 #[cfg(target_os = "linux")]
 #[path = "gui/os_linux.rs"]
@@ -51,8 +51,6 @@ pub(crate) use errors::{show_error_dialog, Error};
 pub(crate) use os::set_autostart;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
-
-const TRAY_ICON_TOOLTIP: &str = "Firezone";
 
 /// All managed state that we might need to access from odd places like Tauri commands.
 ///
@@ -99,12 +97,6 @@ pub(crate) fn run(
         inject_faults: cli.inject_faults,
     };
 
-    // We can't call `refresh_system_tray_menu` yet because `Controller`
-    // is built inside Tauri's setup
-    let tray = SystemTray::new()
-        .with_menu(system_tray_menu::loading())
-        .with_tooltip(TRAY_ICON_TOOLTIP);
-
     tracing::info!("Setting up Tauri app instance...");
     let (setup_result_tx, mut setup_result_rx) =
         tokio::sync::oneshot::channel::<Result<(), Error>>();
@@ -131,7 +123,7 @@ pub(crate) fn run(
             settings::get_advanced_settings,
             crate::client::welcome::sign_in,
         ])
-        .system_tray(tray)
+        .system_tray(system_tray::loading())
         .on_system_tray_event(|app, event| {
             if let SystemTrayEvent::MenuItemClick { id, .. } = event {
                 tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
@@ -316,6 +308,23 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         .await
         .context("Failed to send ClearLogs request")?;
 
+    // Tray icon stress test
+    let num_icon_cycles = 100;
+    for _ in 0..num_icon_cycles {
+        ctlr_tx
+            .send(ControllerRequest::TestTrayIcon(system_tray::Icon::Busy))
+            .await?;
+        ctlr_tx
+            .send(ControllerRequest::TestTrayIcon(system_tray::Icon::SignedIn))
+            .await?;
+        ctlr_tx
+            .send(ControllerRequest::TestTrayIcon(
+                system_tray::Icon::SignedOut,
+            ))
+            .await?;
+    }
+    tracing::debug!(?num_icon_cycles, "Completed tray icon test");
+
     // Give the app some time to export the zip and reach steady state
     tokio::time::sleep_until(quit_time).await;
 
@@ -427,6 +436,8 @@ pub(crate) enum ControllerRequest {
     SchemeRequest(SecretString),
     SignIn,
     SystemTrayMenu(TrayMenuEvent),
+    /// Forces the tray icon to a specific icon to stress-test the tray code
+    TestTrayIcon(system_tray::Icon),
     UpdateAvailable(crate::client::updates::Release),
     UpdateNotificationClicked(Url),
 }
@@ -467,6 +478,7 @@ struct Controller {
     ipc_client: ipc::Client,
     log_filter_reloader: logging::Reloader,
     status: Status,
+    tray: system_tray::Tray,
     uptime: client::uptime::Tracker,
 }
 
@@ -611,6 +623,7 @@ impl Controller {
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => Err(anyhow!(
                 "Impossible error: `Quit` should be handled before this"
             ))?,
+            Req::TestTrayIcon(icon) => self.tray.set_icon(icon)?,
             Req::UpdateAvailable(release) => {
                 let title = format!("Firezone {} available for download", release.version);
 
@@ -677,38 +690,29 @@ impl Controller {
         Ok(())
     }
 
-    /// Returns a new system tray menu
-    fn build_system_tray_menu(&self) -> tauri::SystemTrayMenu {
-        // TODO: Refactor this and the auth module so that "Are we logged in"
+    /// Builds a new system tray menu and applies it to the app
+    fn refresh_system_tray_menu(&mut self) -> Result<()> {
+        // TODO: Refactor `Controller` and the auth module so that "Are we logged in?"
         // doesn't require such complicated control flow to answer.
-        // TODO: Show some "Waiting for portal..." state if we got the deep link but
-        // haven't got `on_tunnel_ready` yet.
-        if let Some(auth_session) = self.auth.session() {
+        let menu = if let Some(auth_session) = self.auth.session() {
             match &self.status {
                 Status::Disconnected => {
                     tracing::error!("We have an auth session but no connlib session");
-                    system_tray_menu::signed_out()
+                    system_tray::Menu::SignedOut
                 }
-                Status::Connecting { start_instant: _ } => {
-                    system_tray_menu::signing_in("Signing In...")
-                }
-                Status::TunnelReady { resources } => {
-                    system_tray_menu::signed_in(&auth_session.actor_name, resources)
-                }
+                Status::Connecting { start_instant: _ } => system_tray::Menu::WaitingForConnlib,
+                Status::TunnelReady { resources } => system_tray::Menu::SignedIn {
+                    actor_name: &auth_session.actor_name,
+                    resources,
+                },
             }
         } else if self.auth.ongoing_request().is_ok() {
             // Signing in, waiting on deep link callback
-            system_tray_menu::signing_in("Waiting for browser...")
+            system_tray::Menu::WaitingForBrowser
         } else {
-            system_tray_menu::signed_out()
-        }
-    }
-
-    /// Builds a new system tray menu and applies it to the app
-    fn refresh_system_tray_menu(&self) -> Result<()> {
-        let tray = self.app.tray_handle();
-        tray.set_tooltip(TRAY_ICON_TOOLTIP)?;
-        tray.set_menu(self.build_system_tray_menu())?;
+            system_tray::Menu::SignedOut
+        };
+        self.tray.update(menu)?;
         Ok(())
     }
 
@@ -730,10 +734,10 @@ impl Controller {
         Ok(())
     }
 
-    fn show_window(&self, window: system_tray_menu::Window) -> Result<()> {
+    fn show_window(&self, window: system_tray::Window) -> Result<()> {
         let id = match window {
-            system_tray_menu::Window::About => "about",
-            system_tray_menu::Window::Settings => "settings",
+            system_tray::Window::About => "about",
+            system_tray::Window::Settings => "settings",
         };
 
         let win = self
@@ -757,6 +761,7 @@ async fn run_controller(
 ) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");
     let ipc_client = ipc::Client::new(ctlr_tx.clone()).await?;
+    let tray = system_tray::Tray::new(app.tray_handle());
     let mut controller = Controller {
         advanced_settings,
         app: app.clone(),
@@ -765,6 +770,7 @@ async fn run_controller(
         ipc_client,
         log_filter_reloader,
         status: Default::default(),
+        tray,
         uptime: Default::default(),
     };
 

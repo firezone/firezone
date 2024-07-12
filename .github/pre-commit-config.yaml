@@ -61,3 +61,8 @@ repos:
           - markdown
           - html
           - xml
+  - repo: https://github.com/DevinR528/cargo-sort
+    rev: v1.0.9
+    hooks:
+      - id: cargo-sort
+        args: ["--check", "--workspace", "rust/"]

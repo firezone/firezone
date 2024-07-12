@@ -4,7 +4,6 @@ name = "firezone-headless-client"
 version = "1.1.4"
 edition = "2021"
 authors = ["Firezone, Inc."]
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -13,7 +12,7 @@ atomicwrites = "0.4.3" # Needed to safely backup `/etc/resolv.conf` and write th
 clap = { version = "4.5", features = ["derive",  "env", "string"] }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
-firezone-cli-utils = { workspace = true }
+firezone-bin-shared = { workspace = true }
 futures = "0.3.30"
 git-version = "0.3.9"
 humantime = "2.1"
@@ -42,7 +41,7 @@ mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` test
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
 libc = "0.2.150"
-nix = { version =  "0.28.0", features = ["fs", "user"] }
+nix = { version = "0.28.0", features = ["fs", "user"] }
 resolv-conf = "0.7.0"
 rtnetlink = { workspace = true }
 sd-notify = "0.4.1" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094

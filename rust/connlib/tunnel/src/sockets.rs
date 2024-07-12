@@ -339,7 +339,9 @@ fn make_socket(addr: impl Into<SocketAddr>) -> Result<std::net::UdpSocket> {
 
     #[cfg(target_os = "linux")]
     {
-        socket.set_mark(connlib_shared::tun_device_manager::platform::FIREZONE_MARK)?;
+        const FIREZONE_MARK: u32 = 0xfd002021; // Keep this synced with `TunDeviceManager` until #5797.
+
+        socket.set_mark(FIREZONE_MARK)?;
     }
 
     // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
