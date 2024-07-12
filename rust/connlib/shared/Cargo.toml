@@ -35,9 +35,6 @@ ip-packet = { workspace = true }
 proptest = { version = "1", optional = true }
 itertools = "0.13"
 
-# Needed for Android logging until tracing is working
-log = "0.4"
-
 [dev-dependencies]
 tokio = { version = "1.38", features = ["macros", "rt"] }
 
