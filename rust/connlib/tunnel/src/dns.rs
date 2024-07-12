@@ -110,7 +110,7 @@ impl StubResolver {
 
     pub(crate) fn get_description(&self, ip: &IpAddr) -> Option<ResourceId> {
         let name = self.ips_to_fqdn.get(ip)?;
-        let resource_id = get_description(name, &self.dns_resources)?;
+        let resource_id = match_domain(name, &self.dns_resources)?;
 
         Some(resource_id)
     }
@@ -175,7 +175,7 @@ impl StubResolver {
     }
 
     fn is_fqdn_resource(&self, domain_name: &DomainName) -> bool {
-        get_description(domain_name, &self.dns_resources).is_some()
+        match_domain(domain_name, &self.dns_resources).is_some()
     }
 
     fn resource_address_name_by_reservse_dns(
@@ -418,10 +418,10 @@ pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
     name == &resource
 }
 
-fn get_description(
-    name: &DomainName,
-    dns_resources: &HashMap<String, ResourceId>,
-) -> Option<ResourceId> {
+fn match_domain<T>(name: &DomainName, dns_resources: &HashMap<String, T>) -> Option<T>
+where
+    T: Copy,
+{
     if let Some(resource) = dns_resources.get(&name.to_string()) {
         return Some(*resource);
     }
@@ -451,7 +451,7 @@ fn get_description(
     name.iter_suffixes().find_map(|n| {
         dns_resources
             .get(&RelativeName::wildcard_vec().chain(n).ok()?.to_string())
-            .cloned()
+            .copied()
     })
 }
 
@@ -527,11 +527,11 @@ fn ips_to_fqdn_for_known_hosts(
 
 #[cfg(test)]
 mod test {
-    use connlib_shared::{messages::ResourceId, DomainName};
+    use connlib_shared::DomainName;
 
     use crate::dns::is_subdomain;
 
-    use super::{get_description, reverse_dns_addr};
+    use super::{match_domain, reverse_dns_addr};
     use std::{collections::HashMap, net::Ipv4Addr};
 
     #[test]
@@ -589,37 +589,36 @@ mod test {
 
     #[test]
     fn wildcard_matching() {
-        let dns_resources_fixture =
-            HashMap::from([("*.foo.com".to_string(), ResourceId::from_u128(0))]);
+        let dns_resources_fixture = HashMap::from([("*.foo.com".to_string(), 0)]);
 
         assert_eq!(
-            get_description(
+            match_domain(
                 &DomainName::vec_from_str("a.foo.com").unwrap(),
                 &dns_resources_fixture,
             )
             .unwrap(),
-            ResourceId::from_u128(0),
+            0,
         );
 
         assert_eq!(
-            get_description(
+            match_domain(
                 &DomainName::vec_from_str("foo.com").unwrap(),
                 &dns_resources_fixture,
             )
             .unwrap(),
-            ResourceId::from_u128(0),
+            0,
         );
 
         assert_eq!(
-            get_description(
+            match_domain(
                 &DomainName::vec_from_str("a.b.foo.com").unwrap(),
                 &dns_resources_fixture,
             )
             .unwrap(),
-            ResourceId::from_u128(0),
+            0,
         );
 
-        assert!(get_description(
+        assert!(match_domain(
             &DomainName::vec_from_str("oo.com").unwrap(),
             &dns_resources_fixture,
         )
@@ -628,28 +627,27 @@ mod test {
 
     #[test]
     fn question_mark_matching() {
-        let dns_resources_fixture =
-            HashMap::from([("?.bar.com".to_string(), ResourceId::from_u128(1))]);
+        let dns_resources_fixture = HashMap::from([("?.bar.com".to_string(), 1)]);
 
         assert_eq!(
-            get_description(
+            match_domain(
                 &DomainName::vec_from_str("a.bar.com").unwrap(),
                 &dns_resources_fixture,
             )
             .unwrap(),
-            ResourceId::from_u128(1),
+            1,
         );
 
         assert_eq!(
-            get_description(
+            match_domain(
                 &DomainName::vec_from_str("bar.com").unwrap(),
                 &dns_resources_fixture,
             )
             .unwrap(),
-            ResourceId::from_u128(1),
+            1,
         );
 
-        assert!(get_description(
+        assert!(match_domain(
             &DomainName::vec_from_str("a.b.bar.com").unwrap(),
             &dns_resources_fixture,
         )
@@ -658,25 +656,24 @@ mod test {
 
     #[test]
     fn exact_matching() {
-        let dns_resources_fixture =
-            HashMap::from([("baz.com".to_string(), ResourceId::from_u128(2))]);
+        let dns_resources_fixture = HashMap::from([("baz.com".to_string(), 2)]);
 
         assert_eq!(
-            get_description(
+            match_domain(
                 &DomainName::vec_from_str("baz.com").unwrap(),
                 &dns_resources_fixture,
             )
             .unwrap(),
-            ResourceId::from_u128(2),
+            2,
         );
 
-        assert!(get_description(
+        assert!(match_domain(
             &DomainName::vec_from_str("a.baz.com").unwrap(),
             &dns_resources_fixture,
         )
         .is_none());
 
-        assert!(get_description(
+        assert!(match_domain(
             &DomainName::vec_from_str("a.b.baz.com").unwrap(),
             &dns_resources_fixture,
         )
