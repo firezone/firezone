@@ -138,7 +138,11 @@ fn run_smoke_test() -> Result<()> {
     rt.block_on(async {
         device_id::get_or_create().context("Failed to read / create device ID")?;
         let mut server = IpcServer::new(ServiceId::Prod).await?;
-        Handler::new(&mut server).await?.run().await;
+        let mut dns_controller = DnsController::default();
+        Handler::new(&mut server, &mut dns_controller)
+            .await?
+            .run()
+            .await;
         Ok::<_, anyhow::Error>(())
     })
 }
@@ -148,17 +152,21 @@ async fn ipc_listen() -> Result<std::convert::Infallible> {
     // This also gives the GUI a safe place to put the log filter config
     device_id::get_or_create().context("Failed to read / create device ID")?;
     let mut server = IpcServer::new(ServiceId::Prod).await?;
+    let mut dns_controller = DnsController::default();
     loop {
-        Handler::new(&mut server).await?.run().await;
+        Handler::new(&mut server, &mut dns_controller)
+            .await?
+            .run()
+            .await;
     }
 }
 
 /// Handles one IPC client
-struct Handler {
+struct Handler<'a> {
     callback_handler: CallbackHandler,
     cb_rx: mpsc::Receiver<InternalServerMsg>,
     connlib: Option<connlib_client_shared::Session>,
-    dns_controller: DnsController,
+    dns_controller: &'a mut DnsController,
     ipc_rx: ipc::ServerRead,
     ipc_tx: ipc::ServerWrite,
     last_connlib_start_instant: Option<Instant>,
@@ -170,9 +178,9 @@ enum Event {
     Ipc(ClientMsg),
 }
 
-impl Handler {
-    async fn new(server: &mut IpcServer) -> Result<Self> {
-        dns_control::deactivate()?;
+impl<'a> Handler<'a> {
+    async fn new(server: &mut IpcServer, dns_controller: &'a mut DnsController) -> Result<Self> {
+        dns_controller.deactivate()?;
         let (ipc_rx, ipc_tx) = server
             .next_client_split()
             .await
@@ -184,7 +192,7 @@ impl Handler {
             callback_handler: CallbackHandler { cb_tx },
             cb_rx,
             connlib: None,
-            dns_controller: Default::default(),
+            dns_controller,
             ipc_rx,
             ipc_tx,
             last_connlib_start_instant: None,
@@ -298,7 +306,7 @@ impl Handler {
             ClientMsg::Disconnect => {
                 if let Some(connlib) = self.connlib.take() {
                     connlib.disconnect();
-                    dns_control::deactivate()?;
+                    self.dns_controller.deactivate()?;
                 } else {
                     tracing::error!("Error - Got Disconnect when we're already not connected");
                 }

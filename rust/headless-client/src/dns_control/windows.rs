@@ -21,8 +21,22 @@ pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
     system_resolvers()
 }
 
-#[derive(Default)]
-pub(crate) struct DnsController {}
+pub(crate) struct DnsController {
+    /// True if DNS control is definitely active or might be active.
+    ///
+    /// In case the IPC service has crashed or something, we always assume that DNS control
+    /// is active when we start. Deactivating Firezone's DNS control is safe, but it takes
+    /// a lot of time on Windows, so we'd like to avoid redundant de-activations.
+    control_may_be_active: bool,
+}
+
+impl Default for DnsController {
+    fn default() -> Self {
+        Self {
+            control_may_be_active: true,
+        }
+    }
+}
 
 // Unique magic number that we can use to delete our well-known NRPT rule.
 // Copied from the deep link schema
@@ -30,13 +44,25 @@ const FZ_MAGIC: &str = "firezone-fd0020211111";
 
 impl Drop for DnsController {
     fn drop(&mut self) {
-        if let Err(error) = deactivate() {
-            tracing::error!(?error, "Failed to deactivate DNS control");
+        if self.control_may_be_active {
+            if let Err(error) = deactivate() {
+                tracing::error!(?error, "Failed to deactivate DNS control");
+            }
         }
     }
 }
 
 impl DnsController {
+    /// Deactivate any control Firezone has over the computer's DNS
+    #[logging_timer::time]
+    pub(crate) fn deactivate(&mut self) -> Result<()> {
+        if self.control_may_be_active {
+            deactivate().context("Failed to deactivate DNS control")?;
+            self.control_may_be_active = false;
+        }
+        Ok(())
+    }
+
     /// Set the computer's system-wide DNS servers
     ///
     /// There's a gap in this because on Windows we deactivate and re-activate control.
@@ -48,7 +74,10 @@ impl DnsController {
     #[allow(clippy::unused_async)]
     #[logging_timer::time]
     pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
-        deactivate().context("Failed to deactivate DNS control")?;
+        if self.control_may_be_active {
+            deactivate().context("Failed to deactivate DNS control")?;
+        }
+        self.control_may_be_active = true;
         activate(dns_config).context("Failed to activate DNS control")?;
         Ok(())
     }
@@ -95,7 +124,7 @@ const NRPT_REG_KEY: &str = "{6C0507CB-C884-4A78-BC55-0ACEE21227F6}";
 /// - `dns_config_string`: Comma-separated IP addresses of DNS servers, e.g. "1.1.1.1,8.8.8.8"
 // TODO 5026: 720 ms
 #[logging_timer::time]
-pub(crate) fn activate(dns_config: &[IpAddr]) -> Result<()> {
+fn activate(dns_config: &[IpAddr]) -> Result<()> {
     let dns_config_string = dns_config
         .iter()
         .map(|ip| format!("\"{ip}\""))
@@ -145,8 +174,7 @@ pub(crate) fn activate(dns_config: &[IpAddr]) -> Result<()> {
 
 // Must be `sync` so we can call it from `Drop`
 // TODO 5026: 400 ms
-#[logging_timer::time]
-pub(crate) fn deactivate() -> Result<()> {
+fn deactivate() -> Result<()> {
     Command::new("powershell")
         .creation_flags(CREATE_NO_WINDOW)
         .args(["-Command", "Get-DnsClientNrptRule", "|"])
