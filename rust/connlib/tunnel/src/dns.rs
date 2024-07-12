@@ -108,7 +108,11 @@ impl StubResolver {
         }
     }
 
-    pub(crate) fn get_description(&self, ip: &IpAddr) -> Option<ResourceId> {
+    /// Attempts to resolve an IP to a given resource.
+    ///
+    /// Semantically, this is like a PTR query, i.e. we check whether we handed out this IP as part of answering a DNS query for one of our resources.
+    /// This is in the hot-path of packet routing and must be fast!
+    pub(crate) fn resolve_resource_by_ip(&self, ip: &IpAddr) -> Option<ResourceId> {
         let (_, resource_id) = self.ips_to_fqdn.get(ip)?;
 
         Some(*resource_id)
