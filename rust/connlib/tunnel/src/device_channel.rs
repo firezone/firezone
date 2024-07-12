@@ -42,6 +42,8 @@ impl Device {
     }
 
     pub(crate) fn set_tun(&mut self, tun: Tun) {
+        tracing::info!(name = %tun.name(), "Initializing TUN device");
+
         self.tun = Some(tun);
 
         if let Some(waker) = self.waker.take() {
@@ -115,13 +117,6 @@ impl Device {
         tracing::trace!(target: "wire::dev::recv", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         Poll::Ready(Ok(packet))
-    }
-
-    pub(crate) fn name(&self) -> &str {
-        self.tun
-            .as_ref()
-            .map(|t| t.name())
-            .unwrap_or("uninitialized")
     }
 
     pub fn write(&self, packet: IpPacket<'_>) -> io::Result<usize> {

@@ -141,9 +141,6 @@ where
             self.role_state.routes().filter_map(utils::ipv4).collect(),
             self.role_state.routes().filter_map(utils::ipv6).collect(),
         );
-        let name = self.io.device_mut().name().to_owned();
-
-        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
     }
 
     pub fn cleanup_connection(&mut self, id: ResourceId) {
