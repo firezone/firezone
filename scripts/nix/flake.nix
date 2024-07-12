@@ -25,7 +25,7 @@
             exec "${pkgs.cargo-udeps}/bin/cargo-udeps" "$@"
           '';
 
-          libraries = with pkgs;[
+          libraries = with pkgs; [
             webkitgtk
             gtk3
             cairo
@@ -50,6 +50,7 @@
             librsvg
             gnome.zenity
             desktop-file-utils
+            android-tools
           ];
 
           mkShellWithRustVersion = rustVersion: pkgs.mkShell {
