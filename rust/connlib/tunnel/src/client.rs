@@ -942,7 +942,7 @@ impl ClientState {
 
             match &resource_description {
                 ResourceDescription::Dns(dns) => {
-                    self.stub_resolver.add_resource(dns);
+                    self.stub_resolver.add_resource(dns.id, dns.address.clone());
                 }
                 ResourceDescription::Cidr(cidr) => {
                     let existing = self.cidr_resources.insert(cidr.address, cidr.clone());

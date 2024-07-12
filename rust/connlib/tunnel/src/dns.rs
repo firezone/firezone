@@ -1,5 +1,4 @@
 use crate::client::IpProvider;
-use connlib_shared::messages::client::ResourceDescriptionDns;
 use connlib_shared::messages::{DnsServer, ResourceId};
 use connlib_shared::DomainName;
 use domain::base::RelativeName;
@@ -123,13 +122,11 @@ impl StubResolver {
         Some((fqdn, self.fqdn_to_ips.get(fqdn).unwrap()))
     }
 
-    pub(crate) fn add_resource(&mut self, resource: &ResourceDescriptionDns) {
-        let existing = self
-            .dns_resources
-            .insert(resource.address.clone(), resource.id);
+    pub(crate) fn add_resource(&mut self, id: ResourceId, address: String) {
+        let existing = self.dns_resources.insert(address.clone(), id);
 
         if existing.is_none() {
-            tracing::info!(address = %resource.address, "Activating DNS resource");
+            tracing::info!(%address, "Activating DNS resource");
         }
     }
 
