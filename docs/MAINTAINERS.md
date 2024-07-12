@@ -11,35 +11,29 @@ Table of Contents:
 
 ## Releasing
 
-**Note**: The version gets set from the Makefile
+**Note**: The version for all published components is set from [scripts/Makefile](../scripts/Makefile).
 
-- Go to Actions tab in GH
+### App Store clients (Apple/Android)
 
-  - For apple the workflow is `Swift`
-  - For Android the workflow is `Kotlin`
+1. Go to Actions tab in GH and run the `Kotlin` or `Swift` workflow appropriately
+1. This will push new release builds to Firebase or App Store Connect and pushed out Firebase App Distribution or TestFlight respectively.
+1. Test this build manually a bit since we have no automated client tests yet
+1. To submit for review:
+   - For Apple, do this through AppStore connect. Details are [below](#apple-client).
+   - Android, download the AAB from Firebase App Distribution, create a new release in Google Play Console, and upload the AAB.
 
-- Click the edit button on the Draft 1.0.0 release
-- Give the release a name (manually - right now we're using
-  `1.0.0-pre.<num-here>`)
-- Create a new tag as well with the same name as the release (click
-  `create new tag`)
-- Double check that the body text of the release is what is expected
-- **IMPORTANT**: Scroll to the bottom and check the `Set as latest release` and
-  uncheck `Set as pre-release`
-- Click `Publish Release`
-- The `Publish` workflow is now run Note: This will deploy to production and the
-  following will happen
-  - All logged in users on the portal will be logged out, but the clients will
-    not be logged out
-  - All the websockets will be disconnected and should automatically reconnect
+### GitHub-released components (Linux, Windows, and Gateway)
 
-## Publish Clients
+1. Go the drafted release of the component you want to publish
+1. Double-check that the assets attached are from a recent CI and include the
+   correct changes.
+1. Publish the release. Tags and release name should be auto generated. This will trigger pushing Docker images to `ghcr.io`.
+1. Update [scripts/Makefile](../scripts/Makefile) with the new version number(s). Run `make -f scripts/Makefile version` to update the version in the Makefile.
+1. Update the [Changelog](../website/src/components/Changelog/<COMPONENT>.tsx) with the new version number(s) and
+   and release notes.
+1. Open a PR with these changes. Upon merging, website will now redirect to the new version.
 
-### Android Client
-
--
-
-### Apple Client
+#### Apple Client
 
 - Log in to the following URL: https://appstoreconnect.apple.com/
 - Go to Apps
@@ -72,4 +66,4 @@ Table of Contents:
 
 ## Breaking API changes
 
-We should notify customers 2 weeks in advance for any API-breaking changes.
+We should notify customers **2 weeks in advance** for any API-breaking changes.
