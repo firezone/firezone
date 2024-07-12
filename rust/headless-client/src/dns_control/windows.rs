@@ -14,7 +14,7 @@
 //! <https://superuser.com/a/1752670>
 
 use anyhow::{Context as _, Result};
-use connlib_shared::windows::{CREATE_NO_WINDOW, TUNNEL_NAME};
+use connlib_shared::windows::CREATE_NO_WINDOW;
 use std::{net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
 
 pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
@@ -74,9 +74,8 @@ impl DnsController {
     #[allow(clippy::unused_async)]
     #[logging_timer::time]
     pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
-        if self.control_may_be_active {
-            deactivate().context("Failed to deactivate DNS control")?;
-        }
+        self.deactivate()
+            .context("Failed to deactivate DNS control")?;
         self.control_may_be_active = true;
         activate(dns_config).context("Failed to activate DNS control")?;
         Ok(())
@@ -125,24 +124,10 @@ const NRPT_REG_KEY: &str = "{6C0507CB-C884-4A78-BC55-0ACEE21227F6}";
 // TODO 5026: 720 ms
 #[logging_timer::time]
 fn activate(dns_config: &[IpAddr]) -> Result<()> {
-    let dns_config_string = dns_config
-        .iter()
-        .map(|ip| format!("\"{ip}\""))
-        .collect::<Vec<_>>()
-        .join(",");
-
-    // Set our DNS IP as the DNS server for our interface
     // TODO: Known issue where web browsers will keep a connection open to a site,
     // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS
     // again unless you let that connection time out:
     // <https://github.com/firezone/firezone/issues/3113#issuecomment-1882096111>
-    Command::new("powershell")
-        .creation_flags(CREATE_NO_WINDOW)
-        .arg("-Command")
-        .arg(format!(
-            "Set-DnsClientServerAddress {TUNNEL_NAME} -ServerAddresses({dns_config_string})"
-        ))
-        .status()?;
 
     tracing::info!("Activating DNS control");
     let dns_config_string = dns_config
