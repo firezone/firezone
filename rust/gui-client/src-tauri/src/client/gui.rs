@@ -493,10 +493,12 @@ impl Controller {
         let api_url = self.advanced_settings.api_url.clone();
         tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
 
+        // Count the start instant from before we connect
         let start_instant = Instant::now();
         self.ipc_client
             .connect_to_firezone(api_url.as_str(), token)
             .await?;
+        // Change the status after we begin connecting
         self.status = Status::Connecting { start_instant };
         self.refresh_system_tray_menu()?;
 
@@ -803,6 +805,8 @@ async fn run_controller(
     let mut last_resolvers_sent: HashSet<IpAddr> = HashSet::default();
 
     loop {
+        // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
+        // `tokio::select!` with a `poll_*` function
         tokio::select! {
             () = com_worker.notified() => {
                 let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;

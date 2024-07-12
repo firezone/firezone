@@ -73,6 +73,7 @@ impl Drop for Tun {
 }
 
 impl Tun {
+    #[tracing::instrument(level = "debug")]
     pub fn new() -> Result<Self> {
         const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
 
