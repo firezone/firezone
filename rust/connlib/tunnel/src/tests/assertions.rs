@@ -3,7 +3,7 @@ use super::{
     sim_gateway::SimGateway,
 };
 use crate::tests::reference::ResourceDst;
-use connlib_shared::DomainName;
+use connlib_shared::{messages::GatewayId, DomainName};
 use ip_packet::IpPacket;
 use pretty_assertions::assert_eq;
 use std::{
@@ -20,11 +20,15 @@ use std::{
 pub(crate) fn assert_icmp_packets_properties(
     ref_client: &RefClient,
     sim_client: &SimClient,
-    sim_gateway: &SimGateway,
+    sim_gateways: HashMap<GatewayId, &SimGateway>,
     global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
 ) {
     let unexpected_icmp_replies = find_unexpected_entries(
-        &ref_client.expected_icmp_handshakes,
+        &ref_client
+            .expected_icmp_handshakes
+            .values()
+            .flatten()
+            .collect(),
         &sim_client.received_icmp_replies,
         |(_, seq_a, id_a), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
     );
@@ -34,56 +38,66 @@ pub(crate) fn assert_icmp_packets_properties(
         "Unexpected ICMP replies on client"
     );
 
-    assert_eq!(
-        ref_client.expected_icmp_handshakes.len(),
-        sim_gateway.received_icmp_requests.len(),
-        "Unexpected ICMP requests on gateway"
-    );
+    for (id, expected_icmp_handshakes) in ref_client.expected_icmp_handshakes.iter() {
+        let gateway = sim_gateways.get(id).unwrap();
 
-    tracing::info!(target: "assertions", "✅ Performed the expected {} ICMP handshakes", sim_gateway.received_icmp_requests.len());
+        assert_eq!(
+            expected_icmp_handshakes.len(),
+            gateway.received_icmp_requests.len(),
+            "Unexpected ICMP requests on gateway {id}"
+        );
+
+        tracing::info!(target: "assertions", "✅ Performed the expected {} ICMP handshakes with gateway {id}", expected_icmp_handshakes.len());
+    }
 
     let mut mapping = HashMap::new();
 
-    for ((resource_dst, seq, identifier), gateway_received_request) in ref_client
-        .expected_icmp_handshakes
-        .iter()
-        .zip(sim_gateway.received_icmp_requests.iter())
-    {
-        let _guard = tracing::info_span!(target: "assertions", "icmp", %seq, %identifier).entered();
+    // Assert properties of the individual ICMP handshakes per gateway.
+    // Due to connlib's implementation of NAT64, we cannot match the packets sent by the client to the packets arriving at the resource by port or ICMP identifier.
+    // Thus, we rely on the _order_ here which is why the packets are indexed by gateway in the `RefClient`.
+    for (gateway, expected_icmp_handshakes) in &ref_client.expected_icmp_handshakes {
+        let received_icmp_requests = &sim_gateways.get(gateway).unwrap().received_icmp_requests;
 
-        let client_sent_request = &sim_client
-            .sent_icmp_requests
-            .get(&(*seq, *identifier))
-            .expect("to have ICMP request on client");
-        let client_received_reply = &sim_client
-            .received_icmp_replies
-            .get(&(*seq, *identifier))
-            .expect("to have ICMP reply on client");
+        for ((resource_dst, seq, identifier), gateway_received_request) in
+            expected_icmp_handshakes.iter().zip(received_icmp_requests)
+        {
+            let _guard =
+                tracing::info_span!(target: "assertions", "icmp", %seq, %identifier).entered();
 
-        assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
+            let client_sent_request = &sim_client
+                .sent_icmp_requests
+                .get(&(*seq, *identifier))
+                .expect("to have ICMP request on client");
+            let client_received_reply = &sim_client
+                .received_icmp_replies
+                .get(&(*seq, *identifier))
+                .expect("to have ICMP reply on client");
 
-        assert_eq!(
-            gateway_received_request.source(),
-            ref_client.tunnel_ip_for(gateway_received_request.source()),
-            "ICMP request on gateway to originate from client"
-        );
+            assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
 
-        match resource_dst {
-            ResourceDst::Cidr(resource_dst) => {
-                assert_destination_is_cdir_resource(gateway_received_request, resource_dst)
-            }
-            ResourceDst::Dns(domain) => {
-                assert_destination_is_dns_resource(
-                    gateway_received_request,
-                    global_dns_records,
-                    domain,
-                );
+            assert_eq!(
+                gateway_received_request.source(),
+                ref_client.tunnel_ip_for(gateway_received_request.source()),
+                "ICMP request on gateway to originate from client"
+            );
 
-                assert_proxy_ip_mapping_is_stable(
-                    client_sent_request,
-                    gateway_received_request,
-                    &mut mapping,
-                )
+            match resource_dst {
+                ResourceDst::Cidr(resource_dst) => {
+                    assert_destination_is_cdir_resource(gateway_received_request, resource_dst)
+                }
+                ResourceDst::Dns(domain) => {
+                    assert_destination_is_dns_resource(
+                        gateway_received_request,
+                        global_dns_records,
+                        domain,
+                    );
+
+                    assert_proxy_ip_mapping_is_stable(
+                        client_sent_request,
+                        gateway_received_request,
+                        &mut mapping,
+                    )
+                }
             }
         }
     }
