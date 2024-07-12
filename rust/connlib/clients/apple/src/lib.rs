@@ -204,6 +204,7 @@ impl WrappedSession {
             max_partition_time: Some(MAX_PARTITION_TIME),
         };
         let session = Session::connect(args, runtime.handle().clone());
+        let _enter = runtime.enter();
         session.set_tun(Tun::new().map_err(|e| e.to_string())?);
 
         Ok(Self {
