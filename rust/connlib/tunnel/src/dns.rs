@@ -572,15 +572,11 @@ mod test {
     }
 
     fn dns_resource_fixture() -> HashMap<String, ResourceDescriptionDns> {
-        let mut dns_resources_fixture = HashMap::new();
-
-        dns_resources_fixture.insert("*.foo.com".to_string(), foo());
-
-        dns_resources_fixture.insert("?.bar.com".to_string(), bar());
-
-        dns_resources_fixture.insert("baz.com".to_string(), baz());
-
-        dns_resources_fixture
+        HashMap::from([
+            ("*.foo.com".to_string(), foo()),
+            ("?.bar.com".to_string(), bar()),
+            ("baz.com".to_string(), baz()),
+        ])
     }
 
     #[test]
