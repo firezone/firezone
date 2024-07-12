@@ -1,6 +1,6 @@
 use super::utils;
 use crate::device_channel::ioctl;
-use connlib_shared::{tun_device_manager::platform::IFACE_NAME, Callbacks, Error, Result};
+use connlib_shared::{Callbacks, Error, Result};
 use ip_network::IpNetwork;
 use libc::{
     close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, IFF_NO_PI, IFF_TUN, O_NONBLOCK, O_RDWR,
@@ -22,6 +22,7 @@ use tokio::io::unix::AsyncFd;
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUN_DEV_MAJOR: u32 = 10;
 const TUN_DEV_MINOR: u32 = 200;
+const IFACE_NAME: &str = "tun-firezone"; // Keep this synced with `TunDeviceManager` until we fix the module dependencies (i.e. move `Tun` out of `firezone-tunnel`).
 
 // Safety: We know that this is a valid C string.
 const TUN_FILE: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"/dev/net/tun\0") };
