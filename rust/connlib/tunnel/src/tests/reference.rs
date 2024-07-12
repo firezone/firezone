@@ -268,44 +268,18 @@ impl ReferenceStateMachine for ReferenceState {
                     .exec_mut(|client| client.dns_resources.remove(id));
             }
             Transition::AddDnsResource {
-                resource: new_resource,
+                resource,
                 records,
                 gateway,
             } => {
-                let existing_resource = state.client.exec_mut(|client| {
-                    client
-                        .gateways_by_resource
-                        .insert(new_resource.id, *gateway);
-                    client
-                        .dns_resources
-                        .insert(new_resource.id, new_resource.clone())
+                state.client.exec_mut(|client| {
+                    client.gateways_by_resource.insert(resource.id, *gateway);
+                    client.dns_resources.insert(resource.id, resource.clone());
                 });
 
                 // For the client, there is no difference between a DNS resource and a truly global DNS name.
                 // We store all records in the same map to follow the same model.
                 state.global_dns_records.extend(records.clone());
-
-                // If a resource is updated (i.e. same ID but different address) and we are currently connected, we disconnect from it.
-                if let Some(resource) = existing_resource {
-                    if new_resource.address != resource.address {
-                        state.client.exec_mut(|client| {
-                            client.connected_cidr_resources.remove(&resource.id)
-                        });
-
-                        state
-                            .global_dns_records
-                            .retain(|name, _| !matches_domain(&resource.address, name));
-
-                        // TODO: IN PRODUCTION, WE CANNOT DO THIS.
-                        // CHANGING A DNS RESOURCE BREAKS CLIENT UNTIL THEY DECIDE TO RE-QUERY THE RESOURCE.
-                        // WE DO THIS HERE TO ENSURE THE TEST DOESN'T RUN INTO THIS.
-                        state.client.exec_mut(|client| {
-                            client
-                                .dns_records
-                                .retain(|name, _| !matches_domain(&resource.address, name))
-                        });
-                    }
-                }
             }
             Transition::SendDnsQuery {
                 domain,
@@ -402,6 +376,11 @@ impl ReferenceStateMachine for ReferenceState {
                     return false;
                 };
 
+                // Resource IDs must be unique.
+                if state.client.inner().all_resources().contains(&resource.id) {
+                    return false;
+                }
+
                 // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
 
                 if resource.address.is_ipv6() && gateway.ip6.is_none() {
@@ -423,7 +402,9 @@ impl ReferenceStateMachine for ReferenceState {
                 true
             }
             Transition::AddDnsResource {
-                records, gateway, ..
+                records,
+                gateway,
+                resource,
             } => {
                 if !state.gateways.contains_key(gateway) {
                     return false;
@@ -452,6 +433,22 @@ impl ReferenceStateMachine for ReferenceState {
                     if any_real_ip_overlaps_with_cidr_resource {
                         return false;
                     }
+                }
+
+                // Resource IDs must be unique.
+                if state.client.inner().all_resources().contains(&resource.id) {
+                    return false;
+                }
+
+                // Resource addresses must be unique.
+                if state
+                    .client
+                    .inner()
+                    .dns_resources
+                    .values()
+                    .any(|r| r.address == resource.address)
+                {
+                    return false;
                 }
 
                 true
@@ -571,18 +568,6 @@ impl ReferenceState {
     fn all_gateways(&self) -> Vec<GatewayId> {
         self.gateways.keys().copied().collect()
     }
-}
-
-fn matches_domain(resource_address: &str, domain: &DomainName) -> bool {
-    let name = domain.to_string();
-
-    if resource_address.starts_with('*') || resource_address.starts_with('?') {
-        let (_, base) = resource_address.split_once('.').unwrap();
-
-        return name.ends_with(base);
-    }
-
-    name == resource_address
 }
 
 pub(crate) fn private_key() -> impl Strategy<Value = PrivateKey> {
