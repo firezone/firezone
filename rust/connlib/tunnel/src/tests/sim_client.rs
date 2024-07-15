@@ -606,8 +606,8 @@ fn is_subdomain(name: &str, record: &str) -> bool {
 }
 
 pub(crate) fn ref_client_host(
-    tunnel_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
-    tunnel_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
+    tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
+    tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
 ) -> impl Strategy<Value = Host<RefClient>> {
     host(
         any_ip_stack(),
@@ -643,13 +643,12 @@ pub(crate) fn ref_client_host(
 }
 
 fn ref_client(
-    tunnel_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
-    tunnel_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
+    tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
+    tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
 ) -> impl Strategy<Value = RefClient> {
-    let tunnel_ip4 = tunnel_ip4s.next().unwrap();
-    let tunnel_ip6 = tunnel_ip6s.next().unwrap();
-
     (
+        tunnel_ip4s,
+        tunnel_ip6s,
         client_id(),
         private_key(),
         known_hosts(),
@@ -657,7 +656,15 @@ fn ref_client(
         upstream_dns_servers(),
     )
         .prop_map(
-            move |(id, key, known_hosts, system_dns_resolvers, upstream_dns_resolvers)| RefClient {
+            move |(
+                tunnel_ip4,
+                tunnel_ip6,
+                id,
+                key,
+                known_hosts,
+                system_dns_resolvers,
+                upstream_dns_resolvers,
+            )| RefClient {
                 id,
                 key,
                 known_hosts,
