@@ -593,12 +593,13 @@ mod tests {
 
     #[test]
     fn wildcard_matching() {
-        let resources = HashMap::from([("*.foo.com".to_string(), 0)]);
+        let resources = HashMap::from([("*.foo.com".to_string(), 0), ("*.com".to_string(), 1)]);
 
         assert_eq!(match_domain(&domain("a.foo.com"), &resources), Some(0));
         assert_eq!(match_domain(&domain("foo.com"), &resources), Some(0));
         assert_eq!(match_domain(&domain("a.b.foo.com"), &resources), Some(0));
-        assert_eq!(match_domain(&domain("oo.com"), &resources), None);
+        assert_eq!(match_domain(&domain("oo.com"), &resources), Some(1));
+        assert_eq!(match_domain(&domain("oo.xyz"), &resources), None);
     }
 
     #[test]
