@@ -45,8 +45,7 @@ pub struct Io {
 
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
 
-    upstream_dns_servers:
-        HashMap<IpAddr, AsyncResolver<GenericConnector<ProtectedTokioRuntimeProvider>>>,
+    upstream_dns_servers: HashMap<IpAddr, AsyncResolver<GenericConnector<TokioRuntimeProvider>>>,
     forwarded_dns_queries: FuturesTupleSet<
         Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
         DnsQuery<'static>,
@@ -141,7 +140,7 @@ impl Io {
             FuturesTupleSet::new(Duration::from_secs(60), DNS_QUERIES_QUEUE_SIZE);
         self.upstream_dns_servers = create_resolvers(
             dns_servers,
-            ProtectedTokioRuntimeProvider::new(
+            TokioRuntimeProvider::new(
                 self.tcp_socket_factory.clone(),
                 self.udp_socket_factory.clone(),
             ),
@@ -214,17 +213,17 @@ pub enum DnsQueryError {
 
 /// Identical to [`TokioRuntimeProvider`](hickory_resolver::name_server::TokioRuntimeProvider) but using our own [`SocketFactory`].
 #[derive(Clone)]
-struct ProtectedTokioRuntimeProvider {
+struct TokioRuntimeProvider {
     handle: TokioHandle,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 }
 
-impl ProtectedTokioRuntimeProvider {
+impl TokioRuntimeProvider {
     fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    ) -> ProtectedTokioRuntimeProvider {
+    ) -> TokioRuntimeProvider {
         Self {
             handle: Default::default(),
             tcp_socket_factory,
@@ -233,7 +232,7 @@ impl ProtectedTokioRuntimeProvider {
     }
 }
 
-impl RuntimeProvider for ProtectedTokioRuntimeProvider {
+impl RuntimeProvider for TokioRuntimeProvider {
     type Handle = TokioHandle;
     type Timer = TokioTime;
     type Udp = UdpSocket;
@@ -269,8 +268,8 @@ impl RuntimeProvider for ProtectedTokioRuntimeProvider {
 
 fn create_resolvers(
     dns_servers: impl IntoIterator<Item = (IpAddr, DnsServer)>,
-    runtime_provider: ProtectedTokioRuntimeProvider,
-) -> HashMap<IpAddr, AsyncResolver<GenericConnector<ProtectedTokioRuntimeProvider>>> {
+    runtime_provider: TokioRuntimeProvider,
+) -> HashMap<IpAddr, AsyncResolver<GenericConnector<TokioRuntimeProvider>>> {
     dns_servers
         .into_iter()
         .map(|(sentinel, srv)| {
