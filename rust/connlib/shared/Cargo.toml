@@ -43,7 +43,6 @@ swift-bridge = { workspace = true }
 
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
-logging_timer = "1.1.1"
 wintun = "0.4.0"
 known-folders = "1.1.0"
 

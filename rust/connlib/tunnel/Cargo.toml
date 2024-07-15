@@ -23,7 +23,6 @@ ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
 itertools = { version = "0.13", default-features = false, features = ["use_std"] }
 libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
-logging_timer = "1.1.1"
 proptest = { version = "1", optional = true }
 quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" }
 rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }

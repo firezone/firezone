@@ -30,7 +30,6 @@ const FZ_MAGIC: &str = "firezone-fd0020211111";
 
 impl DnsController {
     /// Deactivate any control Firezone has over the computer's DNS
-    #[logging_timer::time]
     pub(super) fn deactivate(&mut self) -> Result<()> {
         deactivate()
     }
@@ -44,7 +43,6 @@ impl DnsController {
     ///
     /// Must be async to match the Linux signature
     #[allow(clippy::unused_async)]
-    #[logging_timer::time]
     pub(super) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
         // TODO: Bug #5879 may be right here
         self.deactivate()
@@ -56,7 +54,6 @@ impl DnsController {
     /// Flush Windows' system-wide DNS cache
     ///
     /// `&self` is needed to match the Linux signature
-    #[logging_timer::time]
     pub(super) fn flush(&self) -> Result<()> {
         tracing::debug!("Flushing Windows DNS cache...");
         Command::new("ipconfig")
@@ -68,7 +65,6 @@ impl DnsController {
     }
 }
 
-#[logging_timer::time]
 pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
     let resolvers = ipconfig::get_adapters()?
         .iter()
@@ -94,7 +90,6 @@ const NRPT_REG_KEY: &str = "{6C0507CB-C884-4A78-BC55-0ACEE21227F6}";
 /// Parameters:
 /// - `dns_config_string`: Comma-separated IP addresses of DNS servers, e.g. "1.1.1.1,8.8.8.8"
 // TODO 5026: 720 ms
-#[logging_timer::time]
 fn activate(dns_config: &[IpAddr]) -> Result<()> {
     // TODO: Known issue where web browsers will keep a connection open to a site,
     // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS

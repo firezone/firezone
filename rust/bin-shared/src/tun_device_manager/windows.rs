@@ -37,7 +37,7 @@ impl TunDeviceManager {
     }
 
     // TODO 5026: 360 ms
-    #[logging_timer::time]
+    #[allow(clippy::unused_async)]
     pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
         tracing::debug!("Setting our IPv4 = {}", ipv4);
         tracing::debug!("Setting our IPv6 = {}", ipv6);
@@ -71,7 +71,6 @@ impl TunDeviceManager {
         Ok(())
     }
 
-    #[logging_timer::time]
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_routes(&mut self, v4: Vec<Ipv4Network>, v6: Vec<Ipv6Network>) -> Result<()> {
         let iface_idx = self

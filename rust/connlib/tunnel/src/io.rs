@@ -111,7 +111,6 @@ impl Io {
         &mut self.sockets
     }
 
-    #[logging_timer::time]
     pub fn set_upstream_dns_servers(
         &mut self,
         dns_servers: impl IntoIterator<Item = (IpAddr, DnsServer)>,
