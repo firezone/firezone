@@ -212,7 +212,7 @@ pub enum DnsQueryError {
     TooManyQueries,
 }
 
-/// Exactly the same as the [TokioRuntimeProvider](hickory_resolver::name_server::TokioRuntimeProvider) but sockets are protected when created
+/// Identical to [`TokioRuntimeProvider`](hickory_resolver::name_server::TokioRuntimeProvider) but using our own [`SocketFactory`].
 #[derive(Clone)]
 struct ProtectedTokioRuntimeProvider {
     handle: TokioHandle,
