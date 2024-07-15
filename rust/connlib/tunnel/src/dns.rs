@@ -421,41 +421,40 @@ pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
     name == &resource
 }
 
-fn match_domain<T>(name: &DomainName, dns_resources: &HashMap<String, T>) -> Option<T>
+fn match_domain<T>(name: &DomainName, resources: &HashMap<String, T>) -> Option<T>
 where
     T: Copy,
 {
-    if let Some(resource) = dns_resources.get(&name.to_string()) {
+    // Safety: `?` is less than 254 bytes long.
+    const QUESTION_MARK: RelativeName<&'static [u8]> =
+        unsafe { RelativeName::from_octets_unchecked(b"\x01?") };
+    // Safety: `*` is less than 254 bytes long.
+    const WILDCARD: RelativeName<&'static [u8]> =
+        unsafe { RelativeName::from_octets_unchecked(b"\x01*") };
+
+    // First, check for full match.
+    if let Some(resource) = resources.get(&name.to_string()) {
         return Some(*resource);
     }
 
-    if let Some(resource) = dns_resources.get(
-        &RelativeName::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
-            .ok()?
-            .chain(name)
-            .ok()?
-            .to_string(),
-    ) {
+    // Second, check for `?` matching this domain exactly.
+    let qm_dot_domain = &QUESTION_MARK.chain(name).ok()?;
+    if let Some(resource) = resources.get(&qm_dot_domain.to_string()) {
         return Some(*resource);
     }
 
+    // Third, check for `?` matching up to 1 parent.
     if let Some(parent) = name.parent() {
-        if let Some(resource) = dns_resources.get(
-            &RelativeName::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
-                .ok()?
-                .chain(parent)
-                .ok()?
-                .to_string(),
-        ) {
+        let qm_dot_parent = &QUESTION_MARK.chain(parent).ok()?;
+
+        if let Some(resource) = resources.get(&qm_dot_parent.to_string()) {
             return Some(*resource);
         }
     }
 
-    name.iter_suffixes().find_map(|n| {
-        dns_resources
-            .get(&RelativeName::wildcard_vec().chain(n).ok()?.to_string())
-            .copied()
-    })
+    // Last, check for any wildcard domains, starting with the most specific one.
+    name.iter_suffixes()
+        .find_map(|n| resources.get(&WILDCARD.chain(n).ok()?.to_string()).copied())
 }
 
 fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
