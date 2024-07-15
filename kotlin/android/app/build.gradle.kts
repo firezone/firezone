@@ -232,7 +232,6 @@ cargo {
     // Needed for Ubuntu 22.04
     pythonCommand = "python3"
     prebuiltToolchains = true
-    verbose = true
     module = "../../../rust/connlib/clients/android"
     libname = "connlib"
     targets =
