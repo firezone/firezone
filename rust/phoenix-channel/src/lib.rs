@@ -113,21 +113,27 @@ async fn make_socket(
     Err(InternalError::SocketConnection(err))
 }
 
+async fn create_and_connect_websocket(
+    url: Secret<LoginUrl>,
+    user_agent: String,
+    socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
+) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
+    let socket = make_socket(url.expose_secret().inner(), &*socket_factory).await?;
+
+    let (stream, _) = connect_websocket(make_request(url, user_agent), socket)
+        .await
+        .map_err(InternalError::WebSocket)?;
+
+    Ok(stream)
+}
+
 impl State {
     fn connect(
         url: Secret<LoginUrl>,
         user_agent: String,
         socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
     ) -> Self {
-        Self::Connecting(Box::pin(async move {
-            let socket = make_socket(url.expose_secret().inner(), &*socket_factory).await?;
-
-            let (stream, _) = connect_websocket(make_request(url, user_agent), socket)
-                .await
-                .map_err(InternalError::WebSocket)?;
-
-            Ok(stream)
-        }))
+        Self::Connecting(create_and_connect_websocket(url, user_agent, socket_factory).boxed())
     }
 }
 
@@ -223,8 +229,6 @@ where
     TOutboundRes: DeserializeOwned,
 {
     /// Creates a new [PhoenixChannel] to the given endpoint.
-    ///
-    /// This version of the function accept a Protect struct that will be used to protect the socket and prevent routing loops.
     ///
     /// The provided URL must contain a host.
     /// Additionally, you must already provide any query parameters required for authentication.
@@ -360,11 +364,15 @@ where
 
                         let secret_url = self.url.clone();
                         let user_agent = self.user_agent.clone();
+                        let socket_factory = self.socket_factory.clone();
 
                         tracing::debug!(?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error: {e}");
 
-                        self.state =
-                            State::connect(secret_url, user_agent, self.socket_factory.clone());
+                        self.state = State::Connecting(Box::pin(async move {
+                            tokio::time::sleep(backoff).await;
+                            create_and_connect_websocket(secret_url, user_agent, socket_factory)
+                                .await
+                        }));
 
                         continue;
                     }
