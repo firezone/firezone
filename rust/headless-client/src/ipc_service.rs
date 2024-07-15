@@ -7,7 +7,11 @@ use crate::{
 use anyhow::{Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets};
-use futures::{future::poll_fn, task::Poll, Future as _, SinkExt as _, Stream as _};
+use futures::{
+    future::poll_fn,
+    task::{Context, Poll},
+    Future as _, SinkExt as _, Stream as _,
+};
 use std::{net::IpAddr, path::PathBuf, pin::pin, time::Duration};
 use tokio::{sync::mpsc, time::Instant};
 use tracing::subscriber::set_global_default;
@@ -153,7 +157,7 @@ async fn ipc_listen(signals: &mut signals::Terminate) -> Result<()> {
             break;
         };
         let mut handler = handler?;
-        if let HandlerOutcome::ServiceTerminating = handler.run(signals).await {
+        if let HandlerOk::ServiceTerminating = handler.run(signals).await {
             break;
         }
     }
@@ -183,7 +187,7 @@ enum Event {
 
 // Open to better names
 #[must_use]
-enum HandlerOutcome {
+enum HandlerOk {
     ClientDisconnected,
     Err,
     ServiceTerminating,
@@ -217,32 +221,9 @@ impl Handler {
     /// the client a hint to shut itself down gracefully.
     ///
     /// The return type is infallible so that we only give up on an IPC client explicitly
-    async fn run(&mut self, signals: &mut signals::Terminate) -> HandlerOutcome {
+    async fn run(&mut self, signals: &mut signals::Terminate) -> HandlerOk {
         loop {
-            let event = poll_fn(|cx| {
-                if let Poll::Ready(()) = signals.poll_recv(cx) {
-                    // `recv` on signals is cancel-safe.
-                    Poll::Ready(Event::Terminate)
-                } else if let Poll::Ready(result) = pin!(&mut self.ipc_rx).poll_next(cx) {
-                    // `FramedRead::next` is cancel-safe.
-                    match result {
-                        Some(Ok(x)) => Poll::Ready(Event::Ipc(x)),
-                        Some(Err(error)) => Poll::Ready(Event::IpcError(error)),
-                        None => Poll::Ready(Event::IpcDisconnected),
-                    }
-                } else if let Poll::Ready(option) = self.cb_rx.poll_recv(cx) {
-                    // `tokio::sync::mpsc::Receiver::recv` is cancel-safe.
-                    match option {
-                        Some(x) => Poll::Ready(Event::Callback(x)),
-                        None => Poll::Ready(Event::CallbackChannelClosed),
-                    }
-                } else {
-                    Poll::Pending
-                }
-            })
-            .await;
-
-            match event {
+            match poll_fn(|cx| self.next_event(cx, signals)).await {
                 Event::Callback(x) => {
                     if let Err(error) = self.handle_connlib_cb(x).await {
                         tracing::error!(?error, "Error while handling connlib callback");
@@ -251,7 +232,7 @@ impl Handler {
                 }
                 Event::CallbackChannelClosed => {
                     tracing::error!("Impossible - Callback channel closed");
-                    break HandlerOutcome::Err;
+                    break HandlerOk::Err;
                 }
                 Event::Ipc(msg) => {
                     if let Err(error) = self.handle_ipc_msg(msg) {
@@ -261,7 +242,7 @@ impl Handler {
                 }
                 Event::IpcDisconnected => {
                     tracing::info!("IPC client disconnected");
-                    break HandlerOutcome::ClientDisconnected;
+                    break HandlerOk::ClientDisconnected;
                 }
                 Event::IpcError(error) => {
                     tracing::error!(?error, "Error while deserializing IPC message");
@@ -275,10 +256,37 @@ impl Handler {
                         .send(&IpcServerMsg::TerminatingGracefully)
                         .await
                         .unwrap();
-                    break HandlerOutcome::ServiceTerminating;
+                    break HandlerOk::ServiceTerminating;
                 }
             }
         }
+    }
+
+    fn next_event(
+        &mut self,
+        cx: &mut Context<'_>,
+        signals: &mut signals::Terminate,
+    ) -> Poll<Event> {
+        // `recv` on signals is cancel-safe.
+        if let Poll::Ready(()) = signals.poll_recv(cx) {
+            return Poll::Ready(Event::Terminate);
+        }
+        // `FramedRead::next` is cancel-safe.
+        if let Poll::Ready(result) = pin!(&mut self.ipc_rx).poll_next(cx) {
+            return match result {
+                Some(Ok(x)) => Poll::Ready(Event::Ipc(x)),
+                Some(Err(error)) => Poll::Ready(Event::IpcError(error)),
+                None => Poll::Ready(Event::IpcDisconnected),
+            };
+        }
+        // `tokio::sync::mpsc::Receiver::recv` is cancel-safe.
+        if let Poll::Ready(option) = self.cb_rx.poll_recv(cx) {
+            return match option {
+                Some(x) => Poll::Ready(Event::Callback(x)),
+                None => Poll::Ready(Event::CallbackChannelClosed),
+            };
+        }
+        Poll::Pending
     }
 
     async fn handle_connlib_cb(&mut self, msg: InternalServerMsg) -> Result<()> {
