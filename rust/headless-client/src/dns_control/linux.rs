@@ -1,3 +1,4 @@
+use super::DnsController;
 use anyhow::{bail, Context as _, Result};
 use firezone_bin_shared::TunDeviceManager;
 use std::{net::IpAddr, process::Command, str::FromStr};
@@ -34,15 +35,11 @@ impl Method {
         match self {
             // Even if DNS control is disabled, we still read `/etc/resolv.conf`
             // to learn the system's resolvers
-            Method::Disabled => get_system_default_resolvers_resolv_conf(),
-            Method::EtcResolvConf => get_system_default_resolvers_resolv_conf(),
-            Method::SystemdResolved => get_system_default_resolvers_systemd_resolved(),
+            Method::Disabled => get_resolvers_resolv_conf(),
+            Method::EtcResolvConf => get_resolvers_resolv_conf(),
+            Method::SystemdResolved => get_resolvers_systemd_resolved(),
         }
     }
-}
-
-pub(crate) struct DnsController {
-    pub(crate) method: Method,
 }
 
 impl Drop for DnsController {
@@ -120,7 +117,7 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
     Ok(())
 }
 
-fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
+fn get_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
     // Assume that `configure_resolv_conf` has run in `tun_linux.rs`
 
     let s = std::fs::read_to_string(etc_resolv_conf::ETC_RESOLV_CONF_BACKUP)
@@ -138,7 +135,7 @@ fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
 }
 
 /// Returns the DNS servers listed in `resolvectl dns`
-fn get_system_default_resolvers_systemd_resolved() -> Result<Vec<IpAddr>> {
+fn get_resolvers_systemd_resolved() -> Result<Vec<IpAddr>> {
     // Unfortunately systemd-resolved does not have a machine-readable
     // text output for this command: <https://github.com/systemd/systemd/issues/29755>
     //

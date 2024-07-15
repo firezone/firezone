@@ -207,9 +207,7 @@ impl Handler {
             callback_handler: CallbackHandler { cb_tx },
             cb_rx,
             connlib: None,
-            dns_controller: DnsController {
-                method: dns_control::Method::default(),
-            },
+            dns_controller: DnsController::default(),
             ipc_rx,
             ipc_tx,
             last_connlib_start_instant: None,

@@ -15,7 +15,7 @@ mod windows;
 #[cfg(target_os = "windows")]
 use windows as platform;
 
-pub(crate) use platform::{deactivate, DnsController, Method};
+pub(crate) use platform::{deactivate, Method};
 
 // TODO: Move DNS and network change listening to the IPC service, so this won't
 // need to be public.
@@ -23,4 +23,9 @@ pub(crate) use platform::{deactivate, DnsController, Method};
 /// On all platforms, the GUI always uses the default method.
 pub fn system_resolvers_for_gui() -> anyhow::Result<Vec<std::net::IpAddr>> {
     Method::default().system_resolvers()
+}
+
+#[derive(Default)]
+pub(crate) struct DnsController {
+    pub(crate) method: Method,
 }
