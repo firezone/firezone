@@ -44,9 +44,7 @@ impl DnsController {
     /// Must be async to match the Linux signature
     #[allow(clippy::unused_async)]
     pub(super) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
-        // TODO: Bug #5879 may be right here
-        self.deactivate()
-            .context("Failed to deactivate DNS control")?;
+        // self.deactivate().context("Failed to deactivate DNS control")?;
         activate(dns_config).context("Failed to activate DNS control")?;
         Ok(())
     }
