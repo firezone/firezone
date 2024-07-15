@@ -187,7 +187,11 @@ defmodule Web.SignIn do
         />
       </div>
 
-      <.button phx-disable-with="Signing in..." class="w-full">
+      <.button
+        id="userpass_submit_btn"
+        phx-click={disable_button("userpass_submit_btn")}
+        class="w-full"
+      >
         Sign in
       </.button>
     </.form>
@@ -216,7 +220,12 @@ defmodule Web.SignIn do
         placeholder="Enter your email"
         required
       />
-      <.submit_button phx-disable-with="Sending..." class="w-full" style="info">
+      <.submit_button
+        id="request_token_btn"
+        phx-click={disable_button("request_token_btn")}
+        class="w-full"
+        style="info"
+      >
         Request sign in token
       </.submit_button>
     </.form>
@@ -226,6 +235,8 @@ defmodule Web.SignIn do
   def openid_connect_button(assigns) do
     ~H"""
     <a
+      id={"oidc_btn_#{@provider.id}"}
+      phx-click={disable_button("oidc_btn_#{@provider.id}")}
       class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
       href={~p"/#{@account}/sign_in/providers/#{@provider}/redirect?#{@params}"}
     >

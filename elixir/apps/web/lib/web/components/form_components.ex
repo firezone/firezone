@@ -5,6 +5,7 @@ defmodule Web.FormComponents do
   use Phoenix.Component
   use Web, :verified_routes
   import Web.CoreComponents, only: [icon: 1, error: 1, label: 1, translate_error: 1]
+  alias Phoenix.LiveView.JS
 
   ### Inputs ###
 
@@ -20,43 +21,48 @@ defmodule Web.FormComponents do
       <.input field={@form[:email]} type="email" />
       <.input name="my-input" errors={["oh no!"]} />
   """
-  attr :id, :any, default: nil
-  attr :name, :any
-  attr :label, :string, default: nil
-  attr :prefix, :string, default: nil
-  attr :value, :any
+  attr(:id, :any, default: nil)
+  attr(:name, :any)
+  attr(:label, :string, default: nil)
+  attr(:prefix, :string, default: nil)
+  attr(:value, :any)
 
-  attr :value_id, :any,
+  attr(:value_id, :any,
     default: nil,
     doc: "the function for generating the value from the list of schemas for select inputs"
+  )
 
-  attr :type, :string,
+  attr(:type, :string,
     default: "text",
     values: ~w(checkbox color date datetime-local email file hidden month number password
                range radio readonly search group_select select tel text textarea time url week)
+  )
 
-  attr :field, Phoenix.HTML.FormField,
+  attr(:field, Phoenix.HTML.FormField,
     doc: "a form field struct retrieved from the form, for example: @form[:email]"
+  )
 
-  attr :errors, :list, default: []
-  attr :value_index, :integer, default: nil
+  attr(:errors, :list, default: [])
+  attr(:value_index, :integer, default: nil)
 
-  attr :inline_errors, :boolean,
+  attr(:inline_errors, :boolean,
     default: false,
     doc: "whether to display errors inline instead of below the input"
+  )
 
-  attr :checked, :boolean, doc: "the checked flag for checkbox and radio inputs"
-  attr :prompt, :string, default: nil, doc: "the prompt for select inputs"
-  attr :options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2"
-  attr :multiple, :boolean, default: false, doc: "the multiple flag for select inputs"
+  attr(:checked, :boolean, doc: "the checked flag for checkbox and radio inputs")
+  attr(:prompt, :string, default: nil, doc: "the prompt for select inputs")
+  attr(:options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2")
+  attr(:multiple, :boolean, default: false, doc: "the multiple flag for select inputs")
 
-  attr :rest, :global,
+  attr(:rest, :global,
     include: ~w(autocomplete cols disabled form list max maxlength min minlength
                 pattern placeholder readonly required rows size step)
+  )
 
-  attr :class, :string, default: "", doc: "the custom classes to be added to the input"
+  attr(:class, :string, default: "", doc: "the custom classes to be added to the input")
 
-  slot :inner_block
+  slot(:inner_block)
 
   def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
     errors =
@@ -374,25 +380,27 @@ defmodule Web.FormComponents do
       <.button>Send!</.button>
       <.button phx-click="go" class="ml-2">Send!</.button>
   """
-  attr :navigate, :string,
+  attr(:navigate, :string,
     required: false,
     doc: """
     The path to navigate to, when set an <a> tag will be used,
     otherwise a <button> tag will be used
     """
+  )
 
-  attr :class, :string, default: "", doc: "Custom classes to be added to the button"
-  attr :style, :string, default: nil, doc: "The style of the button"
-  attr :type, :string, default: nil, doc: "The button type"
-  attr :size, :string, default: "md", doc: "The size of the button"
+  attr(:class, :string, default: "", doc: "Custom classes to be added to the button")
+  attr(:style, :string, default: nil, doc: "The style of the button")
+  attr(:type, :string, default: nil, doc: "The button type")
+  attr(:size, :string, default: "md", doc: "The size of the button")
 
-  attr :icon, :string,
+  attr(:icon, :string,
     default: nil,
     required: false,
     doc: "The icon to be displayed on the button"
+  )
 
-  attr :rest, :global, include: ~w(disabled form name value navigate)
-  slot :inner_block, required: true, doc: "The label for the button"
+  attr(:rest, :global, include: ~w(disabled form name value navigate))
+  slot(:inner_block, required: true, doc: "The label for the button")
 
   def button(%{navigate: _} = assigns) do
     ~H"""
@@ -422,8 +430,8 @@ defmodule Web.FormComponents do
     </.submit_button>
   """
 
-  attr :rest, :global
-  slot :inner_block, required: true
+  attr(:rest, :global)
+  slot(:inner_block, required: true)
 
   def submit_button(assigns) do
     ~H"""
@@ -444,9 +452,9 @@ defmodule Web.FormComponents do
       Edit user
     </.delete_button>
   """
-  slot :inner_block, required: true
-  attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
-  attr :size, :string, default: "md", doc: "The size of the button"
+  slot(:inner_block, required: true)
+  attr(:rest, :global, doc: "the arbitrary HTML attributes to add to the flash container")
+  attr(:size, :string, default: "md", doc: "The size of the button")
 
   def delete_button(assigns) do
     ~H"""
@@ -465,9 +473,9 @@ defmodule Web.FormComponents do
       Add user
     </.add_button>
   """
-  attr :navigate, :any, required: true, doc: "Path to navigate to"
-  attr :class, :string, default: ""
-  slot :inner_block, required: true
+  attr(:navigate, :any, required: true, doc: "Path to navigate to")
+  attr(:class, :string, default: "")
+  slot(:inner_block, required: true)
 
   def add_button(assigns) do
     ~H"""
@@ -486,8 +494,8 @@ defmodule Web.FormComponents do
       Edit user
     </.edit_button>
   """
-  attr :navigate, :any, required: true, doc: "Path to navigate to"
-  slot :inner_block, required: true
+  attr(:navigate, :any, required: true, doc: "Path to navigate to")
+  slot(:inner_block, required: true)
 
   def edit_button(assigns) do
     ~H"""
@@ -579,5 +587,17 @@ defmodule Web.FormComponents do
     }
 
     [icon_size[size], spacing[size]]
+  end
+
+  # The phx-disable-with attribute on submit buttons only lasts until the button press is
+  # acknowledged by the server. After that, it's restored, even if the form itself is still
+  # submitting. This is a problem when the form is slow to submit, as the user can press the
+  # button again, causing the form to submit twice. This happens on auth pages where the submission
+  # is synchronous and takes a constant time. So we use custom JS to disable the button instead,
+  # fixing UX.
+  # This is only useful for synchronous form submissions.
+  def disable_button(js \\ %JS{}, id) do
+    js
+    |> JS.add_class("opacity-75 cursor-wait", to: "##{id}")
   end
 end

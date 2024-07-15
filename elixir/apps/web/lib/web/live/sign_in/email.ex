@@ -99,6 +99,8 @@ defmodule Web.SignIn.Email do
                 />
 
                 <button
+                  id="token_sign_in_btn"
+                  phx-click={disable_button("token_sign_in_btn")}
                   type="submit"
                   class={[
                     "block p-2.5",
