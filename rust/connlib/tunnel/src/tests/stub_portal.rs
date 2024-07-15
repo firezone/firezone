@@ -1,4 +1,5 @@
 use connlib_shared::messages::{client, gateway, GatewayId, ResourceId};
+use itertools::Itertools;
 use proptest::sample::Selector;
 use std::{
     collections::{HashMap, HashSet},
@@ -39,9 +40,13 @@ impl StubPortal {
     }
 
     pub(crate) fn add_resource(&mut self, resource: client::ResourceDescription) {
-        for site in resource.sites() {
-            self.sites_by_resource.insert(resource.id(), site.id);
-        }
+        let site = resource
+            .sites()
+            .into_iter()
+            .exactly_one()
+            .expect("only single-site resources are supported");
+
+        self.sites_by_resource.insert(resource.id(), site.id);
 
         match resource {
             client::ResourceDescription::Dns(dns) => {
