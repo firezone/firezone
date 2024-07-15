@@ -457,7 +457,7 @@ where
         let wildcard_dot_suffix = WILDCARD.chain(suffix).ok()?.to_string();
 
         if let Some(resource) = resources.get(&wildcard_dot_suffix) {
-            return Some(*resource)
+            return Some(*resource);
         }
     }
 
@@ -593,67 +593,30 @@ mod tests {
 
     #[test]
     fn wildcard_matching() {
-        let dns_resources_fixture = HashMap::from([("*.foo.com".to_string(), 0)]);
+        let resources = HashMap::from([("*.foo.com".to_string(), 0)]);
 
-        assert_eq!(
-            match_domain(&domain("a.foo.com"), &dns_resources_fixture),
-            Some(0),
-        );
-
-        assert_eq!(
-            match_domain(&domain("foo.com"), &dns_resources_fixture),
-            Some(0),
-        );
-
-        assert_eq!(
-            match_domain(&domain("a.b.foo.com"), &dns_resources_fixture),
-            Some(0),
-        );
-
-        assert_eq!(
-            match_domain(&domain("oo.com"), &dns_resources_fixture),
-            None
-        );
+        assert_eq!(match_domain(&domain("a.foo.com"), &resources), Some(0));
+        assert_eq!(match_domain(&domain("foo.com"), &resources), Some(0));
+        assert_eq!(match_domain(&domain("a.b.foo.com"), &resources), Some(0));
+        assert_eq!(match_domain(&domain("oo.com"), &resources), None);
     }
 
     #[test]
     fn question_mark_matching() {
-        let dns_resources_fixture = HashMap::from([("?.bar.com".to_string(), 1)]);
+        let resources = HashMap::from([("?.bar.com".to_string(), 1)]);
 
-        assert_eq!(
-            match_domain(&domain("a.bar.com"), &dns_resources_fixture),
-            Some(1),
-        );
-
-        assert_eq!(
-            match_domain(&domain("bar.com"), &dns_resources_fixture),
-            Some(1),
-        );
-
-        assert_eq!(
-            match_domain(&domain("a.b.bar.com"), &dns_resources_fixture),
-            None
-        );
+        assert_eq!(match_domain(&domain("a.bar.com"), &resources), Some(1));
+        assert_eq!(match_domain(&domain("bar.com"), &resources), Some(1));
+        assert_eq!(match_domain(&domain("a.b.bar.com"), &resources), None);
     }
 
     #[test]
     fn exact_matching() {
-        let dns_resources_fixture = HashMap::from([("baz.com".to_string(), 2)]);
+        let resources = HashMap::from([("baz.com".to_string(), 2)]);
 
-        assert_eq!(
-            match_domain(&domain("baz.com"), &dns_resources_fixture),
-            Some(2),
-        );
-
-        assert_eq!(
-            match_domain(&domain("a.baz.com"), &dns_resources_fixture),
-            None
-        );
-
-        assert_eq!(
-            match_domain(&domain("a.b.baz.com"), &dns_resources_fixture),
-            None,
-        );
+        assert_eq!(match_domain(&domain("baz.com"), &resources), Some(2));
+        assert_eq!(match_domain(&domain("a.baz.com"), &resources), None);
+        assert_eq!(match_domain(&domain("a.b.baz.com"), &resources), None);
     }
 
     #[test]
