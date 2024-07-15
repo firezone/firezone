@@ -286,17 +286,16 @@ impl Socket {
     }
 
     fn try_send(&self, transmit: &snownet::Transmit) -> io::Result<()> {
+        let transmit = quinn_udp::Transmit {
+            destination: transmit.dst,
+            ecn: None,
+            contents: &transmit.payload,
+            segment_size: None,
+            src_ip: transmit.src.map(|s| s.ip()),
+        };
+
         self.socket.try_io(Interest::WRITABLE, || {
-            self.state.send(
-                (&self.socket).into(),
-                &quinn_udp::Transmit {
-                    destination: transmit.dst,
-                    ecn: None,
-                    contents: &transmit.payload,
-                    segment_size: None,
-                    src_ip: transmit.src.map(|s| s.ip()),
-                },
-            )
+            self.state.send((&self.socket).into(), &transmit)
         })
     }
 }
