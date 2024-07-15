@@ -756,10 +756,7 @@ impl ClientState {
             .longest_match(destination)
             .map(|(_, res)| res.id);
 
-        let maybe_dns_resource_id = self
-            .stub_resolver
-            .get_description(&destination)
-            .map(|r| r.id);
+        let maybe_dns_resource_id = self.stub_resolver.resolve_resource_by_ip(&destination);
 
         maybe_cidr_resource_id.or(maybe_dns_resource_id)
     }
@@ -927,7 +924,7 @@ impl ClientState {
 
             match &resource_description {
                 ResourceDescription::Dns(dns) => {
-                    self.stub_resolver.add_resource(dns);
+                    self.stub_resolver.add_resource(dns.id, dns.address.clone());
                 }
                 ResourceDescription::Cidr(cidr) => {
                     let existing = self.cidr_resources.insert(cidr.address, cidr.clone());
