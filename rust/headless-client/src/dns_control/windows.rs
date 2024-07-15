@@ -21,46 +21,18 @@ pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
     system_resolvers()
 }
 
-pub(crate) struct DnsController {
-    /// True if DNS control is definitely active or might be active.
-    ///
-    /// In case the IPC service has crashed or something, we always assume that DNS control
-    /// is active when we start. Deactivating Firezone's DNS control is safe, but it takes
-    /// a lot of time on Windows, so we'd like to avoid redundant de-activations.
-    control_may_be_active: bool,
-}
-
-impl Default for DnsController {
-    fn default() -> Self {
-        Self {
-            control_may_be_active: true,
-        }
-    }
-}
+#[derive(Default)]
+pub(super) struct DnsController {}
 
 // Unique magic number that we can use to delete our well-known NRPT rule.
 // Copied from the deep link schema
 const FZ_MAGIC: &str = "firezone-fd0020211111";
 
-impl Drop for DnsController {
-    fn drop(&mut self) {
-        if self.control_may_be_active {
-            if let Err(error) = deactivate() {
-                tracing::error!(?error, "Failed to deactivate DNS control");
-            }
-        }
-    }
-}
-
 impl DnsController {
     /// Deactivate any control Firezone has over the computer's DNS
     #[logging_timer::time]
-    pub(crate) fn deactivate(&mut self) -> Result<()> {
-        if self.control_may_be_active {
-            deactivate().context("Failed to deactivate DNS control")?;
-            self.control_may_be_active = false;
-        }
-        Ok(())
+    pub(super) fn deactivate(&mut self) -> Result<()> {
+        deactivate()
     }
 
     /// Set the computer's system-wide DNS servers
@@ -73,10 +45,10 @@ impl DnsController {
     /// Must be async to match the Linux signature
     #[allow(clippy::unused_async)]
     #[logging_timer::time]
-    pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
+    pub(super) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
+        // TODO: Bug #5879 may be right here
         self.deactivate()
             .context("Failed to deactivate DNS control")?;
-        self.control_may_be_active = true;
         activate(dns_config).context("Failed to activate DNS control")?;
         Ok(())
     }
@@ -85,7 +57,7 @@ impl DnsController {
     ///
     /// `&self` is needed to match the Linux signature
     #[logging_timer::time]
-    pub(crate) fn flush(&self) -> Result<()> {
+    pub(super) fn flush(&self) -> Result<()> {
         tracing::debug!("Flushing Windows DNS cache...");
         Command::new("ipconfig")
             .creation_flags(CREATE_NO_WINDOW)

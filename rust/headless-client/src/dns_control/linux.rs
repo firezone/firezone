@@ -25,7 +25,7 @@ enum DnsControlMethod {
     Systemd,
 }
 
-pub(crate) struct DnsController {
+pub(super) struct DnsController {
     dns_control_method: Option<DnsControlMethod>,
 }
 
@@ -39,20 +39,14 @@ impl Default for DnsController {
     }
 }
 
-impl Drop for DnsController {
-    fn drop(&mut self) {
+impl DnsController {
+    #[allow(clippy::unnecessary_wraps)]
+    pub(super) fn deactivate(&mut self) -> Result<()> {
         tracing::debug!("Reverting DNS control...");
         if let Some(DnsControlMethod::EtcResolvConf) = self.dns_control_method {
             // TODO: Check that nobody else modified the file while we were running.
-            etc_resolv_conf::revert().ok();
+            etc_resolv_conf::revert()?;
         }
-    }
-}
-
-impl DnsController {
-    // Does nothing on Linux, needed to match the Windows interface
-    #[allow(clippy::unnecessary_wraps)]
-    pub(crate) fn deactivate(&mut self) -> Result<()> {
         Ok(())
     }
 
@@ -60,7 +54,7 @@ impl DnsController {
     ///
     /// The `mut` in `&mut self` is not needed by Rust's rules, but
     /// it would be bad if this was called from 2 threads at once.
-    pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
+    pub(super) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
         match self.dns_control_method {
             None => Ok(()),
             Some(DnsControlMethod::EtcResolvConf) => etc_resolv_conf::configure(dns_config).await,
@@ -73,7 +67,7 @@ impl DnsController {
     /// Flush systemd-resolved's system-wide DNS cache
     ///
     /// Does nothing if we're using other DNS control methods or none at all
-    pub(crate) fn flush(&self) -> Result<()> {
+    pub(super) fn flush(&self) -> Result<()> {
         // Flushing is only implemented for systemd-resolved
         if matches!(self.dns_control_method, Some(DnsControlMethod::Systemd)) {
             tracing::debug!("Flushing systemd-resolved DNS cache...");
