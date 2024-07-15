@@ -299,17 +299,17 @@ impl ClientState {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip4(&self) -> Option<Ipv4Addr> {
         Some(self.interface_config.as_ref()?.ipv4)
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip6(&self) -> Option<Ipv6Addr> {
         Some(self.interface_config.as_ref()?.ipv6)
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> Option<IpAddr> {
         Some(match dst {
             IpAddr::V4(_) => self.tunnel_ip4()?.into(),
