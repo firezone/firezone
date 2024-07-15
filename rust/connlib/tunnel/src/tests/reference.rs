@@ -16,7 +16,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt, iter,
     net::IpAddr,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 /// The reference state machine of the tunnel.
@@ -120,10 +120,6 @@ impl ReferenceStateMachine for ReferenceState {
     /// Here, we should only generate [`Transition`]s that make sense for the current state.
     fn transitions(state: &Self::State) -> BoxedStrategy<Self::Transition> {
         CompositeStrategy::default()
-            .with(
-                1,
-                (0..=1000u64).prop_map(|millis| Transition::Tick { millis }),
-            )
             .with(
                 1,
                 system_dns_servers()
@@ -336,7 +332,6 @@ impl ReferenceStateMachine for ReferenceState {
             } => state.client.exec_mut(|client| {
                 client.on_icmp_packet_to_dns(*src, dst.clone(), *seq, *identifier)
             }),
-            Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
             Transition::UpdateSystemDnsServers { servers } => {
                 state
                     .client
@@ -453,7 +448,6 @@ impl ReferenceStateMachine for ReferenceState {
 
                 true
             }
-            Transition::Tick { .. } => true,
             Transition::SendICMPPacketToNonResourceIp {
                 dst,
                 seq,

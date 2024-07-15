@@ -34,7 +34,7 @@ use std::{
     net::IpAddr,
     str::FromStr as _,
     sync::Arc,
-    time::{Duration, Instant},
+    time::Instant,
 };
 use tracing::debug_span;
 use tracing::subscriber::DefaultGuard;
@@ -239,9 +239,6 @@ impl StateMachineTest for TunnelTest {
                 });
 
                 buffered_transmits.push(transmit, &state.client);
-            }
-            Transition::Tick { millis } => {
-                state.now += Duration::from_millis(millis);
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 state

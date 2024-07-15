@@ -74,9 +74,6 @@ pub(crate) enum Transition {
     /// The upstream DNS servers changed.
     UpdateUpstreamDnsServers { servers: Vec<DnsServer> },
 
-    /// Advance time by this many milliseconds.
-    Tick { millis: u64 },
-
     /// Remove a resource from the client.
     RemoveResource(ResourceId),
 
