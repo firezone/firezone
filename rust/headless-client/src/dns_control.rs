@@ -18,12 +18,12 @@ pub(crate) use platform::system_resolvers;
 pub use platform::system_resolvers_for_gui;
 
 pub(crate) struct DnsController {
-    /// True if DNS control is definitely active or might be active.
+    /// True if we might be controlling DNS, false if we are definitely not.
     ///
     /// In case the IPC service has crashed or something, we always assume that DNS control
     /// is active when we start. Deactivating Firezone's DNS control is safe, but it takes
     /// a lot of time on Windows, so we'd like to avoid redundant de-activations.
-    control_may_be_active: bool,
+    in_control: bool,
 
     inner: platform::DnsController,
 }
@@ -31,7 +31,7 @@ pub(crate) struct DnsController {
 impl Default for DnsController {
     fn default() -> Self {
         Self {
-            control_may_be_active: true,
+            in_control: true,
             inner: Default::default(),
         }
     }
@@ -39,24 +39,26 @@ impl Default for DnsController {
 
 impl Drop for DnsController {
     fn drop(&mut self) {
-        if self.control_may_be_active {
-            if let Err(error) = self.deactivate() {
-                tracing::error!(?error, "Failed to deactivate DNS control");
-            }
+        if !self.in_control {
+            return;
+        }
+        if let Err(error) = self.deactivate() {
+            tracing::error!(?error, "Failed to deactivate DNS control");
         }
     }
 }
 
 impl DnsController {
     pub(crate) fn deactivate(&mut self) -> Result<()> {
-        if self.control_may_be_active {
-            self.inner
-                .deactivate()
-                .context("Failed to deactivate DNS control")?;
-            self.control_may_be_active = false;
-        } else {
+        if !self.in_control {
             tracing::debug!("Skipping redundant DNS deactivation");
+            return Ok(());
         }
+
+        self.inner
+            .deactivate()
+            .context("Failed to deactivate DNS control")?;
+        self.in_control = false;
         Ok(())
     }
 
@@ -65,7 +67,7 @@ impl DnsController {
     }
 
     pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
-        self.control_may_be_active = true;
+        self.in_control = true;
         self.inner.set_dns(dns_config).await
     }
 }
