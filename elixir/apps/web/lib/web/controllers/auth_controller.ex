@@ -161,7 +161,7 @@ defmodule Web.AuthController do
     )
     |> Web.Mailer.deliver_with_rate_limit(
       rate_limit_key: {:sign_in_link, identity.id},
-      rate_limit: 10,
+      rate_limit: 3,
       rate_limit_interval: :timer.minutes(15)
     )
     |> case do
