@@ -61,6 +61,7 @@ fn service_run(arguments: Vec<OsString>) {
     // `arguments` doesn't seem to work right when running as a Windows service
     // (even though it's meant for that) so just use the default log dir.
     let handle = super::setup_logging(None).expect("Should be able to set up logging");
+    tracing_log::LogTracer::init().unwrap();
     if let Err(error) = fallible_service_run(arguments, handle) {
         tracing::error!(?error, "`fallible_windows_service_run` returned an error");
     }
