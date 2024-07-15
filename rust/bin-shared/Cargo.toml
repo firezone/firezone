@@ -11,7 +11,6 @@ clap = { version = "4.5", features = ["derive",  "env"] }
 connlib-shared = { workspace = true }
 futures = "0.3"
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
-logging_timer = "1.1.1"
 tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
 tracing-log = "0.2"
@@ -22,6 +21,9 @@ url = { version = "2.3.1", default-features = false }
 netlink-packet-core = { version = "0.7", default-features = false }
 netlink-packet-route = { version = "0.19", default-features = false }
 rtnetlink = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+logging_timer = "1.1.1"
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.57.0"
