@@ -259,7 +259,7 @@ impl Socket {
                 Ok(()) => {
                     self.buffered_transmits.pop_front();
                 }
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue, // False positive wake-up?
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue, // False positive wake-up: Loop to `poll_send_ready` and return `Pending`.
                 Err(e) => return Poll::Ready(Err(e)),
             }
         }
