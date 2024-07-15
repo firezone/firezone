@@ -1,5 +1,5 @@
 use super::reference::ReferenceState;
-use super::sim_client::SimClient;
+use super::sim_client::{RefClient, SimClient};
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_portal::SimPortal;
@@ -11,10 +11,7 @@ use crate::{dns::DnsQuery, ClientEvent, GatewayEvent, Request};
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{Interface, RelayId};
 use connlib_shared::{
-    messages::{
-        client::{ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns},
-        gateway, ClientId, GatewayId, ResourceId,
-    },
+    messages::{client::ResourceDescription, gateway, ClientId, GatewayId, ResourceId},
     DomainName,
 };
 use firezone_relay::IpStack;
@@ -23,7 +20,6 @@ use hickory_proto::{
     rr::{RData, Record, RecordType},
 };
 use hickory_resolver::lookup::Lookup;
-use ip_network_table::IpNetworkTable;
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use rand::SeedableRng as _;
 use secrecy::ExposeSecret as _;
@@ -335,8 +331,7 @@ impl TunnelTest {
                 self.on_client_event(
                     self.client.inner().id,
                     event,
-                    &ref_state.client.inner().cidr_resources,
-                    &ref_state.client.inner().dns_resources,
+                    ref_state.client.inner(),
                     &ref_state.global_dns_records,
                 );
                 continue;
@@ -510,8 +505,7 @@ impl TunnelTest {
         &mut self,
         src: ClientId,
         event: ClientEvent,
-        client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
-        client_dns_resource: &BTreeMap<ResourceId, ResourceDescriptionDns>,
+        client: &RefClient,
         global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     ) {
         match event {
@@ -543,12 +537,9 @@ impl TunnelTest {
                 resource,
                 connected_gateway_ids,
             } => {
-                let (gateway, site) = self.portal.handle_connection_intent(
-                    resource,
-                    connected_gateway_ids,
-                    client_cidr_resources,
-                    client_dns_resource,
-                );
+                let (gateway, site) =
+                    self.portal
+                        .handle_connection_intent(resource, connected_gateway_ids, client);
 
                 let request = self
                     .client
@@ -566,12 +557,8 @@ impl TunnelTest {
                     .flatten()
                     .collect();
 
-                let resource = map_client_resource_to_gateway_resource(
-                    client_cidr_resources,
-                    client_dns_resource,
-                    resolved_ips,
-                    resource_id,
-                );
+                let resource =
+                    map_client_resource_to_gateway_resource(client, resolved_ips, resource_id);
 
                 match request {
                     Request::NewConnection(new_connection) => {
@@ -670,8 +657,7 @@ impl TunnelTest {
                         .collect();
 
                     let resource = map_client_resource_to_gateway_resource(
-                        client_cidr_resources,
-                        client_dns_resource,
+                        client,
                         resolved_ips,
                         reuse_connection.resource_id,
                     );
@@ -757,12 +743,11 @@ fn on_gateway_event(
 }
 
 fn map_client_resource_to_gateway_resource(
-    client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
-    client_dns_resources: &BTreeMap<ResourceId, ResourceDescriptionDns>,
+    client: &RefClient,
     resolved_ips: Vec<IpAddr>,
     resource_id: ResourceId,
 ) -> gateway::ResourceDescription<gateway::ResolvedResourceDescriptionDns> {
-    let cidr_resource = client_cidr_resources.iter().find_map(|(_, r)| {
+    let cidr_resource = client.cidr_resources.iter().find_map(|(_, r)| {
         (r.id == resource_id).then_some(gateway::ResourceDescription::Cidr(
             gateway::ResourceDescriptionCidr {
                 id: r.id,
@@ -772,7 +757,7 @@ fn map_client_resource_to_gateway_resource(
             },
         ))
     });
-    let dns_resource = client_dns_resources.get(&resource_id).map(|r| {
+    let dns_resource = client.dns_resources.get(&resource_id).map(|r| {
         gateway::ResourceDescription::Dns(gateway::ResolvedResourceDescriptionDns {
             id: r.id,
             name: r.name.clone(),

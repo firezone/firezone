@@ -1,9 +1,6 @@
-use connlib_shared::messages::{
-    client::{ResourceDescriptionCidr, ResourceDescriptionDns, SiteId},
-    GatewayId, ResourceId,
-};
-use ip_network_table::IpNetworkTable;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use super::sim_client::RefClient;
+use connlib_shared::messages::{client::SiteId, GatewayId, ResourceId};
+use std::collections::{HashMap, HashSet};
 
 /// Stub implementation of the portal.
 ///
@@ -29,23 +26,14 @@ impl SimPortal {
         &self,
         resource: ResourceId,
         _connected_gateway_ids: HashSet<GatewayId>,
-        client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
-        client_dns_resources: &BTreeMap<ResourceId, ResourceDescriptionDns>,
+        client: &RefClient,
     ) -> (GatewayId, SiteId) {
         // TODO: Should we somehow vary how many gateways we connect to?
         // TODO: Should we somehow pick, which site to use?
 
-        let cidr_site = client_cidr_resources
-            .iter()
-            .find_map(|(_, r)| (r.id == resource).then_some(r.sites.first()?.id));
-
-        let dns_site = client_dns_resources
-            .get(&resource)
-            .and_then(|r| Some(r.sites.first()?.id));
-
-        let site_id = cidr_site
-            .or(dns_site)
-            .expect("resource to be a known CIDR or DNS resource");
+        let site_id = client
+            .site_for_resource(resource)
+            .expect("resource to be known CIDR or DNS resource");
 
         let gateway_id = self.gateways_by_site.get(&site_id).unwrap();
 
