@@ -9,7 +9,7 @@ use std::{
 /// Stub implementation of the portal.
 #[derive(Debug, Clone)]
 pub(crate) struct StubPortal {
-    pub(crate) gateways_by_site: HashMap<client::SiteId, HashSet<GatewayId>>,
+    gateways_by_site: HashMap<client::SiteId, HashSet<GatewayId>>,
     sites: HashMap<client::SiteId, client::Site>,
 
     sites_by_resource: HashMap<ResourceId, client::SiteId>,
@@ -107,5 +107,23 @@ impl StubPortal {
         cidr_resource
             .or(dns_resource)
             .expect("resource to be a known CIDR or DNS resource")
+    }
+
+    pub(crate) fn gateway_for_resource(&self, rid: ResourceId) -> Option<&GatewayId> {
+        let cidr_site = self
+            .cidr_resources
+            .iter()
+            .find_map(|(_, r)| (r.id == rid).then_some(r.sites.first()?.id));
+
+        let dns_site = self
+            .dns_resources
+            .get(&rid)
+            .and_then(|r| Some(r.sites.first()?.id));
+
+        let sid = cidr_site.or(dns_site)?;
+        let gateways = self.gateways_by_site.get(&sid)?;
+        let gid = self.gateway_selector.try_select(gateways)?;
+
+        Some(gid)
     }
 }

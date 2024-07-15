@@ -9,7 +9,7 @@ use crate::{tests::sut::hickory_name_to_domain, ClientState};
 use bimap::BiMap;
 use connlib_shared::{
     messages::{
-        client::{ResourceDescriptionCidr, ResourceDescriptionDns, SiteId},
+        client::{ResourceDescriptionCidr, ResourceDescriptionDns},
         ClientId, DnsServer, GatewayId, Interface, ResourceId,
     },
     proptest::{client_id, domain_name},
@@ -569,20 +569,6 @@ impl RefClient {
         let dns_resources = self.dns_resources.keys().copied();
 
         Vec::from_iter(cidr_resources.chain(dns_resources))
-    }
-
-    pub(crate) fn site_for_resource(&self, rid: ResourceId) -> Option<SiteId> {
-        let cidr_site = self
-            .cidr_resources
-            .iter()
-            .find_map(|(_, r)| (r.id == rid).then_some(r.sites.first()?.id));
-
-        let dns_site = self
-            .dns_resources
-            .get(&rid)
-            .and_then(|r| Some(r.sites.first()?.id));
-
-        cidr_site.or(dns_site)
     }
 }
 

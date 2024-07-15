@@ -443,23 +443,19 @@ impl ReferenceStateMachine for ReferenceState {
                 if state.client.inner().all_resources().contains(&resource.id) {
                     return false;
                 }
-                let Some(sid) = state.client.inner().site_for_resource(resource.id) else {
+                let Some(gid) = state.portal.gateway_for_resource(resource.id) else {
                     return false;
                 };
-                let Some(gids) = state.portal.gateways_by_site.get(&sid) else {
+                let Some(gateway) = state.gateways.get(gid) else {
                     return false;
                 };
-                let gateways = gids
-                    .iter()
-                    .flat_map(|gid| state.gateways.get(gid))
-                    .collect::<Vec<_>>();
 
                 // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
-                if resource.address.is_ipv6() && gateways.iter().all(|g| g.ip6.is_none()) {
+                if resource.address.is_ipv6() && gateway.ip6.is_none() {
                     return false;
                 }
 
-                if resource.address.is_ipv4() && gateways.iter().all(|g| g.ip4.is_none()) {
+                if resource.address.is_ipv4() && gateway.ip4.is_none() {
                     return false;
                 }
 
