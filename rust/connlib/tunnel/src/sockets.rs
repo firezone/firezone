@@ -260,11 +260,18 @@ impl Socket {
             }
         }
 
+        assert!(self.buffered_transmits.is_empty());
+
         Poll::Ready(Ok(()))
     }
 
     fn send(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
         tracing::trace!(target: "wire::net::send", src = ?transmit.src, dst = %transmit.dst, num_bytes = %transmit.payload.len());
+
+        debug_assert!(
+            self.buffered_transmits.len() < 10_000,
+            "We are not flushing the packets for some reason"
+        );
 
         match self.try_send(&transmit) {
             Ok(()) => Ok(()),
