@@ -266,7 +266,8 @@ defmodule Web.Live.Resources.EditTest do
            |> form("form", resource: attrs)
            |> render_submit() ==
              {:error,
-              {:live_redirect, %{to: ~p"/#{account}/sites/#{group}?#resources", kind: :push}}}
+              {:live_redirect,
+               %{to: ~p"/#{account}/resources/#{resource.id}?site_id=#{group}", kind: :push}}}
   end
 
   test "shows disabled traffic filter form when traffic filters disabled", %{

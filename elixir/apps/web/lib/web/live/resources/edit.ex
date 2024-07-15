@@ -117,7 +117,9 @@ defmodule Web.Resources.Edit do
       {:ok, resource} ->
         if site_id = socket.assigns.params["site_id"] do
           {:noreply,
-           push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{site_id}?#resources")}
+           push_navigate(socket,
+             to: ~p"/#{socket.assigns.account}/resources/#{resource.id}?site_id=#{site_id}"
+           )}
         else
           {:noreply,
            push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources/#{resource.id}")}
