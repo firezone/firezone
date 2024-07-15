@@ -1,12 +1,12 @@
 use crate::peer::ClientOnGateway;
 use crate::peer_store::PeerStore;
 use crate::utils::earliest;
-use crate::{GatewayEvent, GatewayTunnel};
+use crate::{GatewayEvent, GatewayTunnel, Tun};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
-    gateway::ResolvedResourceDescriptionDns, gateway::ResourceDescription, Answer, ClientId,
-    Interface as InterfaceConfig, Key, Offer, RelayId, ResourceId,
+    gateway::ResolvedResourceDescriptionDns, gateway::ResourceDescription, Answer, ClientId, Key,
+    Offer, RelayId, ResourceId,
 };
 use connlib_shared::{Callbacks, DomainName, Error, Result, StaticSecret};
 use ip_packet::{IpPacket, MutableIpPacket};
@@ -22,19 +22,8 @@ impl<CB> GatewayTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
-        // Note: the dns fallback strategy is irrelevant for gateways
-        let callbacks = self.callbacks.clone();
-        self.io
-            .device_mut()
-            .set_config(config, vec![], &callbacks)?;
-
-        let name = self.io.device_mut().name().to_owned();
-
-        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
-
-        Ok(())
+    pub fn set_tun(&mut self, tun: Tun) {
+        self.io.device_mut().set_tun(tun);
     }
 
     /// Accept a connection request from a client.

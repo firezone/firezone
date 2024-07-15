@@ -21,8 +21,8 @@ use itertools::Itertools;
 use tracing::Level;
 
 use crate::peer::GatewayOnClient;
-use crate::utils::{earliest, turn};
-use crate::{ClientEvent, ClientTunnel};
+use crate::utils::{self, earliest, turn};
+use crate::{ClientEvent, ClientTunnel, Tun};
 use core::fmt;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, RelaySocket};
@@ -49,19 +49,18 @@ impl<CB> ClientTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
-    pub fn set_resources(
-        &mut self,
-        resources: Vec<ResourceDescription>,
-    ) -> connlib_shared::Result<()> {
+    pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
         self.role_state.set_resources(resources);
-
-        self.io
-            .device_mut()
-            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
+        self.callbacks.on_update_routes(
+            self.role_state.routes().filter_map(utils::ipv4).collect(),
+            self.role_state.routes().filter_map(utils::ipv6).collect(),
+        );
         self.callbacks
             .on_update_resources(self.role_state.resources());
+    }
 
-        Ok(())
+    pub fn set_tun(&mut self, tun: Tun) {
+        self.io.device_mut().set_tun(tun);
     }
 
     pub fn update_relays(&mut self, to_remove: HashSet<RelayId>, to_add: Vec<Relay>) {
@@ -70,54 +69,44 @@ where
     }
 
     /// Adds a the given resource to the tunnel.
-    pub fn add_resources(
-        &mut self,
-        resources: &[ResourceDescription],
-    ) -> connlib_shared::Result<()> {
+    pub fn add_resources(&mut self, resources: &[ResourceDescription]) {
         self.role_state.add_resources(resources);
 
-        self.io
-            .device_mut()
-            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
+        self.callbacks.on_update_routes(
+            self.role_state.routes().filter_map(utils::ipv4).collect(),
+            self.role_state.routes().filter_map(utils::ipv6).collect(),
+        );
         self.callbacks
             .on_update_resources(self.role_state.resources());
-
-        Ok(())
     }
 
     pub fn remove_resources(&mut self, ids: &[ResourceId]) {
         self.role_state.remove_resources(ids);
 
-        if let Err(err) = self
-            .io
-            .device_mut()
-            .set_routes(self.role_state.routes().collect(), &self.callbacks)
-        {
-            tracing::error!(?ids, "Failed to update routes: {err:?}");
-        }
-
+        self.callbacks.on_update_routes(
+            self.role_state.routes().filter_map(utils::ipv4).collect(),
+            self.role_state.routes().filter_map(utils::ipv6).collect(),
+        );
         self.callbacks
             .on_update_resources(self.role_state.resources())
     }
 
     /// Updates the system's dns
-    pub fn set_new_dns(&mut self, new_dns: Vec<IpAddr>) -> connlib_shared::Result<()> {
+    pub fn set_new_dns(&mut self, new_dns: Vec<IpAddr>) {
         // We store the sentinel dns both in the config and in the system's resolvers
         // but when we calculate the dns mapping, those are ignored.
         let dns_changed = self.role_state.update_system_resolvers(new_dns);
 
         if !dns_changed {
-            return Ok(());
+            return;
         }
 
         self.io
             .set_upstream_dns_servers(self.role_state.dns_mapping());
 
         if let Some(config) = self.role_state.interface_config.as_ref().cloned() {
-            self.update_device(config, self.role_state.dns_mapping())?;
+            self.update_device(config, self.role_state.dns_mapping());
         };
-
-        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -132,7 +121,7 @@ where
                 .set_upstream_dns_servers(self.role_state.dns_mapping());
         }
 
-        self.update_device(config, self.role_state.dns_mapping())?;
+        self.update_device(config, self.role_state.dns_mapping());
 
         Ok(())
     }
@@ -141,24 +130,17 @@ where
         &mut self,
         config: InterfaceConfig,
         dns_mapping: BiMap<IpAddr, DnsServer>,
-    ) -> connlib_shared::Result<()> {
-        let callbacks = self.callbacks.clone();
+    ) {
+        // We can just sort in here because sentinel ips are created in order
+        let dns_config = dns_mapping.left_values().copied().sorted().collect();
 
-        self.io.device_mut().set_config(
-            &config,
-            // We can just sort in here because sentinel ips are created in order
-            dns_mapping.left_values().copied().sorted().collect(),
-            &callbacks,
-        )?;
-
-        self.io
-            .device_mut()
-            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
-        let name = self.io.device_mut().name().to_owned();
-
-        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
-
-        Ok(())
+        self.callbacks
+            .clone()
+            .on_set_interface_config(config.ipv4, config.ipv6, dns_config);
+        self.callbacks.on_update_routes(
+            self.role_state.routes().filter_map(utils::ipv4).collect(),
+            self.role_state.routes().filter_map(utils::ipv6).collect(),
+        );
     }
 
     pub fn cleanup_connection(&mut self, id: ResourceId) {
