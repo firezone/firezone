@@ -18,7 +18,7 @@ export default function GUI({ title }: { title: string }) {
             If the GUI is open during an update, close it and prompt the user to restart the GUI.
           </ChangeItem>
           <ChangeItem enable={title === "Windows"} pull="5375">
-            Improves sign-in speed.
+            Improves sign-in speed and fixes a DNS leak
           </ChangeItem>
         </ul>
       </Entry>*/}

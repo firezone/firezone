@@ -36,7 +36,6 @@ impl TunDeviceManager {
         Ok(tun)
     }
 
-    // TODO 5026: 360 ms
     #[allow(clippy::unused_async)]
     pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
         tracing::debug!("Setting our IPv4 = {}", ipv4);

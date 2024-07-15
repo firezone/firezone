@@ -127,7 +127,10 @@ fn run_smoke_test() -> Result<()> {
     rt.block_on(async {
         device_id::get_or_create().context("Failed to read / create device ID")?;
         let mut server = IpcServer::new(ServiceId::Prod).await?;
-        let _ = Handler::new(&mut server, &mut dns_controller).await?.run(&mut signals).await;
+        let _ = Handler::new(&mut server, &mut dns_controller)
+            .await?
+            .run(&mut signals)
+            .await;
         Ok::<_, anyhow::Error>(())
     })
 }

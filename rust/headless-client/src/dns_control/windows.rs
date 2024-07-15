@@ -87,7 +87,6 @@ const NRPT_REG_KEY: &str = "{6C0507CB-C884-4A78-BC55-0ACEE21227F6}";
 ///
 /// Parameters:
 /// - `dns_config_string`: Comma-separated IP addresses of DNS servers, e.g. "1.1.1.1,8.8.8.8"
-// TODO 5026: 720 ms
 fn activate(dns_config: &[IpAddr]) -> Result<()> {
     // TODO: Known issue where web browsers will keep a connection open to a site,
     // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS
@@ -123,7 +122,6 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
 }
 
 // Must be `sync` so we can call it from `Drop`
-// TODO 5026: 400 ms
 fn deactivate() -> Result<()> {
     Command::new("powershell")
         .creation_flags(CREATE_NO_WINDOW)

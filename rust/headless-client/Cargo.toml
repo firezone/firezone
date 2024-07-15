@@ -27,7 +27,6 @@ tokio = { workspace = true, features = ["macros", "signal", "process"] }
 tokio-stream = "0.1.15"
 tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
-tracing-log = "0.2"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 url = { version = "2.3.1", default-features = false }
 uuid = { version = "1.7", default-features = false, features = ["std", "v4", "serde"] }
