@@ -438,23 +438,30 @@ where
     }
 
     // Second, check for `?` matching this domain exactly.
-    let qm_dot_domain = &QUESTION_MARK.chain(name).ok()?;
-    if let Some(resource) = resources.get(&qm_dot_domain.to_string()) {
+    let qm_dot_domain = QUESTION_MARK.chain(name).ok()?.to_string();
+    if let Some(resource) = resources.get(&qm_dot_domain) {
         return Some(*resource);
     }
 
     // Third, check for `?` matching up to 1 parent.
     if let Some(parent) = name.parent() {
-        let qm_dot_parent = &QUESTION_MARK.chain(parent).ok()?;
+        let qm_dot_parent = QUESTION_MARK.chain(parent).ok()?.to_string();
 
-        if let Some(resource) = resources.get(&qm_dot_parent.to_string()) {
+        if let Some(resource) = resources.get(&qm_dot_parent) {
             return Some(*resource);
         }
     }
 
     // Last, check for any wildcard domains, starting with the most specific one.
-    name.iter_suffixes()
-        .find_map(|n| resources.get(&WILDCARD.chain(n).ok()?.to_string()).copied())
+    for suffix in name.iter_suffixes() {
+        let wildcard_dot_suffix = WILDCARD.chain(suffix).ok()?.to_string();
+
+        if let Some(resource) = resources.get(&wildcard_dot_suffix) {
+            return Some(*resource)
+        }
+    }
+
+    None
 }
 
 fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
