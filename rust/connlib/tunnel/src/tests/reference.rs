@@ -136,9 +136,14 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .with(
                 1,
-                (cidr_resource(8), sample::select(state.all_gateways())).prop_map(
-                    |(resource, gateway)| Transition::AddCidrResource { resource, gateway },
-                ),
+                (
+                    cidr_resource(ip_network(8), site()),
+                    sample::select(state.all_gateways()),
+                )
+                    .prop_map(|(resource, gateway)| Transition::AddCidrResource {
+                        resource,
+                        gateway,
+                    }),
             )
             .with(1, roam_client())
             .with(
