@@ -98,6 +98,12 @@ pub enum IpcServerMsg {
         is_authentication_error: bool,
     },
     OnUpdateResources(Vec<callbacks::ResourceDescription>),
+    /// The IPC service is terminating, maybe due to a software update
+    ///
+    /// This is a hint that the Client should exit with a message like,
+    /// "Firezone is updating, please restart the GUI" instead of an error like,
+    /// "IPC connection closed".
+    TerminatingGracefully,
 }
 
 #[derive(Clone)]

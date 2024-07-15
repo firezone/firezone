@@ -1,4 +1,8 @@
 use anyhow::Result;
+use futures::{
+    future::poll_fn,
+    task::{Context, Poll},
+};
 
 // This looks like a pointless wrapper around `CtrlC`, because it must match
 // the Linux signatures
@@ -15,9 +19,13 @@ impl Terminate {
         Ok(Self { sigint })
     }
 
+    pub(crate) fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+        self.sigint.poll_recv(cx).map(|_| ())
+    }
+
     /// Waits for Ctrl+C
     pub(crate) async fn recv(&mut self) {
-        self.sigint.recv().await;
+        poll_fn(|cx| self.poll_recv(cx)).await
     }
 }
 
