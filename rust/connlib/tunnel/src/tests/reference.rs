@@ -62,7 +62,7 @@ impl ReferenceStateMachine for ReferenceState {
         (
             ref_client_host(Just(client_tunnel_ip4), Just(client_tunnel_ip6)),
             gateways_and_portal(),
-            collection::btree_map(relay_id(), relay_prototype(), 1..=2),
+            collection::btree_map(relay_id(), ref_relay_host(), 1..=2),
             global_dns_records(), // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
             any::<bool>(),
         )
@@ -167,6 +167,12 @@ impl ReferenceStateMachine for ReferenceState {
                 sample::select(resource_ids).prop_map(Transition::DeactivateResource)
             })
             .with(1, roam_client())
+            .with(
+                1,
+                migrate_relays(sample::select(
+                    state.relays.keys().copied().collect::<Vec<_>>(),
+                )),
+            )
             .with(1, Just(Transition::ReconnectPortal))
             .with(1, Just(Transition::Idle))
             .with_if_not_empty(
@@ -384,6 +390,14 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::ReconnectPortal => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
             }
+            Transition::MigrateRelays { old, new } => {
+                let relay = state.relays.remove(old).expect("old host to be present");
+                state.network.remove_host(&relay);
+
+                let (id, relay) = new;
+                state.relays.insert(*id, relay.clone());
+                debug_assert!(state.network.add_host(*id, relay));
+            }
             Transition::Idle => {
                 state.client.exec_mut(|client| {
                     client.connected_cidr_resources.clear();
@@ -526,6 +540,17 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::ReconnectPortal => true,
             Transition::DeactivateResource(r) => {
                 state.client.inner().all_resource_ids().contains(r)
+            }
+            Transition::MigrateRelays { old, new } => {
+                let (new_id, new_host) = new;
+
+                let old_is_present = state.relays.contains_key(old);
+                let new_is_present = state.relays.contains_key(new_id);
+
+                let is_assigned_ip4 = new_host.ip4.is_some_and(|ip| state.network.contains(ip));
+                let is_assigned_ip6 = new_host.ip6.is_some_and(|ip| state.network.contains(ip));
+
+                old_is_present && !new_is_present && !is_assigned_ip4 && !is_assigned_ip6
             }
             Transition::Idle => true,
         }

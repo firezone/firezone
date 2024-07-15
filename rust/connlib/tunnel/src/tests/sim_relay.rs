@@ -196,7 +196,7 @@ impl SimRelay {
     }
 }
 
-pub(crate) fn relay_prototype() -> impl Strategy<Value = Host<u64>> {
+pub(crate) fn ref_relay_host() -> impl Strategy<Value = Host<u64>> {
     host(
         dual_ip_stack(), // For this test, our relays always run in dual-stack mode to ensure connectivity!
         Just(3478),

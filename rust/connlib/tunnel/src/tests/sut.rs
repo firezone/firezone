@@ -25,6 +25,7 @@ use hickory_resolver::lookup::Lookup;
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
+use std::iter;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     net::IpAddr,
@@ -280,6 +281,35 @@ impl StateMachineTest for TunnelTest {
                     c.sut.update_relays(BTreeSet::default(), relays, now);
                     c.sut.set_resources(all_resources);
                 });
+            }
+            Transition::MigrateRelays { old, new } => {
+                let old_relay = state.relays.remove(&old).expect("old relay to be present");
+                state.network.remove_host(&old_relay);
+
+                let (rid, new_relay) = new;
+                let new_relay = new_relay.map(SimRelay::new, debug_span!("relay", %rid));
+                debug_assert!(state.network.add_host(rid, &new_relay));
+
+                state.client.exec_mut(|c| {
+                    c.sut.update_relays(
+                        BTreeSet::from([old]),
+                        BTreeSet::from_iter(map_explode(iter::once((&rid, &new_relay)), "client")),
+                        now,
+                    );
+                });
+                for (id, gateway) in &mut state.gateways {
+                    gateway.exec_mut(|g| {
+                        g.sut.update_relays(
+                            BTreeSet::from([old]),
+                            BTreeSet::from_iter(map_explode(
+                                iter::once((&rid, &new_relay)),
+                                &format!("gateway_{id}"),
+                            )),
+                            now,
+                        )
+                    });
+                }
+                state.relays.insert(rid, new_relay);
             }
             Transition::Idle => {
                 const IDLE_DURATION: Duration = Duration::from_secs(5 * 60);
