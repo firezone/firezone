@@ -120,6 +120,7 @@ fn run_smoke_test() -> Result<()> {
     crate::setup_stdout_logging()?;
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
+    let mut dns_controller = DnsController::default();
     let mut signals = signals::Terminate::new()?;
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
