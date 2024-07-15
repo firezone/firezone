@@ -55,6 +55,7 @@ phoenix-channel = { path = "phoenix-channel" }
 http-health-check = { path = "http-health-check" }
 ip-packet = { path = "ip-packet" }
 socket-factory = { path = "socket-factory" }
+socket2 = { version = "0.5" }
 
 [workspace.lints.clippy]
 dbg_macro = "warn"

@@ -27,7 +27,7 @@ secrecy = { workspace = true }
 serde = { version = "1.0.203", features = ["derive"] }
 sha2 = "0.10.8"
 socket-factory = { workspace = true }
-socket2 = "0.5.7"
+socket2 = { workspace = true }
 stun_codec = "0.3.4"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time", "signal"] }
 tracing = { workspace = true, features = ["log"] }
