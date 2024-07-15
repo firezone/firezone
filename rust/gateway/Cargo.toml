@@ -22,32 +22,15 @@ futures = "0.3.29"
 futures-bounded = { workspace = true }
 http-health-check = { workspace = true }
 ip_network = { version = "0.4", default-features = false }
-libc = { version = "0.2", default-features = false, features = [
-    "std",
-    "const-extern-fn",
-    "extra_traits",
-] }
+libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
 phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
-serde = { version = "1.0", default-features = false, features = [
-    "std",
-    "derive",
-] }
+serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 static_assertions = "1.1.0"
-tokio = { workspace = true, features = [
-    "sync",
-    "macros",
-    "rt-multi-thread",
-    "fs",
-    "signal",
-] }
-tokio-tungstenite = { version = "0.21", default-features = false, features = [
-    "connect",
-    "handshake",
-    "rustls-tls-webpki-roots",
-] }
+tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread", "fs", "signal"] }
+tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 tracing = { workspace = true }
 tracing-subscriber = "0.3.17"
 url = { version = "2.4.1", default-features = false }

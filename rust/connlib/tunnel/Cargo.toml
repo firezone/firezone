@@ -12,42 +12,23 @@ bytes = { version = "1.4", default-features = false, features = ["std"] }
 chrono = { workspace = true }
 connlib-shared = { workspace = true }
 domain = { workspace = true }
-futures = { version = "0.3", default-features = false, features = [
-    "std",
-    "async-await",
-    "executor",
-] }
+futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-bounded = { workspace = true }
-futures-util = { version = "0.3", default-features = false, features = [
-    "std",
-    "async-await",
-    "async-await-macro",
-] }
+futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
 hex = "0.4.3"
 hickory-proto = { workspace = true }
 hickory-resolver = { workspace = true, features = ["tokio-runtime"] }
 ip-packet = { workspace = true }
 ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
-itertools = { version = "0.13", default-features = false, features = [
-    "use_std",
-] }
-libc = { version = "0.2", default-features = false, features = [
-    "std",
-    "const-extern-fn",
-    "extra_traits",
-] }
+itertools = { version = "0.13", default-features = false, features = ["use_std"] }
+libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
 proptest = { version = "1", optional = true }
 quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" }
-rand_core = { version = "0.6", default-features = false, features = [
-    "getrandom",
-] }
+rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
 rangemap = "1.5.1"
 secrecy = { workspace = true }
-serde = { version = "1.0", default-features = false, features = [
-    "derive",
-    "std",
-] }
+serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 socket2 = { version = "0.5" }
@@ -87,10 +68,10 @@ wintun = "0.4.0"
 [target.'cfg(target_os = "windows")'.dependencies.windows]
 version = "0.57.0"
 features = [
-    "Win32_Foundation",
-    "Win32_NetworkManagement_IpHelper",
-    "Win32_NetworkManagement_Ndis",
-    "Win32_Networking_WinSock",
+  "Win32_Foundation",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_NetworkManagement_Ndis",
+  "Win32_Networking_WinSock",
 ]
 
 [lints]

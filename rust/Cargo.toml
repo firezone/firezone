@@ -1,54 +1,45 @@
 [workspace]
 members = [
-    "bin-shared",
-    "connlib/clients/android",
-    "connlib/clients/apple",
-    "connlib/clients/shared",
-    "connlib/shared",
-    "connlib/snownet",
-    "connlib/tunnel",
-    "gateway",
-    "gui-client/src-tauri",
-    "gui-smoke-test",
-    "headless-client",
-    "http-health-check",
-    "http-test-server",
-    "ip-packet",
-    "phoenix-channel",
-    "relay",
-    "snownet-tests",
-    "socket-factory",
+  "bin-shared",
+  "connlib/clients/android",
+  "connlib/clients/apple",
+  "connlib/clients/shared",
+  "connlib/shared",
+  "connlib/snownet",
+  "connlib/tunnel",
+  "gateway",
+  "gui-client/src-tauri",
+  "gui-smoke-test",
+  "headless-client",
+  "http-health-check",
+  "http-test-server",
+  "ip-packet",
+  "phoenix-channel",
+  "relay",
+  "snownet-tests",
+  "socket-factory",
 ]
 
 resolver = "2"
 
 [workspace.dependencies]
 boringtun = { version = "0.6", default-features = false }
-chrono = { version = "0.4", default-features = false, features = [
-    "std",
-    "clock",
-    "oldtime",
-    "serde",
-] }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 swift-bridge = "0.1.55"
 backoff = { version = "0.4", features = ["tokio"] }
 tracing = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
 secrecy = "0.8"
-hickory-resolver = { git = "https://github.com/hickory-dns/hickory-dns", rev = "a3669bd80f3f7b97f0c301c15f1cba6368d97b63", features = [
-    "tokio-runtime",
-] }
+hickory-resolver = { git = "https://github.com/hickory-dns/hickory-dns", rev = "a3669bd80f3f7b97f0c301c15f1cba6368d97b63", features = ["tokio-runtime"] }
 hickory-proto = { git = "https://github.com/hickory-dns/hickory-dns", rev = "a3669bd80f3f7b97f0c301c15f1cba6368d97b63" }
 str0m = { version = "0.5", default-features = false }
 futures-bounded = "0.2.1"
 domain = { version = "0.10", features = ["serde"] }
 dns-lookup = "2.0"
 tokio-tungstenite = "0.21"
-rtnetlink = { version = "0.14.1", default-features = false, features = [
-    "tokio_socket",
-] }
+rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_socket"] }
 tokio = "1.38"
-socket2 = { version = "0.5" }
+
 connlib-client-android = { path = "connlib/clients/android" }
 connlib-client-apple = { path = "connlib/clients/apple" }
 connlib-client-shared = { path = "connlib/clients/shared" }
@@ -81,7 +72,7 @@ private-intra-doc-links = "allow" # We don't publish any of our docs but want to
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
 str0m = { git = "https://github.com/firezone/str0m", branch = "main" }
-ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" }                             # For `Debug` and `Clone`
+ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 proptest = { git = "https://github.com/thomaseizinger/proptest", branch = "fix/always-check-acceptable-current-state" }
 proptest-state-machine = { git = "https://github.com/thomaseizinger/proptest", branch = "fix/always-check-acceptable-current-state" }
 
