@@ -3,7 +3,6 @@ use crate::{
     dns::DnsQuery,
     sockets::{Received, Sockets},
 };
-use bytes::Bytes;
 use connlib_shared::messages::DnsServer;
 use futures::Future;
 use futures_bounded::FuturesTupleSet;
@@ -16,7 +15,6 @@ use hickory_resolver::{
     AsyncResolver, TokioHandle,
 };
 use ip_packet::{IpPacket, MutableIpPacket};
-use quinn_udp::Transmit;
 use socket_factory::SocketFactory;
 use std::{
     collections::HashMap,
@@ -24,7 +22,8 @@ use std::{
     net::{IpAddr, SocketAddr},
     pin::Pin,
     sync::Arc,
-    task::{ready, Context, Poll},
+    task::ready,
+    task::{Context, Poll},
     time::{Duration, Instant},
 };
 use tokio::net::{TcpSocket, UdpSocket};
@@ -187,13 +186,7 @@ impl Io {
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
-        self.sockets.try_send(Transmit {
-            destination: transmit.dst,
-            ecn: None,
-            contents: Bytes::copy_from_slice(&transmit.payload),
-            segment_size: None,
-            src_ip: transmit.src.map(|s| s.ip()),
-        })?;
+        self.sockets.try_send(transmit)?;
 
         Ok(())
     }

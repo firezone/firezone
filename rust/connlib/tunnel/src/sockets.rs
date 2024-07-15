@@ -2,6 +2,7 @@ use core::slice;
 use quinn_udp::{RecvMeta, UdpSockRef, UdpSocketState};
 use socket_factory::SocketFactory;
 use std::{
+    collections::VecDeque,
     io::{self, IoSliceMut},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     task::{ready, Context, Poll},
@@ -49,9 +50,6 @@ impl Sockets {
         Ok(())
     }
 
-    /// Flushes all buffered data on the sockets.
-    ///
-    /// Returns `Ready` if the socket is able to accept more data.
     pub fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         if let Some(socket) = self.socket_v4.as_mut() {
             ready!(socket.poll_flush(cx))?;
@@ -64,21 +62,21 @@ impl Sockets {
         Poll::Ready(Ok(()))
     }
 
-    pub fn try_send(&mut self, transmit: quinn_udp::Transmit) -> io::Result<()> {
-        match transmit.destination {
+    pub fn try_send(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
+        match transmit.dst {
             SocketAddr::V4(dst) => {
                 let socket = self.socket_v4.as_mut().ok_or(io::Error::new(
                     io::ErrorKind::NotConnected,
                     format!("failed send packet to {dst}: no IPv4 socket"),
                 ))?;
-                socket.send(transmit);
+                socket.send(transmit)?;
             }
             SocketAddr::V6(dst) => {
                 let socket = self.socket_v6.as_mut().ok_or(io::Error::new(
                     io::ErrorKind::NotConnected,
                     format!("failed send packet to {dst}: no IPv6 socket"),
                 ))?;
-                socket.send(transmit);
+                socket.send(transmit)?;
             }
         }
 
@@ -165,8 +163,7 @@ struct Socket {
     state: UdpSocketState,
     port: u16,
     socket: UdpSocket,
-
-    buffered_transmits: Vec<quinn_udp::Transmit>,
+    buffered_transmits: VecDeque<snownet::Transmit<'static>>,
 }
 
 impl Socket {
@@ -181,7 +178,7 @@ impl Socket {
             state: UdpSocketState::new(UdpSockRef::from(&socket))?,
             port,
             socket,
-            buffered_transmits: Vec::new(),
+            buffered_transmits: VecDeque::new(),
         })
     }
 
@@ -251,43 +248,48 @@ impl Socket {
     }
 
     fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        loop {
-            match self.socket.try_io(Interest::WRITABLE, || {
-                self.state
-                    .send((&self.socket).into(), &self.buffered_transmits)
-            }) {
-                Ok(0) => break,
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                Err(e) => return Poll::Ready(Err(e)),
+        while let Some(transmit) = self.buffered_transmits.front() {
+            ready!(self.socket.poll_send_ready(cx))?;
 
-                Ok(num_sent) => {
-                    self.buffered_transmits.drain(..num_sent);
-
-                    // I am not sure if we'd ever send less than what is in `buffered_transmits`.
-                    // loop once more to be sure we `break` on either an empty buffer or on `WouldBlock`.
+            match self.try_send(transmit) {
+                Ok(()) => {
+                    self.buffered_transmits.pop_front();
                 }
-            };
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue, // False positive wake-up?
+                Err(e) => return Poll::Ready(Err(e)),
+            }
         }
-
-        // Ensure we are ready to send more data.
-        ready!(self.socket.poll_send_ready(cx)?);
-
-        assert!(
-            self.buffered_transmits.is_empty(),
-            "buffer must be empty if we are ready to send more data"
-        );
 
         Poll::Ready(Ok(()))
     }
 
-    fn send(&mut self, transmit: quinn_udp::Transmit) {
-        tracing::trace!(target: "wire::net::send", src = ?transmit.src_ip, dst = %transmit.destination, num_bytes = %transmit.contents.len());
+    fn send(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
+        tracing::trace!(target: "wire::net::send", src = ?transmit.src, dst = %transmit.dst, num_bytes = %transmit.payload.len());
 
-        self.buffered_transmits.push(transmit);
+        match self.try_send(&transmit) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                tracing::trace!("Buffering packet because socket is busy");
 
-        debug_assert!(
-            self.buffered_transmits.len() < 10_000,
-            "We are not flushing the packets for some reason"
-        );
+                self.buffered_transmits.push_back(transmit.into_owned());
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    fn try_send(&self, transmit: &snownet::Transmit) -> io::Result<()> {
+        self.socket.try_io(Interest::WRITABLE, || {
+            self.state.send(
+                (&self.socket).into(),
+                &quinn_udp::Transmit {
+                    destination: transmit.dst,
+                    ecn: None,
+                    contents: &transmit.payload,
+                    segment_size: None,
+                    src_ip: transmit.src.map(|s| s.ip()),
+                },
+            )
+        })
     }
 }
