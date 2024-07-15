@@ -279,39 +279,68 @@ fn read_token_file(path: &Path) -> Result<Option<SecretString>> {
 
 #[cfg(test)]
 mod tests {
-    use super::Cli;
+    use super::*;
     use clap::Parser;
     use std::path::PathBuf;
     use url::Url;
+
+    const EXE_NAME: &str = "firezone-headless-client";
 
     // Can't remember how Clap works sometimes
     // Also these are examples
     #[test]
     fn cli() {
-        let exe_name = "firezone-headless-client";
+        // Custom API URL
 
-        let actual = Cli::parse_from([
-            exe_name,
-            "--dns-control",
-            "disabled",
-            "--api-url",
-            "wss://api.firez.one",
-        ]);
+        let actual = Cli::parse_from([EXE_NAME, "--api-url", "wss://api.firez.one"]);
         assert_eq!(
             actual.api_url,
             Url::parse("wss://api.firez.one").expect("Hard-coded URL should always be parsable")
         );
         assert!(!actual.check);
 
-        let actual = Cli::parse_from([
-            exe_name,
-            "--dns-control",
-            "disabled",
-            "--check",
-            "--log-dir",
-            "bogus_log_dir",
-        ]);
+        // Custom log dir
+
+        let actual = Cli::parse_from([EXE_NAME, "--check", "--log-dir", "bogus_log_dir"]);
         assert!(actual.check);
         assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn cli_dns_control() {
+        let actual = Cli::parse_from([EXE_NAME]);
+        assert!(matches!(
+            actual.dns_control,
+            dns_control::Method::SystemdResolved
+        ));
+
+        let actual = Cli::parse_from([EXE_NAME, "--dns-control", "disabled"]);
+        assert!(matches!(actual.dns_control, dns_control::Method::Disabled));
+
+        let actual = Cli::parse_from([EXE_NAME, "--dns-control", "etc-resolv-conf"]);
+        assert!(matches!(
+            actual.dns_control,
+            dns_control::Method::EtcResolvConf
+        ));
+
+        let actual = Cli::parse_from([EXE_NAME, "--dns-control", "systemd-resolved"]);
+        assert!(matches!(
+            actual.dns_control,
+            dns_control::Method::SystemdResolved
+        ));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn cli_dns_control() {
+        let actual = Cli::parse_from([EXE_NAME]);
+        assert!(matches!(actual.dns_control, dns_control::Method::Nrpt));
+
+        let actual = Cli::parse_from([EXE_NAME, "--dns-control", "disabled"]);
+        assert!(matches!(actual.dns_control, dns_control::Method::Disabled));
+
+        let actual = Cli::parse_from([EXE_NAME, "--dns-control", "nrpt"]);
+        assert!(matches!(actual.dns_control, dns_control::Method::Nrpt));
     }
 }

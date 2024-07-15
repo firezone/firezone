@@ -23,22 +23,23 @@ pub(crate) enum Method {
     /// Use `systemd-resolved`
     ///
     /// Suitable for most Ubuntu systems. The IPC service for the GUI always picks this.
-    Systemd,
+    SystemdResolved,
+}
+
+impl Default for Method {
+    fn default() -> Self {
+        Self::SystemdResolved
+    }
 }
 
 impl Method {
-    /// The GUI only uses `systemd-resolved` on Linux
-    pub(crate) fn for_gui() -> Self {
-        Self::Systemd
-    }
-
     pub(crate) fn system_resolvers(&self) -> Result<Vec<IpAddr>> {
         match self {
             // Even if DNS control is disabled, we still read `/etc/resolv.conf`
             // to learn the system's resolvers
             Method::Disabled => get_system_default_resolvers_resolv_conf(),
             Method::EtcResolvConf => get_system_default_resolvers_resolv_conf(),
-            Method::Systemd => get_system_default_resolvers_systemd_resolved(),
+            Method::SystemdResolved => get_system_default_resolvers_systemd_resolved(),
         }
     }
 }
@@ -66,7 +67,7 @@ impl DnsController {
         match self.method {
             Method::Disabled => Ok(()),
             Method::EtcResolvConf => etc_resolv_conf::configure(dns_config).await,
-            Method::Systemd => configure_systemd_resolved(dns_config).await,
+            Method::SystemdResolved => configure_systemd_resolved(dns_config).await,
         }
         .context("Failed to control DNS")
     }
@@ -78,7 +79,7 @@ impl DnsController {
         // Flushing is only implemented for systemd-resolved
         match self.method {
             Method::Disabled | Method::EtcResolvConf => (),
-            Method::Systemd => {
+            Method::SystemdResolved => {
                 tracing::debug!("Flushing systemd-resolved DNS cache...");
                 Command::new("resolvectl").arg("flush-caches").status()?;
                 tracing::debug!("Flushed DNS.");

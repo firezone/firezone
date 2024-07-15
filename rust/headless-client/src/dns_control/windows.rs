@@ -26,6 +26,12 @@ pub(crate) enum Method {
     Nrpt,
 }
 
+impl Default for Method {
+    fn default() -> Self {
+        Self::Nrpt
+    }
+}
+
 impl Method {
     pub(crate) fn for_gui() -> Self {
         Self::Nrpt

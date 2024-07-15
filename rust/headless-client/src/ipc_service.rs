@@ -185,7 +185,7 @@ impl Handler {
             cb_rx,
             connlib: None,
             dns_controller: DnsController {
-                method: dns_control::Method::for_gui(),
+                method: dns_control::Method::default(),
             },
             ipc_rx,
             ipc_tx,
