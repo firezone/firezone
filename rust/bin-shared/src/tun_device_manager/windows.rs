@@ -1,19 +1,39 @@
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use connlib_shared::windows::{CREATE_NO_WINDOW, TUNNEL_NAME};
+use firezone_tunnel::Tun;
+use ip_network::IpNetwork;
 use ip_network::{Ipv4Network, Ipv6Network};
 use std::{
-    net::{Ipv4Addr, Ipv6Addr},
+    collections::HashSet,
+    net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
     os::windows::process::CommandExt,
     process::{Command, Stdio},
 };
+use windows::Win32::NetworkManagement::IpHelper::{
+    CreateIpForwardEntry2, DeleteIpForwardEntry2, InitializeIpForwardEntry, MIB_IPFORWARD_ROW2,
+};
 
-pub struct TunDeviceManager {}
+pub struct TunDeviceManager {
+    iface_idx: Option<u32>,
+
+    routes: HashSet<IpNetwork>,
+}
 
 impl TunDeviceManager {
     // Fallible on Linux
     #[allow(clippy::unnecessary_wraps)]
     pub fn new() -> Result<Self> {
-        Ok(Self {})
+        Ok(Self {
+            iface_idx: None,
+            routes: HashSet::default(),
+        })
+    }
+
+    pub fn make_tun(&mut self) -> Result<Tun> {
+        let tun = Tun::new()?;
+        self.iface_idx = Some(tun.iface_idx());
+
+        Ok(tun)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -51,11 +71,79 @@ impl TunDeviceManager {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_routes(&mut self, _: Vec<Ipv4Network>, _: Vec<Ipv6Network>) -> Result<()> {
-        // TODO: Windows still does route updates in `tun_windows.rs`. I can move it up
-        // here, but since the Client and Gateway don't know the index of the WinTun
-        // interface, I'd have to use the Windows API
-        // <https://microsoft.github.io/windows-docs-rs/doc/windows/Win32/NetworkManagement/IpHelper/fn.GetAdaptersAddresses.html>
-        unimplemented!()
+    pub async fn set_routes(&mut self, v4: Vec<Ipv4Network>, v6: Vec<Ipv6Network>) -> Result<()> {
+        let iface_idx = self
+            .iface_idx
+            .context("Cannot set routes without having created TUN device")?;
+
+        let new_routes = HashSet::from_iter(
+            v4.into_iter()
+                .map(IpNetwork::from)
+                .chain(v6.into_iter().map(IpNetwork::from)),
+        );
+
+        if new_routes == self.routes {
+            return Ok(());
+        }
+
+        for new_route in new_routes.difference(&self.routes) {
+            add_route(*new_route, iface_idx)?;
+        }
+
+        for old_route in self.routes.difference(&new_routes) {
+            remove_route(*old_route, iface_idx)?;
+        }
+
+        self.routes = new_routes;
+
+        Ok(())
     }
+}
+
+// It's okay if this blocks until the route is added in the OS.
+fn add_route(route: IpNetwork, iface_idx: u32) -> Result<()> {
+    const DUPLICATE_ERR: u32 = 0x80071392;
+    let entry = forward_entry(route, iface_idx);
+
+    // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
+    match unsafe { CreateIpForwardEntry2(&entry) }.ok() {
+        Ok(()) => Ok(()),
+        Err(e) if e.code().0 as u32 == DUPLICATE_ERR => {
+            tracing::debug!(%route, "Failed to add duplicate route, ignoring");
+            Ok(())
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+// It's okay if this blocks until the route is removed in the OS.
+fn remove_route(route: IpNetwork, iface_idx: u32) -> Result<()> {
+    let entry = forward_entry(route, iface_idx);
+
+    // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
+    unsafe { DeleteIpForwardEntry2(&entry) }.ok()?;
+    Ok(())
+}
+
+fn forward_entry(route: IpNetwork, iface_idx: u32) -> MIB_IPFORWARD_ROW2 {
+    let mut row = MIB_IPFORWARD_ROW2::default();
+    // SAFETY: Windows shouldn't store the reference anywhere, it's just setting defaults
+    unsafe { InitializeIpForwardEntry(&mut row) };
+
+    let prefix = &mut row.DestinationPrefix;
+    match route {
+        IpNetwork::V4(x) => {
+            prefix.PrefixLength = x.netmask();
+            prefix.Prefix.Ipv4 = SocketAddrV4::new(x.network_address(), 0).into();
+        }
+        IpNetwork::V6(x) => {
+            prefix.PrefixLength = x.netmask();
+            prefix.Prefix.Ipv6 = SocketAddrV6::new(x.network_address(), 0, 0, 0).into();
+        }
+    }
+
+    row.InterfaceIndex = iface_idx;
+    row.Metric = 0;
+
+    row
 }
