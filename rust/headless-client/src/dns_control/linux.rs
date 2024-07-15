@@ -19,7 +19,7 @@ pub(crate) enum Method {
     EtcResolvConf,
     /// Use `systemd-resolved`.
     ///
-    /// Suitable for most Ubuntu systems. This is the default for all Linux Clients.
+    /// Suitable for most Ubuntu systems.
     SystemdResolved,
 }
 

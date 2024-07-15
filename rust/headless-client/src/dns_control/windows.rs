@@ -25,7 +25,7 @@ pub(crate) enum Method {
     /// We don't use an `Option<Method>` because leaving out the CLI arg should
     /// use NRPT, not disable DNS control.
     Disabled,
-    /// Use Windows' NRPT feature. This is the default for all Windows Clients.
+    /// Use Windows' NRPT feature.
     Nrpt,
 }
 
