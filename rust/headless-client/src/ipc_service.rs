@@ -300,6 +300,7 @@ impl<'a> Handler<'a> {
                     max_partition_time: Some(Duration::from_secs(60 * 60 * 24 * 30)),
                 };
                 let new_session = Session::connect(args, tokio::runtime::Handle::try_current()?);
+                new_session.set_tun(self.tun_device.make_tun()?);
                 new_session.set_dns(dns_control::system_resolvers().unwrap_or_default());
                 self.connlib = Some(new_session);
             }

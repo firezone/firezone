@@ -9,6 +9,7 @@ description = "Firezone-specific modules shared between binaries."
 anyhow = "1.0.82"
 clap = { version = "4.5", features = ["derive",  "env"] }
 connlib-shared = { workspace = true }
+firezone-tunnel = { workspace = true }
 futures = "0.3"
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
 tokio = { workspace = true, features = ["rt"] }
@@ -29,6 +30,9 @@ logging_timer = "1.1.1"
 version = "0.57.0"
 features = [
   "Win32_Foundation",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_NetworkManagement_Ndis",
+  "Win32_Networking_WinSock",
 ]
 
 [lints]

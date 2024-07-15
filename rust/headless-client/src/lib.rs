@@ -121,18 +121,11 @@ impl Callbacks for CallbackHandler {
             .expect("should be able to send OnDisconnect");
     }
 
-    fn on_set_interface_config(
-        &self,
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-        dns: Vec<IpAddr>,
-    ) -> Option<i32> {
+    fn on_set_interface_config(&self, ipv4: Ipv4Addr, ipv6: Ipv6Addr, dns: Vec<IpAddr>) {
         tracing::info!("TunnelReady (on_set_interface_config)");
         self.cb_tx
             .try_send(InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
             .expect("Should be able to send TunnelReady");
-
-        None
     }
 
     fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
@@ -144,11 +137,10 @@ impl Callbacks for CallbackHandler {
             .expect("Should be able to send OnUpdateResources");
     }
 
-    fn on_update_routes(&self, ipv4: Vec<Ipv4Network>, ipv6: Vec<Ipv6Network>) -> Option<i32> {
+    fn on_update_routes(&self, ipv4: Vec<Ipv4Network>, ipv6: Vec<Ipv6Network>) {
         self.cb_tx
             .try_send(InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 })
             .expect("Should be able to send messages");
-        None
     }
 }
 
