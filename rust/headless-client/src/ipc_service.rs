@@ -7,7 +7,11 @@ use crate::{
 use anyhow::{Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets};
-use futures::{future, SinkExt as _, StreamExt as _};
+use futures::{
+    future::poll_fn,
+    task::{Context, Poll},
+    Future as _, SinkExt as _, Stream as _,
+};
 use std::{net::IpAddr, path::PathBuf, pin::pin, time::Duration};
 use tokio::{sync::mpsc, time::Instant};
 use tracing::subscriber::set_global_default;
@@ -100,24 +104,7 @@ fn run_debug_ipc_service() -> Result<()> {
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
-    rt.block_on(ipc_listen_with_signals(&mut signals))
-}
-
-/// Run the IPC service, and exit if we catch any signals
-///
-/// Shared between the Linux systemd service and the debug subcommand
-/// TODO: Better name
-async fn ipc_listen_with_signals(signals: &mut signals::Terminate) -> Result<()> {
-    let ipc_service = pin!(ipc_listen());
-
-    match future::select(pin!(signals.recv()), ipc_service).await {
-        future::Either::Left(((), _)) => {
-            tracing::info!("Caught SIGINT / SIGTERM / Ctrl+C");
-            Ok(())
-        }
-        future::Either::Right((Ok(impossible), _)) => match impossible {},
-        future::Either::Right((Err(error), _)) => Err(error).context("ipc_listen failed"),
-    }
+    rt.block_on(ipc_listen(&mut signals))
 }
 
 #[cfg(not(debug_assertions))]
@@ -133,24 +120,48 @@ fn run_smoke_test() -> Result<()> {
     crate::setup_stdout_logging()?;
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
+    let mut signals = signals::Terminate::new()?;
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
         device_id::get_or_create().context("Failed to read / create device ID")?;
         let mut server = IpcServer::new(ServiceId::Prod).await?;
-        Handler::new(&mut server).await?.run().await;
+        let _ = Handler::new(&mut server).await?.run(&mut signals).await;
         Ok::<_, anyhow::Error>(())
     })
 }
 
-async fn ipc_listen() -> Result<std::convert::Infallible> {
+/// Run the IPC service and terminate gracefully if we catch a terminate signal
+///
+/// If an IPC client is connected when we catch a terminate signal, we send the
+/// client a hint about that before we exit.
+async fn ipc_listen(signals: &mut signals::Terminate) -> Result<()> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
     device_id::get_or_create().context("Failed to read / create device ID")?;
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     loop {
-        Handler::new(&mut server).await?.run().await;
+        let mut handler_fut = pin!(Handler::new(&mut server));
+        let Some(handler) = poll_fn(|cx| {
+            if let Poll::Ready(()) = signals.poll_recv(cx) {
+                Poll::Ready(None)
+            } else if let Poll::Ready(handler) = handler_fut.as_mut().poll(cx) {
+                Poll::Ready(Some(handler))
+            } else {
+                Poll::Pending
+            }
+        })
+        .await
+        else {
+            tracing::info!("Caught SIGINT / SIGTERM / Ctrl+C while waiting on the next client.");
+            break;
+        };
+        let mut handler = handler?;
+        if let HandlerOk::ServiceTerminating = handler.run(signals).await {
+            break;
+        }
     }
+    Ok(())
 }
 
 /// Handles one IPC client
@@ -167,7 +178,19 @@ struct Handler {
 
 enum Event {
     Callback(InternalServerMsg),
+    CallbackChannelClosed,
     Ipc(ClientMsg),
+    IpcDisconnected,
+    IpcError(anyhow::Error),
+    Terminate,
+}
+
+// Open to better names
+#[must_use]
+enum HandlerOk {
+    ClientDisconnected,
+    Err,
+    ServiceTerminating,
 }
 
 impl Handler {
@@ -194,35 +217,24 @@ impl Handler {
         })
     }
 
-    // Infallible so that we only give up on an IPC client explicitly
-    async fn run(&mut self) {
+    /// Run the event loop to communicate with an IPC client.
+    ///
+    /// If the IPC service needs to terminate, we catch that from `signals` and send
+    /// the client a hint to shut itself down gracefully.
+    ///
+    /// The return type is infallible so that we only give up on an IPC client explicitly
+    async fn run(&mut self, signals: &mut signals::Terminate) -> HandlerOk {
         loop {
-            let event = {
-                // This borrows `self` so we must drop it before handling the `Event`.
-                let cb = pin!(self.cb_rx.recv());
-                match future::select(self.ipc_rx.next(), cb).await {
-                    future::Either::Left((Some(Ok(x)), _)) => Event::Ipc(x),
-                    future::Either::Left((Some(Err(error)), _)) => {
-                        tracing::error!(?error, "Error while deserializing IPC message");
-                        continue;
-                    }
-                    future::Either::Left((None, _)) => {
-                        tracing::info!("IPC client disconnected");
-                        break;
-                    }
-                    future::Either::Right((Some(x), _)) => Event::Callback(x),
-                    future::Either::Right((None, _)) => {
-                        tracing::error!("Impossible - Callback channel closed");
-                        break;
-                    }
-                }
-            };
-            match event {
+            match poll_fn(|cx| self.next_event(cx, signals)).await {
                 Event::Callback(x) => {
                     if let Err(error) = self.handle_connlib_cb(x).await {
                         tracing::error!(?error, "Error while handling connlib callback");
                         continue;
                     }
+                }
+                Event::CallbackChannelClosed => {
+                    tracing::error!("Impossible - Callback channel closed");
+                    break HandlerOk::Err;
                 }
                 Event::Ipc(msg) => {
                     if let Err(error) = self.handle_ipc_msg(msg) {
@@ -230,8 +242,53 @@ impl Handler {
                         continue;
                     }
                 }
+                Event::IpcDisconnected => {
+                    tracing::info!("IPC client disconnected");
+                    break HandlerOk::ClientDisconnected;
+                }
+                Event::IpcError(error) => {
+                    tracing::error!(?error, "Error while deserializing IPC message");
+                    continue;
+                }
+                Event::Terminate => {
+                    tracing::info!(
+                        "Caught SIGINT / SIGTERM / Ctrl+C while an IPC client is connected"
+                    );
+                    self.ipc_tx
+                        .send(&IpcServerMsg::TerminatingGracefully)
+                        .await
+                        .unwrap();
+                    break HandlerOk::ServiceTerminating;
+                }
             }
         }
+    }
+
+    fn next_event(
+        &mut self,
+        cx: &mut Context<'_>,
+        signals: &mut signals::Terminate,
+    ) -> Poll<Event> {
+        // `recv` on signals is cancel-safe.
+        if let Poll::Ready(()) = signals.poll_recv(cx) {
+            return Poll::Ready(Event::Terminate);
+        }
+        // `FramedRead::next` is cancel-safe.
+        if let Poll::Ready(result) = pin!(&mut self.ipc_rx).poll_next(cx) {
+            return match result {
+                Some(Ok(x)) => Poll::Ready(Event::Ipc(x)),
+                Some(Err(error)) => Poll::Ready(Event::IpcError(error)),
+                None => Poll::Ready(Event::IpcDisconnected),
+            };
+        }
+        // `tokio::sync::mpsc::Receiver::recv` is cancel-safe.
+        if let Poll::Ready(option) = self.cb_rx.poll_recv(cx) {
+            return match option {
+                Some(x) => Poll::Ready(Event::Callback(x)),
+                None => Poll::Ready(Event::CallbackChannelClosed),
+            };
+        }
+        Poll::Pending
     }
 
     async fn handle_connlib_cb(&mut self, msg: InternalServerMsg) -> Result<()> {

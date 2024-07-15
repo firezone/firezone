@@ -63,6 +63,8 @@ impl DnsController {
     ///
     /// The `mut` in `&mut self` is not needed by Rust's rules, but
     /// it would be bad if this was called from 2 threads at once.
+    ///
+    /// Cancel safety: Try not to cancel this.
     pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
         match self.method {
             Method::Disabled => Ok(()),
@@ -89,6 +91,10 @@ impl DnsController {
     }
 }
 
+/// Sets the system-wide resolvers by configuring `systemd-resolved`
+///
+/// Cancel safety: Cancelling the future may leave running subprocesses
+/// which should eventually exit on their own.
 async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
     let status = tokio::process::Command::new("resolvectl")
         .arg("dns")

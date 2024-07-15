@@ -14,6 +14,9 @@ export default function GUI({ title }: { title: string }) {
     <Entries href={href} arches={arches} title={title}>
       {/*<Entry version="1.1.7" date={new Date("2024-07-12")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem enable={title === "Linux GUI"} pull="5848">
+            If the GUI is open during an update, close it and prompt the user to restart the GUI.
+          </ChangeItem>
           <ChangeItem enable={title === "Windows"}>
             This is a maintenance release with no user-facing changes.
           </ChangeItem>
