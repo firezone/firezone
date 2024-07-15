@@ -121,10 +121,7 @@ pub fn sites() -> impl Strategy<Value = Vec<Site>> {
 }
 
 pub fn site() -> impl Strategy<Value = Site> {
-    (any_with::<String>("[a-z]{4,10}".into()), any::<u128>()).prop_map(|(name, id)| Site {
-        name,
-        id: SiteId::from_u128(id),
-    })
+    (site_name(), site_id()).prop_map(|(name, id)| Site { name, id })
 }
 
 pub fn resource_id() -> impl Strategy<Value = ResourceId> + Clone {
@@ -141,6 +138,14 @@ pub fn client_id() -> impl Strategy<Value = ClientId> {
 
 pub fn relay_id() -> impl Strategy<Value = RelayId> {
     any::<u128>().prop_map(RelayId::from_u128)
+}
+
+pub fn site_id() -> impl Strategy<Value = SiteId> {
+    any::<u128>().prop_map(SiteId::from_u128)
+}
+
+pub fn site_name() -> impl Strategy<Value = String> {
+    any_with::<String>("[a-z]{4,10}".into())
 }
 
 pub fn resource_name() -> impl Strategy<Value = String> {
