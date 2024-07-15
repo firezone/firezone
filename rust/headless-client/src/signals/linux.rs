@@ -1,6 +1,8 @@
 use anyhow::Result;
-use futures::FutureExt as _;
-use std::pin::pin;
+use futures::{
+    future::poll_fn,
+    task::{Context, Poll},
+};
 use tokio::signal::unix::{signal, Signal, SignalKind};
 
 pub(crate) struct Terminate {
@@ -23,12 +25,17 @@ impl Terminate {
         Ok(Self { sigint, sigterm })
     }
 
+    pub(crate) fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+        if self.sigint.poll_recv(cx).is_ready() || self.sigterm.poll_recv(cx).is_ready() {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
+    }
+
     /// Waits for SIGINT or SIGTERM
     pub(crate) async fn recv(&mut self) {
-        futures::select! {
-            _ = pin!(self.sigint.recv().fuse()) => {},
-            _ = pin!(self.sigterm.recv().fuse()) => {},
-        }
+        poll_fn(|cx| self.poll_recv(cx)).await
     }
 }
 

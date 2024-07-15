@@ -542,9 +542,7 @@ impl Controller {
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
-            Req::Ipc(msg) => if let Err(error) = self.handle_ipc(msg).await {
-                tracing::error!(?error, "`handle_ipc` failed");
-            }
+            Req::Ipc(msg) => self.handle_ipc(msg).await?,
             Req::IpcReadFailed(error) => {
                 // IPC errors are always fatal
                 tracing::error!(?error, "IPC read failure");
@@ -639,7 +637,7 @@ impl Controller {
         Ok(())
     }
 
-    async fn handle_ipc(&mut self, msg: IpcServerMsg) -> Result<()> {
+    async fn handle_ipc(&mut self, msg: IpcServerMsg) -> Result<(), Error> {
         match msg {
             IpcServerMsg::OnDisconnect {
                 error_msg,
@@ -661,6 +659,7 @@ impl Controller {
                         .show_alert()
                         .context("Couldn't show Disconnected alert")?;
                 }
+                Ok(())
             }
             IpcServerMsg::OnUpdateResources(resources) => {
                 if self.auth.session().is_none() {
@@ -683,9 +682,14 @@ impl Controller {
                 if let Err(error) = self.refresh_system_tray_menu() {
                     tracing::error!(?error, "Failed to refresh Resource list");
                 }
+                Ok(())
+            }
+            IpcServerMsg::TerminatingGracefully => {
+                tracing::info!("Caught TerminatingGracefully");
+                self.tray.set_icon(system_tray::Icon::SignedOut).ok();
+                Err(Error::IpcServiceTerminating)
             }
         }
-        Ok(())
     }
 
     /// Builds a new system tray menu and applies it to the app
@@ -836,6 +840,7 @@ async fn run_controller(
                         tracing::info!("User clicked Quit in the menu");
                         break
                     }
+                    // TODO: Should we really skip cleanup if a request fails?
                     req => controller.handle_request(req).await?,
                 }
             },
