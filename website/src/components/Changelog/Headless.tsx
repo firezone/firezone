@@ -13,7 +13,8 @@ export default function Headless() {
       <Entry version="1.1.4" date={new Date("2024-07-11")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="5850">
-            The env var `FIREZONE_DNS_CONTROL` or CLI arg `--dns-control` is now required.
+            DNS control using `systemd-resolved` is now enabled by default.
+            To disable DNS control, pass `--dns-control disabled` as arguments.
           </ChangeItem>
         </ul>
       </Entry>

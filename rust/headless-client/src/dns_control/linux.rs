@@ -7,22 +7,19 @@ mod etc_resolv_conf;
 /// Methods to control the system's DNS resolution
 #[derive(clap::ValueEnum, Clone, Debug)]
 pub(crate) enum Method {
-    /// Explicitly disable DNS control
+    /// Explicitly disable DNS control.
     ///
-    /// This is for avoiding surprise if a user runs the Client and it implicitly
-    /// doesn't control DNS. The user must tell the headless Client how to control DNS.
-    ///
-    /// We don't use an `Option<Method>` because then `clap` may treat the arg as
-    /// optional.
+    /// We don't use an `Option<Method>` because leaving out the CLI arg should
+    /// use Systemd, not disable DNS control.
     Disabled,
     /// Back up `/etc/resolv.conf` and replace it with our own
     ///
     /// Only suitable for the Alpine CI containers and maybe something like an
     /// embedded system
     EtcResolvConf,
-    /// Use `systemd-resolved`
+    /// Use `systemd-resolved`.
     ///
-    /// Suitable for most Ubuntu systems. The IPC service for the GUI always picks this.
+    /// Suitable for most Ubuntu systems. This is the default for all Linux Clients.
     SystemdResolved,
 }
 

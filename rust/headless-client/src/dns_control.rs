@@ -1,9 +1,9 @@
 //! Platform-specific code to control the system's DNS resolution
 //!
-//! On Windows, we always use NRPT.
-//!
 //! On Linux, we can use `/etc/resolv.conf`, `systemd-resolved`, or we can explicitly
 //! disable DNS control.
+//!
+//! On Windows, we only use NRPT or explicitly disable DNS control.
 
 #[cfg(target_os = "linux")]
 mod linux;

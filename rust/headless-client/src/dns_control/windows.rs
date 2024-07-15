@@ -20,9 +20,12 @@ use std::{net::IpAddr, os::windows::process::CommandExt, process::Command};
 /// Methods to control the system's DNS resolution
 #[derive(clap::ValueEnum, Clone, Debug)]
 pub(crate) enum Method {
-    /// Don't control DNS
+    /// Explicitly disable DNS cotnrol.
+    ///
+    /// We don't use an `Option<Method>` because leaving out the CLI arg should
+    /// use NRPT, not disable DNS control.
     Disabled,
-    /// Use Windows' NRPT feature
+    /// Use Windows' NRPT feature. This is the default for all Windows Clients.
     Nrpt,
 }
 
