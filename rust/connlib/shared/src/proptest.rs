@@ -31,11 +31,6 @@ pub fn resources_sharing_site() -> impl Strategy<Value = (Vec<ResourceDescriptio
     })
 }
 
-// Generate resources sharing all sites
-pub fn resources_sharing_all_sites() -> impl Strategy<Value = Vec<ResourceDescription>> {
-    sites().prop_flat_map(|sites| collection::vec(resource(sites), 1..=100))
-}
-
 pub fn resource(sites: Vec<Site>) -> impl Strategy<Value = ResourceDescription> {
     any::<bool>().prop_flat_map(move |is_dns| {
         if is_dns {

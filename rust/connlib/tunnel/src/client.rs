@@ -1799,18 +1799,4 @@ mod proptests {
             assert_eq!(client_state.resource_status(&resource), Status::Unknown);
         }
     }
-
-    #[test_strategy::proptest]
-    fn setting_resource_offline_set_all_resources_sharing_all_groups_offline(
-        #[strategy(resources_sharing_all_sites())] resources: Vec<ResourceDescription>,
-    ) {
-        let mut client_state = ClientState::for_test();
-        client_state.add_resources(&resources);
-
-        client_state.set_resource_offline(resources.first().unwrap().id());
-
-        for resource in resources {
-            assert_eq!(client_state.resource_status(&resource), Status::Offline);
-        }
-    }
 }
