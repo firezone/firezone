@@ -1,7 +1,8 @@
 //! Virtual network interface
 
-use crate::DEFAULT_MTU;
 use anyhow::{anyhow, Context as _, Result};
+use connlib_shared::DEFAULT_MTU;
+use firezone_tunnel::Tun;
 use futures::TryStreamExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
@@ -12,8 +13,7 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr},
 };
 
-pub const FIREZONE_MARK: u32 = 0xfd002021;
-pub const IFACE_NAME: &str = "tun-firezone";
+const FIREZONE_MARK: u32 = 0xfd002021; // Keep this synced with `Sockets` until #5797.
 const FILE_ALREADY_EXISTS: i32 = -17;
 const FIREZONE_TABLE: u32 = 0x2021_fd00;
 
@@ -35,6 +35,8 @@ impl Drop for TunDeviceManager {
 }
 
 impl TunDeviceManager {
+    pub const IFACE_NAME: &'static str = "tun-firezone"; // Keep this synced with `Tun` until we fix the module dependencies (i.e. move `Tun` out of `firezone-tunnel`).
+
     /// Creates a new managed tunnel device.
     ///
     /// Panics if called without a Tokio runtime.
@@ -49,17 +51,23 @@ impl TunDeviceManager {
         })
     }
 
+    pub fn make_tun(&mut self) -> Result<Tun> {
+        Ok(Tun::new()?)
+    }
+
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
+        let name = Self::IFACE_NAME;
+
         let handle = &self.connection.handle;
         let index = handle
             .link()
             .get()
-            .match_name(IFACE_NAME.to_string())
+            .match_name(name.to_string())
             .execute()
             .try_next()
             .await?
-            .ok_or_else(|| anyhow!("Interface '{IFACE_NAME}' does not exist"))?
+            .ok_or_else(|| anyhow!("Interface '{name}' does not exist"))?
             .header
             .index;
 
@@ -139,6 +147,7 @@ impl TunDeviceManager {
             .map(IpNetwork::from)
             .chain(ipv6.into_iter().map(IpNetwork::from))
             .collect();
+
         if new_routes == self.routes {
             tracing::debug!("Routes are unchanged");
 
@@ -152,7 +161,7 @@ impl TunDeviceManager {
         let index = handle
             .link()
             .get()
-            .match_name(IFACE_NAME.to_string())
+            .match_name(Self::IFACE_NAME.to_string())
             .execute()
             .try_next()
             .await?

@@ -1,5 +1,5 @@
 use anyhow::{bail, Context as _, Result};
-use connlib_shared::tun_device_manager::linux::IFACE_NAME;
+use firezone_bin_shared::TunDeviceManager;
 use std::{net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;
@@ -91,7 +91,7 @@ impl DnsController {
 async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
     let status = tokio::process::Command::new("resolvectl")
         .arg("dns")
-        .arg(IFACE_NAME)
+        .arg(TunDeviceManager::IFACE_NAME)
         .args(dns_config.iter().map(ToString::to_string))
         .status()
         .await
@@ -102,7 +102,7 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
 
     let status = tokio::process::Command::new("resolvectl")
         .arg("domain")
-        .arg(IFACE_NAME)
+        .arg(TunDeviceManager::IFACE_NAME)
         .arg("~.")
         .status()
         .await

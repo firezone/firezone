@@ -27,14 +27,6 @@ pub enum ConnlibError {
     /// Glob for errors without a type.
     #[error("Other error: {0}")]
     Other(&'static str),
-    #[cfg(target_os = "linux")]
-    #[error(transparent)]
-    NetlinkError(rtnetlink::Error),
-    /// Io translation of netlink error
-    /// The IO version is easier to interpret
-    /// We maintain a different variant from the standard IO for this to keep more context
-    #[error("IO netlink error: {0}")]
-    NetlinkErrorIo(std::io::Error),
     /// No iface found
     #[error("No iface found")]
     NoIface,
@@ -50,9 +42,6 @@ pub enum ConnlibError {
     /// A panic occurred with a non-string payload.
     #[error("Panicked with a non-string payload")]
     PanicNonStringPayload,
-    /// Invalid destination for packet
-    #[error("Invalid dest address")]
-    InvalidDst,
     /// Exhausted nat table
     #[error("exhausted nat")]
     ExhaustedNat,
@@ -79,8 +68,11 @@ pub enum ConnlibError {
     #[error("Error while rewriting `/etc/resolv.conf`: {0}")]
     ResolvConf(anyhow::Error),
 
-    #[error("Packet not allowed; source = {src}")]
-    UnallowedPacket { src: IpAddr },
+    #[error("Source not allowed: {src}")]
+    SrcNotAllowed { src: IpAddr },
+
+    #[error("Destination not allowed: {dst}")]
+    DstNotAllowed { dst: IpAddr },
 
     // Error variants for `systemd-resolved` DNS control
     #[error("Failed to control system DNS with `resolvectl`")]
@@ -88,15 +80,4 @@ pub enum ConnlibError {
 
     #[error("connection to the portal failed: {0}")]
     PortalConnectionFailed(phoenix_channel::Error),
-}
-
-#[cfg(target_os = "linux")]
-impl From<rtnetlink::Error> for ConnlibError {
-    fn from(err: rtnetlink::Error) -> Self {
-        #[allow(clippy::wildcard_enum_match_arm)]
-        match err {
-            rtnetlink::Error::NetlinkError(err) => Self::NetlinkErrorIo(err.to_io()),
-            err => Self::NetlinkError(err),
-        }
-    }
 }

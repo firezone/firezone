@@ -2,11 +2,11 @@ use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_shared::messages::Interface;
-use connlib_shared::tun_device_manager::TunDeviceManager;
-use connlib_shared::{get_user_agent, keypair, Callbacks, LoginUrl, StaticSecret};
-use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
-use firezone_tunnel::{GatewayTunnel, Sockets};
+use connlib_shared::{
+    get_user_agent, keypair, messages::Interface, Callbacks, LoginUrl, StaticSecret,
+};
+use firezone_bin_shared::{setup_global_subscriber, CommonArgs, TunDeviceManager};
+use firezone_tunnel::{GatewayTunnel, Sockets, Tun};
 use futures::channel::mpsc;
 use futures::{future, StreamExt, TryFutureExt};
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -100,7 +100,7 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
 }
 
 async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
-    let tunnel = GatewayTunnel::new(private_key, Sockets::new(), CallbackHandler)?;
+    let mut tunnel = GatewayTunnel::new(private_key, Sockets::new(), CallbackHandler)?;
     let portal = PhoenixChannel::connect(
         Secret::new(login),
         get_user_agent(None, env!("CARGO_PKG_VERSION")),
@@ -112,8 +112,10 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
     );
 
     let (sender, receiver) = mpsc::channel::<Interface>(10);
-    let tun_device = TunDeviceManager::new()?;
-    let update_device_task = update_device_task(tun_device, receiver);
+    let tun_device_manager = TunDeviceManager::new()?;
+    tunnel.set_tun(Tun::new()?);
+
+    let update_device_task = update_device_task(tun_device_manager, receiver);
 
     let mut eventloop = Eventloop::new(tunnel, portal, sender);
     let eventloop_task = future::poll_fn(move |cx| eventloop.poll(cx));

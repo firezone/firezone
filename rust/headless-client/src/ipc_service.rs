@@ -7,7 +7,6 @@ use crate::{
 use anyhow::{Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets};
-use connlib_shared::tun_device_manager;
 use futures::{future, SinkExt as _, StreamExt as _};
 use std::{net::IpAddr, path::PathBuf, pin::pin, time::Duration};
 use tokio::{sync::mpsc, time::Instant};
@@ -16,6 +15,7 @@ use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
 use url::Url;
 
 pub mod ipc;
+use firezone_bin_shared::TunDeviceManager;
 use ipc::{Server as IpcServer, ServiceId};
 
 #[cfg(target_os = "linux")]
@@ -162,7 +162,7 @@ struct Handler {
     ipc_rx: ipc::ServerRead,
     ipc_tx: ipc::ServerWrite,
     last_connlib_start_instant: Option<Instant>,
-    tun_device: tun_device_manager::TunDeviceManager,
+    tun_device: TunDeviceManager,
 }
 
 enum Event {
@@ -178,7 +178,7 @@ impl Handler {
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
         let (cb_tx, cb_rx) = mpsc::channel(10);
-        let tun_device = tun_device_manager::TunDeviceManager::new()?;
+        let tun_device = TunDeviceManager::new()?;
 
         Ok(Self {
             callback_handler: CallbackHandler { cb_tx },
@@ -294,6 +294,7 @@ impl Handler {
                     max_partition_time: Some(Duration::from_secs(60 * 60 * 24 * 30)),
                 };
                 let new_session = Session::connect(args, tokio::runtime::Handle::try_current()?);
+                new_session.set_tun(self.tun_device.make_tun()?);
                 new_session.set_dns(dns_control::system_resolvers_for_gui().unwrap_or_default());
                 self.connlib = Some(new_session);
             }

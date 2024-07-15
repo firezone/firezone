@@ -6,7 +6,6 @@
 pub mod callbacks;
 pub mod error;
 pub mod messages;
-pub mod tun_device_manager;
 
 #[cfg(target_os = "windows")]
 pub mod windows;

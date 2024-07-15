@@ -7,8 +7,7 @@ use crate::{
 use anyhow::{anyhow, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets};
-use connlib_shared::tun_device_manager;
-use firezone_cli_utils::setup_global_subscriber;
+use firezone_bin_shared::{setup_global_subscriber, TunDeviceManager};
 use futures::{FutureExt as _, StreamExt as _};
 use secrecy::SecretString;
 use std::{
@@ -169,8 +168,6 @@ pub fn run_only_headless_client() -> Result<()> {
         max_partition_time,
     };
     let session = Session::connect(args, rt.handle().clone());
-    // TODO: DNS should be added dynamically
-    session.set_dns(cli.dns_control.system_resolvers().unwrap_or_default());
     platform::notify_service_controller()?;
 
     let result = rt.block_on(async {
@@ -181,8 +178,12 @@ pub fn run_only_headless_client() -> Result<()> {
         let mut dns_controller = DnsController {
             method: cli.dns_control,
         };
-        let mut tun_device = tun_device_manager::TunDeviceManager::new()?;
+        let mut tun_device = TunDeviceManager::new()?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
+
+        session.set_tun(tun_device.make_tun()?);
+        // TODO: DNS should be added dynamically
+        session.set_dns(dns_controller.method.system_resolvers().unwrap_or_default());
 
         loop {
             let cb = futures::select! {

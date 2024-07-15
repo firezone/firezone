@@ -21,8 +21,8 @@ use itertools::Itertools;
 use tracing::Level;
 
 use crate::peer::GatewayOnClient;
-use crate::utils::{earliest, turn};
-use crate::{ClientEvent, ClientTunnel};
+use crate::utils::{self, earliest, turn};
+use crate::{ClientEvent, ClientTunnel, Tun};
 use core::fmt;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, RelaySocket};
@@ -49,19 +49,18 @@ impl<CB> ClientTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
-    pub fn set_resources(
-        &mut self,
-        resources: Vec<ResourceDescription>,
-    ) -> connlib_shared::Result<()> {
+    pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
         self.role_state.set_resources(resources);
-
-        self.io
-            .device_mut()
-            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
+        self.callbacks.on_update_routes(
+            self.role_state.routes().filter_map(utils::ipv4).collect(),
+            self.role_state.routes().filter_map(utils::ipv6).collect(),
+        );
         self.callbacks
             .on_update_resources(self.role_state.resources());
+    }
 
-        Ok(())
+    pub fn set_tun(&mut self, tun: Tun) {
+        self.io.device_mut().set_tun(tun);
     }
 
     pub fn update_relays(&mut self, to_remove: HashSet<RelayId>, to_add: Vec<Relay>) {
@@ -70,54 +69,44 @@ where
     }
 
     /// Adds a the given resource to the tunnel.
-    pub fn add_resources(
-        &mut self,
-        resources: &[ResourceDescription],
-    ) -> connlib_shared::Result<()> {
+    pub fn add_resources(&mut self, resources: &[ResourceDescription]) {
         self.role_state.add_resources(resources);
 
-        self.io
-            .device_mut()
-            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
+        self.callbacks.on_update_routes(
+            self.role_state.routes().filter_map(utils::ipv4).collect(),
+            self.role_state.routes().filter_map(utils::ipv6).collect(),
+        );
         self.callbacks
             .on_update_resources(self.role_state.resources());
-
-        Ok(())
     }
 
     pub fn remove_resources(&mut self, ids: &[ResourceId]) {
         self.role_state.remove_resources(ids);
 
-        if let Err(err) = self
-            .io
-            .device_mut()
-            .set_routes(self.role_state.routes().collect(), &self.callbacks)
-        {
-            tracing::error!(?ids, "Failed to update routes: {err:?}");
-        }
-
+        self.callbacks.on_update_routes(
+            self.role_state.routes().filter_map(utils::ipv4).collect(),
+            self.role_state.routes().filter_map(utils::ipv6).collect(),
+        );
         self.callbacks
             .on_update_resources(self.role_state.resources())
     }
 
     /// Updates the system's dns
-    pub fn set_new_dns(&mut self, new_dns: Vec<IpAddr>) -> connlib_shared::Result<()> {
+    pub fn set_new_dns(&mut self, new_dns: Vec<IpAddr>) {
         // We store the sentinel dns both in the config and in the system's resolvers
         // but when we calculate the dns mapping, those are ignored.
         let dns_changed = self.role_state.update_system_resolvers(new_dns);
 
         if !dns_changed {
-            return Ok(());
+            return;
         }
 
         self.io
             .set_upstream_dns_servers(self.role_state.dns_mapping());
 
         if let Some(config) = self.role_state.interface_config.as_ref().cloned() {
-            self.update_device(config, self.role_state.dns_mapping())?;
+            self.update_device(config, self.role_state.dns_mapping());
         };
-
-        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -132,7 +121,7 @@ where
                 .set_upstream_dns_servers(self.role_state.dns_mapping());
         }
 
-        self.update_device(config, self.role_state.dns_mapping())?;
+        self.update_device(config, self.role_state.dns_mapping());
 
         Ok(())
     }
@@ -141,24 +130,17 @@ where
         &mut self,
         config: InterfaceConfig,
         dns_mapping: BiMap<IpAddr, DnsServer>,
-    ) -> connlib_shared::Result<()> {
-        let callbacks = self.callbacks.clone();
+    ) {
+        // We can just sort in here because sentinel ips are created in order
+        let dns_config = dns_mapping.left_values().copied().sorted().collect();
 
-        self.io.device_mut().set_config(
-            &config,
-            // We can just sort in here because sentinel ips are created in order
-            dns_mapping.left_values().copied().sorted().collect(),
-            &callbacks,
-        )?;
-
-        self.io
-            .device_mut()
-            .set_routes(self.role_state.routes().collect(), &self.callbacks)?;
-        let name = self.io.device_mut().name().to_owned();
-
-        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
-
-        Ok(())
+        self.callbacks
+            .clone()
+            .on_set_interface_config(config.ipv4, config.ipv6, dns_config);
+        self.callbacks.on_update_routes(
+            self.role_state.routes().filter_map(utils::ipv4).collect(),
+            self.role_state.routes().filter_map(utils::ipv6).collect(),
+        );
     }
 
     pub fn cleanup_connection(&mut self, id: ResourceId) {
@@ -408,13 +390,12 @@ impl ClientState {
         })
     }
 
-    #[tracing::instrument(level = "trace", skip_all, fields(dst))]
     pub(crate) fn encapsulate<'s>(
         &'s mut self,
         packet: MutableIpPacket<'_>,
         now: Instant,
     ) -> Option<snownet::Transmit<'s>> {
-        let (packet, dest) = match self.handle_dns(packet) {
+        let (packet, dst) = match self.handle_dns(packet) {
             Ok(response) => {
                 self.buffered_packets.push_back(response?.to_owned());
                 return None;
@@ -422,20 +403,18 @@ impl ClientState {
             Err(non_dns_packet) => non_dns_packet,
         };
 
-        tracing::Span::current().record("dst", tracing::field::display(dest));
-
-        if is_definitely_not_a_resource(dest) {
+        if is_definitely_not_a_resource(dst) {
             return None;
         }
 
-        let Some(resource) = self.get_resource_by_destination(dest) else {
-            tracing::trace!("Unknown resource");
+        let Some(resource) = self.get_resource_by_destination(dst) else {
+            tracing::trace!(%dst, "Unknown resource");
             return None;
         };
 
         let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
         else {
-            self.on_not_connected_resource(resource, &dest, now);
+            self.on_not_connected_resource(resource, &dst, now);
             return None;
         };
 
@@ -446,18 +425,18 @@ impl ClientState {
             now,
         );
 
-        if peer.allowed_ips.longest_match(dest).is_none() {
+        if peer.allowed_ips.longest_match(dst).is_none() {
             let gateway_id = peer.id();
-            self.send_proxy_ips(&dest, resource, gateway_id);
+            self.send_proxy_ips(&dst, resource, gateway_id);
             return None;
         }
 
-        let gateway_id = peer.id();
+        let gid = peer.id();
 
         let transmit = self
             .node
-            .encapsulate(gateway_id, packet.as_immutable(), now)
-            .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
+            .encapsulate(gid, packet.as_immutable(), now)
+            .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
             .ok()??;
 
         Some(transmit)
@@ -471,24 +450,24 @@ impl ClientState {
         now: Instant,
         buffer: &'b mut [u8],
     ) -> Option<IpPacket<'b>> {
-        let (conn_id, packet) = self.node.decapsulate(
+        let (gid, packet) = self.node.decapsulate(
             local,
             from,
             packet.as_ref(),
             now,
             buffer,
         )
-        .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .inspect_err(|e| tracing::debug!(%local, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;
 
-        let Some(peer) = self.peers.get_mut(&conn_id) else {
-            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
+        let Some(peer) = self.peers.get_mut(&gid) else {
+            tracing::error!(%gid, "Couldn't find connection by ID");
 
             return None;
         };
 
         peer.ensure_allowed_src(&packet)
-            .inspect_err(|e| tracing::debug!(%conn_id, %local, %from, "{e}"))
+            .inspect_err(|e| tracing::debug!(%gid, %local, %from, "{e}"))
             .ok()?;
 
         let packet = maybe_mangle_dns_response_from_cidr_resource(

@@ -25,7 +25,7 @@
             exec "${pkgs.cargo-udeps}/bin/cargo-udeps" "$@"
           '';
 
-          libraries = with pkgs;[
+          libraries = with pkgs; [
             webkitgtk
             gtk3
             cairo
@@ -50,10 +50,11 @@
             librsvg
             gnome.zenity
             desktop-file-utils
+            android-tools
           ];
 
           mkShellWithRustVersion = rustVersion: pkgs.mkShell {
-            packages = [ pkgs.cargo-tauri pkgs.iptables pkgs.nodePackages.pnpm cargo-udeps ];
+            packages = [ pkgs.cargo-tauri pkgs.iptables pkgs.nodePackages.pnpm cargo-udeps pkgs.cargo-sort ];
             buildInputs = rustVersion ++ packages;
             name = "rust-env";
             src = ../../rust;
