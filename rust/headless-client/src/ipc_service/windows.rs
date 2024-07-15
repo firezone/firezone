@@ -173,9 +173,15 @@ fn fallible_service_run(
 ///
 /// Logging must already be set up before calling this.
 async fn service_run_async(mut shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
-    match future::select(pin!(super::ipc_listen()), pin!(shutdown_rx.recv())).await {
+    // Useless - Windows will never send us Ctrl+C when running as a service
+    // This just keeps the signatures simpler
+    let mut signals = crate::signals::Terminate::new()?;
+    let listen_fut = pin!(super::ipc_listen(&mut signals));
+    match future::select(listen_fut, pin!(shutdown_rx.recv())).await {
         Either::Left((Err(error), _)) => Err(error).context("`ipc_listen` threw an error"),
-        Either::Left((Ok(impossible), _)) => match impossible {},
+        Either::Left((Ok(()), _)) => {
+            bail!("Impossible - Shouldn't catch Ctrl+C when running as a Windows service")
+        }
         Either::Right((None, _)) => bail!("Shutdown channel failed"),
         Either::Right((Some(()), _)) => {
             tracing::info!("Caught shutdown signal, stopping IPC listener");
