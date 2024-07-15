@@ -78,8 +78,12 @@ pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
     Ok(resolvers)
 }
 
-// Our NRPT rule should always live at
-// `Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DnsPolicyConfig\{6C0507CB-C884-4A78-BC55-0ACEE21227F6}`
+/// A UUID for the Firezone Client NRPT rule, chosen randomly at dev time.
+///
+/// Our NRPT rule should always live in the registry at
+/// `Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DnsPolicyConfig\$NRPT_REG_KEY`
+///
+/// We can use this UUID as a handle to enable, disable, or modify the rule.
 const NRPT_REG_KEY: &str = "{6C0507CB-C884-4A78-BC55-0ACEE21227F6}";
 
 /// Tells Windows to send all DNS queries to our sentinels
@@ -121,6 +125,7 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
 }
 
 // Must be `sync` so we can call it from `Drop`
+// TODO: Replace this with manual registry twiddling one day if we feel safe.
 fn deactivate() -> Result<()> {
     Command::new("powershell")
         .creation_flags(CREATE_NO_WINDOW)

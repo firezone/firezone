@@ -17,12 +17,18 @@ pub(crate) use platform::system_resolvers;
 // need to be public.
 pub use platform::system_resolvers_for_gui;
 
+/// Controls system-wide DNS.
+///
+/// Only one of these should exist on the entire system at a time.
 pub(crate) struct DnsController {
     /// True if we might be controlling DNS, false if we are definitely not.
     ///
-    /// In case the IPC service has crashed or something, we always assume that DNS control
-    /// is active when we start. Deactivating Firezone's DNS control is safe, but it takes
-    /// a lot of time on Windows, so we'd like to avoid redundant de-activations.
+    /// This is `true` when `DnsController` is first created.
+    ///
+    /// NRPT on Windows and etc-resolv-conf on Linux require us to manually de-activate them.
+    /// So when the IPC service starts, we assume that a previous run might have crashed,
+    /// or the computer might have lost power suddenly, and we set the flag to `true`
+    /// meaning "We are (or could be) in control of DNS."
     in_control: bool,
 
     inner: platform::DnsController,
