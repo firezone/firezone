@@ -50,6 +50,9 @@ impl Sockets {
         Ok(())
     }
 
+    /// Flushes all buffered data on the sockets.
+    ///
+    /// Returns `Ready` if the socket is able to accept more data.
     pub fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         if let Some(socket) = self.socket_v4.as_mut() {
             ready!(socket.poll_flush(cx))?;
@@ -163,6 +166,7 @@ struct Socket {
     state: UdpSocketState,
     port: u16,
     socket: UdpSocket,
+
     buffered_transmits: VecDeque<snownet::Transmit<'static>>,
 }
 
