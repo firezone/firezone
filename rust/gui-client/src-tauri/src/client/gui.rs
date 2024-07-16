@@ -676,7 +676,6 @@ impl Controller {
                     std::mem::replace(&mut self.status, Status::TunnelReady { resources })
                 {
                     tracing::info!(elapsed = ?start_instant.elapsed(), "Tunnel ready");
-
                     os::show_notification(
                         "Firezone connected",
                         "You are now signed in and able to access resources.",
