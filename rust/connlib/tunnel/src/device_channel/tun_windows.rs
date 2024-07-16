@@ -1,12 +1,7 @@
 use crate::MTU;
-use connlib_shared::{
-    windows::{CREATE_NO_WINDOW, TUNNEL_NAME},
-    Result,
-};
+use connlib_shared::{windows::TUNNEL_NAME, Result};
 use std::{
     io,
-    os::windows::process::CommandExt,
-    process::{Command, Stdio},
     str::FromStr,
     sync::Arc,
     task::{ready, Context, Poll},
@@ -81,17 +76,6 @@ impl Tun {
             .as_u128();
         let adapter = &Adapter::create(&wintun, ADAPTER_NAME, TUNNEL_NAME, Some(uuid))?;
         let iface_idx = adapter.get_adapter_index()?;
-
-        // Remove any routes that were previously associated with us
-        // TODO: Pick a more elegant way to do this
-        Command::new("powershell")
-            .creation_flags(CREATE_NO_WINDOW)
-            .arg("-Command")
-            .arg(format!(
-                "Remove-NetRoute -InterfaceIndex {iface_idx} -Confirm:$false"
-            ))
-            .stdout(Stdio::null())
-            .status()?;
 
         set_iface_config(adapter.get_luid(), MTU as u32)?;
 

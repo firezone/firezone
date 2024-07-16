@@ -1,5 +1,9 @@
 use anyhow::{Context, Result};
-use std::{io::Write, net::IpAddr, path::PathBuf};
+use std::{
+    io::{self, Write},
+    net::IpAddr,
+    path::PathBuf,
+};
 
 pub(crate) const ETC_RESOLV_CONF: &str = "/etc/resolv.conf";
 pub(crate) const ETC_RESOLV_CONF_BACKUP: &str = "/etc/resolv.conf.before-firezone";
@@ -36,7 +40,7 @@ pub(crate) async fn configure(dns_config: &[IpAddr]) -> Result<()> {
 
 /// Revert changes Firezone made to `/etc/resolv.conf`
 ///
-/// Must be sync because it's called in `Tun::drop`
+/// Must be sync because it's called in `Drop` impls
 #[cfg_attr(test, mutants::skip)] // Would modify system-wide `/etc/resolv.conf`
 pub(crate) fn revert() -> Result<()> {
     revert_at_paths(&ResolvPaths::default())
@@ -123,11 +127,18 @@ async fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Resul
 }
 
 fn revert_at_paths(paths: &ResolvPaths) -> Result<()> {
-    std::fs::copy(&paths.backup, &paths.resolv).context("Failed to restore backup")?;
+    match std::fs::copy(&paths.backup, &paths.resolv) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            tracing::debug!("Didn't revert `/etc/resolv.conf`, no backup file found");
+            return Ok(());
+        }
+        Err(e) => Err(e).context("Failed to restore `/etc/resolv.conf` backup")?,
+        Ok(_) => {}
+    }
     // Don't delete the backup file - If we lose power here, and the revert is rolled back,
     // we may want it. Filesystems are not atomic by default, and have weak ordering,
     // so we don't want to end up in a state where the backup is deleted and the revert was rolled back.
-    tracing::info!("Reverted resolv.conf file");
+    tracing::info!("Reverted `/etc/resolv.conf`l");
     Ok(())
 }
 
