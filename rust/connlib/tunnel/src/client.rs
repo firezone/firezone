@@ -893,7 +893,7 @@ impl ClientState {
     /// This is important because we don't want to lose state like resolved DNS names for resources that didn't change.
     ///
     /// TODO: Add a test that asserts the above.
-    ///       That is tricky because we need to assert on state deleted by [`ClientState::remove_resources`] and check that it did in fact not get deleted.
+    ///       That is tricky because we need to assert on state deleted by [`ClientState::remove_resource`] and check that it did in fact not get deleted.
     fn set_resources(&mut self, new_resources: Vec<ResourceDescription>) {
         for id in HashSet::from_iter(self.resource_ids.keys().copied())
             .difference(&HashSet::<ResourceId>::from_iter(
