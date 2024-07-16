@@ -157,6 +157,7 @@ pub fn ip_network(network: IpAddr, host_mask_bits: usize) -> impl Strategy<Value
         IpAddr::V4(_) => 32,
         IpAddr::V6(_) => 128,
     };
+
     assert!(host_mask_bits <= max_netmask);
 
     (0..host_mask_bits).prop_map(move |mask| {
