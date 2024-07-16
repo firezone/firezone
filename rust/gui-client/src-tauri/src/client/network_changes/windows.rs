@@ -422,7 +422,6 @@ mod async_dns {
         //
         // So don't ever do `self._tx = $ANYTHING` after `new`, it'll break the callback.
         _tx: Box<mpsc::Sender<()>>,
-        rx: mpsc::Receiver<()>,
         /// A handle representing our registered callback from `RegisterWaitForSingleObject`
         ///
         /// This doesn't get signalled, it's just used so we can unregister and stop the
@@ -437,12 +436,16 @@ mod async_dns {
     }
 
     impl Listener {
-        pub(crate) fn new(key: winreg::RegKey) -> Result<Self> {
-            let (tx, rx) = mpsc::channel(1);
+        /// Constructs a `Listener`
+        ///
+        /// Parameters:
+        /// - `key` - The registry key to listen to
+        /// - `tx` - A Sender for an MPSC channel of size 1 or more
+        pub(crate) fn new(key: winreg::RegKey, tx: mpsc::Sender<()>) -> Result<Self> {
             let tx = Box::new(tx);
             let tx_ptr: *const _ = tx.deref();
             let event = unsafe { CreateEventA(None, false, false, None) }?;
-            let mut wait_handle = HANDLE(0isize);
+            let mut wait_handle = HANDLE::default();
 
             // The docs say that `RegisterWaitForSingleObject` uses "a worker thread" from
             // "the thread pool".
@@ -519,7 +522,7 @@ mod async_dns {
         //
         // > Each time a process calls RegNotifyChangeKeyValue with the same set of parameters, it establishes another wait operation, creating a resource leak. Therefore, check that you are not calling RegNotifyChangeKeyValue with the same parameters until the previous wait operation has completed.
         fn register_callback(&mut self) -> Result<()> {
-            let key_handle = Registry::HKEY(self.key.raw_handle());
+            let key_handle = Registry::HKEY(self.key.raw_handle() as *mut c_void);
             let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
                 | Registry::REG_NOTIFY_CHANGE_LAST_SET
                 | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
@@ -573,7 +576,7 @@ mod async_dns {
             let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
                 | Registry::REG_NOTIFY_CHANGE_LAST_SET
                 | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
-            let key_handle = Registry::HKEY(key.raw_handle());
+            let key_handle = Registry::HKEY(key.raw_handle() as *mut c_void);
             unsafe {
                 Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, event, true)
             }
