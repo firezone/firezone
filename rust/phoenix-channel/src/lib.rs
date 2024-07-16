@@ -21,7 +21,6 @@ use socket_factory::SocketFactory;
 use std::task::{Context, Poll, Waker};
 use tokio::net::TcpStream;
 use tokio_tungstenite::client_async_tls;
-use tokio_tungstenite::tungstenite::handshake::client::Response;
 use tokio_tungstenite::tungstenite::http::StatusCode;
 use tokio_tungstenite::{
     tungstenite::{handshake::client::Request, Message},
@@ -62,14 +61,28 @@ enum State {
     Closed,
 }
 
-async fn connect_websocket(
-    request: Request,
-    socket: tokio::net::TcpStream,
-) -> Result<
-    (WebSocketStream<MaybeTlsStream<TcpStream>>, Response),
-    tokio_tungstenite::tungstenite::Error,
-> {
-    client_async_tls(request, socket).await
+impl State {
+    fn connect(
+        url: Secret<LoginUrl>,
+        user_agent: String,
+        socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
+    ) -> Self {
+        Self::Connecting(create_and_connect_websocket(url, user_agent, socket_factory).boxed())
+    }
+}
+
+async fn create_and_connect_websocket(
+    url: Secret<LoginUrl>,
+    user_agent: String,
+    socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
+) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
+    let socket = make_socket(url.expose_secret().inner(), &*socket_factory).await?;
+
+    let (stream, _) = client_async_tls(make_request(url, user_agent), socket)
+        .await
+        .map_err(InternalError::WebSocket)?;
+
+    Ok(stream)
 }
 
 async fn make_socket(
@@ -111,30 +124,6 @@ async fn make_socket(
     };
 
     Err(InternalError::SocketConnection(err))
-}
-
-async fn create_and_connect_websocket(
-    url: Secret<LoginUrl>,
-    user_agent: String,
-    socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
-) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
-    let socket = make_socket(url.expose_secret().inner(), &*socket_factory).await?;
-
-    let (stream, _) = connect_websocket(make_request(url, user_agent), socket)
-        .await
-        .map_err(InternalError::WebSocket)?;
-
-    Ok(stream)
-}
-
-impl State {
-    fn connect(
-        url: Secret<LoginUrl>,
-        user_agent: String,
-        socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
-    ) -> Self {
-        Self::Connecting(create_and_connect_websocket(url, user_agent, socket_factory).boxed())
-    }
 }
 
 #[derive(Debug, thiserror::Error)]
