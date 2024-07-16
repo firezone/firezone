@@ -115,7 +115,7 @@ defmodule Web.Resources.Edit do
 
     case Resources.update_resource(socket.assigns.resource, attrs, socket.assigns.subject) do
       {:ok, resource} ->
-        socket = put_flash(socket, :info, "Resource #{resource.name} updated successfully")
+        socket = put_flash(socket, :info, "Resource #{resource.name} updated successfully.")
 
         if site_id = socket.assigns.params["site_id"] do
           {:noreply,
@@ -123,8 +123,7 @@ defmodule Web.Resources.Edit do
              to: ~p"/#{socket.assigns.account}/sites/#{site_id}"
            )}
         else
-          {:noreply,
-           push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources")}
+          {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources")}
         end
 
       {:error, changeset} ->
