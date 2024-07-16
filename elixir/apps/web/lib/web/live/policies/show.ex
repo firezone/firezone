@@ -90,7 +90,7 @@ defmodule Web.Policies.Show do
           phx-click="enable"
           style="warning"
           icon="hero-lock-open"
-          data-confirm="Are you sure want to enable this policy?"
+          data-confirm="Are you sure you want to enable this policy?"
         >
           Enable
         </.button>
