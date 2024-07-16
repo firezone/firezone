@@ -8,7 +8,7 @@ use connlib_shared::messages::{
     gateway::ResolvedResourceDescriptionDns, gateway::ResourceDescription, Answer, ClientId, Key,
     Offer, RelayId, ResourceId,
 };
-use connlib_shared::{Callbacks, DomainName, Error, Result, StaticSecret};
+use connlib_shared::{DomainName, Error, Result, StaticSecret};
 use ip_packet::{IpPacket, MutableIpPacket};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{RelaySocket, ServerNode};
@@ -18,10 +18,7 @@ use std::time::{Duration, Instant};
 
 const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 
-impl<CB> GatewayTunnel<CB>
-where
-    CB: Callbacks + 'static,
-{
+impl GatewayTunnel {
     pub fn set_tun(&mut self, tun: Tun) {
         self.io.device_mut().set_tun(tun);
     }

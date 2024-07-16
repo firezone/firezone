@@ -689,10 +689,13 @@ impl TunnelTest {
             ClientEvent::ResourcesChanged { .. } => {
                 tracing::warn!("Unimplemented");
             }
-            ClientEvent::DnsServersChanged { dns_by_sentinel } => {
+            ClientEvent::TunInterfaceUpdated {
+                dns_by_sentinel, ..
+            } => {
                 self.client
                     .exec_mut(|c| c.dns_by_sentinel = dns_by_sentinel);
             }
+            ClientEvent::TunRoutesUpdated { .. } => {}
         }
     }
 
