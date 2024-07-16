@@ -8,16 +8,16 @@ pub use eventloop::Eventloop;
 pub use firezone_tunnel::Tun;
 pub use tracing_appender::non_blocking::WorkerGuard;
 
-use backoff::ExponentialBackoffBuilder;
-use connlib_shared::get_user_agent;
+use eventloop::Command;
 use firezone_tunnel::ClientTunnel;
+use messages::{IngressMessages, ReplyMessages};
 use phoenix_channel::PhoenixChannel;
 use socket_factory::SocketFactory;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::task::JoinHandle;
 
 mod eventloop;
 pub mod file_logger;
@@ -25,10 +25,6 @@ mod messages;
 mod serde_routelist;
 
 const PHOENIX_TOPIC: &str = "client";
-
-use eventloop::Command;
-use secrecy::Secret;
-use tokio::task::JoinHandle;
 
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
@@ -40,14 +36,10 @@ pub struct Session {
 
 /// Arguments for `connect`, since Clippy said 8 args is too many
 pub struct ConnectArgs<CB> {
-    pub url: LoginUrl,
     pub tcp_socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
     pub udp_socket_factory: Arc<dyn SocketFactory<tokio::net::UdpSocket>>,
     pub private_key: StaticSecret,
-    pub os_version_override: Option<String>,
-    pub app_version: String,
     pub callbacks: CB,
-    pub max_partition_time: Option<Duration>,
 }
 
 impl Session {
@@ -56,12 +48,13 @@ impl Session {
     /// This connects to the portal a specified using [`LoginUrl`] and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
         args: ConnectArgs<CB>,
+        portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
         handle: tokio::runtime::Handle,
     ) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
         let callbacks = args.callbacks.clone();
-        let connect_handle = handle.spawn(connect(args, rx));
+        let connect_handle = handle.spawn(connect(args, portal, rx));
         handle.spawn(connect_supervisor(connect_handle, callbacks));
 
         Self { channel: tx }
@@ -117,31 +110,20 @@ impl Session {
 /// Connects to the portal and starts a tunnel.
 ///
 /// When this function exits, the tunnel failed unrecoverably and you need to call it again.
-async fn connect<CB>(args: ConnectArgs<CB>, rx: UnboundedReceiver<Command>) -> Result<(), Error>
+async fn connect<CB>(
+    args: ConnectArgs<CB>,
+    portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+    rx: UnboundedReceiver<Command>,
+) -> Result<(), Error>
 where
     CB: Callbacks + 'static,
 {
     let ConnectArgs {
-        url,
         private_key,
-        os_version_override,
-        app_version,
         callbacks,
         udp_socket_factory,
         tcp_socket_factory,
-        max_partition_time,
     } = args;
-
-    let portal = PhoenixChannel::connect(
-        Secret::new(url),
-        get_user_agent(os_version_override, &app_version),
-        PHOENIX_TOPIC,
-        (),
-        ExponentialBackoffBuilder::default()
-            .with_max_elapsed_time(max_partition_time)
-            .build(),
-        tcp_socket_factory.clone(),
-    )?;
 
     let tunnel = ClientTunnel::new(
         private_key,

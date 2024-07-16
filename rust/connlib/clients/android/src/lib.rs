@@ -3,10 +3,12 @@
 // However, this consideration has made it idiomatic for Java FFI in the Rust
 // ecosystem, so it's used here for consistency.
 
+use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
     callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
     LoginUrlError, Session, Tun, V4RouteList, V6RouteList,
 };
+use connlib_shared::get_user_agent;
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
@@ -14,7 +16,8 @@ use jni::{
     sys::jlong,
     JNIEnv, JavaVM,
 };
-use secrecy::SecretString;
+use phoenix_channel::PhoenixChannel;
+use secrecy::{Secret, SecretString};
 use socket_factory::SocketFactory;
 use std::{io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};
 use std::{
@@ -359,17 +362,25 @@ fn connect(
         .enable_all()
         .build()?;
 
+    let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(callbacks.clone()));
+
     let args = ConnectArgs {
-        url,
-        tcp_socket_factory: Arc::new(protected_tcp_socket_factory(callbacks.clone())),
+        tcp_socket_factory: tcp_socket_factory.clone(),
         udp_socket_factory: Arc::new(protected_udp_socket_factory(callbacks.clone())),
         private_key,
-        os_version_override: Some(os_version),
-        app_version: env!("CARGO_PKG_VERSION").to_string(),
         callbacks,
-        max_partition_time: Some(MAX_PARTITION_TIME),
     };
-    let session = Session::connect(args, runtime.handle().clone());
+    let portal = PhoenixChannel::connect(
+        Secret::new(url),
+        get_user_agent(Some(os_version), env!("CARGO_PKG_VERSION")),
+        "client",
+        (),
+        ExponentialBackoffBuilder::default()
+            .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
+            .build(),
+        tcp_socket_factory,
+    )?;
+    let session = Session::connect(args, portal, runtime.handle().clone());
 
     Ok(SessionWrapper {
         inner: session,
