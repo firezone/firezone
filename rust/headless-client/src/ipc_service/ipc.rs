@@ -169,9 +169,9 @@ impl platform::Server {
 
 #[cfg(test)]
 mod tests {
-    use super::{platform::Server, ServiceId};
-    use crate::{IpcClientMsg, IpcServerMsg};
-    use anyhow::{bail, ensure, Context as _, Result};
+    use super::*;
+    use crate::CommonMsg;
+    use anyhow::{bail, ensure, Result};
     use futures::{SinkExt, StreamExt};
     use std::time::Duration;
     use tokio::{task::JoinHandle, time::timeout};
@@ -207,7 +207,7 @@ mod tests {
                 while let Some(req) = rx.next().await {
                     let req = req.expect("Error while reading from IPC client");
                     ensure!(req == IpcClientMsg::Reconnect);
-                    tx.send(&IpcServerMsg::OnUpdateResources(vec![]))
+                    tx.send(&IpcServerMsg::Common(CommonMsg::OnUpdateResources(vec![])))
                         .await
                         .expect("Error while writing to IPC client");
                 }
@@ -232,7 +232,10 @@ mod tests {
                         .await
                         .expect("Should have gotten a reply from the IPC server")
                         .expect("Error while reading from IPC server");
-                    ensure!(matches!(resp, IpcServerMsg::OnUpdateResources(_)));
+                    ensure!(matches!(
+                        resp,
+                        IpcServerMsg::Common(CommonMsg::OnUpdateResources(_))
+                    ));
                 }
             }
             Ok(())

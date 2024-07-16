@@ -78,9 +78,9 @@ struct CliCommon {
     max_partition_time: Option<humantime::Duration>,
 }
 
-/// Messages we get from connlib, including ones that aren't sent to IPC clients
-enum InternalServerMsg {
-    Ipc(IpcServerMsg),
+/// Messages that connlib can send
+enum ConnlibMsg {
+    Common(CommonMsg),
     OnSetInterfaceConfig {
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
@@ -92,14 +92,11 @@ enum InternalServerMsg {
     },
 }
 
-/// Messages that we can send to IPC clients
+/// Messages that the IPC service can send to IPC clients
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum IpcServerMsg {
-    OnDisconnect {
-        error_msg: String,
-        is_authentication_error: bool,
-    },
-    OnUpdateResources(Vec<callbacks::ResourceDescription>),
+    Common(CommonMsg),
+    ClearLogsResult(Result<(), String>),
     /// The IPC service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
@@ -108,9 +105,19 @@ pub enum IpcServerMsg {
     TerminatingGracefully,
 }
 
+/// Messages that connlib can send, which are also forwarded verbatim to IPC clients
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub enum CommonMsg {
+    OnDisconnect {
+        error_msg: String,
+        is_authentication_error: bool,
+    },
+    OnUpdateResources(Vec<callbacks::ResourceDescription>),
+}
+
 #[derive(Clone)]
 struct CallbackHandler {
-    cb_tx: mpsc::Sender<InternalServerMsg>,
+    cb_tx: mpsc::Sender<ConnlibMsg>,
 }
 
 impl Callbacks for CallbackHandler {
@@ -122,7 +129,7 @@ impl Callbacks for CallbackHandler {
             false
         };
         self.cb_tx
-            .try_send(InternalServerMsg::Ipc(IpcServerMsg::OnDisconnect {
+            .try_send(ConnlibMsg::Common(CommonMsg::OnDisconnect {
                 error_msg: error.to_string(),
                 is_authentication_error,
             }))
@@ -132,22 +139,20 @@ impl Callbacks for CallbackHandler {
     fn on_set_interface_config(&self, ipv4: Ipv4Addr, ipv6: Ipv6Addr, dns: Vec<IpAddr>) {
         tracing::info!("TunnelReady (on_set_interface_config)");
         self.cb_tx
-            .try_send(InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
+            .try_send(ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
             .expect("Should be able to send TunnelReady");
     }
 
     fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
         tracing::debug!(len = resources.len(), "New resource list");
         self.cb_tx
-            .try_send(InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(
-                resources,
-            )))
+            .try_send(ConnlibMsg::Common(CommonMsg::OnUpdateResources(resources)))
             .expect("Should be able to send OnUpdateResources");
     }
 
     fn on_update_routes(&self, ipv4: Vec<Ipv4Network>, ipv6: Vec<Ipv6Network>) {
         self.cb_tx
-            .try_send(InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 })
+            .try_send(ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 })
             .expect("Should be able to send messages");
     }
 }

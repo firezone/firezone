@@ -2,7 +2,7 @@
 
 use crate::{
     default_token_path, device_id, dns_control, platform, signals, CallbackHandler, CliCommon,
-    DnsController, InternalServerMsg, IpcServerMsg, TOKEN_ENV_KEY,
+    CommonMsg, ConnlibMsg, DnsController, TOKEN_ENV_KEY,
 };
 use anyhow::{anyhow, Context as _, Result};
 use clap::Parser;
@@ -196,23 +196,19 @@ pub fn run_only_headless_client() -> Result<()> {
             };
 
             match cb {
-                // TODO: Headless Client shouldn't be using messages labelled `Ipc`
-                InternalServerMsg::Ipc(IpcServerMsg::OnDisconnect {
+                ConnlibMsg::Common(CommonMsg::OnDisconnect {
                     error_msg,
                     is_authentication_error: _,
                 }) => return Err(anyhow!(error_msg).context("Firezone disconnected")),
-                InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {
+                ConnlibMsg::Common(CommonMsg::OnUpdateResources(_)) => {
                     // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                     dns_controller.flush()?;
                 }
-                InternalServerMsg::Ipc(IpcServerMsg::TerminatingGracefully) => unimplemented!(
-                    "The standalone Client does not send `TerminatingGracefully` messages"
-                ),
-                InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
+                ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                     tun_device.set_ips(ipv4, ipv6).await?;
                     dns_controller.set_dns(&dns).await?;
                 }
-                InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
+                ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                     tun_device.set_routes(ipv4, ipv6).await?
                 }
             }

@@ -10,7 +10,7 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use connlib_client_shared::callbacks::ResourceDescription;
-use firezone_headless_client::IpcServerMsg;
+use firezone_headless_client::{CommonMsg, IpcServerMsg};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     path::PathBuf,
@@ -472,6 +472,7 @@ struct Controller {
     app: tauri::AppHandle,
     // Sign-in state with the portal / deep links
     auth: client::auth::Auth,
+    clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
     log_filter_reloader: logging::Reloader,
@@ -639,10 +640,10 @@ impl Controller {
 
     async fn handle_ipc(&mut self, msg: IpcServerMsg) -> Result<(), Error> {
         match msg {
-            IpcServerMsg::OnDisconnect {
+            IpcServerMsg::Common(CommonMsg::OnDisconnect {
                 error_msg,
                 is_authentication_error,
-            } => {
+            }) => {
                 self.sign_out().await?;
                 if is_authentication_error {
                     tracing::info!(?error_msg, "Auth error");
@@ -661,7 +662,7 @@ impl Controller {
                 }
                 Ok(())
             }
-            IpcServerMsg::OnUpdateResources(resources) => {
+            IpcServerMsg::Common(CommonMsg::OnUpdateResources(resources)) => {
                 if self.auth.session().is_none() {
                     // This could happen if the user cancels the sign-in
                     // before it completes. This is because the state machine
@@ -682,6 +683,17 @@ impl Controller {
                 if let Err(error) = self.refresh_system_tray_menu() {
                     tracing::error!(?error, "Failed to refresh Resource list");
                 }
+                Ok(())
+            }
+            IpcServerMsg::ClearLogsResult(result) => {
+                let Some(sender) = self.clear_logs_callback.take() else {
+                    Err(anyhow!(
+                        "Got `ClearLogsResult` but we don't have an in-flight `ClearLogs` request"
+                    ))?
+                };
+                sender
+                    .send(result)
+                    .map_err(|_| anyhow!("Failed to send `ClearLogsResult` back to JavaScript"))?;
                 Ok(())
             }
             IpcServerMsg::TerminatingGracefully => {
@@ -768,6 +780,7 @@ async fn run_controller(
         advanced_settings,
         app: app.clone(),
         auth: client::auth::Auth::new(),
+        clear_logs_callback: None,
         ctlr_tx,
         ipc_client,
         log_filter_reloader,
