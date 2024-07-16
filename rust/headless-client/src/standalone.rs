@@ -133,7 +133,6 @@ pub fn run_only_headless_client() -> Result<()> {
             cli.token_path.display()
         )
     })?;
-    tracing::info!("Running in headless / standalone mode");
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.common.max_partition_time.map(|d| d.into());
 
