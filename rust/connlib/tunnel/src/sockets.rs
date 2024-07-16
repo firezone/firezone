@@ -1,61 +1,28 @@
 use core::slice;
 use quinn_udp::{RecvMeta, UdpSockRef, UdpSocketState};
-use socket2::{SockAddr, Type};
+use socket_factory::SocketFactory;
 use std::{
     io::{self, IoSliceMut},
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     task::{ready, Context, Poll},
 };
 use tokio::{io::Interest, net::UdpSocket};
 
 use crate::Result;
 
-pub struct Sockets {
+#[derive(Default)]
+pub(crate) struct Sockets {
     socket_v4: Option<Socket>,
     socket_v6: Option<Socket>,
-
-    #[cfg(unix)]
-    protect: Box<dyn Fn(std::os::fd::RawFd) -> io::Result<()> + Send + 'static>,
-}
-
-impl Default for Sockets {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl Sockets {
-    #[cfg(unix)]
-    pub fn with_protect(
-        protect: impl Fn(std::os::fd::RawFd) -> io::Result<()> + Send + 'static,
-    ) -> Self {
-        Self {
-            socket_v4: None,
-            socket_v6: None,
-            #[cfg(unix)]
-            protect: Box::new(protect),
-        }
-    }
-
-    pub fn new() -> Self {
-        Self {
-            socket_v4: None,
-            socket_v6: None,
-            #[cfg(unix)]
-            protect: Box::new(|_| Ok(())),
-        }
-    }
-
-    pub fn can_handle(&self, addr: &SocketAddr) -> bool {
-        match addr {
-            SocketAddr::V4(_) => self.socket_v4.is_some(),
-            SocketAddr::V6(_) => self.socket_v6.is_some(),
-        }
-    }
-
-    pub fn rebind(&mut self) -> io::Result<()> {
-        let socket_v4 = Socket::ip4();
-        let socket_v6 = Socket::ip6();
+    pub fn rebind(
+        &mut self,
+        socket_factory: &dyn SocketFactory<tokio::net::UdpSocket>,
+    ) -> io::Result<()> {
+        let socket_v4 = Socket::ip4(socket_factory);
+        let socket_v6 = Socket::ip6(socket_factory);
 
         match (socket_v4.as_ref(), socket_v6.as_ref()) {
             (Err(e), Ok(_)) => {
@@ -74,19 +41,6 @@ impl Sockets {
                 ));
             }
             _ => (),
-        }
-
-        #[cfg(unix)]
-        {
-            use std::os::fd::AsRawFd;
-
-            if let Ok(fd) = socket_v4.as_ref().map(|s| s.socket.as_raw_fd()) {
-                (self.protect)(fd)?;
-            }
-
-            if let Ok(fd) = socket_v6.as_ref().map(|s| s.socket.as_raw_fd()) {
-                (self.protect)(fd)?;
-            }
         }
 
         self.socket_v4 = socket_v4.ok();
@@ -216,28 +170,33 @@ struct Socket {
 }
 
 impl Socket {
-    fn ip4() -> Result<Socket> {
-        let socket = make_socket(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))?;
+    fn ip(
+        socket_factory: &dyn SocketFactory<tokio::net::UdpSocket>,
+        addr: &SocketAddr,
+    ) -> Result<Socket> {
+        let socket = socket_factory(addr)?;
         let port = socket.local_addr()?.port();
 
         Ok(Socket {
             state: UdpSocketState::new(UdpSockRef::from(&socket))?,
             port,
-            socket: tokio::net::UdpSocket::from_std(socket)?,
+            socket,
             buffered_transmits: Vec::new(),
         })
     }
 
-    fn ip6() -> Result<Socket> {
-        let socket = make_socket(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))?;
-        let port = socket.local_addr()?.port();
+    fn ip4(socket_factory: &dyn SocketFactory<tokio::net::UdpSocket>) -> Result<Socket> {
+        Self::ip(
+            socket_factory,
+            &SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)),
+        )
+    }
 
-        Ok(Socket {
-            state: UdpSocketState::new(UdpSockRef::from(&socket))?,
-            port,
-            socket: tokio::net::UdpSocket::from_std(socket)?,
-            buffered_transmits: Vec::new(),
-        })
+    fn ip6(socket_factory: &dyn SocketFactory<tokio::net::UdpSocket>) -> Result<Socket> {
+        Self::ip(
+            socket_factory,
+            &SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)),
+        )
     }
 
     #[allow(clippy::type_complexity)]
@@ -331,26 +290,4 @@ impl Socket {
             "We are not flushing the packets for some reason"
         );
     }
-}
-
-fn make_socket(addr: impl Into<SocketAddr>) -> Result<std::net::UdpSocket> {
-    let addr: SockAddr = addr.into().into();
-    let socket = socket2::Socket::new(addr.domain(), Type::DGRAM, None)?;
-
-    #[cfg(target_os = "linux")]
-    {
-        const FIREZONE_MARK: u32 = 0xfd002021; // Keep this synced with `TunDeviceManager` until #5797.
-
-        socket.set_mark(FIREZONE_MARK)?;
-    }
-
-    // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
-    if addr.is_ipv6() {
-        socket.set_only_v6(true)?;
-    }
-
-    socket.set_nonblocking(true)?;
-    socket.bind(&addr)?;
-
-    Ok(socket.into())
 }

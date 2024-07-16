@@ -30,7 +30,8 @@ rangemap = "1.5.1"
 secrecy = { workspace = true }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 snownet = { workspace = true }
-socket2 = { version = "0.5" }
+socket-factory = { workspace = true }
+socket2 = { workspace = true }
 thiserror = { version = "1.0", default-features = false }
 tokio = { workspace = true }
 tracing = { workspace = true }

@@ -6,7 +6,8 @@ use connlib_shared::{
     get_user_agent, keypair, messages::Interface, Callbacks, LoginUrl, StaticSecret,
 };
 use firezone_bin_shared::{setup_global_subscriber, CommonArgs, TunDeviceManager};
-use firezone_tunnel::{GatewayTunnel, Sockets, Tun};
+use firezone_tunnel::{GatewayTunnel, Tun};
+
 use futures::channel::mpsc;
 use futures::{future, StreamExt, TryFutureExt};
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -15,6 +16,7 @@ use secrecy::{Secret, SecretString};
 use std::convert::Infallible;
 use std::path::Path;
 use std::pin::pin;
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::signal::ctrl_c;
 use tracing_subscriber::layer;
@@ -100,7 +102,7 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
 }
 
 async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
-    let mut tunnel = GatewayTunnel::new(private_key, Sockets::new(), CallbackHandler)?;
+    let mut tunnel = GatewayTunnel::new(private_key, CallbackHandler)?;
     let portal = PhoenixChannel::connect(
         Secret::new(login),
         get_user_agent(None, env!("CARGO_PKG_VERSION")),
@@ -109,6 +111,7 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
         ExponentialBackoffBuilder::default()
             .with_max_elapsed_time(None)
             .build(),
+        Arc::new(socket_factory::tcp),
     );
 
     let (sender, receiver) = mpsc::channel::<Interface>(10);

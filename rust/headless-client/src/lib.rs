@@ -20,6 +20,8 @@ use tracing::subscriber::set_global_default;
 use tracing_subscriber::{fmt, layer::SubscriberExt as _, EnvFilter, Layer as _, Registry};
 
 use platform::default_token_path;
+use platform::tcp_socket_factory;
+use platform::udp_socket_factory;
 
 /// Generate a persistent device ID, stores it to disk, and reads it back.
 pub(crate) mod device_id;

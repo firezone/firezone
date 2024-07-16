@@ -6,13 +6,14 @@ use crate::{
 };
 use anyhow::{anyhow, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets};
+use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
 use firezone_bin_shared::{setup_global_subscriber, TunDeviceManager};
 use futures::{FutureExt as _, StreamExt as _};
 use secrecy::SecretString;
 use std::{
     path::{Path, PathBuf},
     pin::pin,
+    sync::Arc,
 };
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -156,7 +157,8 @@ pub fn run_only_headless_client() -> Result<()> {
     platform::setup_before_connlib()?;
     let args = ConnectArgs {
         url,
-        sockets: Sockets::new(),
+        udp_socket_factory: Arc::new(crate::udp_socket_factory),
+        tcp_socket_factory: Arc::new(crate::tcp_socket_factory),
         private_key,
         os_version_override: None,
         app_version: env!("CARGO_PKG_VERSION").to_string(),

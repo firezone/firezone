@@ -5,15 +5,17 @@ pub use connlib_shared::{
     callbacks, keypair, Callbacks, Error, LoginUrl, LoginUrlError, StaticSecret,
 };
 pub use eventloop::Eventloop;
-pub use firezone_tunnel::{Sockets, Tun};
+pub use firezone_tunnel::Tun;
 pub use tracing_appender::non_blocking::WorkerGuard;
 
 use backoff::ExponentialBackoffBuilder;
 use connlib_shared::get_user_agent;
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::PhoenixChannel;
+use socket_factory::SocketFactory;
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
 
@@ -39,7 +41,8 @@ pub struct Session {
 /// Arguments for `connect`, since Clippy said 8 args is too many
 pub struct ConnectArgs<CB> {
     pub url: LoginUrl,
-    pub sockets: Sockets,
+    pub tcp_socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
+    pub udp_socket_factory: Arc<dyn SocketFactory<tokio::net::UdpSocket>>,
     pub private_key: StaticSecret,
     pub os_version_override: Option<String>,
     pub app_version: String,
@@ -120,11 +123,12 @@ where
 {
     let ConnectArgs {
         url,
-        sockets,
         private_key,
         os_version_override,
         app_version,
         callbacks,
+        udp_socket_factory,
+        tcp_socket_factory,
         max_partition_time,
     } = args;
 
@@ -139,7 +143,8 @@ where
 
     let tunnel = ClientTunnel::new(
         private_key,
-        sockets,
+        tcp_socket_factory.clone(),
+        udp_socket_factory,
         callbacks,
         HashMap::from([(url.host().to_string(), addrs)]),
     )?;
@@ -152,6 +157,7 @@ where
         ExponentialBackoffBuilder::default()
             .with_max_elapsed_time(max_partition_time)
             .build(),
+        tcp_socket_factory,
     );
 
     let mut eventloop = Eventloop::new(tunnel, portal, rx);
@@ -232,14 +238,18 @@ mod tests {
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     async fn device_common() {
         use firezone_tunnel::Tun;
-        use std::collections::HashMap;
+        use std::{collections::HashMap, sync::Arc};
 
         let (private_key, _public_key) = connlib_shared::keypair();
-        let sockets = crate::Sockets::new();
         let callbacks = Callbacks::default();
-        let mut tunnel =
-            firezone_tunnel::ClientTunnel::new(private_key, sockets, callbacks, HashMap::new())
-                .unwrap();
+        let mut tunnel = firezone_tunnel::ClientTunnel::new(
+            private_key,
+            Arc::new(socket_factory::tcp),
+            Arc::new(socket_factory::udp),
+            callbacks,
+            HashMap::new(),
+        )
+        .unwrap();
         let upstream_dns = vec![([192, 168, 1, 1], 53).into()];
         let interface = connlib_shared::messages::Interface {
             ipv4: [100, 71, 96, 96].into(),

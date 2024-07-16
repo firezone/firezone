@@ -13,7 +13,8 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr},
 };
 
-const FIREZONE_MARK: u32 = 0xfd002021; // Keep this synced with `Sockets` until #5797.
+use crate::FIREZONE_MARK;
+
 const FILE_ALREADY_EXISTS: i32 = -17;
 const FIREZONE_TABLE: u32 = 0x2021_fd00;
 

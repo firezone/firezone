@@ -7,6 +7,9 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
+pub(crate) use socket_factory::tcp as tcp_socket_factory;
+pub(crate) use socket_factory::udp as udp_socket_factory;
+
 #[path = "windows/wintun_install.rs"]
 mod wintun_install;
 
