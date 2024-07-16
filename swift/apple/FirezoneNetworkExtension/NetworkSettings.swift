@@ -38,7 +38,9 @@ class NetworkSettings {
 
     // Set tunnel addresses and routes
     let ipv4Settings = NEIPv4Settings(addresses: [tunnelAddressIPv4!], subnetMasks: ["255.255.255.255"])
-    let ipv6Settings = NEIPv6Settings(addresses: [tunnelAddressIPv6!], networkPrefixLengths: [128])
+    // This is a hack since macos routing table ignores, for full route, any prefix smaller than 120.
+    // Without this, adding a full route, remove the previous default route and leaves the system with none, breaking completely IPv6 on the user's system.
+    let ipv6Settings = NEIPv6Settings(addresses: [tunnelAddressIPv6!], networkPrefixLengths: [120])
     let dnsSettings = NEDNSSettings(servers: dnsAddresses)
     ipv4Settings.includedRoutes = routes4
     ipv6Settings.includedRoutes = routes6
