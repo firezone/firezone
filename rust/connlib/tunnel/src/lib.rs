@@ -14,6 +14,7 @@ use io::Io;
 use std::{
     collections::{HashMap, HashSet},
     net::{IpAddr, SocketAddr},
+    sync::Arc,
     task::{Context, Poll},
     time::Instant,
 };
@@ -21,7 +22,6 @@ use std::{
 use bimap::BiMap;
 pub use client::{ClientState, Request};
 pub use gateway::GatewayState;
-pub use sockets::Sockets;
 use utils::turn;
 
 mod client;
@@ -50,7 +50,7 @@ pub type ClientTunnel<CB> = Tunnel<CB, ClientState>;
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
 /// Most of connlib's functionality is implemented as a pure state machine in [`ClientState`] and [`GatewayState`].
-/// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::device_channel::Device), [`Sockets`] or time and pass it to the respective state.
+/// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::device_channel::Device), [`Sockets`](crate::sockets::Sockets) or time and pass it to the respective state.
 pub struct Tunnel<CB: Callbacks, TRoleState> {
     pub callbacks: CB,
 
@@ -77,12 +77,13 @@ where
 {
     pub fn new(
         private_key: StaticSecret,
-        sockets: Sockets,
+        tcp_socket_factory: Arc<dyn socket_factory::SocketFactory<tokio::net::TcpSocket>>,
+        udp_socket_factory: Arc<dyn socket_factory::SocketFactory<tokio::net::UdpSocket>>,
         callbacks: CB,
         known_hosts: HashMap<String, Vec<IpAddr>>,
     ) -> std::io::Result<Self> {
         Ok(Self {
-            io: Io::new(sockets)?,
+            io: Io::new(tcp_socket_factory, udp_socket_factory)?,
             callbacks,
             role_state: ClientState::new(private_key, known_hosts),
             write_buf: Box::new([0u8; MTU + 16 + 20]),
@@ -94,7 +95,7 @@ where
 
     pub fn reset(&mut self) -> std::io::Result<()> {
         self.role_state.reset();
-        self.io.sockets_mut().rebind()?;
+        self.io.rebind_sockets()?;
 
         Ok(())
     }
@@ -178,13 +179,9 @@ impl<CB> GatewayTunnel<CB>
 where
     CB: Callbacks + 'static,
 {
-    pub fn new(
-        private_key: StaticSecret,
-        sockets: Sockets,
-        callbacks: CB,
-    ) -> std::io::Result<Self> {
+    pub fn new(private_key: StaticSecret, callbacks: CB) -> std::io::Result<Self> {
         Ok(Self {
-            io: Io::new(sockets)?,
+            io: Io::new(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp))?,
             callbacks,
             role_state: GatewayState::new(private_key),
             write_buf: Box::new([0u8; MTU + 20 + 16]),

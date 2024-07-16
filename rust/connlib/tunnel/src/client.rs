@@ -299,17 +299,17 @@ impl ClientState {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip4(&self) -> Option<Ipv4Addr> {
         Some(self.interface_config.as_ref()?.ipv4)
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip6(&self) -> Option<Ipv6Addr> {
         Some(self.interface_config.as_ref()?.ipv6)
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> Option<IpAddr> {
         Some(match dst {
             IpAddr::V4(_) => self.tunnel_ip4()?.into(),
@@ -756,10 +756,7 @@ impl ClientState {
             .longest_match(destination)
             .map(|(_, res)| res.id);
 
-        let maybe_dns_resource_id = self
-            .stub_resolver
-            .get_description(&destination)
-            .map(|r| r.id);
+        let maybe_dns_resource_id = self.stub_resolver.resolve_resource_by_ip(&destination);
 
         maybe_cidr_resource_id.or(maybe_dns_resource_id)
     }
@@ -927,7 +924,7 @@ impl ClientState {
 
             match &resource_description {
                 ResourceDescription::Dns(dns) => {
-                    self.stub_resolver.add_resource(dns);
+                    self.stub_resolver.add_resource(dns.id, dns.address.clone());
                 }
                 ResourceDescription::Cidr(cidr) => {
                     let existing = self.cidr_resources.insert(cidr.address, cidr.clone());
