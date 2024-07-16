@@ -43,8 +43,20 @@ impl Drop for DnsController {
 
 impl DnsController {
     /// Deactivate any control Firezone has over the computer's DNS
+    ///
+    /// Must be `sync` so we can call it from `Drop`
+    /// TODO: Replace this with manual registry twiddling one day if we feel safe.
     pub(crate) fn deactivate(&mut self) -> Result<()> {
-        deactivate()
+        Command::new("powershell")
+            .creation_flags(CREATE_NO_WINDOW)
+            .args(["-Command", "Get-DnsClientNrptRule", "|"])
+            .args(["where", "Comment", "-eq", FZ_MAGIC, "|"])
+            .args(["foreach", "{"])
+            .args(["Remove-DnsClientNrptRule", "-Name", "$_.Name", "-Force"])
+            .args(["}"])
+            .status()?;
+        tracing::info!("Deactivated DNS control");
+        Ok(())
     }
 
     /// Set the computer's system-wide DNS servers
@@ -132,20 +144,5 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
     key.set_value("Name", &vec!["."])?;
     key.set_value("Version", &0x2u32)?;
 
-    Ok(())
-}
-
-// Must be `sync` so we can call it from `Drop`
-// TODO: Replace this with manual registry twiddling one day if we feel safe.
-fn deactivate() -> Result<()> {
-    Command::new("powershell")
-        .creation_flags(CREATE_NO_WINDOW)
-        .args(["-Command", "Get-DnsClientNrptRule", "|"])
-        .args(["where", "Comment", "-eq", FZ_MAGIC, "|"])
-        .args(["foreach", "{"])
-        .args(["Remove-DnsClientNrptRule", "-Name", "$_.Name", "-Force"])
-        .args(["}"])
-        .status()?;
-    tracing::info!("Deactivated DNS control");
     Ok(())
 }
