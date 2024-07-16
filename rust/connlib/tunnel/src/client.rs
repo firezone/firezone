@@ -13,7 +13,7 @@ use connlib_shared::messages::{
     GatewayId, Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId,
     RequestConnection, ResourceId, ReuseConnection,
 };
-use connlib_shared::{callbacks, Callbacks, DomainName, PublicKey, StaticSecret};
+use connlib_shared::{callbacks, DomainName, PublicKey, StaticSecret};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
@@ -45,10 +45,7 @@ const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 // is 30 seconds. See resolvconf(5) timeout.
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
-impl<CB> ClientTunnel<CB>
-where
-    CB: Callbacks + 'static,
-{
+impl ClientTunnel {
     pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
         self.role_state.set_resources(resources);
 

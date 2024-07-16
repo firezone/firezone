@@ -2,9 +2,7 @@ use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_shared::{
-    get_user_agent, keypair, messages::Interface, Callbacks, LoginUrl, StaticSecret,
-};
+use connlib_shared::{get_user_agent, keypair, messages::Interface, LoginUrl, StaticSecret};
 use firezone_bin_shared::{setup_global_subscriber, CommonArgs, TunDeviceManager};
 use firezone_tunnel::{GatewayTunnel, Tun};
 
@@ -102,7 +100,7 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
 }
 
 async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
-    let mut tunnel = GatewayTunnel::new(private_key, CallbackHandler)?;
+    let mut tunnel = GatewayTunnel::new(private_key)?;
     let portal = PhoenixChannel::connect(
         Secret::new(login),
         get_user_agent(None, env!("CARGO_PKG_VERSION")),
@@ -153,11 +151,6 @@ async fn update_device_task(
         };
     }
 }
-
-#[derive(Clone)]
-struct CallbackHandler;
-
-impl Callbacks for CallbackHandler {}
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]

@@ -8,7 +8,7 @@ use chrono::Utc;
 use connlib_shared::{
     callbacks,
     messages::{ClientId, GatewayId, Relay, RelayId, ResourceId, ReuseConnection},
-    Callbacks, DomainName, Result,
+    DomainName, Result,
 };
 use io::Io;
 use std::{
@@ -45,16 +45,14 @@ const MTU: usize = 1280;
 
 const REALM: &str = "firezone";
 
-pub type GatewayTunnel<CB> = Tunnel<CB, GatewayState>;
-pub type ClientTunnel<CB> = Tunnel<CB, ClientState>;
+pub type GatewayTunnel = Tunnel<GatewayState>;
+pub type ClientTunnel = Tunnel<ClientState>;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
 /// Most of connlib's functionality is implemented as a pure state machine in [`ClientState`] and [`GatewayState`].
 /// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::device_channel::Device), [`Sockets`](crate::sockets::Sockets) or time and pass it to the respective state.
-pub struct Tunnel<CB: Callbacks, TRoleState> {
-    pub callbacks: CB,
-
+pub struct Tunnel<TRoleState> {
     /// (pure) state that differs per role, either [`ClientState`] or [`GatewayState`].
     role_state: TRoleState,
 
@@ -72,20 +70,15 @@ pub struct Tunnel<CB: Callbacks, TRoleState> {
     device_read_buf: Box<[u8; MTU + 20]>,
 }
 
-impl<CB> ClientTunnel<CB>
-where
-    CB: Callbacks + 'static,
-{
+impl ClientTunnel {
     pub fn new(
         private_key: StaticSecret,
         tcp_socket_factory: Arc<dyn socket_factory::SocketFactory<tokio::net::TcpSocket>>,
         udp_socket_factory: Arc<dyn socket_factory::SocketFactory<tokio::net::UdpSocket>>,
-        callbacks: CB,
         known_hosts: HashMap<String, Vec<IpAddr>>,
     ) -> std::io::Result<Self> {
         Ok(Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory)?,
-            callbacks,
             role_state: ClientState::new(private_key, known_hosts),
             write_buf: Box::new([0u8; MTU + 16 + 20]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
@@ -176,14 +169,10 @@ where
     }
 }
 
-impl<CB> GatewayTunnel<CB>
-where
-    CB: Callbacks + 'static,
-{
-    pub fn new(private_key: StaticSecret, callbacks: CB) -> std::io::Result<Self> {
+impl GatewayTunnel {
+    pub fn new(private_key: StaticSecret) -> std::io::Result<Self> {
         Ok(Self {
             io: Io::new(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp))?,
-            callbacks,
             role_state: GatewayState::new(private_key),
             write_buf: Box::new([0u8; MTU + 20 + 16]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),

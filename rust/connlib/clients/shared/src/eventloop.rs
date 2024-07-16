@@ -19,7 +19,8 @@ use std::{
 };
 
 pub struct Eventloop<C: Callbacks> {
-    tunnel: ClientTunnel<C>,
+    tunnel: ClientTunnel,
+    callbacks: C,
 
     portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
     rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
@@ -37,7 +38,8 @@ pub enum Command {
 
 impl<C: Callbacks> Eventloop<C> {
     pub(crate) fn new(
-        tunnel: ClientTunnel<C>,
+        tunnel: ClientTunnel,
+        callbacks: C,
         portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
         rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
     ) -> Self {
@@ -46,6 +48,7 @@ impl<C: Callbacks> Eventloop<C> {
             portal,
             connection_intents: SentConnectionIntents::default(),
             rx,
+            callbacks,
         }
     }
 }
@@ -153,15 +156,7 @@ where
                 }
             }
             firezone_tunnel::ClientEvent::ResourcesChanged { resources } => {
-                // Note: This may look a bit weird: We are reading an event from the tunnel and yet delegate back to the tunnel here.
-                // Couldn't the tunnel just do this internally?
-                // Technically, yes.
-                // But, we are only accessing the callbacks here which _eventually_ will be removed from `Tunnel`.
-                // At that point, the tunnel has to emit this event and we need to handle it without delegating back to the tunnel.
-                // We only access the callbacks here because `Tunnel` already has them and the callbacks are the current way of talking to the UI.
-                // At a later point, we will probably map to another event here that gets pushed further up.
-
-                self.tunnel.callbacks.on_update_resources(resources)
+                self.callbacks.on_update_resources(resources)
             }
             firezone_tunnel::ClientEvent::TunInterfaceUpdated {
                 ip4,
@@ -170,12 +165,11 @@ where
             } => {
                 let dns_servers = dns_by_sentinel.left_values().copied().collect();
 
-                self.tunnel
-                    .callbacks
+                self.callbacks
                     .on_set_interface_config(ip4, ip6, dns_servers);
             }
             firezone_tunnel::ClientEvent::TunRoutesUpdated { ip4, ip6 } => {
-                self.tunnel.callbacks.on_update_routes(ip4, ip6);
+                self.callbacks.on_update_routes(ip4, ip6);
             }
         }
     }
