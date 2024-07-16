@@ -252,16 +252,24 @@ impl Socket {
     }
 
     fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        // Only pop if we successfully send it
-        while let Some(transmit) = self.buffered_transmits.front() {
-            ready!(self.socket.poll_send_ready(cx))?;
+        loop {
+            ready!(self.socket.poll_send_ready(cx))?; // Ensure we are ready to send.
 
-            match self.try_send(transmit) {
-                Ok(()) => {
-                    self.buffered_transmits.pop_front();
+            let Some(transmit) = self.buffered_transmits.pop_front() else {
+                break;
+            };
+
+            match self.try_send(&transmit) {
+                Ok(()) => continue, // Try to send another packet.
+                Err(e) => {
+                    self.buffered_transmits.push_front(transmit); // Don't lose the packet if we fail.
+
+                    if e.kind() == io::ErrorKind::WouldBlock {
+                        continue; // False positive send-readiness: Loop to `poll_send_ready` and return `Pending`.
+                    }
+
+                    return Poll::Ready(Err(e));
                 }
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue, // False positive wake-up: Loop to `poll_send_ready` and return `Pending`.
-                Err(e) => return Poll::Ready(Err(e)),
             }
         }
 
