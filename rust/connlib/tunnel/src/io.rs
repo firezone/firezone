@@ -185,7 +185,7 @@ impl Io {
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
-        self.sockets.try_send(transmit)?;
+        self.sockets.send(transmit)?;
 
         Ok(())
     }

@@ -65,7 +65,7 @@ impl Sockets {
         Poll::Ready(Ok(()))
     }
 
-    pub fn try_send(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
+    pub fn send(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
         let socket = match transmit.dst {
             SocketAddr::V4(dst) => self.socket_v4.as_mut().ok_or(io::Error::new(
                 io::ErrorKind::NotConnected,
