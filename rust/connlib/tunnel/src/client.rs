@@ -49,7 +49,7 @@ impl ClientTunnel {
     pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
         self.role_state.set_resources(resources);
 
-        // FIXME: It would be good to add this event from _within_ `set_resources` but we don't want to emit duplicates.
+        // FIXME: It would be good to add this event from _within_ `ClientState` but we don't want to emit duplicates.
         self.role_state
             .buffered_events
             .push_back(ClientEvent::TunRoutesUpdated {
