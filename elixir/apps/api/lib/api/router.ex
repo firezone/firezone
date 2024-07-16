@@ -24,8 +24,6 @@ defmodule API.Router do
   scope "/v1", API do
     pipe_through :api
 
-    post "/echo", ExampleController, :echo
-
     resources "/resources", ResourceController, except: [:new, :edit]
     resources "/policies", PolicyController, except: [:new, :edit]
 
