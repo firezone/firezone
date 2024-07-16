@@ -69,8 +69,8 @@ where
     }
 
     /// Adds a the given resource to the tunnel.
-    pub fn add_resources(&mut self, resources: &[ResourceDescription]) {
-        self.role_state.add_resources(resources);
+    pub fn add_resource(&mut self, resource: ResourceDescription) {
+        self.role_state.add_resource(resource);
 
         self.callbacks.on_update_routes(
             self.role_state.routes().filter_map(utils::ipv4).collect(),
@@ -80,8 +80,8 @@ where
             .on_update_resources(self.role_state.resources());
     }
 
-    pub fn remove_resources(&mut self, ids: &[ResourceId]) {
-        self.role_state.remove_resources(ids);
+    pub fn remove_resource(&mut self, id: ResourceId) {
+        self.role_state.remove_resource(id);
 
         self.callbacks.on_update_routes(
             self.role_state.routes().filter_map(utils::ipv4).collect(),
@@ -895,101 +895,95 @@ impl ClientState {
     /// TODO: Add a test that asserts the above.
     ///       That is tricky because we need to assert on state deleted by [`ClientState::remove_resources`] and check that it did in fact not get deleted.
     fn set_resources(&mut self, new_resources: Vec<ResourceDescription>) {
-        self.remove_resources(
-            &HashSet::from_iter(self.resource_ids.keys().copied())
-                .difference(&HashSet::<ResourceId>::from_iter(
-                    new_resources.iter().map(|r| r.id()),
-                ))
-                .copied()
-                .collect_vec(),
-        );
+        for id in HashSet::from_iter(self.resource_ids.keys().copied())
+            .difference(&HashSet::<ResourceId>::from_iter(
+                new_resources.iter().map(|r| r.id()),
+            ))
+            .copied()
+        {
+            self.remove_resource(id);
+        }
 
-        self.add_resources(
-            &HashSet::from_iter(new_resources.iter().cloned())
-                .difference(&HashSet::<ResourceDescription>::from_iter(
-                    self.resource_ids.values().cloned(),
-                ))
-                .cloned()
-                .collect_vec(),
-        );
-    }
-
-    pub(crate) fn add_resources(&mut self, resources: &[ResourceDescription]) {
-        for resource_description in resources {
-            if let Some(resource) = self.resource_ids.get(&resource_description.id()) {
-                if resource.has_different_address(resource_description) {
-                    self.remove_resources(&[resource.id()]);
-                }
-            }
-
-            match &resource_description {
-                ResourceDescription::Dns(dns) => {
-                    self.stub_resolver.add_resource(dns.id, dns.address.clone());
-                }
-                ResourceDescription::Cidr(cidr) => {
-                    let existing = self.cidr_resources.insert(cidr.address, cidr.clone());
-
-                    match existing {
-                        Some(existing) if existing.id != cidr.id => {
-                            tracing::info!(address = %cidr.address, old = %existing.name, new = %cidr.name, "Replacing CIDR resource");
-                        }
-                        Some(_) => {}
-                        None => {
-                            tracing::info!(address = %cidr.address, name = %cidr.name, "Activating CIDR resource");
-                        }
-                    }
-                }
-            }
-
-            self.resource_ids
-                .insert(resource_description.id(), resource_description.clone());
+        for resource in HashSet::from_iter(new_resources.iter().cloned())
+            .difference(&HashSet::<ResourceDescription>::from_iter(
+                self.resource_ids.values().cloned(),
+            ))
+            .cloned()
+        {
+            self.add_resource(resource)
         }
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(?ids))]
-    pub(crate) fn remove_resources(&mut self, ids: &[ResourceId]) {
-        for id in ids {
-            self.awaiting_connection_details.remove(id);
-            self.stub_resolver.remove_resource(*id);
-            self.cidr_resources.retain(|_, r| {
-                if r.id == *id {
-                    tracing::info!(address = %r.address, name = %r.name, "Deactivating CIDR resource");
-                    return false;
+    pub(crate) fn add_resource(&mut self, resource: ResourceDescription) {
+        if let Some(resource) = self.resource_ids.get(&resource.id()) {
+            if resource.has_different_address(resource) {
+                self.remove_resource(resource.id());
+            }
+        }
+
+        match &resource {
+            ResourceDescription::Dns(dns) => {
+                self.stub_resolver.add_resource(dns.id, dns.address.clone());
+            }
+            ResourceDescription::Cidr(cidr) => {
+                let existing = self.cidr_resources.insert(cidr.address, cidr.clone());
+
+                match existing {
+                    Some(existing) if existing.id != cidr.id => {
+                        tracing::info!(address = %cidr.address, old = %existing.name, new = %cidr.name, "Replacing CIDR resource");
+                    }
+                    Some(_) => {}
+                    None => {
+                        tracing::info!(address = %cidr.address, name = %cidr.name, "Activating CIDR resource");
+                    }
                 }
+            }
+        }
 
-                true
-            });
+        self.resource_ids.insert(resource.id(), resource);
+    }
 
-            self.resource_ids.remove(id);
+    #[tracing::instrument(level = "debug", skip_all, fields(?id))]
+    pub(crate) fn remove_resource(&mut self, id: ResourceId) {
+        self.awaiting_connection_details.remove(&id);
+        self.stub_resolver.remove_resource(id);
+        self.cidr_resources.retain(|_, r| {
+            if r.id == id {
+                tracing::info!(address = %r.address, name = %r.name, "Deactivating CIDR resource");
+                return false;
+            }
 
-            let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, *id)
-            else {
+            true
+        });
+
+        self.resource_ids.remove(&id);
+
+        let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, id) else {
+            return;
+        };
+        let gateway_id = peer.id();
+
+        // First we remove the id from all allowed ips
+        for (_, resources) in peer
+            .allowed_ips
+            .iter_mut()
+            .filter(|(_, resources)| resources.contains(&id))
+        {
+            resources.remove(&id);
+
+            if !resources.is_empty() {
                 continue;
-            };
-            let gateway_id = peer.id();
-
-            // First we remove the id from all allowed ips
-            for (_, resources) in peer
-                .allowed_ips
-                .iter_mut()
-                .filter(|(_, resources)| resources.contains(id))
-            {
-                resources.remove(id);
-
-                if !resources.is_empty() {
-                    continue;
-                }
             }
+        }
 
-            // We remove all empty allowed ips entry since there's no resource that corresponds to it
-            peer.allowed_ips.retain(|_, r| !r.is_empty());
+        // We remove all empty allowed ips entry since there's no resource that corresponds to it
+        peer.allowed_ips.retain(|_, r| !r.is_empty());
 
-            // If there's no allowed ip left we remove the whole peer because there's no point on keeping it around
-            if peer.allowed_ips.is_empty() {
-                self.peers.remove(&gateway_id);
-                self.update_site_status_by_gateway(&gateway_id, Status::Unknown);
-                // TODO: should we have a Node::remove_connection?
-            }
+        // If there's no allowed ip left we remove the whole peer because there's no point on keeping it around
+        if peer.allowed_ips.is_empty() {
+            self.peers.remove(&gateway_id);
+            self.update_site_status_by_gateway(&gateway_id, Status::Unknown);
+            // TODO: should we have a Node::remove_connection?
         }
     }
 
@@ -1543,10 +1537,8 @@ mod proptests {
     ) {
         let mut client_state = ClientState::for_test();
 
-        client_state.add_resources(&[
-            ResourceDescription::Cidr(resource1.clone()),
-            ResourceDescription::Cidr(resource2.clone()),
-        ]);
+        client_state.add_resource(ResourceDescription::Cidr(resource1.clone()));
+        client_state.add_resource(ResourceDescription::Cidr(resource2.clone()));
 
         assert_eq!(
             hashset(client_state.routes()),
@@ -1564,10 +1556,8 @@ mod proptests {
 
         let mut client_state = ClientState::for_test();
 
-        client_state.add_resources(&[
-            ResourceDescription::Cidr(resource1.clone()),
-            ResourceDescription::Dns(resource2.clone()),
-        ]);
+        client_state.add_resource(ResourceDescription::Cidr(resource1.clone()));
+        client_state.add_resource(ResourceDescription::Dns(resource2.clone()));
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -1577,7 +1567,7 @@ mod proptests {
             ])
         );
 
-        client_state.add_resources(&[ResourceDescription::Cidr(resource3.clone())]);
+        client_state.add_resource(ResourceDescription::Cidr(resource3.clone()));
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -1597,14 +1587,14 @@ mod proptests {
         use callbacks as cb;
 
         let mut client_state = ClientState::for_test();
-        client_state.add_resources(&[ResourceDescription::Cidr(resource.clone())]);
+        client_state.add_resource(ResourceDescription::Cidr(resource.clone()));
 
         let updated_resource = ResourceDescriptionCidr {
             address: new_address,
             ..resource
         };
 
-        client_state.add_resources(&[ResourceDescription::Cidr(updated_resource.clone())]);
+        client_state.add_resource(ResourceDescription::Cidr(updated_resource.clone()));
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -1626,7 +1616,7 @@ mod proptests {
         use callbacks as cb;
 
         let mut client_state = ClientState::for_test();
-        client_state.add_resources(&[ResourceDescription::Dns(resource.clone())]);
+        client_state.add_resource(ResourceDescription::Dns(resource.clone()));
 
         let dns_as_cidr_resource = ResourceDescriptionCidr {
             address,
@@ -1636,7 +1626,7 @@ mod proptests {
             sites: resource.sites,
         };
 
-        client_state.add_resources(&[ResourceDescription::Cidr(dns_as_cidr_resource.clone())]);
+        client_state.add_resource(ResourceDescription::Cidr(dns_as_cidr_resource.clone()));
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -1658,12 +1648,10 @@ mod proptests {
         use callbacks as cb;
 
         let mut client_state = ClientState::for_test();
-        client_state.add_resources(&[
-            ResourceDescription::Dns(dns_resource.clone()),
-            ResourceDescription::Cidr(cidr_resource.clone()),
-        ]);
+        client_state.add_resource(ResourceDescription::Dns(dns_resource.clone()));
+        client_state.add_resource(ResourceDescription::Cidr(cidr_resource.clone()));
 
-        client_state.remove_resources(&[dns_resource.id]);
+        client_state.remove_resource(dns_resource.id);
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -1676,7 +1664,7 @@ mod proptests {
             expected_routes(vec![cidr_resource.address])
         );
 
-        client_state.remove_resources(&[cidr_resource.id]);
+        client_state.remove_resource(cidr_resource.id);
 
         assert_eq!(hashset(client_state.resources().iter()), hashset(&[]));
         assert_eq!(hashset(client_state.routes()), expected_routes(vec![]));
@@ -1692,10 +1680,8 @@ mod proptests {
         use callbacks as cb;
 
         let mut client_state = ClientState::for_test();
-        client_state.add_resources(&[
-            ResourceDescription::Dns(dns_resource1),
-            ResourceDescription::Cidr(cidr_resource1),
-        ]);
+        client_state.add_resource(ResourceDescription::Dns(dns_resource1));
+        client_state.add_resource(ResourceDescription::Cidr(cidr_resource1));
 
         client_state.set_resources(vec![
             ResourceDescription::Dns(dns_resource2.clone()),
@@ -1730,8 +1716,11 @@ mod proptests {
         let (resources_online, site) = resource_config_online;
         let (resources_unknown, _) = resource_config_unknown;
         let mut client_state = ClientState::for_test();
-        client_state.add_resources(&resources_online);
-        client_state.add_resources(&resources_unknown);
+
+        for r in resources_online.iter().chain(resources_unknown.iter()) {
+            client_state.add_resource(r.clone())
+        }
+
         client_state.resources_gateways.insert(
             resources_online.first().unwrap().id(),
             first_resource_gateway_id,
@@ -1758,7 +1747,9 @@ mod proptests {
     ) {
         let (resources, site) = resource_config;
         let mut client_state = ClientState::for_test();
-        client_state.add_resources(&resources);
+        for r in &resources {
+            client_state.add_resource(r.clone())
+        }
         client_state
             .resources_gateways
             .insert(resources.first().unwrap().id(), first_resource_gateway_id);
@@ -1783,7 +1774,9 @@ mod proptests {
     ) {
         let (mut resources, _) = resource_config_online;
         let mut client_state = ClientState::for_test();
-        client_state.add_resources(&resources);
+        for r in &resources {
+            client_state.add_resource(r.clone())
+        }
         let resource_offline = resources.pop().unwrap();
 
         client_state.set_resource_offline(resource_offline.id());
@@ -1802,7 +1795,9 @@ mod proptests {
         #[strategy(resources_sharing_all_sites())] resources: Vec<ResourceDescription>,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.add_resources(&resources);
+        for r in &resources {
+            client_state.add_resource(r.clone())
+        }
 
         client_state.set_resource_offline(resources.first().unwrap().id());
 

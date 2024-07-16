@@ -226,10 +226,10 @@ where
                 self.tunnel.update_relays(HashSet::default(), relays)
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
-                self.tunnel.add_resources(&[resource]);
+                self.tunnel.add_resource(resource);
             }
             IngressMessages::ResourceDeleted(resource) => {
-                self.tunnel.remove_resources(&[resource]);
+                self.tunnel.remove_resource(resource);
             }
             IngressMessages::RelaysPresence(RelaysPresence {
                 disconnected_ids,
