@@ -7,7 +7,7 @@ use tracing_subscriber::{
 };
 use url::Url;
 
-// Mark for Firezone sockets to prevent routing loops
+/// Mark for Firezone sockets to prevent routing loops on Linux.
 pub const FIREZONE_MARK: u32 = 0xfd002021;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
