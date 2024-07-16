@@ -50,7 +50,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
           phx-click="disable"
           style="warning"
           icon="hero-lock-closed"
-          data-confirm="Are you sure want to disable this provider? All users signed into this provider will be immediately signed out."
+          data-confirm="Are you sure you want to disable this provider? All users signed into this provider will be immediately signed out."
         >
           Disable
         </.button>
@@ -59,7 +59,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
           phx-click="enable"
           style="warning"
           icon="hero-lock-open"
-          data-confirm="Are you sure want to enable this provider?"
+          data-confirm="Are you sure you want to enable this provider?"
         >
           Enable
         </.button>
@@ -142,7 +142,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
         >
           <:dialog_title>Delete Identity Provider</:dialog_title>
           <:dialog_content>
-            Are you sure want to delete this provider? This will remove
+            Are you sure you want to delete this provider? This will remove
             <strong>all</strong> Actors and Groups associated with this provider.
           </:dialog_content>
           <:dialog_confirm_button>

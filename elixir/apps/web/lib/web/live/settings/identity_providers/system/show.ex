@@ -43,7 +43,7 @@ defmodule Web.Settings.IdentityProviders.System.Show do
           phx-click="disable"
           style="warning"
           icon="hero-lock-closed"
-          data-confirm="Are you sure want to disable this provider? All users signed into this provider will be immediately signed out."
+          data-confirm="Are you sure you want to disable this provider? All users signed into this provider will be immediately signed out."
         >
           Disable
         </.button>
@@ -52,7 +52,7 @@ defmodule Web.Settings.IdentityProviders.System.Show do
           phx-click="enable"
           style="warning"
           icon="hero-lock-open"
-          data-confirm="Are you sure want to enable this provider?"
+          data-confirm="Are you sure you want to enable this provider?"
         >
           Enable
         </.button>

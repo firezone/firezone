@@ -156,7 +156,7 @@ defmodule Web.Actors.Show do
           style="warning"
           icon="hero-lock-closed"
           phx-click="disable"
-          data-confirm={"Are you sure want to disable this #{actor_type(@actor.type)} and revoke all its tokens?"}
+          data-confirm={"Are you sure you want to disable this #{actor_type(@actor.type)} and revoke all its tokens?"}
         >
           Disable <%= actor_type(@actor.type) %>
         </.button>
@@ -166,7 +166,7 @@ defmodule Web.Actors.Show do
           style="warning"
           icon="hero-lock-open"
           phx-click="enable"
-          data-confirm={"Are you sure want to enable this #{actor_type(@actor.type)}?"}
+          data-confirm={"Are you sure you want to enable this #{actor_type(@actor.type)}?"}
         >
           Enable <%= actor_type(@actor.type) %>
         </.button>
@@ -497,7 +497,7 @@ defmodule Web.Actors.Show do
         >
           <:dialog_title>Delete <%= actor_type(@actor.type) %></:dialog_title>
           <:dialog_content>
-            Are you sure want to delete this <%= String.downcase(actor_type(@actor.type)) %> along with all associated identities?
+            Are you sure you want to delete this <%= String.downcase(actor_type(@actor.type)) %> along with all associated identities?
           </:dialog_content>
           <:dialog_confirm_button>
             Delete <%= actor_type(@actor.type) %>
