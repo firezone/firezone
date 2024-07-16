@@ -209,6 +209,8 @@ defmodule Web.Live.Resources.EditTest do
     resource: resource,
     conn: conn
   } do
+    conn = authorize_conn(conn, identity)
+
     attrs = %{
       name: "foobar.com",
       filters: %{
@@ -220,16 +222,17 @@ defmodule Web.Live.Resources.EditTest do
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/#{resource}/edit")
 
-    assert lv
-           |> form("form", resource: attrs)
-           |> render_submit() ==
-             {:error, {:live_redirect, %{to: ~p"/#{account}/resources/#{resource}", kind: :push}}}
+    {:ok, _lv, html} =
+      lv
+      |> form("form", resource: attrs)
+      |> render_submit()
+      |> follow_redirect(conn, ~p"/#{account}/resources")
 
     assert saved_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
     assert saved_resource.name == attrs.name
+    assert html =~ "Resource #{saved_resource.name} updated successfully."
 
     saved_filters =
       for filter <- saved_resource.filters, into: %{} do
@@ -248,6 +251,8 @@ defmodule Web.Live.Resources.EditTest do
     resource: resource,
     conn: conn
   } do
+    conn = authorize_conn(conn, identity)
+
     attrs = %{
       name: "foobar.com",
       filters: %{
@@ -259,14 +264,15 @@ defmodule Web.Live.Resources.EditTest do
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/#{resource}/edit?site_id=#{group}")
 
-    assert lv
-           |> form("form", resource: attrs)
-           |> render_submit() ==
-             {:error,
-              {:live_redirect, %{to: ~p"/#{account}/sites/#{group}?#resources", kind: :push}}}
+    {:ok, _lv, html} =
+      lv
+      |> form("form", resource: attrs)
+      |> render_submit()
+      |> follow_redirect(conn, ~p"/#{account}/sites/#{group}")
+
+    assert html =~ "Resource #{attrs.name} updated successfully."
   end
 
   test "shows disabled traffic filter form when traffic filters disabled", %{
@@ -310,23 +316,25 @@ defmodule Web.Live.Resources.EditTest do
   } do
     Domain.Config.feature_flag_override(:traffic_filters, false)
 
+    conn = authorize_conn(conn, identity)
+
     attrs = %{
       name: "foobar.com"
     }
 
     {:ok, lv, _html} =
       conn
-      |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/#{resource}/edit?site_id=#{group}")
 
-    assert lv
-           |> form("form", resource: attrs)
-           |> render_submit() ==
-             {:error,
-              {:live_redirect, %{to: ~p"/#{account}/sites/#{group}?#resources", kind: :push}}}
+    {:ok, _lv, html} =
+      lv
+      |> form("form", resource: attrs)
+      |> render_submit()
+      |> follow_redirect(conn, ~p"/#{account}/sites/#{group}")
 
     assert saved_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
     assert saved_resource.name == attrs.name
+    assert html =~ "Resource #{saved_resource.name} updated successfully."
 
     assert saved_resource.filters == []
   end

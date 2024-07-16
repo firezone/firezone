@@ -189,10 +189,17 @@ defmodule Web.Resources.New do
 
     case Resources.create_resource(attrs, socket.assigns.subject) do
       {:ok, resource} ->
-        {:noreply,
-         push_navigate(socket,
-           to: ~p"/#{socket.assigns.account}/resources/#{resource}?#{socket.assigns.params}"
-         )}
+        socket = put_flash(socket, :info, "Resource #{resource.name} created successfully.")
+
+        if site_id = socket.assigns.params["site_id"] do
+          {:noreply,
+           socket
+           |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{site_id}")}
+        else
+          {:noreply,
+           socket
+           |> push_navigate(to: ~p"/#{socket.assigns.account}/resources")}
+        end
 
       {:error, changeset} ->
         changeset = Map.put(changeset, :action, :validate)
