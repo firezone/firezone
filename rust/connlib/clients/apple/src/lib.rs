@@ -216,7 +216,6 @@ impl WrappedSession {
         )
         .map_err(|e| e.to_string())?;
         let session = Session::connect(args, portal, runtime.handle().clone());
-        let _enter = runtime.enter();
         session.set_tun(Tun::new().map_err(|e| e.to_string())?);
 
         Ok(Self {
