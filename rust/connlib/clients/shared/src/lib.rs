@@ -132,22 +132,6 @@ where
         max_partition_time,
     } = args;
 
-    // Note on the first connect these addresses won't be used yet, though coincidentally phoenix_channel might resolve to the same ones, however thereafter they will.
-    // also we don't care that we are blocking here.
-    let addrs = url
-        .inner()
-        .socket_addrs(|| None)?
-        .iter()
-        .map(|addr| addr.ip())
-        .collect();
-
-    let tunnel = ClientTunnel::new(
-        private_key,
-        tcp_socket_factory.clone(),
-        udp_socket_factory,
-        HashMap::from([(url.host().to_string(), addrs)]),
-    )?;
-
     let portal = PhoenixChannel::connect(
         Secret::new(url),
         get_user_agent(os_version_override, &app_version),
@@ -156,8 +140,15 @@ where
         ExponentialBackoffBuilder::default()
             .with_max_elapsed_time(max_partition_time)
             .build(),
+        tcp_socket_factory.clone(),
+    )?;
+
+    let tunnel = ClientTunnel::new(
+        private_key,
         tcp_socket_factory,
-    );
+        udp_socket_factory,
+        HashMap::from([(portal.server_host().to_owned(), portal.resolved_addresses())]),
+    )?;
 
     let mut eventloop = Eventloop::new(tunnel, callbacks, portal, rx);
 
