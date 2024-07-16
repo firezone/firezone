@@ -252,6 +252,7 @@ impl Socket {
     }
 
     fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        // Only pop if we successfully send it
         while let Some(transmit) = self.buffered_transmits.front() {
             ready!(self.socket.poll_send_ready(cx))?;
 
