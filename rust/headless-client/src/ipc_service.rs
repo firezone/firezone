@@ -300,8 +300,7 @@ impl<'a> Handler<'a> {
                 // The first `OnUpdateResources` marks when connlib is fully initialized
                 if let IpcServerMsg::OnUpdateResources(_) = &msg {
                     if let Some(instant) = self.last_connlib_start_instant.take() {
-                        let dur = instant.elapsed();
-                        tracing::info!(?dur, "Connlib started");
+                        tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
                     }
 
                     // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>

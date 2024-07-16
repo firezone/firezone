@@ -14,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
     pin::pin,
 };
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, time::Instant};
 use tokio_stream::wrappers::ReceiverStream;
 
 /// Command-line args for the headless Client
@@ -153,6 +153,8 @@ pub fn run_only_headless_client() -> Result<()> {
     let (cb_tx, cb_rx) = mpsc::channel(10);
     let callbacks = CallbackHandler { cb_tx };
 
+    // The name matches that in `ipc_service.rs`
+    let mut last_connlib_start_instant = Some(Instant::now());
     platform::setup_before_connlib()?;
     let args = ConnectArgs {
         url,
@@ -211,7 +213,10 @@ pub fn run_only_headless_client() -> Result<()> {
                     dns_controller.set_dns(&dns).await?;
                 }
                 InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                    tun_device.set_routes(ipv4, ipv6).await?
+                    tun_device.set_routes(ipv4, ipv6).await?;
+                    if let Some(instant) = last_connlib_start_instant.take() {
+                        tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
+                    }
                 }
             }
         }
