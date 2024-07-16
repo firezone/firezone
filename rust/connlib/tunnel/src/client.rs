@@ -59,8 +59,11 @@ where
                 ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
                 ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
             });
-        self.callbacks
-            .on_update_resources(self.role_state.resources());
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.role_state.resources(),
+            });
     }
 
     pub fn set_tun(&mut self, tun: Tun) {
@@ -82,8 +85,11 @@ where
                 ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
                 ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
             });
-        self.callbacks
-            .on_update_resources(self.role_state.resources());
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.role_state.resources(),
+            });
     }
 
     pub fn remove_resources(&mut self, ids: &[ResourceId]) {
@@ -95,8 +101,11 @@ where
                 ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
                 ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
             });
-        self.callbacks
-            .on_update_resources(self.role_state.resources())
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.role_state.resources(),
+            });
     }
 
     /// Updates the system's dns
@@ -137,8 +146,11 @@ where
 
         self.role_state.on_connection_failed(id);
 
-        self.callbacks
-            .on_update_resources(self.role_state.resources());
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.role_state.resources(),
+            });
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
