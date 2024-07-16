@@ -13,8 +13,6 @@ use connlib_client_shared::callbacks::ResourceDescription;
 use firezone_headless_client::IpcServerMsg;
 use secrecy::{ExposeSecret, SecretString};
 use std::{
-    collections::HashSet,
-    net::IpAddr,
     path::PathBuf,
     str::FromStr,
     time::{Duration, Instant},
@@ -806,7 +804,6 @@ async fn run_controller(
         network_changes::Worker::new().context("Failed to listen for network changes")?;
 
     let mut dns_listener = network_changes::DnsListener::new()?;
-    let mut last_resolvers_sent: HashSet<IpAddr> = HashSet::default();
 
     loop {
         // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
@@ -825,14 +822,7 @@ async fn run_controller(
             resolvers = dns_listener.notified() => {
                 if controller.status.connlib_is_up() {
                     let resolvers = resolvers?;
-                    let resolver_set = HashSet::from_iter(resolvers.iter().cloned());
-                    if resolver_set != last_resolvers_sent {
-                        tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
-                        controller.ipc_client.set_dns(resolvers).await?;
-                        last_resolvers_sent = resolver_set;
-                    } else {
-                        tracing::debug!("Resolvers stayed the same");
-                    }
+                    controller.ipc_client.set_dns(resolvers).await?;
                 }
             },
             req = rx.recv() => {
