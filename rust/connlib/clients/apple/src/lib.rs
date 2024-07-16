@@ -194,6 +194,7 @@ impl WrappedSession {
             .enable_all()
             .build()
             .map_err(|e| e.to_string())?;
+        let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
         let args = ConnectArgs {
             private_key,

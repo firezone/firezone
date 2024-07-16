@@ -361,6 +361,7 @@ fn connect(
         .thread_name("connlib")
         .enable_all()
         .build()?;
+    let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
     let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(callbacks.clone()));
 

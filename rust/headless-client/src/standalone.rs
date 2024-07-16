@@ -171,6 +171,7 @@ pub fn run_only_headless_client() -> Result<()> {
         private_key,
         callbacks,
     };
+    let _guard = rt.enter(); // Constructing `PhoenixChannel` requires a runtime context.
     let portal = PhoenixChannel::connect(
         Secret::new(url),
         get_user_agent(None, env!("CARGO_PKG_VERSION")),
