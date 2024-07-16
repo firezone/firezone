@@ -46,6 +46,12 @@ struct Cli {
     #[arg(long)]
     check: bool,
 
+    /// Connect to the Firezone network and initialize, then exit
+    ///
+    /// Use this to check how fast you can connect.
+    #[arg(long)]
+    exit: bool,
+
     /// Friendly name for this client to display in the UI.
     #[arg(long, env = "FIREZONE_NAME")]
     firezone_name: Option<String>,
@@ -218,6 +224,10 @@ pub fn run_only_headless_client() -> Result<()> {
                     tun_device.set_routes(ipv4, ipv6).await?;
                     if let Some(instant) = last_connlib_start_instant.take() {
                         tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
+                    }
+                    if cli.exit {
+                        tracing::info!("Exiting due to `--exit` CLI flag");
+                        break Ok(());
                     }
                 }
             }
