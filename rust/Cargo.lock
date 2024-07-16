@@ -1066,6 +1066,7 @@ dependencies = [
  "log",
  "secrecy",
  "serde_json",
+ "socket-factory",
  "thiserror",
  "tokio",
  "tracing",
@@ -1084,6 +1085,7 @@ dependencies = [
  "oslog",
  "secrecy",
  "serde_json",
+ "socket-factory",
  "swift-bridge",
  "swift-bridge-build",
  "tokio",
@@ -1109,6 +1111,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "socket-factory",
  "time",
  "tokio",
  "tokio-tungstenite",
@@ -1873,6 +1876,7 @@ dependencies = [
  "serde",
  "serde_json",
  "snownet",
+ "socket-factory",
  "static_assertions",
  "tokio",
  "tokio-tungstenite",
@@ -1962,6 +1966,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "socket-factory",
  "tempfile",
  "thiserror",
  "tokio",
@@ -2003,6 +2008,7 @@ dependencies = [
  "secrecy",
  "serde",
  "sha2",
+ "socket-factory",
  "socket2 0.5.7",
  "stun_codec",
  "test-strategy",
@@ -2054,6 +2060,7 @@ dependencies = [
  "serde",
  "serde_json",
  "snownet",
+ "socket-factory",
  "socket2 0.5.7",
  "test-strategy",
  "thiserror",
@@ -3901,6 +3908,7 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
+ "memoffset 0.9.1",
 ]
 
 [[package]]
@@ -4561,6 +4569,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "socket-factory",
  "thiserror",
  "tokio",
  "tokio-tungstenite",
@@ -5810,6 +5819,14 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "socket-factory"
+version = "0.1.0"
+dependencies = [
+ "socket2 0.5.7",
+ "tokio",
 ]
 
 [[package]]
