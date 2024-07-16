@@ -35,6 +35,7 @@ mod sockets;
 mod utils;
 
 pub use device_channel::Tun;
+use ip_network::{Ipv4Network, Ipv6Network};
 
 #[cfg(all(test, feature = "proptest"))]
 mod tests;
@@ -293,6 +294,10 @@ pub enum ClientEvent {
         ///   If upstream DNS servers are configured (in the portal), we will use those.
         ///   Otherwise, we will use the DNS servers configured on the system.
         dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+    },
+    TunRoutesUpdated {
+        ip4: Vec<Ipv4Network>,
+        ip6: Vec<Ipv6Network>,
     },
 }
 

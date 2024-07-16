@@ -695,6 +695,7 @@ impl TunnelTest {
                 self.client
                     .exec_mut(|c| c.dns_by_sentinel = dns_by_sentinel);
             }
+            ClientEvent::TunRoutesUpdated { .. } => {}
         }
     }
 

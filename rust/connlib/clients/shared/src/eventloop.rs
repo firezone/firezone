@@ -174,6 +174,9 @@ where
                     .callbacks
                     .on_set_interface_config(ip4, ip6, dns_servers);
             }
+            firezone_tunnel::ClientEvent::TunRoutesUpdated { ip4, ip6 } => {
+                self.tunnel.callbacks.on_update_routes(ip4, ip6);
+            }
         }
     }
 

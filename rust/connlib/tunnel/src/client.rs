@@ -51,10 +51,14 @@ where
 {
     pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
         self.role_state.set_resources(resources);
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
+
+        // FIXME: It would be good to add this event from _within_ `set_resources` but we don't want to emit duplicates.
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
+            });
         self.callbacks
             .on_update_resources(self.role_state.resources());
     }
@@ -72,10 +76,12 @@ where
     pub fn add_resources(&mut self, resources: &[ResourceDescription]) {
         self.role_state.add_resources(resources);
 
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
+            });
         self.callbacks
             .on_update_resources(self.role_state.resources());
     }
@@ -83,10 +89,12 @@ where
     pub fn remove_resources(&mut self, ids: &[ResourceId]) {
         self.role_state.remove_resources(ids);
 
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
+            });
         self.callbacks
             .on_update_resources(self.role_state.resources())
     }
@@ -103,11 +111,6 @@ where
 
         self.io
             .set_upstream_dns_servers(self.role_state.dns_mapping());
-
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -122,10 +125,6 @@ where
                 .set_upstream_dns_servers(self.role_state.dns_mapping());
         }
 
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
         Ok(())
     }
 
@@ -1016,6 +1015,11 @@ impl ClientState {
                     .iter()
                     .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
                     .collect(),
+            });
+        self.buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.routes().filter_map(utils::ipv6).collect(),
             });
 
         true
