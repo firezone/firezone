@@ -13,7 +13,7 @@ use connlib_shared::{
 use io::Io;
 use std::{
     collections::{HashMap, HashSet},
-    net::{IpAddr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
     task::{Context, Poll},
     time::Instant,
@@ -282,7 +282,10 @@ pub enum ClientEvent {
     ResourcesChanged {
         resources: Vec<callbacks::ResourceDescription>,
     },
-    DnsServersChanged {
+    // TODO: Make this more fine-granular.
+    TunInterfaceUpdated {
+        ip4: Ipv4Addr,
+        ip6: Ipv6Addr,
         /// The map of DNS servers that connlib will use.
         ///
         /// - The "left" values are the connlib-assigned, proxy (or "sentinel") IPs.

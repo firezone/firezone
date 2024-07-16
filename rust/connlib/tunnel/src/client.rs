@@ -104,9 +104,10 @@ where
         self.io
             .set_upstream_dns_servers(self.role_state.dns_mapping());
 
-        if let Some(config) = self.role_state.interface_config.as_ref().cloned() {
-            self.update_device(config, self.role_state.dns_mapping());
-        };
+        self.callbacks.on_update_routes(
+            self.role_state.routes().filter_map(utils::ipv4).collect(),
+            self.role_state.routes().filter_map(utils::ipv6).collect(),
+        );
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -114,33 +115,18 @@ where
         &mut self,
         config: InterfaceConfig,
     ) -> connlib_shared::Result<()> {
-        let dns_changed = self.role_state.update_interface_config(config.clone());
+        let dns_changed = self.role_state.update_interface_config(config);
 
         if dns_changed {
             self.io
                 .set_upstream_dns_servers(self.role_state.dns_mapping());
         }
 
-        self.update_device(config, self.role_state.dns_mapping());
-
-        Ok(())
-    }
-
-    pub(crate) fn update_device(
-        &mut self,
-        config: InterfaceConfig,
-        dns_mapping: BiMap<IpAddr, DnsServer>,
-    ) {
-        // We can just sort in here because sentinel ips are created in order
-        let dns_config = dns_mapping.left_values().copied().sorted().collect();
-
-        self.callbacks
-            .clone()
-            .on_set_interface_config(config.ipv4, config.ipv6, dns_config);
         self.callbacks.on_update_routes(
             self.role_state.routes().filter_map(utils::ipv4).collect(),
             self.role_state.routes().filter_map(utils::ipv6).collect(),
         );
+        Ok(())
     }
 
     pub fn cleanup_connection(&mut self, id: ResourceId) {
@@ -1016,10 +1002,15 @@ impl ClientState {
                 .collect_vec(),
         );
 
+        let ip4 = config.ipv4;
+        let ip6 = config.ipv6;
+
         self.set_dns_mapping(dns_mapping);
 
         self.buffered_events
-            .push_back(ClientEvent::DnsServersChanged {
+            .push_back(ClientEvent::TunInterfaceUpdated {
+                ip4,
+                ip6,
                 dns_by_sentinel: self
                     .dns_mapping
                     .iter()
