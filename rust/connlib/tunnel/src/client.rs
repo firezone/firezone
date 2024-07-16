@@ -13,7 +13,7 @@ use connlib_shared::messages::{
     GatewayId, Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId,
     RequestConnection, ResourceId, ReuseConnection,
 };
-use connlib_shared::{callbacks, Callbacks, DomainName, PublicKey, StaticSecret};
+use connlib_shared::{callbacks, DomainName, PublicKey, StaticSecret};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
@@ -45,18 +45,22 @@ const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 // is 30 seconds. See resolvconf(5) timeout.
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
-impl<CB> ClientTunnel<CB>
-where
-    CB: Callbacks + 'static,
-{
+impl ClientTunnel {
     pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
         self.role_state.set_resources(resources);
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
-        self.callbacks
-            .on_update_resources(self.role_state.resources());
+
+        // FIXME: It would be good to add this event from _within_ `ClientState` but we don't want to emit duplicates.
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
+            });
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.role_state.resources(),
+            });
     }
 
     pub fn set_tun(&mut self, tun: Tun) {
@@ -72,23 +76,33 @@ where
     pub fn add_resources(&mut self, resources: &[ResourceDescription]) {
         self.role_state.add_resources(resources);
 
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
-        self.callbacks
-            .on_update_resources(self.role_state.resources());
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
+            });
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.role_state.resources(),
+            });
     }
 
     pub fn remove_resources(&mut self, ids: &[ResourceId]) {
         self.role_state.remove_resources(ids);
 
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
-        self.callbacks
-            .on_update_resources(self.role_state.resources())
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
+            });
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.role_state.resources(),
+            });
     }
 
     /// Updates the system's dns
@@ -103,10 +117,6 @@ where
 
         self.io
             .set_upstream_dns_servers(self.role_state.dns_mapping());
-
-        if let Some(config) = self.role_state.interface_config.as_ref().cloned() {
-            self.update_device(config, self.role_state.dns_mapping());
-        };
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -114,33 +124,14 @@ where
         &mut self,
         config: InterfaceConfig,
     ) -> connlib_shared::Result<()> {
-        let dns_changed = self.role_state.update_interface_config(config.clone());
+        let dns_changed = self.role_state.update_interface_config(config);
 
         if dns_changed {
             self.io
                 .set_upstream_dns_servers(self.role_state.dns_mapping());
         }
 
-        self.update_device(config, self.role_state.dns_mapping());
-
         Ok(())
-    }
-
-    pub(crate) fn update_device(
-        &mut self,
-        config: InterfaceConfig,
-        dns_mapping: BiMap<IpAddr, DnsServer>,
-    ) {
-        // We can just sort in here because sentinel ips are created in order
-        let dns_config = dns_mapping.left_values().copied().sorted().collect();
-
-        self.callbacks
-            .clone()
-            .on_set_interface_config(config.ipv4, config.ipv6, dns_config);
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
     }
 
     pub fn cleanup_connection(&mut self, id: ResourceId) {
@@ -152,8 +143,11 @@ where
 
         self.role_state.on_connection_failed(id);
 
-        self.callbacks
-            .on_update_resources(self.role_state.resources());
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.role_state.resources(),
+            });
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
@@ -1016,15 +1010,25 @@ impl ClientState {
                 .collect_vec(),
         );
 
+        let ip4 = config.ipv4;
+        let ip6 = config.ipv6;
+
         self.set_dns_mapping(dns_mapping);
 
         self.buffered_events
-            .push_back(ClientEvent::DnsServersChanged {
+            .push_back(ClientEvent::TunInterfaceUpdated {
+                ip4,
+                ip6,
                 dns_by_sentinel: self
                     .dns_mapping
                     .iter()
                     .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
                     .collect(),
+            });
+        self.buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.routes().filter_map(utils::ipv6).collect(),
             });
 
         true
