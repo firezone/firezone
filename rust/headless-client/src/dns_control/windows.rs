@@ -13,6 +13,7 @@
 //!
 //! <https://superuser.com/a/1752670>
 
+use super::DnsController;
 use anyhow::{Context as _, Result};
 use connlib_shared::windows::{CREATE_NO_WINDOW, TUNNEL_NAME};
 use std::{net::IpAddr, os::windows::process::CommandExt, process::Command};
@@ -55,10 +56,6 @@ impl Method {
         tracing::debug!(?resolvers);
         Ok(resolvers)
     }
-}
-
-pub(crate) struct DnsController {
-    pub(crate) method: Method,
 }
 
 // Unique magic number that we can use to delete our well-known NRPT rule.

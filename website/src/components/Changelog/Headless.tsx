@@ -10,6 +10,10 @@ export default function Headless() {
   return (
     <Entries href={href} arches={arches} title="Linux headless">
       {/*
+        When this release is cut:
+        - Update the Linux headless user guide to explain that `systemd-resolved` is the new default DNS control as of 1.1.4
+      */}
+      {/*
       <Entry version="1.1.4" date={new Date("2024-07-11")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="5850">

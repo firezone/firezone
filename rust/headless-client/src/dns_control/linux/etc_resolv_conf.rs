@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::{io::Write, net::IpAddr, path::PathBuf};
+use std::{fs, io::Write, net::IpAddr, path::PathBuf};
 
 pub(crate) const ETC_RESOLV_CONF: &str = "/etc/resolv.conf";
 pub(crate) const ETC_RESOLV_CONF_BACKUP: &str = "/etc/resolv.conf.before-firezone";
@@ -32,6 +32,24 @@ impl Default for ResolvPaths {
 #[cfg_attr(test, mutants::skip)] // Would modify system-wide `/etc/resolv.conf`
 pub(crate) async fn configure(dns_config: &[IpAddr]) -> Result<()> {
     configure_at_paths(dns_config, &ResolvPaths::default()).await
+}
+
+/// Returns the DNS servers listed in `/etc/resolv.conf`
+pub(crate) fn get_resolvers() -> Result<Vec<IpAddr>> {
+    // Assume that `configure_resolv_conf` has run in `tun_linux.rs`
+
+    let s = fs::read_to_string(ETC_RESOLV_CONF_BACKUP)
+        .or_else(|_| fs::read_to_string(ETC_RESOLV_CONF))
+        .context("`resolv.conf` should be readable")?;
+    let parsed = resolv_conf::Config::parse(s).context("`resolv.conf` should be parsable")?;
+
+    // Drop the scoping info for IPv6 since connlib doesn't take it
+    let nameservers = parsed
+        .nameservers
+        .into_iter()
+        .map(|addr| addr.into())
+        .collect();
+    Ok(nameservers)
 }
 
 /// Revert changes Firezone made to `/etc/resolv.conf`

@@ -35,8 +35,8 @@ impl Method {
         match self {
             // Even if DNS control is disabled, we still read `/etc/resolv.conf`
             // to learn the system's resolvers
-            Method::Disabled => get_resolvers_resolv_conf(),
-            Method::EtcResolvConf => get_resolvers_resolv_conf(),
+            Method::Disabled => etc_resolv_conf::get_resolvers(),
+            Method::EtcResolvConf => etc_resolv_conf::get_resolvers(),
             Method::SystemdResolved => get_resolvers_systemd_resolved(),
         }
     }
@@ -45,9 +45,13 @@ impl Method {
 impl Drop for DnsController {
     fn drop(&mut self) {
         tracing::debug!("Reverting DNS control...");
-        if matches!(self.method, Method::EtcResolvConf) {
-            // TODO: Check that nobody else modified the file while we were running.
-            etc_resolv_conf::revert().ok();
+        match self.method {
+            // Systemd will disable our DNS control automatically when our tunnel stops
+            Method::Disabled | Method::SystemdResolved => {}
+            Method::EtcResolvConf => {
+                // TODO: Check that nobody else modified the file while we were running.
+                etc_resolv_conf::revert().ok();
+            }
         }
     }
 }
@@ -115,23 +119,6 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
     tracing::info!(?dns_config, "Configured DNS sentinels with `resolvectl`");
 
     Ok(())
-}
-
-fn get_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
-    // Assume that `configure_resolv_conf` has run in `tun_linux.rs`
-
-    let s = std::fs::read_to_string(etc_resolv_conf::ETC_RESOLV_CONF_BACKUP)
-        .or_else(|_| std::fs::read_to_string(etc_resolv_conf::ETC_RESOLV_CONF))
-        .context("`resolv.conf` should be readable")?;
-    let parsed = resolv_conf::Config::parse(s).context("`resolv.conf` should be parsable")?;
-
-    // Drop the scoping info for IPv6 since connlib doesn't take it
-    let nameservers = parsed
-        .nameservers
-        .into_iter()
-        .map(|addr| addr.into())
-        .collect();
-    Ok(nameservers)
 }
 
 /// Returns the DNS servers listed in `resolvectl dns`
