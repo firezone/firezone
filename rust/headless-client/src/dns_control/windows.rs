@@ -21,29 +21,40 @@ pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
     system_resolvers()
 }
 
+/// Controls system-wide DNS.
+///
+/// Always call `deactivate` when Firezone starts.
+///
+/// Only one of these should exist on the entire system at a time.
 #[derive(Default)]
-pub(super) struct DnsController {}
+pub(crate) struct DnsController {}
 
 // Unique magic number that we can use to delete our well-known NRPT rule.
 // Copied from the deep link schema
 const FZ_MAGIC: &str = "firezone-fd0020211111";
 
+impl Drop for DnsController {
+    fn drop(&mut self) {
+        if let Err(error) = self.deactivate() {
+            tracing::error!(?error, "Failed to deactivate DNS control");
+        }
+    }
+}
+
 impl DnsController {
     /// Deactivate any control Firezone has over the computer's DNS
-    pub(super) fn deactivate(&mut self) -> Result<()> {
+    pub(crate) fn deactivate(&mut self) -> Result<()> {
         deactivate()
     }
 
     /// Set the computer's system-wide DNS servers
-    ///
-    /// There's a gap in this because on Windows we deactivate and re-activate control.
     ///
     /// The `mut` in `&mut self` is not needed by Rust's rules, but
     /// it would be bad if this was called from 2 threads at once.
     ///
     /// Must be async to match the Linux signature
     #[allow(clippy::unused_async)]
-    pub(super) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
+    pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
         activate(dns_config).context("Failed to activate DNS control")?;
         Ok(())
     }
@@ -51,7 +62,7 @@ impl DnsController {
     /// Flush Windows' system-wide DNS cache
     ///
     /// `&self` is needed to match the Linux signature
-    pub(super) fn flush(&self) -> Result<()> {
+    pub(crate) fn flush(&self) -> Result<()> {
         tracing::debug!("Flushing Windows DNS cache...");
         Command::new("ipconfig")
             .creation_flags(CREATE_NO_WINDOW)

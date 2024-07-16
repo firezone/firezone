@@ -676,6 +676,7 @@ impl Controller {
                     std::mem::replace(&mut self.status, Status::TunnelReady { resources })
                 {
                     tracing::info!(elapsed = ?start_instant.elapsed(), "Tunnel ready");
+
                     os::show_notification(
                         "Firezone connected",
                         "You are now signed in and able to access resources.",
@@ -820,8 +821,9 @@ async fn run_controller(
                 }
             },
             resolvers = dns_listener.notified() => {
+                let resolvers = resolvers?;
                 if controller.status.connlib_is_up() {
-                    let resolvers = resolvers?;
+                    tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
                     controller.ipc_client.set_dns(resolvers).await?;
                 }
             },

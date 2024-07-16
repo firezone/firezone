@@ -191,6 +191,12 @@ struct Cli {
     #[arg(long, hide = true)]
     panic: bool,
 
+    /// Connect to the Firezone network (assuming the token is on disk) and initialize, then exit
+    ///
+    /// Use this to check how fast you can connect.
+    #[arg(long)]
+    exit: bool,
+
     /// If true, slow down I/O operations to test how the GUI handles slow I/O
     #[arg(long, hide = true)]
     inject_faults: bool,

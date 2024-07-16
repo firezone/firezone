@@ -182,6 +182,9 @@ pub fn run_only_headless_client() -> Result<()> {
         let mut terminate = pin!(terminate.recv().fuse());
         let mut hangup = pin!(hangup.recv().fuse());
         let mut dns_controller = DnsController::default();
+        // Deactivate Firezone DNS control in case the system or IPC service crashed
+        // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
+        dns_controller.deactivate()?;
         let mut tun_device = TunDeviceManager::new()?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 

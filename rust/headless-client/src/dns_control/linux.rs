@@ -25,7 +25,12 @@ enum DnsControlMethod {
     Systemd,
 }
 
-pub(super) struct DnsController {
+/// Controls system-wide DNS.
+///
+/// Always call `deactivate` when Firezone starts.
+///
+/// Only one of these should exist on the entire system at a time.
+pub(crate) struct DnsController {
     dns_control_method: Option<DnsControlMethod>,
 }
 
@@ -39,10 +44,18 @@ impl Default for DnsController {
     }
 }
 
+impl Drop for DnsController {
+    fn drop(&mut self) {
+        if let Err(error) = self.deactivate() {
+            tracing::error!(?error, "Failed to deactivate DNS control");
+        }
+    }
+}
+
 impl DnsController {
     #[allow(clippy::unnecessary_wraps)]
-    pub(super) fn deactivate(&mut self) -> Result<()> {
-        tracing::debug!("Reverting DNS control...");
+    pub(crate) fn deactivate(&mut self) -> Result<()> {
+        tracing::debug!("Deactivating DNS control...");
         if let Some(DnsControlMethod::EtcResolvConf) = self.dns_control_method {
             // TODO: Check that nobody else modified the file while we were running.
             etc_resolv_conf::revert()?;
@@ -56,7 +69,7 @@ impl DnsController {
     /// it would be bad if this was called from 2 threads at once.
     ///
     /// Cancel safety: Try not to cancel this.
-    pub(super) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
+    pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
         match self.dns_control_method {
             None => Ok(()),
             Some(DnsControlMethod::EtcResolvConf) => etc_resolv_conf::configure(dns_config).await,
@@ -69,7 +82,7 @@ impl DnsController {
     /// Flush systemd-resolved's system-wide DNS cache
     ///
     /// Does nothing if we're using other DNS control methods or none at all
-    pub(super) fn flush(&self) -> Result<()> {
+    pub(crate) fn flush(&self) -> Result<()> {
         // Flushing is only implemented for systemd-resolved
         if matches!(self.dns_control_method, Some(DnsControlMethod::Systemd)) {
             tracing::debug!("Flushing systemd-resolved DNS cache...");
