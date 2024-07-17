@@ -186,10 +186,10 @@ pub(crate) fn add_cidr_resource(
         .prop_filter(
             "tests doesn't support yet CIDR resources overlapping DNS resources",
             |r| {
-                IpNetwork::from_str(IPV4_RESOURCES)
+                !IpNetwork::from_str(IPV4_RESOURCES)
                     .unwrap()
                     .contains(r.address.network_address())
-                    || IpNetwork::from_str(IPV6_RESOURCES)
+                    && !IpNetwork::from_str(IPV6_RESOURCES)
                         .unwrap()
                         .contains(r.address.network_address())
             },
