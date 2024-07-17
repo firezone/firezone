@@ -179,6 +179,7 @@ where
         )
 }
 
+// Adds a non-overlapping CIDR resource with the gateway
 pub(crate) fn add_cidr_resource(
     sites: impl Strategy<Value = Vec<Site>>,
 ) -> impl Strategy<Value = Transition> {
@@ -186,6 +187,7 @@ pub(crate) fn add_cidr_resource(
         .prop_filter(
             "tests doesn't support yet CIDR resources overlapping DNS resources",
             |r| {
+                // This works because CIDR resourc's host mask is always <8 while IP resource is 21
                 !IpNetwork::from_str(IPV4_RESOURCES)
                     .unwrap()
                     .contains(r.address.network_address())
