@@ -62,7 +62,7 @@ impl ReferenceStateMachine for ReferenceState {
         (
             ref_client_host(Just(client_tunnel_ip4), Just(client_tunnel_ip6)),
             gateways_and_portal(),
-            collection::btree_map(relay_id(), ref_relay_host(), 1..=2),
+            collection::btree_map(relay_id(), ref_relay_host(), 2),
             global_dns_records(), // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
             any::<bool>(),
         )
@@ -167,13 +167,10 @@ impl ReferenceStateMachine for ReferenceState {
                 sample::select(resource_ids).prop_map(Transition::DeactivateResource)
             })
             .with(1, roam_client())
-            .with(
-                1,
-                migrate_relays(sample::select(
-                    state.relays.keys().copied().collect::<Vec<_>>(),
-                )),
-            )
             .with(1, Just(Transition::ReconnectPortal))
+            .with_if_not_empty(1, state.all_relays(), |relays| {
+                migrate_relays(sample::select(relays))
+            })
             .with_if_not_empty(
                 10,
                 state.client.inner().ipv4_cidr_resource_dsts(),
@@ -571,6 +568,10 @@ impl ReferenceState {
         all_resources.retain(|r| !self.client.inner().has_resource(r.id()));
 
         all_resources
+    }
+
+    fn all_relays(&self) -> Vec<RelayId> {
+        self.relays.keys().copied().collect()
     }
 }
 
