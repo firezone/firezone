@@ -636,6 +636,7 @@ where
                 };
 
                 if allocation.handle_input(from, local, packet, now) {
+                    self.allocations_drain_events();
                     // Successfully handled the packet
                     return ControlFlow::Break(());
                 }
