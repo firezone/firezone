@@ -1,6 +1,10 @@
 // Invoke with `cargo run --bin gui-smoke-test`
 //
 // Starts up the IPC service and GUI app and lets them run for a bit
+//
+// Make sure the GUI is logged out, and run this as admin. The GUI won't be able to
+// receive deep links, since browsers don't run as admin, but the IPC service must be
+// admin.
 
 use anyhow::{bail, Context as _, Result};
 use std::{
@@ -193,7 +197,9 @@ fn ipc_service_command() -> Exec {
 
 #[cfg(target_os = "windows")]
 fn ipc_service_command() -> Exec {
-    Exec::cmd(ipc_path())
+    // `RUST_LOG=info` needed to produce log files in an env where the log filter file
+    // doesn't exist
+    Exec::cmd(ipc_path()).env("RUST_LOG", "info")
 }
 
 // `ExitStatus::exit_ok` is nightly, so we add an equivalent here

@@ -4,7 +4,7 @@ use crate::{
     known_dirs, signals, CallbackHandler, CliCommon, CommonMsg, ConnlibMsg, IpcServerMsg,
     TOKEN_ENV_KEY,
 };
-use anyhow::{Context as _, Result};
+use anyhow::{bail, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
 use futures::{
@@ -12,7 +12,7 @@ use futures::{
     task::{Context, Poll},
     Future as _, SinkExt as _, Stream as _,
 };
-use std::{io, net::IpAddr, path::Path, pin::pin, sync::Arc, time::Duration};
+use std::{io, net::IpAddr, ops::ControlFlow, path::Path, pin::pin, sync::Arc, time::Duration};
 use tokio::{sync::mpsc, time::Instant};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
@@ -102,10 +102,7 @@ fn run_debug_ipc_service() -> Result<()> {
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
     );
     let rt = tokio::runtime::Runtime::new()?;
-    let _guard = rt.enter();
-    let mut signals = signals::Terminate::new()?;
-
-    rt.block_on(ipc_listen(&mut signals))
+    rt.block_on(ipc_listen())
 }
 
 #[cfg(not(debug_assertions))]
@@ -118,23 +115,24 @@ fn run_smoke_test() -> Result<()> {
 /// This makes the timing neater in case the GUI starts up slowly.
 #[cfg(debug_assertions)]
 fn run_smoke_test() -> Result<()> {
-    crate::setup_stdout_logging()?;
+    // Log to the prod dir so that exporting and clearing logs can be tested
+    let log_dir =
+        crate::known_dirs::ipc_service_logs().expect("Couldn't compute IPC service logs dir");
+    let _handle = setup_logging(&log_dir).expect("Couldn't set up logging");
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
     let mut dns_controller = DnsController::default();
-    // Deactivate Firezone DNS control in case the system or IPC service crashed
-    // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
-    dns_controller.deactivate()?;
     let mut signals = signals::Terminate::new()?;
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
         device_id::get_or_create().context("Failed to read / create device ID")?;
         let mut server = IpcServer::new(ServiceId::Prod).await?;
-        let _ = Handler::new(&mut server, &mut dns_controller)
-            .await?
-            .run(&mut signals)
-            .await;
+        if let ControlFlow::Break(()) =
+            handle_one_client(&mut server, &mut dns_controller, &mut signals).await?
+        {
+            bail!("Caught SIGINT / SIGTERM / Ctrl+C during smoke test");
+        }
         Ok::<_, anyhow::Error>(())
     })
 }
@@ -143,34 +141,49 @@ fn run_smoke_test() -> Result<()> {
 ///
 /// If an IPC client is connected when we catch a terminate signal, we send the
 /// client a hint about that before we exit.
-async fn ipc_listen(signals: &mut signals::Terminate) -> Result<()> {
+async fn ipc_listen() -> Result<()> {
+    let mut signals = signals::Terminate::new()?;
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
     device_id::get_or_create().context("Failed to read / create device ID")?;
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     let mut dns_controller = DnsController::default();
     loop {
-        let mut handler_fut = pin!(Handler::new(&mut server, &mut dns_controller));
-        let Some(handler) = poll_fn(|cx| {
-            if let Poll::Ready(()) = signals.poll_recv(cx) {
-                Poll::Ready(None)
-            } else if let Poll::Ready(handler) = handler_fut.as_mut().poll(cx) {
-                Poll::Ready(Some(handler))
-            } else {
-                Poll::Pending
-            }
-        })
-        .await
-        else {
-            tracing::info!("Caught SIGINT / SIGTERM / Ctrl+C while waiting on the next client.");
-            break;
-        };
-        let mut handler = handler?;
-        if let HandlerOk::ServiceTerminating = handler.run(signals).await {
-            break;
+        match handle_one_client(&mut server, &mut dns_controller, &mut signals).await? {
+            ControlFlow::Break(()) => break,
+            ControlFlow::Continue(()) => continue,
         }
     }
     Ok(())
+}
+
+/// Handle IPC for one IPC client. If we get Ctrl+C or similar, ask the
+/// client to shut down gracefully.
+async fn handle_one_client(
+    server: &mut IpcServer,
+    dns_controller: &mut DnsController,
+    signals: &mut signals::Terminate,
+) -> Result<ControlFlow<(), ()>> {
+    let mut handler_fut = pin!(Handler::new(server, dns_controller));
+    let Some(handler) = poll_fn(|cx| {
+        if let Poll::Ready(()) = signals.poll_recv(cx) {
+            Poll::Ready(None)
+        } else if let Poll::Ready(handler) = handler_fut.as_mut().poll(cx) {
+            Poll::Ready(Some(handler))
+        } else {
+            Poll::Pending
+        }
+    })
+    .await
+    else {
+        tracing::info!("Caught SIGINT / SIGTERM / Ctrl+C while waiting on the next client.");
+        return Ok(ControlFlow::Break(()));
+    };
+    let mut handler = handler?;
+    if let HandlerOk::ServiceTerminating = handler.run(signals).await {
+        return Ok(ControlFlow::Break(()));
+    }
+    Ok(ControlFlow::Continue(()))
 }
 
 /// Handles one IPC client
@@ -244,7 +257,7 @@ impl<'a> Handler<'a> {
                     break HandlerOk::Err;
                 }
                 Event::Ipc(msg) => {
-                    if let Err(error) = self.handle_ipc_msg(msg) {
+                    if let Err(error) = self.handle_ipc_msg(msg).await {
                         tracing::error!(?error, "Error while handling IPC message from client");
                         continue;
                     }
@@ -326,10 +339,14 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
-    fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
+    async fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
         match msg {
             ClientMsg::ClearLogs => {
-                todo!()
+                clear_logs_dir(
+                    &crate::known_dirs::ipc_service_logs()
+                        .context("Couldn't compute IPC service logs dir")?,
+                )
+                .await?
             }
             ClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);

@@ -100,6 +100,12 @@ pub(crate) struct FileCount {
     files: u64,
 }
 
+impl FileCount {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.files == 0
+    }
+}
+
 #[tauri::command]
 pub(crate) async fn count_logs() -> StdResult<FileCount, String> {
     count_logs_inner().await.map_err(|e| e.to_string())
@@ -227,8 +233,7 @@ pub(crate) async fn count_one_dir(path: &Path) -> Result<FileCount> {
 fn log_paths_export() -> Result<Vec<LogPath>> {
     Ok(vec![
         LogPath {
-            src: known_dirs::ipc_service_logs()
-                .context("Can't compute IPC service logs dir")?,
+            src: known_dirs::ipc_service_logs().context("Can't compute IPC service logs dir")?,
             dst: PathBuf::from("connlib"),
         },
         LogPath {

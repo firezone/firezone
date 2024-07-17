@@ -19,7 +19,10 @@ use std::{
 };
 use system_tray::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTrayEvent};
-use tokio::sync::{mpsc, oneshot};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
+};
 use tracing::instrument;
 use url::Url;
 
@@ -152,15 +155,12 @@ pub(crate) fn run(
                     }
                 });
 
-                if let Some(client::Cmd::SmokeTest) = &cli.command {
+                let smoke_test_task = if matches!(cli.command, Some(client::Cmd::SmokeTest)) {
                     let ctlr_tx = ctlr_tx.clone();
-                    tokio::spawn(async move {
-                        if let Err(error) = smoke_test(ctlr_tx).await {
-                            tracing::error!(?error, "Error during smoke test, crashing on purpose so a dev can see our stacktraces");
-                            unsafe { sadness_generator::raise_segfault() }
-                        }
-                    });
-                }
+                    tokio::spawn(smoke_test(ctlr_tx))
+                } else {
+                    tokio::spawn(futures::future::pending())
+                };
 
                 tracing::debug!(cli.no_deep_links);
                 if !cli.no_deep_links {
@@ -201,6 +201,7 @@ pub(crate) fn run(
                             ctlr_rx,
                             advanced_settings,
                             reloader,
+                            smoke_test_task,
                         )
                         .await
                     });
@@ -347,17 +348,33 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     anyhow::ensure!(tokio::fs::try_exists(settings::advanced_settings_path()?).await?);
 
     // Check that logs were written
-    assert!(logging::count_one_dir(known_dirs::ipc_service_logs()?).await?.files >= 1);
-    assert!(logging::count_one_dir(known_dirs::logs()?).await?.files >= 1);
+    assert!(
+        !logging::count_one_dir(&known_dirs::ipc_service_logs().unwrap())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(!logging::count_one_dir(&known_dirs::logs().unwrap())
+        .await
+        .unwrap()
+        .is_empty());
 
     // Clear logs
     let (cb_tx, cb_rx) = oneshot::channel();
     ctlr_tx.send(ControllerRequest::ClearLogs(cb_tx)).await?;
-    cb_rx.await??;
+    cb_rx.await.unwrap().unwrap();
 
     // Check that logs were cleared
-    assert!(logging::count_one_dir(known_dirs::ipc_service_logs()?).await?.files == 0);
-    assert!(logging::count_one_dir(known_dirs::logs()?).await?.files == 0);
+    assert!(
+        logging::count_one_dir(&known_dirs::ipc_service_logs().unwrap())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(logging::count_one_dir(&known_dirs::logs().unwrap())
+        .await
+        .unwrap()
+        .is_empty());
 
     tracing::info!("Quitting on purpose because of `smoke-test` subcommand");
     ctlr_tx
@@ -796,6 +813,7 @@ async fn run_controller(
     mut rx: mpsc::Receiver<ControllerRequest>,
     advanced_settings: AdvancedSettings,
     log_filter_reloader: logging::Reloader,
+    mut smoke_test_task: JoinHandle<Result<()>>,
 ) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");
     let ipc_client = ipc::Client::new(ctlr_tx.clone()).await?;
@@ -883,6 +901,11 @@ async fn run_controller(
                     req => controller.handle_request(req).await?,
                 }
             },
+            result = &mut smoke_test_task => match result {
+                Ok(Ok(())) => break,
+                Ok(Err(e)) => Err(e).context("Join error")?,
+                Err(e) => Err(e).context("Smoke test error")?,
+            }
         }
         // Code down here may not run because the `select` sometimes `continue`s.
     }
