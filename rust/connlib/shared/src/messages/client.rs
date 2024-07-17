@@ -78,7 +78,6 @@ pub struct Site {
 
 impl std::hash::Hash for Site {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
         self.id.hash(state);
     }
 }
