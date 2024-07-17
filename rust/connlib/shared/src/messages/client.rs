@@ -129,6 +129,13 @@ impl ResourceDescription {
         }
     }
 
+    pub fn sites_mut(&mut self) -> &mut Vec<Site> {
+        match self {
+            ResourceDescription::Dns(r) => &mut r.sites,
+            ResourceDescription::Cidr(r) => &mut r.sites,
+        }
+    }
+
     /// What the GUI clients should show as the user-friendly display name, e.g. `Firezone GitHub`
     pub fn name(&self) -> &str {
         match self {

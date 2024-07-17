@@ -1706,8 +1706,8 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn setting_gateway_online_sets_all_related_resources_online(
-        #[strategy(resources_sharing_site())] resources_online: Vec<ResourceDescription>,
-        #[strategy(resources_sharing_site())] resources_unknown: Vec<ResourceDescription>,
+        #[strategy(resources_sharing_n_sites(1))] resources_online: Vec<ResourceDescription>,
+        #[strategy(resources_sharing_n_sites(1))] resources_unknown: Vec<ResourceDescription>,
         #[strategy(gateway_id())] gateway: GatewayId,
     ) {
         let mut client_state = ClientState::for_test();
@@ -1734,7 +1734,7 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn disconnecting_gateway_sets_related_resources_unknown(
-        #[strategy(resources_sharing_site())] resources: Vec<ResourceDescription>,
+        #[strategy(resources_sharing_n_sites(1))] resources: Vec<ResourceDescription>,
         #[strategy(gateway_id())] gateway: GatewayId,
     ) {
         let mut client_state = ClientState::for_test();
@@ -1757,19 +1757,20 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn setting_resource_offline_doesnt_set_all_related_resources_offline(
-        #[strategy(resources_sharing_site())] mut resources: Vec<ResourceDescription>,
+        #[strategy(resources_sharing_n_sites(2))] multi_site_resources: Vec<ResourceDescription>,
+        #[strategy(resource())] single_site_resource: ResourceDescription,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.add_resources(&resources);
-        let resource_offline = resources.pop().unwrap();
+        client_state.add_resources(&multi_site_resources);
+        client_state.add_resources(&[single_site_resource.clone()]);
 
-        client_state.set_resource_offline(resource_offline.id());
+        client_state.set_resource_offline(single_site_resource.id());
 
         assert_eq!(
-            client_state.resource_status(&resource_offline),
+            client_state.resource_status(&single_site_resource),
             Status::Offline
         );
-        for resource in resources {
+        for resource in multi_site_resources {
             assert_eq!(client_state.resource_status(&resource), Status::Unknown);
         }
     }
@@ -1790,16 +1791,24 @@ mod proptests {
         HashSet::from_iter(val.into_iter().map(|b| b.to_owned()))
     }
 
+    fn resource() -> impl Strategy<Value = ResourceDescription> {
+        connlib_shared::proptest::resource(site().prop_map(|s| vec![s]))
+    }
+
     fn cidr_resource() -> impl Strategy<Value = ResourceDescriptionCidr> {
-        connlib_shared::proptest::cidr_resource(ip_network(8), site())
+        connlib_shared::proptest::cidr_resource(ip_network(8), site().prop_map(|s| vec![s]))
     }
 
     fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {
-        connlib_shared::proptest::dns_resource(site())
+        connlib_shared::proptest::dns_resource(site().prop_map(|s| vec![s]))
     }
 
     // Generate resources sharing 1 site
-    fn resources_sharing_site() -> impl Strategy<Value = Vec<ResourceDescription>> {
-        site().prop_flat_map(|site| collection::vec(resource(Just(site)), 1..=100))
+    fn resources_sharing_n_sites(
+        num_sites: usize,
+    ) -> impl Strategy<Value = Vec<ResourceDescription>> {
+        collection::vec(site(), num_sites).prop_flat_map(|sites| {
+            collection::vec(connlib_shared::proptest::resource(Just(sites)), 1..=100)
+        })
     }
 }

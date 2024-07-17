@@ -5,7 +5,7 @@ use super::{
 use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{
-        client::{self, Site, SiteId},
+        client::{self, SiteId},
         GatewayId, RelayId,
     },
     proptest::*,
@@ -61,11 +61,11 @@ impl ReferenceStateMachine for ReferenceState {
         let client_tunnel_ip4 = tunnel_ip4s().next().unwrap();
         let client_tunnel_ip6 = tunnel_ip6s().next().unwrap();
 
-        let sites = collection::hash_map(site_id(), site_name(), 1..=3);
+        let sites = collection::hash_set(site(), 1..=3);
 
         sites
             .prop_flat_map(move |sites| {
-                let gateway_site = sample::select(sites.keys().copied().collect::<Vec<_>>());
+                let gateway_site = sample::select(sites.iter().map(|s| s.id).collect::<Vec<_>>());
 
                 (
                     ref_client_host(Just(client_tunnel_ip4), Just(client_tunnel_ip6)),
@@ -100,10 +100,6 @@ impl ReferenceStateMachine for ReferenceState {
                                     (gateways, sites)
                                 },
                             );
-                            let sites = sites
-                                .into_iter()
-                                .map(|(id, name)| (id, Site { id, name }))
-                                .collect();
 
                             let portal = StubPortal::new(gateways_by_site, sites, gateway_selector);
 
@@ -203,8 +199,11 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .with(
                 1,
-                cidr_resource(ip_network(8), sample::select(state.portal.all_sites()))
-                    .prop_map(|resource| Transition::AddCidrResource { resource }),
+                cidr_resource(
+                    ip_network(8),
+                    sample::select(state.portal.all_sites()).prop_map(|s| vec![s]),
+                )
+                .prop_map(|resource| Transition::AddCidrResource { resource }),
             )
             .with(1, roam_client())
             .with(

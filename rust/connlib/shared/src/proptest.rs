@@ -14,15 +14,15 @@ use std::{
 };
 
 pub fn resource(
-    site: impl Strategy<Value = Site> + Clone + 'static,
+    sites: impl Strategy<Value = Vec<Site>> + Clone + 'static,
 ) -> impl Strategy<Value = ResourceDescription> {
     any::<bool>().prop_flat_map(move |is_dns| {
         if is_dns {
-            dns_resource(site.clone())
+            dns_resource(sites.clone())
                 .prop_map(ResourceDescription::Dns)
                 .boxed()
         } else {
-            cidr_resource(ip_network(8), site.clone())
+            cidr_resource(ip_network(8), sites.clone())
                 .prop_map(ResourceDescription::Cidr)
                 .boxed()
         }
@@ -30,21 +30,21 @@ pub fn resource(
 }
 
 pub fn dns_resource(
-    site: impl Strategy<Value = Site>,
+    sites: impl Strategy<Value = Vec<Site>>,
 ) -> impl Strategy<Value = ResourceDescriptionDns> {
     (
         resource_id(),
         resource_name(),
         domain_name(2..4),
         address_description(),
-        site,
+        sites,
     )
-        .prop_map(move |(id, name, address, address_description, site)| {
+        .prop_map(move |(id, name, address, address_description, sites)| {
             ResourceDescriptionDns {
                 id,
                 address,
                 name,
-                sites: vec![site],
+                sites,
                 address_description,
             }
         })
@@ -52,32 +52,38 @@ pub fn dns_resource(
 
 pub fn cidr_resource(
     ip_network: impl Strategy<Value = IpNetwork>,
-    site: impl Strategy<Value = Site>,
+    sites: impl Strategy<Value = Vec<Site>>,
 ) -> impl Strategy<Value = ResourceDescriptionCidr> {
     (
         resource_id(),
         resource_name(),
         ip_network,
         address_description(),
-        site,
+        sites,
     )
-        .prop_map(move |(id, name, address, address_description, site)| {
+        .prop_map(move |(id, name, address, address_description, sites)| {
             ResourceDescriptionCidr {
                 id,
                 address,
                 name,
-                sites: vec![site],
+                sites,
                 address_description,
             }
         })
 }
 
 pub fn cidr_v4_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
-    cidr_resource(ip4_network(host_mask_bits).prop_map(IpNetwork::V4), site())
+    cidr_resource(
+        ip4_network(host_mask_bits).prop_map(IpNetwork::V4),
+        site().prop_map(|s| vec![s]),
+    )
 }
 
 pub fn cidr_v6_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
-    cidr_resource(ip6_network(host_mask_bits).prop_map(IpNetwork::V6), site())
+    cidr_resource(
+        ip6_network(host_mask_bits).prop_map(IpNetwork::V6),
+        site().prop_map(|s| vec![s]),
+    )
 }
 
 pub fn address_description() -> impl Strategy<Value = Option<String>> {

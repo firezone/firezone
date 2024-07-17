@@ -181,18 +181,18 @@ where
 pub(crate) fn non_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
 ) -> impl Strategy<Value = Transition> {
-    (dns_resource(site), resolved_ips()).prop_map(|(resource, resolved_ips)| {
-        Transition::AddDnsResource {
+    (dns_resource(site.prop_map(|s| vec![s])), resolved_ips()).prop_map(
+        |(resource, resolved_ips)| Transition::AddDnsResource {
             records: HashMap::from([(resource.address.parse().unwrap(), resolved_ips)]),
             resource,
-        }
-    })
+        },
+    )
 }
 
 pub(crate) fn star_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
 ) -> impl Strategy<Value = Transition> {
-    dns_resource(site).prop_flat_map(move |r| {
+    dns_resource(site.prop_map(|s| vec![s])).prop_flat_map(move |r| {
         let wildcard_address = format!("*.{}", r.address);
 
         let records = subdomain_records(r.address, domain_name(1..3));
@@ -209,7 +209,7 @@ pub(crate) fn star_wildcard_dns_resource(
 pub(crate) fn question_mark_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
 ) -> impl Strategy<Value = Transition> {
-    dns_resource(site).prop_flat_map(move |r| {
+    dns_resource(site.prop_map(|s| vec![s])).prop_flat_map(move |r| {
         let wildcard_address = format!("?.{}", r.address);
 
         let records = subdomain_records(r.address, domain_label());

@@ -22,12 +22,12 @@ pub(crate) struct StubPortal {
 impl StubPortal {
     pub(crate) fn new(
         gateways_by_site: HashMap<client::SiteId, HashSet<GatewayId>>,
-        sites: HashMap<client::SiteId, client::Site>,
+        sites: HashSet<client::Site>,
         gateway_selector: Selector,
     ) -> Self {
         Self {
             gateways_by_site,
-            sites,
+            sites: sites.into_iter().map(|s| (s.id, s)).collect(),
             gateway_selector,
             sites_by_resource: Default::default(),
             cidr_resources: Default::default(),
