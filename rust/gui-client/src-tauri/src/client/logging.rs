@@ -11,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
     result::Result as StdResult,
 };
-use tokio::task::spawn_blocking;
+use tokio::{sync::oneshot, task::spawn_blocking};
 use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
 use tracing_subscriber::{fmt, layer::SubscriberExt, reload, EnvFilter, Layer, Registry};
@@ -75,18 +75,22 @@ pub(crate) fn setup(directives: &str) -> Result<Handles> {
 }
 
 #[tauri::command]
-pub(crate) async fn clear_logs() -> StdResult<(), String> {
-    if let Err(error) = clear_logs_inner().await {
-        // Log the error ourselves since Tauri will only log it to the JS console
-        tracing::error!(?error, "Error while clearing logs");
-        Err(error.to_string())
-    } else {
-        Ok(())
+pub(crate) async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<(), String> {
+    let (cb_tx, cb_rx) = oneshot::channel();
+    managed
+        .ctlr_tx
+        .send(ControllerRequest::ClearLogs(cb_tx))
+        .await
+        .map_err(|e| e.to_string())?;
+    match cb_rx.await {
+        Err(_recv_error) => Err("Failed to await response from `Controller`".to_string()),
+        Ok(Err(clear_logs_err)) => Err(clear_logs_err),
+        Ok(Ok(())) => Ok(()),
     }
 }
 
 #[tauri::command]
-pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> StdResult<(), String> {
+pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> Result<(), String> {
     show_export_dialog(managed.ctlr_tx.clone()).map_err(|e| e.to_string())
 }
 
@@ -195,7 +199,7 @@ fn add_dir_to_zip(
 pub(crate) async fn count_logs_inner() -> Result<FileCount> {
     // I spent about 5 minutes on this and couldn't get it to work with `Stream`
     let mut total_count = FileCount::default();
-    for log_path in log_paths()? {
+    for log_path in log_paths_export()? {
         let count = count_one_dir(&log_path.src).await?;
         total_count.files += count.files;
         total_count.bytes += count.bytes;
@@ -216,7 +220,7 @@ async fn count_one_dir(path: &Path) -> Result<FileCount> {
     Ok(file_count)
 }
 
-/// Paths that the GUI should check to export logs
+/// Paths that the GUI should check to count or export logs
 ///
 /// The GUI has read access to log files on both OSes, so this includes
 /// the IPC service's logs dir
@@ -228,7 +232,7 @@ fn log_paths_export() -> Result<Vec<LogPath>> {
             dst: PathBuf::from("connlib"),
         },
         LogPath {
-            src: known_dirs::logs().context("Can't compute app log dir")?,
+            src: known_dirs::logs().context("Can't compute GUI log dir")?,
             dst: PathBuf::from("app"),
         },
     ])

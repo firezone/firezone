@@ -10,7 +10,7 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use connlib_client_shared::callbacks::ResourceDescription;
-use firezone_headless_client::{CommonMsg, IpcServerMsg};
+use firezone_headless_client::{known_dirs, CommonMsg, IpcClientMsg, IpcServerMsg};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     path::PathBuf,
@@ -301,8 +301,9 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         })
         .await
         .context("Failed to send ExportLogs request")?;
+    let (cb_tx, _) = oneshot::channel();
     ctlr_tx
-        .send(ControllerRequest::ClearLogs)
+        .send(ControllerRequest::ClearLogs(cb_tx))
         .await
         .context("Failed to send ClearLogs request")?;
 
@@ -419,7 +420,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 pub(crate) enum ControllerRequest {
     /// The GUI wants us to use these settings in-memory, they've already been saved to disk
     ApplySettings(AdvancedSettings),
-    ClearLogs,
+    ClearLogs(oneshot::Sender<Result<(), String>>),
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {
         path: PathBuf,
@@ -532,9 +533,16 @@ impl Controller {
                     "Applied new settings. Log level will take effect immediately for the GUI and later for the IPC service."
                 );
             }
-            Req::ClearLogs => logging::clear_logs_inner()
-                .await
-                .context("Failed to clear logs")?,
+            Req::ClearLogs(cb) => {
+                if self.clear_logs_callback.is_some() {
+                    Err(anyhow!("Another `ClearLogs` operation is in-flight"))?
+                }
+                // Clear GUI logs
+                firezone_headless_client::clear_logs_dir(&known_dirs::logs().context("Can't compute GUI log dir")?).await?;
+                // Command IPC service to clear its logs
+                self.ipc_client.send_msg(&IpcClientMsg::ClearLogs).await?;
+                self.clear_logs_callback = Some(cb);
+            }
             Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
                 .await
                 .context("Failed to export logs to zip")?,
