@@ -30,7 +30,7 @@ use std::{
     net::IpAddr,
     str::FromStr as _,
     sync::Arc,
-    time::{Duration, Instant},
+    time::Instant,
 };
 use tracing::debug_span;
 use tracing::subscriber::DefaultGuard;
@@ -221,9 +221,6 @@ impl StateMachineTest for TunnelTest {
                 });
 
                 buffered_transmits.push(transmit, &state.client);
-            }
-            Transition::Tick { millis } => {
-                state.now += Duration::from_millis(millis);
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 state
@@ -662,10 +659,13 @@ impl TunnelTest {
             ClientEvent::ResourcesChanged { .. } => {
                 tracing::warn!("Unimplemented");
             }
-            ClientEvent::DnsServersChanged { dns_by_sentinel } => {
+            ClientEvent::TunInterfaceUpdated {
+                dns_by_sentinel, ..
+            } => {
                 self.client
                     .exec_mut(|c| c.dns_by_sentinel = dns_by_sentinel);
             }
+            ClientEvent::TunRoutesUpdated { .. } => {}
         }
     }
 

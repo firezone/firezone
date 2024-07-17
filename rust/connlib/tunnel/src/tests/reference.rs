@@ -16,7 +16,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt, iter,
     net::IpAddr,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 /// The reference state machine of the tunnel.
@@ -135,10 +135,6 @@ impl ReferenceStateMachine for ReferenceState {
         CompositeStrategy::default()
             .with(
                 1,
-                (0..=1000u64).prop_map(|millis| Transition::Tick { millis }),
-            )
-            .with(
-                1,
                 system_dns_servers()
                     .prop_map(|servers| Transition::UpdateSystemDnsServers { servers }),
             )
@@ -150,7 +146,7 @@ impl ReferenceStateMachine for ReferenceState {
             .with(
                 1,
                 cidr_resource(
-                    ip_network(8),
+                    any_ip_network(8),
                     sample::select(state.portal.all_sites()).prop_map(|s| vec![s]),
                 )
                 .prop_map(|resource| Transition::AddCidrResource { resource }),
@@ -170,7 +166,8 @@ impl ReferenceStateMachine for ReferenceState {
                 |ip4_resources| {
                     icmp_to_cidr_resource(
                         packet_source_v4(state.client.inner().tunnel_ip4),
-                        sample::select(ip4_resources),
+                        sample::select(ip4_resources)
+                            .prop_flat_map(connlib_shared::proptest::host_v4),
                     )
                 },
             )
@@ -180,7 +177,8 @@ impl ReferenceStateMachine for ReferenceState {
                 |ip6_resources| {
                     icmp_to_cidr_resource(
                         packet_source_v6(state.client.inner().tunnel_ip6),
-                        sample::select(ip6_resources),
+                        sample::select(ip6_resources)
+                            .prop_flat_map(connlib_shared::proptest::host_v6),
                     )
                 },
             )
@@ -352,7 +350,6 @@ impl ReferenceStateMachine for ReferenceState {
             } => state.client.exec_mut(|client| {
                 client.on_icmp_packet_to_dns(*src, dst.clone(), *seq, *identifier)
             }),
-            Transition::Tick { millis } => state.now += Duration::from_millis(*millis),
             Transition::UpdateSystemDnsServers { servers } => {
                 state
                     .client
@@ -462,7 +459,6 @@ impl ReferenceStateMachine for ReferenceState {
 
                 true
             }
-            Transition::Tick { .. } => true,
             Transition::SendICMPPacketToNonResourceIp {
                 dst,
                 seq,

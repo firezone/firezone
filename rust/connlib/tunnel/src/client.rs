@@ -13,7 +13,7 @@ use connlib_shared::messages::{
     GatewayId, Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId,
     RequestConnection, ResourceId, ReuseConnection,
 };
-use connlib_shared::{callbacks, Callbacks, DomainName, PublicKey, StaticSecret};
+use connlib_shared::{callbacks, DomainName, PublicKey, StaticSecret};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
@@ -34,8 +34,8 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
-const IPV4_RESOURCES: &str = "100.96.0.0/11";
-const IPV6_RESOURCES: &str = "fd00:2021:1111:8000::/107";
+pub(crate) const IPV4_RESOURCES: &str = "100.96.0.0/11";
+pub(crate) const IPV6_RESOURCES: &str = "fd00:2021:1111:8000::/107";
 
 const DNS_PORT: u16 = 53;
 const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
@@ -45,18 +45,22 @@ const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 // is 30 seconds. See resolvconf(5) timeout.
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
-impl<CB> ClientTunnel<CB>
-where
-    CB: Callbacks + 'static,
-{
+impl ClientTunnel {
     pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
         self.role_state.set_resources(resources);
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
-        self.callbacks
-            .on_update_resources(self.role_state.resources());
+
+        // FIXME: It would be good to add this event from _within_ `ClientState` but we don't want to emit duplicates.
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
+            });
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.role_state.resources(),
+            });
     }
 
     pub fn set_tun(&mut self, tun: Tun) {
@@ -72,23 +76,33 @@ where
     pub fn add_resources(&mut self, resources: &[ResourceDescription]) {
         self.role_state.add_resources(resources);
 
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
-        self.callbacks
-            .on_update_resources(self.role_state.resources());
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
+            });
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.role_state.resources(),
+            });
     }
 
     pub fn remove_resources(&mut self, ids: &[ResourceId]) {
         self.role_state.remove_resources(ids);
 
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
-        self.callbacks
-            .on_update_resources(self.role_state.resources())
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
+            });
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.role_state.resources(),
+            });
     }
 
     /// Updates the system's dns
@@ -103,10 +117,6 @@ where
 
         self.io
             .set_upstream_dns_servers(self.role_state.dns_mapping());
-
-        if let Some(config) = self.role_state.interface_config.as_ref().cloned() {
-            self.update_device(config, self.role_state.dns_mapping());
-        };
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -114,33 +124,14 @@ where
         &mut self,
         config: InterfaceConfig,
     ) -> connlib_shared::Result<()> {
-        let dns_changed = self.role_state.update_interface_config(config.clone());
+        let dns_changed = self.role_state.update_interface_config(config);
 
         if dns_changed {
             self.io
                 .set_upstream_dns_servers(self.role_state.dns_mapping());
         }
 
-        self.update_device(config, self.role_state.dns_mapping());
-
         Ok(())
-    }
-
-    pub(crate) fn update_device(
-        &mut self,
-        config: InterfaceConfig,
-        dns_mapping: BiMap<IpAddr, DnsServer>,
-    ) {
-        // We can just sort in here because sentinel ips are created in order
-        let dns_config = dns_mapping.left_values().copied().sorted().collect();
-
-        self.callbacks
-            .clone()
-            .on_set_interface_config(config.ipv4, config.ipv6, dns_config);
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
     }
 
     pub fn cleanup_connection(&mut self, id: ResourceId) {
@@ -152,8 +143,11 @@ where
 
         self.role_state.on_connection_failed(id);
 
-        self.callbacks
-            .on_update_resources(self.role_state.resources());
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.role_state.resources(),
+            });
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
@@ -299,17 +293,17 @@ impl ClientState {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip4(&self) -> Option<Ipv4Addr> {
         Some(self.interface_config.as_ref()?.ipv4)
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip6(&self) -> Option<Ipv6Addr> {
         Some(self.interface_config.as_ref()?.ipv6)
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> Option<IpAddr> {
         Some(match dst {
             IpAddr::V4(_) => self.tunnel_ip4()?.into(),
@@ -756,10 +750,7 @@ impl ClientState {
             .longest_match(destination)
             .map(|(_, res)| res.id);
 
-        let maybe_dns_resource_id = self
-            .stub_resolver
-            .get_description(&destination)
-            .map(|r| r.id);
+        let maybe_dns_resource_id = self.stub_resolver.resolve_resource_by_ip(&destination);
 
         maybe_cidr_resource_id.or(maybe_dns_resource_id)
     }
@@ -927,7 +918,7 @@ impl ClientState {
 
             match &resource_description {
                 ResourceDescription::Dns(dns) => {
-                    self.stub_resolver.add_resource(dns);
+                    self.stub_resolver.add_resource(dns.id, dns.address.clone());
                 }
                 ResourceDescription::Cidr(cidr) => {
                     let existing = self.cidr_resources.insert(cidr.address, cidr.clone());
@@ -1019,15 +1010,25 @@ impl ClientState {
                 .collect_vec(),
         );
 
+        let ip4 = config.ipv4;
+        let ip6 = config.ipv6;
+
         self.set_dns_mapping(dns_mapping);
 
         self.buffered_events
-            .push_back(ClientEvent::DnsServersChanged {
+            .push_back(ClientEvent::TunInterfaceUpdated {
+                ip4,
+                ip6,
                 dns_by_sentinel: self
                     .dns_mapping
                     .iter()
                     .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
                     .collect(),
+            });
+        self.buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.routes().filter_map(utils::ipv6).collect(),
             });
 
         true
@@ -1581,7 +1582,7 @@ mod proptests {
     #[test_strategy::proptest]
     fn adding_same_resource_with_different_address_updates_the_address(
         #[strategy(cidr_resource())] resource: ResourceDescriptionCidr,
-        #[strategy(ip_network(8))] new_address: IpNetwork,
+        #[strategy(any_ip_network(8))] new_address: IpNetwork,
     ) {
         use callbacks as cb;
 
@@ -1610,7 +1611,7 @@ mod proptests {
     #[test_strategy::proptest]
     fn adding_cidr_resource_with_same_id_as_dns_resource_replaces_dns_resource(
         #[strategy(dns_resource())] resource: ResourceDescriptionDns,
-        #[strategy(ip_network(8))] address: IpNetwork,
+        #[strategy(any_ip_network(8))] address: IpNetwork,
     ) {
         use callbacks as cb;
 
@@ -1796,7 +1797,7 @@ mod proptests {
     }
 
     fn cidr_resource() -> impl Strategy<Value = ResourceDescriptionCidr> {
-        connlib_shared::proptest::cidr_resource(ip_network(8), site().prop_map(|s| vec![s]))
+        connlib_shared::proptest::cidr_resource(any_ip_network(8), site().prop_map(|s| vec![s]))
     }
 
     fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {

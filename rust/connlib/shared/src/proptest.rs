@@ -5,11 +5,11 @@ use crate::messages::{
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use proptest::{
     arbitrary::{any, any_with},
-    collection, prop_oneof, sample,
+    collection, prop_oneof,
     strategy::{Just, Strategy},
 };
 use std::{
-    net::{Ipv4Addr, Ipv6Addr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::Range,
 };
 
@@ -22,7 +22,7 @@ pub fn resource(
                 .prop_map(ResourceDescription::Dns)
                 .boxed()
         } else {
-            cidr_resource(ip_network(8), sites.clone())
+            cidr_resource(any_ip_network(8), sites.clone())
                 .prop_map(ResourceDescription::Cidr)
                 .boxed()
         }
@@ -74,14 +74,14 @@ pub fn cidr_resource(
 
 pub fn cidr_v4_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
     cidr_resource(
-        ip4_network(host_mask_bits).prop_map(IpNetwork::V4),
+        any_ip4_network(host_mask_bits),
         site().prop_map(|s| vec![s]),
     )
 }
 
 pub fn cidr_v6_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
     cidr_resource(
-        ip6_network(host_mask_bits).prop_map(IpNetwork::V6),
+        any_ip6_network(host_mask_bits),
         site().prop_map(|s| vec![s]),
     )
 }
@@ -138,40 +138,65 @@ pub fn domain_name(depth: Range<usize>) -> impl Strategy<Value = String> {
 }
 
 /// A strategy of IP networks, configurable by the size of the host mask.
-///
-/// For the full range of networks, specify 0.
-pub fn ip_network(host_mask_bits: usize) -> impl Strategy<Value = IpNetwork> {
-    (any::<bool>()).prop_flat_map(move |is_ip4| {
-        if is_ip4 {
-            ip4_network(host_mask_bits).prop_map(IpNetwork::V4).boxed()
-        } else {
-            ip6_network(host_mask_bits).prop_map(IpNetwork::V6).boxed()
-        }
+pub fn any_ip_network(host_mask_bits: usize) -> impl Strategy<Value = IpNetwork> {
+    any::<IpAddr>().prop_flat_map(move |ip| ip_network(ip, host_mask_bits))
+}
+
+pub fn any_ip4_network(host_mask_bits: usize) -> impl Strategy<Value = IpNetwork> {
+    any::<Ipv4Addr>().prop_flat_map(move |ip| ip_network(ip.into(), host_mask_bits))
+}
+
+pub fn any_ip6_network(host_mask_bits: usize) -> impl Strategy<Value = IpNetwork> {
+    any::<Ipv6Addr>().prop_flat_map(move |ip| ip_network(ip.into(), host_mask_bits))
+}
+
+pub fn ip_network(network: IpAddr, host_mask_bits: usize) -> impl Strategy<Value = IpNetwork> {
+    assert!(host_mask_bits > 0);
+
+    let max_netmask = match network {
+        IpAddr::V4(_) => 32,
+        IpAddr::V6(_) => 128,
+    };
+    assert!(host_mask_bits <= max_netmask);
+
+    (0..host_mask_bits).prop_map(move |mask| {
+        let netmask = max_netmask - mask;
+        IpNetwork::new_truncate(network, netmask as u8).unwrap()
     })
 }
 
-/// A strategy of IPv4 networks, configurable by the size of the host mask.
-pub fn ip4_network(host_mask_bits: usize) -> impl Strategy<Value = Ipv4Network> {
-    assert!(host_mask_bits > 0);
-    assert!(host_mask_bits <= 32);
-
-    (any::<Ipv4Addr>(), any::<sample::Index>()).prop_map(move |(ip, netmask)| {
-        let host_mask = netmask.index(host_mask_bits);
-        let netmask = 32 - host_mask;
-
-        Ipv4Network::new_truncate(ip, netmask as u8).expect("netmask to be <= 32")
-    })
+fn number_of_hosts_ipv4(mask: u8) -> u32 {
+    2u32.checked_pow(32 - mask as u32)
+        .map(|i| i - 1)
+        .unwrap_or(u32::MAX)
 }
 
-/// A strategy of IPv6 networks, configurable by the size of the host mask.
-pub fn ip6_network(host_mask_bits: usize) -> impl Strategy<Value = Ipv6Network> {
-    assert!(host_mask_bits > 0);
-    assert!(host_mask_bits <= 128);
+fn number_of_hosts_ipv6(mask: u8) -> u128 {
+    2u128
+        .checked_pow(128 - mask as u32)
+        .map(|i| i - 1)
+        .unwrap_or(u128::MAX)
+}
 
-    (any::<Ipv6Addr>(), any::<sample::Index>()).prop_map(move |(ip, netmask)| {
-        let host_mask = netmask.index(host_mask_bits);
-        let netmask = 128 - host_mask;
+// Note: for these tests we don't really care that it's a valid host
+// we only need a host.
+// If we filter valid hosts it generates too many rejects
+pub fn host_v4(ip: Ipv4Network) -> impl Strategy<Value = Ipv4Addr> {
+    (0u32..=number_of_hosts_ipv4(ip.netmask()))
+        .prop_map(move |n| (u32::from(ip.network_address()) + n).into())
+}
 
-        Ipv6Network::new_truncate(ip, netmask as u8).expect("netmask to be <= 128")
-    })
+// Note: for these tests we don't really care that it's a valid host
+// we only need a host.
+// If we filter valid hosts it generates too many rejects
+pub fn host_v6(ip: Ipv6Network) -> impl Strategy<Value = Ipv6Addr> {
+    (0u128..=number_of_hosts_ipv6(ip.netmask()))
+        .prop_map(move |n| (u128::from(ip.network_address()) + n).into())
+}
+
+pub fn host(ip: IpNetwork) -> impl Strategy<Value = IpAddr> {
+    match ip {
+        IpNetwork::V4(ip) => host_v4(ip).prop_map_into().boxed(),
+        IpNetwork::V6(ip) => host_v6(ip).prop_map_into().boxed(),
+    }
 }
