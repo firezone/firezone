@@ -1,5 +1,3 @@
-use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
-
 use super::{
     sim_net::{any_ip_stack, any_port},
     strategies::*,
