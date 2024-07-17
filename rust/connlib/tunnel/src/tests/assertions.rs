@@ -67,14 +67,17 @@ pub(crate) fn assert_icmp_packets_properties(
             let _guard =
                 tracing::info_span!(target: "assertions", "icmp", %seq, %identifier).entered();
 
-            let client_sent_request = &sim_client
-                .sent_icmp_requests
-                .get(&(*seq, *identifier))
-                .expect("to have ICMP request on client");
-            let client_received_reply = &sim_client
-                .received_icmp_replies
-                .get(&(*seq, *identifier))
-                .expect("to have ICMP reply on client");
+            let Some(client_sent_request) = sim_client.sent_icmp_requests.get(&(*seq, *identifier))
+            else {
+                tracing::error!(target: "assertions", "❌ Missing ICMP request on client");
+                continue;
+            };
+            let Some(client_received_reply) =
+                sim_client.received_icmp_replies.get(&(*seq, *identifier))
+            else {
+                tracing::error!(target: "assertions", "❌ Missing ICMP reply on client");
+                continue;
+            };
 
             assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
 
@@ -133,14 +136,14 @@ pub(crate) fn assert_dns_packets_properties(ref_client: &RefClient, sim_client: 
     for query_id in ref_client.expected_dns_handshakes.iter() {
         let _guard = tracing::info_span!(target: "assertions", "dns", %query_id).entered();
 
-        let client_sent_query = sim_client
-            .sent_dns_queries
-            .get(query_id)
-            .expect("to have DNS query on client");
-        let client_received_response = sim_client
-            .received_dns_responses
-            .get(query_id)
-            .expect("to have DNS response on client");
+        let Some(client_sent_query) = sim_client.sent_dns_queries.get(query_id) else {
+            tracing::error!(target: "assertions", ?unexpected_dns_replies, "❌ Missing DNS query on client");
+            continue;
+        };
+        let Some(client_received_response) = sim_client.received_dns_responses.get(query_id) else {
+            tracing::error!(target: "assertions", ?unexpected_dns_replies, "❌ Missing DNS response on client");
+            continue;
+        };
 
         assert_correct_src_and_dst_ips(client_sent_query, client_received_response);
         assert_correct_src_and_dst_udp_ports(client_sent_query, client_received_response);
@@ -209,12 +212,13 @@ fn assert_destination_is_cdir_resource(gateway_received_request: &IpPacket<'_>, 
 fn assert_destination_is_dns_resource(
     gateway_received_request: &IpPacket<'_>,
     global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
-    expected_resource: &DomainName,
+    domain: &DomainName,
 ) {
     let actual = gateway_received_request.destination();
-    let possible_resource_ips = global_dns_records
-        .get(expected_resource)
-        .expect("ICMP packet for DNS resource to target known domain");
+    let Some(possible_resource_ips) = global_dns_records.get(domain) else {
+        tracing::error!(target: "assertions", %domain, "❌ No DNS records");
+        return;
+    };
 
     if !possible_resource_ips.contains(&actual) {
         tracing::error!(target: "assertions", %actual, ?possible_resource_ips, "❌ Unknown resource IP");
