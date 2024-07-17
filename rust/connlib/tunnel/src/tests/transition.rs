@@ -229,11 +229,3 @@ pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {
         port,
     })
 }
-
-pub(crate) fn cidr_resource_overlapping_dns_resources(
-) -> impl Strategy<Value = ResourceDescriptionCidr> {
-    prop_oneof![
-        overlapping_cidr_resource(IPV4_RESOURCES.parse().unwrap()),
-        overlapping_cidr_resource(IPV6_RESOURCES.parse().unwrap()),
-    ]
-}

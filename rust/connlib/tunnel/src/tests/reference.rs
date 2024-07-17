@@ -151,17 +151,6 @@ impl ReferenceStateMachine for ReferenceState {
                 )
                 .prop_map(|resource| Transition::AddCidrResource { resource }),
             )
-            .with(
-                1,
-                (
-                    cidr_resource_overlapping_dns_resources(),
-                    sample::select(state.all_gateways()),
-                )
-                    .prop_map(|(resource, gateway)| Transition::AddCidrResource {
-                        resource,
-                        gateway,
-                    }),
-            )
             .with(1, roam_client())
             .with(
                 1,

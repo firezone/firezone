@@ -190,19 +190,6 @@ pub fn overlapping_network(network: IpNetwork) -> impl Strategy<Value = IpNetwor
     })
 }
 
-fn number_of_hosts_ipv4(mask: u8) -> u32 {
-    2u32.checked_pow(32 - mask as u32)
-        .map(|i| i - 1)
-        .unwrap_or(u32::MAX)
-}
-
-fn number_of_hosts_ipv6(mask: u8) -> u128 {
-    2u128
-        .checked_pow(128 - mask as u32)
-        .map(|i| i - 1)
-        .unwrap_or(u128::MAX)
-}
-
 // Note: for these tests we don't really care that it's a valid host
 // we only need a host.
 // If we filter valid hosts it generates too many rejects
