@@ -4,10 +4,7 @@ use super::{
 };
 use chrono::{DateTime, Utc};
 use connlib_shared::{
-    messages::{
-        client::{self, SiteId},
-        GatewayId, RelayId,
-    },
+    messages::{client, GatewayId, RelayId},
     proptest::*,
     DomainName, StaticSecret,
 };
@@ -61,119 +58,72 @@ impl ReferenceStateMachine for ReferenceState {
         let client_tunnel_ip4 = tunnel_ip4s().next().unwrap();
         let client_tunnel_ip6 = tunnel_ip6s().next().unwrap();
 
-        let sites = collection::hash_set(site(), 1..=3);
+        (
+            ref_client_host(Just(client_tunnel_ip4), Just(client_tunnel_ip6)),
+            gateways_and_portal(),
+            collection::hash_map(relay_id(), relay_prototype(), 1..=2),
+            global_dns_records(), // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
+            Just(Instant::now()),
+            Just(Utc::now()),
+        )
+            .prop_filter_map(
+                "network IPs must be unique",
+                |(c, (gateways, portal), relays, global_dns, now, utc_now)| {
+                    let mut routing_table = RoutingTable::default();
 
-        sites
-            .prop_flat_map(move |sites| {
-                let gateway_site = sample::select(sites.iter().map(|s| s.id).collect::<Vec<_>>());
+                    if !routing_table.add_host(c.inner().id, &c) {
+                        return None;
+                    }
+                    for (id, gateway) in &gateways {
+                        if !routing_table.add_host(*id, gateway) {
+                            return None;
+                        };
+                    }
 
-                (
-                    ref_client_host(Just(client_tunnel_ip4), Just(client_tunnel_ip6)),
-                    collection::hash_map(gateway_id(), (ref_gateway_host(), gateway_site), 1..=3),
-                    collection::hash_map(relay_id(), relay_prototype(), 1..=2),
-                    global_dns_records(), // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
-                    any::<sample::Selector>(),
-                    Just(sites),
-                    Just(Instant::now()),
-                    Just(Utc::now()),
-                )
-                    .prop_map(
-                        |(
-                            c,
-                            gateways,
-                            relays,
-                            global_dns,
-                            gateway_selector,
-                            sites,
-                            now,
-                            utc_now,
-                        )| {
-                            let (gateways, gateways_by_site) = gateways.into_iter().fold(
-                                (
-                                    HashMap::<GatewayId, _>::default(),
-                                    HashMap::<SiteId, HashSet<GatewayId>>::default(),
-                                ),
-                                |(mut gateways, mut sites), (gid, (gateway, site))| {
-                                    sites.entry(site).or_default().insert(gid);
-                                    gateways.insert(gid, gateway);
+                    for (id, relay) in &relays {
+                        if !routing_table.add_host(*id, relay) {
+                            return None;
+                        };
+                    }
 
-                                    (gateways, sites)
-                                },
-                            );
+                    Some((
+                        c,
+                        gateways,
+                        relays,
+                        portal,
+                        global_dns,
+                        now,
+                        utc_now,
+                        routing_table,
+                    ))
+                },
+            )
+            .prop_filter(
+                "private keys must be unique",
+                |(c, gateways, _, _, _, _, _, _)| {
+                    let different_keys = gateways
+                        .iter()
+                        .map(|(_, g)| g.inner().key)
+                        .chain(iter::once(c.inner().key))
+                        .collect::<HashSet<_>>();
 
-                            let portal = StubPortal::new(gateways_by_site, sites, gateway_selector);
-
-                            (c, gateways, relays, portal, global_dns, now, utc_now)
-                        },
-                    )
-                    .prop_filter_map(
-                        "network IPs must be unique",
-                        |(c, gateways, relays, portal, global_dns, now, utc_now)| {
-                            let mut routing_table = RoutingTable::default();
-
-                            if !routing_table.add_host(c.inner().id, &c) {
-                                return None;
-                            }
-                            for (id, gateway) in &gateways {
-                                if !routing_table.add_host(*id, gateway) {
-                                    return None;
-                                };
-                            }
-
-                            for (id, relay) in &relays {
-                                if !routing_table.add_host(*id, relay) {
-                                    return None;
-                                };
-                            }
-
-                            Some((
-                                c,
-                                gateways,
-                                relays,
-                                portal,
-                                global_dns,
-                                now,
-                                utc_now,
-                                routing_table,
-                            ))
-                        },
-                    )
-                    .prop_filter(
-                        "private keys must be unique",
-                        |(c, gateways, _, _, _, _, _, _)| {
-                            let different_keys = gateways
-                                .iter()
-                                .map(|(_, g)| g.inner().key)
-                                .chain(iter::once(c.inner().key))
-                                .collect::<HashSet<_>>();
-
-                            different_keys.len() == gateways.len() + 1
-                        },
-                    )
-                    .prop_map(
-                        |(
-                            client,
-                            gateways,
-                            relays,
-                            portal,
-                            global_dns_records,
-                            now,
-                            utc_now,
-                            network,
-                        )| {
-                            Self {
-                                now,
-                                utc_now,
-                                client,
-                                gateways,
-                                relays,
-                                portal,
-                                global_dns_records,
-                                network,
-                            }
-                        },
-                    )
-            })
+                    different_keys.len() == gateways.len() + 1
+                },
+            )
+            .prop_map(
+                |(client, gateways, relays, portal, global_dns_records, now, utc_now, network)| {
+                    Self {
+                        now,
+                        utc_now,
+                        client,
+                        gateways,
+                        relays,
+                        portal,
+                        global_dns_records,
+                        network,
+                    }
+                },
+            )
             .boxed()
     }
 
