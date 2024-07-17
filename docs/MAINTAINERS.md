@@ -6,7 +6,6 @@ including the product, website, and documentation.
 Table of Contents:
 
 - [Releasing](#releasing)
-- [Publishing Clients](#publishing-clients)
 - [Apple Client](#apple-client)
 - [Breaking API Changes](#breaking-api-changes)
 
