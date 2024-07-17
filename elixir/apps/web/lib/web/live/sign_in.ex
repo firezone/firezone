@@ -189,7 +189,7 @@ defmodule Web.SignIn do
         />
       </div>
 
-      <.submit_button id="userpass_submit_btn" class="w-full">
+      <.submit_button class="w-full">
         Sign in
       </.submit_button>
     </.form>
