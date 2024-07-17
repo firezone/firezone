@@ -5,7 +5,6 @@ defmodule Web.FormComponents do
   use Phoenix.Component
   use Web, :verified_routes
   import Web.CoreComponents, only: [icon: 1, error: 1, label: 1, translate_error: 1]
-  alias Phoenix.LiveView.JS
 
   ### Inputs ###
 
@@ -429,7 +428,7 @@ defmodule Web.FormComponents do
   def submit_button(assigns) do
     ~H"""
     <div class="flex justify-end">
-      <.button style="primary" {@rest}>
+      <.button type="submit" style="primary" {@rest}>
         <%= render_slot(@inner_block) %>
       </.button>
     </div>
@@ -580,17 +579,5 @@ defmodule Web.FormComponents do
     }
 
     [icon_size[size], spacing[size]]
-  end
-
-  # The phx-disable-with attribute on submit buttons only lasts until the button press is
-  # acknowledged by the server. After that, it's restored, even if the form itself is still
-  # submitting. This is a problem when the form is slow to submit, as the user can press the
-  # button again, causing the form to submit twice. This happens on auth pages where the submission
-  # is synchronous and takes a constant time. So we use custom JS to disable the button instead,
-  # fixing UX.
-  # This is only useful for synchronous form submissions.
-  def disable_button(js \\ %JS{}, id) do
-    js
-    |> JS.add_class("opacity-75 cursor-wait", to: "##{id}")
   end
 end
