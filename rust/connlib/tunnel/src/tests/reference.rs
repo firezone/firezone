@@ -151,7 +151,8 @@ impl ReferenceStateMachine for ReferenceState {
                 |ip4_resources| {
                     icmp_to_cidr_resource(
                         packet_source_v4(state.client.inner().tunnel_ip4),
-                        sample::select(ip4_resources),
+                        sample::select(ip4_resources)
+                            .prop_flat_map(connlib_shared::proptest::host_v4),
                     )
                 },
             )
@@ -161,7 +162,8 @@ impl ReferenceStateMachine for ReferenceState {
                 |ip6_resources| {
                     icmp_to_cidr_resource(
                         packet_source_v6(state.client.inner().tunnel_ip6),
-                        sample::select(ip6_resources),
+                        sample::select(ip6_resources)
+                            .prop_flat_map(connlib_shared::proptest::host_v6),
                     )
                 },
             )
