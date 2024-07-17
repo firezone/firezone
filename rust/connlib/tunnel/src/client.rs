@@ -696,6 +696,10 @@ impl ClientState {
                 vacant.insert(AwaitingConnectionDetails {
                     gateways: gateways.clone(),
                     last_intent_sent_at: now,
+                    // Note: in case of an overlapping CIDR resource this should be None instead of Some if the resource_id
+                    // is for a CIDR resource.
+                    // But this should never happen as DNS resources are always preferred, so we don't encode the logic here.
+                    // Tests will prevent this from ever happening.
                     domain: self.stub_resolver.get_fqdn(destination).map(|(fqdn, ips)| {
                         ResolveRequest {
                             name: fqdn.clone(),
