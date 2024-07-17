@@ -7,9 +7,9 @@ mod reference;
 mod sim_client;
 mod sim_gateway;
 mod sim_net;
-mod sim_portal;
 mod sim_relay;
 mod strategies;
+mod stub_portal;
 mod sut;
 mod transition;
 

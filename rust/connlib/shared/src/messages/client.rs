@@ -70,10 +70,22 @@ impl ResourceDescriptionCidr {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialOrd, Ord)]
 pub struct Site {
-    pub name: String,
     pub id: SiteId,
+    pub name: String,
+}
+
+impl std::hash::Hash for Site {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl PartialEq for Site {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -113,6 +125,13 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => HashSet::from_iter(r.sites.iter()),
             ResourceDescription::Cidr(r) => HashSet::from_iter(r.sites.iter()),
+        }
+    }
+
+    pub fn sites_mut(&mut self) -> &mut Vec<Site> {
+        match self {
+            ResourceDescription::Dns(r) => &mut r.sites,
+            ResourceDescription::Cidr(r) => &mut r.sites,
         }
     }
 
