@@ -207,7 +207,7 @@ pub(crate) async fn count_logs_inner() -> Result<FileCount> {
     Ok(total_count)
 }
 
-async fn count_one_dir(path: &Path) -> Result<FileCount> {
+pub(crate) async fn count_one_dir(path: &Path) -> Result<FileCount> {
     let mut dir = tokio::fs::read_dir(path).await?;
     let mut file_count = FileCount::default();
 
@@ -227,7 +227,7 @@ async fn count_one_dir(path: &Path) -> Result<FileCount> {
 fn log_paths_export() -> Result<Vec<LogPath>> {
     Ok(vec![
         LogPath {
-            src: firezone_headless_client::known_dirs::ipc_service_logs()
+            src: known_dirs::ipc_service_logs()
                 .context("Can't compute IPC service logs dir")?,
             dst: PathBuf::from("connlib"),
         },

@@ -343,8 +343,21 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         .context("Failed to remove zip file")?;
     tracing::info!(?path, ?zip_len, "Exported log zip looks okay");
 
-    // Check that settings file and at least one log file were written
+    // Check that settings file was written
     anyhow::ensure!(tokio::fs::try_exists(settings::advanced_settings_path()?).await?);
+
+    // Check that logs were written
+    assert!(logging::count_one_dir(known_dirs::ipc_service_logs()?).await?.files >= 1);
+    assert!(logging::count_one_dir(known_dirs::logs()?).await?.files >= 1);
+
+    // Clear logs
+    let (cb_tx, cb_rx) = oneshot::channel();
+    ctlr_tx.send(ControllerRequest::ClearLogs(cb_tx)).await?;
+    cb_rx.await??;
+
+    // Check that logs were cleared
+    assert!(logging::count_one_dir(known_dirs::ipc_service_logs()?).await?.files == 0);
+    assert!(logging::count_one_dir(known_dirs::logs()?).await?.files == 0);
 
     tracing::info!("Quitting on purpose because of `smoke-test` subcommand");
     ctlr_tx
@@ -626,6 +639,8 @@ impl Controller {
                 tauri::api::shell::open(&self.app.shell_scope(), url, None)
                     .context("Couldn't open URL from system tray")?
             }
+            // TODO: Use `std::ops::ControlFlow` to break out of the main loop,
+            // instead of handling `Quit` as a special case
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => Err(anyhow!(
                 "Impossible error: `Quit` should be handled before this"
             ))?,
