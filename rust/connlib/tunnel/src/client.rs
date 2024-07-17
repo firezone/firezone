@@ -243,7 +243,7 @@ pub struct ClientState {
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
     cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     /// All resources indexed by their ID.
-    resource_ids: HashMap<ResourceId, ResourceDescription>,
+    resources_by_id: HashMap<ResourceId, ResourceDescription>,
 
     /// The DNS resolvers configured on the system outside of connlib.
     system_resolvers: Vec<IpAddr>,
@@ -283,7 +283,7 @@ impl ClientState {
             awaiting_connection_details: Default::default(),
             resources_gateways: Default::default(),
             cidr_resources: IpNetworkTable::new(),
-            resource_ids: Default::default(),
+            resources_by_id: Default::default(),
             peers: Default::default(),
             dns_mapping: Default::default(),
             buffered_events: Default::default(),
@@ -318,7 +318,7 @@ impl ClientState {
     }
 
     pub(crate) fn resources(&self) -> Vec<callbacks::ResourceDescription> {
-        self.resource_ids
+        self.resources_by_id
             .values()
             .sorted()
             .cloned()
@@ -350,7 +350,7 @@ impl ClientState {
     }
 
     fn set_resource_offline(&mut self, id: ResourceId) {
-        let Some(resource) = self.resource_ids.get(&id).cloned() else {
+        let Some(resource) = self.resources_by_id.get(&id).cloned() else {
             return;
         };
 
@@ -517,7 +517,7 @@ impl ClientState {
         tracing::trace!("Creating or reusing connection");
 
         let desc = self
-            .resource_ids
+            .resources_by_id
             .get(&resource_id)
             .context("Unknown resource")?;
 
@@ -669,7 +669,7 @@ impl ClientState {
         destination: &IpAddr,
         now: Instant,
     ) {
-        debug_assert!(self.resource_ids.contains_key(&resource));
+        debug_assert!(self.resources_by_id.contains_key(&resource));
 
         let gateways = self
             .resources_gateways
@@ -895,27 +895,29 @@ impl ClientState {
     /// TODO: Add a test that asserts the above.
     ///       That is tricky because we need to assert on state deleted by [`ClientState::remove_resource`] and check that it did in fact not get deleted.
     fn set_resources(&mut self, new_resources: Vec<ResourceDescription>) {
-        for id in HashSet::from_iter(self.resource_ids.keys().copied())
-            .difference(&HashSet::<ResourceId>::from_iter(
-                new_resources.iter().map(|r| r.id()),
-            ))
-            .copied()
-        {
+        let current_resource_ids = self.resources_by_id.keys().copied().collect::<HashSet<_>>();
+        let new_resource_ids = new_resources.iter().map(|r| r.id()).collect();
+
+        // First, remove all resources that are not present in the new resource list.
+        for id in current_resource_ids.difference(&new_resource_ids).copied() {
             self.remove_resource(id);
         }
 
-        for resource in HashSet::from_iter(new_resources.iter().cloned())
-            .difference(&HashSet::<ResourceDescription>::from_iter(
-                self.resource_ids.values().cloned(),
-            ))
+        let current_resources = self
+            .resources_by_id
+            .values()
             .cloned()
-        {
+            .collect::<HashSet<_>>();
+        let new_resources = new_resources.into_iter().collect::<HashSet<_>>();
+
+        // Second, we only add those resources that are not yet present or have changed.
+        for resource in new_resources.difference(&current_resources).cloned() {
             self.add_resource(resource)
         }
     }
 
     pub(crate) fn add_resource(&mut self, new_resource: ResourceDescription) {
-        if let Some(resource) = self.resource_ids.get(&new_resource.id()) {
+        if let Some(resource) = self.resources_by_id.get(&new_resource.id()) {
             if resource.has_different_address(&new_resource) {
                 self.remove_resource(resource.id());
             }
@@ -940,7 +942,7 @@ impl ClientState {
             }
         }
 
-        self.resource_ids.insert(new_resource.id(), new_resource);
+        self.resources_by_id.insert(new_resource.id(), new_resource);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
@@ -956,7 +958,7 @@ impl ClientState {
             true
         });
 
-        self.resource_ids.remove(&id);
+        self.resources_by_id.remove(&id);
 
         let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, id) else {
             return;
