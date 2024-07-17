@@ -981,22 +981,17 @@ mod tests {
 
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
-    use std::{
-        net::{Ipv4Addr, Ipv6Addr},
-        ops::RangeInclusive,
-    };
-
     use super::*;
     use connlib_shared::{messages::gateway::PortRange, proptest::*};
     use ip_network::{Ipv4Network, Ipv6Network};
     use ip_packet::make::{icmp_request_packet, tcp_packet, udp_packet};
-    use itertools::Itertools;
     use proptest::{
         arbitrary::any,
         collection, prop_oneof,
         sample::select,
         strategy::{Just, Strategy},
     };
+    use std::ops::RangeInclusive;
     use test_strategy::Arbitrary;
 
     #[test_strategy::proptest()]
