@@ -914,14 +914,14 @@ impl ClientState {
         }
     }
 
-    pub(crate) fn add_resource(&mut self, resource: ResourceDescription) {
-        if let Some(resource) = self.resource_ids.get(&resource.id()) {
-            if resource.has_different_address(resource) {
+    pub(crate) fn add_resource(&mut self, new_resource: ResourceDescription) {
+        if let Some(resource) = self.resource_ids.get(&new_resource.id()) {
+            if resource.has_different_address(&new_resource) {
                 self.remove_resource(resource.id());
             }
         }
 
-        match &resource {
+        match &new_resource {
             ResourceDescription::Dns(dns) => {
                 self.stub_resolver.add_resource(dns.id, dns.address.clone());
             }
@@ -940,7 +940,7 @@ impl ClientState {
             }
         }
 
-        self.resource_ids.insert(resource.id(), resource);
+        self.resource_ids.insert(new_resource.id(), new_resource);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
