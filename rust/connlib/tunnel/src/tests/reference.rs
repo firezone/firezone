@@ -1,5 +1,3 @@
-use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
-
 use super::{
     composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*, sim_relay::*,
     strategies::*, stub_portal::StubPortal, transition::*,
@@ -11,7 +9,6 @@ use connlib_shared::{
     DomainName, StaticSecret,
 };
 use hickory_proto::rr::RecordType;
-use ip_network::IpNetwork;
 use prop::collection;
 use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;
@@ -19,7 +16,6 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt, iter,
     net::IpAddr,
-    str::FromStr,
     time::Instant,
 };
 
@@ -149,22 +145,7 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .with(
                 1,
-                cidr_resource(
-                    any_ip_network(8),
-                    sample::select(state.portal.all_sites()).prop_map(|s| vec![s]),
-                )
-                .prop_filter(
-                    "tests doesn't support yet CIDR resources overlapping DNS resources",
-                    |r| {
-                        IpNetwork::from_str(IPV4_RESOURCES)
-                            .unwrap()
-                            .contains(r.address.network_address())
-                            || IpNetwork::from_str(IPV6_RESOURCES)
-                                .unwrap()
-                                .contains(r.address.network_address())
-                    },
-                )
-                .prop_map(|resource| Transition::AddCidrResource { resource }),
+                add_cidr_resource(sample::select(state.portal.all_sites()).prop_map(|s| vec![s])),
             )
             .with(1, roam_client())
             .with(
