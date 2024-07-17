@@ -186,7 +186,7 @@ fn number_of_hosts_ipv6(mask: u8) -> u128 {
 
 pub fn overlapping_network(network: IpNetwork) -> impl Strategy<Value = IpNetwork> {
     (0..=network.netmask()).prop_map(move |netmask| {
-        IpNetwork::new_truncate(network.network_address(), netmask as u8).unwrap()
+        IpNetwork::new_truncate(network.network_address(), netmask).unwrap()
     })
 }
 
