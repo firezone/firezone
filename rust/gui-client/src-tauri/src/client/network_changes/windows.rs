@@ -239,6 +239,9 @@ struct Callback {
 }
 
 impl<'a> Drop for Listener<'a> {
+    // Might never be called. Due to the way the scopes ended up,
+    // we crash the GUI process before we can get back to the main thread
+    // and drop the DNS listeners
     fn drop(&mut self) {
         self.close().unwrap();
     }
@@ -307,7 +310,8 @@ impl<'a> Listener<'a> {
     }
 }
 
-impl INetworkEvents_Impl for Callback {
+// <https://github.com/microsoft/windows-rs/pull/3065>
+impl INetworkEvents_Impl for Callback_Impl {
     fn NetworkAdded(&self, _networkid: &GUID) -> WinResult<()> {
         Ok(())
     }
@@ -385,15 +389,16 @@ mod async_dns {
     }
 
     impl CombinedListener {
-        pub(crate) fn new() -> Result<Self> {
+        pub(crate) fn new() -> Result<(Self, mpsc::Receiver<()>)> {
+            let (tx, rx) = mpsc::channel(1);
             let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
-            let listener_4 = Listener::new(key_ipv4)?;
-            let listener_6 = Listener::new(key_ipv6)?;
+            let listener_4 = Listener::new(key_ipv4, tx.clone())?;
+            let listener_6 = Listener::new(key_ipv6, tx.clone())?;
 
-            Ok(Self {
+            Ok((Self {
                 listener_4,
                 listener_6,
-            })
+            }, rx))
         }
 
         pub(crate) async fn notified(&mut self) -> Result<Vec<IpAddr>> {
@@ -478,13 +483,12 @@ mod async_dns {
             let mut that = Self {
                 key,
                 _tx: tx,
-                rx,
                 wait_handle,
                 event,
             };
             that.register_callback()?;
 
-            Ok(that)
+            Ok((that, rx))
         }
 
         /// Returns when the registry key has changed
