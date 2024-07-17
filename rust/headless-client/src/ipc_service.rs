@@ -12,7 +12,7 @@ use futures::{
     task::{Context, Poll},
     Future as _, SinkExt as _, Stream as _,
 };
-use std::{net::IpAddr, path::Path, pin::pin, sync::Arc, time::Duration};
+use std::{io, net::IpAddr, path::Path, pin::pin, sync::Arc, time::Duration};
 use tokio::{sync::mpsc, time::Instant};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
@@ -121,13 +121,20 @@ fn run_smoke_test() -> Result<()> {
     crate::setup_stdout_logging()?;
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
+    let mut dns_controller = DnsController::default();
+    // Deactivate Firezone DNS control in case the system or IPC service crashed
+    // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
+    dns_controller.deactivate()?;
     let mut signals = signals::Terminate::new()?;
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
         device_id::get_or_create().context("Failed to read / create device ID")?;
         let mut server = IpcServer::new(ServiceId::Prod).await?;
-        let _ = Handler::new(&mut server).await?.run(&mut signals).await;
+        let _ = Handler::new(&mut server, &mut dns_controller)
+            .await?
+            .run(&mut signals)
+            .await;
         Ok::<_, anyhow::Error>(())
     })
 }
@@ -141,8 +148,9 @@ async fn ipc_listen(signals: &mut signals::Terminate) -> Result<()> {
     // This also gives the GUI a safe place to put the log filter config
     device_id::get_or_create().context("Failed to read / create device ID")?;
     let mut server = IpcServer::new(ServiceId::Prod).await?;
+    let mut dns_controller = DnsController::default();
     loop {
-        let mut handler_fut = pin!(Handler::new(&mut server));
+        let mut handler_fut = pin!(Handler::new(&mut server, &mut dns_controller));
         let Some(handler) = poll_fn(|cx| {
             if let Poll::Ready(()) = signals.poll_recv(cx) {
                 Poll::Ready(None)
@@ -166,11 +174,11 @@ async fn ipc_listen(signals: &mut signals::Terminate) -> Result<()> {
 }
 
 /// Handles one IPC client
-struct Handler {
+struct Handler<'a> {
     callback_handler: CallbackHandler,
     cb_rx: mpsc::Receiver<ConnlibMsg>,
     connlib: Option<connlib_client_shared::Session>,
-    dns_controller: DnsController,
+    dns_controller: &'a mut DnsController,
     ipc_rx: ipc::ServerRead,
     ipc_tx: ipc::ServerWrite,
     last_connlib_start_instant: Option<Instant>,
@@ -194,9 +202,9 @@ enum HandlerOk {
     ServiceTerminating,
 }
 
-impl Handler {
-    async fn new(server: &mut IpcServer) -> Result<Self> {
-        dns_control::deactivate()?;
+impl<'a> Handler<'a> {
+    async fn new(server: &mut IpcServer, dns_controller: &'a mut DnsController) -> Result<Self> {
+        dns_controller.deactivate()?;
         let (ipc_rx, ipc_tx) = server
             .next_client_split()
             .await
@@ -208,7 +216,7 @@ impl Handler {
             callback_handler: CallbackHandler { cb_tx },
             cb_rx,
             connlib: None,
-            dns_controller: Default::default(),
+            dns_controller,
             ipc_rx,
             ipc_tx,
             last_connlib_start_instant: None,
@@ -296,8 +304,7 @@ impl Handler {
                 // The first `OnUpdateResources` marks when connlib is fully initialized
                 if let CommonMsg::OnUpdateResources(_) = &msg {
                     if let Some(instant) = self.last_connlib_start_instant.take() {
-                        let dur = instant.elapsed();
-                        tracing::info!(?dur, "Connlib started");
+                        tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
                     }
 
                     // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
@@ -361,7 +368,7 @@ impl Handler {
             ClientMsg::Disconnect => {
                 if let Some(connlib) = self.connlib.take() {
                     connlib.disconnect();
-                    dns_control::deactivate()?;
+                    self.dns_controller.deactivate()?;
                 } else {
                     tracing::error!("Error - Got Disconnect when we're already not connected");
                 }
@@ -397,7 +404,7 @@ pub async fn clear_logs_dir(log_dir: &Path) -> Result<()> {
     let mut dir = match tokio::fs::read_dir(log_dir).await {
         Ok(x) => x,
         Err(error) => {
-            if matches!(error.kind(), NotFound) {
+            if matches!(error.kind(), io::ErrorKind::NotFound) {
                 // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not delete the non-existent files
                 return Ok(());
             }

@@ -15,7 +15,7 @@ use std::{
     pin::pin,
     sync::Arc,
 };
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, time::Instant};
 use tokio_stream::wrappers::ReceiverStream;
 
 /// Command-line args for the headless Client
@@ -45,6 +45,12 @@ struct Cli {
     /// write a device ID to disk if one is not found.
     #[arg(long)]
     check: bool,
+
+    /// Connect to the Firezone network and initialize, then exit
+    ///
+    /// Use this to check how fast you can connect.
+    #[arg(long)]
+    exit: bool,
 
     /// Friendly name for this client to display in the UI.
     #[arg(long, env = "FIREZONE_NAME")]
@@ -126,7 +132,6 @@ pub fn run_only_headless_client() -> Result<()> {
             cli.token_path.display()
         )
     })?;
-    tracing::info!("Running in headless / standalone mode");
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.common.max_partition_time.map(|d| d.into());
 
@@ -153,6 +158,8 @@ pub fn run_only_headless_client() -> Result<()> {
     let (cb_tx, cb_rx) = mpsc::channel(10);
     let callbacks = CallbackHandler { cb_tx };
 
+    // The name matches that in `ipc_service.rs`
+    let mut last_connlib_start_instant = Some(Instant::now());
     platform::setup_before_connlib()?;
     let args = ConnectArgs {
         url,
@@ -173,6 +180,9 @@ pub fn run_only_headless_client() -> Result<()> {
         let mut terminate = pin!(terminate.recv().fuse());
         let mut hangup = pin!(hangup.recv().fuse());
         let mut dns_controller = DnsController::default();
+        // Deactivate Firezone DNS control in case the system or IPC service crashed
+        // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
+        dns_controller.deactivate()?;
         let mut tun_device = TunDeviceManager::new()?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
@@ -208,7 +218,14 @@ pub fn run_only_headless_client() -> Result<()> {
                     dns_controller.set_dns(&dns).await?;
                 }
                 ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                    tun_device.set_routes(ipv4, ipv6).await?
+                    tun_device.set_routes(ipv4, ipv6).await?;
+                    if let Some(instant) = last_connlib_start_instant.take() {
+                        tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
+                    }
+                    if cli.exit {
+                        tracing::info!("Exiting due to `--exit` CLI flag");
+                        break Ok(());
+                    }
                 }
             }
         }

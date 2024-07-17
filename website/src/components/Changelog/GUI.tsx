@@ -17,8 +17,8 @@ export default function GUI({ title }: { title: string }) {
           <ChangeItem enable={title === "Linux GUI"} pull="5848">
             If the GUI is open during an update, close it and prompt the user to restart the GUI.
           </ChangeItem>
-          <ChangeItem enable={title === "Windows"}>
-            This is a maintenance release with no user-facing changes.
+          <ChangeItem enable={title === "Windows"} pull="5375">
+            Improves sign-in speed and fixes a DNS leak
           </ChangeItem>
         </ul>
       </Entry>*/}
