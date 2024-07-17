@@ -79,7 +79,6 @@ impl<'a> ChannelData<'a> {
 #[cfg(all(test, feature = "proptest"))]
 mod tests {
     use super::*;
-    use stun_codec::rfc5766::attributes::ChannelNumber;
 
     #[test_strategy::proptest]
     fn can_reparse_encoded_header(
