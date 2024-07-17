@@ -903,15 +903,8 @@ impl ClientState {
             self.remove_resource(id);
         }
 
-        let current_resources = self
-            .resources_by_id
-            .values()
-            .cloned()
-            .collect::<HashSet<_>>();
-        let new_resources = new_resources.into_iter().collect::<HashSet<_>>();
-
-        // Second, we only add those resources that are not yet present or have changed.
-        for resource in new_resources.difference(&current_resources).cloned() {
+        // Second, add all resources.
+        for resource in new_resources {
             self.add_resource(resource)
         }
     }
