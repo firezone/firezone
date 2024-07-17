@@ -13,7 +13,7 @@ permissions:
 
 # Never tolerate warnings.
 env:
-  RUSTFLAGS: '-Dwarnings'
+  RUSTFLAGS: "-Dwarnings"
   RUSTDOCFLAGS: "-D warnings"
 
 jobs:
