@@ -12,7 +12,7 @@ use futures::{
     task::{Context, Poll},
     Future as _, SinkExt as _, Stream as _,
 };
-use std::{net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
+use std::{net::IpAddr, path::Path, pin::pin, sync::Arc, time::Duration};
 use tokio::{sync::mpsc, time::Instant};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
@@ -321,7 +321,9 @@ impl Handler {
 
     fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
         match msg {
-            ClientMsg::ClearLogs => todo!(),
+            ClientMsg::ClearLogs => {
+                todo!()
+            }
             ClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);
                 // There isn't an airtight way to implement a "disconnect and reconnect"
@@ -379,19 +381,53 @@ impl Handler {
     }
 }
 
+/// Clears log files for the given directory
+///
+/// This includes the current log file, so we won't write any more logs to
+/// disk until the process restarts.
+/// <https://github.com/firezone/firezone/issues/4764>
+///
+/// If we get an error while removing a file, we still try to remove all other
+/// files, then we return the most recent error.
+///
+/// The IPC service and GUI share this. The GUI uses it to clear the GUI's own
+/// logs, and the GUI commands the IPC service to clear the IPC service's own
+/// logs.
+pub async fn clear_logs_dir(log_dir: &Path) -> Result<()> {
+    let mut dir = match tokio::fs::read_dir(log_dir).await {
+        Ok(x) => x,
+        Err(error) => {
+            if matches!(error.kind(), NotFound) {
+                // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not delete the non-existent files
+                return Ok(());
+            }
+            // But any other error like permissions errors, should bubble.
+            return Err(error.into());
+        }
+    };
+    let mut result = Ok(());
+    while let Some(entry) = dir.next_entry().await? {
+        let path = entry.path();
+        if let Err(error) = tokio::fs::remove_file(&path).await {
+            tracing::error!(
+                ?error,
+                path = path.display().to_string(),
+                "Error while removing log file"
+            );
+            // We'll return the most recent error, it loses some information but it's better than nothing.
+            result = Err(error);
+        }
+    }
+    Ok(result?)
+}
+
 /// Starts logging for the production IPC service
 ///
 /// Returns: A `Handle` that must be kept alive. Dropping it stops logging
 /// and flushes the log file.
-fn setup_logging(log_dir: Option<PathBuf>) -> Result<connlib_client_shared::file_logger::Handle> {
-    // If `log_dir` is Some, use that. Else call `ipc_service_logs`
-    let log_dir = log_dir.map_or_else(
-        || known_dirs::ipc_service_logs().context("Should be able to compute IPC service logs dir"),
-        Ok,
-    )?;
-    std::fs::create_dir_all(&log_dir)
-        .context("We should have permissions to create our log dir")?;
-    let (layer, handle) = file_logger::layer(&log_dir);
+fn setup_logging(log_dir: &Path) -> Result<connlib_client_shared::file_logger::Handle> {
+    std::fs::create_dir_all(log_dir).context("We should have permissions to create our log dir")?;
+    let (layer, handle) = file_logger::layer(log_dir);
     let directives = get_log_filter().context("Couldn't read log filter")?;
     let filter = EnvFilter::new(&directives);
     let subscriber = Registry::default().with(layer.with_filter(filter));
@@ -437,7 +473,6 @@ pub(crate) fn get_log_filter() -> Result<String> {
 mod tests {
     use super::{Cli, Cmd};
     use clap::Parser;
-    use std::path::PathBuf;
 
     // Can't remember how Clap works sometimes
     // Also these are examples
@@ -445,9 +480,8 @@ mod tests {
     fn cli() {
         let exe_name = "firezone-client-ipc";
 
-        let actual = Cli::parse_from([exe_name, "--log-dir", "bogus_log_dir", "run-debug"]);
+        let actual = Cli::parse_from([exe_name, "run-debug"]);
         assert!(matches!(actual.command, Cmd::RunDebug));
-        assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
         let actual = Cli::parse_from([exe_name, "run"]);
         assert!(matches!(actual.command, Cmd::Run));

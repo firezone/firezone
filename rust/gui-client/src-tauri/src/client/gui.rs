@@ -419,7 +419,6 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 pub(crate) enum ControllerRequest {
     /// The GUI wants us to use these settings in-memory, they've already been saved to disk
     ApplySettings(AdvancedSettings),
-    /// Only used for smoke tests
     ClearLogs,
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {

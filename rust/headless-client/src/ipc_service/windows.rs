@@ -60,7 +60,9 @@ windows_service::define_windows_service!(ffi_service_run, service_run);
 fn service_run(arguments: Vec<OsString>) {
     // `arguments` doesn't seem to work right when running as a Windows service
     // (even though it's meant for that) so just use the default log dir.
-    let handle = super::setup_logging(None).expect("Should be able to set up logging");
+    let log_dir = crate::known_dirs::ipc_service_logs()
+        .expect("Should be able to compute IPC service logs dir");
+    let handle = super::setup_logging(&log_dir).expect("Should be able to set up logging");
     if let Err(error) = fallible_service_run(arguments, handle) {
         tracing::error!(?error, "`fallible_windows_service_run` returned an error");
     }

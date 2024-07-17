@@ -11,10 +11,7 @@
 use anyhow::{Context as _, Result};
 use connlib_client_shared::{Callbacks, Error as ConnlibError};
 use connlib_shared::callbacks;
-use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    path::PathBuf,
-};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use tokio::sync::mpsc;
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{fmt, layer::SubscriberExt as _, EnvFilter, Layer as _, Registry};
@@ -41,7 +38,7 @@ pub mod platform;
 #[path = "windows.rs"]
 pub mod platform;
 
-pub use ipc_service::{ipc, run_only_ipc_service, ClientMsg as IpcClientMsg};
+pub use ipc_service::{clear_logs_dir, ipc, run_only_ipc_service, ClientMsg as IpcClientMsg};
 pub use standalone::run_only_headless_client;
 
 use dns_control::DnsController;
@@ -68,10 +65,6 @@ const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 /// CLI args common to both the IPC service and the headless Client
 #[derive(clap::Args)]
 struct CliCommon {
-    /// File logging directory. Should be a path that's writeable by the current user.
-    #[arg(short, long, env = "LOG_DIR")]
-    log_dir: Option<PathBuf>,
-
     /// Maximum length of time to retry connecting to the portal if we're having internet issues or
     /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
     #[arg(short, long, env = "MAX_PARTITION_TIME")]

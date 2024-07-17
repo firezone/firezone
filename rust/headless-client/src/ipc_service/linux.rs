@@ -1,12 +1,12 @@
 use super::CliCommon;
-use crate::signals;
+use crate::{known_dirs, signals};
 use anyhow::{bail, Result};
 
 /// Cross-platform entry point for systemd / Windows services
 ///
 /// Linux uses the CLI args from here, Windows does not
 pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
-    let _handle = super::setup_logging(cli.log_dir)?;
+    let _handle = super::setup_logging(cli.log_dir.or_else(|| known_dirs::ipc_service_logs()))?;
     if !nix::unistd::getuid().is_root() {
         anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
     }

@@ -101,45 +101,6 @@ pub(crate) async fn count_logs() -> StdResult<FileCount, String> {
     count_logs_inner().await.map_err(|e| e.to_string())
 }
 
-/// Delete all files in the logs directory.
-///
-/// This includes the current log file, so we won't write any more logs to disk
-/// until the file rolls over or the app restarts.
-///
-/// If we get an error while removing a file, we still try to remove all other
-/// files, then we return the most recent error.
-pub(crate) async fn clear_logs_inner() -> Result<()> {
-    let mut result = Ok(());
-
-    for log_path in log_paths()?.into_iter().map(|x| x.src) {
-        let mut dir = match tokio::fs::read_dir(log_path).await {
-            Ok(x) => x,
-            Err(error) => {
-                if matches!(error.kind(), NotFound) {
-                    // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not delete the non-existent files
-                    return Ok(());
-                }
-                // But any other error like permissions errors, should bubble.
-                return Err(error.into());
-            }
-        };
-        while let Some(entry) = dir.next_entry().await? {
-            let path = entry.path();
-            if let Err(error) = tokio::fs::remove_file(&path).await {
-                tracing::error!(
-                    ?error,
-                    path = path.display().to_string(),
-                    "Error while removing log file"
-                );
-                // We'll return the most recent error, it loses some information but it's better than nothing.
-                result = Err(error);
-            }
-        }
-    }
-
-    Ok(result?)
-}
-
 /// Pops up the "Save File" dialog
 fn show_export_dialog(ctlr_tx: CtlrTx) -> Result<()> {
     let now = chrono::Local::now();
@@ -180,7 +141,7 @@ pub(crate) async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
     spawn_blocking(move || {
         let f = fs::File::create(&temp_path).context("Failed to create zip file")?;
         let mut zip = zip::ZipWriter::new(f);
-        for log_path in log_paths().context("Can't compute log paths")? {
+        for log_path in log_paths_export().context("Can't compute log paths")? {
             add_dir_to_zip(&mut zip, &log_path.src, &stem.join(log_path.dst))?;
         }
         zip.finish().context("Failed to finish zip file")?;
@@ -255,7 +216,11 @@ async fn count_one_dir(path: &Path) -> Result<FileCount> {
     Ok(file_count)
 }
 
-fn log_paths() -> Result<Vec<LogPath>> {
+/// Paths that the GUI should check to export logs
+///
+/// The GUI has read access to log files on both OSes, so this includes
+/// the IPC service's logs dir
+fn log_paths_export() -> Result<Vec<LogPath>> {
     Ok(vec![
         LogPath {
             src: firezone_headless_client::known_dirs::ipc_service_logs()
