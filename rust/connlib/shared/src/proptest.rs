@@ -72,6 +72,12 @@ pub fn cidr_resource(
         })
 }
 
+pub fn overlapping_cidr_resource(
+    network: IpNetwork,
+) -> impl Strategy<Value = ResourceDescriptionCidr> {
+    cidr_resource(overlapping_network(network), sites())
+}
+
 pub fn cidr_v4_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
     cidr_resource(
         any_ip4_network(host_mask_bits),
@@ -157,7 +163,6 @@ pub fn ip_network(network: IpAddr, host_mask_bits: usize) -> impl Strategy<Value
         IpAddr::V4(_) => 32,
         IpAddr::V6(_) => 128,
     };
-
     assert!(host_mask_bits <= max_netmask);
 
     (0..host_mask_bits).prop_map(move |mask| {
@@ -177,6 +182,12 @@ fn number_of_hosts_ipv6(mask: u8) -> u128 {
         .checked_pow(128 - mask as u32)
         .map(|i| i - 1)
         .unwrap_or(u128::MAX)
+}
+
+pub fn overlapping_network(network: IpNetwork) -> impl Strategy<Value = IpNetwork> {
+    (0..=network.netmask()).prop_map(move |netmask| {
+        IpNetwork::new_truncate(network.network_address(), netmask as u8).unwrap()
+    })
 }
 
 // Note: for these tests we don't really care that it's a valid host

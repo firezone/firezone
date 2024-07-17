@@ -1,3 +1,5 @@
+use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+
 use super::{
     sim_net::{any_ip_stack, any_port},
     strategies::*,
@@ -226,4 +228,12 @@ pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {
         ip6: ip_stack.as_v6().copied(),
         port,
     })
+}
+
+pub(crate) fn cidr_resource_overlapping_dns_resources(
+) -> impl Strategy<Value = ResourceDescriptionCidr> {
+    prop_oneof![
+        overlapping_cidr_resource(IPV4_RESOURCES.parse().unwrap()),
+        overlapping_cidr_resource(IPV6_RESOURCES.parse().unwrap()),
+    ]
 }
