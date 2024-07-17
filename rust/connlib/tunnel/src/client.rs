@@ -888,9 +888,9 @@ impl ClientState {
     /// Sets a new set of resources.
     ///
     /// This function does **not** perform a blanket "clear all and set new resources".
-    /// Instead, it diffs which resources to remove and which ones to add.
+    /// Instead, it diffs which resources to remove first and then adds the new ones.
     ///
-    /// This is important because we don't want to lose state like resolved DNS names for resources that didn't change.
+    /// Removing a resource interrupts routing for all packets, even if the resource is added back right away because [`GatewayOnClient`] tracks the allowed IPs which has to contain the resource ID.
     ///
     /// TODO: Add a test that asserts the above.
     ///       That is tricky because we need to assert on state deleted by [`ClientState::remove_resource`] and check that it did in fact not get deleted.
