@@ -17,6 +17,7 @@ tracing = { workspace = true }
 tracing-log = "0.2"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tun = { workspace = true }
+ip-packet = { workspace = true }
 url = { version = "2.3.1", default-features = false }
 
 [dev-dependencies]

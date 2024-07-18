@@ -1841,6 +1841,7 @@ dependencies = [
  "clap",
  "connlib-shared",
  "futures",
+ "ip-packet",
  "ip_network",
  "libc",
  "netlink-packet-core",
