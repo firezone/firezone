@@ -220,7 +220,9 @@ pub(crate) fn run(
                         }
                         Ok(Err(error)) => {
                             tracing::error!(?error, "run_controller returned an error");
-                            errors::show_error_dialog(&error).unwrap();
+                            if ! matches!(cli.command, Some(client::Cmd::SmokeTest)) {
+                                errors::show_error_dialog(&error).unwrap();
+                            }
                             1
                         }
                         Ok(Ok(_)) => 0,
