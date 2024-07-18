@@ -199,7 +199,7 @@ impl StubResolver {
                 return Some(*id);
             }
 
-            tracing::trace!(%id, %pattern, "No match");
+            tracing::trace!(%pattern, %id, "No match");
         }
 
         None
