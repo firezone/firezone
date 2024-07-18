@@ -623,3 +623,42 @@ mod tests {
         DomainName::vec_from_str(name).unwrap()
     }
 }
+
+#[cfg(feature = "divan")]
+mod benches {
+    use super::*;
+    use rand::{distributions::DistString, seq::IteratorRandom, Rng};
+
+    #[divan::bench(
+        consts = [10, 100, 1_000, 10_000, 100_000]
+    )]
+    fn match_domain<const NUM_RES: u128>(bencher: divan::Bencher) {
+        bencher
+            .with_inputs(|| {
+                let mut resolver = StubResolver::new(HashMap::default());
+                let mut rng = rand::thread_rng();
+
+                for n in 0..NUM_RES {
+                    resolver.add_resource(ResourceId::from_u128(n), make_domain(&mut rng))
+                }
+
+                let needle = resolver
+                    .dns_resources
+                    .keys()
+                    .choose(&mut rng)
+                    .unwrap()
+                    .to_string();
+
+                let needle = DomainName::vec_from_str(&needle).unwrap();
+
+                (resolver, needle)
+            })
+            .bench_refs(|(resolver, needle)| resolver.match_resource(needle).unwrap());
+    }
+
+    fn make_domain(rng: &mut impl Rng) -> String {
+        (0..rng.gen_range(2..5))
+            .map(|_| rand::distributions::Alphanumeric.sample_string(rng, 3))
+            .join(".")
+    }
+}
