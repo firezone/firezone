@@ -11,6 +11,7 @@ use ip_packet::IpPacket;
 use ip_packet::Packet as _;
 use itertools::Itertools;
 use std::collections::HashMap;
+use std::fmt;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 const DNS_TTL: u32 = 1;
@@ -24,12 +25,19 @@ pub struct StubResolver {
     ips_to_fqdn: HashMap<IpAddr, (DomainName, ResourceId)>,
     ip_provider: IpProvider,
     /// All DNS resources we know about, indexed by the glob pattern they match against.
-    dns_resources: HashMap<String, ResourceId>,
+    dns_resources: HashMap<Pattern, ResourceId>,
     /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
     known_hosts: KnownHosts,
 }
 
+#[derive(Debug, PartialEq, Eq, Hash)]
 struct Pattern(glob::Pattern);
+
+impl fmt::Display for Pattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 impl Pattern {
     fn new(p: &str) -> Result<Self, glob::PatternError> {
@@ -139,8 +147,16 @@ impl StubResolver {
         Some((fqdn, self.fqdn_to_ips.get(fqdn).unwrap()))
     }
 
-    pub(crate) fn add_resource(&mut self, id: ResourceId, address: String) -> bool {
-        let existing = self.dns_resources.insert(address, id);
+    pub(crate) fn add_resource(&mut self, id: ResourceId, pattern: String) -> bool {
+        let parsed_pattern = match Pattern::new(&pattern) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(%pattern, "Domain pattern is not valid: {e}");
+                return false;
+            }
+        };
+
+        let existing = self.dns_resources.insert(parsed_pattern, id);
 
         existing.is_none()
     }
@@ -352,43 +368,15 @@ pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
     name == &resource
 }
 
-fn match_domain<T>(name: &DomainName, resources: &HashMap<String, T>) -> Option<T>
+fn match_domain<T>(name: &DomainName, resources: &HashMap<Pattern, T>) -> Option<T>
 where
     T: Copy,
 {
-    // Safety: `?` is less than 254 bytes long.
-    const QUESTION_MARK: RelativeName<&'static [u8]> =
-        unsafe { RelativeName::from_octets_unchecked(b"\x01?") };
-    // Safety: `*` is less than 254 bytes long.
-    const WILDCARD: RelativeName<&'static [u8]> =
-        unsafe { RelativeName::from_octets_unchecked(b"\x01*") };
+    let name = std::str::from_utf8(name.as_slice()).ok()?;
 
-    // First, check for full match.
-    if let Some(resource) = resources.get(&name.to_string()) {
-        return Some(*resource);
-    }
-
-    // Second, check for `?` matching this domain exactly.
-    let qm_dot_domain = QUESTION_MARK.chain(name).ok()?.to_string();
-    if let Some(resource) = resources.get(&qm_dot_domain) {
-        return Some(*resource);
-    }
-
-    // Third, check for `?` matching up to 1 parent.
-    if let Some(parent) = name.parent() {
-        let qm_dot_parent = QUESTION_MARK.chain(parent).ok()?.to_string();
-
-        if let Some(resource) = resources.get(&qm_dot_parent) {
-            return Some(*resource);
-        }
-    }
-
-    // Last, check for any wildcard domains, starting with the most specific one.
-    for suffix in name.iter_suffixes() {
-        let wildcard_dot_suffix = WILDCARD.chain(suffix).ok()?.to_string();
-
-        if let Some(resource) = resources.get(&wildcard_dot_suffix) {
-            return Some(*resource);
+    for (pattern, id) in resources {
+        if pattern.matches(name) {
+            return Some(*id);
         }
     }
 
@@ -523,35 +511,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn wildcard_matching() {
-        let resources = HashMap::from([("*.foo.com".to_string(), 0), ("*.com".to_string(), 1)]);
-
-        assert_eq!(match_domain(&domain("a.foo.com"), &resources), Some(0));
-        assert_eq!(match_domain(&domain("foo.com"), &resources), Some(0));
-        assert_eq!(match_domain(&domain("a.b.foo.com"), &resources), Some(0));
-        assert_eq!(match_domain(&domain("oo.com"), &resources), Some(1));
-        assert_eq!(match_domain(&domain("oo.xyz"), &resources), None);
-    }
-
-    #[test]
-    fn question_mark_matching() {
-        let resources = HashMap::from([("?.bar.com".to_string(), 1)]);
-
-        assert_eq!(match_domain(&domain("a.bar.com"), &resources), Some(1));
-        assert_eq!(match_domain(&domain("bar.com"), &resources), Some(1));
-        assert_eq!(match_domain(&domain("a.b.bar.com"), &resources), None);
-    }
-
-    #[test]
-    fn exact_matching() {
-        let resources = HashMap::from([("baz.com".to_string(), 2)]);
-
-        assert_eq!(match_domain(&domain("baz.com"), &resources), Some(2));
-        assert_eq!(match_domain(&domain("a.baz.com"), &resources), None);
-        assert_eq!(match_domain(&domain("a.b.baz.com"), &resources), None);
-    }
-
     #[test_case("**.example.com", "example.com"; "double star matches root domain")]
     #[test_case("app.**.example.com", "app.bar.foo.example.com"; "double star matches multiple levels within domain")]
     #[test_case("**.example.com", "foo.example.com"; "double star matches one level")]
@@ -561,6 +520,7 @@ mod tests {
     #[test_case("foo.*.example.com", "foo.bar.example.com"; "single star matches one domain within domain")]
     #[test_case("app.*.*.example.com", "app.foo.bar.example.com"; "single star can appear on multiple levels")]
     #[test_case("app.f??.example.com", "app.foo.example.com"; "question mark matches one letter")]
+    #[test_case("app.example.com", "app.example.com"; "matches literal domain")]
     fn domain_pattern_matches(pattern: &str, domain: &str) {
         let pattern = Pattern::new(pattern).unwrap();
 
