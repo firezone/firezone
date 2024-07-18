@@ -436,7 +436,7 @@ mod pattern {
 
         /// Matches a [`Candidate`] against this [`Pattern`].
         ///
-        /// Matching only requires a reference, thus allowing users to test a [`Candidate`] against multiple [`Patterns`].
+        /// Matching only requires a reference, thus allowing users to test a [`Candidate`] against multiple [`Pattern`]s.
         pub fn matches(&self, domain: &Candidate) -> bool {
             let domain = domain.0.as_str();
 
