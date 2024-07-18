@@ -19,6 +19,7 @@ pub enum Status {
 pub enum ResourceDescription {
     Dns(ResourceDescriptionDns),
     Cidr(ResourceDescriptionCidr),
+    Internet(ResourceDescriptionCidr),
 }
 
 impl ResourceDescription {
@@ -26,6 +27,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => r.address_description.as_deref(),
             ResourceDescription::Cidr(r) => r.address_description.as_deref(),
+            ResourceDescription::Internet(_) => None,
         }
     }
 
@@ -33,6 +35,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => &r.name,
             ResourceDescription::Cidr(r) => &r.name,
+            ResourceDescription::Internet(_) => "Internet",
         }
     }
 
@@ -40,6 +43,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => r.status,
             ResourceDescription::Cidr(r) => r.status,
+            ResourceDescription::Internet(r) => r.status,
         }
     }
 
@@ -47,6 +51,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => r.id,
             ResourceDescription::Cidr(r) => r.id,
+            ResourceDescription::Internet(r) => r.id,
         }
     }
 
@@ -55,6 +60,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => Cow::from(&r.address),
             ResourceDescription::Cidr(r) => Cow::from(r.address.to_string()),
+            ResourceDescription::Internet(_) => Cow::default(),
         }
     }
 
@@ -62,6 +68,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => &r.sites,
             ResourceDescription::Cidr(r) => &r.sites,
+            ResourceDescription::Internet(r) => &r.sites,
         }
     }
 }
@@ -98,6 +105,14 @@ pub struct ResourceDescriptionCidr {
     pub address_description: Option<String>,
     pub sites: Vec<Site>,
 
+    pub status: Status,
+}
+
+/// Description of an Internet resource
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ResourceDescriptionInternet {
+    pub id: ResourceId,
+    pub sites: Vec<Site>,
     pub status: Status,
 }
 

@@ -56,11 +56,18 @@ pub struct ResolvedResourceDescriptionDns {
     pub filters: Filters,
 }
 
+/// Description of an Internet resource.
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+pub struct ResourceDescriptionInternet {
+    pub id: ResourceId,
+}
+
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourceDescription<TDNS = ResourceDescriptionDns> {
     Dns(TDNS),
     Cidr(ResourceDescriptionCidr),
+    Internet(ResourceDescriptionInternet),
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
@@ -111,6 +118,7 @@ impl ResourceDescription<ResourceDescriptionDns> {
                 filters,
             }),
             ResourceDescription::Cidr(c) => ResourceDescription::Cidr(c),
+            ResourceDescription::Internet(r) => ResourceDescription::Internet(r),
         }
     }
 }
@@ -120,6 +128,7 @@ impl ResourceDescription<ResourceDescriptionDns> {
         match self {
             ResourceDescription::Dns(r) => r.id,
             ResourceDescription::Cidr(r) => r.id,
+            ResourceDescription::Internet(r) => r.id,
         }
     }
 
@@ -127,6 +136,7 @@ impl ResourceDescription<ResourceDescriptionDns> {
         match self {
             ResourceDescription::Dns(r) => r.filters.clone(),
             ResourceDescription::Cidr(r) => r.filters.clone(),
+            ResourceDescription::Internet(_) => Vec::default(),
         }
     }
 }
@@ -136,6 +146,7 @@ impl ResourceDescription<ResolvedResourceDescriptionDns> {
         match self {
             ResourceDescription::Dns(r) => r.addresses.iter().copied().map_into().collect_vec(),
             ResourceDescription::Cidr(r) => vec![r.address],
+            ResourceDescription::Internet(_) => vec![],
         }
     }
 
@@ -143,6 +154,7 @@ impl ResourceDescription<ResolvedResourceDescriptionDns> {
         match self {
             ResourceDescription::Dns(r) => r.id,
             ResourceDescription::Cidr(r) => r.id,
+            ResourceDescription::Internet(r) => r.id,
         }
     }
 
@@ -150,6 +162,7 @@ impl ResourceDescription<ResolvedResourceDescriptionDns> {
         match self {
             ResourceDescription::Dns(r) => r.filters.clone(),
             ResourceDescription::Cidr(r) => r.filters.clone(),
+            ResourceDescription::Internet(_) => vec![],
         }
     }
 }
@@ -218,5 +231,35 @@ mod tests {
         let actual_filter = serde_json::from_str(msg).unwrap();
 
         assert_eq!(expected_filter, actual_filter);
+    }
+
+    #[test]
+    fn can_deserialize_internet_resource() {
+        let resources = r#"[
+            {
+                "id": "73037362-715d-4a83-a749-f18eadd970e6",
+                "type": "cidr",
+                "address": "172.172.0.0/16",
+                "name": "172.172.0.0/16",
+                "filters": []
+            },
+            {
+                "id": "03000143-e25e-45c7-aafb-144990e57dcd",
+                "type": "dns",
+                "name": "gitlab.mycorp.com",
+                "address": "gitlab.mycorp.com",
+                "filters": []
+            },
+            {
+                "id": "1106047c-cd5d-4151-b679-96b93da7383b",
+                "type": "internet",
+                "not": "relevant",
+                "some_other": [
+                    "field"
+                ]
+            }
+        ]"#;
+
+        serde_json::from_str::<Vec<ResourceDescription>>(resources).unwrap();
     }
 }

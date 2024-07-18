@@ -55,6 +55,7 @@ impl StubPortal {
             client::ResourceDescription::Cidr(cidr) => {
                 self.cidr_resources.insert(cidr.id, cidr);
             }
+            client::ResourceDescription::Internet(_) => {}
         }
     }
 
