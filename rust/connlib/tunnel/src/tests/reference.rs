@@ -233,7 +233,7 @@ impl ReferenceStateMachine for ReferenceState {
                     )
                 },
             )
-            .with_if_not_empty(1, state.client.inner().all_resources(), |resources| {
+            .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resources| {
                 sample::select(resources).prop_map(Transition::RemoveResource)
             })
             .boxed()
@@ -372,7 +372,12 @@ impl ReferenceStateMachine for ReferenceState {
                 };
 
                 // Resource IDs must be unique.
-                if state.client.inner().all_resources().contains(&resource.id) {
+                if state
+                    .client
+                    .inner()
+                    .all_resource_ids()
+                    .contains(&resource.id)
+                {
                     return false;
                 }
 
@@ -431,7 +436,12 @@ impl ReferenceStateMachine for ReferenceState {
                 }
 
                 // Resource IDs must be unique.
-                if state.client.inner().all_resources().contains(&resource.id) {
+                if state
+                    .client
+                    .inner()
+                    .all_resource_ids()
+                    .contains(&resource.id)
+                {
                     return false;
                 }
 
@@ -530,7 +540,7 @@ impl ReferenceStateMachine for ReferenceState {
                         .expected_dns_servers()
                         .contains(dns_server)
             }
-            Transition::RemoveResource(id) => state.client.inner().all_resources().contains(id),
+            Transition::RemoveResource(id) => state.client.inner().all_resource_ids().contains(id),
             Transition::RoamClient { ip4, ip6, port } => {
                 // In production, we always rebind to a new port so we never roam to our old existing IP / port combination.
 

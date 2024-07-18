@@ -267,7 +267,9 @@ impl StateMachineTest for TunnelTest {
                         HashSet::default(),
                         HashSet::from_iter(map_explode(state.relays.iter(), "client")),
                         ref_state.now,
-                    )
+                    );
+                    c.sut
+                        .set_resources(ref_state.client.inner().all_resources());
                 });
             }
         };

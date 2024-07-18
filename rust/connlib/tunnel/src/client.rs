@@ -894,7 +894,7 @@ impl ClientState {
     ///
     /// TODO: Add a test that asserts the above.
     ///       That is tricky because we need to assert on state deleted by [`ClientState::remove_resource`] and check that it did in fact not get deleted.
-    fn set_resources(&mut self, new_resources: Vec<ResourceDescription>) {
+    pub(crate) fn set_resources(&mut self, new_resources: Vec<ResourceDescription>) {
         let current_resource_ids = self.resources_by_id.keys().copied().collect::<HashSet<_>>();
         let new_resource_ids = new_resources.iter().map(|r| r.id()).collect();
 
