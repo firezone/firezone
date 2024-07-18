@@ -32,8 +32,19 @@ pub struct StubResolver {
 struct Pattern(glob::Pattern);
 
 impl Pattern {
+    fn new(p: &str) -> Result<Self, glob::PatternError> {
+        Ok(Self(glob::Pattern::new(&p.replace('.', "/"))?))
+    }
+
     fn matches(&self, domain: &str) -> bool {
-        false
+        self.0.matches_with(
+            &domain.replace('.', "/"),
+            glob::MatchOptions {
+                case_sensitive: false,
+                require_literal_separator: true,
+                require_literal_leading_dot: false,
+            },
+        )
     }
 }
 
@@ -543,7 +554,7 @@ mod tests {
     #[test_case("app.*.*.example.com", "app.foo.bar.example.com"; "single star can appear on multiple levels")]
     #[test_case("app.f??.example.com", "app.foo.example.com"; "question mark matches one letter")]
     fn domain_pattern_matches(pattern: &str, domain: &str) {
-        let pattern = Pattern(glob::Pattern::new(pattern).unwrap());
+        let pattern = Pattern::new(pattern).unwrap();
 
         let matches = pattern.matches(domain);
 
@@ -555,7 +566,7 @@ mod tests {
     #[test_case("app.**com", "app.foo.com"; "double star does not match dot")]
     #[test_case("app?com", "app.com"; "question mark does not match dot")]
     fn domain_pattern_does_not_match(pattern: &str, domain: &str) {
-        let pattern = Pattern(glob::Pattern::new(pattern).unwrap());
+        let pattern = Pattern::new(pattern).unwrap();
 
         let matches = pattern.matches(domain);
 
@@ -595,9 +606,5 @@ mod tests {
 
     fn domain(name: &str) -> DomainName {
         DomainName::vec_from_str(name).unwrap()
-    }
-
-    fn pattern(p: &str) -> Pattern {
-        Pattern(glob::Pattern::new(p).unwrap())
     }
 }
