@@ -166,8 +166,19 @@ impl StubResolver {
         ips
     }
 
+    /// Attempts to match the given domain against our list of possible patterns.
+    ///
+    /// This performs a linear search and is thus O(N) and **must not** be called in the hot-path of packet routing.
     fn match_resource(&self, domain_name: &DomainName) -> Option<ResourceId> {
-        match_domain(domain_name, &self.dns_resources)
+        let name = Candidate::from_domain(domain_name);
+
+        for (pattern, id) in &self.dns_resources {
+            if pattern.matches(&name) {
+                return Some(*id);
+            }
+        }
+
+        None
     }
 
     fn resource_address_name_by_reservse_dns(
@@ -234,6 +245,7 @@ impl StubResolver {
             return Some(ResolveStrategy::LocalResponse(packet));
         }
 
+        // `match_resource` is `O(N)` which we deem fine for DNS queries.
         let maybe_resource = self.match_resource(&domain);
 
         let resource_records = match (qtype, maybe_resource) {
@@ -332,21 +344,6 @@ pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
     }
 
     name == &resource
-}
-
-fn match_domain<T>(name: &DomainName, resources: &HashMap<Pattern, T>) -> Option<T>
-where
-    T: Copy,
-{
-    let name = Candidate::from_domain(name);
-
-    for (pattern, id) in resources {
-        if pattern.matches(&name) {
-            return Some(*id);
-        }
-    }
-
-    None
 }
 
 fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
