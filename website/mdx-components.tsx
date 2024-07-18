@@ -4,8 +4,6 @@ import { useState, useRef, useEffect } from "react";
 
 export function useMDXComponents(components: MDXComponents): MDXComponents {
   return {
-    // Flowbite typography and highlight together create ugly code block
-    // offspring, so disable typography for code blocks.
     pre: ({ children }) => {
       const [isHovered, setIsHovered] = useState(false);
       const [codeString, setCodeString] = useState("");
@@ -22,6 +20,8 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
 
       return (
         <div
+          // Flowbite typography and highlight together create ugly code block
+          // offspring, so disable typography for code blocks.
           className="not-format mb-4 lg:mb-8 relative"
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
