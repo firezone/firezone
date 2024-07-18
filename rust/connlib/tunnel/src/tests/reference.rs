@@ -156,6 +156,7 @@ impl ReferenceStateMachine for ReferenceState {
                     question_mark_wildcard_dns_resource(sample::select(state.portal.all_sites())),
                 ],
             )
+            .with(1, Just(Transition::ReconnectPortal))
             .with_if_not_empty(
                 10,
                 state.client.inner().ipv4_cidr_resource_dsts(),
@@ -372,6 +373,9 @@ impl ReferenceStateMachine for ReferenceState {
                     .client
                     .exec_mut(|client| client.connected_dns_resources.clear());
             }
+            Transition::ReconnectPortal => {
+                // Reconnecting to the portal should have no noticable impact on the data plane.
+            }
         };
 
         state
@@ -557,6 +561,7 @@ impl ReferenceStateMachine for ReferenceState {
 
                 !is_assigned_ip4 && !is_assigned_ip6 && !is_previous_port
             }
+            Transition::ReconnectPortal => true,
         }
     }
 }
