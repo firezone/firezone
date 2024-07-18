@@ -12,3 +12,16 @@ pub use windows as platform;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use platform::TunDeviceManager;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "needs sudo"]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    fn create_tun() {
+        let mut tun_device_manager = TunDeviceManager::new().unwrap();
+        let _tun = tun_device_manager.make_tun().unwrap();
+    }
+}
