@@ -1,8 +1,5 @@
 use anyhow::{Context as _, Result};
-use connlib_shared::{
-    windows::{CREATE_NO_WINDOW, TUNNEL_NAME},
-    Result,
-};
+use connlib_shared::windows::{CREATE_NO_WINDOW, TUNNEL_NAME};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use std::{
     collections::HashSet,

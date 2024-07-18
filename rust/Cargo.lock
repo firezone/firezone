@@ -1852,7 +1852,9 @@ dependencies = [
  "tracing-subscriber",
  "tun",
  "url",
+ "uuid",
  "windows 0.57.0",
+ "wintun",
 ]
 
 [[package]]
