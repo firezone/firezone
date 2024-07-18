@@ -18,6 +18,7 @@ phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
 serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
 socket-factory = { workspace = true }
+tun = { workspace = true }
 time = { version = "0.3.36", features = ["formatting"] }
 tokio = { workspace = true, features = ["sync"] }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }

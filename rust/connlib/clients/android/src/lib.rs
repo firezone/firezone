@@ -6,7 +6,7 @@
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
     callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
-    LoginUrlError, Session, Tun, V4RouteList, V6RouteList,
+    LoginUrlError, Session, V4RouteList, V6RouteList,
 };
 use connlib_shared::get_user_agent;
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -30,8 +30,10 @@ use thiserror::Error;
 use tokio::runtime::Runtime;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
+use tun::Tun;
 
 mod make_writer;
+mod tun;
 
 /// The Android client doesn't use platform APIs to detect network connectivity changes,
 /// so we rely on connlib to do so. We have valid use cases for headless Android clients
@@ -527,7 +529,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
         }
     };
 
-    session.inner.set_tun(tun);
+    session.inner.set_tun(Box::new(tun));
 }
 
 fn protected_tcp_socket_factory(

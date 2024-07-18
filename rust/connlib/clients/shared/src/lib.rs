@@ -5,7 +5,6 @@ pub use connlib_shared::{
     callbacks, keypair, Callbacks, Error, LoginUrl, LoginUrlError, StaticSecret,
 };
 pub use eventloop::Eventloop;
-pub use firezone_tunnel::Tun;
 pub use tracing_appender::non_blocking::WorkerGuard;
 
 use eventloop::Command;
@@ -18,6 +17,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::task::JoinHandle;
+use tun::TunTrait;
 
 mod eventloop;
 pub mod file_logger;
@@ -95,7 +95,7 @@ impl Session {
     }
 
     /// Sets a new [`Tun`] device handle.
-    pub fn set_tun(&self, new_tun: Tun) {
+    pub fn set_tun(&self, new_tun: Box<dyn TunTrait>) {
         let _ = self.channel.send(Command::SetTun(new_tun));
     }
 
@@ -178,67 +178,68 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    #[derive(Clone, Default)]
-    struct Callbacks {}
-    impl connlib_shared::Callbacks for Callbacks {}
+// TODO: Move these to `bin-shared`
+// #[cfg(test)]
+// mod tests {
+//     #[derive(Clone, Default)]
+//     struct Callbacks {}
+//     impl connlib_shared::Callbacks for Callbacks {}
 
-    #[cfg(target_os = "linux")]
-    #[tokio::test]
-    #[ignore = "Performs system-wide I/O, needs sudo"]
-    async fn device_linux() {
-        device_common().await;
-    }
+//     #[cfg(target_os = "linux")]
+//     #[tokio::test]
+//     #[ignore = "Performs system-wide I/O, needs sudo"]
+//     async fn device_linux() {
+//         device_common().await;
+//     }
 
-    #[cfg(target_os = "windows")]
-    #[tokio::test]
-    #[ignore = "Performs system-wide I/O, needs sudo"]
-    async fn device_windows() {
-        // Install wintun so the test can run
-        let wintun_path = connlib_shared::windows::wintun_dll_path().unwrap();
-        tokio::fs::create_dir_all(wintun_path.parent().unwrap())
-            .await
-            .unwrap();
-        tokio::fs::write(&wintun_path, connlib_shared::windows::wintun_bytes())
-            .await
-            .unwrap();
+//     #[cfg(target_os = "windows")]
+//     #[tokio::test]
+//     #[ignore = "Performs system-wide I/O, needs sudo"]
+//     async fn device_windows() {
+//         // Install wintun so the test can run
+//         let wintun_path = connlib_shared::windows::wintun_dll_path().unwrap();
+//         tokio::fs::create_dir_all(wintun_path.parent().unwrap())
+//             .await
+//             .unwrap();
+//         tokio::fs::write(&wintun_path, connlib_shared::windows::wintun_bytes())
+//             .await
+//             .unwrap();
 
-        device_common().await;
-    }
+//         device_common().await;
+//     }
 
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
-    async fn device_common() {
-        use firezone_tunnel::Tun;
-        use std::{collections::HashMap, sync::Arc};
+//     #[cfg(any(target_os = "windows", target_os = "linux"))]
+//     async fn device_common() {
+//         use firezone_tunnel::Tun;
+//         use std::{collections::HashMap, sync::Arc};
 
-        let (private_key, _public_key) = connlib_shared::keypair();
-        let mut tunnel = firezone_tunnel::ClientTunnel::new(
-            private_key,
-            Arc::new(socket_factory::tcp),
-            Arc::new(socket_factory::udp),
-            HashMap::new(),
-        )
-        .unwrap();
-        let upstream_dns = vec![([192, 168, 1, 1], 53).into()];
-        let interface = connlib_shared::messages::Interface {
-            ipv4: [100, 71, 96, 96].into(),
-            ipv6: [0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0019, 0x6538].into(),
-            upstream_dns,
-        };
-        tunnel.set_tun(Tun::new().unwrap());
-        tunnel.set_new_interface_config(interface).unwrap();
+//         let (private_key, _public_key) = connlib_shared::keypair();
+//         let mut tunnel = firezone_tunnel::ClientTunnel::new(
+//             private_key,
+//             Arc::new(socket_factory::tcp),
+//             Arc::new(socket_factory::udp),
+//             HashMap::new(),
+//         )
+//         .unwrap();
+//         let upstream_dns = vec![([192, 168, 1, 1], 53).into()];
+//         let interface = connlib_shared::messages::Interface {
+//             ipv4: [100, 71, 96, 96].into(),
+//             ipv6: [0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0019, 0x6538].into(),
+//             upstream_dns,
+//         };
+//         tunnel.set_tun(Tun::new().unwrap());
+//         tunnel.set_new_interface_config(interface).unwrap();
 
-        let tunnel = tokio::spawn(async move {
-            std::future::poll_fn(|cx| tunnel.poll_next_event(cx))
-                .await
-                .unwrap()
-        });
+//         let tunnel = tokio::spawn(async move {
+//             std::future::poll_fn(|cx| tunnel.poll_next_event(cx))
+//                 .await
+//                 .unwrap()
+//         });
 
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+//         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
-        if tunnel.is_finished() {
-            tunnel.await.unwrap();
-        }
-    }
-}
+//         if tunnel.is_finished() {
+//             tunnel.await.unwrap();
+//         }
+//     }
+// }

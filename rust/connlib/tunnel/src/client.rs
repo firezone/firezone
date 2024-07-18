@@ -22,7 +22,7 @@ use tracing::Level;
 
 use crate::peer::GatewayOnClient;
 use crate::utils::{self, earliest, turn};
-use crate::{ClientEvent, ClientTunnel, Tun};
+use crate::{ClientEvent, ClientTunnel, TunTrait};
 use core::fmt;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, RelaySocket};
@@ -63,7 +63,7 @@ impl ClientTunnel {
             });
     }
 
-    pub fn set_tun(&mut self, tun: Tun) {
+    pub fn set_tun(&mut self, tun: Box<dyn TunTrait>) {
         self.io.device_mut().set_tun(tun);
     }
 

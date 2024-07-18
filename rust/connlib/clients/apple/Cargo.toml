@@ -23,6 +23,7 @@ socket-factory = { workspace = true }
 swift-bridge = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
+tun = { workspace = true }
 tracing-appender = "0.2"
 tracing-subscriber = "0.3"
 url = "2.5.0"

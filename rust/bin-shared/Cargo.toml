@@ -17,6 +17,8 @@ tracing = { workspace = true }
 tracing-log = "0.2"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { version = "2.3.1", default-features = false }
+tun = { workspace = true }
+libc = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 netlink-packet-core = { version = "0.7", default-features = false }

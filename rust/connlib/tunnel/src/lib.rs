@@ -3,6 +3,7 @@
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
 
+use bimap::BiMap;
 use boringtun::x25519::StaticSecret;
 use chrono::Utc;
 use connlib_shared::{
@@ -11,6 +12,7 @@ use connlib_shared::{
     DomainName, Result,
 };
 use io::Io;
+use ip_network::{Ipv4Network, Ipv6Network};
 use std::{
     collections::{HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -18,10 +20,7 @@ use std::{
     task::{Context, Poll},
     time::Instant,
 };
-
-use bimap::BiMap;
-pub use client::{ClientState, Request};
-pub use gateway::GatewayState;
+use tun::TunTrait;
 use utils::turn;
 
 mod client;
@@ -34,9 +33,6 @@ mod peer_store;
 mod sockets;
 mod utils;
 
-pub use device_channel::Tun;
-use ip_network::{Ipv4Network, Ipv6Network};
-
 #[cfg(all(test, feature = "proptest"))]
 mod tests;
 
@@ -47,6 +43,9 @@ const REALM: &str = "firezone";
 
 pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
+
+pub use client::{ClientState, Request};
+pub use gateway::GatewayState;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///

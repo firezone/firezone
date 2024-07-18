@@ -10,14 +10,14 @@ use connlib_shared::{
     messages::{ConnectionAccepted, GatewayResponse, RelaysPresence, ResourceAccepted, ResourceId},
     Callbacks,
 };
-use firezone_tunnel::{ClientTunnel, Tun};
+use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
     task::{Context, Poll},
 };
-
+use tun::TunTrait;
 pub struct Eventloop<C: Callbacks> {
     tunnel: ClientTunnel,
     callbacks: C,
@@ -33,7 +33,7 @@ pub enum Command {
     Stop,
     Reconnect,
     SetDns(Vec<IpAddr>),
-    SetTun(Tun),
+    SetTun(Box<dyn TunTrait>),
 }
 
 impl<C: Callbacks> Eventloop<C> {
