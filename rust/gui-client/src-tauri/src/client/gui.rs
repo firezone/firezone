@@ -796,44 +796,21 @@ async fn run_controller(
         win.show().context("Couldn't show Welcome window")?;
     }
 
+    let mut network_listener = network_changes::network_listener()?;
+    let mut dns_listener = network_changes::dns_listener(
+        tokio::runtime::Handle::try_current()
+            .expect("Can't get a Handle to the current Tokio context"),
+    )?;
+
     let mut have_internet =
         network_changes::check_internet().context("Failed initial check for internet")?;
     tracing::info!(?have_internet);
-
-    let mut com_worker =
-        network_changes::Worker::new().context("Failed to listen for network changes")?;
-
-    let (dns_shutdown_tx, mut dns_shutdown_rx) = oneshot::channel();
-    let (dns_tx, mut dns_rx) = mpsc::channel(1);
-    let tokio_handle = tokio::runtime::Handle::current();
-    let dns_thread = std::thread::spawn(move || {
-        tokio_handle.block_on(async move {
-            let local = tokio::task::LocalSet::new();
-            local
-                .run_until(async move {
-                    tokio::task::spawn_local(async move {
-                        let mut dns_listener = network_changes::DnsListener::new()?;
-                        loop {
-                            tokio::select! {
-                                _ = &mut dns_shutdown_rx => break,
-                                resolvers = dns_listener.notified() => {
-                                    dns_tx.send(resolvers).await?;
-                                }
-                            }
-                        }
-                        Ok::<_, anyhow::Error>(())
-                    })
-                    .await
-                })
-                .await
-        })
-    });
 
     loop {
         // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
         // `tokio::select!` with a `poll_*` function
         tokio::select! {
-            () = com_worker.notified() => {
+            () = network_listener.notified() => {
                 let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
                 if new_have_internet != have_internet {
                     have_internet = new_have_internet;
@@ -843,9 +820,10 @@ async fn run_controller(
                     }
                 }
             },
-            resolvers = dns_rx.recv() => {
-                let resolvers = resolvers.context("DNS channel closed unexpectedly")??;
+            () = dns_listener.notified() => {
                 if controller.status.connlib_is_up() {
+                    let resolvers = firezone_headless_client::dns_control::system_resolvers_for_gui()
+                    .unwrap_or_default();
                     tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
                     controller.ipc_client.set_dns(resolvers).await?;
                 }
@@ -876,18 +854,11 @@ async fn run_controller(
         // Code down here may not run because the `select` sometimes `continue`s.
     }
 
-    if let Err(error) = dns_shutdown_tx.send(()) {
-        tracing::error!(
-            ?error,
-            "Couldn't ask DNS thread to shut down, abandoning it."
-        );
-    } else if let Err(error) = dns_thread.join() {
-        tracing::error!(?error, "DNS thread returned error");
-    } else {
-        tracing::debug!("Shut down DNS worker thread.");
+    if let Err(error) = dns_listener.close() {
+        tracing::error!(?error, "Error while closing DNS listener");
     }
-    if let Err(error) = com_worker.close() {
-        tracing::error!(?error, "com_worker");
+    if let Err(error) = network_listener.close() {
+        tracing::error!(?error, "Error while closing network listener");
     }
     if let Err(error) = controller.ipc_client.disconnect_from_ipc().await {
         tracing::error!(?error, "ipc_client");

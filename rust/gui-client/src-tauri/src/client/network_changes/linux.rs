@@ -12,6 +12,14 @@ pub(crate) fn check_internet() -> Result<bool> {
 
 pub(crate) struct Worker {}
 
+pub(crate) fn dns_listener() -> Result<Worker> {
+    Worker::new()
+}
+
+pub(crate) fn network_listener() -> Result<Worker> {
+    Worker::new()
+}
+
 impl Worker {
     pub(crate) fn new() -> Result<Self> {
         Ok(Self {})

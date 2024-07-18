@@ -65,7 +65,8 @@
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
 use anyhow::Result;
-use tokio::sync::mpsc;
+use std::thread;
+use tokio::sync::{mpsc, oneshot};
 use windows::{
     core::{Interface, Result as WinResult, GUID},
     Win32::{
@@ -76,8 +77,6 @@ use windows::{
         System::Com,
     },
 };
-
-pub(crate) use async_dns::CombinedListener as DnsListener;
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
@@ -120,31 +119,76 @@ pub(crate) struct Worker {
 
 /// Needed so that `Drop` can consume the oneshot Sender and the thread's JoinHandle
 struct WorkerInner {
-    thread: std::thread::JoinHandle<Result<(), Error>>,
-    stopper: tokio::sync::oneshot::Sender<()>,
+    thread: thread::JoinHandle<Result<()>>,
+    shutdown_tx: oneshot::Sender<()>,
+}
+
+pub(crate) fn dns_listener(tokio_handle: tokio::runtime::Handle) -> Result<Worker> {
+    Worker::new("DNS listener", move |tx, mut shutdown_rx| {
+        // Do `block_on` so we use our own worker thread
+        tokio_handle.block_on(async move {
+            // Use `LocalSet` so we can have the runtime put all our tasks
+            // onto this worker thread, which means they don't need to impl
+            // `Send`.
+            let local = tokio::task::LocalSet::new();
+            local
+                .run_until(async move {
+                    // Use `spawn_local` to keep everything inside the worker thread
+                    tokio::task::spawn_local(async move {
+                        let mut dns_listener = async_dns::CombinedListener::new()?;
+                        loop {
+                            tokio::select! {
+                                _ = &mut shutdown_rx => break,
+                                result = dns_listener.notified() => {
+                                    result?;
+                                    tx.send(()).await?;
+                                }
+                            }
+                        }
+                        Ok::<_, anyhow::Error>(())
+                    })
+                    .await
+                })
+                .await
+        })?
+    })
+}
+
+pub(crate) fn network_listener() -> Result<Worker> {
+    Worker::new("Network listener", |tx, shutdown_rx| {
+        let com = ComGuard::new()?;
+        {
+            let _network_change_listener = Listener::new(&com, tx)?;
+            shutdown_rx.blocking_recv().ok();
+        }
+        drop(com);
+        tracing::debug!("COM worker thread shut down gracefully");
+        Ok(())
+    })
 }
 
 impl Worker {
-    pub(crate) fn new() -> Result<Self> {
+    pub(crate) fn new<
+        F: FnOnce(mpsc::Sender<()>, oneshot::Receiver<()>) -> Result<()> + Send + 'static,
+        S: Into<String>,
+    >(
+        thread_name: S,
+        func: F,
+    ) -> Result<Self> {
         let (tx, rx) = mpsc::channel(1);
 
-        let (stopper, stopper_rx) = tokio::sync::oneshot::channel();
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
         let thread = {
-            std::thread::Builder::new()
-                .name("Firezone COM worker".into())
-                .spawn(move || {
-                    {
-                        let com = ComGuard::new()?;
-                        let _network_change_listener = Listener::new(&com, tx)?;
-                        stopper_rx.blocking_recv().ok();
-                    }
-                    tracing::debug!("COM worker thread shut down gracefully");
-                    Ok(())
-                })?
+            thread::Builder::new()
+                .name(thread_name.into())
+                .spawn(move || func(tx, shutdown_rx))?
         };
 
         Ok(Self {
-            inner: Some(WorkerInner { thread, stopper }),
+            inner: Some(WorkerInner {
+                thread,
+                shutdown_tx,
+            }),
             rx,
         })
     }
@@ -153,7 +197,7 @@ impl Worker {
     pub(crate) fn close(&mut self) -> Result<()> {
         if let Some(inner) = self.inner.take() {
             inner
-                .stopper
+                .shutdown_tx
                 .send(())
                 .map_err(|_| Error::CouldntStopWorkerThread)?;
             match inner.thread.join() {
@@ -347,7 +391,7 @@ impl Drop for Callback {
 
 mod async_dns {
     use anyhow::{Context, Result};
-    use std::{ffi::c_void, net::IpAddr, ops::Deref, path::Path};
+    use std::{ffi::c_void, ops::Deref, path::Path};
     use tokio::sync::mpsc;
     use windows::Win32::{
         Foundation::{CloseHandle, BOOLEAN, HANDLE, INVALID_HANDLE_VALUE},
@@ -400,15 +444,12 @@ mod async_dns {
             })
         }
 
-        pub(crate) async fn notified(&mut self) -> Result<Vec<IpAddr>> {
+        pub(crate) async fn notified(&mut self) -> Result<()> {
             tokio::select! {
                 r = self.listener_4.notified() => r?,
                 r = self.listener_6.notified() => r?,
             }
-            Ok(
-                firezone_headless_client::dns_control::system_resolvers_for_gui()
-                    .unwrap_or_default(),
-            )
+            Ok(())
         }
     }
 
