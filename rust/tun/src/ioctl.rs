@@ -1,4 +1,3 @@
-use libc::{IFF_NO_PI, IFF_TUN};
 use std::{io, os::fd::RawFd};
 
 /// Executes the `ioctl` syscall on the given file descriptor with the provided request.
@@ -25,6 +24,7 @@ pub struct Request<P> {
     payload: P,
 }
 
+#[cfg(target_os = "linux")]
 impl Request<SetTunFlagsPayload> {
     pub fn new(name: &str) -> Self {
         let name_as_bytes = name.as_bytes();
@@ -36,7 +36,7 @@ impl Request<SetTunFlagsPayload> {
         Self {
             name,
             payload: SetTunFlagsPayload {
-                flags: (IFF_TUN | IFF_NO_PI) as _,
+                flags: (libc::IFF_TUN | libc::IFF_NO_PI) as _,
             },
         }
     }
@@ -64,6 +64,7 @@ impl Default for Request<GetInterfaceNamePayload> {
     }
 }
 
+#[cfg(target_os = "linux")]
 #[repr(C)]
 pub struct SetTunFlagsPayload {
     flags: std::ffi::c_short,
