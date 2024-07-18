@@ -41,7 +41,6 @@ derivative = "2.2.0"
 firezone-relay = { workspace = true, features = ["proptest"] }
 hickory-proto = { workspace = true }
 ip-packet = { workspace = true, features = ["proptest"] }
-pretty_assertions = "1.4.0"
 proptest-state-machine = "0.3"
 rand = "0.8"
 serde_json = "1.0"

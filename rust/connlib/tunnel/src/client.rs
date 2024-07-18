@@ -931,6 +931,7 @@ impl ClientState {
                     }
                 }
             }
+            ResourceDescription::Internet(_) => {}
         }
 
         self.resources_by_id.insert(new_resource.id(), new_resource);
@@ -1063,6 +1064,7 @@ fn get_addresses_for_awaiting_resource(
             .map_into()
             .collect_vec(),
         ResourceDescription::Cidr(r) => vec![r.address],
+        ResourceDescription::Internet(_) => vec![],
     }
 }
 
