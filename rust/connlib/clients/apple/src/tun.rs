@@ -147,6 +147,7 @@ fn search_for_tun_fd() -> io::Result<RawFd> {
     const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
 
     use libc::{ctl_info, getpeername, ioctl, sockaddr_ctl, socklen_t, AF_SYSTEM, CTLIOCGINFO};
+    use std::mem::size_of;
 
     let mut info = ctl_info {
         ctl_id: 0,
