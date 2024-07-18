@@ -37,8 +37,16 @@ impl Pattern {
     }
 
     fn matches(&self, domain: &str) -> bool {
+        let domain = domain.replace('.', "/");
+
+        if let Some(rem) = self.0.as_str().strip_prefix("*/") {
+            if domain == rem {
+                return true;
+            }
+        }
+
         self.0.matches_with(
-            &domain.replace('.', "/"),
+            &domain,
             glob::MatchOptions {
                 case_sensitive: false,
                 require_literal_separator: true,
