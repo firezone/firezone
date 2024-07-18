@@ -111,7 +111,7 @@ defmodule Web.NavigationComponents do
     <aside class={~w[
         fixed top-0 left-0 z-40
         w-64 h-screen
-        #{@banner && "pt-24" || "pt-14"} pb-8
+        #{(@banner && "pt-24") || "pt-14"} pb-8
         transition-transform -translate-x-full
         bg-white border-r border-neutral-200
         lg:translate-x-0
