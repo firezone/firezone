@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "setup": "pnpm install && bash ./timestamps.sh",
     "dev": "next dev",
     "prebuild": "bash ./timestamps.sh",
     "build": "next build",

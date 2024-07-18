@@ -1,17 +1,35 @@
 "use client";
-import SyntaxHighlighter from "react-syntax-highlighter";
-import { a11yDark } from "react-syntax-highlighter/dist/esm/styles/hljs";
 
-export default function CodeBlock({
-  language,
-  codeString,
-}: {
-  language: string;
-  codeString: string;
-}) {
+import Clipboard from "@/components/Clipboard";
+import { useState, useRef, useEffect } from "react";
+
+export default function CodeBlock({ children }: { children: React.ReactNode }) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [codeString, setCodeString] = useState("");
+  const preRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (preRef.current) {
+      const codeElement = preRef.current.querySelector("code");
+      if (codeElement) {
+        setCodeString(codeElement.innerText);
+      }
+    }
+  }, []);
+
   return (
-    <SyntaxHighlighter language={language} style={a11yDark}>
-      {codeString}
-    </SyntaxHighlighter>
+    <div
+      // Flowbite typography and highlight together create ugly code block
+      // offspring, so disable typography for code blocks.
+      className="not-format mb-4 lg:mb-8 relative"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      ref={preRef}
+    >
+      <pre>
+        {children}
+        {isHovered && <Clipboard valueToCopy={codeString} />}
+      </pre>
+    </div>
   );
 }
