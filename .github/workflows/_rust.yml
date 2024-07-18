@@ -11,6 +11,11 @@ permissions:
   contents: 'read'
   id-token: 'write'
 
+# Never tolerate warnings.
+env:
+  RUSTFLAGS: "-Dwarnings"
+  RUSTDOCFLAGS: "-D warnings"
+
 jobs:
   bench:
     name: bench-${{ matrix.runs-on }}
@@ -56,11 +61,9 @@ jobs:
         name: Check for unused dependencies
       - run: cargo fmt -- --check
       - run: cargo doc --all-features --no-deps --document-private-items ${{ steps.setup-rust.outputs.packages }}
-        env:
-          RUSTDOCFLAGS: "-D warnings"
         name: "cargo doc"
         shell: bash
-      - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust.outputs.packages }} -- -D warnings
+      - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
         name: "cargo clippy"
         shell: bash
 
