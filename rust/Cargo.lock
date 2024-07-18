@@ -1060,10 +1060,13 @@ name = "connlib-client-android"
 version = "1.1.4"
 dependencies = [
  "android_log-sys",
+ "backoff",
  "connlib-client-shared",
+ "connlib-shared",
  "ip_network",
  "jni 0.21.1",
  "log",
+ "phoenix-channel",
  "secrecy",
  "serde_json",
  "socket-factory",
@@ -1079,10 +1082,13 @@ dependencies = [
 name = "connlib-client-apple"
 version = "1.1.3"
 dependencies = [
+ "backoff",
  "connlib-client-shared",
+ "connlib-shared",
  "ip_network",
  "libc",
  "oslog",
+ "phoenix-channel",
  "secrecy",
  "serde_json",
  "socket-factory",
@@ -1945,6 +1951,7 @@ version = "1.1.4"
 dependencies = [
  "anyhow",
  "atomicwrites",
+ "backoff",
  "clap",
  "connlib-client-shared",
  "connlib-shared",
@@ -1959,6 +1966,7 @@ dependencies = [
  "libc",
  "mutants",
  "nix 0.28.0",
+ "phoenix-channel",
  "resolv-conf",
  "ring",
  "rtnetlink",
