@@ -419,7 +419,11 @@ impl ClientState {
             now,
         );
 
-        if peer.allowed_ips.longest_match(dst).is_none() {
+        if !peer
+            .allowed_ips
+            .longest_match(dst)
+            .is_some_and(|(_, r)| r.contains(&resource))
+        {
             let gateway_id = peer.id();
             self.send_proxy_ips(&dst, resource, gateway_id);
             return None;
