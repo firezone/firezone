@@ -156,14 +156,12 @@ impl StateMachineTest for TunnelTest {
             Transition::AddCidrResource { resource } => {
                 state
                     .client
-                    .exec_mut(|c| c.sut.add_resources(&[ResourceDescription::Cidr(resource)]));
+                    .exec_mut(|c| c.sut.add_resource(ResourceDescription::Cidr(resource)));
             }
             Transition::AddDnsResource { resource, .. } => state
                 .client
-                .exec_mut(|c| c.sut.add_resources(&[ResourceDescription::Dns(resource)])),
-            Transition::RemoveResource(id) => {
-                state.client.exec_mut(|c| c.sut.remove_resources(&[id]))
-            }
+                .exec_mut(|c| c.sut.add_resource(ResourceDescription::Dns(resource))),
+            Transition::RemoveResource(id) => state.client.exec_mut(|c| c.sut.remove_resource(id)),
             Transition::SendICMPPacketToNonResourceIp {
                 src,
                 dst,
@@ -253,7 +251,9 @@ impl StateMachineTest for TunnelTest {
                         HashSet::default(),
                         HashSet::from_iter(map_explode(state.relays.iter(), "client")),
                         ref_state.now,
-                    )
+                    );
+                    c.sut
+                        .set_resources(ref_state.client.inner().all_resources());
                 });
             }
         };
