@@ -34,6 +34,8 @@ thiserror = { version = "1.0", default-features = false }
 tokio = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
+divan = { version = "0.1.14", optional = true }
+rand = { version = "0.8", optional = true }
 
 [dev-dependencies]
 derivative = "2.2.0"
@@ -48,8 +50,14 @@ test-strategy = "0.3.1"
 tracing-appender = "0.2.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+[[bench]]
+name = "divan"
+harness = false
+required-features = ["divan"]
+
 [features]
 proptest = ["dep:proptest", "connlib-shared/proptest"]
+divan = ["dep:divan", "dep:rand"]
 
 [lints]
 workspace = true
