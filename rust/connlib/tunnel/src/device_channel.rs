@@ -22,35 +22,15 @@ use tun_android as tun;
 #[cfg(target_family = "unix")]
 mod utils;
 
-use connlib_shared::{error::ConnlibError, messages::Interface, Callbacks, Error};
-use connlib_shared::{Cidrv4, Cidrv6};
-use ip_network::IpNetwork;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
-use std::collections::HashSet;
 use std::io;
-use std::net::IpAddr;
 use std::task::{Context, Poll, Waker};
-use tun::Tun;
+
+pub use tun::Tun;
 
 pub struct Device {
     tun: Option<Tun>,
     waker: Option<Waker>,
-}
-
-#[allow(dead_code)]
-fn ipv4(ip: IpNetwork) -> Option<Cidrv4> {
-    match ip {
-        IpNetwork::V4(v4) => Some(v4.into()),
-        IpNetwork::V6(_) => None,
-    }
-}
-
-#[allow(dead_code)]
-fn ipv6(ip: IpNetwork) -> Option<Cidrv6> {
-    match ip {
-        IpNetwork::V4(_) => None,
-        IpNetwork::V6(v6) => Some(v6.into()),
-    }
 }
 
 impl Device {
@@ -61,49 +41,14 @@ impl Device {
         }
     }
 
-    #[cfg(target_os = "android")]
-    pub(crate) fn set_config(
-        &mut self,
-        config: &Interface,
-        dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks,
-    ) -> Result<(), ConnlibError> {
-        self.tun = Some(Tun::new(config, dns_config, callbacks)?);
+    pub(crate) fn set_tun(&mut self, tun: Tun) {
+        tracing::info!(name = %tun.name(), "Initializing TUN device");
+
+        self.tun = Some(tun);
 
         if let Some(waker) = self.waker.take() {
             waker.wake();
         }
-
-        Ok(())
-    }
-
-    #[cfg(any(
-        target_os = "ios",
-        target_os = "macos",
-        target_os = "windows",
-        target_os = "linux"
-    ))]
-    pub(crate) fn set_config(
-        &mut self,
-        config: &Interface,
-        dns_config: Vec<IpAddr>,
-        callbacks: &impl Callbacks,
-    ) -> Result<(), ConnlibError> {
-        // For macos the filedescriptor is the same throughout its lifetime.
-        // If we reinitialize tun, we might drop the old tun after the new one is created
-        // this unregisters the file descriptor with the reactor so we never wake up
-        // in case an event is triggered.
-        if self.tun.is_none() {
-            self.tun = Some(Tun::new()?);
-        }
-
-        callbacks.on_set_interface_config(config.ipv4, config.ipv6, dns_config);
-
-        if let Some(waker) = self.waker.take() {
-            waker.wake();
-        }
-
-        Ok(())
     }
 
     #[cfg(target_family = "unix")]
@@ -174,22 +119,6 @@ impl Device {
         Poll::Ready(Ok(packet))
     }
 
-    pub(crate) fn name(&self) -> &str {
-        self.tun
-            .as_ref()
-            .map(|t| t.name())
-            .unwrap_or("uninitialized")
-    }
-
-    pub(crate) fn set_routes(
-        &mut self,
-        routes: HashSet<IpNetwork>,
-        callbacks: &impl Callbacks,
-    ) -> Result<(), Error> {
-        self.tun_mut()?.set_routes(routes, callbacks)?;
-        Ok(())
-    }
-
     pub fn write(&self, packet: IpPacket<'_>) -> io::Result<usize> {
         tracing::trace!(target: "wire::dev::send", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
@@ -201,10 +130,6 @@ impl Device {
 
     fn tun(&self) -> io::Result<&Tun> {
         self.tun.as_ref().ok_or_else(io_error_not_initialized)
-    }
-
-    fn tun_mut(&mut self) -> io::Result<&mut Tun> {
-        self.tun.as_mut().ok_or_else(io_error_not_initialized)
     }
 }
 

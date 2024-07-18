@@ -1,47 +1,45 @@
 //! Main connlib library for clients.
+pub use crate::serde_routelist::{V4RouteList, V6RouteList};
 pub use connlib_shared::messages::client::ResourceDescription;
 pub use connlib_shared::{
-    callbacks, keypair, Callbacks, Cidrv4, Cidrv6, Error, LoginUrl, LoginUrlError, StaticSecret,
+    callbacks, keypair, Callbacks, Error, LoginUrl, LoginUrlError, StaticSecret,
 };
-pub use firezone_tunnel::Sockets;
+pub use eventloop::Eventloop;
+pub use firezone_tunnel::Tun;
 pub use tracing_appender::non_blocking::WorkerGuard;
 
-use backoff::ExponentialBackoffBuilder;
-use connlib_shared::get_user_agent;
+use eventloop::Command;
 use firezone_tunnel::ClientTunnel;
+use messages::{IngressMessages, ReplyMessages};
 use phoenix_channel::PhoenixChannel;
+use socket_factory::SocketFactory;
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::time::Duration;
+use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::task::JoinHandle;
 
 mod eventloop;
 pub mod file_logger;
 mod messages;
+mod serde_routelist;
 
 const PHOENIX_TOPIC: &str = "client";
-
-use eventloop::Command;
-pub use eventloop::Eventloop;
-use secrecy::Secret;
-use tokio::task::JoinHandle;
 
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
 /// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
+#[derive(Clone)]
 pub struct Session {
     channel: tokio::sync::mpsc::UnboundedSender<Command>,
 }
 
 /// Arguments for `connect`, since Clippy said 8 args is too many
 pub struct ConnectArgs<CB> {
-    pub url: LoginUrl,
-    pub sockets: Sockets,
+    pub tcp_socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
+    pub udp_socket_factory: Arc<dyn SocketFactory<tokio::net::UdpSocket>>,
     pub private_key: StaticSecret,
-    pub os_version_override: Option<String>,
-    pub app_version: String,
     pub callbacks: CB,
-    pub max_partition_time: Option<Duration>,
 }
 
 impl Session {
@@ -50,12 +48,13 @@ impl Session {
     /// This connects to the portal a specified using [`LoginUrl`] and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
         args: ConnectArgs<CB>,
+        portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
         handle: tokio::runtime::Handle,
     ) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
         let callbacks = args.callbacks.clone();
-        let connect_handle = handle.spawn(connect(args, rx));
+        let connect_handle = handle.spawn(connect(args, portal, rx));
         handle.spawn(connect_supervisor(connect_handle, callbacks));
 
         Self { channel: tx }
@@ -95,6 +94,11 @@ impl Session {
         let _ = self.channel.send(Command::SetDns(new_dns));
     }
 
+    /// Sets a new [`Tun`] device handle.
+    pub fn set_tun(&self, new_tun: Tun) {
+        let _ = self.channel.send(Command::SetTun(new_tun));
+    }
+
     /// Disconnect a [`Session`].
     ///
     /// This consumes [`Session`] which cleans up all state associated with it.
@@ -106,47 +110,29 @@ impl Session {
 /// Connects to the portal and starts a tunnel.
 ///
 /// When this function exits, the tunnel failed unrecoverably and you need to call it again.
-async fn connect<CB>(args: ConnectArgs<CB>, rx: UnboundedReceiver<Command>) -> Result<(), Error>
+async fn connect<CB>(
+    args: ConnectArgs<CB>,
+    portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+    rx: UnboundedReceiver<Command>,
+) -> Result<(), Error>
 where
     CB: Callbacks + 'static,
 {
     let ConnectArgs {
-        url,
-        sockets,
         private_key,
-        os_version_override,
-        app_version,
         callbacks,
-        max_partition_time,
+        udp_socket_factory,
+        tcp_socket_factory,
     } = args;
-
-    // Note on the first connect these addresses won't be used yet, though coincidentally phoenix_channel might resolve to the same ones, however thereafter they will.
-    // also we don't care that we are blocking here.
-    let addrs = url
-        .inner()
-        .socket_addrs(|| None)?
-        .iter()
-        .map(|addr| addr.ip())
-        .collect();
 
     let tunnel = ClientTunnel::new(
         private_key,
-        sockets,
-        callbacks,
-        HashMap::from([(url.host().to_string(), addrs)]),
+        tcp_socket_factory,
+        udp_socket_factory,
+        HashMap::from([(portal.server_host().to_owned(), portal.resolved_addresses())]),
     )?;
 
-    let portal = PhoenixChannel::connect(
-        Secret::new(url),
-        get_user_agent(os_version_override, &app_version),
-        PHOENIX_TOPIC,
-        (),
-        ExponentialBackoffBuilder::default()
-            .with_max_elapsed_time(max_partition_time)
-            .build(),
-    );
-
-    let mut eventloop = Eventloop::new(tunnel, portal, rx);
+    let mut eventloop = Eventloop::new(tunnel, callbacks, portal, rx);
 
     std::future::poll_fn(|cx| eventloop.poll(cx))
         .await
@@ -170,16 +156,18 @@ where
         }
         Err(e) => match e.try_into_panic() {
             Ok(panic) => {
-                tracing::error!("connlib panicked");
                 if let Some(msg) = panic.downcast_ref::<&str>() {
+                    tracing::error!("connlib panicked: {msg}");
                     callbacks.on_disconnect(&Error::Panic(msg.to_string()));
                     return;
                 }
                 if let Some(msg) = panic.downcast_ref::<String>() {
+                    tracing::error!("connlib panicked: {msg}");
                     callbacks.on_disconnect(&Error::Panic(msg.to_string()));
                     return;
                 }
 
+                tracing::error!("connlib panicked with a non-string payload");
                 callbacks.on_disconnect(&Error::PanicNonStringPayload);
             }
             Err(_) => {
@@ -208,37 +196,38 @@ mod tests {
     #[ignore = "Performs system-wide I/O, needs sudo"]
     async fn device_windows() {
         // Install wintun so the test can run
-        // CI only needs x86_64 for now
-        let wintun_bytes =
-            include_bytes!("../../../../headless-client/src/windows/wintun/bin/amd64/wintun.dll");
         let wintun_path = connlib_shared::windows::wintun_dll_path().unwrap();
         tokio::fs::create_dir_all(wintun_path.parent().unwrap())
             .await
             .unwrap();
-        tokio::fs::write(&wintun_path, wintun_bytes).await.unwrap();
+        tokio::fs::write(&wintun_path, connlib_shared::windows::wintun_bytes())
+            .await
+            .unwrap();
 
         device_common().await;
     }
 
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     async fn device_common() {
-        use std::collections::HashMap;
+        use firezone_tunnel::Tun;
+        use std::{collections::HashMap, sync::Arc};
 
         let (private_key, _public_key) = connlib_shared::keypair();
-        let sockets = crate::Sockets::new();
-        let callbacks = Callbacks::default();
-        let mut tunnel =
-            firezone_tunnel::ClientTunnel::new(private_key, sockets, callbacks, HashMap::new())
-                .unwrap();
+        let mut tunnel = firezone_tunnel::ClientTunnel::new(
+            private_key,
+            Arc::new(socket_factory::tcp),
+            Arc::new(socket_factory::udp),
+            HashMap::new(),
+        )
+        .unwrap();
         let upstream_dns = vec![([192, 168, 1, 1], 53).into()];
         let interface = connlib_shared::messages::Interface {
             ipv4: [100, 71, 96, 96].into(),
             ipv6: [0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0019, 0x6538].into(),
             upstream_dns,
         };
+        tunnel.set_tun(Tun::new().unwrap());
         tunnel.set_new_interface_config(interface).unwrap();
-        let resources = vec![];
-        tunnel.add_resources(&resources).unwrap();
 
         let tunnel = tokio::spawn(async move {
             std::future::poll_fn(|cx| tunnel.poll_next_event(cx))

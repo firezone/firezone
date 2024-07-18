@@ -11,17 +11,42 @@ permissions:
   contents: 'read'
   id-token: 'write'
 
+# Never tolerate warnings.
+env:
+  RUSTFLAGS: "-Dwarnings"
+  RUSTDOCFLAGS: "-D warnings"
+
 jobs:
+  bench:
+    name: bench-${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [
+          windows-2019 # Only platform with a benchmark right now
+        ]
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        id: setup-rust
+      - run: cargo bench ${{ steps.setup-rust.outputs.bench-packages }}
+        env:
+          RUST_LOG: "debug"
+        name: "cargo bench"
+        shell: bash
+
   static-analysis:
     name: static-analysis-${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
-        include:
-          - runs-on: ubuntu-22.04
-          - runs-on: macos-14
-          - runs-on: windows-2022
+        runs-on: [
+          ubuntu-22.04,
+          macos-14,
+          windows-2022
+        ]
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
@@ -36,11 +61,9 @@ jobs:
         name: Check for unused dependencies
       - run: cargo fmt -- --check
       - run: cargo doc --all-features --no-deps --document-private-items ${{ steps.setup-rust.outputs.packages }}
-        env:
-          RUSTDOCFLAGS: "-D warnings"
         name: "cargo doc"
         shell: bash
-      - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust.outputs.packages }} -- -D warnings
+      - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
         name: "cargo clippy"
         shell: bash
 
@@ -50,14 +73,15 @@ jobs:
       fail-fast: false
       matrix:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
-        include:
-          - runs-on: ubuntu-20.04
-          - runs-on: ubuntu-22.04
-          - runs-on: macos-12
-          - runs-on: macos-13
-          - runs-on: macos-14
-          - runs-on: windows-2019
-          - runs-on: windows-2022
+        runs-on: [
+          ubuntu-20.04,
+          ubuntu-22.04,
+          macos-12,
+          macos-13,
+          macos-14,
+          windows-2019,
+          windows-2022
+        ]
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
@@ -80,12 +104,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - runs-on: ubuntu-20.04
-          # Broken on 22.04 <https://github.com/firezone/firezone/issues/3699>
-          - runs-on: ubuntu-22.04
-          - runs-on: windows-2019
-          - runs-on: windows-2022
+        runs-on: [
+          ubuntu-20.04,
+          ubuntu-22.04,
+          windows-2019,
+          windows-2022
+        ]
     runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
@@ -109,7 +133,7 @@ jobs:
       - name: Compile Tailwind
         run: pnpm tailwindcss -i src/input.css -o src/output.css
       - name: Build client
-        run: cargo build -p firezone-gui-client
+        run: cargo build -p firezone-gui-client --all-targets
       - uses: taiki-e/install-action@v2
         with:
           tool: dump_syms,minidump-stackwalk

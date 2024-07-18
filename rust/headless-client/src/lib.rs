@@ -10,7 +10,7 @@
 
 use anyhow::{Context as _, Result};
 use connlib_client_shared::{Callbacks, Error as ConnlibError};
-use connlib_shared::{callbacks, Cidrv4, Cidrv6};
+use connlib_shared::callbacks;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::PathBuf,
@@ -20,10 +20,8 @@ use tracing::subscriber::set_global_default;
 use tracing_subscriber::{fmt, layer::SubscriberExt as _, EnvFilter, Layer as _, Registry};
 
 use platform::default_token_path;
-/// SIGINT and, on Linux, SIGHUP.
-///
-/// Must be constructed inside a Tokio runtime context.
-use platform::Signals;
+use platform::tcp_socket_factory;
+use platform::udp_socket_factory;
 
 /// Generate a persistent device ID, stores it to disk, and reads it back.
 pub(crate) mod device_id;
@@ -31,6 +29,7 @@ pub(crate) mod device_id;
 pub mod dns_control;
 mod ipc_service;
 pub mod known_dirs;
+mod signals;
 mod standalone;
 pub mod uptime;
 
@@ -46,6 +45,7 @@ pub use ipc_service::{ipc, run_only_ipc_service, ClientMsg as IpcClientMsg};
 pub use standalone::run_only_headless_client;
 
 use dns_control::DnsController;
+use ip_network::{Ipv4Network, Ipv6Network};
 
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
@@ -87,21 +87,25 @@ enum InternalServerMsg {
         dns: Vec<IpAddr>,
     },
     OnUpdateRoutes {
-        ipv4: Vec<Cidrv4>,
-        ipv6: Vec<Cidrv6>,
+        ipv4: Vec<Ipv4Network>,
+        ipv6: Vec<Ipv6Network>,
     },
 }
 
 /// Messages that we can send to IPC clients
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum IpcServerMsg {
-    Ok,
     OnDisconnect {
         error_msg: String,
         is_authentication_error: bool,
     },
-    OnTunnelReady,
     OnUpdateResources(Vec<callbacks::ResourceDescription>),
+    /// The IPC service is terminating, maybe due to a software update
+    ///
+    /// This is a hint that the Client should exit with a message like,
+    /// "Firezone is updating, please restart the GUI" instead of an error like,
+    /// "IPC connection closed".
+    TerminatingGracefully,
 }
 
 #[derive(Clone)]
@@ -125,18 +129,11 @@ impl Callbacks for CallbackHandler {
             .expect("should be able to send OnDisconnect");
     }
 
-    fn on_set_interface_config(
-        &self,
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-        dns: Vec<IpAddr>,
-    ) -> Option<i32> {
+    fn on_set_interface_config(&self, ipv4: Ipv4Addr, ipv6: Ipv6Addr, dns: Vec<IpAddr>) {
         tracing::info!("TunnelReady (on_set_interface_config)");
         self.cb_tx
             .try_send(InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
             .expect("Should be able to send TunnelReady");
-
-        None
     }
 
     fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
@@ -148,26 +145,11 @@ impl Callbacks for CallbackHandler {
             .expect("Should be able to send OnUpdateResources");
     }
 
-    fn on_update_routes(&self, ipv4: Vec<Cidrv4>, ipv6: Vec<Cidrv6>) -> Option<i32> {
+    fn on_update_routes(&self, ipv4: Vec<Ipv4Network>, ipv6: Vec<Ipv6Network>) {
         self.cb_tx
             .try_send(InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 })
             .expect("Should be able to send messages");
-        None
     }
-}
-
-#[allow(dead_code)]
-enum SignalKind {
-    /// SIGHUP
-    ///
-    /// Not caught on Windows
-    Hangup,
-    /// SIGINT
-    Interrupt,
-    /// SIGTERM
-    ///
-    /// Not caught on Windows
-    Terminate,
 }
 
 /// Sets up logging for stdout only, with INFO level by default

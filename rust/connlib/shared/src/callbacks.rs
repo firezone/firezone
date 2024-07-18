@@ -7,57 +7,6 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use crate::messages::client::Site;
 use crate::messages::ResourceId;
 
-// Avoids having to map types for Windows
-type RawFd = i32;
-
-#[derive(Serialize, Clone, Copy, Debug)]
-/// Identical to `ip_network::Ipv4Network` except we implement `Serialize` on the Rust side and the equivalent of `Deserialize` on the Swift / Kotlin side to avoid manually serializing and deserializing.
-pub struct Cidrv4 {
-    address: Ipv4Addr,
-    prefix: u8,
-}
-
-/// Identical to `ip_network::Ipv6Network` except we implement `Serialize` on the Rust side and the equivalent of `Deserialize` on the Swift / Kotlin side to avoid manually serializing and deserializing.
-#[derive(Serialize, Clone, Copy, Debug)]
-pub struct Cidrv6 {
-    address: Ipv6Addr,
-    prefix: u8,
-}
-
-impl From<Ipv4Network> for Cidrv4 {
-    fn from(value: Ipv4Network) -> Self {
-        Self {
-            address: value.network_address(),
-            prefix: value.netmask(),
-        }
-    }
-}
-
-impl From<Ipv6Network> for Cidrv6 {
-    fn from(value: Ipv6Network) -> Self {
-        Self {
-            address: value.network_address(),
-            prefix: value.netmask(),
-        }
-    }
-}
-
-impl From<Cidrv4> for IpNetwork {
-    fn from(x: Cidrv4) -> Self {
-        Ipv4Network::new(x.address, x.prefix)
-            .expect("A Cidrv4 should always translate to a valid Ipv4Network")
-            .into()
-    }
-}
-
-impl From<Cidrv6> for IpNetwork {
-    fn from(x: Cidrv6) -> Self {
-        Ipv6Network::new(x.address, x.prefix)
-            .expect("A Cidrv6 should always translate to a valid Ipv6Network")
-            .into()
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Status {
     Unknown,
@@ -70,6 +19,7 @@ pub enum Status {
 pub enum ResourceDescription {
     Dns(ResourceDescriptionDns),
     Cidr(ResourceDescriptionCidr),
+    Internet(ResourceDescriptionCidr),
 }
 
 impl ResourceDescription {
@@ -77,6 +27,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => r.address_description.as_deref(),
             ResourceDescription::Cidr(r) => r.address_description.as_deref(),
+            ResourceDescription::Internet(_) => None,
         }
     }
 
@@ -84,6 +35,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => &r.name,
             ResourceDescription::Cidr(r) => &r.name,
+            ResourceDescription::Internet(_) => "Internet",
         }
     }
 
@@ -91,6 +43,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => r.status,
             ResourceDescription::Cidr(r) => r.status,
+            ResourceDescription::Internet(r) => r.status,
         }
     }
 
@@ -98,6 +51,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => r.id,
             ResourceDescription::Cidr(r) => r.id,
+            ResourceDescription::Internet(r) => r.id,
         }
     }
 
@@ -106,6 +60,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => Cow::from(&r.address),
             ResourceDescription::Cidr(r) => Cow::from(r.address.to_string()),
+            ResourceDescription::Internet(_) => Cow::default(),
         }
     }
 
@@ -113,19 +68,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => &r.sites,
             ResourceDescription::Cidr(r) => &r.sites,
-        }
-    }
-}
-
-impl From<ResourceDescription> for crate::messages::client::ResourceDescription {
-    fn from(value: ResourceDescription) -> Self {
-        match value {
-            ResourceDescription::Dns(r) => {
-                crate::messages::client::ResourceDescription::Dns(r.into())
-            }
-            ResourceDescription::Cidr(r) => {
-                crate::messages::client::ResourceDescription::Cidr(r.into())
-            }
+            ResourceDescription::Internet(r) => &r.sites,
         }
     }
 }
@@ -147,18 +90,6 @@ pub struct ResourceDescriptionDns {
     pub status: Status,
 }
 
-impl From<ResourceDescriptionDns> for crate::messages::client::ResourceDescriptionDns {
-    fn from(r: ResourceDescriptionDns) -> Self {
-        crate::messages::client::ResourceDescriptionDns {
-            id: r.id,
-            address: r.address,
-            address_description: r.address_description,
-            name: r.name,
-            sites: r.sites,
-        }
-    }
-}
-
 /// Description of a resource that maps to a CIDR.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ResourceDescriptionCidr {
@@ -177,32 +108,21 @@ pub struct ResourceDescriptionCidr {
     pub status: Status,
 }
 
-impl From<ResourceDescriptionCidr> for crate::messages::client::ResourceDescriptionCidr {
-    fn from(r: ResourceDescriptionCidr) -> Self {
-        crate::messages::client::ResourceDescriptionCidr {
-            id: r.id,
-            address: r.address,
-            address_description: r.address_description,
-            name: r.name,
-            sites: r.sites,
-        }
-    }
+/// Description of an Internet resource
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ResourceDescriptionInternet {
+    pub id: ResourceId,
+    pub sites: Vec<Site>,
+    pub status: Status,
 }
 
 /// Traits that will be used by connlib to callback the client upper layers.
 pub trait Callbacks: Clone + Send + Sync {
     /// Called when the tunnel address is set.
-    ///
-    /// This should return a new `fd` if there is one.
-    /// (Only happens on android for now)
-    fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) -> Option<RawFd> {
-        None
-    }
+    fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) {}
 
     /// Called when the route list changes.
-    fn on_update_routes(&self, _: Vec<Cidrv4>, _: Vec<Cidrv6>) -> Option<RawFd> {
-        None
-    }
+    fn on_update_routes(&self, _: Vec<Ipv4Network>, _: Vec<Ipv6Network>) {}
 
     /// Called when the resource list changes.
     fn on_update_resources(&self, _: Vec<ResourceDescription>) {}

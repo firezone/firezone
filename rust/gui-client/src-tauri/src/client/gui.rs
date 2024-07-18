@@ -4,20 +4,22 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::client::{
-    self, about, deep_link,
-    ipc::{self, CallbackHandler},
-    logging, network_changes,
+    self, about, deep_link, ipc, logging, network_changes,
     settings::{self, AdvancedSettings},
     Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
-use arc_swap::ArcSwap;
 use connlib_client_shared::callbacks::ResourceDescription;
+use firezone_headless_client::IpcServerMsg;
 use secrecy::{ExposeSecret, SecretString};
-use std::{path::PathBuf, str::FromStr, sync::Arc, time::Duration};
-use system_tray_menu::Event as TrayMenuEvent;
-use tauri::{Manager, SystemTray, SystemTrayEvent};
-use tokio::sync::{mpsc, oneshot, Notify};
+use std::{
+    path::PathBuf,
+    str::FromStr,
+    time::{Duration, Instant},
+};
+use system_tray::Event as TrayMenuEvent;
+use tauri::{Manager, SystemTrayEvent};
+use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
 use url::Url;
 
@@ -25,7 +27,7 @@ use ControllerRequest as Req;
 
 mod errors;
 mod ran_before;
-pub(crate) mod system_tray_menu;
+pub(crate) mod system_tray;
 
 #[cfg(target_os = "linux")]
 #[path = "gui/os_linux.rs"]
@@ -47,8 +49,6 @@ pub(crate) use errors::{show_error_dialog, Error};
 pub(crate) use os::set_autostart;
 
 pub(crate) type CtlrTx = mpsc::Sender<ControllerRequest>;
-
-const TRAY_ICON_TOOLTIP: &str = "Firezone";
 
 /// All managed state that we might need to access from odd places like Tauri commands.
 ///
@@ -95,12 +95,6 @@ pub(crate) fn run(
         inject_faults: cli.inject_faults,
     };
 
-    // We can't call `refresh_system_tray_menu` yet because `Controller`
-    // is built inside Tauri's setup
-    let tray = SystemTray::new()
-        .with_menu(system_tray_menu::loading())
-        .with_tooltip(TRAY_ICON_TOOLTIP);
-
     tracing::info!("Setting up Tauri app instance...");
     let (setup_result_tx, mut setup_result_rx) =
         tokio::sync::oneshot::channel::<Result<(), Error>>();
@@ -127,7 +121,7 @@ pub(crate) fn run(
             settings::get_advanced_settings,
             crate::client::welcome::sign_in,
         ])
-        .system_tray(tray)
+        .system_tray(system_tray::loading())
         .on_system_tray_event(|app, event| {
             if let SystemTrayEvent::MenuItemClick { id, .. } = event {
                 tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
@@ -312,6 +306,23 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         .await
         .context("Failed to send ClearLogs request")?;
 
+    // Tray icon stress test
+    let num_icon_cycles = 100;
+    for _ in 0..num_icon_cycles {
+        ctlr_tx
+            .send(ControllerRequest::TestTrayIcon(system_tray::Icon::Busy))
+            .await?;
+        ctlr_tx
+            .send(ControllerRequest::TestTrayIcon(system_tray::Icon::SignedIn))
+            .await?;
+        ctlr_tx
+            .send(ControllerRequest::TestTrayIcon(
+                system_tray::Icon::SignedOut,
+            ))
+            .await?;
+    }
+    tracing::debug!(?num_icon_cycles, "Completed tray icon test");
+
     // Give the app some time to export the zip and reach steady state
     tokio::time::sleep_until(quit_time).await;
 
@@ -410,10 +421,6 @@ pub(crate) enum ControllerRequest {
     ApplySettings(AdvancedSettings),
     /// Only used for smoke tests
     ClearLogs,
-    Disconnected {
-        error_msg: String,
-        is_authentication_error: bool,
-    },
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {
         path: PathBuf,
@@ -421,10 +428,14 @@ pub(crate) enum ControllerRequest {
     },
     Fail(Failure),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
+    Ipc(IpcServerMsg),
+    IpcClosed,
+    IpcReadFailed(anyhow::Error),
     SchemeRequest(SecretString),
     SignIn,
     SystemTrayMenu(TrayMenuEvent),
-    TunnelReady,
+    /// Forces the tray icon to a specific icon to stress-test the tray code
+    TestTrayIcon(system_tray::Icon),
     UpdateAvailable(crate::client::updates::Release),
     UpdateNotificationClicked(Url),
 }
@@ -433,9 +444,9 @@ enum Status {
     /// Firezone is disconnected.
     Disconnected,
     /// Firezone is signing in and raising the tunnel.
-    Connecting,
+    Connecting { start_instant: Instant },
     /// Firezone is ready to use.
-    TunnelReady,
+    TunnelReady { resources: Vec<ResourceDescription> },
 }
 
 impl Default for Status {
@@ -449,8 +460,8 @@ impl Status {
     fn connlib_is_up(&self) -> bool {
         match self {
             Self::Disconnected => false,
-            Self::Connecting => true,
-            Self::TunnelReady => true,
+            Self::Connecting { .. } => true,
+            Self::TunnelReady { .. } => true,
         }
     }
 }
@@ -464,10 +475,8 @@ struct Controller {
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
     log_filter_reloader: logging::Reloader,
-    /// Tells us when to wake up and look for a new resource list. Tokio docs say that memory reads and writes are synchronized when notifying, so we don't need an extra mutex on the resources.
-    notify_controller: Arc<Notify>,
-    resources: Arc<ArcSwap<Vec<ResourceDescription>>>,
     status: Status,
+    tray: system_tray::Tray,
     uptime: client::uptime::Tracker,
 }
 
@@ -482,10 +491,13 @@ impl Controller {
         let api_url = self.advanced_settings.api_url.clone();
         tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
 
+        // Count the start instant from before we connect
+        let start_instant = Instant::now();
         self.ipc_client
             .connect_to_firezone(api_url.as_str(), token)
             .await?;
-        self.status = Status::Connecting;
+        // Change the status after we begin connecting
+        self.status = Status::Connecting { start_instant };
         self.refresh_system_tray_menu()?;
 
         ran_before::set().await?;
@@ -523,27 +535,6 @@ impl Controller {
             Req::ClearLogs => logging::clear_logs_inner()
                 .await
                 .context("Failed to clear logs")?,
-            Req::Disconnected {
-                error_msg,
-                is_authentication_error,
-            } => {
-                self.sign_out().await?;
-                if is_authentication_error {
-                    tracing::info!(?error_msg, "Auth error");
-                    os::show_notification(
-                        "Firezone disconnected",
-                        "To access resources, sign in again.",
-                    )?;
-                } else {
-                    tracing::error!(?error_msg, "Disconnected");
-                    native_dialog::MessageDialog::new()
-                        .set_title("Firezone Error")
-                        .set_text(&error_msg)
-                        .set_type(native_dialog::MessageType::Error)
-                        .show_alert()
-                        .context("Couldn't show Disconnected alert")?;
-                }
-            }
             Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
                 .await
                 .context("Failed to export logs to zip")?,
@@ -553,6 +544,13 @@ impl Controller {
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
+            Req::Ipc(msg) => self.handle_ipc(msg).await?,
+            Req::IpcReadFailed(error) => {
+                // IPC errors are always fatal
+                tracing::error!(?error, "IPC read failure");
+                Err(Error::IpcRead)?
+            }
+            Req::IpcClosed => Err(Error::IpcClosed)?,
             Req::SchemeRequest(url) => {
                 if let Err(error) = self.handle_deep_link(&url).await {
                     tracing::error!(?error, "`handle_deep_link` failed");
@@ -591,13 +589,13 @@ impl Controller {
                         tracing::info!("Calling `sign_out` to cancel sign-in");
                         self.sign_out().await?;
                     }
-                    Status::Connecting => {
+                    Status::Connecting { start_instant: _ } => {
                         tracing::warn!(
                             "Connlib is already raising the tunnel, calling `sign_out` anyway"
                         );
                         self.sign_out().await?;
                     }
-                    Status::TunnelReady => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
+                    Status::TunnelReady{..} => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
                 }
             }
             Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
@@ -623,16 +621,7 @@ impl Controller {
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => Err(anyhow!(
                 "Impossible error: `Quit` should be handled before this"
             ))?,
-            Req::TunnelReady => {
-                if ! matches!(self.status, Status::TunnelReady) {
-                    self.status = Status::TunnelReady;
-                    os::show_notification(
-                        "Firezone connected",
-                        "You are now signed in and able to access resources.",
-                    )?;
-                }
-                self.refresh_system_tray_menu()?;
-            }
+            Req::TestTrayIcon(icon) => self.tray.set_icon(icon)?,
             Req::UpdateAvailable(release) => {
                 let title = format!("Firezone {} available for download", release.version);
 
@@ -650,36 +639,84 @@ impl Controller {
         Ok(())
     }
 
-    /// Returns a new system tray menu
-    fn build_system_tray_menu(&self) -> tauri::SystemTrayMenu {
-        // TODO: Refactor this and the auth module so that "Are we logged in"
-        // doesn't require such complicated control flow to answer.
-        // TODO: Show some "Waiting for portal..." state if we got the deep link but
-        // haven't got `on_tunnel_ready` yet.
-        if let Some(auth_session) = self.auth.session() {
-            match &self.status {
-                Status::Disconnected => {
-                    tracing::error!("We have an auth session but no connlib session");
-                    system_tray_menu::signed_out()
+    async fn handle_ipc(&mut self, msg: IpcServerMsg) -> Result<(), Error> {
+        match msg {
+            IpcServerMsg::OnDisconnect {
+                error_msg,
+                is_authentication_error,
+            } => {
+                self.sign_out().await?;
+                if is_authentication_error {
+                    tracing::info!(?error_msg, "Auth error");
+                    os::show_notification(
+                        "Firezone disconnected",
+                        "To access resources, sign in again.",
+                    )?;
+                } else {
+                    tracing::error!(?error_msg, "Disconnected");
+                    native_dialog::MessageDialog::new()
+                        .set_title("Firezone Error")
+                        .set_text(&error_msg)
+                        .set_type(native_dialog::MessageType::Error)
+                        .show_alert()
+                        .context("Couldn't show Disconnected alert")?;
                 }
-                Status::Connecting => system_tray_menu::signing_in("Signing In..."),
-                Status::TunnelReady => {
-                    system_tray_menu::signed_in(&auth_session.actor_name, &self.resources.load())
-                }
+                Ok(())
             }
-        } else if self.auth.ongoing_request().is_ok() {
-            // Signing in, waiting on deep link callback
-            system_tray_menu::signing_in("Waiting for browser...")
-        } else {
-            system_tray_menu::signed_out()
+            IpcServerMsg::OnUpdateResources(resources) => {
+                if self.auth.session().is_none() {
+                    // This could happen if the user cancels the sign-in
+                    // before it completes. This is because the state machine
+                    // between the GUI, the IPC service, and connlib isn't  perfectly synced.
+                    tracing::error!("Got `UpdateResources` while signed out");
+                    return Ok(());
+                }
+                tracing::debug!(len = resources.len(), "Got new Resources");
+                if let Status::Connecting { start_instant } =
+                    std::mem::replace(&mut self.status, Status::TunnelReady { resources })
+                {
+                    tracing::info!(elapsed = ?start_instant.elapsed(), "Tunnel ready");
+                    os::show_notification(
+                        "Firezone connected",
+                        "You are now signed in and able to access resources.",
+                    )?;
+                }
+                if let Err(error) = self.refresh_system_tray_menu() {
+                    tracing::error!(?error, "Failed to refresh Resource list");
+                }
+                Ok(())
+            }
+            IpcServerMsg::TerminatingGracefully => {
+                tracing::info!("Caught TerminatingGracefully");
+                self.tray.set_icon(system_tray::Icon::SignedOut).ok();
+                Err(Error::IpcServiceTerminating)
+            }
         }
     }
 
     /// Builds a new system tray menu and applies it to the app
-    fn refresh_system_tray_menu(&self) -> Result<()> {
-        let tray = self.app.tray_handle();
-        tray.set_tooltip(TRAY_ICON_TOOLTIP)?;
-        tray.set_menu(self.build_system_tray_menu())?;
+    fn refresh_system_tray_menu(&mut self) -> Result<()> {
+        // TODO: Refactor `Controller` and the auth module so that "Are we logged in?"
+        // doesn't require such complicated control flow to answer.
+        let menu = if let Some(auth_session) = self.auth.session() {
+            match &self.status {
+                Status::Disconnected => {
+                    tracing::error!("We have an auth session but no connlib session");
+                    system_tray::Menu::SignedOut
+                }
+                Status::Connecting { start_instant: _ } => system_tray::Menu::WaitingForConnlib,
+                Status::TunnelReady { resources } => system_tray::Menu::SignedIn {
+                    actor_name: &auth_session.actor_name,
+                    resources,
+                },
+            }
+        } else if self.auth.ongoing_request().is_ok() {
+            // Signing in, waiting on deep link callback
+            system_tray::Menu::WaitingForBrowser
+        } else {
+            system_tray::Menu::SignedOut
+        };
+        self.tray.update(menu)?;
         Ok(())
     }
 
@@ -701,10 +738,10 @@ impl Controller {
         Ok(())
     }
 
-    fn show_window(&self, window: system_tray_menu::Window) -> Result<()> {
+    fn show_window(&self, window: system_tray::Window) -> Result<()> {
         let id = match window {
-            system_tray_menu::Window::About => "about",
-            system_tray_menu::Window::Settings => "settings",
+            system_tray::Window::About => "about",
+            system_tray::Window::Settings => "settings",
         };
 
         let win = self
@@ -727,14 +764,8 @@ async fn run_controller(
     log_filter_reloader: logging::Reloader,
 ) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");
-    let notify_controller = Arc::new(Notify::new());
-    let resources = Default::default();
-    let callback_handler = CallbackHandler {
-        ctlr_tx: ctlr_tx.clone(),
-        notify_controller: Arc::clone(&notify_controller),
-        resources: Arc::clone(&resources),
-    };
-    let ipc_client = ipc::Client::new(callback_handler).await?;
+    let ipc_client = ipc::Client::new(ctlr_tx.clone()).await?;
+    let tray = system_tray::Tray::new(app.tray_handle());
     let mut controller = Controller {
         advanced_settings,
         app: app.clone(),
@@ -742,9 +773,8 @@ async fn run_controller(
         ctlr_tx,
         ipc_client,
         log_filter_reloader,
-        notify_controller, // TODO: Fix cancel-safety
-        resources,
         status: Default::default(),
+        tray,
         uptime: Default::default(),
     };
 
@@ -776,13 +806,9 @@ async fn run_controller(
     let mut dns_listener = network_changes::DnsListener::new()?;
 
     loop {
+        // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
+        // `tokio::select!` with a `poll_*` function
         tokio::select! {
-            () = controller.notify_controller.notified() => {
-                tracing::debug!("Controller notified of new resources");
-                if let Err(error) = controller.refresh_system_tray_menu() {
-                    tracing::error!(?error, "Failed to reload resource list");
-                }
-            }
             () = com_worker.notified() => {
                 let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
                 if new_have_internet != have_internet {
@@ -818,10 +844,12 @@ async fn run_controller(
                         tracing::info!("User clicked Quit in the menu");
                         break
                     }
+                    // TODO: Should we really skip cleanup if a request fails?
                     req => controller.handle_request(req).await?,
                 }
             },
         }
+        // Code down here may not run because the `select` sometimes `continue`s.
     }
 
     if let Err(error) = com_worker.close() {

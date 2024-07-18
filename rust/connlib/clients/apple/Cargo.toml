@@ -11,17 +11,21 @@ mock = ["connlib-client-shared/mock"]
 swift-bridge-build = "0.1.53"
 
 [dependencies]
-secrecy = { workspace = true }
+backoff = "0.4.0"
+connlib-client-shared = { workspace = true }
+connlib-shared = { workspace = true }
 ip_network = "0.4"
 libc = "0.2"
-swift-bridge = { workspace = true }
-connlib-client-shared = { workspace = true }
+phoenix-channel = { workspace = true }
+secrecy = { workspace = true }
 serde_json = "1"
+socket-factory = { workspace = true }
+swift-bridge = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
-tracing-subscriber = "0.3"
 tracing-appender = "0.2"
+tracing-subscriber = "0.3"
 url = "2.5.0"
-tokio = { version = "1.38", default-features = false, features = ["rt"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 oslog = { version = "0.2.0", default-features = false }

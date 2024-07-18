@@ -287,7 +287,7 @@ impl Allocation {
         self.send_binding_requests();
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(tid, method, class, rtt))]
+    #[tracing::instrument(level = "debug", skip_all, fields(%from, tid, method, class, rtt))]
     pub fn handle_input(
         &mut self,
         from: SocketAddr,
@@ -431,7 +431,7 @@ impl Allocation {
                 let maybe_candidate = message.attributes().find_map(|a| srflx_candidate(local, a));
                 update_candidate(maybe_candidate, current_srflx_candidate, &mut self.events);
 
-                self.log_update();
+                self.log_update(now);
 
                 // Second, check if we have already determined which socket to use for this relay.
                 // We send 2 BINDING requests to start with (one for each IP version) and the first one coming back wins.
@@ -485,7 +485,7 @@ impl Allocation {
                     &mut self.events,
                 );
 
-                self.log_update();
+                self.log_update(now);
 
                 while let Some(peer) = self.buffered_channel_bindings.pop() {
                     debug_assert!(
@@ -503,7 +503,7 @@ impl Allocation {
 
                 self.allocation_lifetime = Some((now, lifetime.lifetime()));
 
-                self.log_update();
+                self.log_update(now);
             }
             CHANNEL_BIND => {
                 let Some(channel) = original_request
@@ -759,13 +759,13 @@ impl Allocation {
         self.credentials.is_some()
     }
 
-    fn log_update(&self) {
+    fn log_update(&self, now: Instant) {
         tracing::info!(
             srflx_ip4 = ?self.ip4_srflx_candidate.as_ref().map(|c| c.addr()),
             srflx_ip6 = ?self.ip6_srflx_candidate.as_ref().map(|c| c.addr()),
             relay_ip4 = ?self.ip4_allocation.as_ref().map(|c| c.addr()),
             relay_ip6 = ?self.ip6_allocation.as_ref().map(|c| c.addr()),
-            lifetime = ?self.allocation_lifetime,
+            remaining_lifetime = ?self.allocation_lifetime.and_then(|(created_at, d)| d.checked_sub(now.checked_duration_since(created_at)?)),
             "Updated allocation"
         );
     }

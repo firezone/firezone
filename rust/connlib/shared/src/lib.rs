@@ -6,7 +6,6 @@
 pub mod callbacks;
 pub mod error;
 pub mod messages;
-pub mod tun_device_manager;
 
 #[cfg(target_os = "windows")]
 pub mod windows;
@@ -16,7 +15,7 @@ pub mod proptest;
 
 pub use boringtun::x25519::PublicKey;
 pub use boringtun::x25519::StaticSecret;
-pub use callbacks::{Callbacks, Cidrv4, Cidrv6};
+pub use callbacks::Callbacks;
 pub use error::ConnlibError as Error;
 pub use error::Result;
 pub use phoenix_channel::{LoginUrl, LoginUrlError};

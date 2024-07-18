@@ -1,14 +1,14 @@
 use crate::peer::ClientOnGateway;
 use crate::peer_store::PeerStore;
 use crate::utils::earliest;
-use crate::{GatewayEvent, GatewayTunnel};
+use crate::{GatewayEvent, GatewayTunnel, Tun};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
-    gateway::ResolvedResourceDescriptionDns, gateway::ResourceDescription, Answer, ClientId,
-    Interface as InterfaceConfig, Key, Offer, RelayId, ResourceId,
+    gateway::ResolvedResourceDescriptionDns, gateway::ResourceDescription, Answer, ClientId, Key,
+    Offer, RelayId, ResourceId,
 };
-use connlib_shared::{Callbacks, DomainName, Error, Result, StaticSecret};
+use connlib_shared::{DomainName, Error, Result, StaticSecret};
 use ip_packet::{IpPacket, MutableIpPacket};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{RelaySocket, ServerNode};
@@ -18,23 +18,9 @@ use std::time::{Duration, Instant};
 
 const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 
-impl<CB> GatewayTunnel<CB>
-where
-    CB: Callbacks + 'static,
-{
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_interface(&mut self, config: &InterfaceConfig) -> connlib_shared::Result<()> {
-        // Note: the dns fallback strategy is irrelevant for gateways
-        let callbacks = self.callbacks.clone();
-        self.io
-            .device_mut()
-            .set_config(config, vec![], &callbacks)?;
-
-        let name = self.io.device_mut().name().to_owned();
-
-        tracing::debug!(ip4 = %config.ipv4, ip6 = %config.ipv6, %name, "TUN device initialized");
-
-        Ok(())
+impl GatewayTunnel {
+    pub fn set_tun(&mut self, tun: Tun) {
+        self.io.device_mut().set_tun(tun);
     }
 
     /// Accept a connection request from a client.
@@ -163,25 +149,29 @@ impl GatewayState {
         packet: MutableIpPacket<'_>,
         now: Instant,
     ) -> Option<snownet::Transmit<'s>> {
-        let dest = packet.destination();
+        let dst = packet.destination();
 
-        let peer = self.peers.peer_by_ip_mut(dest)?;
+        let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
+            tracing::warn!(%dst, "Couldn't find connection by IP");
+
+            return None;
+        };
+        let cid = peer.id();
 
         let packet = peer
             .encapsulate(packet, now)
-            .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
+            .inspect_err(|e| tracing::debug!(%cid, "Failed to encapsulate: {e}"))
             .ok()??;
 
         let transmit = self
             .node
             .encapsulate(peer.id(), packet.as_immutable(), now)
-            .inspect_err(|e| tracing::debug!("Failed to encapsulate: {e}"))
+            .inspect_err(|e| tracing::debug!(%cid, "Failed to encapsulate: {e}"))
             .ok()??;
 
         Some(transmit)
     }
 
-    #[tracing::instrument(level = "trace", skip_all, fields(src, dst))]
     pub(crate) fn decapsulate<'b>(
         &mut self,
         local: SocketAddr,
@@ -190,28 +180,25 @@ impl GatewayState {
         now: Instant,
         buffer: &'b mut [u8],
     ) -> Option<IpPacket<'b>> {
-        let (conn_id, packet) = self.node.decapsulate(
+        let (cid, packet) = self.node.decapsulate(
             local,
             from,
             packet,
             now,
             buffer,
         )
-        .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .inspect_err(|e| tracing::debug!(%from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;
 
-        tracing::Span::current().record("src", tracing::field::display(packet.source()));
-        tracing::Span::current().record("dst", tracing::field::display(packet.destination()));
-
-        let Some(peer) = self.peers.get_mut(&conn_id) else {
-            tracing::error!(%conn_id, %local, %from, "Couldn't find connection");
+        let Some(peer) = self.peers.get_mut(&cid) else {
+            tracing::warn!(%cid, "Couldn't find connection by ID");
 
             return None;
         };
 
         let packet = peer
             .decapsulate(packet, now)
-            .inspect_err(|e| tracing::debug!(%conn_id, %local, %from, "Invalid packet: {e}"))
+            .inspect_err(|e| tracing::debug!(%cid, "Invalid packet: {e}"))
             .ok()?;
 
         Some(packet.into_immutable())

@@ -196,6 +196,7 @@ impl ClientOnGateway {
         self.recalculate_filters();
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(cid = %self.id))]
     fn assign_translations(
         &mut self,
         name: DomainName,
@@ -220,7 +221,7 @@ impl ClientOnGateway {
         let ip_maps = ipv4_maps.chain(ipv6_maps);
 
         for (proxy_ip, real_ip) in ip_maps {
-            tracing::debug!(%proxy_ip, %real_ip, %name, "Assigned translation");
+            tracing::debug!(%name, %proxy_ip, %real_ip);
 
             self.permanent_translations.insert(
                 *proxy_ip,
@@ -441,10 +442,10 @@ impl ClientOnGateway {
         &self,
         packet: &MutableIpPacket<'_>,
     ) -> Result<(), connlib_shared::Error> {
-        if !self.allowed_ips().contains(&packet.source()) {
-            return Err(connlib_shared::Error::UnallowedPacket {
-                src: packet.source(),
-            });
+        let src = packet.source();
+
+        if !self.allowed_ips().contains(&src) {
+            return Err(connlib_shared::Error::SrcNotAllowed { src });
         }
 
         Ok(())
@@ -461,8 +462,7 @@ impl ClientOnGateway {
             .longest_match(dst)
             .is_some_and(|(_, filter)| filter.is_allowed(&packet.to_immutable()))
         {
-            tracing::warn!(%dst, "unallowed packet");
-            return Err(connlib_shared::Error::InvalidDst);
+            return Err(connlib_shared::Error::DstNotAllowed { dst });
         };
 
         Ok(())
@@ -476,10 +476,12 @@ impl ClientOnGateway {
 impl GatewayOnClient {
     pub(crate) fn ensure_allowed_src(
         &self,
-        pkt: &MutableIpPacket,
+        packet: &MutableIpPacket,
     ) -> Result<(), connlib_shared::Error> {
-        if self.allowed_ips.longest_match(pkt.source()).is_none() {
-            return Err(connlib_shared::Error::UnallowedPacket { src: pkt.source() });
+        let src = packet.source();
+
+        if self.allowed_ips.longest_match(src).is_none() {
+            return Err(connlib_shared::Error::SrcNotAllowed { src });
         }
 
         Ok(())
@@ -669,7 +671,7 @@ mod tests {
 
         assert!(matches!(
             peer.ensure_allowed_dst(&tcp_packet),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::DstNotAllowed { .. })
         ));
         assert!(peer.ensure_allowed_dst(&udp_packet).is_ok());
 
@@ -677,11 +679,11 @@ mod tests {
 
         assert!(matches!(
             peer.ensure_allowed_dst(&tcp_packet),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::DstNotAllowed { .. })
         ));
         assert!(matches!(
             peer.ensure_allowed_dst(&udp_packet),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::DstNotAllowed { .. })
         ));
     }
 
@@ -979,22 +981,16 @@ mod tests {
 
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
-    use std::{
-        net::{Ipv4Addr, Ipv6Addr},
-        ops::RangeInclusive,
-    };
-
     use super::*;
     use connlib_shared::{messages::gateway::PortRange, proptest::*};
-    use ip_network::{Ipv4Network, Ipv6Network};
     use ip_packet::make::{icmp_request_packet, tcp_packet, udp_packet};
-    use itertools::Itertools;
     use proptest::{
         arbitrary::any,
         collection, prop_oneof,
         sample::select,
         strategy::{Just, Strategy},
     };
+    use std::ops::RangeInclusive;
     use test_strategy::Arbitrary;
 
     #[test_strategy::proptest()]
@@ -1210,7 +1206,7 @@ mod proptests {
 
         assert!(matches!(
             peer.ensure_allowed_dst(&packet),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::DstNotAllowed { .. })
         ));
     }
 
@@ -1272,59 +1268,12 @@ mod proptests {
         assert!(peer.ensure_allowed_dst(&packet_allowed).is_ok());
         assert!(matches!(
             peer.ensure_allowed_dst(&packet_rejected),
-            Err(connlib_shared::Error::InvalidDst)
+            Err(connlib_shared::Error::DstNotAllowed { .. })
         ));
     }
 
-    // Note: for these tests we don't really care that it's a valid host
-    // we only need a host.
-    // If we filter valid hosts it generates too many rejects
-    fn host_v4(ip: Ipv4Network) -> impl Strategy<Value = Ipv4Addr> {
-        (0u32..2u32.pow(32 - ip.netmask() as u32)).prop_map(move |n| {
-            if ip.netmask() == 32 {
-                ip.network_address()
-            } else {
-                ip.subnets_with_prefix(32)
-                    .nth(n as usize)
-                    .unwrap()
-                    .network_address()
-            }
-        })
-    }
-
-    // Note: for these tests we don't really care that it's a valid host
-    // we only need a host.
-    // If we filter valid hosts it generates too many rejects
-    fn host_v6(ip: Ipv6Network) -> impl Strategy<Value = Ipv6Addr> {
-        (0u128..2u128.pow(128 - ip.netmask() as u32)).prop_map(move |n| {
-            if ip.netmask() == 128 {
-                ip.network_address()
-            } else {
-                ip.subnets_with_prefix(128)
-                    .nth(n as usize)
-                    .unwrap()
-                    .network_address()
-            }
-        })
-    }
-
     fn cidr_with_host() -> impl Strategy<Value = (IpNetwork, IpAddr)> {
-        prop_oneof![cidrv4_with_host(), cidrv6_with_host()]
-    }
-
-    // max netmask here picked arbitrarily since using max size made the tests run for too long
-    fn cidrv6_with_host() -> impl Strategy<Value = (IpNetwork, IpAddr)> {
-        (1usize..=8).prop_flat_map(|host_mask| {
-            ip6_network(host_mask)
-                .prop_flat_map(|net| host_v6(net).prop_map(move |host| (net.into(), host.into())))
-        })
-    }
-
-    fn cidrv4_with_host() -> impl Strategy<Value = (IpNetwork, IpAddr)> {
-        (1usize..=8).prop_flat_map(|host_mask| {
-            ip4_network(host_mask)
-                .prop_flat_map(|net| host_v4(net).prop_map(move |host| (net.into(), host.into())))
-        })
+        any_ip_network(8).prop_flat_map(|net| host(net).prop_map(move |host| (net, host)))
     }
 
     fn filters_with_allowed_protocol() -> impl Strategy<Value = (Filters, Protocol)> {

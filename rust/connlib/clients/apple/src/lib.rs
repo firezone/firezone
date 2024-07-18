@@ -3,14 +3,17 @@
 
 mod make_writer;
 
+use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
-    callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6, ConnectArgs,
-    Error, LoginUrl, Session, Sockets,
+    callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
+    Session, Tun, V4RouteList, V6RouteList,
 };
-use secrecy::SecretString;
+use connlib_shared::get_user_agent;
+use ip_network::{Ipv4Network, Ipv6Network};
+use phoenix_channel::PhoenixChannel;
+use secrecy::{Secret, SecretString};
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    os::fd::RawFd,
     path::PathBuf,
     sync::Arc,
     time::Duration,
@@ -109,28 +112,20 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-    ) -> Option<RawFd> {
+    ) {
         self.inner.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
             serde_json::to_string(&dns_addresses)
                 .expect("developer error: a list of ips should always be serializable"),
         );
-
-        None
     }
 
-    fn on_update_routes(
-        &self,
-        route_list_4: Vec<Cidrv4>,
-        route_list_6: Vec<Cidrv6>,
-    ) -> Option<RawFd> {
+    fn on_update_routes(&self, route_list_4: Vec<Ipv4Network>, route_list_6: Vec<Ipv6Network>) {
         self.inner.on_update_routes(
-            serde_json::to_string(&route_list_4).unwrap(),
-            serde_json::to_string(&route_list_6).unwrap(),
+            serde_json::to_string(&V4RouteList::new(route_list_4)).unwrap(),
+            serde_json::to_string(&V6RouteList::new(route_list_6)).unwrap(),
         );
-
-        None
     }
 
     fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
@@ -199,19 +194,29 @@ impl WrappedSession {
             .enable_all()
             .build()
             .map_err(|e| e.to_string())?;
+        let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
         let args = ConnectArgs {
-            url,
-            sockets: Sockets::new(),
             private_key,
-            os_version_override,
-            app_version: env!("CARGO_PKG_VERSION").to_string(),
             callbacks: CallbackHandler {
                 inner: Arc::new(callback_handler),
             },
-            max_partition_time: Some(MAX_PARTITION_TIME),
+            tcp_socket_factory: Arc::new(socket_factory::tcp),
+            udp_socket_factory: Arc::new(socket_factory::udp),
         };
-        let session = Session::connect(args, runtime.handle().clone());
+        let portal = PhoenixChannel::connect(
+            Secret::new(url),
+            get_user_agent(os_version_override, env!("CARGO_PKG_VERSION")),
+            "client",
+            (),
+            ExponentialBackoffBuilder::default()
+                .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
+                .build(),
+            Arc::new(socket_factory::tcp),
+        )
+        .map_err(|e| e.to_string())?;
+        let session = Session::connect(args, portal, runtime.handle().clone());
+        session.set_tun(Tun::new().map_err(|e| e.to_string())?);
 
         Ok(Self {
             inner: session,

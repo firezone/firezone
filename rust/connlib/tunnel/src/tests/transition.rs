@@ -1,18 +1,24 @@
-use super::strategies::*;
+use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+
+use super::{
+    sim_net::{any_ip_stack, any_port},
+    strategies::*,
+};
 use connlib_shared::{
     messages::{
-        client::{ResourceDescriptionCidr, ResourceDescriptionDns},
+        client::{ResourceDescriptionCidr, ResourceDescriptionDns, Site},
         DnsServer, ResourceId,
     },
     proptest::*,
     DomainName,
 };
-use firezone_relay::IpStack;
 use hickory_proto::rr::RecordType;
+use ip_network::IpNetwork;
 use proptest::{prelude::*, sample};
 use std::{
     collections::{HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    str::FromStr,
 };
 
 /// The possible transitions of the state machine.
@@ -21,7 +27,7 @@ use std::{
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum Transition {
     /// Add a new CIDR resource to the client.
-    AddCidrResource(ResourceDescriptionCidr),
+    AddCidrResource { resource: ResourceDescriptionCidr },
     /// Send an ICMP packet to non-resource IP.
     SendICMPPacketToNonResourceIp {
         src: IpAddr,
@@ -67,9 +73,6 @@ pub(crate) enum Transition {
     UpdateSystemDnsServers { servers: Vec<IpAddr> },
     /// The upstream DNS servers changed.
     UpdateUpstreamDnsServers { servers: Vec<DnsServer> },
-
-    /// Advance time by this many milliseconds.
-    Tick { millis: u64 },
 
     /// Remove a resource from the client.
     RemoveResource(ResourceId),
@@ -176,17 +179,41 @@ where
         )
 }
 
-pub(crate) fn non_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
-    (dns_resource(), resolved_ips()).prop_map(|(resource, resolved_ips)| {
-        Transition::AddDnsResource {
-            records: HashMap::from([(resource.address.parse().unwrap(), resolved_ips)]),
-            resource,
-        }
-    })
+// Adds a non-overlapping CIDR resource with the gateway
+pub(crate) fn add_cidr_resource(
+    sites: impl Strategy<Value = Vec<Site>>,
+) -> impl Strategy<Value = Transition> {
+    cidr_resource(any_ip_network(8), sites)
+        .prop_filter(
+            "tests doesn't support yet CIDR resources overlapping DNS resources",
+            |r| {
+                // This works because CIDR resourc's host mask is always <8 while IP resource is 21
+                !IpNetwork::from_str(IPV4_RESOURCES)
+                    .unwrap()
+                    .contains(r.address.network_address())
+                    && !IpNetwork::from_str(IPV6_RESOURCES)
+                        .unwrap()
+                        .contains(r.address.network_address())
+            },
+        )
+        .prop_map(|resource| Transition::AddCidrResource { resource })
 }
 
-pub(crate) fn star_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
-    dns_resource().prop_flat_map(move |r| {
+pub(crate) fn non_wildcard_dns_resource(
+    site: impl Strategy<Value = Site>,
+) -> impl Strategy<Value = Transition> {
+    (dns_resource(site.prop_map(|s| vec![s])), resolved_ips()).prop_map(
+        |(resource, resolved_ips)| Transition::AddDnsResource {
+            records: HashMap::from([(resource.address.parse().unwrap(), resolved_ips)]),
+            resource,
+        },
+    )
+}
+
+pub(crate) fn star_wildcard_dns_resource(
+    site: impl Strategy<Value = Site>,
+) -> impl Strategy<Value = Transition> {
+    dns_resource(site.prop_map(|s| vec![s])).prop_flat_map(move |r| {
         let wildcard_address = format!("*.{}", r.address);
 
         let records = subdomain_records(r.address, domain_name(1..3));
@@ -200,8 +227,10 @@ pub(crate) fn star_wildcard_dns_resource() -> impl Strategy<Value = Transition> 
     })
 }
 
-pub(crate) fn question_mark_wildcard_dns_resource() -> impl Strategy<Value = Transition> {
-    dns_resource().prop_flat_map(move |r| {
+pub(crate) fn question_mark_wildcard_dns_resource(
+    site: impl Strategy<Value = Site>,
+) -> impl Strategy<Value = Transition> {
+    dns_resource(site.prop_map(|s| vec![s])).prop_flat_map(move |r| {
         let wildcard_address = format!("?.{}", r.address);
 
         let records = subdomain_records(r.address, domain_label());
@@ -216,19 +245,9 @@ pub(crate) fn question_mark_wildcard_dns_resource() -> impl Strategy<Value = Tra
 }
 
 pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {
-    let ip_stack = prop_oneof![
-        host_ip4s().prop_map(IpStack::Ip4),
-        host_ip6s().prop_map(IpStack::Ip6),
-        (host_ip4s(), host_ip6s()).prop_map(|(ip4, ip6)| IpStack::Dual { ip4, ip6 })
-    ];
-
-    (
-        ip_stack,
-        any::<u16>().prop_filter("port must not be 0", |p| *p != 0),
-    )
-        .prop_map(move |(ip_stack, port)| Transition::RoamClient {
-            ip4: ip_stack.as_v4().copied(),
-            ip6: ip_stack.as_v6().copied(),
-            port,
-        })
+    (any_ip_stack(), any_port()).prop_map(move |(ip_stack, port)| Transition::RoamClient {
+        ip4: ip_stack.as_v4().copied(),
+        ip6: ip_stack.as_v6().copied(),
+        port,
+    })
 }

@@ -4,68 +4,67 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-secrecy = { workspace = true }
+anyhow = "1.0"
 async-trait = { version = "0.1", default-features = false }
-tokio = { version = "1.38", default-features = false, features = ["rt", "rt-multi-thread", "sync", "process"] }
-thiserror = { version = "1.0", default-features = false }
-rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
-serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
-futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
-futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
-tracing = { workspace = true }
+bimap = "0.6"
+boringtun = { workspace = true }
 bytes = { version = "1.4", default-features = false, features = ["std"] }
-itertools = { version = "0.13", default-features = false, features = ["use_std"] }
+chrono = { workspace = true }
 connlib-shared = { workspace = true }
-libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
+domain = { workspace = true }
+futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
+futures-bounded = { workspace = true }
+futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
+hex = "0.4.3"
+hickory-proto = { workspace = true }
+hickory-resolver = { workspace = true, features = ["tokio-runtime"] }
+ip-packet = { workspace = true }
 ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
-domain = { workspace = true }
-boringtun = { workspace = true }
-chrono = { workspace = true }
-futures-bounded = { workspace = true }
-hickory-resolver = { workspace = true, features = ["tokio-runtime"] }
-hickory-proto = { workspace = true }
-bimap = "0.6"
-socket2 = { version = "0.5" }
-snownet = { workspace = true }
-quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main"}
-hex = "0.4.3"
-proptest = { version = "1.4.0", optional = true }
-ip-packet = { workspace = true }
+itertools = { version = "0.13", default-features = false, features = ["use_std"] }
+libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
+proptest = { version = "1", optional = true }
+quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" }
+rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
 rangemap = "1.5.1"
-anyhow = "1.0"
-
-# Needed for Android logging until tracing is fixed
-log = "0.4"
+secrecy = { workspace = true }
+serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
+snownet = { workspace = true }
+socket-factory = { workspace = true }
+socket2 = { workspace = true }
+thiserror = { version = "1.0", default-features = false }
+tokio = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
+derivative = "2.2.0"
+firezone-relay = { workspace = true, features = ["proptest"] }
+hickory-proto = { workspace = true }
+ip-packet = { workspace = true, features = ["proptest"] }
+proptest-state-machine = "0.3"
+rand = "0.8"
 serde_json = "1.0"
 test-strategy = "0.3.1"
-proptest-state-machine = "0.3"
-tracing-subscriber = {version = "0.3", features = ["env-filter"]}
-pretty_assertions = "1.4.0"
-firezone-relay = { workspace = true, features = ["proptest"] }
-rand = "0.8"
-hickory-proto = { workspace = true }
-derivative = "2.2.0"
-ip-packet = { workspace = true, features = ["proptest"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+firezone-bin-shared = { workspace = true } # Required for benchmark.
+
+[[bench]]
+name = "tunnel"
+harness = false
 
 [features]
 proptest = ["dep:proptest", "connlib-shared/proptest"]
 
-# Linux tunnel dependencies
-[target.'cfg(target_os = "linux")'.dependencies]
-netlink-packet-route = { version = "0.19", default-features = false }
-netlink-packet-core = { version = "0.7", default-features = false }
-rtnetlink = { workspace = true }
-
 # Windows tunnel dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
+tokio = { workspace = true, features = ["sync"] }
 uuid = { version = "1.7.0", features = ["v4"] }
 wintun = "0.4.0"
 
 # Windows Win32 API
-[target.'cfg(windows)'.dependencies.windows]
+[target.'cfg(target_os = "windows")'.dependencies.windows]
 version = "0.57.0"
 features = [
   "Win32_Foundation",

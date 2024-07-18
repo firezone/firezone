@@ -1,48 +1,30 @@
 //! Implementation, Linux-specific
 
-use super::{SignalKind, TOKEN_ENV_KEY};
+use super::TOKEN_ENV_KEY;
 use anyhow::{bail, Result};
-use futures::future::FutureExt as _;
+use firezone_bin_shared::FIREZONE_MARK;
+use nix::sys::socket::{setsockopt, sockopt};
 use std::{
+    io,
+    net::SocketAddr,
     path::{Path, PathBuf},
-    pin::pin,
 };
-use tokio::signal::unix::{signal, Signal, SignalKind as TokioSignalKind};
 
 // The Client currently must run as root to control DNS
 // Root group and user are used to check file ownership on the token
 const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
 
-pub(crate) struct Signals {
-    /// For reloading settings in the standalone Client
-    sighup: Signal,
-    /// For Ctrl+C from a terminal
-    sigint: Signal,
-    /// For systemd service stopping
-    sigterm: Signal,
+pub(crate) fn tcp_socket_factory(socket_addr: &SocketAddr) -> io::Result<tokio::net::TcpSocket> {
+    let socket = socket_factory::tcp(socket_addr)?;
+    setsockopt(&socket, sockopt::Mark, &FIREZONE_MARK)?;
+    Ok(socket)
 }
 
-impl Signals {
-    pub(crate) fn new() -> Result<Self> {
-        let sighup = signal(TokioSignalKind::hangup())?;
-        let sigint = signal(TokioSignalKind::interrupt())?;
-        let sigterm = signal(TokioSignalKind::terminate())?;
-
-        Ok(Self {
-            sighup,
-            sigint,
-            sigterm,
-        })
-    }
-
-    pub(crate) async fn recv(&mut self) -> SignalKind {
-        futures::select! {
-            _ = pin!(self.sighup.recv().fuse()) => SignalKind::Hangup,
-            _ = pin!(self.sigint.recv().fuse()) => SignalKind::Interrupt,
-            _ = pin!(self.sigterm.recv().fuse()) => SignalKind::Terminate,
-        }
-    }
+pub(crate) fn udp_socket_factory(socket_addr: &SocketAddr) -> io::Result<tokio::net::UdpSocket> {
+    let socket = socket_factory::udp(socket_addr)?;
+    setsockopt(&socket, sockopt::Mark, &FIREZONE_MARK)?;
+    Ok(socket)
 }
 
 pub(crate) fn default_token_path() -> PathBuf {

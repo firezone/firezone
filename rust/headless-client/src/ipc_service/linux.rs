@@ -1,5 +1,5 @@
 use super::CliCommon;
-use crate::Signals;
+use crate::signals;
 use anyhow::{bail, Result};
 
 /// Cross-platform entry point for systemd / Windows services
@@ -12,9 +12,9 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
     }
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
-    let mut signals = Signals::new()?;
+    let mut signals = signals::Terminate::new()?;
 
-    rt.block_on(super::ipc_listen_with_signals(&mut signals))
+    rt.block_on(super::ipc_listen(&mut signals))
 }
 
 pub(crate) fn install_ipc_service() -> Result<()> {

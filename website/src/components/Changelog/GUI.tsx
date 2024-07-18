@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Entry from "./Entry";
 import Entries from "./Entries";
+import ChangeItem from "./ChangeItem";
 
 export default function GUI({ title }: { title: string }) {
   const href =
@@ -11,34 +12,53 @@ export default function GUI({ title }: { title: string }) {
 
   return (
     <Entries href={href} arches={arches} title={title}>
+      {/*<Entry version="1.1.8" date={new Date("2024-07-17")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem>
+            This is a maintenance release with no user-facing changes.
+          </ChangeItem>
+        </ul>
+      </Entry>*/}
+      <Entry version="1.1.7" date={new Date("2024-07-17")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem enable={title === "Linux GUI"} pull="5848">
+            Stops the GUI and prompts you to re-launch it if you update Firezone while the GUI is running.
+          </ChangeItem>
+          <ChangeItem enable={title === "Windows"} pull="5375">
+            Improves sign-in speed and fixes a DNS leak
+          </ChangeItem>
+        </ul>
+      </Entry>
+      <Entry version="1.1.6" date={new Date("2024-07-12")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="5795">
+            Unexpected IPC service stops are now reported as "IPC connection closed".
+          </ChangeItem>
+          <ChangeItem enable={title === "Windows"} pull="5827">
+            Fixes a bug where DNS could stop working when you sign out.
+          </ChangeItem>
+          <ChangeItem pull="5817">
+            Shows different tray icons when signed out, signing in, and signed in.
+          </ChangeItem>
+        </ul>
+      </Entry>
       <Entry version="1.1.5" date={new Date("2024-07-08")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <li className="pl-2">
-            The Linux GUI Client is now{" "}
-            <Link
-              href="https://github.com/firezone/firezone/pull/5793"
-              className="text-accent-500 underline hover:no-underline"
-            >
-              built for both x86-64 and ARM64
-            </Link>
-          </li>
+          <ChangeItem enable={title === "Linux GUI"} pull="5793">
+            The Linux GUI Client is now built for both x86-64 and ARM64.
+          </ChangeItem>
+          <ChangeItem enable={title === "Windows"}>
+            This is a maintenance release with no user-facing changes.
+          </ChangeItem>
         </ul>
       </Entry>
       <Entry version="1.1.4" date={new Date("2024-07-05")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <li className="pl-2">
-            Fixes an{" "}
-            <Link
-              href="https://github.com/firezone/firezone/pull/5700"
-              className="text-accent-500 underline hover:no-underline"
-            >
-              issue
-            </Link>{" "}
-            where a stale DNS cache could prevent traffic from routing to DNS
-            Resources if they were updated while the Client was signed in. where
-            a stale DNS cache could prevent traffic from routing to DNS
-            Resources if they were updated while the Client was signed in.
-          </li>
+          <ChangeItem pull="5700">
+            Fixes an issue where a stale DNS cache could prevent traffic from
+            routing to DNS Resources if they were updated while the Client was
+            signed in.
+          </ChangeItem>
         </ul>
       </Entry>
       <Entry version="1.1.3" date={new Date("2024-07-03")}>

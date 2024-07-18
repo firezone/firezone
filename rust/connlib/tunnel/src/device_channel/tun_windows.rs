@@ -1,15 +1,7 @@
 use crate::MTU;
-use connlib_shared::{
-    windows::{CREATE_NO_WINDOW, TUNNEL_NAME},
-    Callbacks, Result,
-};
-use ip_network::IpNetwork;
+use connlib_shared::{windows::TUNNEL_NAME, Result};
 use std::{
-    collections::HashSet,
     io,
-    net::{SocketAddrV4, SocketAddrV6},
-    os::windows::process::CommandExt,
-    process::{Command, Stdio},
     str::FromStr,
     sync::Arc,
     task::{ready, Context, Poll},
@@ -17,10 +9,7 @@ use std::{
 use tokio::sync::mpsc;
 use windows::Win32::{
     NetworkManagement::{
-        IpHelper::{
-            CreateIpForwardEntry2, DeleteIpForwardEntry2, GetIpInterfaceEntry,
-            InitializeIpForwardEntry, SetIpInterfaceEntry, MIB_IPFORWARD_ROW2, MIB_IPINTERFACE_ROW,
-        },
+        IpHelper::{GetIpInterfaceEntry, SetIpInterfaceEntry, MIB_IPINTERFACE_ROW},
         Ndis::NET_LUID_LH,
     },
     Networking::WinSock::{AF_INET, AF_INET6},
@@ -40,14 +29,14 @@ const ADAPTER_NAME: &str = "Firezone";
 /// where that is configured.
 const RING_BUFFER_SIZE: u32 = 0x10_0000;
 
-pub(crate) struct Tun {
+// Must be public so the benchmark binary can find it
+pub struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
     /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
     packet_rx: mpsc::Receiver<wintun::Packet>,
     recv_thread: Option<std::thread::JoinHandle<()>>,
     session: Arc<wintun::Session>,
-    routes: HashSet<IpNetwork>,
 }
 
 impl Drop for Tun {
@@ -88,17 +77,6 @@ impl Tun {
         let adapter = &Adapter::create(&wintun, ADAPTER_NAME, TUNNEL_NAME, Some(uuid))?;
         let iface_idx = adapter.get_adapter_index()?;
 
-        // Remove any routes that were previously associated with us
-        // TODO: Pick a more elegant way to do this
-        Command::new("powershell")
-            .creation_flags(CREATE_NO_WINDOW)
-            .arg("-Command")
-            .arg(format!(
-                "Remove-NetRoute -InterfaceIndex {iface_idx} -Confirm:$false"
-            ))
-            .stdout(Stdio::null())
-            .status()?;
-
         set_iface_config(adapter.get_luid(), MTU as u32)?;
 
         let session = Arc::new(adapter.start_session(RING_BUFFER_SIZE)?);
@@ -112,30 +90,11 @@ impl Tun {
             recv_thread: Some(recv_thread),
             packet_rx,
             session: Arc::clone(&session),
-            routes: HashSet::new(),
         })
     }
 
-    // It's okay if this blocks until the route is added in the OS.
-    pub fn set_routes(
-        &mut self,
-        new_routes: HashSet<IpNetwork>,
-        _callbacks: &impl Callbacks,
-    ) -> Result<()> {
-        if new_routes == self.routes {
-            return Ok(());
-        }
-
-        for new_route in new_routes.difference(&self.routes) {
-            self.add_route(*new_route)?;
-        }
-
-        for old_route in self.routes.difference(&new_routes) {
-            self.remove_route(*old_route)?;
-        }
-
-        self.routes = new_routes;
-        Ok(())
+    pub fn iface_idx(&self) -> u32 {
+        self.iface_idx
     }
 
     // Moves packets from the user towards the Internet
@@ -192,54 +151,6 @@ impl Tun {
         // space in the ring buffer.
         self.session.send_packet(pkt);
         Ok(bytes.len())
-    }
-
-    // It's okay if this blocks until the route is added in the OS.
-    fn add_route(&self, route: IpNetwork) -> Result<()> {
-        const DUPLICATE_ERR: u32 = 0x80071392;
-        let entry = self.forward_entry(route);
-
-        // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
-        match unsafe { CreateIpForwardEntry2(&entry) }.ok() {
-            Ok(()) => Ok(()),
-            Err(e) if e.code().0 as u32 == DUPLICATE_ERR => {
-                tracing::debug!(%route, "Failed to add duplicate route, ignoring");
-                Ok(())
-            }
-            Err(e) => Err(e.into()),
-        }
-    }
-
-    // It's okay if this blocks until the route is removed in the OS.
-    fn remove_route(&self, route: IpNetwork) -> Result<()> {
-        let entry = self.forward_entry(route);
-
-        // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
-        unsafe { DeleteIpForwardEntry2(&entry) }.ok()?;
-        Ok(())
-    }
-
-    fn forward_entry(&self, route: IpNetwork) -> MIB_IPFORWARD_ROW2 {
-        let mut row = MIB_IPFORWARD_ROW2::default();
-        // SAFETY: Windows shouldn't store the reference anywhere, it's just setting defaults
-        unsafe { InitializeIpForwardEntry(&mut row) };
-
-        let prefix = &mut row.DestinationPrefix;
-        match route {
-            IpNetwork::V4(x) => {
-                prefix.PrefixLength = x.netmask();
-                prefix.Prefix.Ipv4 = SocketAddrV4::new(x.network_address(), 0).into();
-            }
-            IpNetwork::V6(x) => {
-                prefix.PrefixLength = x.netmask();
-                prefix.Prefix.Ipv6 = SocketAddrV6::new(x.network_address(), 0, 0, 0).into();
-            }
-        }
-
-        row.InterfaceIndex = self.iface_idx;
-        row.Metric = 0;
-
-        row
     }
 }
 
@@ -339,11 +250,16 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tracing_subscriber::EnvFilter;
 
     /// Checks for regressions in issue #4765, un-initializing Wintun
     #[test]
     #[ignore = "Needs admin privileges"]
-    fn resource_management() {
+    fn tunnel_drop() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::from_default_env())
+            .with_test_writer()
+            .try_init();
         // Each cycle takes about half a second, so this will take a fair bit to run.
         for _ in 0..50 {
             let _tun = Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.

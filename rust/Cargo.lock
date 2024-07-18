@@ -173,12 +173,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arc-swap"
-version = "1.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69f7f8c3906b62b754cd5326047894316021dcfe5a194c8ea52bdd94934a3457"
-
-[[package]]
 name = "array-init"
 version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1066,12 +1060,16 @@ name = "connlib-client-android"
 version = "1.1.4"
 dependencies = [
  "android_log-sys",
+ "backoff",
  "connlib-client-shared",
+ "connlib-shared",
  "ip_network",
  "jni 0.21.1",
  "log",
+ "phoenix-channel",
  "secrecy",
  "serde_json",
+ "socket-factory",
  "thiserror",
  "tokio",
  "tracing",
@@ -1084,12 +1082,16 @@ dependencies = [
 name = "connlib-client-apple"
 version = "1.1.3"
 dependencies = [
+ "backoff",
  "connlib-client-shared",
+ "connlib-shared",
  "ip_network",
  "libc",
  "oslog",
+ "phoenix-channel",
  "secrecy",
  "serde_json",
+ "socket-factory",
  "swift-bridge",
  "swift-bridge-build",
  "tokio",
@@ -1115,6 +1117,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "socket-factory",
  "time",
  "tokio",
  "tokio-tungstenite",
@@ -1141,16 +1144,12 @@ dependencies = [
  "itertools 0.13.0",
  "known-folders",
  "libc",
- "log",
- "netlink-packet-core",
- "netlink-packet-route",
  "os_info",
  "phoenix-channel",
  "proptest",
  "rand 0.8.5",
  "rand_core 0.6.4",
  "ring",
- "rtnetlink",
  "secrecy",
  "serde",
  "serde_json",
@@ -1482,12 +1481,6 @@ dependencies = [
  "rustc_version",
  "syn 2.0.57",
 ]
-
-[[package]]
-name = "diff"
-version = "0.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
 
 [[package]]
 name = "difference"
@@ -1837,14 +1830,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "firezone-cli-utils"
+name = "firezone-bin-shared"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "clap",
+ "connlib-shared",
+ "firezone-tunnel",
+ "futures",
+ "ip_network",
+ "netlink-packet-core",
+ "netlink-packet-route",
+ "rtnetlink",
+ "tokio",
  "tracing",
  "tracing-log",
  "tracing-subscriber",
  "url",
+ "windows 0.57.0",
 ]
 
 [[package]]
@@ -1861,7 +1864,7 @@ dependencies = [
  "dns-lookup",
  "domain",
  "either",
- "firezone-cli-utils",
+ "firezone-bin-shared",
  "firezone-tunnel",
  "futures",
  "futures-bounded",
@@ -1873,6 +1876,7 @@ dependencies = [
  "serde",
  "serde_json",
  "snownet",
+ "socket-factory",
  "static_assertions",
  "tokio",
  "tokio-tungstenite",
@@ -1884,11 +1888,10 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.1.6"
+version = "1.1.8"
 dependencies = [
  "anyhow",
  "arboard",
- "arc-swap",
  "atomicwrites",
  "chrono",
  "clap",
@@ -1942,11 +1945,12 @@ version = "1.1.4"
 dependencies = [
  "anyhow",
  "atomicwrites",
+ "backoff",
  "clap",
  "connlib-client-shared",
  "connlib-shared",
  "dirs",
- "firezone-cli-utils",
+ "firezone-bin-shared",
  "futures",
  "git-version",
  "humantime",
@@ -1956,6 +1960,7 @@ dependencies = [
  "libc",
  "mutants",
  "nix 0.28.0",
+ "phoenix-channel",
  "resolv-conf",
  "ring",
  "rtnetlink",
@@ -1963,9 +1968,11 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "socket-factory",
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "tracing",
  "tracing-subscriber",
@@ -1973,6 +1980,7 @@ dependencies = [
  "uuid",
  "windows 0.57.0",
  "windows-service",
+ "winreg 0.52.0",
 ]
 
 [[package]]
@@ -2003,6 +2011,7 @@ dependencies = [
  "secrecy",
  "serde",
  "sha2",
+ "socket-factory",
  "socket2 0.5.7",
  "stun_codec",
  "test-strategy",
@@ -2030,6 +2039,7 @@ dependencies = [
  "connlib-shared",
  "derivative",
  "domain",
+ "firezone-bin-shared",
  "firezone-relay",
  "futures",
  "futures-bounded",
@@ -2042,21 +2052,17 @@ dependencies = [
  "ip_network_table",
  "itertools 0.13.0",
  "libc",
- "log",
- "netlink-packet-core",
- "netlink-packet-route",
- "pretty_assertions",
  "proptest",
  "proptest-state-machine",
  "quinn-udp",
  "rand 0.8.5",
  "rand_core 0.6.4",
  "rangemap",
- "rtnetlink",
  "secrecy",
  "serde",
  "serde_json",
  "snownet",
+ "socket-factory",
  "socket2 0.5.7",
  "test-strategy",
  "thiserror",
@@ -3106,6 +3112,15 @@ dependencies = [
 
 [[package]]
 name = "infer"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f178e61cdbfe084aa75a2f4f7a25a5bb09701a47ae1753608f194b15783c937a"
+dependencies = [
+ "cfb",
+]
+
+[[package]]
+name = "infer"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f551f8c3a39f68f986517db0d1759de85881894fdc7db798bd2a9df9cb04b7fc"
@@ -3895,6 +3910,7 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
+ "memoffset 0.9.1",
 ]
 
 [[package]]
@@ -4555,6 +4571,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "socket-factory",
  "thiserror",
  "tokio",
  "tokio-tungstenite",
@@ -4748,16 +4765,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
-name = "pretty_assertions"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af7cee1a6c8a5b9208b3cb1061f10c0cb689087b3d8ce85fb9d2dd7a29b6ba66"
-dependencies = [
- "diff",
- "yansi",
-]
-
-[[package]]
 name = "proc-macro-crate"
 version = "1.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4818,9 +4825,8 @@ dependencies = [
 
 [[package]]
 name = "proptest"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31b476131c3c86cb68032fdc5cb6d5a1045e3e42d96b69fa599fd77701e1f5bf"
+version = "1.5.0"
+source = "git+https://github.com/thomaseizinger/proptest?branch=fix/always-check-acceptable-current-state#b52c68ff423efe4a558b5967c86c17c457d3a84d"
 dependencies = [
  "bit-set",
  "bit-vec",
@@ -4839,8 +4845,7 @@ dependencies = [
 [[package]]
 name = "proptest-state-machine"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28278d6a11102264b0c569c33dbe5286ba00d2dd6d96ff2a94296e0e5b3d1e04"
+source = "git+https://github.com/thomaseizinger/proptest?branch=fix/always-check-acceptable-current-state#b52c68ff423efe4a558b5967c86c17c457d3a84d"
 dependencies = [
  "proptest",
 ]
@@ -4894,10 +4899,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-udp"
-version = "0.5.0"
-source = "git+https://github.com/quinn-rs/quinn?branch=main#88f48b0179f358cea0b76fc550e629007bfc957d"
+version = "0.5.2"
+source = "git+https://github.com/quinn-rs/quinn?branch=main#3f489e2eab014ddd04de58e570ba56e9b027f0bc"
 dependencies = [
- "bytes",
  "libc",
  "once_cell",
  "socket2 0.5.7",
@@ -5809,6 +5813,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "socket-factory"
+version = "0.1.0"
+dependencies = [
+ "socket2 0.5.7",
+ "tokio",
+]
+
+[[package]]
 name = "socket2"
 version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6205,12 +6217,14 @@ dependencies = [
  "heck 0.5.0",
  "http 0.2.12",
  "ignore",
+ "infer 0.9.0",
  "nix 0.26.4",
  "notify-rust",
  "objc",
  "once_cell",
  "open",
  "percent-encoding",
+ "png",
  "rand 0.8.5",
  "raw-window-handle",
  "regex",
@@ -6348,7 +6362,7 @@ dependencies = [
  "glob",
  "heck 0.5.0",
  "html5ever",
- "infer",
+ "infer 0.13.0",
  "json-patch",
  "kuchikiki",
  "log",
@@ -8059,12 +8073,6 @@ dependencies = [
  "libc",
  "winapi",
 ]
-
-[[package]]
-name = "yansi"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09041cd90cf85f7f8b2df60c646f853b7f535ce68f85244eb6731cf89fa498ec"
 
 [[package]]
 name = "zbus"

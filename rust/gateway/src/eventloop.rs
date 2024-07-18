@@ -2,7 +2,6 @@ use crate::messages::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
 };
-use crate::CallbackHandler;
 use anyhow::Result;
 use boringtun::x25519::PublicKey;
 use connlib_shared::messages::{
@@ -40,7 +39,7 @@ enum ResolveTrigger {
 }
 
 pub struct Eventloop {
-    tunnel: GatewayTunnel<CallbackHandler>,
+    tunnel: GatewayTunnel,
     portal: PhoenixChannel<(), IngressMessages, ()>,
     tun_device_channel: mpsc::Sender<Interface>,
 
@@ -49,7 +48,7 @@ pub struct Eventloop {
 
 impl Eventloop {
     pub(crate) fn new(
-        tunnel: GatewayTunnel<CallbackHandler>,
+        tunnel: GatewayTunnel,
         portal: PhoenixChannel<(), IngressMessages, ()>,
         tun_device_channel: mpsc::Sender<Interface>,
     ) -> Self {
@@ -230,9 +229,6 @@ impl Eventloop {
                 msg: IngressMessages::Init(init),
                 ..
             } => {
-                if let Err(e) = self.tunnel.set_interface(&init.interface) {
-                    tracing::warn!("Failed to set interface: {e}");
-                };
                 self.tunnel.update_relays(HashSet::default(), init.relays);
 
                 // FIXME(tech-debt): Currently, the `Tunnel` creates the TUN device as part of `set_interface`.

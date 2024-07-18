@@ -1,21 +1,25 @@
 //! AKA "Headless"
 
 use crate::{
-    default_token_path, device_id, dns_control, platform, CallbackHandler, CliCommon,
-    DnsController, InternalServerMsg, IpcServerMsg, SignalKind, Signals, TOKEN_ENV_KEY,
+    default_token_path, device_id, dns_control, platform, signals, CallbackHandler, CliCommon,
+    DnsController, InternalServerMsg, IpcServerMsg, TOKEN_ENV_KEY,
 };
 use anyhow::{anyhow, Context as _, Result};
+use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets};
-use connlib_shared::tun_device_manager;
-use firezone_cli_utils::setup_global_subscriber;
-use futures::future;
-use secrecy::SecretString;
+use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
+use connlib_shared::get_user_agent;
+use firezone_bin_shared::{setup_global_subscriber, TunDeviceManager};
+use futures::{FutureExt as _, StreamExt as _};
+use phoenix_channel::PhoenixChannel;
+use secrecy::{Secret, SecretString};
 use std::{
     path::{Path, PathBuf},
     pin::pin,
+    sync::Arc,
 };
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, time::Instant};
+use tokio_stream::wrappers::ReceiverStream;
 
 /// Command-line args for the headless Client
 #[derive(clap::Parser)]
@@ -44,6 +48,12 @@ struct Cli {
     /// write a device ID to disk if one is not found.
     #[arg(long)]
     check: bool,
+
+    /// Connect to the Firezone network and initialize, then exit
+    ///
+    /// Use this to check how fast you can connect.
+    #[arg(long)]
+    exit: bool,
 
     /// Friendly name for this client to display in the UI.
     #[arg(long, env = "FIREZONE_NAME")]
@@ -126,8 +136,6 @@ pub fn run_only_headless_client() -> Result<()> {
             cli.token_path.display()
         )
     })?;
-    tracing::info!("Running in headless / standalone mode");
-    let _guard = rt.enter();
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.common.max_partition_time.map(|d| d.into());
 
@@ -151,66 +159,89 @@ pub fn run_only_headless_client() -> Result<()> {
         return Ok(());
     }
 
-    let (cb_tx, mut cb_rx) = mpsc::channel(10);
+    let (cb_tx, cb_rx) = mpsc::channel(10);
     let callbacks = CallbackHandler { cb_tx };
 
+    // The name matches that in `ipc_service.rs`
+    let mut last_connlib_start_instant = Some(Instant::now());
     platform::setup_before_connlib()?;
     let args = ConnectArgs {
-        url,
-        sockets: Sockets::new(),
+        udp_socket_factory: Arc::new(crate::udp_socket_factory),
+        tcp_socket_factory: Arc::new(crate::tcp_socket_factory),
         private_key,
-        os_version_override: None,
-        app_version: env!("CARGO_PKG_VERSION").to_string(),
         callbacks,
-        max_partition_time,
     };
-    let session = Session::connect(args, rt.handle().clone());
-    // TODO: DNS should be added dynamically
-    session.set_dns(dns_control::system_resolvers().unwrap_or_default());
+    let _guard = rt.enter(); // Constructing `PhoenixChannel` requires a runtime context.
+    let portal = PhoenixChannel::connect(
+        Secret::new(url),
+        get_user_agent(None, env!("CARGO_PKG_VERSION")),
+        "client",
+        (),
+        ExponentialBackoffBuilder::default()
+            .with_max_elapsed_time(max_partition_time)
+            .build(),
+        Arc::new(crate::tcp_socket_factory),
+    )?;
+    let session = Session::connect(args, portal, rt.handle().clone());
     platform::notify_service_controller()?;
 
     let result = rt.block_on(async {
+        let mut terminate = signals::Terminate::new()?;
+        let mut hangup = signals::Hangup::new()?;
+        let mut terminate = pin!(terminate.recv().fuse());
+        let mut hangup = pin!(hangup.recv().fuse());
         let mut dns_controller = DnsController::default();
-        let mut tun_device = tun_device_manager::TunDeviceManager::new()?;
-        let mut signals = Signals::new()?;
+        // Deactivate Firezone DNS control in case the system or IPC service crashed
+        // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
+        dns_controller.deactivate()?;
+        let mut tun_device = TunDeviceManager::new()?;
+        let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
+
+        session.set_tun(tun_device.make_tun()?);
+        // TODO: DNS should be added dynamically
+        session.set_dns(dns_control::system_resolvers().unwrap_or_default());
 
         loop {
-            match future::select(pin!(signals.recv()), pin!(cb_rx.recv())).await {
-                future::Either::Left((SignalKind::Hangup, _)) => {
+            let cb = futures::select! {
+                () = terminate => {
+                    tracing::info!("Caught SIGINT / SIGTERM / Ctrl+C");
+                    return Ok(());
+                },
+                () = hangup => {
                     tracing::info!("Caught SIGHUP");
                     session.reconnect();
-                }
-                future::Either::Left((SignalKind::Interrupt, _)) => {
-                    tracing::info!("Caught SIGINT");
-                    return Ok(());
-                }
-                future::Either::Left((SignalKind::Terminate, _)) => {
-                    tracing::info!("Caught SIGTERM");
-                    return Ok(());
-                }
-                future::Either::Right((None, _)) => {
-                    return Err(anyhow::anyhow!("cb_rx unexpectedly ran empty"));
-                }
-                future::Either::Right((Some(msg), _)) => match msg {
-                    // TODO: Headless Client shouldn't be using messages labelled `Ipc`
-                    InternalServerMsg::Ipc(IpcServerMsg::OnDisconnect {
-                        error_msg,
-                        is_authentication_error: _,
-                    }) => return Err(anyhow!(error_msg).context("Firezone disconnected")),
-                    InternalServerMsg::Ipc(IpcServerMsg::Ok)
-                    | InternalServerMsg::Ipc(IpcServerMsg::OnTunnelReady) => {}
-                    InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {
-                        // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
-                        dns_controller.flush()?;
-                    }
-                    InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                        tun_device.set_ips(ipv4, ipv6).await?;
-                        dns_controller.set_dns(&dns).await?;
-                    }
-                    InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                        tun_device.set_routes(ipv4, ipv6).await?
-                    }
+                    continue;
                 },
+                cb = cb_rx.next() => cb.context("cb_rx unexpectedly ran empty")?,
+            };
+
+            match cb {
+                // TODO: Headless Client shouldn't be using messages labelled `Ipc`
+                InternalServerMsg::Ipc(IpcServerMsg::OnDisconnect {
+                    error_msg,
+                    is_authentication_error: _,
+                }) => return Err(anyhow!(error_msg).context("Firezone disconnected")),
+                InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {
+                    // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
+                    dns_controller.flush()?;
+                }
+                InternalServerMsg::Ipc(IpcServerMsg::TerminatingGracefully) => unimplemented!(
+                    "The standalone Client does not send `TerminatingGracefully` messages"
+                ),
+                InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
+                    tun_device.set_ips(ipv4, ipv6).await?;
+                    dns_controller.set_dns(&dns).await?;
+                }
+                InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
+                    tun_device.set_routes(ipv4, ipv6).await?;
+                    if let Some(instant) = last_connlib_start_instant.take() {
+                        tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
+                    }
+                    if cli.exit {
+                        tracing::info!("Exiting due to `--exit` CLI flag");
+                        break Ok(());
+                    }
+                }
             }
         }
     });

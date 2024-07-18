@@ -1,22 +1,23 @@
 [workspace]
 members = [
+  "bin-shared",
   "connlib/clients/android",
   "connlib/clients/apple",
   "connlib/clients/shared",
   "connlib/shared",
-  "connlib/tunnel",
   "connlib/snownet",
+  "connlib/tunnel",
   "gateway",
-  "firezone-cli-utils",
+  "gui-client/src-tauri",
   "gui-smoke-test",
   "headless-client",
-  "snownet-tests",
-  "phoenix-channel",
-  "relay",
-  "gui-client/src-tauri",
   "http-health-check",
   "http-test-server",
   "ip-packet",
+  "phoenix-channel",
+  "relay",
+  "snownet-tests",
+  "socket-factory",
 ]
 
 resolver = "2"
@@ -37,37 +38,44 @@ domain = { version = "0.10", features = ["serde"] }
 dns-lookup = "2.0"
 tokio-tungstenite = "0.21"
 rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_socket"] }
+tokio = "1.38"
 
-connlib-client-android = { path = "connlib/clients/android"}
-connlib-client-apple = { path = "connlib/clients/apple"}
-connlib-client-shared = { path = "connlib/clients/shared"}
-firezone-gateway = { path = "gateway"}
-firezone-headless-client = { path = "headless-client"}
-firezone-gui-client = { path = "gui-client/src-tauri"}
-firezone-cli-utils = { path = "firezone-cli-utils"}
-snownet = { path = "connlib/snownet"}
-firezone-relay = { path = "relay"}
-connlib-shared = { path = "connlib/shared"}
-firezone-tunnel = { path = "connlib/tunnel"}
-phoenix-channel = { path = "phoenix-channel"}
-http-health-check = { path = "http-health-check"}
-ip-packet = { path = "ip-packet"}
+connlib-client-android = { path = "connlib/clients/android" }
+connlib-client-apple = { path = "connlib/clients/apple" }
+connlib-client-shared = { path = "connlib/clients/shared" }
+firezone-gateway = { path = "gateway" }
+firezone-headless-client = { path = "headless-client" }
+firezone-gui-client = { path = "gui-client/src-tauri" }
+firezone-bin-shared = { path = "bin-shared" }
+snownet = { path = "connlib/snownet" }
+firezone-relay = { path = "relay" }
+connlib-shared = { path = "connlib/shared" }
+firezone-tunnel = { path = "connlib/tunnel" }
+phoenix-channel = { path = "phoenix-channel" }
+http-health-check = { path = "http-health-check" }
+ip-packet = { path = "ip-packet" }
+socket-factory = { path = "socket-factory" }
+socket2 = { version = "0.5" }
 
-[workspace.lints]
-clippy.dbg_macro = "warn"
-clippy.print_stdout = "warn"
-clippy.print_stderr = "warn"
-clippy.unnecessary_wraps = "warn"
-clippy.unused_async = "warn"
-clippy.wildcard_enum_match_arm = "warn" # Ensures we match on all combinations of `Poll`, preventing erroneous suspensions.
-clippy.redundant_else = "warn"
-clippy.redundant_clone = "warn"
-rustdoc.private-intra-doc-links = "allow" # We don't publish any of our docs but want to catch dead links.
+[workspace.lints.clippy]
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+unnecessary_wraps = "warn"
+unused_async = "warn"
+wildcard_enum_match_arm = "warn" # Ensures we match on all combinations of `Poll`, preventing erroneous suspensions.
+redundant_else = "warn"
+redundant_clone = "warn"
+
+[workspace.lints.rustdoc]
+private-intra-doc-links = "allow" # We don't publish any of our docs but want to catch dead links.
 
 [patch.crates-io]
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
 str0m = { git = "https://github.com/firezone/str0m", branch = "main" }
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
+proptest = { git = "https://github.com/thomaseizinger/proptest", branch = "fix/always-check-acceptable-current-state" }
+proptest-state-machine = { git = "https://github.com/thomaseizinger/proptest", branch = "fix/always-check-acceptable-current-state" }
 
 [profile.release]
 strip = true

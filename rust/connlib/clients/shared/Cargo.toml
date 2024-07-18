@@ -8,24 +8,24 @@ mock = ["connlib-shared/mock"]
 
 [dependencies]
 anyhow = "1.0.82"
-tokio = { version = "1.38", default-features = false, features = ["sync", "rt"] }
-secrecy = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
-tracing-appender = { version = "0.2.2" }
-tracing-stackdriver = { version = "0.10.0" }
 async-trait = { version = "0.1", default-features = false }
+backoff = { workspace = true }
+bimap = "0.6"
 connlib-shared = { workspace = true }
 firezone-tunnel = { workspace = true }
-serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
-backoff = { workspace = true }
-url = { version = "2.4.1", features = ["serde"] }
-time = { version = "0.3.36", features = ["formatting"] }
-tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
-bimap = "0.6"
 ip_network = { version = "0.4", default-features = false }
 phoenix-channel = { workspace = true }
-
+secrecy = { workspace = true }
+serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
+socket-factory = { workspace = true }
+time = { version = "0.3.36", features = ["formatting"] }
+tokio = { workspace = true, features = ["sync"] }
+tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+tracing = { workspace = true }
+tracing-appender = { version = "0.2.2" }
+tracing-stackdriver = { version = "0.10.0" }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+url = { version = "2.4.1", features = ["serde"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 tracing = { workspace = true, features = ["std", "attributes"] }
@@ -33,7 +33,7 @@ tracing = { workspace = true, features = ["std", "attributes"] }
 [dev-dependencies]
 chrono = { workspace = true }
 serde_json = { version = "1.0", features = ["std"] }
-tokio = { version = "1.38", default-features = false, features = ["macros"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
 
 [lints]
 workspace = true
