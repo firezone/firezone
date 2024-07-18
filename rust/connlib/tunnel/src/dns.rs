@@ -169,7 +169,7 @@ impl StubResolver {
     /// Attempts to match the given domain against our list of possible patterns.
     ///
     /// This performs a linear search and is thus O(N) and **must not** be called in the hot-path of packet routing.
-    #[tracing::instrument(level = "trace", skip_all, fields(domain = %domain_name))]
+    #[tracing::instrument(level = "trace", skip_all, fields(domain))]
     fn match_resource(&self, domain_name: &DomainName) -> Option<ResourceId> {
         let name = Candidate::from_domain(domain_name);
 
@@ -426,17 +426,23 @@ mod pattern {
     use std::{convert::Infallible, fmt, str::FromStr};
 
     #[derive(Debug, PartialEq, Eq, Hash)]
-    pub struct Pattern(glob::Pattern);
+    pub struct Pattern {
+        inner: glob::Pattern,
+        original: String,
+    }
 
     impl fmt::Display for Pattern {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.0.fmt(f)
+            self.original.fmt(f)
         }
     }
 
     impl Pattern {
         pub fn new(p: &str) -> Result<Self, glob::PatternError> {
-            Ok(Self(glob::Pattern::new(&p.replace('.', "/"))?))
+            Ok(Self {
+                inner: glob::Pattern::new(&p.replace('.', "/"))?,
+                original: p.to_string(),
+            })
         }
 
         /// Matches a [`Candidate`] against this [`Pattern`].
@@ -445,13 +451,13 @@ mod pattern {
         pub fn matches(&self, domain: &Candidate) -> bool {
             let domain = domain.0.as_str();
 
-            if let Some(rem) = self.0.as_str().strip_prefix("*/") {
+            if let Some(rem) = self.inner.as_str().strip_prefix("*/") {
                 if domain == rem {
                     return true;
                 }
             }
 
-            self.0.matches_with(
+            self.inner.matches_with(
                 domain,
                 glob::MatchOptions {
                     case_sensitive: false,
@@ -539,6 +545,13 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn pattern_displays_without_slash() {
+        let pattern = Pattern::new("**.example.com").unwrap();
+
+        assert_eq!(pattern.to_string(), "**.example.com")
     }
 
     #[test_case("**.example.com", "example.com"; "double star matches root domain")]
