@@ -1,8 +1,7 @@
 use crate::{
     device_id,
     dns_control::{self, DnsController},
-    known_dirs, signals, CallbackHandler, CliCommon, CommonMsg, ConnlibMsg, IpcServerMsg,
-    TOKEN_ENV_KEY,
+    known_dirs, signals, CallbackHandler, CommonMsg, ConnlibMsg, IpcServerMsg, TOKEN_ENV_KEY,
 };
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
@@ -43,9 +42,6 @@ const SERVICE_RUST_LOG: &str = "str0m=warn,info";
 struct Cli {
     #[command(subcommand)]
     command: Cmd,
-
-    #[command(flatten)]
-    common: CliCommon,
 }
 
 #[derive(clap::Subcommand)]
@@ -88,7 +84,7 @@ pub fn run_only_ipc_service() -> Result<()> {
     let cli = Cli::try_parse()?;
     match cli.command {
         Cmd::Install => platform::install_ipc_service(),
-        Cmd::Run => platform::run_ipc_service(cli.common),
+        Cmd::Run => platform::run_ipc_service(),
         Cmd::RunDebug => run_debug_ipc_service(),
         Cmd::RunSmokeTest => run_smoke_test(),
     }

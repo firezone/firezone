@@ -62,15 +62,6 @@ pub(crate) const GIT_VERSION: &str = git_version::git_version!(
 
 const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 
-/// CLI args common to both the IPC service and the headless Client
-#[derive(clap::Args)]
-struct CliCommon {
-    /// Maximum length of time to retry connecting to the portal if we're having internet issues or
-    /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
-    #[arg(short, long, env = "MAX_PARTITION_TIME")]
-    max_partition_time: Option<humantime::Duration>,
-}
-
 /// Messages that connlib can send
 enum ConnlibMsg {
     Common(CommonMsg),
