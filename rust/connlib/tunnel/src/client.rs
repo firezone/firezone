@@ -1752,10 +1752,10 @@ mod proptests {
         #[strategy(resource())] single_site_resource: ResourceDescription,
     ) {
         let mut client_state = ClientState::for_test();
-        for r in &resources {
+        client_state.add_resource(single_site_resource.clone());
+        for r in &multi_site_resources {
             client_state.add_resource(r.clone())
         }
-        let resource_offline = resources.pop().unwrap();
 
         client_state.set_resource_offline(single_site_resource.id());
 
