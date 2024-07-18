@@ -1,4 +1,3 @@
-use crate::CliCommon;
 use anyhow::{bail, Context as _, Result};
 use connlib_client_shared::file_logger;
 use futures::future::{self, Either};

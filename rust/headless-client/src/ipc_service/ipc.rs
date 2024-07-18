@@ -171,7 +171,7 @@ impl platform::Server {
 mod tests {
     use super::*;
     use crate::CommonMsg;
-    use anyhow::{bail, ensure, Result};
+    use anyhow::{bail, ensure};
     use futures::{SinkExt, StreamExt};
     use std::time::Duration;
     use tokio::{task::JoinHandle, time::timeout};
