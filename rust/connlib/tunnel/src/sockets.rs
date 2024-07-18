@@ -1,61 +1,29 @@
 use core::slice;
 use quinn_udp::{RecvMeta, UdpSockRef, UdpSocketState};
-use socket2::{SockAddr, Type};
+use socket_factory::SocketFactory;
 use std::{
+    collections::VecDeque,
     io::{self, IoSliceMut},
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     task::{ready, Context, Poll},
 };
 use tokio::{io::Interest, net::UdpSocket};
 
 use crate::Result;
 
-pub struct Sockets {
+#[derive(Default)]
+pub(crate) struct Sockets {
     socket_v4: Option<Socket>,
     socket_v6: Option<Socket>,
-
-    #[cfg(unix)]
-    protect: Box<dyn Fn(std::os::fd::RawFd) -> io::Result<()> + Send + 'static>,
-}
-
-impl Default for Sockets {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl Sockets {
-    #[cfg(unix)]
-    pub fn with_protect(
-        protect: impl Fn(std::os::fd::RawFd) -> io::Result<()> + Send + 'static,
-    ) -> Self {
-        Self {
-            socket_v4: None,
-            socket_v6: None,
-            #[cfg(unix)]
-            protect: Box::new(protect),
-        }
-    }
-
-    pub fn new() -> Self {
-        Self {
-            socket_v4: None,
-            socket_v6: None,
-            #[cfg(unix)]
-            protect: Box::new(|_| Ok(())),
-        }
-    }
-
-    pub fn can_handle(&self, addr: &SocketAddr) -> bool {
-        match addr {
-            SocketAddr::V4(_) => self.socket_v4.is_some(),
-            SocketAddr::V6(_) => self.socket_v6.is_some(),
-        }
-    }
-
-    pub fn rebind(&mut self) -> io::Result<()> {
-        let socket_v4 = Socket::ip4();
-        let socket_v6 = Socket::ip6();
+    pub fn rebind(
+        &mut self,
+        socket_factory: &dyn SocketFactory<tokio::net::UdpSocket>,
+    ) -> io::Result<()> {
+        let socket_v4 = Socket::ip4(socket_factory);
+        let socket_v6 = Socket::ip6(socket_factory);
 
         match (socket_v4.as_ref(), socket_v6.as_ref()) {
             (Err(e), Ok(_)) => {
@@ -74,19 +42,6 @@ impl Sockets {
                 ));
             }
             _ => (),
-        }
-
-        #[cfg(unix)]
-        {
-            use std::os::fd::AsRawFd;
-
-            if let Ok(fd) = socket_v4.as_ref().map(|s| s.socket.as_raw_fd()) {
-                (self.protect)(fd)?;
-            }
-
-            if let Ok(fd) = socket_v6.as_ref().map(|s| s.socket.as_raw_fd()) {
-                (self.protect)(fd)?;
-            }
         }
 
         self.socket_v4 = socket_v4.ok();
@@ -110,23 +65,18 @@ impl Sockets {
         Poll::Ready(Ok(()))
     }
 
-    pub fn try_send(&mut self, transmit: quinn_udp::Transmit) -> io::Result<()> {
-        match transmit.destination {
-            SocketAddr::V4(dst) => {
-                let socket = self.socket_v4.as_mut().ok_or(io::Error::new(
-                    io::ErrorKind::NotConnected,
-                    format!("failed send packet to {dst}: no IPv4 socket"),
-                ))?;
-                socket.send(transmit);
-            }
-            SocketAddr::V6(dst) => {
-                let socket = self.socket_v6.as_mut().ok_or(io::Error::new(
-                    io::ErrorKind::NotConnected,
-                    format!("failed send packet to {dst}: no IPv6 socket"),
-                ))?;
-                socket.send(transmit);
-            }
-        }
+    pub fn send(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
+        let socket = match transmit.dst {
+            SocketAddr::V4(dst) => self.socket_v4.as_mut().ok_or(io::Error::new(
+                io::ErrorKind::NotConnected,
+                format!("failed send packet to {dst}: no IPv4 socket"),
+            ))?,
+            SocketAddr::V6(dst) => self.socket_v6.as_mut().ok_or(io::Error::new(
+                io::ErrorKind::NotConnected,
+                format!("failed send packet to {dst}: no IPv6 socket"),
+            ))?,
+        };
+        socket.send(transmit)?;
 
         Ok(())
     }
@@ -212,32 +162,37 @@ struct Socket {
     port: u16,
     socket: UdpSocket,
 
-    buffered_transmits: Vec<quinn_udp::Transmit>,
+    buffered_transmits: VecDeque<snownet::Transmit<'static>>,
 }
 
 impl Socket {
-    fn ip4() -> Result<Socket> {
-        let socket = make_socket(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))?;
+    fn ip(
+        socket_factory: &dyn SocketFactory<tokio::net::UdpSocket>,
+        addr: &SocketAddr,
+    ) -> Result<Socket> {
+        let socket = socket_factory(addr)?;
         let port = socket.local_addr()?.port();
 
         Ok(Socket {
             state: UdpSocketState::new(UdpSockRef::from(&socket))?,
             port,
-            socket: tokio::net::UdpSocket::from_std(socket)?,
-            buffered_transmits: Vec::new(),
+            socket,
+            buffered_transmits: VecDeque::new(),
         })
     }
 
-    fn ip6() -> Result<Socket> {
-        let socket = make_socket(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0))?;
-        let port = socket.local_addr()?.port();
+    fn ip4(socket_factory: &dyn SocketFactory<tokio::net::UdpSocket>) -> Result<Socket> {
+        Self::ip(
+            socket_factory,
+            &SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)),
+        )
+    }
 
-        Ok(Socket {
-            state: UdpSocketState::new(UdpSockRef::from(&socket))?,
-            port,
-            socket: tokio::net::UdpSocket::from_std(socket)?,
-            buffered_transmits: Vec::new(),
-        })
+    fn ip6(socket_factory: &dyn SocketFactory<tokio::net::UdpSocket>) -> Result<Socket> {
+        Self::ip(
+            socket_factory,
+            &SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)),
+        )
     }
 
     #[allow(clippy::type_complexity)]
@@ -293,64 +248,62 @@ impl Socket {
 
     fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         loop {
-            match self.socket.try_io(Interest::WRITABLE, || {
-                self.state
-                    .send((&self.socket).into(), &self.buffered_transmits)
-            }) {
-                Ok(0) => break,
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                Err(e) => return Poll::Ready(Err(e)),
+            ready!(self.socket.poll_send_ready(cx))?; // Ensure we are ready to send.
 
-                Ok(num_sent) => {
-                    self.buffered_transmits.drain(..num_sent);
-
-                    // I am not sure if we'd ever send less than what is in `buffered_transmits`.
-                    // loop once more to be sure we `break` on either an empty buffer or on `WouldBlock`.
-                }
+            let Some(transmit) = self.buffered_transmits.pop_front() else {
+                break;
             };
+
+            match self.try_send(&transmit) {
+                Ok(()) => continue, // Try to send another packet.
+                Err(e) => {
+                    self.buffered_transmits.push_front(transmit); // Don't lose the packet if we fail.
+
+                    if e.kind() == io::ErrorKind::WouldBlock {
+                        continue; // False positive send-readiness: Loop to `poll_send_ready` and return `Pending`.
+                    }
+
+                    return Poll::Ready(Err(e));
+                }
+            }
         }
 
-        // Ensure we are ready to send more data.
-        ready!(self.socket.poll_send_ready(cx)?);
-
-        assert!(
-            self.buffered_transmits.is_empty(),
-            "buffer must be empty if we are ready to send more data"
-        );
+        assert!(self.buffered_transmits.is_empty());
 
         Poll::Ready(Ok(()))
     }
 
-    fn send(&mut self, transmit: quinn_udp::Transmit) {
-        tracing::trace!(target: "wire::net::send", src = ?transmit.src_ip, dst = %transmit.destination, num_bytes = %transmit.contents.len());
-
-        self.buffered_transmits.push(transmit);
+    fn send(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
+        tracing::trace!(target: "wire::net::send", src = ?transmit.src, dst = %transmit.dst, num_bytes = %transmit.payload.len());
 
         debug_assert!(
             self.buffered_transmits.len() < 10_000,
             "We are not flushing the packets for some reason"
         );
-    }
-}
 
-fn make_socket(addr: impl Into<SocketAddr>) -> Result<std::net::UdpSocket> {
-    let addr: SockAddr = addr.into().into();
-    let socket = socket2::Socket::new(addr.domain(), Type::DGRAM, None)?;
+        match self.try_send(&transmit) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                tracing::trace!("Buffering packet because socket is busy");
 
-    #[cfg(target_os = "linux")]
-    {
-        const FIREZONE_MARK: u32 = 0xfd002021; // Keep this synced with `TunDeviceManager` until #5797.
-
-        socket.set_mark(FIREZONE_MARK)?;
-    }
-
-    // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
-    if addr.is_ipv6() {
-        socket.set_only_v6(true)?;
+                self.buffered_transmits.push_back(transmit.into_owned());
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 
-    socket.set_nonblocking(true)?;
-    socket.bind(&addr)?;
+    fn try_send(&self, transmit: &snownet::Transmit) -> io::Result<()> {
+        let transmit = quinn_udp::Transmit {
+            destination: transmit.dst,
+            ecn: None,
+            contents: &transmit.payload,
+            segment_size: None,
+            src_ip: transmit.src.map(|s| s.ip()),
+        };
 
-    Ok(socket.into())
+        self.socket.try_io(Interest::WRITABLE, || {
+            self.state.send((&self.socket).into(), &transmit)
+        })
+    }
 }

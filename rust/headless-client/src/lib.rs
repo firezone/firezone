@@ -20,6 +20,8 @@ use tracing::subscriber::set_global_default;
 use tracing_subscriber::{fmt, layer::SubscriberExt as _, EnvFilter, Layer as _, Registry};
 
 use platform::default_token_path;
+use platform::tcp_socket_factory;
+use platform::udp_socket_factory;
 
 /// Generate a persistent device ID, stores it to disk, and reads it back.
 pub(crate) mod device_id;
@@ -98,6 +100,12 @@ pub enum IpcServerMsg {
         is_authentication_error: bool,
     },
     OnUpdateResources(Vec<callbacks::ResourceDescription>),
+    /// The IPC service is terminating, maybe due to a software update
+    ///
+    /// This is a hint that the Client should exit with a message like,
+    /// "Firezone is updating, please restart the GUI" instead of an error like,
+    /// "IPC connection closed".
+    TerminatingGracefully,
 }
 
 #[derive(Clone)]

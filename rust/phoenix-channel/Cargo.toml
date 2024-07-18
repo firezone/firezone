@@ -15,6 +15,7 @@ secrecy = { workspace = true }
 serde = { version = "1.0.203", features = ["derive"] }
 serde_json = "1.0.117"
 sha2 = "0.10.8"
+socket-factory = { workspace = true }
 thiserror = "1.0.61"
 tokio = { workspace = true, features = ["net", "time"] }
 tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }

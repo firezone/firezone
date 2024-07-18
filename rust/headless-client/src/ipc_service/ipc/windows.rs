@@ -70,6 +70,7 @@ impl Server {
             server_pid = std::process::id(),
             "Listening for GUI to connect over IPC..."
         );
+        // Note that Tokio has no `poll_connect`
         server
             .connect()
             .await

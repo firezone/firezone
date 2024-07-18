@@ -1066,6 +1066,7 @@ dependencies = [
  "log",
  "secrecy",
  "serde_json",
+ "socket-factory",
  "thiserror",
  "tokio",
  "tracing",
@@ -1084,6 +1085,7 @@ dependencies = [
  "oslog",
  "secrecy",
  "serde_json",
+ "socket-factory",
  "swift-bridge",
  "swift-bridge-build",
  "tokio",
@@ -1109,6 +1111,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "socket-factory",
  "time",
  "tokio",
  "tokio-tungstenite",
@@ -1873,6 +1876,7 @@ dependencies = [
  "serde",
  "serde_json",
  "snownet",
+ "socket-factory",
  "static_assertions",
  "tokio",
  "tokio-tungstenite",
@@ -1962,6 +1966,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "socket-factory",
  "tempfile",
  "thiserror",
  "tokio",
@@ -1973,6 +1978,7 @@ dependencies = [
  "uuid",
  "windows 0.58.0",
  "windows-service",
+ "winreg 0.52.0",
 ]
 
 [[package]]
@@ -2003,6 +2009,7 @@ dependencies = [
  "secrecy",
  "serde",
  "sha2",
+ "socket-factory",
  "socket2 0.5.7",
  "stun_codec",
  "test-strategy",
@@ -2054,6 +2061,7 @@ dependencies = [
  "serde",
  "serde_json",
  "snownet",
+ "socket-factory",
  "socket2 0.5.7",
  "test-strategy",
  "thiserror",
@@ -3901,6 +3909,7 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
+ "memoffset 0.9.1",
 ]
 
 [[package]]
@@ -4561,6 +4570,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "socket-factory",
  "thiserror",
  "tokio",
  "tokio-tungstenite",
@@ -4825,7 +4835,7 @@ dependencies = [
 [[package]]
 name = "proptest"
 version = "1.5.0"
-source = "git+https://github.com/thomaseizinger/proptest?branch=fix/always-check-acceptable-current-state#26c036b5ca832726d7f0c8438a750c8efa2f0f8b"
+source = "git+https://github.com/thomaseizinger/proptest?branch=fix/always-check-acceptable-current-state#b52c68ff423efe4a558b5967c86c17c457d3a84d"
 dependencies = [
  "bit-set",
  "bit-vec",
@@ -4844,7 +4854,7 @@ dependencies = [
 [[package]]
 name = "proptest-state-machine"
 version = "0.3.0"
-source = "git+https://github.com/thomaseizinger/proptest?branch=fix/always-check-acceptable-current-state#26c036b5ca832726d7f0c8438a750c8efa2f0f8b"
+source = "git+https://github.com/thomaseizinger/proptest?branch=fix/always-check-acceptable-current-state#b52c68ff423efe4a558b5967c86c17c457d3a84d"
 dependencies = [
  "proptest",
 ]
@@ -4898,10 +4908,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-udp"
-version = "0.5.0"
-source = "git+https://github.com/quinn-rs/quinn?branch=main#88f48b0179f358cea0b76fc550e629007bfc957d"
+version = "0.5.2"
+source = "git+https://github.com/quinn-rs/quinn?branch=main#3f489e2eab014ddd04de58e570ba56e9b027f0bc"
 dependencies = [
- "bytes",
  "libc",
  "once_cell",
  "socket2 0.5.7",
@@ -5810,6 +5819,14 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "socket-factory"
+version = "0.1.0"
+dependencies = [
+ "socket2 0.5.7",
+ "tokio",
 ]
 
 [[package]]

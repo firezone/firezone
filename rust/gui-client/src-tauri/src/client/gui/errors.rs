@@ -18,6 +18,8 @@ pub(crate) enum Error {
     IpcClosed,
     #[error("IPC read failed")]
     IpcRead,
+    #[error("IPC service terminating")]
+    IpcServiceTerminating,
     #[error("UserNotInFirezoneGroup")]
     UserNotInFirezoneGroup,
     #[error("WebViewNotInstalled")]
@@ -47,6 +49,7 @@ pub(crate) fn show_error_dialog(error: &Error) -> Result<()> {
         Error::Ipc(ipc::Error::Other(error)) => error.to_string(),
         Error::IpcClosed => "IPC connection closed".to_string(),
         Error::IpcRead => "IPC read failure".to_string(),
+        Error::IpcServiceTerminating => "The Firezone IPC service is terminating. Please restart the GUI Client.".to_string(),
         Error::Logging(_) => "Logging error".to_string(),
         Error::UserNotInFirezoneGroup => format!("You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo usermod -aG {FIREZONE_GROUP} $USER` and then reboot"),
         Error::Other(error) => error.to_string(),
