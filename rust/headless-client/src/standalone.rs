@@ -5,11 +5,14 @@ use crate::{
     DnsController, InternalServerMsg, IpcServerMsg, TOKEN_ENV_KEY,
 };
 use anyhow::{anyhow, Context as _, Result};
+use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
+use connlib_shared::get_user_agent;
 use firezone_bin_shared::{setup_global_subscriber, TunDeviceManager};
 use futures::{FutureExt as _, StreamExt as _};
-use secrecy::SecretString;
+use phoenix_channel::PhoenixChannel;
+use secrecy::{Secret, SecretString};
 use std::{
     path::{Path, PathBuf},
     pin::pin,
@@ -163,16 +166,23 @@ pub fn run_only_headless_client() -> Result<()> {
     let mut last_connlib_start_instant = Some(Instant::now());
     platform::setup_before_connlib()?;
     let args = ConnectArgs {
-        url,
         udp_socket_factory: Arc::new(crate::udp_socket_factory),
         tcp_socket_factory: Arc::new(crate::tcp_socket_factory),
         private_key,
-        os_version_override: None,
-        app_version: env!("CARGO_PKG_VERSION").to_string(),
         callbacks,
-        max_partition_time,
     };
-    let session = Session::connect(args, rt.handle().clone());
+    let _guard = rt.enter(); // Constructing `PhoenixChannel` requires a runtime context.
+    let portal = PhoenixChannel::connect(
+        Secret::new(url),
+        get_user_agent(None, env!("CARGO_PKG_VERSION")),
+        "client",
+        (),
+        ExponentialBackoffBuilder::default()
+            .with_max_elapsed_time(max_partition_time)
+            .build(),
+        Arc::new(crate::tcp_socket_factory),
+    )?;
+    let session = Session::connect(args, portal, rt.handle().clone());
     platform::notify_service_controller()?;
 
     let result = rt.block_on(async {

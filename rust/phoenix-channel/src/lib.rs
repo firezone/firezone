@@ -2,11 +2,11 @@ mod heartbeat;
 mod login_url;
 
 use std::collections::{HashSet, VecDeque};
-use std::mem;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::{fmt, future, marker::PhantomData};
+use std::{io, mem};
 
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
@@ -15,7 +15,7 @@ use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use heartbeat::{Heartbeat, MissedLastHeartbeat};
 use rand_core::{OsRng, RngCore};
-use secrecy::{ExposeSecret as _, Secret};
+use secrecy::{ExposeSecret, Secret};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use socket_factory::SocketFactory;
 use std::task::{Context, Poll, Waker};
@@ -47,6 +47,8 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     url: Secret<LoginUrl>,
     user_agent: String,
     reconnect_backoff: ExponentialBackoff,
+
+    resolved_addresses: Vec<IpAddr>,
 
     login: &'static str,
     init_req: TInitReq,
@@ -228,12 +230,23 @@ where
         init_req: TInitReq,
         reconnect_backoff: ExponentialBackoff,
         socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
-    ) -> Self {
+    ) -> io::Result<Self> {
         let next_request_id = Arc::new(AtomicU64::new(0));
+
+        // Statically resolve the host in the URL to a set of addresses.
+        // We don't use these directly because we need to connect to the domain via TLS which requires a hostname.
+        // We expose them to other components that deal with DNS stuff to ensure our domain always resolves to these IPs.
+        let resolved_addresses = url
+            .expose_secret()
+            .inner()
+            .socket_addrs(|| None)?
+            .iter()
+            .map(|addr| addr.ip())
+            .collect();
 
         tracing::debug!(host = %url.expose_secret().host(), %user_agent, "Connecting to portal");
 
-        Self {
+        Ok(Self {
             reconnect_backoff,
             url: url.clone(),
             user_agent: user_agent.clone(),
@@ -251,7 +264,18 @@ where
             pending_join_requests: Default::default(),
             login,
             init_req,
-        }
+            resolved_addresses,
+        })
+    }
+
+    /// Returns the addresses that have been resolved for our server host.
+    pub fn resolved_addresses(&self) -> Vec<IpAddr> {
+        self.resolved_addresses.clone()
+    }
+
+    /// The host we are connecting / connected to.
+    pub fn server_host(&self) -> &str {
+        self.url.expose_secret().host()
     }
 
     /// Join the provided room.

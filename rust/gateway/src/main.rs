@@ -110,7 +110,7 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
             .with_max_elapsed_time(None)
             .build(),
         Arc::new(socket_factory::tcp),
-    );
+    )?;
 
     let (sender, receiver) = mpsc::channel::<Interface>(10);
     let tun_device_manager = TunDeviceManager::new()?;
