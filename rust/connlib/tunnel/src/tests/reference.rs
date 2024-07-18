@@ -374,7 +374,7 @@ impl ReferenceStateMachine for ReferenceState {
                     .exec_mut(|client| client.connected_dns_resources.clear());
             }
             Transition::ReconnectPortal => {
-                // Reconnecting to the portal should have no noticable impact on the data plane.
+                // Reconnecting to the portal should have no noticeable impact on the data plane.
             }
         };
 
