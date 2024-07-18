@@ -20,6 +20,7 @@ use hickory_proto::{
     rr::{rdata, RData, RecordType},
     serialize::binary::BinDecodable as _,
 };
+use ip_network::{Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use itertools::Itertools as _;
@@ -358,41 +359,18 @@ impl RefClient {
         self.connected_dns_resources.insert((resource, dst));
     }
 
-    pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Addr> {
-        let mut ips = vec![];
-
-        // This is an imperative loop on purpose because `ip-network` appears to have a bug with its `size_hint` and thus `.extend` does not work reliably?
-        for (network, _) in self.cidr_resources.iter_ipv4() {
-            if network.netmask() == 31 || network.netmask() == 32 {
-                ips.push(network.network_address());
-            } else {
-                for ip in network.hosts() {
-                    ips.push(ip)
-                }
-            }
-        }
-
-        ips
+    pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Network> {
+        self.cidr_resources
+            .iter_ipv4()
+            .map(|(n, _)| n)
+            .collect_vec()
     }
 
-    pub(crate) fn ipv6_cidr_resource_dsts(&self) -> Vec<Ipv6Addr> {
-        let mut ips = vec![];
-
-        // This is an imperative loop on purpose because `ip-network` appears to have a bug with its `size_hint` and thus `.extend` does not work reliably?
-        for (network, _) in self.cidr_resources.iter_ipv6() {
-            if network.netmask() == 127 || network.netmask() == 128 {
-                ips.push(network.network_address());
-            } else {
-                for ip in network
-                    .subnets_with_prefix(128)
-                    .map(|i| i.network_address())
-                {
-                    ips.push(ip)
-                }
-            }
-        }
-
-        ips
+    pub(crate) fn ipv6_cidr_resource_dsts(&self) -> Vec<Ipv6Network> {
+        self.cidr_resources
+            .iter_ipv6()
+            .map(|(n, _)| n)
+            .collect_vec()
     }
 
     pub(crate) fn is_connected_to_cidr(&self, id: ResourceId) -> bool {
@@ -608,8 +586,8 @@ fn is_subdomain(name: &str, record: &str) -> bool {
 }
 
 pub(crate) fn ref_client_host(
-    tunnel_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
-    tunnel_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
+    tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
+    tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
 ) -> impl Strategy<Value = Host<RefClient>> {
     host(
         any_ip_stack(),
@@ -645,13 +623,12 @@ pub(crate) fn ref_client_host(
 }
 
 fn ref_client(
-    tunnel_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
-    tunnel_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
+    tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
+    tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
 ) -> impl Strategy<Value = RefClient> {
-    let tunnel_ip4 = tunnel_ip4s.next().unwrap();
-    let tunnel_ip6 = tunnel_ip6s.next().unwrap();
-
     (
+        tunnel_ip4s,
+        tunnel_ip6s,
         client_id(),
         private_key(),
         known_hosts(),
@@ -659,7 +636,15 @@ fn ref_client(
         upstream_dns_servers(),
     )
         .prop_map(
-            move |(id, key, known_hosts, system_dns_resolvers, upstream_dns_resolvers)| RefClient {
+            move |(
+                tunnel_ip4,
+                tunnel_ip6,
+                id,
+                key,
+                known_hosts,
+                system_dns_resolvers,
+                upstream_dns_resolvers,
+            )| RefClient {
                 id,
                 key,
                 known_hosts,

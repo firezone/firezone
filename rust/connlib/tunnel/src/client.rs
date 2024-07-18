@@ -13,7 +13,7 @@ use connlib_shared::messages::{
     GatewayId, Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId,
     RequestConnection, ResourceId, ReuseConnection,
 };
-use connlib_shared::{callbacks, Callbacks, DomainName, PublicKey, StaticSecret};
+use connlib_shared::{callbacks, DomainName, PublicKey, StaticSecret};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
@@ -34,8 +34,8 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 // Using str here because Ipv4/6Network doesn't support `const` 🙃
-const IPV4_RESOURCES: &str = "100.96.0.0/11";
-const IPV6_RESOURCES: &str = "fd00:2021:1111:8000::/107";
+pub(crate) const IPV4_RESOURCES: &str = "100.96.0.0/11";
+pub(crate) const IPV6_RESOURCES: &str = "fd00:2021:1111:8000::/107";
 
 const DNS_PORT: u16 = 53;
 const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
@@ -45,18 +45,22 @@ const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
 // is 30 seconds. See resolvconf(5) timeout.
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
-impl<CB> ClientTunnel<CB>
-where
-    CB: Callbacks + 'static,
-{
+impl ClientTunnel {
     pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
         self.role_state.set_resources(resources);
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
-        self.callbacks
-            .on_update_resources(self.role_state.resources());
+
+        // FIXME: It would be good to add this event from _within_ `ClientState` but we don't want to emit duplicates.
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
+            });
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.role_state.resources(),
+            });
     }
 
     pub fn set_tun(&mut self, tun: Tun) {
@@ -72,23 +76,33 @@ where
     pub fn add_resource(&mut self, resource: ResourceDescription) {
         self.role_state.add_resource(resource);
 
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
-        self.callbacks
-            .on_update_resources(self.role_state.resources());
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
+            });
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.role_state.resources(),
+            });
     }
 
     pub fn remove_resource(&mut self, id: ResourceId) {
         self.role_state.remove_resource(id);
 
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
-        self.callbacks
-            .on_update_resources(self.role_state.resources())
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
+            });
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.role_state.resources(),
+            });
     }
 
     /// Updates the system's dns
@@ -103,10 +117,6 @@ where
 
         self.io
             .set_upstream_dns_servers(self.role_state.dns_mapping());
-
-        if let Some(config) = self.role_state.interface_config.as_ref().cloned() {
-            self.update_device(config, self.role_state.dns_mapping());
-        };
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -114,33 +124,14 @@ where
         &mut self,
         config: InterfaceConfig,
     ) -> connlib_shared::Result<()> {
-        let dns_changed = self.role_state.update_interface_config(config.clone());
+        let dns_changed = self.role_state.update_interface_config(config);
 
         if dns_changed {
             self.io
                 .set_upstream_dns_servers(self.role_state.dns_mapping());
         }
 
-        self.update_device(config, self.role_state.dns_mapping());
-
         Ok(())
-    }
-
-    pub(crate) fn update_device(
-        &mut self,
-        config: InterfaceConfig,
-        dns_mapping: BiMap<IpAddr, DnsServer>,
-    ) {
-        // We can just sort in here because sentinel ips are created in order
-        let dns_config = dns_mapping.left_values().copied().sorted().collect();
-
-        self.callbacks
-            .clone()
-            .on_set_interface_config(config.ipv4, config.ipv6, dns_config);
-        self.callbacks.on_update_routes(
-            self.role_state.routes().filter_map(utils::ipv4).collect(),
-            self.role_state.routes().filter_map(utils::ipv6).collect(),
-        );
     }
 
     pub fn cleanup_connection(&mut self, id: ResourceId) {
@@ -152,8 +143,11 @@ where
 
         self.role_state.on_connection_failed(id);
 
-        self.callbacks
-            .on_update_resources(self.role_state.resources());
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.role_state.resources(),
+            });
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
@@ -702,6 +696,10 @@ impl ClientState {
                 vacant.insert(AwaitingConnectionDetails {
                     gateways: gateways.clone(),
                     last_intent_sent_at: now,
+                    // Note: in case of an overlapping CIDR resource this should be None instead of Some if the resource_id
+                    // is for a CIDR resource.
+                    // But this should never happen as DNS resources are always preferred, so we don't encode the logic here.
+                    // Tests will prevent this from ever happening.
                     domain: self.stub_resolver.get_fqdn(destination).map(|(fqdn, ips)| {
                         ResolveRequest {
                             name: fqdn.clone(),
@@ -751,14 +749,14 @@ impl ClientState {
     }
 
     fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
+        let maybe_dns_resource_id = self.stub_resolver.resolve_resource_by_ip(&destination);
+
         let maybe_cidr_resource_id = self
             .cidr_resources
             .longest_match(destination)
             .map(|(_, res)| res.id);
 
-        let maybe_dns_resource_id = self.stub_resolver.resolve_resource_by_ip(&destination);
-
-        maybe_cidr_resource_id.or(maybe_dns_resource_id)
+        maybe_dns_resource_id.or(maybe_cidr_resource_id)
     }
 
     #[must_use]
@@ -1005,15 +1003,25 @@ impl ClientState {
                 .collect_vec(),
         );
 
+        let ip4 = config.ipv4;
+        let ip6 = config.ipv6;
+
         self.set_dns_mapping(dns_mapping);
 
         self.buffered_events
-            .push_back(ClientEvent::DnsServersChanged {
+            .push_back(ClientEvent::TunInterfaceUpdated {
+                ip4,
+                ip6,
                 dns_by_sentinel: self
                     .dns_mapping
                     .iter()
                     .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
                     .collect(),
+            });
+        self.buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.routes().filter_map(utils::ipv6).collect(),
             });
 
         true
@@ -1508,27 +1516,13 @@ mod tests {
 mod proptests {
     use super::*;
     use connlib_shared::{messages::client::ResourceDescriptionDns, proptest::*};
-
-    pub fn expected_routes(resource_routes: Vec<IpNetwork>) -> HashSet<IpNetwork> {
-        HashSet::from_iter(
-            resource_routes
-                .into_iter()
-                .chain(iter::once(IpNetwork::from_str(IPV4_RESOURCES).unwrap()))
-                .chain(iter::once(IpNetwork::from_str(IPV6_RESOURCES).unwrap())),
-        )
-    }
-
-    #[allow(clippy::redundant_clone)] // False positive.
-    pub fn hashset<T: std::hash::Hash + Eq, B: ToOwned<Owned = T>>(
-        val: impl IntoIterator<Item = B>,
-    ) -> HashSet<T> {
-        HashSet::from_iter(val.into_iter().map(|b| b.to_owned()))
-    }
+    use prop::collection;
+    use proptest::prelude::*;
 
     #[test_strategy::proptest]
     fn cidr_resources_are_turned_into_routes(
-        #[strategy(cidr_resource(8))] resource1: ResourceDescriptionCidr,
-        #[strategy(cidr_resource(8))] resource2: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] resource1: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] resource2: ResourceDescriptionCidr,
     ) {
         let mut client_state = ClientState::for_test();
 
@@ -1543,9 +1537,9 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn added_resources_show_up_as_resoucres(
-        #[strategy(cidr_resource(8))] resource1: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] resource1: ResourceDescriptionCidr,
         #[strategy(dns_resource())] resource2: ResourceDescriptionDns,
-        #[strategy(cidr_resource(8))] resource3: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] resource3: ResourceDescriptionCidr,
     ) {
         use callbacks as cb;
 
@@ -1576,8 +1570,8 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn adding_same_resource_with_different_address_updates_the_address(
-        #[strategy(cidr_resource(8))] resource: ResourceDescriptionCidr,
-        #[strategy(ip_network(8))] new_address: IpNetwork,
+        #[strategy(cidr_resource())] resource: ResourceDescriptionCidr,
+        #[strategy(any_ip_network(8))] new_address: IpNetwork,
     ) {
         use callbacks as cb;
 
@@ -1606,7 +1600,7 @@ mod proptests {
     #[test_strategy::proptest]
     fn adding_cidr_resource_with_same_id_as_dns_resource_replaces_dns_resource(
         #[strategy(dns_resource())] resource: ResourceDescriptionDns,
-        #[strategy(ip_network(8))] address: IpNetwork,
+        #[strategy(any_ip_network(8))] address: IpNetwork,
     ) {
         use callbacks as cb;
 
@@ -1638,7 +1632,7 @@ mod proptests {
     #[test_strategy::proptest]
     fn resources_can_be_removed(
         #[strategy(dns_resource())] dns_resource: ResourceDescriptionDns,
-        #[strategy(cidr_resource(8))] cidr_resource: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] cidr_resource: ResourceDescriptionCidr,
     ) {
         use callbacks as cb;
 
@@ -1669,8 +1663,8 @@ mod proptests {
     fn resources_can_be_replaced(
         #[strategy(dns_resource())] dns_resource1: ResourceDescriptionDns,
         #[strategy(dns_resource())] dns_resource2: ResourceDescriptionDns,
-        #[strategy(cidr_resource(8))] cidr_resource1: ResourceDescriptionCidr,
-        #[strategy(cidr_resource(8))] cidr_resource2: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] cidr_resource1: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] cidr_resource2: ResourceDescriptionCidr,
     ) {
         use callbacks as cb;
 
@@ -1698,33 +1692,25 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn setting_gateway_online_sets_all_related_resources_online(
-        #[strategy(resources_sharing_site())] resource_config_online: (
-            Vec<ResourceDescription>,
-            Site,
-        ),
-        #[strategy(resources_sharing_site())] resource_config_unknown: (
-            Vec<ResourceDescription>,
-            Site,
-        ),
-        #[strategy(gateway_id())] first_resource_gateway_id: GatewayId,
+        #[strategy(resources_sharing_n_sites(1))] resources_online: Vec<ResourceDescription>,
+        #[strategy(resources_sharing_n_sites(1))] resources_unknown: Vec<ResourceDescription>,
+        #[strategy(gateway_id())] gateway: GatewayId,
     ) {
-        let (resources_online, site) = resource_config_online;
-        let (resources_unknown, _) = resource_config_unknown;
         let mut client_state = ClientState::for_test();
 
         for r in resources_online.iter().chain(resources_unknown.iter()) {
             client_state.add_resource(r.clone())
         }
 
-        client_state.resources_gateways.insert(
-            resources_online.first().unwrap().id(),
-            first_resource_gateway_id,
-        );
+        let first_resource = resources_online.first().unwrap();
+        client_state
+            .resources_gateways
+            .insert(first_resource.id(), gateway);
         client_state
             .gateways_site
-            .insert(first_resource_gateway_id, site.id);
+            .insert(gateway, first_resource.sites().iter().next().unwrap().id);
 
-        client_state.update_site_status_by_gateway(&first_resource_gateway_id, Status::Online);
+        client_state.update_site_status_by_gateway(&gateway, Status::Online);
 
         for resource in resources_online {
             assert_eq!(client_state.resource_status(&resource), Status::Online);
@@ -1737,23 +1723,23 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn disconnecting_gateway_sets_related_resources_unknown(
-        #[strategy(resources_sharing_site())] resource_config: (Vec<ResourceDescription>, Site),
-        #[strategy(gateway_id())] first_resource_gateway_id: GatewayId,
+        #[strategy(resources_sharing_n_sites(1))] resources: Vec<ResourceDescription>,
+        #[strategy(gateway_id())] gateway: GatewayId,
     ) {
-        let (resources, site) = resource_config;
         let mut client_state = ClientState::for_test();
         for r in &resources {
             client_state.add_resource(r.clone())
         }
+        let first_resources = resources.first().unwrap();
         client_state
             .resources_gateways
-            .insert(resources.first().unwrap().id(), first_resource_gateway_id);
+            .insert(first_resources.id(), gateway);
         client_state
             .gateways_site
-            .insert(first_resource_gateway_id, site.id);
+            .insert(gateway, first_resources.sites().iter().next().unwrap().id);
 
-        client_state.update_site_status_by_gateway(&first_resource_gateway_id, Status::Online);
-        client_state.update_site_status_by_gateway(&first_resource_gateway_id, Status::Unknown);
+        client_state.update_site_status_by_gateway(&gateway, Status::Online);
+        client_state.update_site_status_by_gateway(&gateway, Status::Unknown);
 
         for resource in resources {
             assert_eq!(client_state.resource_status(&resource), Status::Unknown);
@@ -1762,42 +1748,60 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn setting_resource_offline_doesnt_set_all_related_resources_offline(
-        #[strategy(resources_sharing_site())] resource_config_online: (
-            Vec<ResourceDescription>,
-            Site,
-        ),
+        #[strategy(resources_sharing_n_sites(2))] multi_site_resources: Vec<ResourceDescription>,
+        #[strategy(resource())] single_site_resource: ResourceDescription,
     ) {
-        let (mut resources, _) = resource_config_online;
         let mut client_state = ClientState::for_test();
         for r in &resources {
             client_state.add_resource(r.clone())
         }
         let resource_offline = resources.pop().unwrap();
 
-        client_state.set_resource_offline(resource_offline.id());
+        client_state.set_resource_offline(single_site_resource.id());
 
         assert_eq!(
-            client_state.resource_status(&resource_offline),
+            client_state.resource_status(&single_site_resource),
             Status::Offline
         );
-        for resource in resources {
+        for resource in multi_site_resources {
             assert_eq!(client_state.resource_status(&resource), Status::Unknown);
         }
     }
 
-    #[test_strategy::proptest]
-    fn setting_resource_offline_set_all_resources_sharing_all_groups_offline(
-        #[strategy(resources_sharing_all_sites())] resources: Vec<ResourceDescription>,
-    ) {
-        let mut client_state = ClientState::for_test();
-        for r in &resources {
-            client_state.add_resource(r.clone())
-        }
+    pub fn expected_routes(resource_routes: Vec<IpNetwork>) -> HashSet<IpNetwork> {
+        HashSet::from_iter(
+            resource_routes
+                .into_iter()
+                .chain(iter::once(IpNetwork::from_str(IPV4_RESOURCES).unwrap()))
+                .chain(iter::once(IpNetwork::from_str(IPV6_RESOURCES).unwrap())),
+        )
+    }
 
-        client_state.set_resource_offline(resources.first().unwrap().id());
+    #[allow(clippy::redundant_clone)] // False positive.
+    pub fn hashset<T: std::hash::Hash + Eq, B: ToOwned<Owned = T>>(
+        val: impl IntoIterator<Item = B>,
+    ) -> HashSet<T> {
+        HashSet::from_iter(val.into_iter().map(|b| b.to_owned()))
+    }
 
-        for resource in resources {
-            assert_eq!(client_state.resource_status(&resource), Status::Offline);
-        }
+    fn resource() -> impl Strategy<Value = ResourceDescription> {
+        connlib_shared::proptest::resource(site().prop_map(|s| vec![s]))
+    }
+
+    fn cidr_resource() -> impl Strategy<Value = ResourceDescriptionCidr> {
+        connlib_shared::proptest::cidr_resource(any_ip_network(8), site().prop_map(|s| vec![s]))
+    }
+
+    fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {
+        connlib_shared::proptest::dns_resource(site().prop_map(|s| vec![s]))
+    }
+
+    // Generate resources sharing 1 site
+    fn resources_sharing_n_sites(
+        num_sites: usize,
+    ) -> impl Strategy<Value = Vec<ResourceDescription>> {
+        collection::vec(site(), num_sites).prop_flat_map(|sites| {
+            collection::vec(connlib_shared::proptest::resource(Just(sites)), 1..=100)
+        })
     }
 }

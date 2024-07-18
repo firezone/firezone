@@ -25,6 +25,11 @@ enum DnsControlMethod {
     Systemd,
 }
 
+/// Controls system-wide DNS.
+///
+/// Always call `deactivate` when Firezone starts.
+///
+/// Only one of these should exist on the entire system at a time.
 pub(crate) struct DnsController {
     dns_control_method: Option<DnsControlMethod>,
 }
@@ -41,15 +46,23 @@ impl Default for DnsController {
 
 impl Drop for DnsController {
     fn drop(&mut self) {
-        tracing::debug!("Reverting DNS control...");
-        if let Some(DnsControlMethod::EtcResolvConf) = self.dns_control_method {
-            // TODO: Check that nobody else modified the file while we were running.
-            etc_resolv_conf::revert().ok();
+        if let Err(error) = self.deactivate() {
+            tracing::error!(?error, "Failed to deactivate DNS control");
         }
     }
 }
 
 impl DnsController {
+    #[allow(clippy::unnecessary_wraps)]
+    pub(crate) fn deactivate(&mut self) -> Result<()> {
+        tracing::debug!("Deactivating DNS control...");
+        if let Some(DnsControlMethod::EtcResolvConf) = self.dns_control_method {
+            // TODO: Check that nobody else modified the file while we were running.
+            etc_resolv_conf::revert()?;
+        }
+        Ok(())
+    }
+
     /// Set the computer's system-wide DNS servers
     ///
     /// The `mut` in `&mut self` is not needed by Rust's rules, but
@@ -183,12 +196,6 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
         .flat_map(|line| line.split(' '))
         .filter_map(|word| IpAddr::from_str(word).ok())
         .collect()
-}
-
-// Does nothing on Linux, needed to match the Windows interface
-#[allow(clippy::unnecessary_wraps)]
-pub(crate) fn deactivate() -> Result<()> {
-    Ok(())
 }
 
 #[cfg(test)]

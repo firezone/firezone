@@ -145,7 +145,6 @@ where
         private_key,
         tcp_socket_factory.clone(),
         udp_socket_factory,
-        callbacks,
         HashMap::from([(url.host().to_string(), addrs)]),
     )?;
 
@@ -160,7 +159,7 @@ where
         tcp_socket_factory,
     );
 
-    let mut eventloop = Eventloop::new(tunnel, portal, rx);
+    let mut eventloop = Eventloop::new(tunnel, callbacks, portal, rx);
 
     std::future::poll_fn(|cx| eventloop.poll(cx))
         .await
@@ -241,12 +240,10 @@ mod tests {
         use std::{collections::HashMap, sync::Arc};
 
         let (private_key, _public_key) = connlib_shared::keypair();
-        let callbacks = Callbacks::default();
         let mut tunnel = firezone_tunnel::ClientTunnel::new(
             private_key,
             Arc::new(socket_factory::tcp),
             Arc::new(socket_factory::udp),
-            callbacks,
             HashMap::new(),
         )
         .unwrap();
