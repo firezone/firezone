@@ -41,6 +41,7 @@ pub(crate) enum Error {
 }
 
 /// The program's entry point, equivalent to `main`
+#[instrument(skip_all)]
 pub(crate) fn run() -> Result<()> {
     std::panic::set_hook(Box::new(tracing_panic::panic_hook));
     let cli = Cli::parse();
