@@ -1,3 +1,5 @@
+use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+
 use super::{
     sim_net::{any_ip_stack, any_port},
     strategies::*,
@@ -11,10 +13,12 @@ use connlib_shared::{
     DomainName,
 };
 use hickory_proto::rr::RecordType;
+use ip_network::IpNetwork;
 use proptest::{prelude::*, sample};
 use std::{
     collections::{HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    str::FromStr,
 };
 
 /// The possible transitions of the state machine.
@@ -173,6 +177,26 @@ where
                 dns_server,
             },
         )
+}
+
+// Adds a non-overlapping CIDR resource with the gateway
+pub(crate) fn add_cidr_resource(
+    sites: impl Strategy<Value = Vec<Site>>,
+) -> impl Strategy<Value = Transition> {
+    cidr_resource(any_ip_network(8), sites)
+        .prop_filter(
+            "tests doesn't support yet CIDR resources overlapping DNS resources",
+            |r| {
+                // This works because CIDR resourc's host mask is always <8 while IP resource is 21
+                !IpNetwork::from_str(IPV4_RESOURCES)
+                    .unwrap()
+                    .contains(r.address.network_address())
+                    && !IpNetwork::from_str(IPV6_RESOURCES)
+                        .unwrap()
+                        .contains(r.address.network_address())
+            },
+        )
+        .prop_map(|resource| Transition::AddCidrResource { resource })
 }
 
 pub(crate) fn non_wildcard_dns_resource(
