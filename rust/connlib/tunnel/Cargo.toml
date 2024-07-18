@@ -34,7 +34,7 @@ socket-factory = { workspace = true }
 socket2 = { workspace = true }
 thiserror = { version = "1.0", default-features = false }
 tokio = { workspace = true }
-tracing = { workspace = true }
+tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
 
 [dev-dependencies]
@@ -48,31 +48,8 @@ serde_json = "1.0"
 test-strategy = "0.3.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-[target.'cfg(target_os = "windows")'.dev-dependencies]
-firezone-bin-shared = { workspace = true } # Required for benchmark.
-
-[[bench]]
-name = "tunnel"
-harness = false
-
 [features]
 proptest = ["dep:proptest", "connlib-shared/proptest"]
-
-# Windows tunnel dependencies
-[target.'cfg(target_os = "windows")'.dependencies]
-tokio = { workspace = true, features = ["sync"] }
-uuid = { version = "1.7.0", features = ["v4"] }
-wintun = "0.4.0"
-
-# Windows Win32 API
-[target.'cfg(target_os = "windows")'.dependencies.windows]
-version = "0.57.0"
-features = [
-  "Win32_Foundation",
-  "Win32_NetworkManagement_IpHelper",
-  "Win32_NetworkManagement_Ndis",
-  "Win32_Networking_WinSock",
-]
 
 [lints]
 workspace = true

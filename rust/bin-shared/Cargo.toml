@@ -36,3 +36,7 @@ features = [
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "tunnel"
+harness = false

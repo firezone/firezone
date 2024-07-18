@@ -2045,7 +2045,6 @@ dependencies = [
  "connlib-shared",
  "derivative",
  "domain",
- "firezone-bin-shared",
  "firezone-relay",
  "futures",
  "futures-bounded",
@@ -2076,9 +2075,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tun",
- "uuid",
- "windows 0.57.0",
- "wintun",
 ]
 
 [[package]]
