@@ -759,7 +759,7 @@ impl Controller {
 async fn run_controller(
     app: tauri::AppHandle,
     ctlr_tx: CtlrTx,
-    mut ctlr_rx: mpsc::Receiver<ControllerRequest>,
+    mut rx: mpsc::Receiver<ControllerRequest>,
     advanced_settings: AdvancedSettings,
     log_filter_reloader: logging::Reloader,
 ) -> Result<(), Error> {
@@ -803,7 +803,31 @@ async fn run_controller(
     let mut com_worker =
         network_changes::Worker::new().context("Failed to listen for network changes")?;
 
-    let mut dns_listener = network_changes::DnsListener::new()?;
+    let (dns_shutdown_tx, mut dns_shutdown_rx) = oneshot::channel();
+    let (dns_tx, mut dns_rx) = mpsc::channel(1);
+    let tokio_handle = tokio::runtime::Handle::current();
+    let dns_thread = std::thread::spawn(move || {
+        tokio_handle.block_on(async move {
+            let local = tokio::task::LocalSet::new();
+            local
+                .run_until(async move {
+                    tokio::task::spawn_local(async move {
+                        let mut dns_listener = network_changes::DnsListener::new()?;
+                        loop {
+                            tokio::select! {
+                                _ = &mut dns_shutdown_rx => break,
+                                resolvers = dns_listener.notified() => {
+                                    dns_tx.send(resolvers).await?;
+                                }
+                            }
+                        }
+                        Ok::<_, anyhow::Error>(())
+                    })
+                    .await
+                })
+                .await
+        })
+    });
 
     loop {
         // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
@@ -819,14 +843,14 @@ async fn run_controller(
                     }
                 }
             },
-            resolvers = dns_listener.notified() => {
-                let resolvers = resolvers?;
+            resolvers = dns_rx.recv() => {
+                let resolvers = resolvers.context("DNS channel closed unexpectedly")??;
                 if controller.status.connlib_is_up() {
                     tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
                     controller.ipc_client.set_dns(resolvers).await?;
                 }
             },
-            req = ctlr_rx.recv() => {
+            req = rx.recv() => {
                 let Some(req) = req else {
                     break;
                 };
@@ -852,6 +876,16 @@ async fn run_controller(
         // Code down here may not run because the `select` sometimes `continue`s.
     }
 
+    if let Err(error) = dns_shutdown_tx.send(()) {
+        tracing::error!(
+            ?error,
+            "Couldn't ask DNS thread to shut down, abandoning it."
+        );
+    } else if let Err(error) = dns_thread.join() {
+        tracing::error!(?error, "DNS thread returned error");
+    } else {
+        tracing::debug!("Shut down DNS worker thread.");
+    }
     if let Err(error) = com_worker.close() {
         tracing::error!(?error, "com_worker");
     }

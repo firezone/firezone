@@ -447,7 +447,7 @@ mod async_dns {
         /// - `key` - The registry key to listen to
         /// - `tx` - A Sender for an MPSC channel of size 1 or more
         pub(crate) fn new(key: winreg::RegKey) -> Result<Self> {
-            let(tx, rx) = mpsc::channel(1);
+            let (tx, rx) = mpsc::channel(1);
             let tx = Box::new(tx);
             let tx_ptr: *const _ = tx.deref();
             let event = unsafe { CreateEventA(None, false, false, None) }?;
