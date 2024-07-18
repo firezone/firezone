@@ -566,6 +566,9 @@ mod tests {
     #[test_case("app.*.*.example.com", "app.foo.bar.example.com"; "single star can appear on multiple levels")]
     #[test_case("app.f??.example.com", "app.foo.example.com"; "question mark matches one letter")]
     #[test_case("app.example.com", "app.example.com"; "matches literal domain")]
+    #[test_case("*?*.example.com", "app.example.com"; "mix of * and ?")]
+    #[test_case("app.**.web.**.example.com", "app.web.example.com"; "multiple double star within domain")]
+
     fn domain_pattern_matches(pattern: &str, domain: &str) {
         let pattern = Pattern::new(pattern).unwrap();
         let candidate = Candidate::from_str(domain).unwrap();
