@@ -428,7 +428,7 @@ defmodule Web.FormComponents do
   def submit_button(assigns) do
     ~H"""
     <div class="flex justify-end">
-      <.button style="primary" {@rest}>
+      <.button type="submit" style="primary" {@rest}>
         <%= render_slot(@inner_block) %>
       </.button>
     </div>

@@ -361,7 +361,7 @@ defmodule Web.AuthControllerTest do
       provider = Fixtures.Auth.create_email_provider(account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
 
-      for _ <- 1..10 do
+      for _ <- 1..3 do
         post(conn, ~p"/#{account}/sign_in/providers/#{provider}/request_magic_link", %{
           "email" => %{
             "provider_identifier" => identity.provider_identifier

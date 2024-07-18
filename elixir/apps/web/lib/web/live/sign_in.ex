@@ -166,6 +166,8 @@ defmodule Web.SignIn do
       class="space-y-4 lg:space-y-6"
       id="userpass_form"
       phx-update="ignore"
+      phx-hook="AttachDisableSubmit"
+      phx-submit={JS.dispatch("form:disable_and_submit", to: "#userpass_form")}
     >
       <div class="bg-white grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
         <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
@@ -187,9 +189,9 @@ defmodule Web.SignIn do
         />
       </div>
 
-      <.button phx-disable-with="Signing in..." class="w-full">
+      <.submit_button class="w-full">
         Sign in
-      </.button>
+      </.submit_button>
     </.form>
     """
   end
@@ -206,6 +208,8 @@ defmodule Web.SignIn do
       class="space-y-4 lg:space-y-6"
       id="email_form"
       phx-update="ignore"
+      phx-hook="AttachDisableSubmit"
+      phx-submit={JS.dispatch("form:disable_and_submit", to: "#email_form")}
     >
       <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
 
@@ -216,7 +220,7 @@ defmodule Web.SignIn do
         placeholder="Enter your email"
         required
       />
-      <.submit_button phx-disable-with="Sending..." class="w-full" style="info">
+      <.submit_button class="w-full" style="info">
         Request sign in token
       </.submit_button>
     </.form>
