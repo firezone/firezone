@@ -95,8 +95,6 @@ pub(crate) fn run(
         inject_faults: cli.inject_faults,
     };
 
-    let (dns_listener, mut dns_rx) = network_changes::DnsListener::new()?;
-
     tracing::info!("Setting up Tauri app instance...");
     let (setup_result_tx, mut setup_result_rx) =
         tokio::sync::oneshot::channel::<Result<(), Error>>();
@@ -201,7 +199,6 @@ pub(crate) fn run(
                             app_handle_2,
                             ctlr_tx,
                             ctlr_rx,
-                            dns_rx,
                             advanced_settings,
                             reloader,
                         )
@@ -763,7 +760,6 @@ async fn run_controller(
     app: tauri::AppHandle,
     ctlr_tx: CtlrTx,
     mut ctlr_rx: mpsc::Receiver<ControllerRequest>,
-    mut dns_rx: mpsc::Receiver<()>,
     advanced_settings: AdvancedSettings,
     log_filter_reloader: logging::Reloader,
 ) -> Result<(), Error> {
@@ -807,6 +803,8 @@ async fn run_controller(
     let mut com_worker =
         network_changes::Worker::new().context("Failed to listen for network changes")?;
 
+    let mut dns_listener = network_changes::DnsListener::new()?;
+
     loop {
         // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
         // `tokio::select!` with a `poll_*` function
@@ -821,7 +819,7 @@ async fn run_controller(
                     }
                 }
             },
-            resolvers = dns_rx.recv() => {
+            resolvers = dns_listener.notified() => {
                 let resolvers = resolvers?;
                 if controller.status.connlib_is_up() {
                     tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");

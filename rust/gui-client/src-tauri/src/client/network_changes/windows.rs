@@ -389,16 +389,15 @@ mod async_dns {
     }
 
     impl CombinedListener {
-        pub(crate) fn new() -> Result<(Self, mpsc::Receiver<()>)> {
-            let (tx, rx) = mpsc::channel(1);
+        pub(crate) fn new() -> Result<Self> {
             let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
-            let listener_4 = Listener::new(key_ipv4, tx.clone())?;
-            let listener_6 = Listener::new(key_ipv6, tx.clone())?;
+            let listener_4 = Listener::new(key_ipv4)?;
+            let listener_6 = Listener::new(key_ipv6)?;
 
-            Ok((Self {
+            Ok(Self {
                 listener_4,
                 listener_6,
-            }, rx))
+            })
         }
 
         pub(crate) async fn notified(&mut self) -> Result<Vec<IpAddr>> {
@@ -427,6 +426,7 @@ mod async_dns {
         //
         // So don't ever do `self._tx = $ANYTHING` after `new`, it'll break the callback.
         _tx: Box<mpsc::Sender<()>>,
+        rx: mpsc::Receiver<()>,
         /// A handle representing our registered callback from `RegisterWaitForSingleObject`
         ///
         /// This doesn't get signalled, it's just used so we can unregister and stop the
@@ -446,7 +446,8 @@ mod async_dns {
         /// Parameters:
         /// - `key` - The registry key to listen to
         /// - `tx` - A Sender for an MPSC channel of size 1 or more
-        pub(crate) fn new(key: winreg::RegKey, tx: mpsc::Sender<()>) -> Result<Self> {
+        pub(crate) fn new(key: winreg::RegKey) -> Result<Self> {
+            let(tx, rx) = mpsc::channel(1);
             let tx = Box::new(tx);
             let tx_ptr: *const _ = tx.deref();
             let event = unsafe { CreateEventA(None, false, false, None) }?;
@@ -482,13 +483,14 @@ mod async_dns {
 
             let mut that = Self {
                 key,
+                rx,
                 _tx: tx,
                 wait_handle,
                 event,
             };
             that.register_callback()?;
 
-            Ok((that, rx))
+            Ok(that)
         }
 
         /// Returns when the registry key has changed
