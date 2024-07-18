@@ -90,11 +90,103 @@ defmodule API.ActorGroupMembershipControllerTest do
     end
   end
 
-  describe "update/2" do
+  describe "update_patch/2" do
     test "adds actor to group", %{conn: conn, account: account, actor: api_actor} do
       actor_group = Fixtures.Actors.create_group(%{account: account})
       actor = Fixtures.Actors.create_actor(%{account: account})
       attrs = %{"add" => [actor.id]}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> patch("/v1/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert data == %{"actor_ids" => [actor.id]}
+    end
+
+    test "returns error on empty params/body", %{conn: conn, account: account, actor: api_actor} do
+      actor_group = Fixtures.Actors.create_group(%{account: account})
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> patch("/v1/actor_groups/#{actor_group.id}/memberships")
+
+      assert resp = json_response(conn, 400)
+      assert resp == %{"error" => %{"reason" => "Bad Request"}}
+    end
+
+    test "removes actor from group", %{conn: conn, account: account, actor: api_actor} do
+      actor_group = Fixtures.Actors.create_group(%{account: account})
+      actor1 = Fixtures.Actors.create_actor(%{account: account})
+      actor2 = Fixtures.Actors.create_actor(%{account: account})
+      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: actor_group})
+      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: actor_group})
+
+      attrs = %{"remove" => [actor2.id]}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> patch("/v1/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert data == %{"actor_ids" => [actor1.id]}
+    end
+
+    test "adds and removes actors from group", %{conn: conn, account: account, actor: api_actor} do
+      actor_group = Fixtures.Actors.create_group(%{account: account})
+      actor1 = Fixtures.Actors.create_actor(%{account: account})
+      actor2 = Fixtures.Actors.create_actor(%{account: account})
+      actor3 = Fixtures.Actors.create_actor(%{account: account})
+      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: actor_group})
+      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: actor_group})
+
+      attrs = %{"add" => [actor3.id], "remove" => [actor2.id]}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> patch("/v1/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert Enum.sort(data["actor_ids"]) == Enum.sort([actor1.id, actor3.id])
+    end
+
+    test "group remains the same on empty params", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      actor_group = Fixtures.Actors.create_group(%{account: account})
+      actor1 = Fixtures.Actors.create_actor(%{account: account})
+      actor2 = Fixtures.Actors.create_actor(%{account: account})
+      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: actor_group})
+      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: actor_group})
+
+      attrs = %{}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> patch("/v1/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert Enum.sort(data["actor_ids"]) == Enum.sort([actor1.id, actor2.id])
+    end
+  end
+
+  describe "update_put/2" do
+    test "adds actor to group", %{conn: conn, account: account, actor: api_actor} do
+      actor_group = Fixtures.Actors.create_group(%{account: account})
+      actor = Fixtures.Actors.create_actor(%{account: account})
+      attrs = [%{"actor_id" => actor.id}]
 
       conn =
         conn
@@ -126,7 +218,7 @@ defmodule API.ActorGroupMembershipControllerTest do
       Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: actor_group})
       Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: actor_group})
 
-      attrs = %{"remove" => [actor2.id]}
+      attrs = [%{"actor_id" => actor1.id}]
 
       conn =
         conn
@@ -146,7 +238,7 @@ defmodule API.ActorGroupMembershipControllerTest do
       Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: actor_group})
       Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: actor_group})
 
-      attrs = %{"add" => [actor3.id], "remove" => [actor2.id]}
+      attrs = [%{"actor_id" => actor1.id}, %{"actor_id" => actor3.id}]
 
       conn =
         conn
@@ -156,29 +248,6 @@ defmodule API.ActorGroupMembershipControllerTest do
 
       assert %{"data" => data} = json_response(conn, 200)
       assert Enum.sort(data["actor_ids"]) == Enum.sort([actor1.id, actor3.id])
-    end
-
-    test "group remains the same on empty params", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
-      actor_group = Fixtures.Actors.create_group(%{account: account})
-      actor1 = Fixtures.Actors.create_actor(%{account: account})
-      actor2 = Fixtures.Actors.create_actor(%{account: account})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor1, group: actor_group})
-      Fixtures.Actors.create_membership(%{account: account, actor: actor2, group: actor_group})
-
-      attrs = %{}
-
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> put("/v1/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
-
-      assert %{"data" => data} = json_response(conn, 200)
-      assert Enum.sort(data["actor_ids"]) == Enum.sort([actor1.id, actor2.id])
     end
   end
 end

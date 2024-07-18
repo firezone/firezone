@@ -22,6 +22,13 @@ defmodule API.FallbackController do
     |> render(:"400")
   end
 
+  def call(conn, {:error, :unprocessable_entity}) do
+    conn
+    |> put_status(:unprocessable_entity)
+    |> put_view(json: API.ErrorJSON)
+    |> render(:"422")
+  end
+
   def call(conn, {:error, %Ecto.Changeset{} = changeset}) do
     conn
     |> put_status(:unprocessable_entity)

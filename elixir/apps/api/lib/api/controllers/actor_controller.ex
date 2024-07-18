@@ -1,9 +1,22 @@
 defmodule API.ActorController do
   use API, :controller
+  use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Actors
 
   action_fallback API.FallbackController
+
+  tags ["Actors"]
+
+  operation :index,
+    summary: "List Actors",
+    parameters: [
+      limit: [in: :query, description: "Limit Users returned", type: :integer, example: 10],
+      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
+    ],
+    responses: [
+      ok: {"ActorsResponse", "application/json", API.Schemas.Actor.ListResponse}
+    ]
 
   # List Actors
   def index(conn, params) do
@@ -14,12 +27,34 @@ defmodule API.ActorController do
     end
   end
 
+  operation :show,
+    summary: "Show Actor",
+    parameters: [
+      id: [
+        in: :path,
+        description: "Actor ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses: [
+      ok: {"ActorResponse", "application/json", API.Schemas.Actor.Response}
+    ]
+
   # Show a specific Actor
   def show(conn, %{"id" => id}) do
     with {:ok, actor} <- Actors.fetch_actor_by_id(id, conn.assigns.subject) do
       render(conn, :show, actor: actor)
     end
   end
+
+  operation :create,
+    summary: "Create an Actor",
+    request_body:
+      {"Actor attributes", "application/json", API.Schemas.Actor.Request, required: true},
+    responses: [
+      ok: {"ActorResponse", "application/json", API.Schemas.Actor.Response}
+    ]
 
   # Create a new Actor
   def create(conn, %{"actor" => params}) do
@@ -37,6 +72,22 @@ defmodule API.ActorController do
     {:error, :bad_request}
   end
 
+  operation :update,
+    summary: "Update an Actor",
+    parameters: [
+      id: [
+        in: :path,
+        description: "Actor ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    request_body:
+      {"Actor attributes", "application/json", API.Schemas.Actor.Request, required: true},
+    responses: [
+      ok: {"ActorResponse", "application/json", API.Schemas.Actor.Response}
+    ]
+
   # Update an Actor
   def update(conn, %{"id" => id, "actor" => params}) do
     subject = conn.assigns.subject
@@ -50,6 +101,20 @@ defmodule API.ActorController do
   def update(_conn, _params) do
     {:error, :bad_request}
   end
+
+  operation :delete,
+    summary: "Delete an Actor",
+    parameters: [
+      id: [
+        in: :path,
+        description: "Actor ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses: [
+      ok: {"ActorResponse", "application/json", API.Schemas.Actor.Response}
+    ]
 
   # Delete an Actor
   def delete(conn, %{"id" => id}) do

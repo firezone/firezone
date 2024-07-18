@@ -1,9 +1,22 @@
 defmodule API.ActorGroupController do
   use API, :controller
+  use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Actors
 
   action_fallback API.FallbackController
+
+  tags ["Actor Groups"]
+
+  operation :index,
+    summary: "List Actor Groups",
+    parameters: [
+      limit: [in: :query, description: "Limit Actor Groups returned", type: :integer, example: 10],
+      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
+    ],
+    responses: [
+      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.ListResponse}
+    ]
 
   # List Actor Groups
   def index(conn, params) do
@@ -14,12 +27,36 @@ defmodule API.ActorGroupController do
     end
   end
 
+  operation :show,
+    summary: "Show Actor Group",
+    parameters: [
+      id: [
+        in: :path,
+        description: "Actor Group ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses: [
+      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.Response}
+    ]
+
   # Show a specific Actor Group
   def show(conn, %{"id" => id}) do
     with {:ok, actor_group} <- Actors.fetch_group_by_id(id, conn.assigns.subject) do
       render(conn, :show, actor_group: actor_group)
     end
   end
+
+  operation :create,
+    summary: "Create Actor Group",
+    parameters: [],
+    request_body:
+      {"Actor Group Attributes", "application/json", API.Schemas.ActorGroup.Request,
+       required: true},
+    responses: [
+      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.Response}
+    ]
 
   # Create a new Actor Group
   def create(conn, %{"actor_group" => params}) do
@@ -37,6 +74,23 @@ defmodule API.ActorGroupController do
     {:error, :bad_request}
   end
 
+  operation :update,
+    summary: "Update a Actor Group",
+    parameters: [
+      id: [
+        in: :path,
+        description: "Actor Group ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    request_body:
+      {"Actor Group Attributes", "application/json", API.Schemas.ActorGroup.Request,
+       required: true},
+    responses: [
+      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.Response}
+    ]
+
   # Update an Actor Group
   def update(conn, %{"id" => id, "actor_group" => params}) do
     subject = conn.assigns.subject
@@ -50,6 +104,20 @@ defmodule API.ActorGroupController do
   def update(_conn, _params) do
     {:error, :bad_request}
   end
+
+  operation :delete,
+    summary: "Delete a Actor Group",
+    parameters: [
+      id: [
+        in: :path,
+        description: "Actor Group ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses: [
+      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.Response}
+    ]
 
   # Delete an Actor Group
   def delete(conn, %{"id" => id}) do

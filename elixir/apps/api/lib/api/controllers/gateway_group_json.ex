@@ -24,8 +24,10 @@ defmodule API.GatewayGroupJSON do
   """
   def token(%{gateway_token: token, encoded_token: encoded_token}) do
     %{
-      id: token.id,
-      token: encoded_token
+      data: %{
+        id: token.id,
+        token: encoded_token
+      }
     }
   end
 
@@ -33,7 +35,11 @@ defmodule API.GatewayGroupJSON do
   Render a deleted Gateway Group Token
   """
   def deleted_token(%{gateway_token: token}) do
-    %{id: token.id}
+    %{
+      data: %{
+        id: token.id
+      }
+    }
   end
 
   @doc """

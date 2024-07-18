@@ -1,9 +1,27 @@
 defmodule API.GatewayGroupController do
   use API, :controller
+  use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.{Gateways, Tokens}
 
   action_fallback API.FallbackController
+
+  tags ["Gateway Groups"]
+
+  operation :index,
+    summary: "List Gateway Groups",
+    parameters: [
+      limit: [
+        in: :query,
+        description: "Limit Gateway Groups returned",
+        type: :integer,
+        example: 10
+      ],
+      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
+    ],
+    responses: [
+      ok: {"Gateway Group Response", "application/json", API.Schemas.GatewayGroup.ListResponse}
+    ]
 
   # List Gateway Groups / Sites
   def index(conn, params) do
@@ -14,12 +32,36 @@ defmodule API.GatewayGroupController do
     end
   end
 
+  operation :show,
+    summary: "Show Gateway Group",
+    parameters: [
+      id: [
+        in: :path,
+        description: "Gateway Group ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses: [
+      ok: {"Gateway Group Response", "application/json", API.Schemas.GatewayGroup.Response}
+    ]
+
   # Show a specific Gateway Group / Site
   def show(conn, %{"id" => id}) do
     with {:ok, gateway_group} <- Gateways.fetch_group_by_id(id, conn.assigns.subject) do
       render(conn, :show, gateway_group: gateway_group)
     end
   end
+
+  operation :create,
+    summary: "Create Gateway Group",
+    parameters: [],
+    request_body:
+      {"Gateway Group Attributes", "application/json", API.Schemas.GatewayGroup.Request,
+       required: true},
+    responses: [
+      ok: {"Gateway Group Response", "application/json", API.Schemas.GatewayGroup.Response}
+    ]
 
   # Create a new Gateway Group / Site
   def create(conn, %{"gateway_group" => params}) do
@@ -35,6 +77,15 @@ defmodule API.GatewayGroupController do
     {:error, :bad_request}
   end
 
+  operation :update,
+    summary: "Update a Gateway Group",
+    request_body:
+      {"Gateway Group Attributes", "application/json", API.Schemas.GatewayGroup.Request,
+       required: true},
+    responses: [
+      ok: {"Gateway Group Response", "application/json", API.Schemas.GatewayGroup.Response}
+    ]
+
   # Update a Gateway Group / Site
   def update(conn, %{"id" => id, "gateway_group" => params}) do
     subject = conn.assigns.subject
@@ -49,6 +100,20 @@ defmodule API.GatewayGroupController do
     {:error, :bad_request}
   end
 
+  operation :delete,
+    summary: "Delete a Gateway Group",
+    parameters: [
+      id: [
+        in: :path,
+        description: "Gateway Group ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses: [
+      ok: {"Gateway Group Response", "application/json", API.Schemas.GatewayGroup.Response}
+    ]
+
   # Delete a Gateway Group / Site
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
@@ -58,6 +123,21 @@ defmodule API.GatewayGroupController do
       render(conn, :show, gateway_group: gateway_group)
     end
   end
+
+  operation :create_token,
+    summary: "Create a Gateway Token",
+    parameters: [
+      gateway_group_id: [
+        in: :path,
+        description: "Gateway Group ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses: [
+      ok:
+        {"New Gateway Token Response", "application/json", API.Schemas.GatewayGroupToken.NewToken}
+    ]
 
   # Create a Gateway Group Token (used for deploying a gateway)
   def create_token(conn, %{"gateway_group_id" => gateway_group_id}) do
@@ -72,6 +152,28 @@ defmodule API.GatewayGroupController do
     end
   end
 
+  operation :delete_token,
+    summary: "Delete a Gateway Token",
+    parameters: [
+      gateway_group_id: [
+        in: :path,
+        description: "Gateway Group ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ],
+      id: [
+        in: :path,
+        description: "Gateway Token ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses: [
+      ok:
+        {"Deleted Gateway Token Response", "application/json",
+         API.Schemas.GatewayGroupToken.DeletedToken}
+    ]
+
   # Delete/Revoke a Gateway Group Token
   def delete_token(conn, %{"gateway_group_id" => _gateway_group_id, "id" => token_id}) do
     subject = conn.assigns.subject
@@ -81,6 +183,22 @@ defmodule API.GatewayGroupController do
       render(conn, :deleted_token, gateway_token: token)
     end
   end
+
+  operation :delete_all_tokens,
+    summary: "Delete all Gateway Tokens for a given Gateway Group",
+    parameters: [
+      gateway_group_id: [
+        in: :path,
+        description: "Gateway Group ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses: [
+      ok:
+        {"Deleted Gateway Tokens Response", "application/json",
+         API.Schemas.GatewayGroupToken.DeletedTokens}
+    ]
 
   def delete_all_tokens(conn, %{"gateway_group_id" => gateway_group_id}) do
     subject = conn.assigns.subject

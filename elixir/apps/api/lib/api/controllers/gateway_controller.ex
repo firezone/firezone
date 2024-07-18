@@ -1,9 +1,28 @@
 defmodule API.GatewayController do
   use API, :controller
+  use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Gateways
 
   action_fallback API.FallbackController
+
+  tags ["Gateways"]
+
+  operation :index,
+    summary: "List Gateways",
+    parameters: [
+      gateway_group_id: [
+        in: :path,
+        description: "Gateway Group ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ],
+      limit: [in: :query, description: "Limit Gateways returned", type: :integer, example: 10],
+      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
+    ],
+    responses: [
+      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.ListResponse}
+    ]
 
   # List Gateways
   def index(conn, params) do
@@ -17,6 +36,26 @@ defmodule API.GatewayController do
     end
   end
 
+  operation :show,
+    summary: "Show Gateway",
+    parameters: [
+      gateway_group_id: [
+        in: :path,
+        description: "Gateway Group ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ],
+      id: [
+        in: :path,
+        description: "Gateway ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses: [
+      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.Response}
+    ]
+
   # Show a specific Gateway
   def show(conn, %{"id" => id}) do
     with {:ok, gateway} <-
@@ -24,6 +63,26 @@ defmodule API.GatewayController do
       render(conn, :show, gateway: gateway)
     end
   end
+
+  operation :delete,
+    summary: "Delete a Gateway",
+    parameters: [
+      gateway_group_id: [
+        in: :path,
+        description: "Gateway Group ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ],
+      id: [
+        in: :path,
+        description: "Gateway ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses: [
+      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.Response}
+    ]
 
   # Delete a Gateway
   def delete(conn, %{"id" => id}) do

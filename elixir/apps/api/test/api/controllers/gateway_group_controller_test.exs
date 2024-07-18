@@ -244,7 +244,7 @@ defmodule API.GatewayGroupControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/v1/gateway_groups/#{gateway_group.id}/tokens")
 
-      assert %{"id" => _id, "token" => _token} = json_response(conn, 201)
+      assert %{"data" => %{"id" => _id, "token" => _token}} = json_response(conn, 201)
     end
   end
 
@@ -265,7 +265,7 @@ defmodule API.GatewayGroupControllerTest do
         |> authorize_conn(actor)
         |> delete("/v1/gateway_groups/#{gateway_group.id}/tokens/#{token.id}")
 
-      assert %{"id" => _id} = json_response(conn, 200)
+      assert %{"data" => %{"id" => _id}} = json_response(conn, 200)
 
       assert token = Repo.get(Token, token.id)
       assert token.deleted_at

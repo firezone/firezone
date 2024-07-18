@@ -15,6 +15,22 @@ defmodule API.Router do
     plug :accepts, ["html", "xml", "json"]
   end
 
+  pipeline :openapi do
+    plug OpenApiSpex.Plug.PutApiSpec, module: API.ApiSpec
+  end
+
+  scope "/openapi" do
+    pipe_through :openapi
+
+    get "/", OpenApiSpex.Plug.RenderSpec, []
+  end
+
+  scope "/swaggerui" do
+    pipe_through :public
+
+    get "/", OpenApiSpex.Plug.SwaggerUI, path: "/openapi"
+  end
+
   scope "/", API do
     pipe_through :public
 
@@ -41,8 +57,8 @@ defmodule API.Router do
 
     resources "/actor_groups", ActorGroupController, except: [:new, :edit] do
       get "/memberships", ActorGroupMembershipController, :index
-      put "/memberships", ActorGroupMembershipController, :update
-      patch "/memberships", ActorGroupMembershipController, :update
+      put "/memberships", ActorGroupMembershipController, :update_put
+      patch "/memberships", ActorGroupMembershipController, :update_patch
     end
 
     resources "/identity_providers", IdentityProviderController, only: [:index, :show, :delete]
