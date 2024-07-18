@@ -3,6 +3,7 @@
 // However, this consideration has made it idiomatic for Java FFI in the Rust
 // ecosystem, so it's used here for consistency.
 
+use crate::tun::Tun;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
     callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
@@ -30,7 +31,6 @@ use thiserror::Error;
 use tokio::runtime::Runtime;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
-use tun::Tun;
 
 mod make_writer;
 mod tun;

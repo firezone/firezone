@@ -4,7 +4,7 @@ use std::{
     os::fd::{AsRawFd, RawFd},
 };
 use tokio::io::unix::AsyncFd;
-use tun::{ioctl, TunTrait};
+use tun::ioctl;
 
 #[derive(Debug)]
 pub struct Tun {
@@ -34,7 +34,7 @@ impl Drop for Tun {
     }
 }
 
-impl TunTrait for Tun {
+impl tun::Tun for Tun {
     fn write4(&self, src: &[u8]) -> std::io::Result<usize> {
         write(self.fd.as_raw_fd(), src)
     }

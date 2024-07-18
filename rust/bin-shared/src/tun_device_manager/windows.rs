@@ -264,7 +264,7 @@ impl Tun {
     }
 }
 
-impl TunTrait for Tun {
+impl tun::Tun for Tun {
     // Moves packets from the user towards the Internet
     fn poll_read(&mut self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
         let pkt = ready!(self.packet_rx.poll_recv(cx));

@@ -15,12 +15,12 @@ use snownet::{RelaySocket, ServerNode};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
-use tun::TunTrait;
+use tun::Tun;
 
 const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 
 impl GatewayTunnel {
-    pub fn set_tun(&mut self, tun: Box<dyn TunTrait>) {
+    pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
         self.io.device_mut().set_tun(tun);
     }
 

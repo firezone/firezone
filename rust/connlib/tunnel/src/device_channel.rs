@@ -1,10 +1,10 @@
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use std::io;
 use std::task::{Context, Poll, Waker};
-use tun::TunTrait;
+use tun::Tun;
 
 pub struct Device {
-    tun: Option<Box<dyn TunTrait>>,
+    tun: Option<Box<dyn Tun>>,
     waker: Option<Waker>,
 }
 
@@ -16,7 +16,7 @@ impl Device {
         }
     }
 
-    pub(crate) fn set_tun(&mut self, tun: Box<dyn TunTrait>) {
+    pub(crate) fn set_tun(&mut self, tun: Box<dyn Tun>) {
         tracing::info!(name = %tun.name(), "Initializing TUN device");
 
         self.tun = Some(tun);
@@ -103,7 +103,7 @@ impl Device {
         }
     }
 
-    fn tun(&self) -> io::Result<&dyn TunTrait> {
+    fn tun(&self) -> io::Result<&dyn Tun> {
         Ok(self
             .tun
             .as_ref()

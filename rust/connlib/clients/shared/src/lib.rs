@@ -17,7 +17,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::task::JoinHandle;
-use tun::TunTrait;
+use tun::Tun;
 
 mod eventloop;
 pub mod file_logger;
@@ -95,7 +95,7 @@ impl Session {
     }
 
     /// Sets a new [`Tun`] device handle.
-    pub fn set_tun(&self, new_tun: Box<dyn TunTrait>) {
+    pub fn set_tun(&self, new_tun: Box<dyn Tun>) {
         let _ = self.channel.send(Command::SetTun(new_tun));
     }
 

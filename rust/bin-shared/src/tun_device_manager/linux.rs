@@ -25,7 +25,6 @@ use std::{
 };
 use tokio::io::unix::AsyncFd;
 use tun::ioctl;
-use tun::TunTrait;
 
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUN_DEV_MAJOR: u32 = 10;
@@ -324,7 +323,7 @@ impl Drop for Tun {
     }
 }
 
-impl TunTrait for Tun {
+impl tun::Tun for Tun {
     fn write4(&self, buf: &[u8]) -> io::Result<usize> {
         write(self.fd.as_raw_fd(), buf)
     }

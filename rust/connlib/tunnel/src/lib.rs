@@ -20,7 +20,7 @@ use std::{
     task::{Context, Poll},
     time::Instant,
 };
-use tun::TunTrait;
+use tun::Tun;
 use utils::turn;
 
 mod client;

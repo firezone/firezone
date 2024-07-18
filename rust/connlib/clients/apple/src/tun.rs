@@ -2,12 +2,8 @@ use libc::{
     fcntl, iovec, msghdr, recvmsg, sendmsg, AF_INET, AF_INET6, F_GETFL, F_SETFL, O_NONBLOCK,
 };
 use std::task::{Context, Poll};
-use std::{
-    io,
-    os::fd::{AsRawFd, RawFd},
-};
+use std::{io, os::fd::RawFd};
 use tokio::io::unix::AsyncFd;
-use tun::TunTrait;
 
 #[derive(Debug)]
 pub struct Tun {
@@ -58,7 +54,7 @@ impl Tun {
     }
 }
 
-impl TunTrait for Tun {
+impl tun::Tun for Tun {
     fn write4(&self, src: &[u8]) -> io::Result<usize> {
         self.write(src, AF_INET as u8)
     }

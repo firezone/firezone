@@ -17,7 +17,7 @@ use std::{
     net::IpAddr,
     task::{Context, Poll},
 };
-use tun::TunTrait;
+use tun::Tun;
 pub struct Eventloop<C: Callbacks> {
     tunnel: ClientTunnel,
     callbacks: C,
@@ -33,7 +33,7 @@ pub enum Command {
     Stop,
     Reconnect,
     SetDns(Vec<IpAddr>),
-    SetTun(Box<dyn TunTrait>),
+    SetTun(Box<dyn Tun>),
 }
 
 impl<C: Callbacks> Eventloop<C> {
