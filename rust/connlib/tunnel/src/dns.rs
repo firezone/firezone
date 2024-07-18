@@ -202,6 +202,8 @@ impl StubResolver {
             tracing::trace!(%pattern, %id, "No match");
         }
 
+        tracing::debug!("No resources matched");
+
         None
     }
 
