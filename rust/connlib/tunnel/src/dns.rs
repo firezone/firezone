@@ -11,8 +11,10 @@ use ip_packet::IpPacket;
 use ip_packet::Packet as _;
 use itertools::Itertools;
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::fmt;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::str::FromStr;
 
 const DNS_TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
@@ -44,8 +46,11 @@ impl Pattern {
         Ok(Self(glob::Pattern::new(&p.replace('.', "/"))?))
     }
 
-    fn matches(&self, domain: &str) -> bool {
-        let domain = domain.replace('.', "/");
+    /// Matches a [`Candidate`] against this [`Pattern`].
+    ///
+    /// Matching only requires a reference, thus allowing users to test a [`Candidate`] against multiple [`Patterns`].
+    fn matches(&self, domain: &Candidate) -> bool {
+        let domain = domain.0.as_str();
 
         if let Some(rem) = self.0.as_str().strip_prefix("*/") {
             if domain == rem {
@@ -54,13 +59,32 @@ impl Pattern {
         }
 
         self.0.matches_with(
-            &domain,
+            domain,
             glob::MatchOptions {
                 case_sensitive: false,
                 require_literal_separator: true,
                 require_literal_leading_dot: false,
             },
         )
+    }
+}
+
+/// A candidate for matching against a domain [`Pattern`].
+///
+/// Creates a type-safe contract that replaces `.` with `/` in the domain which is requires for pattern matching.
+struct Candidate(String);
+
+impl Candidate {
+    pub fn from_domain(domain: &DomainName) -> Self {
+        Self(domain.to_string().replace('.', "/"))
+    }
+}
+
+impl FromStr for Candidate {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(s.replace('.', "/")))
     }
 }
 
@@ -372,10 +396,10 @@ fn match_domain<T>(name: &DomainName, resources: &HashMap<Pattern, T>) -> Option
 where
     T: Copy,
 {
-    let name = std::str::from_utf8(name.as_slice()).ok()?;
+    let name = Candidate::from_domain(name);
 
     for (pattern, id) in resources {
-        if pattern.matches(name) {
+        if pattern.matches(&name) {
             return Some(*id);
         }
     }
@@ -523,8 +547,9 @@ mod tests {
     #[test_case("app.example.com", "app.example.com"; "matches literal domain")]
     fn domain_pattern_matches(pattern: &str, domain: &str) {
         let pattern = Pattern::new(pattern).unwrap();
+        let candidate = Candidate::from_str(domain).unwrap();
 
-        let matches = pattern.matches(domain);
+        let matches = pattern.matches(&candidate);
 
         assert!(matches);
     }
@@ -535,8 +560,9 @@ mod tests {
     #[test_case("app?com", "app.com"; "question mark does not match dot")]
     fn domain_pattern_does_not_match(pattern: &str, domain: &str) {
         let pattern = Pattern::new(pattern).unwrap();
+        let candidate = Candidate::from_str(domain).unwrap();
 
-        let matches = pattern.matches(domain);
+        let matches = pattern.matches(&candidate);
 
         assert!(!matches);
     }
