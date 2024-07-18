@@ -12,22 +12,6 @@ pub struct Tun {
     name: String,
 }
 
-impl Tun {
-    /// Create a new [`Tun`] from a raw file descriptor.
-    ///
-    /// # Safety
-    ///
-    /// The file descriptor must be open.
-    pub unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
-        let name = interface_name(fd)?;
-
-        Ok(Tun {
-            fd: AsyncFd::new(fd)?,
-            name,
-        })
-    }
-}
-
 impl Drop for Tun {
     fn drop(&mut self) {
         unsafe { libc::close(self.fd.as_raw_fd()) };
@@ -49,6 +33,22 @@ impl tun::Tun for Tun {
 
     fn name(&self) -> &str {
         self.name.as_str()
+    }
+}
+
+impl Tun {
+    /// Create a new [`Tun`] from a raw file descriptor.
+    ///
+    /// # Safety
+    ///
+    /// The file descriptor must be open.
+    pub unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
+        let name = interface_name(fd)?;
+
+        Ok(Tun {
+            fd: AsyncFd::new(fd)?,
+            name,
+        })
     }
 }
 
