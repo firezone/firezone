@@ -979,6 +979,8 @@ impl ClientState {
             self.update_site_status_by_gateway(&gateway_id, Status::Unknown);
             // TODO: should we have a Node::remove_connection?
         }
+
+        self.resources_gateways.remove(&id);
     }
 
     fn update_dns_mapping(&mut self) -> bool {
