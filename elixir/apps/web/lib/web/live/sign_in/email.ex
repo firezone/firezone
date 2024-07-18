@@ -76,6 +76,8 @@ defmodule Web.SignIn.Email do
                 }
                 method="get"
                 class="my-4 flex"
+                phx-hook="AttachDisableSubmit"
+                phx-submit={JS.dispatch("form:disable_and_submit", to: "#verify-sign-in-token")}
               >
                 <.input
                   :for={{key, value} <- @redirect_params}

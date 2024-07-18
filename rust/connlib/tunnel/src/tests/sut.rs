@@ -2,8 +2,8 @@ use super::reference::ReferenceState;
 use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
-use super::sim_portal::SimPortal;
 use super::sim_relay::SimRelay;
+use super::stub_portal::StubPortal;
 use crate::tests::assertions::*;
 use crate::tests::sim_relay::map_explode;
 use crate::tests::transition::Transition;
@@ -11,10 +11,7 @@ use crate::{dns::DnsQuery, ClientEvent, GatewayEvent, Request};
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{Interface, RelayId};
 use connlib_shared::{
-    messages::{
-        client::{ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns},
-        gateway, ClientId, GatewayId, ResourceId,
-    },
+    messages::{client::ResourceDescription, ClientId, GatewayId},
     DomainName,
 };
 use firezone_relay::IpStack;
@@ -23,7 +20,6 @@ use hickory_proto::{
     rr::{RData, Record, RecordType},
 };
 use hickory_resolver::lookup::Lookup;
-use ip_network_table::IpNetworkTable;
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use rand::SeedableRng as _;
 use secrecy::ExposeSecret as _;
@@ -38,6 +34,8 @@ use std::{
 };
 use tracing::debug_span;
 use tracing::subscriber::DefaultGuard;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::Layer as _;
 use tracing_subscriber::{util::SubscriberInitExt as _, EnvFilter};
 
 /// The actual system-under-test.
@@ -50,7 +48,6 @@ pub(crate) struct TunnelTest {
     pub(crate) client: Host<SimClient>,
     pub(crate) gateways: HashMap<GatewayId, Host<SimGateway>>,
     relays: HashMap<RelayId, Host<SimRelay>>,
-    portal: SimPortal,
 
     network: RoutingTable,
 
@@ -134,7 +131,6 @@ impl StateMachineTest for TunnelTest {
             network: ref_state.network.clone(),
             client,
             gateways,
-            portal: SimPortal::new(),
             logger,
             relays,
         };
@@ -157,29 +153,15 @@ impl StateMachineTest for TunnelTest {
 
         // Act: Apply the transition
         match transition {
-            Transition::AddCidrResource { resource, gateway } => {
-                for site in &resource.sites {
-                    state.portal.register_site(site.id, gateway)
-                }
-
+            Transition::AddCidrResource { resource } => {
                 state
                     .client
-                    .exec_mut(|c| c.sut.add_resources(&[ResourceDescription::Cidr(resource)]));
+                    .exec_mut(|c| c.sut.add_resource(ResourceDescription::Cidr(resource)));
             }
-            Transition::AddDnsResource {
-                resource, gateway, ..
-            } => {
-                for site in &resource.sites {
-                    state.portal.register_site(site.id, gateway)
-                }
-
-                state
-                    .client
-                    .exec_mut(|c| c.sut.add_resources(&[ResourceDescription::Dns(resource)]))
-            }
-            Transition::RemoveResource(id) => {
-                state.client.exec_mut(|c| c.sut.remove_resources(&[id]))
-            }
+            Transition::AddDnsResource { resource, .. } => state
+                .client
+                .exec_mut(|c| c.sut.add_resource(ResourceDescription::Dns(resource))),
+            Transition::RemoveResource(id) => state.client.exec_mut(|c| c.sut.remove_resource(id)),
             Transition::SendICMPPacketToNonResourceIp {
                 src,
                 dst,
@@ -269,7 +251,9 @@ impl StateMachineTest for TunnelTest {
                         HashSet::default(),
                         HashSet::from_iter(map_explode(state.relays.iter(), "client")),
                         ref_state.now,
-                    )
+                    );
+                    c.sut
+                        .set_resources(ref_state.client.inner().all_resources());
                 });
             }
         };
@@ -284,6 +268,15 @@ impl StateMachineTest for TunnelTest {
         state: &Self::SystemUnderTest,
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
     ) {
+        let _guard = tracing_subscriber::registry()
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_test_writer()
+                    .with_filter(EnvFilter::from_default_env()),
+            )
+            .with(PanicOnErrorEvents::default()) // Temporarily install a layer that panics when `_guard` goes out of scope if any of our assertions emitted an error.
+            .set_default();
+
         let ref_client = ref_state.client.inner();
         let sim_client = state.client.inner();
         let sim_gateways = state
@@ -332,8 +325,7 @@ impl TunnelTest {
                 self.on_client_event(
                     self.client.inner().id,
                     event,
-                    &ref_state.client.inner().cidr_resources,
-                    &ref_state.client.inner().dns_resources,
+                    &ref_state.portal,
                     &ref_state.global_dns_records,
                 );
                 continue;
@@ -507,8 +499,7 @@ impl TunnelTest {
         &mut self,
         src: ClientId,
         event: ClientEvent,
-        client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
-        client_dns_resource: &BTreeMap<ResourceId, ResourceDescriptionDns>,
+        portal: &StubPortal,
         global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     ) {
         match event {
@@ -540,12 +531,8 @@ impl TunnelTest {
                 resource,
                 connected_gateway_ids,
             } => {
-                let (gateway, site) = self.portal.handle_connection_intent(
-                    resource,
-                    connected_gateway_ids,
-                    client_cidr_resources,
-                    client_dns_resource,
-                );
+                let (gateway, site) =
+                    portal.handle_connection_intent(resource, connected_gateway_ids);
 
                 let request = self
                     .client
@@ -563,12 +550,8 @@ impl TunnelTest {
                     .flatten()
                     .collect();
 
-                let resource = map_client_resource_to_gateway_resource(
-                    client_cidr_resources,
-                    client_dns_resource,
-                    resolved_ips,
-                    resource_id,
-                );
+                let resource =
+                    portal.map_client_resource_to_gateway_resource(resolved_ips, resource_id);
 
                 match request {
                     Request::NewConnection(new_connection) => {
@@ -666,9 +649,7 @@ impl TunnelTest {
                         .flatten()
                         .collect();
 
-                    let resource = map_client_resource_to_gateway_resource(
-                        client_cidr_resources,
-                        client_dns_resource,
+                    let resource = portal.map_client_resource_to_gateway_resource(
                         resolved_ips,
                         reuse_connection.resource_id,
                     );
@@ -754,37 +735,6 @@ fn on_gateway_event(
         }),
         GatewayEvent::RefreshDns { .. } => todo!(),
     }
-}
-
-fn map_client_resource_to_gateway_resource(
-    client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
-    client_dns_resources: &BTreeMap<ResourceId, ResourceDescriptionDns>,
-    resolved_ips: Vec<IpAddr>,
-    resource_id: ResourceId,
-) -> gateway::ResourceDescription<gateway::ResolvedResourceDescriptionDns> {
-    let cidr_resource = client_cidr_resources.iter().find_map(|(_, r)| {
-        (r.id == resource_id).then_some(gateway::ResourceDescription::Cidr(
-            gateway::ResourceDescriptionCidr {
-                id: r.id,
-                address: r.address,
-                name: r.name.clone(),
-                filters: Vec::new(),
-            },
-        ))
-    });
-    let dns_resource = client_dns_resources.get(&resource_id).map(|r| {
-        gateway::ResourceDescription::Dns(gateway::ResolvedResourceDescriptionDns {
-            id: r.id,
-            name: r.name.clone(),
-            filters: Vec::new(),
-            domain: r.address.clone(),
-            addresses: resolved_ips.clone(),
-        })
-    });
-
-    cidr_resource
-        .or(dns_resource)
-        .expect("resource to be a known CIDR or DNS resource")
 }
 
 pub(crate) fn hickory_name_to_domain(mut name: hickory_proto::rr::Name) -> DomainName {

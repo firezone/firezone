@@ -9,7 +9,7 @@ use crate::{tests::sut::hickory_name_to_domain, ClientState};
 use bimap::BiMap;
 use connlib_shared::{
     messages::{
-        client::{ResourceDescriptionCidr, ResourceDescriptionDns},
+        client::{ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns},
         ClientId, DnsServer, GatewayId, Interface, ResourceId,
     },
     proptest::{client_id, domain_name},
@@ -542,9 +542,25 @@ impl RefClient {
         self.cidr_resource_by_ip(dns_server)
     }
 
-    pub(crate) fn all_resources(&self) -> Vec<ResourceId> {
+    pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
         let cidr_resources = self.cidr_resources.iter().map(|(_, r)| r.id);
         let dns_resources = self.dns_resources.keys().copied();
+
+        Vec::from_iter(cidr_resources.chain(dns_resources))
+    }
+
+    pub(crate) fn all_resources(&self) -> Vec<ResourceDescription> {
+        let cidr_resources = self
+            .cidr_resources
+            .iter()
+            .map(|(_, r)| r)
+            .cloned()
+            .map(ResourceDescription::Cidr);
+        let dns_resources = self
+            .dns_resources
+            .values()
+            .cloned()
+            .map(ResourceDescription::Dns);
 
         Vec::from_iter(cidr_resources.chain(dns_resources))
     }
@@ -570,8 +586,8 @@ fn is_subdomain(name: &str, record: &str) -> bool {
 }
 
 pub(crate) fn ref_client_host(
-    tunnel_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
-    tunnel_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
+    tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
+    tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
 ) -> impl Strategy<Value = Host<RefClient>> {
     host(
         any_ip_stack(),
@@ -607,13 +623,12 @@ pub(crate) fn ref_client_host(
 }
 
 fn ref_client(
-    tunnel_ip4s: &mut impl Iterator<Item = Ipv4Addr>,
-    tunnel_ip6s: &mut impl Iterator<Item = Ipv6Addr>,
+    tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
+    tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
 ) -> impl Strategy<Value = RefClient> {
-    let tunnel_ip4 = tunnel_ip4s.next().unwrap();
-    let tunnel_ip6 = tunnel_ip6s.next().unwrap();
-
     (
+        tunnel_ip4s,
+        tunnel_ip6s,
         client_id(),
         private_key(),
         known_hosts(),
@@ -621,7 +636,15 @@ fn ref_client(
         upstream_dns_servers(),
     )
         .prop_map(
-            move |(id, key, known_hosts, system_dns_resolvers, upstream_dns_resolvers)| RefClient {
+            move |(
+                tunnel_ip4,
+                tunnel_ip6,
+                id,
+                key,
+                known_hosts,
+                system_dns_resolvers,
+                upstream_dns_resolvers,
+            )| RefClient {
                 id,
                 key,
                 known_hosts,
