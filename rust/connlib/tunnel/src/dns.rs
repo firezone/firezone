@@ -189,7 +189,7 @@ impl StubResolver {
     ///
     /// This performs a linear search and is thus O(N) and **must not** be called in the hot-path of packet routing.
     #[tracing::instrument(level = "trace", skip_all, fields(domain))]
-    fn match_resource(&self, domain_name: &DomainName) -> Option<ResourceId> {
+    fn match_resource_linear(&self, domain_name: &DomainName) -> Option<ResourceId> {
         let name = Candidate::from_domain(domain_name);
 
         for (pattern, id) in &self.dns_resources {
@@ -254,7 +254,7 @@ impl StubResolver {
         }
 
         // `match_resource` is `O(N)` which we deem fine for DNS queries.
-        let maybe_resource = self.match_resource(&domain);
+        let maybe_resource = self.match_resource_linear(&domain);
 
         let resource_records = match (qtype, maybe_resource) {
             (Rtype::A, Some(resource)) => self.get_or_assign_a_records(domain.clone(), resource),
@@ -728,7 +728,7 @@ mod benches {
     #[divan::bench(
         consts = [10, 100, 1_000, 10_000, 100_000]
     )]
-    fn match_domain<const NUM_RES: u128>(bencher: divan::Bencher) {
+    fn match_domain_linear<const NUM_RES: u128>(bencher: divan::Bencher) {
         bencher
             .with_inputs(|| {
                 let mut resolver = StubResolver::new(HashMap::default());
@@ -749,7 +749,7 @@ mod benches {
 
                 (resolver, needle)
             })
-            .bench_refs(|(resolver, needle)| resolver.match_resource(needle).unwrap());
+            .bench_refs(|(resolver, needle)| resolver.match_resource_linear(needle).unwrap());
     }
 
     fn make_domain(rng: &mut impl Rng) -> String {
