@@ -22,7 +22,7 @@ outputs:
     value: ${{
       (runner.os == 'Linux' && '--help') ||
       (runner.os == 'macOS' && '--help') ||
-      (runner.os == 'Windows' && '-p firezone-tunnel') }}
+      (runner.os == 'Windows' && '-p bin-shared') }}
   packages:
     description: Compilable / testable packages for the current OS
     value: ${{
