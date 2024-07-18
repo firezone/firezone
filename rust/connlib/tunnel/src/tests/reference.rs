@@ -145,11 +145,7 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .with(
                 1,
-                cidr_resource(
-                    any_ip_network(8),
-                    sample::select(state.portal.all_sites()).prop_map(|s| vec![s]),
-                )
-                .prop_map(|resource| Transition::AddCidrResource { resource }),
+                add_cidr_resource(sample::select(state.portal.all_sites()).prop_map(|s| vec![s])),
             )
             .with(1, roam_client())
             .with(

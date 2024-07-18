@@ -696,6 +696,10 @@ impl ClientState {
                 vacant.insert(AwaitingConnectionDetails {
                     gateways: gateways.clone(),
                     last_intent_sent_at: now,
+                    // Note: in case of an overlapping CIDR resource this should be None instead of Some if the resource_id
+                    // is for a CIDR resource.
+                    // But this should never happen as DNS resources are always preferred, so we don't encode the logic here.
+                    // Tests will prevent this from ever happening.
                     domain: self.stub_resolver.get_fqdn(destination).map(|(fqdn, ips)| {
                         ResolveRequest {
                             name: fqdn.clone(),
@@ -745,14 +749,14 @@ impl ClientState {
     }
 
     fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
+        let maybe_dns_resource_id = self.stub_resolver.resolve_resource_by_ip(&destination);
+
         let maybe_cidr_resource_id = self
             .cidr_resources
             .longest_match(destination)
             .map(|(_, res)| res.id);
 
-        let maybe_dns_resource_id = self.stub_resolver.resolve_resource_by_ip(&destination);
-
-        maybe_cidr_resource_id.or(maybe_dns_resource_id)
+        maybe_dns_resource_id.or(maybe_cidr_resource_id)
     }
 
     #[must_use]
