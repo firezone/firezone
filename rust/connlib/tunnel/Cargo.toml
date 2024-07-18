@@ -32,6 +32,7 @@ tokio = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
 uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
+glob = "0.3.1"
 
 [dev-dependencies]
 derivative = "2.2.0"
@@ -44,6 +45,7 @@ serde_json = "1.0"
 test-strategy = "0.3.1"
 tracing-appender = "0.2.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+test-case = "3.3.1"
 
 [features]
 proptest = ["dep:proptest"]

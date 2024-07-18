@@ -23,10 +23,18 @@ pub struct StubResolver {
     fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
     ips_to_fqdn: HashMap<IpAddr, (DomainName, ResourceId)>,
     ip_provider: IpProvider,
-    /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
+    /// All DNS resources we know about, indexed by the glob pattern they match against.
     dns_resources: HashMap<String, ResourceId>,
     /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
     known_hosts: KnownHosts,
+}
+
+struct Pattern(glob::Pattern);
+
+impl Pattern {
+    fn matches(&self, domain: &str) -> bool {
+        false
+    }
 }
 
 /// Tells the Client how to reply to a single DNS query
@@ -441,6 +449,7 @@ fn ips_to_fqdn_for_known_hosts(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use test_case::test_case;
 
     #[test]
     fn reverse_dns_addr_works_v4() {
@@ -524,6 +533,35 @@ mod tests {
         assert_eq!(match_domain(&domain("a.b.baz.com"), &resources), None);
     }
 
+    #[test_case("**.example.com", "example.com"; "double star matches root domain")]
+    #[test_case("app.**.example.com", "app.bar.foo.example.com"; "double star matches multiple levels within domain")]
+    #[test_case("**.example.com", "foo.example.com"; "double star matches one level")]
+    #[test_case("**.example.com", "foo.bar.example.com"; "double star matches two levels")]
+    #[test_case("*.example.com", "foo.example.com"; "single star matches one level")]
+    #[test_case("*.example.com", "example.com"; "single star matches root domain")]
+    #[test_case("foo.*.example.com", "foo.bar.example.com"; "single star matches one domain within domain")]
+    #[test_case("app.*.*.example.com", "app.foo.bar.example.com"; "single star can appear on multiple levels")]
+    #[test_case("app.f??.example.com", "app.foo.example.com"; "question mark matches one letter")]
+    fn domain_pattern_matches(pattern: &str, domain: &str) {
+        let pattern = Pattern(glob::Pattern::new(pattern).unwrap());
+
+        let matches = pattern.matches(domain);
+
+        assert!(matches);
+    }
+
+    #[test_case("app.*.example.com", "app.foo.bar.example.com"; "single star does not match two level")]
+    #[test_case("app.*com", "app.foo.com"; "single star does not match dot")]
+    #[test_case("app.**com", "app.foo.com"; "double star does not match dot")]
+    #[test_case("app?com", "app.com"; "question mark does not match dot")]
+    fn domain_pattern_does_not_match(pattern: &str, domain: &str) {
+        let pattern = Pattern(glob::Pattern::new(pattern).unwrap());
+
+        let matches = pattern.matches(domain);
+
+        assert!(!matches);
+    }
+
     #[test]
     fn exact_subdomain_match() {
         assert!(is_subdomain(&domain("foo.com"), "foo.com"));
@@ -557,5 +595,9 @@ mod tests {
 
     fn domain(name: &str) -> DomainName {
         DomainName::vec_from_str(name).unwrap()
+    }
+
+    fn pattern(p: &str) -> Pattern {
+        Pattern(glob::Pattern::new(p).unwrap())
     }
 }
