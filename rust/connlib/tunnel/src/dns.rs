@@ -10,11 +10,9 @@ use domain::rdata::AllRecordData;
 use ip_packet::IpPacket;
 use ip_packet::Packet as _;
 use itertools::Itertools;
+use pattern::{Candidate, Pattern};
 use std::collections::HashMap;
-use std::convert::Infallible;
-use std::fmt;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::str::FromStr;
 
 const DNS_TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
@@ -30,62 +28,6 @@ pub struct StubResolver {
     dns_resources: HashMap<Pattern, ResourceId>,
     /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
     known_hosts: KnownHosts,
-}
-
-#[derive(Debug, PartialEq, Eq, Hash)]
-struct Pattern(glob::Pattern);
-
-impl fmt::Display for Pattern {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl Pattern {
-    fn new(p: &str) -> Result<Self, glob::PatternError> {
-        Ok(Self(glob::Pattern::new(&p.replace('.', "/"))?))
-    }
-
-    /// Matches a [`Candidate`] against this [`Pattern`].
-    ///
-    /// Matching only requires a reference, thus allowing users to test a [`Candidate`] against multiple [`Patterns`].
-    fn matches(&self, domain: &Candidate) -> bool {
-        let domain = domain.0.as_str();
-
-        if let Some(rem) = self.0.as_str().strip_prefix("*/") {
-            if domain == rem {
-                return true;
-            }
-        }
-
-        self.0.matches_with(
-            domain,
-            glob::MatchOptions {
-                case_sensitive: false,
-                require_literal_separator: true,
-                require_literal_leading_dot: false,
-            },
-        )
-    }
-}
-
-/// A candidate for matching against a domain [`Pattern`].
-///
-/// Creates a type-safe contract that replaces `.` with `/` in the domain which is requires for pattern matching.
-struct Candidate(String);
-
-impl Candidate {
-    pub fn from_domain(domain: &DomainName) -> Self {
-        Self(domain.to_string().replace('.', "/"))
-    }
-}
-
-impl FromStr for Candidate {
-    type Err = Infallible;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(s.replace('.', "/")))
-    }
 }
 
 /// Tells the Client how to reply to a single DNS query
@@ -477,9 +419,71 @@ fn ips_to_fqdn_for_known_hosts(
         .collect()
 }
 
+mod pattern {
+    use super::*;
+    use std::{convert::Infallible, fmt, str::FromStr};
+
+    #[derive(Debug, PartialEq, Eq, Hash)]
+    pub struct Pattern(glob::Pattern);
+
+    impl fmt::Display for Pattern {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.0.fmt(f)
+        }
+    }
+
+    impl Pattern {
+        pub fn new(p: &str) -> Result<Self, glob::PatternError> {
+            Ok(Self(glob::Pattern::new(&p.replace('.', "/"))?))
+        }
+
+        /// Matches a [`Candidate`] against this [`Pattern`].
+        ///
+        /// Matching only requires a reference, thus allowing users to test a [`Candidate`] against multiple [`Patterns`].
+        pub fn matches(&self, domain: &Candidate) -> bool {
+            let domain = domain.0.as_str();
+
+            if let Some(rem) = self.0.as_str().strip_prefix("*/") {
+                if domain == rem {
+                    return true;
+                }
+            }
+
+            self.0.matches_with(
+                domain,
+                glob::MatchOptions {
+                    case_sensitive: false,
+                    require_literal_separator: true,
+                    require_literal_leading_dot: false,
+                },
+            )
+        }
+    }
+
+    /// A candidate for matching against a domain [`Pattern`].
+    ///
+    /// Creates a type-safe contract that replaces `.` with `/` in the domain which is requires for pattern matching.
+    pub struct Candidate(String);
+
+    impl Candidate {
+        pub fn from_domain(domain: &DomainName) -> Self {
+            Self(domain.to_string().replace('.', "/"))
+        }
+    }
+
+    impl FromStr for Candidate {
+        type Err = Infallible;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            Ok(Self(s.replace('.', "/")))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr as _;
     use test_case::test_case;
 
     #[test]
