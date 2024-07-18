@@ -12,7 +12,7 @@ connlib-shared = { workspace = true }
 futures = "0.3"
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
 libc = "0.2"
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt", "sync"] }
 tracing = { workspace = true }
 tracing-log = "0.2"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
