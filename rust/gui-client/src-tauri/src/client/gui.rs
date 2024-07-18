@@ -12,7 +12,11 @@ use anyhow::{anyhow, bail, Context, Result};
 use connlib_client_shared::callbacks::ResourceDescription;
 use firezone_headless_client::IpcServerMsg;
 use secrecy::{ExposeSecret, SecretString};
-use std::{path::PathBuf, str::FromStr, time::Duration};
+use std::{
+    path::PathBuf,
+    str::FromStr,
+    time::{Duration, Instant},
+};
 use system_tray::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot};
@@ -440,7 +444,7 @@ enum Status {
     /// Firezone is disconnected.
     Disconnected,
     /// Firezone is signing in and raising the tunnel.
-    Connecting,
+    Connecting { start_instant: Instant },
     /// Firezone is ready to use.
     TunnelReady { resources: Vec<ResourceDescription> },
 }
@@ -456,7 +460,7 @@ impl Status {
     fn connlib_is_up(&self) -> bool {
         match self {
             Self::Disconnected => false,
-            Self::Connecting => true,
+            Self::Connecting { .. } => true,
             Self::TunnelReady { .. } => true,
         }
     }
@@ -487,10 +491,13 @@ impl Controller {
         let api_url = self.advanced_settings.api_url.clone();
         tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
 
+        // Count the start instant from before we connect
+        let start_instant = Instant::now();
         self.ipc_client
             .connect_to_firezone(api_url.as_str(), token)
             .await?;
-        self.status = Status::Connecting;
+        // Change the status after we begin connecting
+        self.status = Status::Connecting { start_instant };
         self.refresh_system_tray_menu()?;
 
         ran_before::set().await?;
@@ -582,7 +589,7 @@ impl Controller {
                         tracing::info!("Calling `sign_out` to cancel sign-in");
                         self.sign_out().await?;
                     }
-                    Status::Connecting => {
+                    Status::Connecting { start_instant: _ } => {
                         tracing::warn!(
                             "Connlib is already raising the tunnel, calling `sign_out` anyway"
                         );
@@ -665,13 +672,15 @@ impl Controller {
                     return Ok(());
                 }
                 tracing::debug!(len = resources.len(), "Got new Resources");
-                if !matches!(self.status, Status::TunnelReady { .. }) {
+                if let Status::Connecting { start_instant } =
+                    std::mem::replace(&mut self.status, Status::TunnelReady { resources })
+                {
+                    tracing::info!(elapsed = ?start_instant.elapsed(), "Tunnel ready");
                     os::show_notification(
                         "Firezone connected",
                         "You are now signed in and able to access resources.",
                     )?;
                 }
-                self.status = Status::TunnelReady { resources };
                 if let Err(error) = self.refresh_system_tray_menu() {
                     tracing::error!(?error, "Failed to refresh Resource list");
                 }
@@ -695,7 +704,7 @@ impl Controller {
                     tracing::error!("We have an auth session but no connlib session");
                     system_tray::Menu::SignedOut
                 }
-                Status::Connecting => system_tray::Menu::WaitingForConnlib,
+                Status::Connecting { start_instant: _ } => system_tray::Menu::WaitingForConnlib,
                 Status::TunnelReady { resources } => system_tray::Menu::SignedIn {
                     actor_name: &auth_session.actor_name,
                     resources,
@@ -797,6 +806,8 @@ async fn run_controller(
     let mut dns_listener = network_changes::DnsListener::new()?;
 
     loop {
+        // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
+        // `tokio::select!` with a `poll_*` function
         tokio::select! {
             () = com_worker.notified() => {
                 let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
@@ -838,6 +849,7 @@ async fn run_controller(
                 }
             },
         }
+        // Code down here may not run because the `select` sometimes `continue`s.
     }
 
     if let Err(error) = com_worker.close() {

@@ -11,11 +11,15 @@ mock = ["connlib-client-shared/mock"]
 swift-bridge-build = "0.1.53"
 
 [dependencies]
+backoff = "0.4.0"
 connlib-client-shared = { workspace = true }
+connlib-shared = { workspace = true }
 ip_network = "0.4"
 libc = "0.2"
+phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
 serde_json = "1"
+socket-factory = { workspace = true }
 swift-bridge = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }

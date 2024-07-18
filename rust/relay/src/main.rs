@@ -146,7 +146,8 @@ async fn main() -> Result<()> {
             ExponentialBackoffBuilder::default()
                 .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
                 .build(),
-        ))
+            Arc::new(socket_factory::tcp),
+        )?)
     } else {
         tracing::warn!(target: "relay", "No portal token supplied, starting standalone mode");
 
