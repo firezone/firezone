@@ -14,6 +14,7 @@ domain = { workspace = true }
 firezone-logging = { workspace = true }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
+glob = "0.3.1"
 hex = "0.4.3"
 ip-packet = { workspace = true }
 ip_network = { version = "0.4", default-features = false }
@@ -32,7 +33,6 @@ tokio = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
 uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
-glob = "0.3.1"
 
 [dev-dependencies]
 derivative = "2.2.0"
@@ -42,10 +42,10 @@ ip-packet = { workspace = true, features = ["proptest"] }
 proptest-state-machine = "0.3"
 rand = "0.8"
 serde_json = "1.0"
+test-case = "3.3.1"
 test-strategy = "0.3.1"
 tracing-appender = "0.2.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-test-case = "3.3.1"
 
 [features]
 proptest = ["dep:proptest"]
