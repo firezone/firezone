@@ -120,7 +120,8 @@ fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn name(fd: RawFd) -> io::Result<String> {
-    use libc::{getsockopt, IF_NAMESIZE, SYSPROTO_CONTROL, UTUN_OPT_IFNAME};
+    use libc::{getsockopt, socklen_t, IF_NAMESIZE, SYSPROTO_CONTROL, UTUN_OPT_IFNAME};
+    use std::mem::size_of;
 
     let mut tunnel_name = [0u8; IF_NAMESIZE];
     let mut tunnel_name_len = tunnel_name.len() as socklen_t;
@@ -145,11 +146,7 @@ fn name(fd: RawFd) -> io::Result<String> {
 fn search_for_tun_fd() -> io::Result<RawFd> {
     const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
 
-    use libc::{
-        ctl_info, fcntl, getpeername, getsockopt, ioctl, iovec, msghdr, recvmsg, sendmsg,
-        sockaddr_ctl, socklen_t, AF_INET, AF_INET6, AF_SYSTEM, CTLIOCGINFO, F_GETFL, F_SETFL,
-        IF_NAMESIZE, O_NONBLOCK, SYSPROTO_CONTROL, UTUN_OPT_IFNAME,
-    };
+    use libc::{ctl_info, getpeername, ioctl, sockaddr_ctl, socklen_t, AF_SYSTEM, CTLIOCGINFO};
 
     let mut info = ctl_info {
         ctl_id: 0,

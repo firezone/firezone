@@ -1840,7 +1840,6 @@ dependencies = [
  "anyhow",
  "clap",
  "connlib-shared",
- "firezone-tunnel",
  "futures",
  "ip_network",
  "libc",

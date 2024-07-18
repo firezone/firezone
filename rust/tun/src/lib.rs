@@ -3,6 +3,7 @@ use std::{
     task::{Context, Poll},
 };
 
+#[cfg(target_family = "unix")]
 pub mod ioctl;
 #[cfg(target_family = "unix")]
 pub mod unix;
