@@ -27,8 +27,10 @@ outputs:
     description: Compilable / testable packages for the current OS
     value: ${{
       (runner.os == 'Linux' && '--workspace') ||
-      (runner.os == 'macOS' && '-p connlib-client-apple -p connlib-client-shared -p firezone-tunnel -p snownet') ||
-      (runner.os == 'Windows' && '-p connlib-client-shared -p firezone-headless-client -p firezone-gui-client -p firezone-tunnel -p gui-smoke-test -p snownet') }}
+
+      # For macOS and Windows, it is good enough to target the respective leaf crates. All required depenencies will be built / checked automatically.
+      (runner.os == 'macOS' && '-p connlib-client-apple') ||
+      (runner.os == 'Windows' && '-p firezone-headless-client -p firezone-gui-client') }}
 
 runs:
   using: "composite"
