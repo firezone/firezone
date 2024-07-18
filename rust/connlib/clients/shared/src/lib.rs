@@ -228,8 +228,6 @@ mod tests {
         };
         tunnel.set_tun(Tun::new().unwrap());
         tunnel.set_new_interface_config(interface).unwrap();
-        let resources = vec![];
-        tunnel.add_resources(&resources);
 
         let tunnel = tokio::spawn(async move {
             std::future::poll_fn(|cx| tunnel.poll_next_event(cx))

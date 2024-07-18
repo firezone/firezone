@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 9b48b1c90455e632268397a3253352fd834ff7e2952f8efa5959543547be8892 # shrinks to input = _AddingSameResourceWithDifferentAddressUpdatesTheAddressArgs { resource: ResourceDescriptionCidr { id: ResourceId(0003585c-0f03-a9db-f663-31382f9195f3), address: V6(Ipv6Network { network_address: ::ffff:143.55.54.183, netmask: 128 }), name: "pammh", address_description: None, sites: [Site { name: "laey", id: SiteId(6707ba24-4d4b-4fb0-dae7-64b89f4401b8) }] }, new_address: V6(Ipv6Network { network_address: ::ffff:127.0.0.0, netmask: 126 }) }
