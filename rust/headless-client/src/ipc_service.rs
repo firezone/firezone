@@ -18,8 +18,12 @@ use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
 use url::Url;
 
 pub mod ipc;
+use backoff::ExponentialBackoffBuilder;
+use connlib_shared::get_user_agent;
 use firezone_bin_shared::TunDeviceManager;
 use ipc::{Server as IpcServer, ServiceId};
+use phoenix_channel::PhoenixChannel;
+use secrecy::Secret;
 
 #[cfg(target_os = "linux")]
 #[path = "ipc_service/linux.rs"]
@@ -364,16 +368,24 @@ impl<'a> Handler<'a> {
 
                 self.last_connlib_start_instant = Some(Instant::now());
                 let args = ConnectArgs {
-                    url,
                     tcp_socket_factory: Arc::new(crate::tcp_socket_factory),
                     udp_socket_factory: Arc::new(crate::udp_socket_factory),
                     private_key,
-                    os_version_override: None,
-                    app_version: env!("CARGO_PKG_VERSION").to_string(),
                     callbacks: self.callback_handler.clone(),
-                    max_partition_time: Some(Duration::from_secs(60 * 60 * 24 * 30)),
                 };
-                let new_session = Session::connect(args, tokio::runtime::Handle::try_current()?);
+                let portal = PhoenixChannel::connect(
+                    Secret::new(url),
+                    get_user_agent(None, env!("CARGO_PKG_VERSION")),
+                    "client",
+                    (),
+                    ExponentialBackoffBuilder::default()
+                        .with_max_elapsed_time(Some(Duration::from_secs(60 * 60 * 24 * 30)))
+                        .build(),
+                    Arc::new(crate::tcp_socket_factory),
+                )?;
+
+                let new_session =
+                    Session::connect(args, portal, tokio::runtime::Handle::try_current()?);
                 new_session.set_tun(self.tun_device.make_tun()?);
                 new_session.set_dns(dns_control::system_resolvers().unwrap_or_default());
                 self.connlib = Some(new_session);

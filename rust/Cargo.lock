@@ -1060,10 +1060,13 @@ name = "connlib-client-android"
 version = "1.1.4"
 dependencies = [
  "android_log-sys",
+ "backoff",
  "connlib-client-shared",
+ "connlib-shared",
  "ip_network",
  "jni 0.21.1",
  "log",
+ "phoenix-channel",
  "secrecy",
  "serde_json",
  "socket-factory",
@@ -1079,10 +1082,13 @@ dependencies = [
 name = "connlib-client-apple"
 version = "1.1.3"
 dependencies = [
+ "backoff",
  "connlib-client-shared",
+ "connlib-shared",
  "ip_network",
  "libc",
  "oslog",
+ "phoenix-channel",
  "secrecy",
  "serde_json",
  "socket-factory",
@@ -1475,12 +1481,6 @@ dependencies = [
  "rustc_version",
  "syn 2.0.57",
 ]
-
-[[package]]
-name = "diff"
-version = "0.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
 
 [[package]]
 name = "difference"
@@ -1888,7 +1888,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.1.7"
+version = "1.1.8"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1945,6 +1945,7 @@ version = "1.1.4"
 dependencies = [
  "anyhow",
  "atomicwrites",
+ "backoff",
  "clap",
  "connlib-client-shared",
  "connlib-shared",
@@ -1959,6 +1960,7 @@ dependencies = [
  "libc",
  "mutants",
  "nix 0.28.0",
+ "phoenix-channel",
  "resolv-conf",
  "ring",
  "rtnetlink",
@@ -2050,7 +2052,6 @@ dependencies = [
  "ip_network_table",
  "itertools 0.13.0",
  "libc",
- "pretty_assertions",
  "proptest",
  "proptest-state-machine",
  "quinn-udp",
@@ -3423,7 +3424,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.5",
 ]
 
 [[package]]
@@ -4764,16 +4765,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
-name = "pretty_assertions"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af7cee1a6c8a5b9208b3cb1061f10c0cb689087b3d8ce85fb9d2dd7a29b6ba66"
-dependencies = [
- "diff",
- "yansi",
-]
-
-[[package]]
 name = "proc-macro-crate"
 version = "1.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4835,7 +4826,7 @@ dependencies = [
 [[package]]
 name = "proptest"
 version = "1.5.0"
-source = "git+https://github.com/thomaseizinger/proptest?branch=fix/always-check-acceptable-current-state#26c036b5ca832726d7f0c8438a750c8efa2f0f8b"
+source = "git+https://github.com/thomaseizinger/proptest?branch=fix/always-check-acceptable-current-state#b52c68ff423efe4a558b5967c86c17c457d3a84d"
 dependencies = [
  "bit-set",
  "bit-vec",
@@ -4854,7 +4845,7 @@ dependencies = [
 [[package]]
 name = "proptest-state-machine"
 version = "0.3.0"
-source = "git+https://github.com/thomaseizinger/proptest?branch=fix/always-check-acceptable-current-state#26c036b5ca832726d7f0c8438a750c8efa2f0f8b"
+source = "git+https://github.com/thomaseizinger/proptest?branch=fix/always-check-acceptable-current-state#b52c68ff423efe4a558b5967c86c17c457d3a84d"
 dependencies = [
  "proptest",
 ]
@@ -8082,12 +8073,6 @@ dependencies = [
  "libc",
  "winapi",
 ]
-
-[[package]]
-name = "yansi"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09041cd90cf85f7f8b2df60c646f853b7f535ce68f85244eb6731cf89fa498ec"
 
 [[package]]
 name = "zbus"

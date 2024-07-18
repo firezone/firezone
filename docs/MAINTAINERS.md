@@ -6,7 +6,6 @@ including the product, website, and documentation.
 Table of Contents:
 
 - [Releasing](#releasing)
-- [Publishing Clients](#publishing-clients)
 - [Apple Client](#apple-client)
 - [Breaking API Changes](#breaking-api-changes)
 
@@ -31,8 +30,8 @@ Given that `main` is tested:
 1. Double-check that the assets attached are from a recent CI and include the
    correct changes.
 1. Publish the release. Tags and release name should be auto generated. This will trigger pushing Docker images to `ghcr.io`.
-1. Open a PR and making the following changes.
-1. Update [scripts/Makefile](../scripts/Makefile) with the new version number(s). Run `make -f scripts/Makefile version` to update the version in the Makefile.
+1. Open a PR and make the following changes:
+1. Update [scripts/Makefile](../scripts/Makefile) with the new version number(s). Run `make -f scripts/Makefile version` to propagate the versions in the Makefile to all components.
 1. Update the Changelog (e.g. `../website/src/components/Changelog/GUI.tsx`) with the new version number(s) and release notes.
 1. Update the known issues in `website/src/app/kb/user-guides/*`
 1. When the PR merges, the website will now redirect to the new version(s).

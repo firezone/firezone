@@ -3,7 +3,13 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with
 
 ## Getting Started
 
-First, run the development server:
+First, install dependencies and populate the `timestamps.json` file:
+
+```
+pnpm setup
+```
+
+Then, run the development server:
 
 ```bash
 npm run dev
