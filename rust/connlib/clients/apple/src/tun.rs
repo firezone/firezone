@@ -1,6 +1,4 @@
-use libc::{
-    fcntl, iovec, msghdr, recvmsg, sendmsg, AF_INET, AF_INET6, F_GETFL, F_SETFL, O_NONBLOCK,
-};
+use libc::{fcntl, iovec, msghdr, recvmsg, AF_INET, AF_INET6, F_GETFL, F_SETFL, O_NONBLOCK};
 use std::task::{Context, Poll};
 use std::{io, os::fd::RawFd};
 use tokio::io::unix::AsyncFd;
@@ -24,6 +22,7 @@ impl Tun {
         })
     }
 
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn write(&self, src: &[u8], af: u8) -> io::Result<usize> {
         let mut hdr = [0, 0, 0, af];
         let mut iov = [
@@ -47,10 +46,15 @@ impl Tun {
             msg_flags: 0,
         };
 
-        match unsafe { sendmsg(self.fd.as_raw_fd(), &msg_hdr, 0) } {
+        match unsafe { libc::sendmsg(self.fd.as_raw_fd(), &msg_hdr, 0) } {
             -1 => Err(io::Error::last_os_error()),
             n => Ok(n as usize),
         }
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    fn write(&self, _: &[u8], _: u8) -> io::Result<usize> {
+        unimplemented!("Stub")
     }
 }
 
