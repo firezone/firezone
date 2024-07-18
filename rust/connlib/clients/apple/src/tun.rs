@@ -1,6 +1,9 @@
 use libc::{fcntl, iovec, msghdr, recvmsg, AF_INET, AF_INET6, F_GETFL, F_SETFL, O_NONBLOCK};
 use std::task::{Context, Poll};
-use std::{io, os::fd::RawFd};
+use std::{
+    io,
+    os::fd::{AsRawFd as _, RawFd},
+};
 use tokio::io::unix::AsyncFd;
 
 #[derive(Debug)]
@@ -22,7 +25,6 @@ impl Tun {
         })
     }
 
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn write(&self, src: &[u8], af: u8) -> io::Result<usize> {
         let mut hdr = [0, 0, 0, af];
         let mut iov = [
@@ -50,11 +52,6 @@ impl Tun {
             -1 => Err(io::Error::last_os_error()),
             n => Ok(n as usize),
         }
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-    fn write(&self, _: &[u8], _: u8) -> io::Result<usize> {
-        unimplemented!("Stub")
     }
 }
 
@@ -125,7 +122,6 @@ fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn name(fd: RawFd) -> io::Result<String> {
     use libc::{getsockopt, socklen_t, IF_NAMESIZE, SYSPROTO_CONTROL, UTUN_OPT_IFNAME};
-    use std::mem::size_of;
 
     let mut tunnel_name = [0u8; IF_NAMESIZE];
     let mut tunnel_name_len = tunnel_name.len() as socklen_t;

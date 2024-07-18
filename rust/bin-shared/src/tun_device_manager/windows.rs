@@ -1,5 +1,8 @@
 use anyhow::{Context as _, Result};
-use connlib_shared::windows::{CREATE_NO_WINDOW, TUNNEL_NAME};
+use connlib_shared::{
+    windows::{CREATE_NO_WINDOW, TUNNEL_NAME},
+    DEFAULT_MTU,
+};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use std::{
     collections::HashSet,
@@ -220,7 +223,7 @@ impl Tun {
         let adapter = &Adapter::create(&wintun, ADAPTER_NAME, TUNNEL_NAME, Some(uuid))?;
         let iface_idx = adapter.get_adapter_index()?;
 
-        set_iface_config(adapter.get_luid(), MTU as u32)?;
+        set_iface_config(adapter.get_luid(), DEFAULT_MTU as u32)?;
 
         let session = Arc::new(adapter.start_session(RING_BUFFER_SIZE)?);
         // 4 is a nice power of two. Wintun already queues packets for us, so we don't

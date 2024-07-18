@@ -105,7 +105,7 @@ impl TunDeviceManager {
         handle
             .link()
             .set(index)
-            .mtu(DEFAULT_MTU)
+            .mtu(DEFAULT_MTU as u32)
             .execute()
             .await
             .context("Failed to set default MTU")?;
