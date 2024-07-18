@@ -2038,7 +2038,6 @@ name = "firezone-tunnel"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "bimap",
  "boringtun",
  "bytes",
@@ -2057,7 +2056,6 @@ dependencies = [
  "ip_network",
  "ip_network_table",
  "itertools 0.13.0",
- "libc",
  "proptest",
  "proptest-state-machine",
  "quinn-udp",
