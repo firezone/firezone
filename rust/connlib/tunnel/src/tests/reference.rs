@@ -388,12 +388,7 @@ impl ReferenceStateMachine for ReferenceState {
         match transition {
             Transition::ActivateResource(resource) => {
                 // Don't add resource we already have.
-                if state
-                    .client
-                    .inner()
-                    .all_resource_ids()
-                    .contains(&resource.id())
-                {
+                if state.client.inner().has_resource(resource.id()) {
                     return false;
                 }
 
@@ -541,9 +536,7 @@ impl ReferenceState {
 
     fn all_resources_not_known_to_client(&self) -> Vec<ResourceDescription> {
         let mut all_resources = self.portal.all_resources();
-        let client_resources = self.client.inner().all_resource_ids();
-
-        all_resources.retain(|r| !client_resources.contains(&r.id()));
+        all_resources.retain(|r| !self.client.inner().has_resource(r.id()));
 
         all_resources
     }

@@ -541,6 +541,14 @@ impl RefClient {
         Vec::from_iter(cidr_resources.chain(dns_resources))
     }
 
+    pub(crate) fn has_resource(&self, resource_id: ResourceId) -> bool {
+        if self.dns_resources.contains_key(&resource_id) {
+            return true;
+        }
+
+        self.cidr_resources.iter().any(|(_, r)| r.id == resource_id)
+    }
+
     pub(crate) fn all_resources(&self) -> Vec<ResourceDescription> {
         let cidr_resources = self
             .cidr_resources
