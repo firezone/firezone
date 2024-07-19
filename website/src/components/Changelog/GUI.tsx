@@ -14,7 +14,10 @@ export default function GUI({ title }: { title: string }) {
     <Entries href={href} arches={arches} title={title}>
       {/*<Entry version="1.1.8" date={new Date("2024-07-17")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem>
+          <ChangeItem enable={title === "Linux GUI"}>
+            Adds the ability to mark Resources as favorites.
+          </ChangeItem>
+          <ChangeItem enable={title === "Windows"}>
             This is a maintenance release with no user-facing changes.
           </ChangeItem>
         </ul>

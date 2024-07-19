@@ -181,6 +181,9 @@ impl Item {
         if let Some(accel) = &self.keyboard_accelerator {
             item = item.accelerator(accel);
         }
+        if self.selected {
+            item = item.selected();
+        }
         item
     }
 

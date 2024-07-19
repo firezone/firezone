@@ -231,7 +231,9 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         {
             submenu = submenu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
-        menu = menu.separator().add_submenu("Non-favorite resources", submenu);
+        menu = menu
+            .separator()
+            .add_submenu("Non-favorite resources", submenu);
     }
     menu.add_bottom_section("Disconnect and quit Firezone")
 }
@@ -344,45 +346,72 @@ mod tests {
             .item(Event::SignOut, "Sign out")
             .separator()
             .disabled("Resources")
-            .add_submenu("172.172.0.0/16", Menu::default()
-                .copyable("cidr resource")
-                .item(Event::AddFavorite(ResourceId::from_str("73037362-715d-4a83-a749-f18eadd970e6")?), "Add favorite")
-                .separator()
-                .disabled("Resource")
-                .copyable("172.172.0.0/16")
-                .copyable("172.172.0.0/16")
-                .separator()
-                .disabled("Site")
-                .copyable("test")
-                .copyable("[-] No activity")
+            .add_submenu(
+                "172.172.0.0/16",
+                Menu::default()
+                    .copyable("cidr resource")
+                    .item(
+                        Event::AddFavorite(ResourceId::from_str(
+                            "73037362-715d-4a83-a749-f18eadd970e6",
+                        )?),
+                        "Add favorite",
+                    )
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("172.172.0.0/16")
+                    .copyable("172.172.0.0/16")
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable("[-] No activity"),
             )
-            .add_submenu("gitlab.mycorp.com", Menu::default()
-                .copyable("dns resource")
-                .item(Event::AddFavorite(ResourceId::from_str("03000143-e25e-45c7-aafb-144990e57dcd")?), "Add favorite")
-                .separator()
-                .disabled("Resource")
-                .copyable("gitlab.mycorp.com")
-                .copyable("gitlab.mycorp.com")
-                .separator()
-                .disabled("Site")
-                .copyable("test")
-                .copyable("[O] Gateway connected")
+            .add_submenu(
+                "gitlab.mycorp.com",
+                Menu::default()
+                    .copyable("dns resource")
+                    .item(
+                        Event::AddFavorite(ResourceId::from_str(
+                            "03000143-e25e-45c7-aafb-144990e57dcd",
+                        )?),
+                        "Add favorite",
+                    )
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("gitlab.mycorp.com")
+                    .copyable("gitlab.mycorp.com")
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable("[O] Gateway connected"),
             )
-            .add_submenu("Internet", Menu::default()
-                .copyable("")
-                .item(Event::AddFavorite(ResourceId::from_str("1106047c-cd5d-4151-b679-96b93da7383b")?), "Add favorite")
-                .separator()
-                .disabled("Resource")
-                .copyable("Internet")
-                .copyable("")
-                .separator()
-                .disabled("Site")
-                .copyable("test")
-                .copyable("[X] All Gateways offline")
+            .add_submenu(
+                "Internet",
+                Menu::default()
+                    .copyable("")
+                    .item(
+                        Event::AddFavorite(ResourceId::from_str(
+                            "1106047c-cd5d-4151-b679-96b93da7383b",
+                        )?),
+                        "Add favorite",
+                    )
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("Internet")
+                    .copyable("")
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable("[X] All Gateways offline"),
             )
             .add_bottom_section("Disconnect and quit Firezone"); // Skip testing the bottom section, it's simple
 
-        assert_eq!(actual, expected, "{} != {}", serde_json::to_string_pretty(&actual).unwrap(), serde_json::to_string_pretty(&expected).unwrap());
+        assert_eq!(
+            actual,
+            expected,
+            "{} != {}",
+            serde_json::to_string_pretty(&actual).unwrap(),
+            serde_json::to_string_pretty(&expected).unwrap()
+        );
 
         Ok(())
     }
@@ -390,7 +419,9 @@ mod tests {
     #[test]
     fn some_resources_one_favorite() -> Result<()> {
         let resources = resources();
-        let favorites = HashSet::from([ResourceId::from_str("03000143-e25e-45c7-aafb-144990e57dcd")?]);
+        let favorites = HashSet::from([ResourceId::from_str(
+            "03000143-e25e-45c7-aafb-144990e57dcd",
+        )?]);
         let input = AppState::SignedIn(SignedIn {
             actor_name: "Jane Doe",
             favorite_resources: &favorites,
@@ -402,48 +433,79 @@ mod tests {
             .item(Event::SignOut, "Sign out")
             .separator()
             .disabled("Resources")
-            .add_submenu("gitlab.mycorp.com", Menu::default()
-                .copyable("dns resource")
-                .add_item(item(Event::RemoveFavorite(ResourceId::from_str("03000143-e25e-45c7-aafb-144990e57dcd")?), "Remove favorite").selected())
-                .separator()
-                .disabled("Resource")
-                .copyable("gitlab.mycorp.com")
-                .copyable("gitlab.mycorp.com")
-                .separator()
-                .disabled("Site")
-                .copyable("test")
-                .copyable("[O] Gateway connected")
+            .add_submenu(
+                "gitlab.mycorp.com",
+                Menu::default()
+                    .copyable("dns resource")
+                    .add_item(
+                        item(
+                            Event::RemoveFavorite(ResourceId::from_str(
+                                "03000143-e25e-45c7-aafb-144990e57dcd",
+                            )?),
+                            "Remove favorite",
+                        )
+                        .selected(),
+                    )
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("gitlab.mycorp.com")
+                    .copyable("gitlab.mycorp.com")
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable("[O] Gateway connected"),
             )
             .separator()
-            .add_submenu("Non-favorite resources", Menu::default()
-                .add_submenu("172.172.0.0/16", Menu::default()
-                    .copyable("cidr resource")
-                    .item(Event::AddFavorite(ResourceId::from_str("73037362-715d-4a83-a749-f18eadd970e6")?), "Add favorite")
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("172.172.0.0/16")
-                    .copyable("172.172.0.0/16")
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable("[-] No activity")
-                )
-                .add_submenu("Internet", Menu::default()
-                    .copyable("")
-                    .item(Event::AddFavorite(ResourceId::from_str("1106047c-cd5d-4151-b679-96b93da7383b")?), "Add favorite")
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("Internet")
-                    .copyable("")
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable("[X] All Gateways offline")
-                )
+            .add_submenu(
+                "Non-favorite resources",
+                Menu::default()
+                    .add_submenu(
+                        "172.172.0.0/16",
+                        Menu::default()
+                            .copyable("cidr resource")
+                            .item(
+                                Event::AddFavorite(ResourceId::from_str(
+                                    "73037362-715d-4a83-a749-f18eadd970e6",
+                                )?),
+                                "Add favorite",
+                            )
+                            .separator()
+                            .disabled("Resource")
+                            .copyable("172.172.0.0/16")
+                            .copyable("172.172.0.0/16")
+                            .separator()
+                            .disabled("Site")
+                            .copyable("test")
+                            .copyable("[-] No activity"),
+                    )
+                    .add_submenu(
+                        "Internet",
+                        Menu::default()
+                            .copyable("")
+                            .item(
+                                Event::AddFavorite(ResourceId::from_str(
+                                    "1106047c-cd5d-4151-b679-96b93da7383b",
+                                )?),
+                                "Add favorite",
+                            )
+                            .separator()
+                            .disabled("Resource")
+                            .copyable("Internet")
+                            .copyable("")
+                            .separator()
+                            .disabled("Site")
+                            .copyable("test")
+                            .copyable("[X] All Gateways offline"),
+                    ),
             )
             .add_bottom_section("Disconnect and quit Firezone"); // Skip testing the bottom section, it's simple
 
-        assert_eq!(actual, expected, "{}", serde_json::to_string_pretty(&actual).unwrap());
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            serde_json::to_string_pretty(&actual).unwrap()
+        );
 
         Ok(())
     }
