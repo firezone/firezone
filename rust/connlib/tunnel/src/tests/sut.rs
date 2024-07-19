@@ -256,6 +256,25 @@ impl StateMachineTest for TunnelTest {
                         .set_resources(ref_state.client.inner().all_resources());
                 });
             }
+            Transition::ReconnectPortal => {
+                let ipv4 = state.client.inner().sut.tunnel_ip4().unwrap();
+                let ipv6 = state.client.inner().sut.tunnel_ip6().unwrap();
+                let upstream_dns = ref_state.client.inner().upstream_dns_resolvers.clone();
+                let relays = HashSet::from_iter(map_explode(state.relays.iter(), "client"));
+                let all_resources = ref_state.client.inner().all_resources();
+
+                // Simulate receiving `init`.
+                state.client.exec_mut(|c| {
+                    let _ = c.sut.update_interface_config(Interface {
+                        ipv4,
+                        ipv6,
+                        upstream_dns,
+                    });
+                    c.sut
+                        .update_relays(HashSet::default(), relays, ref_state.now);
+                    c.sut.set_resources(all_resources);
+                });
+            }
         };
         state.advance(ref_state, &mut buffered_transmits);
         assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.

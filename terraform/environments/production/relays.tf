@@ -10,35 +10,35 @@ module "relays" {
   instances = {
     "asia-east1" = {
       cidr_range = "10.129.0.0/24"
-      type       = "f1-micro"
+      type       = "n2-highcpu-2"
       replicas   = 1
-      zones      = ["asia-east1-a"]
+      zones      = ["asia-east1-a", "asia-east1-b", "asia-east1-c"]
     }
 
     "asia-south1" = {
       cidr_range = "10.130.0.0/24"
       type       = "f1-micro"
       replicas   = 1
-      zones      = ["asia-south1-a"]
+      zones      = ["asia-south1-a", "asia-south1-b", "asia-south1-c"]
     }
 
     "australia-southeast1" = {
       cidr_range = "10.131.0.0/24"
       type       = "f1-micro"
       replicas   = 1
-      zones      = ["australia-southeast1-a"]
+      zones      = ["australia-southeast1-a", "australia-southeast1-b", "australia-southeast1-c"]
     }
 
     "europe-west1" = {
       cidr_range = "10.132.0.0/24"
       type       = "f1-micro"
       replicas   = 1
-      zones      = ["europe-west1-d"]
+      zones      = ["europe-west1-b", "europe-west1-c", "europe-west1-d"]
     }
 
     # "me-central1" = {
     #   cidr_range = "10.133.0.0/24"
-    #   type       = "n2-standard-2"
+    #   type       = "n2-highcpu-2"
     #   replicas   = 1
     #   zones      = ["me-central1-a"]
     # }
@@ -47,49 +47,56 @@ module "relays" {
       cidr_range = "10.134.0.0/24"
       type       = "f1-micro"
       replicas   = 1
-      zones      = ["southamerica-east1-b"]
+      zones      = ["southamerica-east1-a", "southamerica-east1-b", "southamerica-east1-c"]
     }
 
     "us-central1" = {
       cidr_range = "10.135.0.0/24"
       type       = "f1-micro"
       replicas   = 1
-      zones      = ["us-central1-b"]
+      zones      = ["us-central1-a", "us-central1-b", "us-central1-c", "us-central1-d", "us-central1-f"]
     }
 
     "us-east1" = {
       cidr_range = "10.136.0.0/24"
       type       = "f1-micro"
-      replicas   = 2
-      zones      = ["us-east1-d"]
+      replicas   = 1
+      zones      = ["us-east1-a", "us-east1-b", "us-east1-c", "us-east1-d"]
     }
 
     "us-west2" = {
       cidr_range = "10.137.0.0/24"
-      type       = "f1-micro"
-      replicas   = 2
-      zones      = ["us-west2-b"]
+      type       = "n2-highcpu-2"
+      replicas   = 1
+      zones      = ["us-west2-a", "us-west2-b", "us-west2-c"]
     }
 
     "europe-central2" = {
       cidr_range = "10.138.0.0/24"
       type       = "f1-micro"
       replicas   = 1
-      zones      = ["europe-central2-c"]
+      zones      = ["europe-central2-a", "europe-central2-b", "europe-central2-c"]
     }
 
     "europe-north1" = {
       cidr_range = "10.139.0.0/24"
       type       = "f1-micro"
       replicas   = 1
-      zones      = ["europe-north1-c"]
+      zones      = ["europe-north1-a", "europe-north1-b", "europe-north1-c"]
     }
 
     "europe-west2" = {
       cidr_range = "10.140.0.0/24"
+      type       = "n2-highcpu-2"
+      replicas   = 1
+      zones      = ["europe-west2-a", "europe-west2-b", "europe-west2-c"]
+    }
+
+    "us-east4" = {
+      cidr_range = "10.141.0.0/24"
       type       = "f1-micro"
       replicas   = 1
-      zones      = ["europe-west2-c"]
+      zones      = ["us-east4-a", "us-east4-b", "us-east4-c"]
     }
   }
 
