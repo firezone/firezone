@@ -80,7 +80,7 @@ impl StubPortal {
 
     pub(crate) fn cidr_resources(
         &self,
-    ) -> impl Iterator<Item = (&ResourceId, &ResourceDescriptionCidr)> + '_ {
+    ) -> impl Iterator<Item = (&ResourceId, &client::ResourceDescriptionCidr)> + '_ {
         self.cidr_resources.iter()
     }
 
