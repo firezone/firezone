@@ -98,6 +98,13 @@ impl<T> Host<T> {
             self.allocate_port(port, AddressFamily::V6);
         }
     }
+
+    pub(crate) fn can_route_to(&self, network: IpNetwork) -> bool {
+        match network {
+            IpNetwork::V4(_) => self.ip4.is_some(),
+            IpNetwork::V6(_) => self.ip6.is_some(),
+        }
+    }
 }
 
 impl<T> Host<T>

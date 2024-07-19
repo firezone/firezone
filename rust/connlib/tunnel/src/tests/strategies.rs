@@ -193,15 +193,8 @@ pub(crate) fn gateways_and_portal() -> impl Strategy<
                         .and_then(|g| gateways.get(g))
                         .is_some_and(|g| {
                             // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
-                            if r.address.is_ipv6() && g.ip6.is_none() {
-                                return false;
-                            }
 
-                            if r.address.is_ipv4() && g.ip4.is_none() {
-                                return false;
-                            }
-
-                            true
+                            g.can_route_to(r.address)
                         })
                 })
             },
