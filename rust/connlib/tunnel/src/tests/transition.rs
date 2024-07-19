@@ -83,6 +83,9 @@ pub(crate) enum Transition {
         ip6: Option<Ipv6Addr>,
         port: u16,
     },
+
+    /// Reconnect to the portal.
+    ReconnectPortal,
 }
 
 pub(crate) fn ping_random_ip<I>(
