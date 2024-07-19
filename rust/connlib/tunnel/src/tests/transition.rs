@@ -1,33 +1,21 @@
-use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
-
-use super::{
-    sim_net::{any_ip_stack, any_port},
-    strategies::*,
-};
+use super::sim_net::{any_ip_stack, any_port};
 use connlib_shared::{
-    messages::{
-        client::{ResourceDescriptionCidr, ResourceDescriptionDns, Site},
-        DnsServer, ResourceId,
-    },
-    proptest::*,
+    messages::{client::ResourceDescription, DnsServer, ResourceId},
     DomainName,
 };
 use hickory_proto::rr::RecordType;
-use ip_network::IpNetwork;
 use proptest::{prelude::*, sample};
-use std::{
-    collections::{HashMap, HashSet},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    str::FromStr,
-};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 /// The possible transitions of the state machine.
 #[derive(Clone, derivative::Derivative)]
 #[derivative(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum Transition {
-    /// Add a new CIDR resource to the client.
-    AddCidrResource { resource: ResourceDescriptionCidr },
+    /// Activate a resource on the client.
+    ActivateResource(ResourceDescription),
+    /// Deactivate a resource on the client.
+    DeactivateResource(ResourceId),
     /// Send an ICMP packet to non-resource IP.
     SendICMPPacketToNonResourceIp {
         src: IpAddr,
@@ -53,12 +41,6 @@ pub(crate) enum Transition {
         identifier: u16,
     },
 
-    /// Add a new DNS resource to the client.
-    AddDnsResource {
-        resource: ResourceDescriptionDns,
-        /// The DNS records to add together with the resource.
-        records: HashMap<DomainName, HashSet<IpAddr>>,
-    },
     /// Send a DNS query.
     SendDnsQuery {
         domain: DomainName,
@@ -73,9 +55,6 @@ pub(crate) enum Transition {
     UpdateSystemDnsServers { servers: Vec<IpAddr> },
     /// The upstream DNS servers changed.
     UpdateUpstreamDnsServers { servers: Vec<DnsServer> },
-
-    /// Remove a resource from the client.
-    RemoveResource(ResourceId),
 
     /// Roam the client to a new pair of sockets.
     RoamClient {
@@ -168,7 +147,7 @@ where
 {
     (
         domain,
-        dns_server.prop_map(Into::into),
+        dns_server.prop_map_into(),
         prop_oneof![Just(RecordType::A), Just(RecordType::AAAA)],
         any::<u16>(),
     )
@@ -180,71 +159,6 @@ where
                 dns_server,
             },
         )
-}
-
-// Adds a non-overlapping CIDR resource with the gateway
-pub(crate) fn add_cidr_resource(
-    sites: impl Strategy<Value = Vec<Site>>,
-) -> impl Strategy<Value = Transition> {
-    cidr_resource(any_ip_network(8), sites)
-        .prop_filter(
-            "tests doesn't support yet CIDR resources overlapping DNS resources",
-            |r| {
-                // This works because CIDR resourc's host mask is always <8 while IP resource is 21
-                !IpNetwork::from_str(IPV4_RESOURCES)
-                    .unwrap()
-                    .contains(r.address.network_address())
-                    && !IpNetwork::from_str(IPV6_RESOURCES)
-                        .unwrap()
-                        .contains(r.address.network_address())
-            },
-        )
-        .prop_map(|resource| Transition::AddCidrResource { resource })
-}
-
-pub(crate) fn non_wildcard_dns_resource(
-    site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = Transition> {
-    (dns_resource(site.prop_map(|s| vec![s])), resolved_ips()).prop_map(
-        |(resource, resolved_ips)| Transition::AddDnsResource {
-            records: HashMap::from([(resource.address.parse().unwrap(), resolved_ips)]),
-            resource,
-        },
-    )
-}
-
-pub(crate) fn star_wildcard_dns_resource(
-    site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = Transition> {
-    dns_resource(site.prop_map(|s| vec![s])).prop_flat_map(move |r| {
-        let wildcard_address = format!("*.{}", r.address);
-
-        let records = subdomain_records(r.address, domain_name(1..3));
-        let resource = Just(ResourceDescriptionDns {
-            address: wildcard_address,
-            ..r
-        });
-
-        (resource, records)
-            .prop_map(|(resource, records)| Transition::AddDnsResource { records, resource })
-    })
-}
-
-pub(crate) fn question_mark_wildcard_dns_resource(
-    site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = Transition> {
-    dns_resource(site.prop_map(|s| vec![s])).prop_flat_map(move |r| {
-        let wildcard_address = format!("?.{}", r.address);
-
-        let records = subdomain_records(r.address, domain_label());
-        let resource = Just(ResourceDescriptionDns {
-            address: wildcard_address,
-            ..r
-        });
-
-        (resource, records)
-            .prop_map(|(resource, records)| Transition::AddDnsResource { records, resource })
-    })
 }
 
 pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {

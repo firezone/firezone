@@ -4,14 +4,15 @@ use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
+use crate::dns::is_subdomain;
 use crate::tests::assertions::*;
 use crate::tests::sim_relay::map_explode;
 use crate::tests::transition::Transition;
 use crate::{dns::DnsQuery, ClientEvent, GatewayEvent, Request};
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::{Interface, RelayId};
+use connlib_shared::messages::client::ResourceDescription;
 use connlib_shared::{
-    messages::{client::ResourceDescription, ClientId, GatewayId},
+    messages::{ClientId, GatewayId, Interface, RelayId},
     DomainName,
 };
 use firezone_relay::IpStack;
@@ -153,15 +154,29 @@ impl StateMachineTest for TunnelTest {
 
         // Act: Apply the transition
         match transition {
-            Transition::AddCidrResource { resource } => {
-                state
-                    .client
-                    .exec_mut(|c| c.sut.add_resource(ResourceDescription::Cidr(resource)));
+            Transition::ActivateResource(resource) => {
+                state.client.exec_mut(|c| {
+                    // Flush DNS.
+                    match &resource {
+                        ResourceDescription::Dns(r) => {
+                            c.dns_records.retain(|domain, _| {
+                                if is_subdomain(domain, &r.address) {
+                                    return false;
+                                }
+
+                                true
+                            });
+                        }
+                        ResourceDescription::Cidr(_) => {}
+                        ResourceDescription::Internet(_) => {}
+                    }
+
+                    c.sut.add_resource(resource);
+                });
             }
-            Transition::AddDnsResource { resource, .. } => state
-                .client
-                .exec_mut(|c| c.sut.add_resource(ResourceDescription::Dns(resource))),
-            Transition::RemoveResource(id) => state.client.exec_mut(|c| c.sut.remove_resource(id)),
+            Transition::DeactivateResource(id) => {
+                state.client.exec_mut(|c| c.sut.remove_resource(id))
+            }
             Transition::SendICMPPacketToNonResourceIp {
                 src,
                 dst,
@@ -173,6 +188,7 @@ impl StateMachineTest for TunnelTest {
                 dst,
                 seq,
                 identifier,
+                ..
             } => {
                 let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
 
@@ -188,6 +204,7 @@ impl StateMachineTest for TunnelTest {
                 seq,
                 identifier,
                 resolved_ip,
+                ..
             } => {
                 let available_ips = state
                     .client

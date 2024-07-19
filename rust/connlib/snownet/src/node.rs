@@ -80,6 +80,8 @@ pub enum Client {}
 /// We favor these generic parameters over having our own IDs to avoid mapping back and forth in upper layers.
 pub struct Node<T, TId, RId> {
     private_key: StaticSecret,
+    public_key: PublicKey,
+
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
     host_candidates: HashSet<Candidate>,
@@ -126,6 +128,7 @@ where
         let public_key = &(&private_key).into();
         Self {
             private_key,
+            public_key: *public_key,
             marker: Default::default(),
             index: IndexLfsr::default(),
             rate_limiter: Arc::new(RateLimiter::new(public_key, HANDSHAKE_RATE_LIMIT)),
@@ -175,7 +178,7 @@ where
     }
 
     pub fn public_key(&self) -> PublicKey {
-        (&self.private_key).into()
+        self.public_key
     }
 
     pub fn connection_id(&self, key: PublicKey) -> Option<TId> {

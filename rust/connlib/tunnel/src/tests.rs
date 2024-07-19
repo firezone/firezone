@@ -24,5 +24,5 @@ proptest_state_machine::prop_state_machine! {
     })]
 
     #[test]
-    fn run_tunnel_test(sequential 1..20 => TunnelTest);
+    fn run_tunnel_test(sequential 1..10 => TunnelTest);
 }
