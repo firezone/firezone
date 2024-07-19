@@ -280,15 +280,13 @@ impl ReferenceStateMachine for ReferenceState {
                 });
             }
             Transition::DeactivateResource(id) => {
-                state
-                    .client
-                    .exec_mut(|client| client.cidr_resources.retain(|_, r| &r.id != id));
-                state
-                    .client
-                    .exec_mut(|client| client.connected_cidr_resources.remove(id));
-                state
-                    .client
-                    .exec_mut(|client| client.dns_resources.remove(id));
+                state.client.exec_mut(|client| {
+                    client.cidr_resources.retain(|_, r| &r.id != id);
+                    client.dns_resources.remove(id);
+
+                    client.connected_cidr_resources.remove(id);
+                    client.connected_dns_resources.retain(|(r, _)| r != id);
+                });
             }
             Transition::SendDnsQuery {
                 domain,
