@@ -77,7 +77,7 @@ defmodule API.Schemas.Identity do
     alias API.Schemas.Identity
 
     OpenApiSpex.schema(%{
-      title: "Identity List Response",
+      title: "IdentityListResponse",
       description: "Response schema for multiple Identities",
       type: :object,
       properties: %{
