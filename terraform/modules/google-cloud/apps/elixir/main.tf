@@ -112,6 +112,7 @@ resource "google_compute_instance_template" "application" {
     source_image = data.google_compute_image.coreos.self_link
     auto_delete  = true
     boot         = true
+    disk_type    = var.compute_boot_disk_type
   }
 
   network_interface {
