@@ -12,7 +12,7 @@ use futures::{
     task::{Context, Poll},
     Future as _, SinkExt as _, Stream as _,
 };
-use std::{net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
+use std::{path::PathBuf, pin::pin, sync::Arc, time::Duration};
 use tokio::{sync::mpsc, time::Instant};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
@@ -72,8 +72,8 @@ impl Default for Cmd {
 pub enum ClientMsg {
     Connect { api_url: String, token: String },
     Disconnect,
+    DnsChanged,
     Reconnect,
-    SetDns(Vec<IpAddr>),
 }
 
 /// Only called from the GUI Client's build of the IPC service
@@ -386,11 +386,13 @@ impl<'a> Handler<'a> {
                 .as_mut()
                 .context("No connlib session")?
                 .reconnect(),
-            ClientMsg::SetDns(v) => self
-                .connlib
-                .as_mut()
-                .context("No connlib session")?
-                .set_dns(v),
+            ClientMsg::DnsChanged => {
+                let resolvers = crate::dns_control::system_resolvers_for_gui().unwrap_or_default();
+                self.connlib
+                    .as_mut()
+                    .context("No connlib session")?
+                    .set_dns(resolvers);
+            }
         }
         Ok(())
     }

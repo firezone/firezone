@@ -65,7 +65,8 @@
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
 use anyhow::Result;
-use std::thread;
+use futures::future::Either;
+use std::{pin::pin, thread};
 use tokio::sync::{mpsc, oneshot};
 use windows::{
     core::{Interface, Result as WinResult, GUID},
@@ -124,7 +125,7 @@ struct WorkerInner {
 }
 
 pub(crate) fn dns_notifier(tokio_handle: tokio::runtime::Handle) -> Result<Worker> {
-    Worker::new("DNS listener", move |tx, mut shutdown_rx| {
+    Worker::new("DNS listener", move |tx, shutdown_rx| {
         // Do `block_on` so we use our own worker thread
         tokio_handle.block_on(async move {
             // Use `LocalSet` so we can have the runtime put all our tasks
@@ -147,11 +148,14 @@ pub(crate) fn dns_notifier(tokio_handle: tokio::runtime::Handle) -> Result<Worke
 ///
 /// On Windows this must run inside a worker thread because `HANDLE` is `!Send` as of
 /// `windows` 0.58.0.
-async fn dns_worker_task(tx: mpsc::Sender<()>, shutdown_rx: oneshot::Receiver<()>) -> Result<()> {
+async fn dns_worker_task(
+    tx: mpsc::Sender<()>,
+    mut shutdown_rx: oneshot::Receiver<()>,
+) -> Result<()> {
     let mut dns_listener = async_dns::CombinedListener::new()?;
     loop {
-        match futures::future::select(&mut shutdown_rx, dns_listener.notified()).await {
-            Either::Left(((), _)) => break,
+        match futures::future::select(&mut shutdown_rx, pin!(dns_listener.notified())).await {
+            Either::Left((_, _)) => break,
             Either::Right((Err(error), _)) => {
                 tracing::error!(?error, "Error while listening for DNS changes");
                 break;
@@ -209,7 +213,7 @@ impl Worker {
         inner
             .shutdown_tx
             .send(())
-            .map_err(|_| Error::CouldntStopWorkerThread)?;
+            .map_err(|_| Error::CouldntStopWorker)?;
         match inner.thread.join() {
             Err(e) => std::panic::resume_unwind(e),
             Ok(x) => x?,

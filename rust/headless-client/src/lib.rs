@@ -25,8 +25,7 @@ use platform::udp_socket_factory;
 
 /// Generate a persistent device ID, stores it to disk, and reads it back.
 pub(crate) mod device_id;
-// Pub because the GUI reads the system resolvers
-pub mod dns_control;
+mod dns_control;
 mod ipc_service;
 pub mod known_dirs;
 mod signals;

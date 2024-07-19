@@ -12,4 +12,4 @@ pub(crate) use platform::{system_resolvers, DnsController};
 
 // TODO: Move DNS and network change listening to the IPC service, so this won't
 // need to be public.
-pub use platform::system_resolvers_for_gui;
+pub(crate) use platform::system_resolvers_for_gui;

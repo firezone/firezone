@@ -10,7 +10,7 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use connlib_client_shared::callbacks::ResourceDescription;
-use firezone_headless_client::IpcServerMsg;
+use firezone_headless_client::{IpcClientMsg, IpcServerMsg};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     path::PathBuf,
@@ -821,10 +821,9 @@ async fn run_controller(
             },
             () = dns_notifier.notified() => {
                 if controller.status.connlib_is_up() {
-                    let resolvers = firezone_headless_client::dns_control::system_resolvers_for_gui()
-                    .unwrap_or_default();
-                    tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
-                    controller.ipc_client.set_dns(resolvers).await?;
+                    // On Linux this should just happen every 5 seconds
+                    tracing::trace!("Telling connlib that DNS servers may have changed");
+                    controller.ipc_client.send_msg(&IpcClientMsg::DnsChanged).await?;
                 }
             },
             req = rx.recv() => {
