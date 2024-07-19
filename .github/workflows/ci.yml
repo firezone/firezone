@@ -224,6 +224,7 @@ jobs:
       - name: Seed database
         run:
           docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
+      - uses: bencherdev/bencher@main
       - name: Start docker compose in the background
         run: |
           # We need to increase the log level to make sure that they don't hold off storm of packets
@@ -241,6 +242,12 @@ jobs:
         timeout-minutes: 5
         env:
           TEST_NAME: ${{ matrix.test_name }}
+          BENCHER_PROJECT: firezone-1l75jv1z
+          BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+          BENCHER_BRANCH: ${{ github.head_ref || github.ref_name }}
+          BENCHER_BRANCH_START: ${{ github.base_ref }}
+          BENCHER_TESTBED: github-actions
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./scripts/tests/perf/${{ matrix.test_name }}.sh
       - name: 'Save performance test results: ${{ matrix.test_name }}'
         uses: actions/upload-artifact@v4
