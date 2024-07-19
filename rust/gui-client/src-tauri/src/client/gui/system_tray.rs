@@ -8,13 +8,13 @@
 use anyhow::Result;
 use connlib_client_shared::callbacks::{ResourceDescription, Status};
 use connlib_shared::messages::ResourceId;
-use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use tauri::{
-    CustomMenuItem, SystemTray, SystemTrayHandle, SystemTrayMenu, SystemTrayMenuItem,
-    SystemTraySubmenu,
-};
+use tauri::{SystemTray, SystemTrayHandle};
 use url::Url;
+
+mod builder;
+
+pub(crate) use builder::{copyable, item, Event, Item, Menu, Window};
 
 // Figma is the source of truth for the tray icons
 // <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=OGFabKWPx7PRUZmq-0>
@@ -24,30 +24,10 @@ const SIGNED_OUT_ICON: &[u8] = include_bytes!("../../../icons/tray/Signed out.pn
 const TOOLTIP: &str = "Firezone";
 const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
 
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub(crate) enum Event {
-    AddFavorite(ResourceId),
-    AdminPortal,
-    CancelSignIn,
-    Copy(String),
-    RemoveFavorite(ResourceId),
-    SignIn,
-    SignOut,
-    ShowWindow(Window),
-    Url(Url),
-    Quit,
-}
-
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub(crate) enum Window {
-    About,
-    Settings,
-}
-
 pub(crate) fn loading() -> SystemTray {
     SystemTray::new()
         .with_icon(tauri::Icon::Raw(BUSY_ICON.into()))
-        .with_menu(Menu::Loading.build())
+        .with_menu(AppState::Loading.build())
         .with_tooltip(TOOLTIP)
 }
 
@@ -56,7 +36,7 @@ pub(crate) struct Tray {
     last_icon_set: Icon,
 }
 
-pub(crate) enum Menu<'a> {
+pub(crate) enum AppState<'a> {
     Loading,
     SignedOut,
     WaitingForBrowser,
@@ -71,18 +51,14 @@ pub(crate) struct SignedIn<'a> {
 }
 
 impl<'a> SignedIn<'a> {
-    fn has_any_favorites(&self) -> bool {
-        !self.favorite_resources.is_empty()
-    }
-
     fn is_favorite(&self, res: &ResourceDescription) -> bool {
         self.favorite_resources.contains(&res.id())
     }
 
     /// Builds the submenu that has the resource address, name, desc,
     /// sites online, etc.
-    fn resource_submenu(&self, res: &ResourceDescription) -> SystemTrayMenu {
-        let submenu = SystemTrayMenu::new().add_item(resource_header(res));
+    fn resource_submenu(&self, res: &ResourceDescription) -> Menu {
+        let submenu = Menu::default().add_item(resource_header(res));
 
         let submenu = if self.is_favorite(res) {
             submenu.add_item(item(Event::RemoveFavorite(res.id()), "Remove favorite").selected())
@@ -107,15 +83,15 @@ impl<'a> SignedIn<'a> {
             submenu
                 .separator()
                 .disabled("Site")
-                .item(None, &site.name)
-                .item(None, status)
+                .copyable(&site.name) // Hope this is okay - The code is simpler if every enabled item sends an `Event` on click
+                .copyable(status)
         } else {
             submenu
         }
     }
 }
 
-fn resource_header(res: &ResourceDescription) -> CustomMenuItem {
+fn resource_header(res: &ResourceDescription) -> Item {
     let Some(address_description) = res.address_description() else {
         return copyable(&res.pastable());
     };
@@ -153,15 +129,17 @@ impl Tray {
         }
     }
 
-    pub(crate) fn update(&mut self, menu: Menu) -> Result<()> {
-        let new_icon = match &menu {
-            Menu::Loading | Menu::WaitingForBrowser | Menu::WaitingForConnlib => Icon::Busy,
-            Menu::SignedOut => Icon::SignedOut,
-            Menu::SignedIn { .. } => Icon::SignedIn,
+    pub(crate) fn update(&mut self, state: AppState) -> Result<()> {
+        let new_icon = match &state {
+            AppState::Loading | AppState::WaitingForBrowser | AppState::WaitingForConnlib => {
+                Icon::Busy
+            }
+            AppState::SignedOut => Icon::SignedOut,
+            AppState::SignedIn { .. } => Icon::SignedIn,
         };
 
         self.handle.set_tooltip(TOOLTIP)?;
-        self.handle.set_menu(menu.build())?;
+        self.handle.set_menu(state.build())?;
         self.set_icon(new_icon)?;
 
         Ok(())
@@ -192,28 +170,34 @@ impl Icon {
     }
 }
 
-impl<'a> Menu<'a> {
-    fn build(self) -> SystemTrayMenu {
+impl<'a> AppState<'a> {
+    fn build(self) -> tauri::SystemTrayMenu {
+        self.to_menu().build()
+    }
+
+    fn to_menu(self) -> Menu {
         match self {
-            Menu::Loading => SystemTrayMenu::new().disabled("Loading..."),
-            Menu::SignedOut => SystemTrayMenu::new()
+            Self::Loading => Menu::default().disabled("Loading..."),
+            Self::SignedOut => Menu::default()
                 .item(Event::SignIn, "Sign In")
                 .add_bottom_section(QUIT_TEXT_SIGNED_OUT),
-            Menu::WaitingForBrowser => signing_in("Waiting for browser..."),
-            Menu::WaitingForConnlib => signing_in("Signing In..."),
-            Menu::SignedIn(x) => signed_in(&x),
+            Self::WaitingForBrowser => signing_in("Waiting for browser..."),
+            Self::WaitingForConnlib => signing_in("Signing In..."),
+            Self::SignedIn(x) => signed_in(&x),
         }
     }
 }
 
-fn signed_in(signed_in: &SignedIn) -> SystemTrayMenu {
+fn signed_in(signed_in: &SignedIn) -> Menu {
     let SignedIn {
         actor_name,
         favorite_resources,
         resources,
     } = signed_in;
 
-    let mut menu = SystemTrayMenu::new()
+    let has_any_favorites = !favorite_resources.is_empty();
+
+    let mut menu = Menu::default()
         .disabled(format!("Signed in as {actor_name}"))
         .item(Event::SignOut, "Sign out")
         .separator()
@@ -223,132 +207,244 @@ fn signed_in(signed_in: &SignedIn) -> SystemTrayMenu {
         resource_count = resources.len(),
         "Building signed-in tray menu"
     );
-    if signed_in.has_any_favorites() {
+    if has_any_favorites {
+        // The user has some favorites and they're in the list, so only show those
         for res in resources
             .iter()
             .filter(|res| favorite_resources.contains(&res.id()))
         {
-            menu = menu.add_submenu(SystemTraySubmenu::new(
-                res.name(),
-                signed_in.resource_submenu(res),
-            ));
+            menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
     } else {
         // No favorites, show every Resource normally, just like before
         // the favoriting feature was created
         for res in *resources {
-            menu = menu.add_submenu(SystemTraySubmenu::new(
-                res.name(),
-                signed_in.resource_submenu(res),
-            ));
+            menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
     }
 
-    if signed_in.has_any_favorites() {
-        let mut submenu = SystemTrayMenu::new();
+    if has_any_favorites {
+        let mut submenu = Menu::default();
         for res in resources
             .iter()
             .filter(|res| !favorite_resources.contains(&res.id()))
         {
-            submenu = submenu.add_submenu(SystemTraySubmenu::new(
-                res.name(),
-                signed_in.resource_submenu(res),
-            ));
+            submenu = submenu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
-        menu = menu.add_submenu(SystemTraySubmenu::new("Non-favorite resources", submenu));
+        menu = menu.separator().add_submenu("Non-favorite resources", submenu);
     }
     menu.add_bottom_section("Disconnect and quit Firezone")
 }
 
-fn signing_in(waiting_message: &str) -> SystemTrayMenu {
-    SystemTrayMenu::new()
+fn signing_in(waiting_message: &str) -> Menu {
+    Menu::default()
         .disabled(waiting_message)
         .item(Event::CancelSignIn, "Cancel sign-in")
         .add_bottom_section(QUIT_TEXT_SIGNED_OUT)
 }
 
-trait FirezoneMenu {
-    fn accelerated(self, id: Event, title: &str, accelerator: &str) -> Self;
-    fn add_bottom_section(self, quit_text: &str) -> Self;
-    fn copyable(self, s: &str) -> Self;
-    fn disabled<S: Into<String>>(self, title: S) -> Self;
-    fn item<E: Into<Option<Event>>, S: Into<String>>(self, id: E, title: S) -> Self;
-    fn separator(self) -> Self;
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+    use std::str::FromStr as _;
 
-impl FirezoneMenu for SystemTrayMenu {
-    /// Appends an item with an event and a keyboard accelerator
-    ///
-    /// Doesn't work on Windows: <https://github.com/tauri-apps/wry/issues/451>
-    fn accelerated(self, id: Event, title: &str, accelerator: &str) -> Self {
-        self.add_item(item(id, title).accelerator(accelerator))
+    fn resources() -> Vec<ResourceDescription> {
+        let s = r#"[
+            {
+                "id": "73037362-715d-4a83-a749-f18eadd970e6",
+                "type": "cidr",
+                "name": "172.172.0.0/16",
+                "address": "172.172.0.0/16",
+                "address_description": "cidr resource",
+                "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                "status": "Unknown"
+            },
+            {
+                "id": "03000143-e25e-45c7-aafb-144990e57dcd",
+                "type": "dns",
+                "name": "gitlab.mycorp.com",
+                "address": "gitlab.mycorp.com",
+                "address_description": "dns resource",
+                "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                "status": "Online"
+            },
+            {
+                "id": "1106047c-cd5d-4151-b679-96b93da7383b",
+                "type": "internet",
+                "name": "internet",
+                "address": "0.0.0.0/0",
+                "address_description": "The whole entire Internet",
+                "sites": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
+                "status": "Offline"
+            }
+        ]"#;
+
+        serde_json::from_str(s).unwrap()
     }
 
-    /// Appends things that always show, like About, Settings, Help, Quit, etc.
-    fn add_bottom_section(self, quit_text: &str) -> Self {
-        self.separator()
-            .item(Event::ShowWindow(Window::About), "About Firezone")
-            .item(Event::AdminPortal, "Admin Portal...")
-            .add_submenu(SystemTraySubmenu::new(
-                "Help",
-                SystemTrayMenu::new()
-                    .item(
-                        Event::Url(utm_url("https://www.firezone.dev/kb")),
-                        "Documentation...",
-                    )
-                    .item(
-                        Event::Url(utm_url("https://www.firezone.dev/support")),
-                        "Support...",
-                    ),
-            ))
-            .accelerated(
-                Event::ShowWindow(Window::Settings),
-                "Settings",
-                "Ctrl+Shift+,",
+    #[test]
+    fn no_resources_no_favorites() -> Result<()> {
+        let resources = vec![];
+        let favorites = HashSet::default();
+        let input = AppState::SignedIn(SignedIn {
+            actor_name: "Jane Doe",
+            favorite_resources: &favorites,
+            resources: &resources,
+        });
+        let actual = input.to_menu();
+        let expected = Menu::default()
+            .disabled("Signed in as Jane Doe")
+            .item(Event::SignOut, "Sign out")
+            .separator()
+            .disabled("Resources")
+            .add_bottom_section("Disconnect and quit Firezone"); // Skip testing the bottom section, it's simple
+
+        assert_eq!(actual, expected, "{actual:#?} != {expected:#?}");
+
+        Ok(())
+    }
+
+    #[test]
+    fn no_resources_invalid_favorite() -> Result<()> {
+        let resources = vec![];
+        let favorites = HashSet::from([ResourceId::from_u128(42)]);
+        let input = AppState::SignedIn(SignedIn {
+            actor_name: "Jane Doe",
+            favorite_resources: &favorites,
+            resources: &resources,
+        });
+        let actual = input.to_menu();
+        let expected = Menu::default()
+            .disabled("Signed in as Jane Doe")
+            .item(Event::SignOut, "Sign out")
+            .separator()
+            .disabled("Resources")
+            .separator()
+            .add_submenu("Non-favorite resources", Menu::default()) // The empty submenu here feels odd
+            .add_bottom_section("Disconnect and quit Firezone"); // Skip testing the bottom section, it's simple
+
+        assert_eq!(actual, expected, "{actual:#?} != {expected:#?}");
+
+        Ok(())
+    }
+
+    #[test]
+    fn some_resources_no_favorites() -> Result<()> {
+        let resources = resources();
+        let favorites = HashSet::default();
+        let input = AppState::SignedIn(SignedIn {
+            actor_name: "Jane Doe",
+            favorite_resources: &favorites,
+            resources: &resources,
+        });
+        let actual = input.to_menu();
+        let expected = Menu::default()
+            .disabled("Signed in as Jane Doe")
+            .item(Event::SignOut, "Sign out")
+            .separator()
+            .disabled("Resources")
+            .add_submenu("172.172.0.0/16", Menu::default()
+                .copyable("cidr resource")
+                .item(Event::AddFavorite(ResourceId::from_str("73037362-715d-4a83-a749-f18eadd970e6")?), "Add favorite")
+                .separator()
+                .disabled("Resource")
+                .copyable("172.172.0.0/16")
+                .copyable("172.172.0.0/16")
+                .separator()
+                .disabled("Site")
+                .copyable("test")
+                .copyable("[-] No activity")
+            )
+            .add_submenu("gitlab.mycorp.com", Menu::default()
+                .copyable("dns resource")
+                .item(Event::AddFavorite(ResourceId::from_str("03000143-e25e-45c7-aafb-144990e57dcd")?), "Add favorite")
+                .separator()
+                .disabled("Resource")
+                .copyable("gitlab.mycorp.com")
+                .copyable("gitlab.mycorp.com")
+                .separator()
+                .disabled("Site")
+                .copyable("test")
+                .copyable("[O] Gateway connected")
+            )
+            .add_submenu("Internet", Menu::default()
+                .copyable("")
+                .item(Event::AddFavorite(ResourceId::from_str("1106047c-cd5d-4151-b679-96b93da7383b")?), "Add favorite")
+                .separator()
+                .disabled("Resource")
+                .copyable("Internet")
+                .copyable("")
+                .separator()
+                .disabled("Site")
+                .copyable("test")
+                .copyable("[X] All Gateways offline")
+            )
+            .add_bottom_section("Disconnect and quit Firezone"); // Skip testing the bottom section, it's simple
+
+        assert_eq!(actual, expected, "{} != {}", serde_json::to_string_pretty(&actual).unwrap(), serde_json::to_string_pretty(&expected).unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn some_resources_one_favorite() -> Result<()> {
+        let resources = resources();
+        let favorites = HashSet::from([ResourceId::from_str("03000143-e25e-45c7-aafb-144990e57dcd")?]);
+        let input = AppState::SignedIn(SignedIn {
+            actor_name: "Jane Doe",
+            favorite_resources: &favorites,
+            resources: &resources,
+        });
+        let actual = input.to_menu();
+        let expected = Menu::default()
+            .disabled("Signed in as Jane Doe")
+            .item(Event::SignOut, "Sign out")
+            .separator()
+            .disabled("Resources")
+            .add_submenu("gitlab.mycorp.com", Menu::default()
+                .copyable("dns resource")
+                .add_item(item(Event::RemoveFavorite(ResourceId::from_str("03000143-e25e-45c7-aafb-144990e57dcd")?), "Remove favorite").selected())
+                .separator()
+                .disabled("Resource")
+                .copyable("gitlab.mycorp.com")
+                .copyable("gitlab.mycorp.com")
+                .separator()
+                .disabled("Site")
+                .copyable("test")
+                .copyable("[O] Gateway connected")
             )
             .separator()
-            .accelerated(Event::Quit, quit_text, "Ctrl+Q")
+            .add_submenu("Non-favorite resources", Menu::default()
+                .add_submenu("172.172.0.0/16", Menu::default()
+                    .copyable("cidr resource")
+                    .item(Event::AddFavorite(ResourceId::from_str("73037362-715d-4a83-a749-f18eadd970e6")?), "Add favorite")
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("172.172.0.0/16")
+                    .copyable("172.172.0.0/16")
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable("[-] No activity")
+                )
+                .add_submenu("Internet", Menu::default()
+                    .copyable("")
+                    .item(Event::AddFavorite(ResourceId::from_str("1106047c-cd5d-4151-b679-96b93da7383b")?), "Add favorite")
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("Internet")
+                    .copyable("")
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable("[X] All Gateways offline")
+                )
+            )
+            .add_bottom_section("Disconnect and quit Firezone"); // Skip testing the bottom section, it's simple
+
+        assert_eq!(actual, expected, "{}", serde_json::to_string_pretty(&actual).unwrap());
+
+        Ok(())
     }
-
-    /// Appends a menu item that copies its title when clicked
-    fn copyable(self, s: &str) -> Self {
-        self.add_item(copyable(s))
-    }
-
-    /// Appends a disabled item with no accelerator or event
-    fn disabled<S: Into<String>>(self, title: S) -> Self {
-        self.add_item(item(None, title).disabled())
-    }
-
-    /// Appends a generic menu item
-    fn item<E: Into<Option<Event>>, S: Into<String>>(self, id: E, title: S) -> Self {
-        self.add_item(item(id, title))
-    }
-
-    /// Appends a separator
-    fn separator(self) -> Self {
-        self.add_native_item(SystemTrayMenuItem::Separator)
-    }
-}
-
-/// Creates a menu item that copies its title when clicked
-fn copyable(s: &str) -> CustomMenuItem {
-    item(Event::Copy(s.to_string()), s)
-}
-
-/// Creates a generic menu item with one of our events attached
-fn item<E: Into<Option<Event>>, S: Into<String>>(id: E, title: S) -> CustomMenuItem {
-    CustomMenuItem::new(
-        serde_json::to_string(&id.into())
-            .expect("`serde_json` should always be able to serialize tray menu events"),
-        title,
-    )
-}
-
-fn utm_url(base_url: &str) -> Url {
-    Url::parse(&format!(
-        "{base_url}?utm_source={}-client",
-        std::env::consts::OS
-    ))
-    .expect("Hard-coded URL should always be parsable")
 }
