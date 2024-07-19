@@ -311,7 +311,7 @@ resource "google_compute_managed_ssl_certificate" "default" {
 
 ## Create URL map for the application
 resource "google_compute_url_map" "default" {
-  count = try(google_compute_backend_service.default["http"], null) != null ? 1 : 0
+  count = local.public_application && contains(keys(local.application_ports_by_name), "http") ? 1 : 0
 
   project = var.project_id
 
@@ -326,7 +326,7 @@ resource "google_compute_url_map" "default" {
 
 # Set up HTTP(s) proxies and redirect HTTP to HTTPS
 resource "google_compute_url_map" "https_redirect" {
-  count = try(google_compute_backend_service.default["http"], null) != null ? 1 : 0
+  count = local.public_application && contains(keys(local.application_ports_by_name), "http") ? 1 : 0
 
   project = var.project_id
 
