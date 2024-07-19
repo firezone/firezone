@@ -10,9 +10,11 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use connlib_client_shared::callbacks::ResourceDescription;
+use connlib_shared::messages::ResourceId;
 use firezone_headless_client::IpcServerMsg;
 use secrecy::{ExposeSecret, SecretString};
 use std::{
+    collections::HashSet,
     path::PathBuf,
     str::FromStr,
     time::{Duration, Instant},
@@ -573,6 +575,7 @@ impl Controller {
                         .context("Couldn't hide Welcome window")?;
                 }
             }
+            Req::SystemTrayMenu(TrayMenuEvent::AddFavorite(_resource_id)) => todo!(),
             Req::SystemTrayMenu(TrayMenuEvent::AdminPortal) => tauri::api::shell::open(
                 &self.app.shell_scope(),
                 &self.advanced_settings.auth_base_url,
@@ -598,6 +601,7 @@ impl Controller {
                     Status::TunnelReady{..} => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
                 }
             }
+            Req::SystemTrayMenu(TrayMenuEvent::RemoveFavorite(_resource_id)) => todo!(),
             Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
                 self.show_window(window)?;
                 // When the About or Settings windows are hidden / shown, log the
@@ -696,6 +700,10 @@ impl Controller {
 
     /// Builds a new system tray menu and applies it to the app
     fn refresh_system_tray_menu(&mut self) -> Result<()> {
+        let favorite_resources = HashSet::from([
+            // CloudFlare speed test
+            // ResourceId::from_str("f7ea6dba-564c-4c85-9fb9-01fb920a678e")?
+        ]);
         // TODO: Refactor `Controller` and the auth module so that "Are we logged in?"
         // doesn't require such complicated control flow to answer.
         let menu = if let Some(auth_session) = self.auth.session() {
@@ -705,10 +713,13 @@ impl Controller {
                     system_tray::Menu::SignedOut
                 }
                 Status::Connecting { start_instant: _ } => system_tray::Menu::WaitingForConnlib,
-                Status::TunnelReady { resources } => system_tray::Menu::SignedIn {
-                    actor_name: &auth_session.actor_name,
-                    resources,
-                },
+                Status::TunnelReady { resources } => {
+                    system_tray::Menu::SignedIn(system_tray::SignedIn {
+                        actor_name: &auth_session.actor_name,
+                        favorite_resources: &favorite_resources,
+                        resources,
+                    })
+                }
             }
         } else if self.auth.ongoing_request().is_ok() {
             // Signing in, waiting on deep link callback

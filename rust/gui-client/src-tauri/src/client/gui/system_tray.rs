@@ -7,7 +7,9 @@
 
 use anyhow::Result;
 use connlib_client_shared::callbacks::{ResourceDescription, Status};
+use connlib_shared::messages::ResourceId;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use tauri::{
     CustomMenuItem, SystemTray, SystemTrayHandle, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,
@@ -20,6 +22,27 @@ const BUSY_ICON: &[u8] = include_bytes!("../../../icons/tray/Busy.png");
 const SIGNED_IN_ICON: &[u8] = include_bytes!("../../../icons/tray/Signed in.png");
 const SIGNED_OUT_ICON: &[u8] = include_bytes!("../../../icons/tray/Signed out.png");
 const TOOLTIP: &str = "Firezone";
+const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
+
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) enum Event {
+    AddFavorite(ResourceId),
+    AdminPortal,
+    CancelSignIn,
+    Copy(String),
+    RemoveFavorite(ResourceId),
+    SignIn,
+    SignOut,
+    ShowWindow(Window),
+    Url(Url),
+    Quit,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
+pub(crate) enum Window {
+    About,
+    Settings,
+}
 
 pub(crate) fn loading() -> SystemTray {
     SystemTray::new()
@@ -38,10 +61,74 @@ pub(crate) enum Menu<'a> {
     SignedOut,
     WaitingForBrowser,
     WaitingForConnlib,
-    SignedIn {
-        actor_name: &'a str,
-        resources: &'a [ResourceDescription],
-    },
+    SignedIn(SignedIn<'a>),
+}
+
+pub(crate) struct SignedIn<'a> {
+    pub(crate) actor_name: &'a str,
+    pub(crate) favorite_resources: &'a HashSet<ResourceId>,
+    pub(crate) resources: &'a [ResourceDescription],
+}
+
+impl<'a> SignedIn<'a> {
+    fn has_any_favorites(&self) -> bool {
+        !self.favorite_resources.is_empty()
+    }
+
+    fn is_favorite(&self, res: &ResourceDescription) -> bool {
+        self.favorite_resources.contains(&res.id())
+    }
+
+    /// Builds the submenu that has the resource address, name, desc,
+    /// sites online, etc.
+    fn resource_submenu(&self, res: &ResourceDescription) -> SystemTrayMenu {
+        let submenu = SystemTrayMenu::new().add_item(resource_header(res));
+
+        let submenu = if self.is_favorite(res) {
+            submenu.add_item(item(Event::RemoveFavorite(res.id()), "Remove favorite").selected())
+        } else {
+            submenu.item(Event::AddFavorite(res.id()), "Add favorite")
+        };
+
+        let submenu = submenu
+            .separator()
+            .disabled("Resource")
+            .copyable(res.name())
+            .copyable(res.pastable().as_ref());
+
+        if let Some(site) = res.sites().first() {
+            // Emojis may be causing an issue on some Ubuntu desktop environments.
+            let status = match res.status() {
+                Status::Unknown => "[-] No activity",
+                Status::Online => "[O] Gateway connected",
+                Status::Offline => "[X] All Gateways offline",
+            };
+
+            submenu
+                .separator()
+                .disabled("Site")
+                .item(None, &site.name)
+                .item(None, status)
+        } else {
+            submenu
+        }
+    }
+}
+
+fn resource_header(res: &ResourceDescription) -> CustomMenuItem {
+    let Some(address_description) = res.address_description() else {
+        return copyable(&res.pastable());
+    };
+
+    if address_description.is_empty() {
+        return copyable(&res.pastable());
+    }
+
+    let Ok(url) = Url::parse(address_description) else {
+        return copyable(address_description);
+    };
+
+    item(Event::Url(url), address_description)
 }
 
 #[derive(PartialEq)]
@@ -114,55 +201,20 @@ impl<'a> Menu<'a> {
                 .add_bottom_section(QUIT_TEXT_SIGNED_OUT),
             Menu::WaitingForBrowser => signing_in("Waiting for browser..."),
             Menu::WaitingForConnlib => signing_in("Signing In..."),
-            Menu::SignedIn {
-                actor_name,
-                resources,
-            } => signed_in(actor_name, resources),
+            Menu::SignedIn(x) => signed_in(&x),
         }
     }
 }
 
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub(crate) enum Event {
-    AdminPortal,
-    CancelSignIn,
-    Copy(String),
-    SignIn,
-    SignOut,
-    ShowWindow(Window),
-    Url(Url),
-    Quit,
-}
+fn signed_in(signed_in: &SignedIn) -> SystemTrayMenu {
+    let SignedIn {
+        actor_name,
+        favorite_resources,
+        resources,
+    } = signed_in;
 
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub(crate) enum Window {
-    About,
-    Settings,
-}
-
-const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
-
-fn get_submenu(res: &ResourceDescription) -> SystemTrayMenu {
-    let submenu = SystemTrayMenu::new();
-
-    let Some(address_description) = res.address_description() else {
-        return submenu.copyable(&res.pastable());
-    };
-
-    if address_description.is_empty() {
-        return submenu.copyable(&res.pastable());
-    }
-
-    let Ok(url) = Url::parse(address_description) else {
-        return submenu.copyable(address_description);
-    };
-
-    submenu.item(Event::Url(url), address_description)
-}
-
-fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> SystemTrayMenu {
     let mut menu = SystemTrayMenu::new()
-        .disabled(format!("Signed in as {user_name}"))
+        .disabled(format!("Signed in as {actor_name}"))
         .item(Event::SignOut, "Sign out")
         .separator()
         .disabled("Resources");
@@ -171,34 +223,40 @@ fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> SystemTrayMe
         resource_count = resources.len(),
         "Building signed-in tray menu"
     );
-    for res in resources {
-        let submenu = get_submenu(res);
-
-        let submenu = submenu
-            .separator()
-            .disabled("Resource")
-            .copyable(res.name())
-            .copyable(res.pastable().as_ref());
-
-        let submenu = if let Some(site) = res.sites().first() {
-            // Emojis may be causing an issue on some Ubuntu desktop environments.
-            let status = match res.status() {
-                Status::Unknown => "[-] No activity",
-                Status::Online => "[O] Gateway connected",
-                Status::Offline => "[X] All Gateways offline",
-            };
-
-            submenu
-                .separator()
-                .disabled("Site")
-                .item(None, &site.name)
-                .item(None, status)
-        } else {
-            submenu
-        };
-        menu = menu.add_submenu(SystemTraySubmenu::new(res.name(), submenu));
+    if signed_in.has_any_favorites() {
+        for res in resources
+            .iter()
+            .filter(|res| favorite_resources.contains(&res.id()))
+        {
+            menu = menu.add_submenu(SystemTraySubmenu::new(
+                res.name(),
+                signed_in.resource_submenu(res),
+            ));
+        }
+    } else {
+        // No favorites, show every Resource normally, just like before
+        // the favoriting feature was created
+        for res in *resources {
+            menu = menu.add_submenu(SystemTraySubmenu::new(
+                res.name(),
+                signed_in.resource_submenu(res),
+            ));
+        }
     }
 
+    if signed_in.has_any_favorites() {
+        let mut submenu = SystemTrayMenu::new();
+        for res in resources
+            .iter()
+            .filter(|res| !favorite_resources.contains(&res.id()))
+        {
+            submenu = submenu.add_submenu(SystemTraySubmenu::new(
+                res.name(),
+                signed_in.resource_submenu(res),
+            ));
+        }
+        menu = menu.add_submenu(SystemTraySubmenu::new("Non-favorite resources", submenu));
+    }
     menu.add_bottom_section("Disconnect and quit Firezone")
 }
 
@@ -219,14 +277,14 @@ trait FirezoneMenu {
 }
 
 impl FirezoneMenu for SystemTrayMenu {
-    /// An item with an event and a keyboard accelerator
+    /// Appends an item with an event and a keyboard accelerator
     ///
     /// Doesn't work on Windows: <https://github.com/tauri-apps/wry/issues/451>
     fn accelerated(self, id: Event, title: &str, accelerator: &str) -> Self {
         self.add_item(item(id, title).accelerator(accelerator))
     }
 
-    /// Things that always show, like About, Settings, Help, Quit, etc.
+    /// Appends things that always show, like About, Settings, Help, Quit, etc.
     fn add_bottom_section(self, quit_text: &str) -> Self {
         self.separator()
             .item(Event::ShowWindow(Window::About), "About Firezone")
@@ -252,25 +310,33 @@ impl FirezoneMenu for SystemTrayMenu {
             .accelerated(Event::Quit, quit_text, "Ctrl+Q")
     }
 
+    /// Appends a menu item that copies its title when clicked
     fn copyable(self, s: &str) -> Self {
-        self.item(Event::Copy(s.to_string()), s)
+        self.add_item(copyable(s))
     }
 
-    /// A disabled item with no accelerator or event
+    /// Appends a disabled item with no accelerator or event
     fn disabled<S: Into<String>>(self, title: S) -> Self {
         self.add_item(item(None, title).disabled())
     }
 
+    /// Appends a generic menu item
     fn item<E: Into<Option<Event>>, S: Into<String>>(self, id: E, title: S) -> Self {
         self.add_item(item(id, title))
     }
 
+    /// Appends a separator
     fn separator(self) -> Self {
         self.add_native_item(SystemTrayMenuItem::Separator)
     }
 }
 
-// I just thought this function call was too verbose
+/// Creates a menu item that copies its title when clicked
+fn copyable(s: &str) -> CustomMenuItem {
+    item(Event::Copy(s.to_string()), s)
+}
+
+/// Creates a generic menu item with one of our events attached
 fn item<E: Into<Option<Event>>, S: Into<String>>(id: E, title: S) -> CustomMenuItem {
     CustomMenuItem::new(
         serde_json::to_string(&id.into())
