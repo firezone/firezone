@@ -147,7 +147,7 @@ impl ReferenceStateMachine for ReferenceState {
                 upstream_dns_servers()
                     .prop_map(|servers| Transition::UpdateUpstreamDnsServers { servers }),
             )
-            .with_if_not_empty(1, state.portal.all_resources(), |resource_ids| {
+            .with_if_not_empty(5, state.portal.all_resources(), |resource_ids| {
                 sample::select(resource_ids).prop_map(Transition::ActivateResource)
             })
             .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resource_ids| {
@@ -198,7 +198,7 @@ impl ReferenceStateMachine for ReferenceState {
                 },
             )
             .with_if_not_empty(
-                10,
+                5,
                 (
                     state.all_domains(state.client.inner()),
                     state.client.inner().v4_dns_servers(),
@@ -209,7 +209,7 @@ impl ReferenceStateMachine for ReferenceState {
                 },
             )
             .with_if_not_empty(
-                10,
+                5,
                 (
                     state.all_domains(state.client.inner()),
                     state.client.inner().v6_dns_servers(),

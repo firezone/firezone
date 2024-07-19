@@ -55,7 +55,7 @@ pub(crate) fn global_dns_records() -> impl Strategy<Value = BTreeMap<DomainName,
     collection::btree_map(
         domain_name(2..4).prop_map(|d| d.parse().unwrap()),
         collection::hash_set(any::<IpAddr>(), 1..6),
-        0..15,
+        0..5,
     )
 }
 
