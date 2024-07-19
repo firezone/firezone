@@ -40,6 +40,7 @@ pub(crate) struct ReferenceState {
     /// This is used to e.g. mock DNS resolution on the gateway.
     pub(crate) global_dns_records: BTreeMap<DomainName, HashSet<IpAddr>>,
 
+    pub(crate) drop_direct_client_traffic: bool,
     pub(crate) network: RoutingTable,
 }
 
@@ -67,12 +68,21 @@ impl ReferenceStateMachine for ReferenceState {
             gateways_and_portal(),
             collection::hash_map(relay_id(), relay_prototype(), 1..=2),
             global_dns_records(), // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
+            any::<bool>(),
             Just(Instant::now()),
             Just(Utc::now()),
         )
             .prop_filter_map(
                 "network IPs must be unique",
-                |(c, (gateways, portal, records), relays, mut global_dns, now, utc_now)| {
+                |(
+                    c,
+                    (gateways, portal, records),
+                    relays,
+                    mut global_dns,
+                    drop_direct_client_traffic,
+                    now,
+                    utc_now,
+                )| {
                     let mut routing_table = RoutingTable::default();
 
                     if !routing_table.add_host(c.inner().id, &c) {
@@ -99,6 +109,7 @@ impl ReferenceStateMachine for ReferenceState {
                         relays,
                         portal,
                         global_dns,
+                        drop_direct_client_traffic,
                         now,
                         utc_now,
                         routing_table,
@@ -107,7 +118,7 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .prop_filter(
                 "private keys must be unique",
-                |(c, gateways, _, _, _, _, _, _)| {
+                |(c, gateways, _, _, _, _, _, _, _)| {
                     let different_keys = gateways
                         .iter()
                         .map(|(_, g)| g.inner().key)
@@ -118,7 +129,17 @@ impl ReferenceStateMachine for ReferenceState {
                 },
             )
             .prop_map(
-                |(client, gateways, relays, portal, global_dns_records, now, utc_now, network)| {
+                |(
+                    client,
+                    gateways,
+                    relays,
+                    portal,
+                    global_dns_records,
+                    drop_direct_client_traffic,
+                    now,
+                    utc_now,
+                    network,
+                )| {
                     Self {
                         now,
                         utc_now,
@@ -128,6 +149,7 @@ impl ReferenceStateMachine for ReferenceState {
                         portal,
                         global_dns_records,
                         network,
+                        drop_direct_client_traffic,
                     }
                 },
             )
