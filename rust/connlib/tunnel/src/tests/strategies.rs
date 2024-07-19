@@ -94,6 +94,11 @@ pub(crate) fn tunnel_ip6s() -> impl Iterator<Item = Ipv6Addr> {
 }
 
 /// A [`Strategy`] for sampling a set of gateways and a corresponding [`StubPortal`] that has a set of [`Site`]s configured with those gateways.
+///
+/// Similar as in production, the portal holds a list of DNS and CIDR resources (those are also sampled from the given sites).
+/// Via this site mapping, these resources are implicitly assigned to a gateway.
+///
+/// Lastly, we also sample a set of DNS records for the DNS resources that we created.
 pub(crate) fn gateways_and_portal() -> impl Strategy<
     Value = (
         HashMap<GatewayId, Host<RefGateway>>,
