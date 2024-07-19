@@ -1,7 +1,4 @@
-use connlib_shared::messages::{
-    client::{self, ResourceDescription, ResourceDescriptionCidr},
-    gateway, GatewayId, ResourceId,
-};
+use connlib_shared::messages::{client, gateway, GatewayId, ResourceId};
 use itertools::Itertools;
 use proptest::sample::Selector;
 use std::{
@@ -67,16 +64,16 @@ impl StubPortal {
         }
     }
 
-    pub(crate) fn all_resources(&self) -> Vec<ResourceDescription> {
+    pub(crate) fn all_resources(&self) -> Vec<client::ResourceDescription> {
         self.cidr_resources
             .values()
             .cloned()
-            .map(ResourceDescription::Cidr)
+            .map(client::ResourceDescription::Cidr)
             .chain(
                 self.dns_resources
                     .values()
                     .cloned()
-                    .map(ResourceDescription::Dns),
+                    .map(client::ResourceDescription::Dns),
             )
             .collect()
     }
