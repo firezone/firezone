@@ -5,7 +5,10 @@ use super::{
 use crate::dns::is_subdomain;
 use chrono::{DateTime, Utc};
 use connlib_shared::{
-    messages::{client, GatewayId, RelayId},
+    messages::{
+        client::{self, ResourceDescription},
+        GatewayId, RelayId,
+    },
     proptest::*,
     DomainName, StaticSecret,
 };
@@ -147,9 +150,11 @@ impl ReferenceStateMachine for ReferenceState {
                 upstream_dns_servers()
                     .prop_map(|servers| Transition::UpdateUpstreamDnsServers { servers }),
             )
-            .with_if_not_empty(5, state.portal.all_resources(), |resource_ids| {
-                sample::select(resource_ids).prop_map(Transition::ActivateResource)
-            })
+            .with_if_not_empty(
+                5,
+                state.all_resources_not_known_to_client(),
+                |resource_ids| sample::select(resource_ids).prop_map(Transition::ActivateResource),
+            )
             .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resource_ids| {
                 sample::select(resource_ids).prop_map(Transition::DeactivateResource)
             })
@@ -514,6 +519,15 @@ impl ReferenceState {
                     .map(|h| DomainName::vec_from_str(h).unwrap()),
             )
             .collect()
+    }
+
+    fn all_resources_not_known_to_client(&self) -> Vec<ResourceDescription> {
+        let mut all_resources = self.portal.all_resources();
+        let client_resources = self.client.inner().all_resource_ids();
+
+        all_resources.retain(|r| !client_resources.contains(&r.id()));
+
+        all_resources
     }
 }
 
