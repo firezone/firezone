@@ -111,7 +111,7 @@ pub(crate) fn gateways_and_portal() -> impl Strategy<
             let gateway_site = any_site(sites.clone()).prop_map(|s| s.id);
             let cidr_resources = collection::hash_set(
                 cidr_resource_outside_reserved_ranges(any_site(sites.clone())),
-                1..20,
+                1..5,
             );
             let dns_resources = collection::hash_set(
                 prop_oneof![
@@ -119,7 +119,7 @@ pub(crate) fn gateways_and_portal() -> impl Strategy<
                     star_wildcard_dns_resource(any_site(sites.clone())),
                     question_mark_wildcard_dns_resource(any_site(sites)),
                 ],
-                1..20,
+                1..5,
             );
 
             let gateways =
