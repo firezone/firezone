@@ -52,7 +52,6 @@ defmodule API.Router do
 
     resources "/actors", ActorController, except: [:new, :edit] do
       resources "/identities", IdentityController, except: [:new, :edit, :update]
-      post "/providers/:provider_id/identities/", IdentityController, :create
     end
 
     resources "/actor_groups", ActorGroupController, except: [:new, :edit] do
