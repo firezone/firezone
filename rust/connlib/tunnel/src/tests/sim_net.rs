@@ -1,6 +1,7 @@
+use crate::tests::strategies::documentation_ip6s;
 use connlib_shared::messages::{ClientId, GatewayId, RelayId};
 use firezone_relay::{AddressFamily, IpStack};
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_network::{IpNetwork, Ipv4Network};
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools as _;
 use prop::sample;
@@ -95,6 +96,13 @@ impl<T> Host<T> {
         }
         if ip6.is_some() {
             self.allocate_port(port, AddressFamily::V6);
+        }
+    }
+
+    pub(crate) fn can_route_to(&self, network: IpNetwork) -> bool {
+        match network {
+            IpNetwork::V4(_) => self.ip4.is_some(),
+            IpNetwork::V6(_) => self.ip6.is_some(),
         }
     }
 }
@@ -276,14 +284,9 @@ pub(crate) fn host_ip4s() -> impl Strategy<Value = Ipv4Addr> {
 
 /// A [`Strategy`] of [`Ipv6Addr`]s used for routing packets between hosts within our test.
 ///
-/// This uses the `2001:DB8::/32` address space reserved for documentation and examples in [RFC3849](https://datatracker.ietf.org/doc/html/rfc3849).
+/// This uses a subnet of the `2001:DB8::/32` address space reserved for documentation and examples in [RFC3849](https://datatracker.ietf.org/doc/html/rfc3849).
 pub(crate) fn host_ip6s() -> impl Strategy<Value = Ipv6Addr> {
-    let ips = Ipv6Network::new(Ipv6Addr::new(0x2001, 0xDB80, 0, 0, 0, 0, 0, 0), 32)
-        .unwrap()
-        .subnets_with_prefix(128)
-        .map(|n| n.network_address())
-        .take(100)
-        .collect_vec();
+    const HOST_SUBNET: u16 = 0x1010;
 
-    sample::select(ips)
+    documentation_ip6s(HOST_SUBNET, 100)
 }
