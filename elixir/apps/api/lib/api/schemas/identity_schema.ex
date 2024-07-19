@@ -40,7 +40,6 @@ defmodule API.Schemas.Identity do
       required: [:identity],
       example: %{
         "identity" => %{
-          "actor_id" => "cdfa97e6-cca1-41db-8fc7-864daedb46df",
           "provider_id" => "989f9e96-e348-47ec-ba85-869fcd7adb19",
           "provider_identifier" => "foo@bar.com"
         }
