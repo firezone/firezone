@@ -251,8 +251,6 @@ pub struct RefClient {
         HashMap<GatewayId, VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>>,
     /// The expected DNS handshakes.
     pub(crate) expected_dns_handshakes: VecDeque<QueryId>,
-
-    pub(crate) gateways_by_resource: HashMap<ResourceId, GatewayId>,
 }
 
 impl RefClient {
@@ -292,17 +290,21 @@ impl RefClient {
         dst: IpAddr,
         seq: u16,
         identifier: u16,
+        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
     ) {
         tracing::Span::current().record("dst", tracing::field::display(dst));
 
         // Second, if we are not yet connected, check if we have a resource for this IP.
-        let Some((_, resource)) = self.cidr_resources.longest_match(dst) else {
+        let Some(resource) = self.cidr_resource_by_ip(dst) else {
             tracing::debug!("No resource corresponds to IP");
             return;
         };
         tracing::Span::current().record("resource", tracing::field::display(resource.id));
 
-        let gateway = *self.gateways_by_resource.get(&resource.id).unwrap();
+        let Some(gateway) = gateway_by_resource(resource.id) else {
+            tracing::error!("No gateway for resource");
+            return;
+        };
 
         if self.is_connected_to_cidr(resource.id) && self.is_tunnel_ip(src) {
             tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
@@ -325,6 +327,7 @@ impl RefClient {
         dst: DomainName,
         seq: u16,
         identifier: u16,
+        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
     ) {
         tracing::Span::current().record("dst", tracing::field::display(&dst));
 
@@ -335,7 +338,10 @@ impl RefClient {
 
         tracing::Span::current().record("resource", tracing::field::display(resource));
 
-        let gateway = *self.gateways_by_resource.get(&resource).unwrap();
+        let Some(gateway) = gateway_by_resource(resource) else {
+            tracing::error!("No gateway for resource");
+            return;
+        };
 
         if self
             .connected_dns_resources
@@ -381,7 +387,7 @@ impl RefClient {
         self.known_hosts.contains_key(name)
     }
 
-    fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
+    pub(crate) fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
         self.dns_resources
             .values()
             .filter(|r| is_subdomain(&domain.to_string(), &r.address))
@@ -405,20 +411,6 @@ impl RefClient {
                 existing_seq != seq && existing_identifer != identifier
             },
         )
-    }
-
-    pub(crate) fn gateway_by_cidr_resource_ip(&self, dst: IpAddr) -> Option<GatewayId> {
-        let resource_id = self.cidr_resource_by_ip(dst)?;
-        let gateway_id = self.gateways_by_resource.get(&resource_id)?;
-
-        Some(*gateway_id)
-    }
-
-    pub(crate) fn gateway_by_domain_name(&self, dst: &DomainName) -> Option<GatewayId> {
-        let resource_id = self.dns_resource_by_domain(dst)?;
-        let gateway_id = self.gateways_by_resource.get(&resource_id)?;
-
-        Some(*gateway_id)
     }
 
     pub(crate) fn resolved_v4_domains(&self) -> Vec<DomainName> {
@@ -482,8 +474,8 @@ impl RefClient {
             .collect()
     }
 
-    pub(crate) fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
-        self.cidr_resources.longest_match(ip).map(|(_, r)| r.id)
+    pub(crate) fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<&ResourceDescriptionCidr> {
+        self.cidr_resources.longest_match(ip).map(|(_, r)| r)
     }
 
     pub(crate) fn resolved_ip4_for_non_resources(
@@ -539,7 +531,7 @@ impl RefClient {
             return None;
         }
 
-        self.cidr_resource_by_ip(dns_server)
+        self.cidr_resource_by_ip(dns_server).map(|r| r.id)
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
@@ -659,7 +651,6 @@ fn ref_client(
                 connected_dns_resources: Default::default(),
                 expected_icmp_handshakes: Default::default(),
                 expected_dns_handshakes: Default::default(),
-                gateways_by_resource: Default::default(),
             },
         )
 }

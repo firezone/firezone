@@ -1,4 +1,7 @@
-use connlib_shared::messages::{client, gateway, GatewayId, ResourceId};
+use connlib_shared::messages::{
+    client::{self, ResourceDescription, ResourceDescriptionCidr},
+    gateway, GatewayId, ResourceId,
+};
 use itertools::Itertools;
 use proptest::sample::Selector;
 use std::{
@@ -10,7 +13,6 @@ use std::{
 #[derive(Debug, Clone)]
 pub(crate) struct StubPortal {
     gateways_by_site: HashMap<client::SiteId, HashSet<GatewayId>>,
-    sites: HashMap<client::SiteId, client::Site>,
 
     sites_by_resource: HashMap<ResourceId, client::SiteId>,
     cidr_resources: HashMap<ResourceId, client::ResourceDescriptionCidr>,
@@ -22,45 +24,67 @@ pub(crate) struct StubPortal {
 impl StubPortal {
     pub(crate) fn new(
         gateways_by_site: HashMap<client::SiteId, HashSet<GatewayId>>,
-        sites: HashSet<client::Site>,
         gateway_selector: Selector,
+        cidr_resources: HashSet<client::ResourceDescriptionCidr>,
+        dns_resources: HashSet<client::ResourceDescriptionDns>,
     ) -> Self {
+        let cidr_resources = cidr_resources
+            .into_iter()
+            .map(|r| (r.id, r))
+            .collect::<HashMap<_, _>>();
+        let dns_resources = dns_resources
+            .into_iter()
+            .map(|r| (r.id, r))
+            .collect::<HashMap<_, _>>();
+
+        let cidr_sites = cidr_resources.iter().map(|(id, r)| {
+            (
+                *id,
+                r.sites
+                    .iter()
+                    .exactly_one()
+                    .expect("only single-site resources")
+                    .id,
+            )
+        });
+        let dns_sites = dns_resources.iter().map(|(id, r)| {
+            (
+                *id,
+                r.sites
+                    .iter()
+                    .exactly_one()
+                    .expect("only single-site resources")
+                    .id,
+            )
+        });
+
         Self {
             gateways_by_site,
-            sites: sites.into_iter().map(|s| (s.id, s)).collect(),
             gateway_selector,
-            sites_by_resource: Default::default(),
-            cidr_resources: Default::default(),
-            dns_resources: Default::default(),
+            sites_by_resource: HashMap::from_iter(cidr_sites.chain(dns_sites)),
+            cidr_resources,
+            dns_resources,
         }
     }
 
-    pub(crate) fn all_sites(&self) -> Vec<client::Site> {
-        self.sites.values().cloned().collect()
+    pub(crate) fn all_resources(&self) -> Vec<ResourceDescription> {
+        self.cidr_resources
+            .values()
+            .cloned()
+            .map(ResourceDescription::Cidr)
+            .chain(
+                self.dns_resources
+                    .values()
+                    .cloned()
+                    .map(ResourceDescription::Dns),
+            )
+            .collect()
     }
 
-    pub(crate) fn add_resource(&mut self, resource: client::ResourceDescription) {
-        let site = resource
-            .sites()
-            .into_iter()
-            .exactly_one()
-            .expect("only single-site resources are supported");
-
-        self.sites_by_resource.insert(resource.id(), site.id);
-
-        match resource {
-            client::ResourceDescription::Dns(dns) => {
-                self.dns_resources.insert(dns.id, dns);
-            }
-            client::ResourceDescription::Cidr(cidr) => {
-                self.cidr_resources.insert(cidr.id, cidr);
-            }
-            client::ResourceDescription::Internet(_) => {}
-        }
-    }
-
-    pub(crate) fn remove_resource(&mut self, resource: ResourceId) {
-        self.sites_by_resource.remove(&resource);
+    pub(crate) fn cidr_resources(
+        &self,
+    ) -> impl Iterator<Item = (&ResourceId, &ResourceDescriptionCidr)> + '_ {
+        self.cidr_resources.iter()
     }
 
     /// Picks, which gateway and site we should connect to for the given resource.
