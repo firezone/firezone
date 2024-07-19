@@ -580,7 +580,6 @@ mod tests {
 
     #[test_case("app.*.example.com", "app.foo.bar.example.com"; "single star does not match two level")]
     #[test_case("app.*com", "app.foo.com"; "single star does not match dot")]
-    // #[test_case("app.**com", "app.foo.com"; "double star does not match dot")]
     #[test_case("app?com", "app.com"; "question mark does not match dot")]
     fn domain_pattern_does_not_match(pattern: &str, domain: &str) {
         let pattern = Pattern::new(pattern).unwrap();
