@@ -10,7 +10,7 @@ module "relays" {
   instances = {
     "asia-east1" = {
       cidr_range = "10.129.0.0/24"
-      type       = "n2-standard-2"
+      type       = "n2-highcpu-2"
       replicas   = 1
       zones      = ["asia-east1-a", "asia-east1-b", "asia-east1-c"]
     }
@@ -38,7 +38,7 @@ module "relays" {
 
     # "me-central1" = {
     #   cidr_range = "10.133.0.0/24"
-    #   type       = "n2-standard-2"
+    #   type       = "n2-highcpu-2"
     #   replicas   = 1
     #   zones      = ["me-central1-a"]
     # }
@@ -66,7 +66,7 @@ module "relays" {
 
     "us-west2" = {
       cidr_range = "10.137.0.0/24"
-      type       = "n2-standard-2"
+      type       = "n2-highcpu-2"
       replicas   = 1
       zones      = ["us-west2-a", "us-west2-b", "us-west2-c"]
     }
@@ -87,7 +87,7 @@ module "relays" {
 
     "europe-west2" = {
       cidr_range = "10.140.0.0/24"
-      type       = "n2-standard-2"
+      type       = "n2-highcpu-2"
       replicas   = 1
       zones      = ["europe-west2-a", "europe-west2-b", "europe-west2-c"]
     }
