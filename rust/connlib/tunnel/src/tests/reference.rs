@@ -482,12 +482,30 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::SendDnsQuery {
                 domain, dns_server, ..
             } => {
-                state.global_dns_records.contains_key(domain)
-                    && state
-                        .client
-                        .inner()
-                        .expected_dns_servers()
-                        .contains(dns_server)
+                let is_known_domain = state.global_dns_records.contains_key(domain);
+                let has_dns_server = state
+                    .client
+                    .inner()
+                    .expected_dns_servers()
+                    .contains(dns_server);
+                let gateway_is_present_in_case_dns_server_is_cidr_resource = match state
+                    .client
+                    .inner()
+                    .dns_query_via_cidr_resource(dns_server.ip(), domain)
+                {
+                    Some(r) => {
+                        let Some(gateway) = state.portal.gateway_for_resource(r) else {
+                            return false;
+                        };
+
+                        state.gateways.contains_key(gateway)
+                    }
+                    None => true,
+                };
+
+                is_known_domain
+                    && has_dns_server
+                    && gateway_is_present_in_case_dns_server_is_cidr_resource
             }
             Transition::RoamClient { ip4, ip6, port } => {
                 // In production, we always rebind to a new port so we never roam to our old existing IP / port combination.
