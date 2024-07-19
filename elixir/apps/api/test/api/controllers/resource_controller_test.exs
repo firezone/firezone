@@ -14,7 +14,7 @@ defmodule API.ResourceControllerTest do
 
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
-      conn = get(conn, "/v1/resources")
+      conn = get(conn, "/resources")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -25,7 +25,7 @@ defmodule API.ResourceControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/resources")
+        |> get("/resources")
 
       assert %{
                "data" => data,
@@ -55,7 +55,7 @@ defmodule API.ResourceControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/resources", limit: "2")
+        |> get("/resources", limit: "2")
 
       assert %{
                "data" => data,
@@ -82,7 +82,7 @@ defmodule API.ResourceControllerTest do
   describe "show/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       resource = Fixtures.Resources.create_resource(%{account: account})
-      conn = get(conn, "/v1/resources/#{resource.id}")
+      conn = get(conn, "/resources/#{resource.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -93,7 +93,7 @@ defmodule API.ResourceControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/resources/#{resource.id}")
+        |> get("/resources/#{resource.id}")
 
       assert json_response(conn, 200) == %{
                "data" => %{
@@ -109,7 +109,7 @@ defmodule API.ResourceControllerTest do
 
   describe "create/2" do
     test "returns error when not authorized", %{conn: conn} do
-      conn = post(conn, "/v1/resources", %{})
+      conn = post(conn, "/resources", %{})
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -118,7 +118,7 @@ defmodule API.ResourceControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/v1/resources")
+        |> post("/resources")
 
       assert resp = json_response(conn, 400)
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
@@ -131,7 +131,7 @@ defmodule API.ResourceControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/v1/resources", resource: attrs)
+        |> post("/resources", resource: attrs)
 
       assert resp = json_response(conn, 422)
 
@@ -165,7 +165,7 @@ defmodule API.ResourceControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/v1/resources", resource: attrs)
+        |> post("/resources", resource: attrs)
 
       assert resp = json_response(conn, 201)
 
@@ -179,7 +179,7 @@ defmodule API.ResourceControllerTest do
   describe "update/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       resource = Fixtures.Resources.create_resource(%{account: account})
-      conn = put(conn, "/v1/resources/#{resource.id}", %{})
+      conn = put(conn, "/resources/#{resource.id}", %{})
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -190,7 +190,7 @@ defmodule API.ResourceControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/v1/resources/#{resource.id}")
+        |> put("/resources/#{resource.id}")
 
       assert resp = json_response(conn, 400)
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
@@ -205,7 +205,7 @@ defmodule API.ResourceControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/v1/resources/#{resource.id}", resource: attrs)
+        |> put("/resources/#{resource.id}", resource: attrs)
 
       assert resp = json_response(conn, 200)
 
@@ -218,7 +218,7 @@ defmodule API.ResourceControllerTest do
   describe "delete/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       resource = Fixtures.Resources.create_resource(%{account: account})
-      conn = delete(conn, "/v1/resources/#{resource.id}")
+      conn = delete(conn, "/resources/#{resource.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -229,7 +229,7 @@ defmodule API.ResourceControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> delete("/v1/resources/#{resource.id}")
+        |> delete("/resources/#{resource.id}")
 
       assert json_response(conn, 200) == %{
                "data" => %{

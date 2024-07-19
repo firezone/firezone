@@ -68,7 +68,7 @@ defmodule API.GatewayGroupController do
     with {:ok, gateway_group} <- Gateways.create_group(params, conn.assigns.subject) do
       conn
       |> put_status(:created)
-      |> put_resp_header("location", ~p"/v1/gateway_groups/#{gateway_group}")
+      |> put_resp_header("location", ~p"/gateway_groups/#{gateway_group}")
       |> render(:show, gateway_group: gateway_group)
     end
   end

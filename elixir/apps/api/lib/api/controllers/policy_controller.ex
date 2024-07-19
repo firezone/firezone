@@ -62,7 +62,7 @@ defmodule API.PolicyController do
     with {:ok, policy} <- Policies.create_policy(params, conn.assigns.subject) do
       conn
       |> put_status(:created)
-      |> put_resp_header("location", ~p"/v1/policies/#{policy}")
+      |> put_resp_header("location", ~p"/policies/#{policy}")
       |> render(:show, policy: policy)
     end
   end

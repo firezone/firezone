@@ -16,7 +16,7 @@ defmodule API.GatewayControllerTest do
 
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn, gateway_group: gateway_group} do
-      conn = get(conn, "/v1/gateway_groups/#{gateway_group.id}/gateways")
+      conn = get(conn, "/gateway_groups/#{gateway_group.id}/gateways")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -34,7 +34,7 @@ defmodule API.GatewayControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/gateway_groups/#{gateway_group.id}/gateways")
+        |> get("/gateway_groups/#{gateway_group.id}/gateways")
 
       assert %{
                "data" => data,
@@ -71,7 +71,7 @@ defmodule API.GatewayControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/gateway_groups/#{gateway_group.id}/gateways", limit: "2")
+        |> get("/gateway_groups/#{gateway_group.id}/gateways", limit: "2")
 
       assert %{
                "data" => data,
@@ -102,7 +102,7 @@ defmodule API.GatewayControllerTest do
       gateway_group: gateway_group
     } do
       gateway = Fixtures.Gateways.create_gateway(%{account: account, group: gateway_group})
-      conn = get(conn, "/v1/gateway_groups/#{gateway_group.id}/gateways/#{gateway.id}")
+      conn = get(conn, "/gateway_groups/#{gateway_group.id}/gateways/#{gateway.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -118,7 +118,7 @@ defmodule API.GatewayControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/gateway_groups/#{gateway_group.id}/gateways/#{gateway.id}")
+        |> get("/gateway_groups/#{gateway_group.id}/gateways/#{gateway.id}")
 
       assert json_response(conn, 200) == %{
                "data" => %{
@@ -139,7 +139,7 @@ defmodule API.GatewayControllerTest do
       gateway_group: gateway_group
     } do
       gateway = Fixtures.Gateways.create_gateway(%{account: account, group: gateway_group})
-      conn = delete(conn, "/v1/gateway_groups/#{gateway_group.id}/gateways/#{gateway.id}")
+      conn = delete(conn, "/gateway_groups/#{gateway_group.id}/gateways/#{gateway.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -155,7 +155,7 @@ defmodule API.GatewayControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> delete("/v1/gateway_groups/#{gateway_group.id}/gateways/#{gateway.id}")
+        |> delete("/gateway_groups/#{gateway_group.id}/gateways/#{gateway.id}")
 
       assert json_response(conn, 200) == %{
                "data" => %{

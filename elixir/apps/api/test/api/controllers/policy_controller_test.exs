@@ -14,7 +14,7 @@ defmodule API.PolicyControllerTest do
 
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
-      conn = get(conn, "/v1/policies")
+      conn = get(conn, "/policies")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -25,7 +25,7 @@ defmodule API.PolicyControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/policies", Jason.encode!(%{}))
+        |> get("/policies", Jason.encode!(%{}))
 
       assert %{
                "data" => data,
@@ -55,7 +55,7 @@ defmodule API.PolicyControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/policies", limit: "2")
+        |> get("/policies", limit: "2")
 
       assert %{
                "data" => data,
@@ -82,7 +82,7 @@ defmodule API.PolicyControllerTest do
   describe "show/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       policy = Fixtures.Policies.create_policy(%{account: account})
-      conn = get(conn, "/v1/policies/#{policy.id}")
+      conn = get(conn, "/policies/#{policy.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -93,7 +93,7 @@ defmodule API.PolicyControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/policies/#{policy.id}")
+        |> get("/policies/#{policy.id}")
 
       assert json_response(conn, 200) == %{
                "data" => %{
@@ -108,7 +108,7 @@ defmodule API.PolicyControllerTest do
 
   describe "create/2" do
     test "returns error when not authorized", %{conn: conn} do
-      conn = post(conn, "/v1/policies", %{})
+      conn = post(conn, "/policies", %{})
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -117,7 +117,7 @@ defmodule API.PolicyControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/v1/policies")
+        |> post("/policies")
 
       assert resp = json_response(conn, 400)
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
@@ -130,7 +130,7 @@ defmodule API.PolicyControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/v1/policies", policy: attrs)
+        |> post("/policies", policy: attrs)
 
       assert resp = json_response(conn, 422)
 
@@ -160,7 +160,7 @@ defmodule API.PolicyControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/v1/policies", policy: attrs)
+        |> post("/policies", policy: attrs)
 
       assert resp = json_response(conn, 201)
 
@@ -172,7 +172,7 @@ defmodule API.PolicyControllerTest do
   describe "update/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       policy = Fixtures.Policies.create_policy(%{account: account})
-      conn = put(conn, "/v1/policies/#{policy.id}", %{})
+      conn = put(conn, "/policies/#{policy.id}", %{})
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -183,7 +183,7 @@ defmodule API.PolicyControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/v1/policies/#{policy.id}")
+        |> put("/policies/#{policy.id}")
 
       assert resp = json_response(conn, 400)
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
@@ -198,7 +198,7 @@ defmodule API.PolicyControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/v1/policies/#{policy.id}", policy: attrs)
+        |> put("/policies/#{policy.id}", policy: attrs)
 
       assert resp = json_response(conn, 200)
 
@@ -209,7 +209,7 @@ defmodule API.PolicyControllerTest do
   describe "delete/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       policy = Fixtures.Policies.create_policy(%{account: account})
-      conn = delete(conn, "/v1/policies/#{policy.id}", %{})
+      conn = delete(conn, "/policies/#{policy.id}", %{})
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -220,7 +220,7 @@ defmodule API.PolicyControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> delete("/v1/policies/#{policy.id}")
+        |> delete("/policies/#{policy.id}")
 
       assert json_response(conn, 200) == %{
                "data" => %{

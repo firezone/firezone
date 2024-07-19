@@ -63,7 +63,7 @@ defmodule API.ActorController do
     with {:ok, actor} <- Actors.create_actor(subject.account, params, subject) do
       conn
       |> put_status(:created)
-      |> put_resp_header("location", ~p"/v1/actors/#{actor}")
+      |> put_resp_header("location", ~p"/actors/#{actor}")
       |> render(:show, actor: actor)
     end
   end

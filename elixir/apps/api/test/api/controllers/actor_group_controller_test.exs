@@ -14,7 +14,7 @@ defmodule API.ActorGroupControllerTest do
 
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
-      conn = get(conn, "/v1/actor_groups")
+      conn = get(conn, "/actor_groups")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -25,7 +25,7 @@ defmodule API.ActorGroupControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/actor_groups")
+        |> get("/actor_groups")
 
       assert %{
                "data" => data,
@@ -55,7 +55,7 @@ defmodule API.ActorGroupControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/actor_groups", limit: "2")
+        |> get("/actor_groups", limit: "2")
 
       assert %{
                "data" => data,
@@ -82,7 +82,7 @@ defmodule API.ActorGroupControllerTest do
   describe "show/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       actor_group = Fixtures.Actors.create_group(%{account: account})
-      conn = get(conn, "/v1/actor_groups/#{actor_group.id}")
+      conn = get(conn, "/actor_groups/#{actor_group.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -93,7 +93,7 @@ defmodule API.ActorGroupControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/actor_groups/#{actor_group.id}")
+        |> get("/actor_groups/#{actor_group.id}")
 
       assert json_response(conn, 200) == %{
                "data" => %{
@@ -106,7 +106,7 @@ defmodule API.ActorGroupControllerTest do
 
   describe "create/2" do
     test "returns error when not authorized", %{conn: conn} do
-      conn = post(conn, "/v1/actor_groups", %{})
+      conn = post(conn, "/actor_groups", %{})
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -115,7 +115,7 @@ defmodule API.ActorGroupControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/v1/actor_groups")
+        |> post("/actor_groups")
 
       assert resp = json_response(conn, 400)
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
@@ -128,7 +128,7 @@ defmodule API.ActorGroupControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/v1/actor_groups", actor_group: attrs)
+        |> post("/actor_groups", actor_group: attrs)
 
       assert resp = json_response(conn, 422)
 
@@ -150,7 +150,7 @@ defmodule API.ActorGroupControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/v1/actor_groups", actor_group: attrs)
+        |> post("/actor_groups", actor_group: attrs)
 
       assert resp = json_response(conn, 201)
 
@@ -161,7 +161,7 @@ defmodule API.ActorGroupControllerTest do
   describe "update/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       actor_group = Fixtures.Actors.create_group(%{account: account})
-      conn = put(conn, "/v1/actor_groups/#{actor_group.id}", %{})
+      conn = put(conn, "/actor_groups/#{actor_group.id}", %{})
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -172,7 +172,7 @@ defmodule API.ActorGroupControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/v1/actor_groups/#{actor_group.id}")
+        |> put("/actor_groups/#{actor_group.id}")
 
       assert resp = json_response(conn, 400)
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
@@ -187,7 +187,7 @@ defmodule API.ActorGroupControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/v1/actor_groups/#{actor_group.id}", actor_group: attrs)
+        |> put("/actor_groups/#{actor_group.id}", actor_group: attrs)
 
       assert resp = json_response(conn, 200)
 
@@ -199,7 +199,7 @@ defmodule API.ActorGroupControllerTest do
   describe "delete/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       actor_group = Fixtures.Actors.create_group(%{account: account})
-      conn = delete(conn, "/v1/actor_groups/#{actor_group.id}")
+      conn = delete(conn, "/actor_groups/#{actor_group.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -210,7 +210,7 @@ defmodule API.ActorGroupControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> delete("/v1/actor_groups/#{actor_group.id}")
+        |> delete("/actor_groups/#{actor_group.id}")
 
       assert json_response(conn, 200) == %{
                "data" => %{

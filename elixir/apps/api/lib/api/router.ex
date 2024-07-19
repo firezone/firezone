@@ -37,7 +37,7 @@ defmodule API.Router do
     get "/healthz", HealthController, :healthz
   end
 
-  scope "/v1", API do
+  scope "/", API do
     pipe_through :api
 
     resources "/resources", ResourceController, except: [:new, :edit]

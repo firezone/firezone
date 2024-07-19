@@ -62,7 +62,7 @@ defmodule API.IdentityController do
          {:ok, identity} <- Auth.create_identity(actor, provider, params) do
       conn
       |> put_status(:created)
-      |> put_resp_header("location", ~p"/v1/actors/#{actor_id}/identities/#{identity.id}")
+      |> put_resp_header("location", ~p"/actors/#{actor_id}/identities/#{identity.id}")
       |> render(:show, identity: identity)
     else
       {:provider_check, _false} -> {:error, :unprocessable_entity}

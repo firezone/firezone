@@ -14,7 +14,7 @@ defmodule API.ActorGroupMembershipControllerTest do
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       actor_group = Fixtures.Actors.create_group(%{account: account})
-      conn = get(conn, "/v1/actor_groups/#{actor_group.id}/memberships")
+      conn = get(conn, "/actor_groups/#{actor_group.id}/memberships")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -29,7 +29,7 @@ defmodule API.ActorGroupMembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/actor_groups/#{actor_group.id}/memberships")
+        |> get("/actor_groups/#{actor_group.id}/memberships")
 
       assert %{
                "data" => data,
@@ -63,7 +63,7 @@ defmodule API.ActorGroupMembershipControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/actor_groups/#{actor_group.id}/memberships", limit: "2")
+        |> get("/actor_groups/#{actor_group.id}/memberships", limit: "2")
 
       assert %{
                "data" => data,
@@ -100,7 +100,7 @@ defmodule API.ActorGroupMembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> patch("/v1/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+        |> patch("/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data == %{"actor_ids" => [actor.id]}
@@ -113,7 +113,7 @@ defmodule API.ActorGroupMembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> patch("/v1/actor_groups/#{actor_group.id}/memberships")
+        |> patch("/actor_groups/#{actor_group.id}/memberships")
 
       assert resp = json_response(conn, 400)
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
@@ -132,7 +132,7 @@ defmodule API.ActorGroupMembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> patch("/v1/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+        |> patch("/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data == %{"actor_ids" => [actor1.id]}
@@ -152,7 +152,7 @@ defmodule API.ActorGroupMembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> patch("/v1/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+        |> patch("/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
 
       assert %{"data" => data} = json_response(conn, 200)
       assert Enum.sort(data["actor_ids"]) == Enum.sort([actor1.id, actor3.id])
@@ -175,7 +175,7 @@ defmodule API.ActorGroupMembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> patch("/v1/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+        |> patch("/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
 
       assert %{"data" => data} = json_response(conn, 200)
       assert Enum.sort(data["actor_ids"]) == Enum.sort([actor1.id, actor2.id])
@@ -192,7 +192,7 @@ defmodule API.ActorGroupMembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/v1/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+        |> put("/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data == %{"actor_ids" => [actor.id]}
@@ -205,7 +205,7 @@ defmodule API.ActorGroupMembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/v1/actor_groups/#{actor_group.id}/memberships")
+        |> put("/actor_groups/#{actor_group.id}/memberships")
 
       assert resp = json_response(conn, 400)
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
@@ -224,7 +224,7 @@ defmodule API.ActorGroupMembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/v1/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+        |> put("/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
 
       assert %{"data" => data} = json_response(conn, 200)
       assert data == %{"actor_ids" => [actor1.id]}
@@ -244,7 +244,7 @@ defmodule API.ActorGroupMembershipControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/v1/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+        |> put("/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
 
       assert %{"data" => data} = json_response(conn, 200)
       assert Enum.sort(data["actor_ids"]) == Enum.sort([actor1.id, actor3.id])

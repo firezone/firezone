@@ -65,7 +65,7 @@ defmodule API.ActorGroupController do
     with {:ok, actor_group} <- Actors.create_group(params, conn.assigns.subject) do
       conn
       |> put_status(:created)
-      |> put_resp_header("location", ~p"/v1/actor_groups/#{actor_group}")
+      |> put_resp_header("location", ~p"/actor_groups/#{actor_group}")
       |> render(:show, actor_group: actor_group)
     end
   end

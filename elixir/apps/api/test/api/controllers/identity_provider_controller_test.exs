@@ -14,7 +14,7 @@ defmodule API.IdentityProviderControllerTest do
 
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
-      conn = get(conn, "/v1/identity_providers")
+      conn = get(conn, "/identity_providers")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -29,7 +29,7 @@ defmodule API.IdentityProviderControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/identity_providers")
+        |> get("/identity_providers")
 
       assert %{
                "data" => data,
@@ -62,7 +62,7 @@ defmodule API.IdentityProviderControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/identity_providers", limit: "2")
+        |> get("/identity_providers", limit: "2")
 
       assert %{
                "data" => data,
@@ -90,7 +90,7 @@ defmodule API.IdentityProviderControllerTest do
       {identity_provider, _bypass} =
         Fixtures.Auth.start_and_create_openid_connect_provider(%{account: account})
 
-      conn = get(conn, "/v1/identity_providers/#{identity_provider.id}")
+      conn = get(conn, "/identity_providers/#{identity_provider.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -102,7 +102,7 @@ defmodule API.IdentityProviderControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/v1/identity_providers/#{identity_provider.id}")
+        |> get("/identity_providers/#{identity_provider.id}")
 
       assert json_response(conn, 200) == %{
                "data" => %{
@@ -118,7 +118,7 @@ defmodule API.IdentityProviderControllerTest do
       {identity_provider, _bypass} =
         Fixtures.Auth.start_and_create_openid_connect_provider(%{account: account})
 
-      conn = delete(conn, "/v1/identity_providers/#{identity_provider.id}")
+      conn = delete(conn, "/identity_providers/#{identity_provider.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -130,7 +130,7 @@ defmodule API.IdentityProviderControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> delete("/v1/identity_providers/#{identity_provider.id}")
+        |> delete("/identity_providers/#{identity_provider.id}")
 
       assert json_response(conn, 200) == %{
                "data" => %{

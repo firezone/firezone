@@ -62,7 +62,7 @@ defmodule API.ResourceController do
     with {:ok, resource} <- Resources.create_resource(attrs, conn.assigns.subject) do
       conn
       |> put_status(:created)
-      |> put_resp_header("location", ~p"/v1/resources/#{resource}")
+      |> put_resp_header("location", ~p"/resources/#{resource}")
       |> render(:show, resource: resource)
     end
   end
