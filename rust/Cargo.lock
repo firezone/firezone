@@ -2636,7 +2636,6 @@ name = "gui-smoke-test"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "libc",
  "subprocess",
  "tracing",
  "tracing-subscriber",
