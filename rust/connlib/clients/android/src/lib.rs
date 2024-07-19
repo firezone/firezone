@@ -3,18 +3,23 @@
 // However, this consideration has made it idiomatic for Java FFI in the Rust
 // ecosystem, so it's used here for consistency.
 
+use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
-    callbacks::ResourceDescription, file_logger, keypair, Callbacks, Cidrv4, Cidrv6, ConnectArgs,
-    Error, LoginUrl, LoginUrlError, Session, Sockets,
+    callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
+    LoginUrlError, Session, Tun, V4RouteList, V6RouteList,
 };
+use connlib_shared::get_user_agent;
+use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
     strings::JNIString,
     sys::jlong,
     JNIEnv, JavaVM,
 };
-use secrecy::SecretString;
-use std::{io, net::IpAddr, path::Path};
+use phoenix_channel::PhoenixChannel;
+use secrecy::{Secret, SecretString};
+use socket_factory::SocketFactory;
+use std::{io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
@@ -25,6 +30,8 @@ use thiserror::Error;
 use tokio::runtime::Runtime;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
+
+mod make_writer;
 
 /// The Android client doesn't use platform APIs to detect network connectivity changes,
 /// so we rely on connlib to do so. We have valid use cases for headless Android clients
@@ -83,16 +90,17 @@ impl CallbackHandler {
             .and_then(f)
     }
 
-    fn protect_file_descriptor(&self, file_descriptor: RawFd) -> Result<(), CallbackError> {
+    fn protect(&self, socket: RawFd) -> io::Result<()> {
         self.env(|mut env| {
             call_method(
                 &mut env,
                 &self.callback_handler,
                 "protectFileDescriptor",
                 "(I)V",
-                &[JValue::Int(file_descriptor)],
+                &[JValue::Int(socket)],
             )
         })
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 }
 
@@ -106,22 +114,6 @@ fn call_method(
     env.call_method(this, name, sig, args)
         .map(|val| log::trace!("`{name}` returned `{val:?}`"))
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
-}
-
-#[cfg(target_os = "android")]
-fn android_layer<S>() -> impl tracing_subscriber::Layer<S>
-where
-    S: tracing::Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
-{
-    tracing_android::layer("connlib").unwrap()
-}
-
-#[cfg(not(target_os = "android"))]
-fn android_layer<S>() -> impl tracing_subscriber::Layer<S>
-where
-    S: tracing::Subscriber,
-{
-    tracing_subscriber::layer::Identity::new()
 }
 
 fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
@@ -146,7 +138,14 @@ fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
 
     let _ = tracing_subscriber::registry()
         .with(file_layer.with_filter(EnvFilter::new(log_filter.clone())))
-        .with(android_layer().with_filter(EnvFilter::new(log_filter)))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .without_time()
+                .with_level(false)
+                .with_writer(make_writer::MakeWriter::new("connlib"))
+                .with_filter(EnvFilter::new(log_filter)),
+        )
         .try_init();
 
     handle
@@ -158,7 +157,7 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-    ) -> Option<RawFd> {
+    ) {
         self.env(|mut env| {
             let tunnel_address_v4 =
                 env.new_string(tunnel_address_v4.to_string())
@@ -182,34 +181,30 @@ impl Callbacks for CallbackHandler {
             env.call_method(
                 &self.callback_handler,
                 name,
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
                 &[
                     JValue::from(&tunnel_address_v4),
                     JValue::from(&tunnel_address_v6),
                     JValue::from(&dns_addresses),
                 ],
             )
-            .and_then(|val| val.i())
-            .map(Some)
-            .map_err(|source| CallbackError::CallMethodFailed { name, source })
+            .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
+
+            Ok(())
         })
-        .expect("onSetInterfaceConfig callback failed")
+        .expect("onSetInterfaceConfig callback failed");
     }
 
-    fn on_update_routes(
-        &self,
-        route_list_4: Vec<Cidrv4>,
-        route_list_6: Vec<Cidrv6>,
-    ) -> Option<RawFd> {
+    fn on_update_routes(&self, route_list_4: Vec<Ipv4Network>, route_list_6: Vec<Ipv6Network>) {
         self.env(|mut env| {
             let route_list_4 = env
-                .new_string(serde_json::to_string(&route_list_4)?)
+                .new_string(serde_json::to_string(&V4RouteList::new(route_list_4))?)
                 .map_err(|source| CallbackError::NewStringFailed {
                     name: "route_list_4",
                     source,
                 })?;
             let route_list_6 = env
-                .new_string(serde_json::to_string(&route_list_6)?)
+                .new_string(serde_json::to_string(&V6RouteList::new(route_list_6))?)
                 .map_err(|source| CallbackError::NewStringFailed {
                     name: "route_list_6",
                     source,
@@ -219,14 +214,14 @@ impl Callbacks for CallbackHandler {
             env.call_method(
                 &self.callback_handler,
                 name,
-                "(Ljava/lang/String;Ljava/lang/String;)I",
+                "(Ljava/lang/String;Ljava/lang/String;)V",
                 &[JValue::from(&route_list_4), JValue::from(&route_list_6)],
             )
-            .and_then(|val| val.i())
-            .map(Some)
-            .map_err(|source| CallbackError::CallMethodFailed { name, source })
+            .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
+
+            Ok(())
         })
-        .expect("onUpdateRoutes callback failed")
+        .expect("onUpdateRoutes callback failed");
     }
 
     fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
@@ -346,7 +341,6 @@ fn connect(
     let log_filter = string_from_jstring!(env, log_filter);
 
     let handle = init_logging(&PathBuf::from(log_dir), log_filter);
-
     let callbacks = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
@@ -367,26 +361,27 @@ fn connect(
         .thread_name("connlib")
         .enable_all()
         .build()?;
+    let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
-    let sockets = Sockets::with_protect({
-        let callbacks = callbacks.clone();
-        move |fd| {
-            callbacks
-                .protect_file_descriptor(fd)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
-        }
-    });
+    let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(callbacks.clone()));
 
     let args = ConnectArgs {
-        url,
-        sockets,
+        tcp_socket_factory: tcp_socket_factory.clone(),
+        udp_socket_factory: Arc::new(protected_udp_socket_factory(callbacks.clone())),
         private_key,
-        os_version_override: Some(os_version),
-        app_version: env!("CARGO_PKG_VERSION").to_string(),
         callbacks,
-        max_partition_time: Some(MAX_PARTITION_TIME),
     };
-    let session = Session::connect(args, runtime.handle().clone());
+    let portal = PhoenixChannel::connect(
+        Secret::new(url),
+        get_user_agent(Some(os_version), env!("CARGO_PKG_VERSION")),
+        "client",
+        (),
+        ExponentialBackoffBuilder::default()
+            .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
+            .build(),
+        tcp_socket_factory,
+    )?;
+    let session = Session::connect(args, portal, runtime.handle().clone());
 
     Ok(SessionWrapper {
         inner: session,
@@ -469,6 +464,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
 ///
 /// `dns_list` must not have any IPv6 scopes
 /// <https://github.com/firezone/firezone/issues/4350>
+/// <https://github.com/firezone/firezone/issues/5781>
 ///
 /// # Safety
 /// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
@@ -506,4 +502,50 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_re
 ) {
     let session = &*(session_ptr as *const SessionWrapper);
     session.inner.reconnect();
+}
+
+/// # Safety
+/// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
+/// at any point before or during operation of this function.
+#[allow(non_snake_case)]
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setTun(
+    mut env: JNIEnv,
+    _: JClass,
+    session_ptr: jlong,
+    fd: RawFd,
+) {
+    let session = &*(session_ptr as *const SessionWrapper);
+
+    // Enter tokio RT context to construct `Tun`.
+    let _enter = session.runtime.enter();
+    let tun = match Tun::from_fd(fd) {
+        Ok(t) => t,
+        Err(e) => {
+            throw(&mut env, "java/lang/Exception", e.to_string());
+            return;
+        }
+    };
+
+    session.inner.set_tun(tun);
+}
+
+fn protected_tcp_socket_factory(
+    callbacks: CallbackHandler,
+) -> impl SocketFactory<tokio::net::TcpSocket> {
+    move |addr| {
+        let socket = socket_factory::tcp(addr)?;
+        callbacks.protect(socket.as_raw_fd())?;
+        Ok(socket)
+    }
+}
+
+fn protected_udp_socket_factory(
+    callbacks: CallbackHandler,
+) -> impl SocketFactory<tokio::net::UdpSocket> {
+    move |addr| {
+        let socket = socket_factory::udp(addr)?;
+        callbacks.protect(socket.as_raw_fd())?;
+        Ok(socket)
+    }
 }

@@ -1,7 +1,7 @@
 [package]
 name = "firezone-gui-client"
 # mark:next-gui-version
-version = "1.1.0"
+version = "1.1.8"
 description = "Firezone"
 edition = "2021"
 default-run = "firezone-gui-client"
@@ -12,9 +12,8 @@ anyhow = { version = "1.0" }
 tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
-arboard = { version = "3.4.0", default-features = false }
 anyhow = { version = "1.0" }
-arc-swap = "1.7.0"
+arboard = { version = "3.4.0", default-features = false }
 atomicwrites = "0.4.3"
 chrono = { workspace = true }
 clap = { version = "4.5", features = ["derive",  "env"] }
@@ -33,15 +32,16 @@ rand = "0.8.5"
 reqwest = { version = "0.12.4", default-features = false, features = ["stream", "rustls-tls"] }
 sadness-generator = "0.5.0"
 secrecy = { workspace = true }
+semver = { version = "1.0.22", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-semver = { version = "1.0.22", features = ["serde"] }
 subtle = "2.5.0"
-tauri = { version = "1.6.7", features = [ "dialog", "notification", "shell-open-api", "system-tray" ] }
+tauri = { version = "1.6.7", features = [ "dialog", "icon-png", "notification", "shell-open-api", "system-tray" ] }
 tauri-runtime = "0.14.2"
 tauri-utils = "1.5.3"
 thiserror = { version = "1.0", default-features = false }
-tokio = { version = "1.38.0", features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
+time = { version = "0.3.36", features = ["formatting"] }
+tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
 tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
 tracing-log = "0.2"
@@ -53,12 +53,12 @@ zip = { version = "2", features = ["deflate", "time"], default-features = false 
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
-nix = { version =  "0.28.0", features = ["user"] }
+nix = { version = "0.28.0", features = ["user"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 
 [target.'cfg(target_os = "windows")'.dependencies]
-tauri-winrt-notification = "0.2.0"
+tauri-winrt-notification = "0.5.0"
 windows-core = "0.57.0"
 windows-implement = "0.57.0"
 winreg = "0.52.0"

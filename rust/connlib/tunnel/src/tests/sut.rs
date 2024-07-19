@@ -1,42 +1,41 @@
 use super::reference::ReferenceState;
-use super::sim_node::SimNode;
-use super::sim_portal::SimPortal;
+use super::sim_client::SimClient;
+use super::sim_gateway::SimGateway;
+use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
-use super::QueryId;
+use super::stub_portal::StubPortal;
 use crate::tests::assertions::*;
+use crate::tests::sim_relay::map_explode;
 use crate::tests::transition::Transition;
-use crate::{dns::DnsQuery, ClientEvent, ClientState, GatewayEvent, GatewayState, Request};
-use bimap::BiMap;
+use crate::{dns::DnsQuery, ClientEvent, GatewayEvent, Request};
 use chrono::{DateTime, Utc};
+use connlib_shared::messages::{Interface, RelayId};
 use connlib_shared::{
-    messages::{
-        client::{ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns},
-        gateway, ClientId, GatewayId, ResourceId,
-    },
+    messages::{client::ResourceDescription, ClientId, GatewayId},
     DomainName,
 };
+use firezone_relay::IpStack;
 use hickory_proto::{
-    op::{MessageType, Query},
-    rr::{rdata, RData, Record, RecordType},
-    serialize::binary::BinDecodable as _,
+    op::Query,
+    rr::{RData, Record, RecordType},
 };
 use hickory_resolver::lookup::Lookup;
-use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
-use rand::{rngs::StdRng, SeedableRng as _};
+use rand::SeedableRng as _;
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    net::{IpAddr, SocketAddr},
-    ops::ControlFlow,
+    net::IpAddr,
     str::FromStr as _,
     sync::Arc,
-    time::{Duration, Instant},
+    time::Instant,
 };
-use tracing::{debug_span, subscriber::DefaultGuard};
+use tracing::debug_span;
+use tracing::subscriber::DefaultGuard;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::Layer as _;
 use tracing_subscriber::{util::SubscriberInitExt as _, EnvFilter};
 
 /// The actual system-under-test.
@@ -46,25 +45,11 @@ pub(crate) struct TunnelTest {
     now: Instant,
     utc_now: DateTime<Utc>,
 
-    client: SimNode<ClientId, ClientState>,
-    gateway: SimNode<GatewayId, GatewayState>,
-    relay: SimRelay<firezone_relay::Server<StdRng>>,
-    portal: SimPortal,
+    pub(crate) client: Host<SimClient>,
+    pub(crate) gateways: HashMap<GatewayId, Host<SimGateway>>,
+    relays: HashMap<RelayId, Host<SimRelay>>,
 
-    /// The DNS records created on the client as a result of received DNS responses.
-    ///
-    /// This contains results from both, queries to DNS resources and non-resources.
-    client_dns_records: HashMap<DomainName, Vec<IpAddr>>,
-
-    /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
-    client_dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
-
-    pub(crate) client_sent_dns_queries: HashMap<QueryId, IpPacket<'static>>,
-    pub(crate) client_received_dns_responses: HashMap<QueryId, IpPacket<'static>>,
-
-    pub(crate) client_sent_icmp_requests: HashMap<(u16, u16), IpPacket<'static>>,
-    pub(crate) client_received_icmp_replies: HashMap<(u16, u16), IpPacket<'static>>,
-    pub(crate) gateway_received_icmp_requests: VecDeque<IpPacket<'static>>,
+    network: RoutingTable,
 
     #[allow(dead_code)]
     logger: DefaultGuard,
@@ -87,50 +72,73 @@ impl StateMachineTest for TunnelTest {
         // Construct client, gateway and relay from the initial state.
         let mut client = ref_state
             .client
-            .map_state(ClientState::new, debug_span!("client"));
-        let mut gateway = ref_state
-            .gateway
-            .map_state(GatewayState::new, debug_span!("gateway"));
-        let relay = ref_state.relay.map_state(
-            |seed, ip_stack| {
-                firezone_relay::Server::new(
-                    ip_stack,
-                    rand::rngs::StdRng::seed_from_u64(seed),
-                    3478,
-                    49152,
-                    65535,
+            .map(|ref_client, _, _| ref_client.init(), debug_span!("client"));
+
+        let mut gateways = ref_state
+            .gateways
+            .iter()
+            .map(|(id, gateway)| {
+                let gateway = gateway.map(
+                    |ref_gateway, _, _| ref_gateway.init(),
+                    debug_span!("gateway", gid = %id),
+                );
+
+                (*id, gateway)
+            })
+            .collect::<HashMap<_, _>>();
+
+        let relays = ref_state
+            .relays
+            .iter()
+            .map(|(id, relay)| {
+                let relay = relay.map(
+                    |seed, ip4, ip6| {
+                        SimRelay::new(firezone_relay::Server::new(
+                            IpStack::from((ip4, ip6)),
+                            rand::rngs::StdRng::seed_from_u64(seed),
+                            3478,
+                            49152..=65535,
+                        ))
+                    },
+                    debug_span!("relay", rid = %id),
+                );
+
+                (*id, relay)
+            })
+            .collect::<HashMap<_, _>>();
+
+        // Configure client and gateway with the relays.
+        client.exec_mut(|c| {
+            c.sut.update_relays(
+                HashSet::default(),
+                HashSet::from_iter(map_explode(relays.iter(), "client")),
+                ref_state.now,
+            )
+        });
+        for (id, gateway) in &mut gateways {
+            gateway.exec_mut(|g| {
+                g.sut.update_relays(
+                    HashSet::default(),
+                    HashSet::from_iter(map_explode(relays.iter(), &format!("gateway_{id}"))),
+                    ref_state.now,
                 )
-            },
-            debug_span!("relay"),
-        );
-        let portal = SimPortal::new(client.id, gateway.id, relay.id);
-
-        // Configure client and gateway with the relay.
-        client.init_relays([&relay], ref_state.now);
-        gateway.init_relays([&relay], ref_state.now);
-
-        client.update_upstream_dns(ref_state.upstream_dns_resolvers.clone());
-        client.update_system_dns(ref_state.system_dns_resolvers.clone());
+            });
+        }
 
         let mut this = Self {
             now: ref_state.now,
             utc_now: ref_state.utc_now,
+            network: ref_state.network.clone(),
             client,
-            gateway,
-            portal,
+            gateways,
             logger,
-            relay,
-            client_dns_records: Default::default(),
-            client_dns_by_sentinel: Default::default(),
-            client_sent_icmp_requests: Default::default(),
-            client_received_icmp_replies: Default::default(),
-            gateway_received_icmp_requests: Default::default(),
-            client_received_dns_responses: Default::default(),
-            client_sent_dns_queries: Default::default(),
+            relays,
         };
 
-        let mut buffered_transmits = VecDeque::new();
+        let mut buffered_transmits = BufferedTransmits::default();
         this.advance(ref_state, &mut buffered_transmits); // Perform initial setup before we apply the first transition.
+
+        debug_assert!(buffered_transmits.is_empty());
 
         this
     }
@@ -141,17 +149,19 @@ impl StateMachineTest for TunnelTest {
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
         transition: <Self::Reference as ReferenceStateMachine>::Transition,
     ) -> Self::SystemUnderTest {
-        let mut buffered_transmits = VecDeque::new();
+        let mut buffered_transmits = BufferedTransmits::default();
 
         // Act: Apply the transition
         match transition {
-            Transition::AddCidrResource(r) => {
-                state.client.add_resource(ResourceDescription::Cidr(r))
+            Transition::AddCidrResource { resource } => {
+                state
+                    .client
+                    .exec_mut(|c| c.sut.add_resource(ResourceDescription::Cidr(resource)));
             }
             Transition::AddDnsResource { resource, .. } => state
                 .client
-                .add_resource(ResourceDescription::Dns(resource)),
-            Transition::RemoveResource(id) => state.client.remove_resource(id),
+                .exec_mut(|c| c.sut.add_resource(ResourceDescription::Dns(resource))),
+            Transition::RemoveResource(id) => state.client.exec_mut(|c| c.sut.remove_resource(id)),
             Transition::SendICMPPacketToNonResourceIp {
                 src,
                 dst,
@@ -166,7 +176,11 @@ impl StateMachineTest for TunnelTest {
             } => {
                 let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
 
-                buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
+                let transmit = state
+                    .client
+                    .exec_mut(|sim| sim.encapsulate(packet, state.now));
+
+                buffered_transmits.push(transmit, &state.client);
             }
             Transition::SendICMPPacketToDnsResource {
                 src,
@@ -175,21 +189,26 @@ impl StateMachineTest for TunnelTest {
                 identifier,
                 resolved_ip,
             } => {
-                let available_ips =
-                    state
-                        .client_dns_records
-                        .get(&dst)
-                        .unwrap()
-                        .iter()
-                        .filter(|ip| match ip {
-                            IpAddr::V4(_) => src.is_ipv4(),
-                            IpAddr::V6(_) => src.is_ipv6(),
-                        });
+                let available_ips = state
+                    .client
+                    .inner()
+                    .dns_records
+                    .get(&dst)
+                    .unwrap()
+                    .iter()
+                    .filter(|ip| match ip {
+                        IpAddr::V4(_) => src.is_ipv4(),
+                        IpAddr::V6(_) => src.is_ipv6(),
+                    });
                 let dst = *resolved_ip.select(available_ips);
 
                 let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
 
-                buffered_transmits.extend(state.send_ip_packet_client_to_gateway(packet));
+                let transmit = state
+                    .client
+                    .exec_mut(|sim| Some(sim.encapsulate(packet, state.now)?.into_owned()));
+
+                buffered_transmits.push(transmit, &state.client);
             }
             Transition::SendDnsQuery {
                 domain,
@@ -197,23 +216,65 @@ impl StateMachineTest for TunnelTest {
                 query_id,
                 dns_server,
             } => {
-                let transmit = state.send_dns_query_for(domain, r_type, query_id, dns_server);
+                let transmit = state.client.exec_mut(|sim| {
+                    sim.send_dns_query_for(domain, r_type, query_id, dns_server, state.now)
+                });
 
-                buffered_transmits.extend(transmit)
-            }
-            Transition::Tick { millis } => {
-                state.now += Duration::from_millis(millis);
+                buffered_transmits.push(transmit, &state.client);
             }
             Transition::UpdateSystemDnsServers { servers } => {
-                state.client.update_system_dns(servers);
+                state
+                    .client
+                    .exec_mut(|c| c.sut.update_system_resolvers(servers));
             }
             Transition::UpdateUpstreamDnsServers { servers } => {
-                state.client.update_upstream_dns(servers);
+                state.client.exec_mut(|c| {
+                    c.sut.update_interface_config(Interface {
+                        ipv4: c.sut.tunnel_ip4().unwrap(),
+                        ipv6: c.sut.tunnel_ip6().unwrap(),
+                        upstream_dns: servers,
+                    })
+                });
             }
-            Transition::RoamClient {
-                ip4_socket,
-                ip6_socket,
-            } => state.client.roam(ip4_socket, ip6_socket, state.now),
+            Transition::RoamClient { ip4, ip6, port } => {
+                state.network.remove_host(&state.client);
+                state.client.update_interface(ip4, ip6, port);
+                debug_assert!(state
+                    .network
+                    .add_host(state.client.inner().id, &state.client));
+
+                state.client.exec_mut(|c| {
+                    c.sut.reset();
+
+                    // In prod, we reconnect to the portal and receive a new `init` message.
+                    c.sut.update_relays(
+                        HashSet::default(),
+                        HashSet::from_iter(map_explode(state.relays.iter(), "client")),
+                        ref_state.now,
+                    );
+                    c.sut
+                        .set_resources(ref_state.client.inner().all_resources());
+                });
+            }
+            Transition::ReconnectPortal => {
+                let ipv4 = state.client.inner().sut.tunnel_ip4().unwrap();
+                let ipv6 = state.client.inner().sut.tunnel_ip6().unwrap();
+                let upstream_dns = ref_state.client.inner().upstream_dns_resolvers.clone();
+                let relays = HashSet::from_iter(map_explode(state.relays.iter(), "client"));
+                let all_resources = ref_state.client.inner().all_resources();
+
+                // Simulate receiving `init`.
+                state.client.exec_mut(|c| {
+                    let _ = c.sut.update_interface_config(Interface {
+                        ipv4,
+                        ipv6,
+                        upstream_dns,
+                    });
+                    c.sut
+                        .update_relays(HashSet::default(), relays, ref_state.now);
+                    c.sut.set_resources(all_resources);
+                });
+            }
         };
         state.advance(ref_state, &mut buffered_transmits);
         assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
@@ -226,12 +287,35 @@ impl StateMachineTest for TunnelTest {
         state: &Self::SystemUnderTest,
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
     ) {
+        let _guard = tracing_subscriber::registry()
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_test_writer()
+                    .with_filter(EnvFilter::from_default_env()),
+            )
+            .with(PanicOnErrorEvents::default()) // Temporarily install a layer that panics when `_guard` goes out of scope if any of our assertions emitted an error.
+            .set_default();
+
+        let ref_client = ref_state.client.inner();
+        let sim_client = state.client.inner();
+        let sim_gateways = state
+            .gateways
+            .iter()
+            .map(|(id, g)| (*id, g.inner()))
+            .collect();
+
         // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
-        assert_icmp_packets_properties(state, ref_state);
-        assert_dns_packets_properties(state, ref_state);
+        assert_icmp_packets_properties(
+            ref_client,
+            sim_client,
+            sim_gateways,
+            &ref_state.global_dns_records,
+        );
+        assert_dns_packets_properties(ref_client, sim_client);
+        assert_known_hosts_are_valid(ref_client, sim_client);
         assert_eq!(
-            state.effective_dns_servers(),
-            ref_state.expected_dns_servers(),
+            sim_client.effective_dns_servers(),
+            ref_client.expected_dns_servers(),
             "Effective DNS servers should match either system or upstream DNS"
         );
     }
@@ -242,94 +326,88 @@ impl TunnelTest {
     ///
     /// For our tests to work properly, each [`Transition`] needs to advance the state as much as possible.
     /// For example, upon the first packet to a resource, we need to trigger the connection intent and fully establish a connection.
-    /// Dispatching a [`Transmit`] (read: packet) to a component can trigger more packets, i.e. receiving a STUN request may trigger a STUN response.
+    /// Dispatching a [`Transmit`] (read: packet) to a host can trigger more packets, i.e. receiving a STUN request may trigger a STUN response.
     ///
-    /// Consequently, this function needs to loop until no component can make progress at which point we consider the [`Transition`] complete.
-    fn advance(
-        &mut self,
-        ref_state: &ReferenceState,
-        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
-    ) {
-        loop {
-            if let Some((transmit, sending_socket)) = buffered_transmits.pop_front() {
-                self.dispatch_transmit(
-                    transmit,
-                    sending_socket,
-                    buffered_transmits,
-                    &ref_state.global_dns_records,
-                );
+    /// Consequently, this function needs to loop until no host can make progress at which point we consider the [`Transition`] complete.
+    fn advance(&mut self, ref_state: &ReferenceState, buffered_transmits: &mut BufferedTransmits) {
+        'outer: loop {
+            if let Some(transmit) = buffered_transmits.pop() {
+                self.dispatch_transmit(transmit, buffered_transmits, &ref_state.global_dns_records);
                 continue;
             }
 
-            if let Some(transmit) = self.client.state.poll_transmit() {
-                let sending_socket = self.client.sending_socket_for(transmit.dst.ip());
-
-                buffered_transmits.push_back((transmit, sending_socket));
+            if let Some(transmit) = self.client.exec_mut(|sim| sim.sut.poll_transmit()) {
+                buffered_transmits.push(transmit, &self.client);
                 continue;
             }
-            if let Some(event) = self.client.state.poll_event() {
+            if let Some(event) = self.client.exec_mut(|c| c.sut.poll_event()) {
                 self.on_client_event(
-                    self.client.id,
+                    self.client.inner().id,
                     event,
-                    &ref_state.client_cidr_resources,
-                    &ref_state.client_dns_resources,
+                    &ref_state.portal,
                     &ref_state.global_dns_records,
                 );
                 continue;
             }
-            if let Some(query) = self.client.state.poll_dns_queries() {
+            if let Some(query) = self.client.exec_mut(|client| client.sut.poll_dns_queries()) {
                 self.on_forwarded_dns_query(query, ref_state);
                 continue;
             }
-            if let Some(packet) = self.client.state.poll_packets() {
-                self.on_client_received_packet(packet);
-                continue;
+            self.client.exec_mut(|sim| {
+                while let Some(packet) = sim.sut.poll_packets() {
+                    sim.on_received_packet(packet)
+                }
+            });
+
+            for (_, gateway) in self.gateways.iter_mut() {
+                if let Some(transmit) = gateway.exec_mut(|g| g.sut.poll_transmit()) {
+                    buffered_transmits.push(transmit, gateway);
+                    continue 'outer;
+                }
             }
 
-            if let Some(transmit) = self.gateway.state.poll_transmit() {
-                let sending_socket = self.gateway.sending_socket_for(transmit.dst.ip());
+            for (id, gateway) in self.gateways.iter_mut() {
+                let Some(event) = gateway.exec_mut(|g| g.sut.poll_event()) else {
+                    continue;
+                };
 
-                buffered_transmits.push_back((transmit, sending_socket));
-                continue;
+                on_gateway_event(*id, event, &mut self.client, self.now);
+                continue 'outer;
             }
-            if let Some(event) = self.gateway.state.poll_event() {
-                self.on_gateway_event(self.gateway.id, event);
-                continue;
-            }
-            if let Some(message) = self.relay.state.next_command() {
+
+            for (_, relay) in self.relays.iter_mut() {
+                let Some(message) = relay.exec_mut(|r| r.sut.next_command()) else {
+                    continue;
+                };
+
                 match message {
                     firezone_relay::Command::SendMessage { payload, recipient } => {
                         let dst = recipient.into_socket();
-                        let src = self
-                            .relay
-                            .sending_socket_for(dst, 3478)
+                        let src = relay
+                            .sending_socket_for(dst.ip())
                             .expect("relay to never emit packets without a matching socket");
 
-                        if let ControlFlow::Break(_) = self.try_handle_client(dst, src, &payload) {
-                            continue;
-                        }
-
-                        if let ControlFlow::Break(_) = self.try_handle_gateway(
-                            dst,
-                            src,
-                            &payload,
-                            buffered_transmits,
-                            &ref_state.global_dns_records,
-                        ) {
-                            continue;
-                        }
-
-                        panic!("Unhandled packet: {src} -> {dst}")
+                        buffered_transmits.push(
+                            Transmit {
+                                src: Some(src),
+                                dst,
+                                payload: payload.into(),
+                            },
+                            relay,
+                        );
                     }
 
                     firezone_relay::Command::CreateAllocation { port, family } => {
-                        self.relay.allocations.insert((family, port));
+                        relay.allocate_port(port.value(), family);
+                        relay.exec_mut(|r| r.allocations.insert((family, port)));
                     }
                     firezone_relay::Command::FreeAllocation { port, family } => {
-                        self.relay.allocations.remove(&(family, port));
+                        relay.deallocate_port(port.value(), family);
+                        relay.exec_mut(|r| r.allocations.remove(&(family, port)));
                     }
                 }
-                continue;
+
+                continue 'outer;
             }
 
             if self.handle_timeout(self.now, self.utc_now) {
@@ -340,288 +418,144 @@ impl TunnelTest {
         }
     }
 
-    /// Returns the _effective_ DNS servers that connlib is using.
-    fn effective_dns_servers(&self) -> BTreeSet<SocketAddr> {
-        self.client_dns_by_sentinel
-            .right_values()
-            .copied()
-            .collect()
-    }
-
-    /// Forwards time to the given instant iff the corresponding component would like that (i.e. returns a timestamp <= from `poll_timeout`).
+    /// Forwards time to the given instant iff the corresponding host would like that (i.e. returns a timestamp <= from `poll_timeout`).
     ///
     /// Tying the forwarding of time to the result of `poll_timeout` gives us better coverage because in production, we suspend until the value of `poll_timeout`.
     fn handle_timeout(&mut self, now: Instant, utc_now: DateTime<Utc>) -> bool {
         let mut any_advanced = false;
 
-        if self.client.state.poll_timeout().is_some_and(|t| t <= now) {
+        if self
+            .client
+            .exec_mut(|c| c.sut.poll_timeout())
+            .is_some_and(|t| t <= now)
+        {
             any_advanced = true;
 
-            self.client
-                .span
-                .in_scope(|| self.client.state.handle_timeout(now));
+            self.client.exec_mut(|c| c.sut.handle_timeout(now));
         };
 
-        if self.gateway.state.poll_timeout().is_some_and(|t| t <= now) {
-            any_advanced = true;
+        for (_, gateway) in self.gateways.iter_mut() {
+            if gateway
+                .exec_mut(|g| g.sut.poll_timeout())
+                .is_some_and(|t| t <= now)
+            {
+                any_advanced = true;
 
-            self.gateway
-                .span
-                .in_scope(|| self.gateway.state.handle_timeout(now, utc_now))
-        };
+                gateway.exec_mut(|g| g.sut.handle_timeout(now, utc_now))
+            };
+        }
 
-        if self.relay.state.poll_timeout().is_some_and(|t| t <= now) {
-            any_advanced = true;
+        for (_, relay) in self.relays.iter_mut() {
+            if relay
+                .exec_mut(|r| r.sut.poll_timeout())
+                .is_some_and(|t| t <= now)
+            {
+                any_advanced = true;
 
-            self.relay
-                .span
-                .in_scope(|| self.relay.state.handle_timeout(now))
-        };
+                relay.exec_mut(|r| r.sut.handle_timeout(now))
+            };
+        }
 
         any_advanced
     }
 
-    fn send_ip_packet_client_to_gateway(
-        &mut self,
-        packet: MutableIpPacket<'_>,
-    ) -> Option<(Transmit<'static>, Option<SocketAddr>)> {
-        {
-            let packet = packet.to_owned().into_immutable();
-
-            if let Some(icmp) = packet.as_icmp() {
-                let echo_request = icmp.as_echo_request().expect("to be echo request");
-
-                self.client_sent_icmp_requests
-                    .insert((echo_request.sequence(), echo_request.identifier()), packet);
-            }
-        }
-
-        {
-            let packet = packet.to_owned().into_immutable();
-
-            if let Some(udp) = packet.as_udp() {
-                if let Ok(message) = hickory_proto::op::Message::from_bytes(udp.payload()) {
-                    debug_assert_eq!(
-                        message.message_type(),
-                        MessageType::Query,
-                        "every DNS message sent from the client should be a DNS query"
-                    );
-
-                    self.client_sent_dns_queries.insert(message.id(), packet);
-                }
-            }
-        }
-
-        let transmit = self
-            .client
-            .span
-            .in_scope(|| self.client.state.encapsulate(packet, self.now))?;
-        let transmit = transmit.into_owned();
-        let sending_socket = self.client.sending_socket_for(transmit.dst.ip());
-
-        Some((transmit, sending_socket))
-    }
-
-    fn send_ip_packet_gateway_to_client(
-        &mut self,
-        packet: MutableIpPacket<'_>,
-    ) -> Option<(Transmit<'static>, Option<SocketAddr>)> {
-        let transmit = self
-            .gateway
-            .span
-            .in_scope(|| self.gateway.state.encapsulate(packet, self.now))?;
-        let transmit = transmit.into_owned();
-        let sending_socket = self.gateway.sending_socket_for(transmit.dst.ip());
-
-        Some((transmit, sending_socket))
-    }
-
-    /// Dispatches a [`Transmit`] to the correct component.
+    /// Dispatches a [`Transmit`] to the correct host.
     ///
     /// This function is basically the "network layer" of our tests.
-    /// It takes a [`Transmit`] and checks, which component accepts it, i.e. has configured the correct IP address.
-    /// Our tests don't have a concept of a network topology.
-    /// This means, components can have IP addresses in completely different subnets, yet this function will still "route" them correctly.
+    /// It takes a [`Transmit`] and checks, which host accepts it, i.e. has configured the correct IP address.
+    ///
+    /// Currently, the network topology of our tests are a single subnet without NAT.
     fn dispatch_transmit(
         &mut self,
         transmit: Transmit,
-        sending_socket: Option<SocketAddr>,
-        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
+        buffered_transmits: &mut BufferedTransmits,
         global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     ) {
+        let src = transmit
+            .src
+            .expect("`src` should always be set in these tests");
         let dst = transmit.dst;
         let payload = &transmit.payload;
 
-        let Some(src) = sending_socket else {
-            tracing::warn!("Dropping packet to {dst}: no socket");
-            return;
+        let Some(host) = self.network.host_by_ip(dst.ip()) else {
+            panic!("Unhandled packet: {src} -> {dst}")
         };
 
-        if self
-            .try_handle_relay(dst, src, payload, buffered_transmits)
-            .is_break()
-        {
-            return;
-        }
-
-        let src = transmit
-            .src
-            .expect("all packets without src should have been handled via relays");
-
-        if self.try_handle_client(dst, src, payload).is_break() {
-            return;
-        }
-
-        if self
-            .try_handle_gateway(dst, src, payload, buffered_transmits, global_dns_records)
-            .is_break()
-        {
-            return;
-        }
-
-        panic!("Unhandled packet: {src} -> {dst}")
-    }
-
-    fn try_handle_relay(
-        &mut self,
-        dst: SocketAddr,
-        src: SocketAddr,
-        payload: &[u8],
-        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
-    ) -> ControlFlow<()> {
-        if !self.relay.wants(dst) {
-            return ControlFlow::Continue(());
-        }
-
-        self.relay
-            .handle_packet(payload, src, dst, self.now, buffered_transmits);
-
-        ControlFlow::Break(())
-    }
-
-    fn try_handle_client(
-        &mut self,
-        dst: SocketAddr,
-        src: SocketAddr,
-        payload: &[u8],
-    ) -> ControlFlow<()> {
-        let mut buffer = [0u8; 2000];
-
-        if self.client.old_sockets.contains(&dst) {
-            tracing::debug!("Dropping packet to {dst} because the client roamed away from this network interface");
-            return ControlFlow::Break(());
-        }
-
-        if !self.client.wants(dst) {
-            return ControlFlow::Continue(());
-        }
-
-        if let Some(packet) = self.client.span.in_scope(|| {
-            self.client
-                .state
-                .decapsulate(dst, src, payload, self.now, &mut buffer)
-        }) {
-            self.on_client_received_packet(packet);
-        };
-
-        ControlFlow::Break(())
-    }
-
-    fn try_handle_gateway(
-        &mut self,
-        dst: SocketAddr,
-        src: SocketAddr,
-        payload: &[u8],
-        buffered_transmits: &mut VecDeque<(Transmit<'static>, Option<SocketAddr>)>,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
-    ) -> ControlFlow<()> {
-        let mut buffer = [0u8; 2000];
-
-        if !self.gateway.wants(dst) {
-            return ControlFlow::Continue(());
-        }
-
-        if let Some(packet) = self.gateway.span.in_scope(|| {
-            self.gateway
-                .state
-                .decapsulate(dst, src, payload, self.now, &mut buffer)
-        }) {
-            let packet = packet.to_owned();
-
-            if packet.as_icmp().is_some() {
-                self.gateway_received_icmp_requests
-                    .push_back(packet.clone());
-
-                let echo_response = ip_packet::make::icmp_response_packet(packet);
-                let maybe_transmit = self.send_ip_packet_gateway_to_client(echo_response);
-
-                buffered_transmits.extend(maybe_transmit);
-
-                return ControlFlow::Break(());
+        match host {
+            HostId::Client(_) => {
+                self.client
+                    .exec_mut(|c| c.handle_packet(payload, src, dst, self.now));
             }
+            HostId::Gateway(id) => {
+                let gateway = self.gateways.get_mut(&id).expect("unknown gateway");
 
-            if packet.as_udp().is_some() {
-                let response = ip_packet::make::dns_ok_response(packet, |name| {
-                    global_dns_records
-                        .get(&hickory_name_to_domain(name.clone()))
-                        .cloned()
-                        .into_iter()
-                        .flatten()
-                });
+                let Some(transmit) = gateway
+                    .exec_mut(|g| g.handle_packet(global_dns_records, payload, src, dst, self.now))
+                else {
+                    return;
+                };
 
-                let maybe_transmit = self.send_ip_packet_gateway_to_client(response);
-                buffered_transmits.extend(maybe_transmit);
-
-                return ControlFlow::Break(());
+                buffered_transmits.push(transmit, gateway);
             }
+            HostId::Relay(id) => {
+                let relay = self.relays.get_mut(&id).expect("unknown relay");
 
-            panic!("Unhandled packet")
-        };
+                let Some(transmit) =
+                    relay.exec_mut(|r| r.handle_packet(payload, src, dst, self.now))
+                else {
+                    return;
+                };
 
-        ControlFlow::Break(())
+                buffered_transmits.push(transmit, relay);
+            }
+            HostId::Stale => {
+                tracing::debug!(%dst, "Dropping packet because host roamed away or is offline");
+            }
+        }
     }
 
     fn on_client_event(
         &mut self,
         src: ClientId,
         event: ClientEvent,
-        client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
-        client_dns_resource: &BTreeMap<ResourceId, ResourceDescriptionDns>,
+        portal: &StubPortal,
         global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     ) {
         match event {
-            ClientEvent::NewIceCandidate { candidate, .. } => self.gateway.span.in_scope(|| {
-                self.gateway
-                    .state
-                    .add_ice_candidate(src, candidate, self.now)
-            }),
-            ClientEvent::InvalidatedIceCandidate { candidate, .. } => self
-                .gateway
-                .span
-                .in_scope(|| self.gateway.state.remove_ice_candidate(src, candidate)),
+            ClientEvent::AddedIceCandidates {
+                candidates,
+                conn_id,
+            } => {
+                let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
+
+                gateway.exec_mut(|g| {
+                    for candidate in candidates {
+                        g.sut.add_ice_candidate(src, candidate, self.now)
+                    }
+                })
+            }
+            ClientEvent::RemovedIceCandidates {
+                candidates,
+                conn_id,
+            } => {
+                let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
+
+                gateway.exec_mut(|g| {
+                    for candidate in candidates {
+                        g.sut.remove_ice_candidate(src, candidate)
+                    }
+                })
+            }
             ClientEvent::ConnectionIntent {
                 resource,
                 connected_gateway_ids,
             } => {
-                let (gateway, site) = self.portal.handle_connection_intent(
-                    resource,
-                    connected_gateway_ids,
-                    client_cidr_resources,
-                    client_dns_resource,
-                );
+                let (gateway, site) =
+                    portal.handle_connection_intent(resource, connected_gateway_ids);
 
                 let request = self
                     .client
-                    .span
-                    .in_scope(|| {
-                        self.client.state.create_or_reuse_connection(
-                            resource,
-                            gateway,
-                            site,
-                            HashSet::default(),
-                            HashSet::default(),
-                        )
-                    })
+                    .exec_mut(|c| c.sut.create_or_reuse_connection(resource, gateway, site))
                     .unwrap()
                     .unwrap();
 
@@ -635,21 +569,21 @@ impl TunnelTest {
                     .flatten()
                     .collect();
 
-                let resource = map_client_resource_to_gateway_resource(
-                    client_cidr_resources,
-                    client_dns_resource,
-                    resolved_ips,
-                    resource_id,
-                );
+                let resource =
+                    portal.map_client_resource_to_gateway_resource(resolved_ips, resource_id);
 
                 match request {
                     Request::NewConnection(new_connection) => {
-                        let answer = self
-                            .gateway
-                            .span
-                            .in_scope(|| {
-                                self.gateway.state.accept(
-                                    self.client.id,
+                        let Some(gateway) = self.gateways.get_mut(&new_connection.gateway_id)
+                        else {
+                            tracing::error!("Unknown gateway");
+                            return;
+                        };
+
+                        let answer = gateway
+                            .exec_mut(|g| {
+                                g.sut.accept(
+                                    self.client.inner().id,
                                     snownet::Offer {
                                         session_key: new_connection
                                             .client_preshared_key
@@ -667,11 +601,9 @@ impl TunnelTest {
                                                 .password,
                                         },
                                     },
-                                    self.client.state.public_key(),
-                                    self.client.tunnel_ip4,
-                                    self.client.tunnel_ip6,
-                                    HashSet::default(),
-                                    HashSet::default(),
+                                    self.client.inner().sut.public_key(),
+                                    self.client.inner().sut.tunnel_ip4().unwrap(),
+                                    self.client.inner().sut.tunnel_ip6().unwrap(),
                                     new_connection
                                         .client_payload
                                         .domain
@@ -684,9 +616,8 @@ impl TunnelTest {
                             .unwrap();
 
                         self.client
-                            .span
-                            .in_scope(|| {
-                                self.client.state.accept_answer(
+                            .exec_mut(|c| {
+                                c.sut.accept_answer(
                                     snownet::Answer {
                                         credentials: snownet::Credentials {
                                             username: answer.username,
@@ -694,19 +625,23 @@ impl TunnelTest {
                                         },
                                     },
                                     resource_id,
-                                    self.gateway.state.public_key(),
+                                    gateway.inner().sut.public_key(),
                                     self.now,
                                 )
                             })
                             .unwrap();
                     }
                     Request::ReuseConnection(reuse_connection) => {
-                        self.gateway
-                            .span
-                            .in_scope(|| {
-                                self.gateway.state.allow_access(
+                        let gateway = self
+                            .gateways
+                            .get_mut(&reuse_connection.gateway_id)
+                            .expect("unknown gateway");
+
+                        gateway
+                            .exec_mut(|g| {
+                                g.sut.allow_access(
                                     resource,
-                                    self.client.id,
+                                    self.client.inner().id,
                                     None,
                                     reuse_connection.payload.map(|r| (r.name, r.proxy_ips)),
                                     self.now,
@@ -719,6 +654,11 @@ impl TunnelTest {
 
             ClientEvent::SendProxyIps { connections } => {
                 for reuse_connection in connections {
+                    let gateway = self
+                        .gateways
+                        .get_mut(&reuse_connection.gateway_id)
+                        .expect("unknown gateway");
+
                     let resolved_ips = reuse_connection
                         .payload
                         .as_ref()
@@ -728,19 +668,16 @@ impl TunnelTest {
                         .flatten()
                         .collect();
 
-                    let resource = map_client_resource_to_gateway_resource(
-                        client_cidr_resources,
-                        client_dns_resource,
+                    let resource = portal.map_client_resource_to_gateway_resource(
                         resolved_ips,
                         reuse_connection.resource_id,
                     );
 
-                    self.gateway
-                        .span
-                        .in_scope(|| {
-                            self.gateway.state.allow_access(
+                    gateway
+                        .exec_mut(|g| {
+                            g.sut.allow_access(
                                 resource,
-                                self.client.id,
+                                self.client.inner().id,
                                 None,
                                 reuse_connection.payload.map(|r| (r.name, r.proxy_ips)),
                                 self.now,
@@ -752,99 +689,14 @@ impl TunnelTest {
             ClientEvent::ResourcesChanged { .. } => {
                 tracing::warn!("Unimplemented");
             }
-            ClientEvent::DnsServersChanged { dns_by_sentinel } => {
-                self.client_dns_by_sentinel = dns_by_sentinel;
-            }
-        }
-    }
-
-    fn on_gateway_event(&mut self, src: GatewayId, event: GatewayEvent) {
-        match event {
-            GatewayEvent::NewIceCandidate { candidate, .. } => self.client.span.in_scope(|| {
+            ClientEvent::TunInterfaceUpdated {
+                dns_by_sentinel, ..
+            } => {
                 self.client
-                    .state
-                    .add_ice_candidate(src, candidate, self.now)
-            }),
-            GatewayEvent::InvalidIceCandidate { candidate, .. } => self
-                .client
-                .span
-                .in_scope(|| self.client.state.remove_ice_candidate(src, candidate)),
-            GatewayEvent::RefreshDns { .. } => todo!(),
-        }
-    }
-
-    /// Process an IP packet received on the client.
-    fn on_client_received_packet(&mut self, packet: IpPacket<'_>) {
-        if let Some(icmp) = packet.as_icmp() {
-            let echo_reply = icmp.as_echo_reply().expect("to be echo reply");
-
-            self.client_received_icmp_replies.insert(
-                (echo_reply.sequence(), echo_reply.identifier()),
-                packet.to_owned(),
-            );
-
-            return;
-        };
-
-        if let Some(udp) = packet.as_udp() {
-            if udp.get_source() == 53 {
-                let mut message = hickory_proto::op::Message::from_bytes(udp.payload())
-                    .expect("ip packets on port 53 to be DNS packets");
-
-                self.client_received_dns_responses
-                    .insert(message.id(), packet.to_owned());
-
-                for record in message.take_answers().into_iter() {
-                    let domain = hickory_name_to_domain(record.name().clone());
-
-                    let ip = match record.data() {
-                        Some(RData::A(rdata::A(ip4))) => IpAddr::from(*ip4),
-                        Some(RData::AAAA(rdata::AAAA(ip6))) => IpAddr::from(*ip6),
-                        unhandled => {
-                            panic!("Unexpected record data: {unhandled:?}")
-                        }
-                    };
-
-                    self.client_dns_records.entry(domain).or_default().push(ip);
-                }
-
-                // Ensure all IPs are always sorted.
-                for ips in self.client_dns_records.values_mut() {
-                    ips.sort()
-                }
-
-                return;
+                    .exec_mut(|c| c.dns_by_sentinel = dns_by_sentinel);
             }
+            ClientEvent::TunRoutesUpdated { .. } => {}
         }
-
-        unimplemented!("Unhandled packet")
-    }
-
-    fn send_dns_query_for(
-        &mut self,
-        domain: DomainName,
-        r_type: RecordType,
-        query_id: u16,
-        dns_server: SocketAddr,
-    ) -> Option<(Transmit<'static>, Option<SocketAddr>)> {
-        let dns_server = *self
-            .client_dns_by_sentinel
-            .get_by_right(&dns_server)
-            .expect("to have a sentinel DNS server for the sampled one");
-
-        let name = domain_to_hickory_name(domain);
-
-        let src = self.client.tunnel_ip(dns_server);
-
-        let packet = ip_packet::make::dns_query(
-            name,
-            r_type,
-            SocketAddr::new(src, 9999), // An application would pick a random source port that is free.
-            SocketAddr::new(dns_server, 53),
-            query_id,
-        );
-
-        self.send_ip_packet_client_to_gateway(packet)
     }
 
     // TODO: Should we vary the following things via proptests?
@@ -871,48 +723,40 @@ impl TunnelTest {
             .map(|rdata| Record::from_rdata(name.clone(), 86400_u32, rdata))
             .collect::<Arc<_>>();
 
-        self.client.state.on_dns_result(
-            query,
-            Ok(Ok(Ok(Lookup::new_with_max_ttl(
-                Query::query(name, requested_type),
-                record_data,
-            )))),
-        );
+        self.client.exec_mut(|c| {
+            c.sut.on_dns_result(
+                query,
+                Ok(Ok(Ok(Lookup::new_with_max_ttl(
+                    Query::query(name, requested_type),
+                    record_data,
+                )))),
+            )
+        })
     }
 }
 
-fn map_client_resource_to_gateway_resource(
-    client_cidr_resources: &IpNetworkTable<ResourceDescriptionCidr>,
-    client_dns_resources: &BTreeMap<ResourceId, ResourceDescriptionDns>,
-    resolved_ips: Vec<IpAddr>,
-    resource_id: ResourceId,
-) -> gateway::ResourceDescription<gateway::ResolvedResourceDescriptionDns> {
-    let cidr_resource = client_cidr_resources.iter().find_map(|(_, r)| {
-        (r.id == resource_id).then_some(gateway::ResourceDescription::Cidr(
-            gateway::ResourceDescriptionCidr {
-                id: r.id,
-                address: r.address,
-                name: r.name.clone(),
-                filters: Vec::new(),
-            },
-        ))
-    });
-    let dns_resource = client_dns_resources.get(&resource_id).map(|r| {
-        gateway::ResourceDescription::Dns(gateway::ResolvedResourceDescriptionDns {
-            id: r.id,
-            name: r.name.clone(),
-            filters: Vec::new(),
-            domain: r.address.clone(),
-            addresses: resolved_ips.clone(),
-        })
-    });
-
-    cidr_resource
-        .or(dns_resource)
-        .expect("resource to be a known CIDR or DNS resource")
+fn on_gateway_event(
+    src: GatewayId,
+    event: GatewayEvent,
+    client: &mut Host<SimClient>,
+    now: Instant,
+) {
+    match event {
+        GatewayEvent::AddedIceCandidates { candidates, .. } => client.exec_mut(|c| {
+            for candidate in candidates {
+                c.sut.add_ice_candidate(src, candidate, now)
+            }
+        }),
+        GatewayEvent::RemovedIceCandidates { candidates, .. } => client.exec_mut(|c| {
+            for candidate in candidates {
+                c.sut.remove_ice_candidate(src, candidate)
+            }
+        }),
+        GatewayEvent::RefreshDns { .. } => todo!(),
+    }
 }
 
-fn hickory_name_to_domain(mut name: hickory_proto::rr::Name) -> DomainName {
+pub(crate) fn hickory_name_to_domain(mut name: hickory_proto::rr::Name) -> DomainName {
     name.set_fqdn(false); // Hack to work around hickory always parsing as FQ
     let name = name.to_string();
 
@@ -922,11 +766,52 @@ fn hickory_name_to_domain(mut name: hickory_proto::rr::Name) -> DomainName {
     domain
 }
 
-fn domain_to_hickory_name(domain: DomainName) -> hickory_proto::rr::Name {
+pub(crate) fn domain_to_hickory_name(domain: DomainName) -> hickory_proto::rr::Name {
     let domain = domain.to_string();
 
     let name = hickory_proto::rr::Name::from_str(&domain).unwrap();
     debug_assert_eq!(name.to_string(), domain);
 
     name
+}
+
+#[derive(Debug, Default)]
+struct BufferedTransmits {
+    inner: VecDeque<Transmit<'static>>,
+}
+
+impl BufferedTransmits {
+    fn push<T>(&mut self, transmit: impl Into<Option<Transmit<'static>>>, sending_host: &Host<T>) {
+        let Some(transmit) = transmit.into() else {
+            return;
+        };
+
+        if transmit.src.is_some() {
+            self.inner.push_back(transmit);
+            return;
+        }
+
+        // The `src` of a [`Transmit`] is empty if we want to send if via the default interface.
+        // In production, the kernel does this for us.
+        // In this test, we need to always set a `src` so that the remote peer knows where the packet is coming from.
+
+        let Some(src) = sending_host.sending_socket_for(transmit.dst.ip()) else {
+            tracing::debug!(dst = %transmit.dst, "No socket");
+
+            return;
+        };
+
+        self.inner.push_back(Transmit {
+            src: Some(src),
+            ..transmit
+        });
+    }
+
+    fn pop(&mut self) -> Option<Transmit<'static>> {
+        self.inner.pop_front()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
 }

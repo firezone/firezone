@@ -1,38 +1,30 @@
 //! Implementation, Linux-specific
 
-use super::{SignalKind, TOKEN_ENV_KEY};
+use super::TOKEN_ENV_KEY;
 use anyhow::{bail, Result};
-use futures::future::{select, Either};
+use firezone_bin_shared::FIREZONE_MARK;
+use nix::sys::socket::{setsockopt, sockopt};
 use std::{
+    io,
+    net::SocketAddr,
     path::{Path, PathBuf},
-    pin::pin,
 };
-use tokio::signal::unix::{signal, Signal, SignalKind as TokioSignalKind};
 
 // The Client currently must run as root to control DNS
 // Root group and user are used to check file ownership on the token
 const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
 
-pub(crate) struct Signals {
-    sighup: Signal,
-    sigint: Signal,
+pub(crate) fn tcp_socket_factory(socket_addr: &SocketAddr) -> io::Result<tokio::net::TcpSocket> {
+    let socket = socket_factory::tcp(socket_addr)?;
+    setsockopt(&socket, sockopt::Mark, &FIREZONE_MARK)?;
+    Ok(socket)
 }
 
-impl Signals {
-    pub(crate) fn new() -> Result<Self> {
-        let sighup = signal(TokioSignalKind::hangup())?;
-        let sigint = signal(TokioSignalKind::interrupt())?;
-
-        Ok(Self { sighup, sigint })
-    }
-
-    pub(crate) async fn recv(&mut self) -> SignalKind {
-        match select(pin!(self.sighup.recv()), pin!(self.sigint.recv())).await {
-            Either::Left((_, _)) => SignalKind::Hangup,
-            Either::Right((_, _)) => SignalKind::Interrupt,
-        }
-    }
+pub(crate) fn udp_socket_factory(socket_addr: &SocketAddr) -> io::Result<tokio::net::UdpSocket> {
+    let socket = socket_factory::udp(socket_addr)?;
+    setsockopt(&socket, sockopt::Mark, &FIREZONE_MARK)?;
+    Ok(socket)
 }
 
 pub(crate) fn default_token_path() -> PathBuf {

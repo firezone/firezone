@@ -19,6 +19,7 @@ Best performed on a clean VM
 1. Open the Settings window and change to staging if needed
 1. Click "Sign in"
 1. Expect a browser to open
+1. Disable DoH in Firefox if needed (20.04 and 22.04 both have it, in different places) https://www.firezone.dev/kb/administer/troubleshooting#some-browsers-break-dns-routing
 1. Sign in
 1. Expect Firefox to show "Allow this site to open the link with Firezone?" modal
 1. Check "Always..." and click "Open link"
@@ -36,6 +37,8 @@ Best performed on a clean VM
 1. Enter 'password' to unlock the stored token
 1. Expect "Firezone connected" notification
 1. Check the IP again, expect the gateway's IP
+1. Sign out of Firezone without quitting
+1. Check the IP again, expect your own IP (Checks for regressions in https://github.com/firezone/firezone/pull/5828)
 1. Export the logs
 1. Expect the zip file to start with "firezone_logs_"
 1. Expect `zipinfo` to show a single directory in the root of the zip, to prevent zip bombing
@@ -49,6 +52,7 @@ x86_64 only, see issue #2992. Best performed on a clean VM.
 
 1. Run the MSI installer and ensure "Launch Firezone" is checked at the end
 1. Expect the "Welcome to Firezone." screen
+1. Right-click on the Windows taskbar and configure it to show the Firezone icon
 1. Open the Settings window and change to staging if needed
 1. Click "Sign in"
 1. Expect a browser to open
@@ -67,8 +71,10 @@ x86_64 only, see issue #2992. Best performed on a clean VM.
 1. Run the Firezone GUI
 1. Expect "Firezone connected" notification
 1. Check the IP again, expect the gateway's IP
+1. Sign out of Firezone without quitting
+1. Check the IP again, expect your own IP (Checks for regressions in https://github.com/firezone/firezone/pull/5828)
 1. Export the logs
-1. Expect the zip file to start with "firezone_logs_"
+1. Expect the zip file to start with `firezone_logs_`
 1. Expect the zip to contain a single directory in the root of the zip, to prevent zip bombing
 1. Expect two subdirectories in the zip, "connlib", and "app", with 2 files each, totalling 4 files
 

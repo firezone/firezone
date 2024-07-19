@@ -3,24 +3,29 @@ use crate::{
     dns::DnsQuery,
     sockets::{Received, Sockets},
 };
-use bytes::Bytes;
 use connlib_shared::messages::DnsServer;
+use futures::Future;
 use futures_bounded::FuturesTupleSet;
 use futures_util::FutureExt as _;
+use hickory_proto::iocompat::AsyncIoTokioAsStd;
+use hickory_proto::TokioTime;
 use hickory_resolver::{
     config::{NameServerConfig, Protocol, ResolverConfig, ResolverOpts},
-    TokioAsyncResolver,
+    name_server::{GenericConnector, RuntimeProvider},
+    AsyncResolver, TokioHandle,
 };
 use ip_packet::{IpPacket, MutableIpPacket};
-use quinn_udp::Transmit;
+use socket_factory::SocketFactory;
 use std::{
     collections::HashMap,
     io,
-    net::IpAddr,
+    net::{IpAddr, SocketAddr},
     pin::Pin,
+    sync::Arc,
     task::{ready, Context, Poll},
     time::{Duration, Instant},
 };
+use tokio::net::{TcpSocket, UdpSocket};
 
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
 
@@ -32,9 +37,13 @@ pub struct Io {
     device: Device,
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
+
+    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+    udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
 
-    upstream_dns_servers: HashMap<IpAddr, TokioAsyncResolver>,
+    upstream_dns_servers: HashMap<IpAddr, AsyncResolver<GenericConnector<TokioRuntimeProvider>>>,
     forwarded_dns_queries: FuturesTupleSet<
         Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
         DnsQuery<'static>,
@@ -58,13 +67,19 @@ impl Io {
     /// Creates a new I/O abstraction
     ///
     /// Must be called within a Tokio runtime context so we can bind the sockets.
-    pub fn new(mut sockets: Sockets) -> io::Result<Self> {
-        sockets.rebind()?; // Bind sockets on startup. Must happen within a tokio runtime context.
+    pub fn new(
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+    ) -> io::Result<Self> {
+        let mut sockets = Sockets::default();
+        sockets.rebind(udp_socket_factory.as_ref())?; // Bind sockets on startup. Must happen within a tokio runtime context.
 
         Ok(Self {
             device: Device::new(),
             timeout: None,
             sockets,
+            tcp_socket_factory,
+            udp_socket_factory,
             upstream_dns_servers: HashMap::default(),
             forwarded_dns_queries: FuturesTupleSet::new(
                 Duration::from_secs(60),
@@ -107,12 +122,10 @@ impl Io {
         &mut self.device
     }
 
-    pub fn sockets_ref(&self) -> &Sockets {
-        &self.sockets
-    }
+    pub fn rebind_sockets(&mut self) -> io::Result<()> {
+        self.sockets.rebind(self.udp_socket_factory.as_ref())?;
 
-    pub fn sockets_mut(&mut self) -> &mut Sockets {
-        &mut self.sockets
+        Ok(())
     }
 
     pub fn set_upstream_dns_servers(
@@ -123,7 +136,13 @@ impl Io {
 
         self.forwarded_dns_queries =
             FuturesTupleSet::new(Duration::from_secs(60), DNS_QUERIES_QUEUE_SIZE);
-        self.upstream_dns_servers = create_resolvers(dns_servers);
+        self.upstream_dns_servers = create_resolvers(
+            dns_servers,
+            TokioRuntimeProvider::new(
+                self.tcp_socket_factory.clone(),
+                self.udp_socket_factory.clone(),
+            ),
+        );
     }
 
     pub fn perform_dns_query(&mut self, query: DnsQuery<'static>) -> Result<(), DnsQueryError> {
@@ -166,13 +185,7 @@ impl Io {
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
-        self.sockets.try_send(Transmit {
-            destination: transmit.dst,
-            ecn: None,
-            contents: Bytes::copy_from_slice(&transmit.payload),
-            segment_size: None,
-            src_ip: transmit.src.map(|s| s.ip()),
-        })?;
+        self.sockets.send(transmit)?;
 
         Ok(())
     }
@@ -190,9 +203,65 @@ pub enum DnsQueryError {
     TooManyQueries,
 }
 
+/// Identical to [`TokioRuntimeProvider`](hickory_resolver::name_server::TokioRuntimeProvider) but using our own [`SocketFactory`].
+#[derive(Clone)]
+struct TokioRuntimeProvider {
+    handle: TokioHandle,
+    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+    udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+}
+
+impl TokioRuntimeProvider {
+    fn new(
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+    ) -> TokioRuntimeProvider {
+        Self {
+            handle: Default::default(),
+            tcp_socket_factory,
+            udp_socket_factory,
+        }
+    }
+}
+
+impl RuntimeProvider for TokioRuntimeProvider {
+    type Handle = TokioHandle;
+    type Timer = TokioTime;
+    type Udp = UdpSocket;
+    type Tcp = AsyncIoTokioAsStd<tokio::net::TcpStream>;
+
+    fn create_handle(&self) -> Self::Handle {
+        self.handle.clone()
+    }
+
+    fn connect_tcp(
+        &self,
+        server_addr: SocketAddr,
+    ) -> Pin<Box<dyn Send + Future<Output = io::Result<Self::Tcp>>>> {
+        let socket = (self.tcp_socket_factory)(&server_addr);
+        Box::pin(async move {
+            let socket = socket?;
+            let stream = socket.connect(server_addr).await?;
+
+            Ok(AsyncIoTokioAsStd(stream))
+        })
+    }
+
+    fn bind_udp(
+        &self,
+        local_addr: SocketAddr,
+        _server_addr: SocketAddr,
+    ) -> Pin<Box<dyn Send + Future<Output = io::Result<Self::Udp>>>> {
+        let socket = (self.udp_socket_factory)(&local_addr);
+
+        Box::pin(async move { socket })
+    }
+}
+
 fn create_resolvers(
     dns_servers: impl IntoIterator<Item = (IpAddr, DnsServer)>,
-) -> HashMap<IpAddr, TokioAsyncResolver> {
+    runtime_provider: TokioRuntimeProvider,
+) -> HashMap<IpAddr, AsyncResolver<GenericConnector<TokioRuntimeProvider>>> {
     dns_servers
         .into_iter()
         .map(|(sentinel, srv)| {
@@ -205,7 +274,11 @@ fn create_resolvers(
 
             (
                 sentinel,
-                TokioAsyncResolver::tokio(resolver_config, resolver_opts),
+                AsyncResolver::new_with_conn(
+                    resolver_config,
+                    resolver_opts,
+                    GenericConnector::new(runtime_provider.clone()),
+                ),
             )
         })
         .collect()

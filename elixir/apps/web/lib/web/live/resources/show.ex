@@ -223,7 +223,10 @@ defmodule Web.Resources.Show do
           <:empty>
             <div class="flex justify-center text-center text-neutral-500 p-4">
               <div class="pb-4 w-auto">
-                No policies to display.
+                <.icon
+                  name="hero-exclamation-triangle-solid"
+                  class="inline-block w-3.5 h-3.5 mr-1 text-red-500"
+                /> No policies to display.
                 <.link
                   class={[link_style()]}
                   navigate={

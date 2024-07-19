@@ -20,7 +20,11 @@ Hooks.Analytics = {
       var mixpanel = window.mixpanel || null;
       if (mixpanel) {
         mixpanel.identify(id);
-        mixpanel.people.set({ $name: name, $email: email, account_id: account_id });
+        mixpanel.people.set({
+          $name: name,
+          $email: email,
+          account_id: account_id,
+        });
         mixpanel.set_group("account", account_id);
       }
 
@@ -38,14 +42,17 @@ Hooks.Analytics = {
 
       var _hsq = window._hsq || null;
       if (_hsq) {
-        _hsq.push(["trackCustomBehavioralEvent", {
-          name: name,
-          properties: properties
-        }]);
+        _hsq.push([
+          "trackCustomBehavioralEvent",
+          {
+            name: name,
+            properties: properties,
+          },
+        ]);
       }
     });
-  }
-}
+  },
+};
 
 Hooks.Refocus = {
   mounted() {
@@ -91,6 +98,33 @@ Hooks.Copy = {
         }
       }, 2000);
     });
+  },
+};
+
+/* The phx-disable-with attribute on submit buttons only applies to liveview forms.
+ * However, we need to disable the submit button for regular forms as well to prevent
+ * double submissions and cases where the submit handler is slow (e.g. constant-time auth).
+ */
+Hooks.AttachDisableSubmit = {
+  mounted() {
+    this.el.addEventListener("form:disable_and_submit", (ev) => {
+      let submit = this.el.querySelector('[type="submit"]');
+      submit.setAttribute("disabled", "disabled");
+      submit.classList.add("cursor-wait");
+      submit.classList.add("opacity-75");
+
+      this.el.submit();
+
+      setTimeout(() => {
+        submit.classList.remove("cursor-wait");
+        submit.classList.remove("opacity-75");
+        submit.removeAttribute("disabled");
+      }, 5000);
+    });
+  },
+
+  destroyed() {
+    this.el.removeEventListener("form:disable_and_submit");
   },
 };
 

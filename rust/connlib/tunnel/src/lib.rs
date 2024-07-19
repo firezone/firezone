@@ -8,12 +8,13 @@ use chrono::Utc;
 use connlib_shared::{
     callbacks,
     messages::{ClientId, GatewayId, Relay, RelayId, ResourceId, ReuseConnection},
-    Callbacks, DomainName, Result,
+    DomainName, Result,
 };
 use io::Io;
 use std::{
-    collections::HashSet,
-    net::{IpAddr, SocketAddr},
+    collections::{HashMap, HashSet},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    sync::Arc,
     task::{Context, Poll},
     time::Instant,
 };
@@ -21,7 +22,6 @@ use std::{
 use bimap::BiMap;
 pub use client::{ClientState, Request};
 pub use gateway::GatewayState;
-pub use sockets::Sockets;
 use utils::turn;
 
 mod client;
@@ -34,6 +34,9 @@ mod peer_store;
 mod sockets;
 mod utils;
 
+pub use device_channel::Tun;
+use ip_network::{Ipv4Network, Ipv6Network};
+
 #[cfg(all(test, feature = "proptest"))]
 mod tests;
 
@@ -42,16 +45,14 @@ const MTU: usize = 1280;
 
 const REALM: &str = "firezone";
 
-pub type GatewayTunnel<CB> = Tunnel<CB, GatewayState>;
-pub type ClientTunnel<CB> = Tunnel<CB, ClientState>;
+pub type GatewayTunnel = Tunnel<GatewayState>;
+pub type ClientTunnel = Tunnel<ClientState>;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
 /// Most of connlib's functionality is implemented as a pure state machine in [`ClientState`] and [`GatewayState`].
-/// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::device_channel::Device), [`Sockets`] or time and pass it to the respective state.
-pub struct Tunnel<CB: Callbacks, TRoleState> {
-    pub callbacks: CB,
-
+/// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::device_channel::Device), [`Sockets`](crate::sockets::Sockets) or time and pass it to the respective state.
+pub struct Tunnel<TRoleState> {
     /// (pure) state that differs per role, either [`ClientState`] or [`GatewayState`].
     role_state: TRoleState,
 
@@ -69,19 +70,16 @@ pub struct Tunnel<CB: Callbacks, TRoleState> {
     device_read_buf: Box<[u8; MTU + 20]>,
 }
 
-impl<CB> ClientTunnel<CB>
-where
-    CB: Callbacks + 'static,
-{
+impl ClientTunnel {
     pub fn new(
         private_key: StaticSecret,
-        sockets: Sockets,
-        callbacks: CB,
+        tcp_socket_factory: Arc<dyn socket_factory::SocketFactory<tokio::net::TcpSocket>>,
+        udp_socket_factory: Arc<dyn socket_factory::SocketFactory<tokio::net::UdpSocket>>,
+        known_hosts: HashMap<String, Vec<IpAddr>>,
     ) -> std::io::Result<Self> {
         Ok(Self {
-            io: Io::new(sockets)?,
-            callbacks,
-            role_state: ClientState::new(private_key),
+            io: Io::new(tcp_socket_factory, udp_socket_factory)?,
+            role_state: ClientState::new(private_key, known_hosts),
             write_buf: Box::new([0u8; MTU + 16 + 20]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
@@ -89,9 +87,9 @@ where
         })
     }
 
-    pub fn reconnect(&mut self) -> std::io::Result<()> {
-        self.role_state.reconnect(Instant::now());
-        self.io.sockets_mut().rebind()?;
+    pub fn reset(&mut self) -> std::io::Result<()> {
+        self.role_state.reset();
+        self.io.rebind_sockets()?;
 
         Ok(())
     }
@@ -171,18 +169,10 @@ where
     }
 }
 
-impl<CB> GatewayTunnel<CB>
-where
-    CB: Callbacks + 'static,
-{
-    pub fn new(
-        private_key: StaticSecret,
-        sockets: Sockets,
-        callbacks: CB,
-    ) -> std::io::Result<Self> {
+impl GatewayTunnel {
+    pub fn new(private_key: StaticSecret) -> std::io::Result<Self> {
         Ok(Self {
-            io: Io::new(sockets)?,
-            callbacks,
+            io: Io::new(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp))?,
             role_state: GatewayState::new(private_key),
             write_buf: Box::new([0u8; MTU + 20 + 16]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
@@ -263,13 +253,13 @@ where
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClientEvent {
-    NewIceCandidate {
+    AddedIceCandidates {
         conn_id: GatewayId,
-        candidate: String,
+        candidates: HashSet<String>,
     },
-    InvalidatedIceCandidate {
+    RemovedIceCandidates {
         conn_id: GatewayId,
-        candidate: String,
+        candidates: HashSet<String>,
     },
     ConnectionIntent {
         resource: ResourceId,
@@ -282,7 +272,10 @@ pub enum ClientEvent {
     ResourcesChanged {
         resources: Vec<callbacks::ResourceDescription>,
     },
-    DnsServersChanged {
+    // TODO: Make this more fine-granular.
+    TunInterfaceUpdated {
+        ip4: Ipv4Addr,
+        ip6: Ipv6Addr,
         /// The map of DNS servers that connlib will use.
         ///
         /// - The "left" values are the connlib-assigned, proxy (or "sentinel") IPs.
@@ -291,17 +284,21 @@ pub enum ClientEvent {
         ///   Otherwise, we will use the DNS servers configured on the system.
         dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
     },
+    TunRoutesUpdated {
+        ip4: Vec<Ipv4Network>,
+        ip6: Vec<Ipv6Network>,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub enum GatewayEvent {
-    NewIceCandidate {
+    AddedIceCandidates {
         conn_id: ClientId,
-        candidate: String,
+        candidates: HashSet<String>,
     },
-    InvalidIceCandidate {
+    RemovedIceCandidates {
         conn_id: ClientId,
-        candidate: String,
+        candidates: HashSet<String>,
     },
     RefreshDns {
         name: DomainName,

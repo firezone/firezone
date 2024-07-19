@@ -14,8 +14,7 @@ to authenticate with your identity provider interactively.
 
 ## Installation
 
-Download the `.msi` installer from
-[our releases page](https://github.com/firezone/firezone/releases) or from the
+Download the `.msi` installer from [our changelog page](/changelog) or from the
 direct link below:
 
 - [Download the Windows `.msi` installer for `x86-64`](/dl/firezone-client-gui-windows/latest/x86_64)
@@ -112,7 +111,7 @@ In the Start Menu, search for "Windows Powershell". Open it and run this
 command:
 
 ```pwsh
-Get-Service -Name FirezoneClientIpcServiceDebug
+Get-Service -Name FirezoneClientIpcService
 ```
 
 Good output
@@ -192,8 +191,6 @@ Get-DnsClientNrptRule | where Comment -eq firezone-fd0020211111 | foreach { Remo
 - After clearing diagnostic logs, no more logs are written until the GUI and
   tunnel service each restart.
   [#4764](https://github.com/firezone/firezone/issues/4764)
-- When restarting the GUI, the GUI may fail to connect to the IPC service and
-  crash [#5441](https://github.com/firezone/firezone/issues/5441)
 - Clearing diagnostic logs does not clear logs from the IPC service
   [#5453](https://github.com/firezone/firezone/issues/5453)
 

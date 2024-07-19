@@ -1,4 +1,5 @@
 use super::CliCommon;
+use crate::signals;
 use anyhow::{bail, Result};
 
 /// Cross-platform entry point for systemd / Windows services
@@ -10,11 +11,10 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
         anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
     }
     let rt = tokio::runtime::Runtime::new()?;
-    rt.spawn(crate::heartbeat::heartbeat());
-    if let Err(error) = rt.block_on(super::ipc_listen()) {
-        tracing::error!(?error, "`ipc_listen` failed");
-    }
-    Ok(())
+    let _guard = rt.enter();
+    let mut signals = signals::Terminate::new()?;
+
+    rt.block_on(super::ipc_listen(&mut signals))
 }
 
 pub(crate) fn install_ipc_service() -> Result<()> {

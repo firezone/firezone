@@ -2,11 +2,10 @@ use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_shared::messages::Interface;
-use connlib_shared::tun_device_manager::TunDeviceManager;
-use connlib_shared::{get_user_agent, keypair, Callbacks, Cidrv4, Cidrv6, LoginUrl, StaticSecret};
-use firezone_cli_utils::{setup_global_subscriber, CommonArgs};
-use firezone_tunnel::{GatewayTunnel, Sockets};
+use connlib_shared::{get_user_agent, keypair, messages::Interface, LoginUrl, StaticSecret};
+use firezone_bin_shared::{setup_global_subscriber, CommonArgs, TunDeviceManager};
+use firezone_tunnel::{GatewayTunnel, Tun};
+
 use futures::channel::mpsc;
 use futures::{future, StreamExt, TryFutureExt};
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -15,6 +14,7 @@ use secrecy::{Secret, SecretString};
 use std::convert::Infallible;
 use std::path::Path;
 use std::pin::pin;
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::signal::ctrl_c;
 use tracing_subscriber::layer;
@@ -100,7 +100,7 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
 }
 
 async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
-    let tunnel = GatewayTunnel::new(private_key, Sockets::new(), CallbackHandler)?;
+    let mut tunnel = GatewayTunnel::new(private_key)?;
     let portal = PhoenixChannel::connect(
         Secret::new(login),
         get_user_agent(None, env!("CARGO_PKG_VERSION")),
@@ -109,32 +109,14 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
         ExponentialBackoffBuilder::default()
             .with_max_elapsed_time(None)
             .build(),
-    );
+        Arc::new(socket_factory::tcp),
+    )?;
 
-    let (sender, mut receiver) = mpsc::channel::<Interface>(10);
+    let (sender, receiver) = mpsc::channel::<Interface>(10);
+    let tun_device_manager = TunDeviceManager::new()?;
+    tunnel.set_tun(Tun::new()?);
 
-    let mut tun_device = TunDeviceManager::new()?;
-
-    let update_device_task = async move {
-        while let Some(next_interface) = receiver.next().await {
-            if let Err(e) = tun_device
-                .set_ips(next_interface.ipv4, next_interface.ipv6)
-                .await
-            {
-                tracing::warn!("Failed to set interface: {e:#}");
-            }
-
-            if let Err(e) = tun_device
-                .set_routes(
-                    vec![Cidrv4::from(PEERS_IPV4.parse::<Ipv4Network>().unwrap())],
-                    vec![Cidrv6::from(PEERS_IPV6.parse::<Ipv6Network>().unwrap())],
-                )
-                .await
-            {
-                tracing::warn!("Failed to set routes: {e:#}");
-            };
-        }
-    };
+    let update_device_task = update_device_task(tun_device_manager, receiver);
 
     let mut eventloop = Eventloop::new(tunnel, portal, sender);
     let eventloop_task = future::poll_fn(move |cx| eventloop.poll(cx));
@@ -146,10 +128,29 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
     unreachable!()
 }
 
-#[derive(Clone)]
-struct CallbackHandler;
+async fn update_device_task(
+    mut tun_device: TunDeviceManager,
+    mut receiver: mpsc::Receiver<Interface>,
+) {
+    while let Some(next_interface) = receiver.next().await {
+        if let Err(e) = tun_device
+            .set_ips(next_interface.ipv4, next_interface.ipv6)
+            .await
+        {
+            tracing::warn!("Failed to set interface: {e:#}");
+        }
 
-impl Callbacks for CallbackHandler {}
+        if let Err(e) = tun_device
+            .set_routes(
+                vec![PEERS_IPV4.parse::<Ipv4Network>().unwrap()],
+                vec![PEERS_IPV6.parse::<Ipv6Network>().unwrap()],
+            )
+            .await
+        {
+            tracing::warn!("Failed to set routes: {e:#}");
+        };
+    }
+}
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]

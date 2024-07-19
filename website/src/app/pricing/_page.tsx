@@ -13,37 +13,24 @@ export default function _Page() {
 
   return (
     <>
-      <section className="bg-neutral-100">
-        <div className="py-8 px-4 mx-auto max-w-screen-xl lg:py-16 lg:px-6">
-          <div className="mx-auto max-w-screen-md sm:text-center">
-            <h1 className="text-center justify-center mb-4 text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold leading-none tracking-tight text-neutral-900">
-              Plans & Pricing
-            </h1>
-            <h2 className="text-center justify-center mb-8 tracking-tight text-neutral-900 md:mb-12 sm:text-2xl text-xl">
-              Pick a plan that best suits your needs. No credit card required to
-              sign up.
-            </h2>
-          </div>
-        </div>
-      </section>
-      <section className="bg-neutral-100 border-t border-neutral-200 pb-14">
+      <section className="bg-white pb-14">
         <div className="flex justify-center mt-12">
           <span
             className={
-              (annual ? "text-neutral-600 " : "text-neutral-900 ") +
-              "font-medium me-3 text-lg"
+              (annual ? "text-neutral-500 " : "text-neutral-900 ") +
+              "font-medium me-3 text-lg uppercase"
             }
           >
-            MONTHLY
+            Monthly
           </span>
           <Toggle checked={annual} onChange={setAnnual} />
           <span
             className={
-              (annual ? "text-neutral-900 " : "text-neutral-600 ") +
-              "font-medium ms-3 text-lg"
+              (annual ? "text-neutral-900 " : "text-neutral-500 ") +
+              "font-medium ms-3 text-lg uppercase"
             }
           >
-            ANNUAL
+            Annual
             <span className="text-sm text-neutral-700 text-primary-450">
               {" "}
               (Save 17%)
@@ -65,7 +52,7 @@ export default function _Page() {
               <Link href="https://app.firezone.dev/sign_up">
                 <button
                   type="button"
-                  className="w-64 text-lg px-5 py-2.5 md:w-44 md:text-sm md:px-3 md:py-2.5 lg:w-64 lg:text-lg lg:px-5 lg:py-2.5 border border-1 border-primary-450 hover:border-2 hover:font-bold font-semibold tracking-tight rounded shadow-lg text-primary-450 duration-0 hover:scale-105 transition transform"
+                  className="bg-white w-64 text-lg px-5 py-2.5 md:w-44 md:text-sm md:px-3 md:py-2.5 lg:w-64 lg:text-lg lg:px-5 lg:py-2.5 border border-1 border-primary-450 hover:ring-1 hover:ring-primary-450 font-semibold tracking-tight rounded shadow-lg text-primary-450 duration-50 transition transform"
                 >
                   Sign up
                 </button>
@@ -142,7 +129,7 @@ export default function _Page() {
               <Link href="https://app.firezone.dev/sign_up">
                 <button
                   type="button"
-                  className="w-64 text-lg px-5 py-2.5 md:w-44 md:text-sm md:px-3 md:py-2.5 lg:w-64 lg:text-lg lg:px-5 lg:py-2.5 border border-1 border-primary-450 hover:border-2 hover:font-bold font-semibold tracking-tight rounded shadow-lg text-primary-450 duration-0 hover:scale-105 transition transform"
+                  className="bg-white w-64 text-lg px-5 py-2.5 md:w-44 md:text-sm md:px-3 md:py-2.5 lg:w-64 lg:text-lg lg:px-5 lg:py-2.5 border border-1 border-primary-450 hover:ring-1 hover:ring-primary-450 font-semibold tracking-tight rounded shadow-lg text-primary-450 duration-50 transition transform"
                 >
                   Sign up
                 </button>
@@ -215,7 +202,7 @@ export default function _Page() {
               <Link href="/contact/sales">
                 <button
                   type="button"
-                  className="w-64 text-lg px-5 py-2.5 md:w-44 md:text-sm md:px-3 md:py-2.5 lg:w-64 lg:text-lg lg:px-5 lg:py-2.5 text-white font-semibold hover:font-bold tracking-tight transition transform duration-0 hover:scale-105 rounded bg-primary-450 shadow-lg shadow-primary-700"
+                  className="w-64 text-lg px-5 py-2.5 md:w-44 md:text-sm md:px-3 md:py-2.5 lg:w-64 lg:text-lg lg:px-5 lg:py-2.5 text-white font-semibold hover:ring-2 hover:ring-primary-450 tracking-tight transition transform duration-50 rounded bg-primary-450 shadow-lg shadow-primary-700"
                 >
                   Request a demo
                 </button>
@@ -281,10 +268,10 @@ export default function _Page() {
           </div>
         </div>
       </section>
-      <section className="py-24 bg-gradient-to-b to-white from-neutral-100 via-primary-100">
+      <section className="py-24 bg-gradient-to-b to-neutral-50 from-white">
         <CustomerLogos />
       </section>
-      <section className="bg-white py-14">
+      <section className="bg-neutral-50 py-14">
         <div className="mb-14 mx-auto max-w-screen-lg px-3">
           <h2 className="mb-14 justify-center text-4xl font-bold text-neutral-900">
             Compare plans
@@ -474,7 +461,7 @@ export default function _Page() {
             <Link href="/contact/sales">
               <button
                 type="button"
-                className="w-64 text-white tracking-tight rounded duration-0 hover:scale-105 transition transform shadow-lg text-lg px-5 py-2.5 bg-primary-450 font-semibold hover:font-bold"
+                className="w-64 text-white tracking-tight rounded duration-50 hover:ring-2 hover:ring-primary-300 transition transform shadow-lg text-lg px-5 py-2.5 bg-primary-450 font-semibold"
               >
                 Request a demo
               </button>

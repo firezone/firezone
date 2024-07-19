@@ -114,8 +114,7 @@ async fn main() -> Result<()> {
         public_addr,
         make_rng(args.rng_seed),
         args.listen_port,
-        args.lowest_port,
-        args.highest_port,
+        args.lowest_port..=args.highest_port,
     );
 
     let last_heartbeat_sent = Arc::new(Mutex::new(Option::<Instant>::None));
@@ -147,7 +146,8 @@ async fn main() -> Result<()> {
             ExponentialBackoffBuilder::default()
                 .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
                 .build(),
-        ))
+            Arc::new(socket_factory::tcp),
+        )?)
     } else {
         tracing::warn!(target: "relay", "No portal token supplied, starting standalone mode");
 

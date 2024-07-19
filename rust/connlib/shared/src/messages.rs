@@ -15,7 +15,7 @@ pub use key::{Key, SecretKey};
 
 use crate::DomainName;
 
-#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GatewayId(Uuid);
 
 #[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -44,8 +44,7 @@ impl ResourceId {
         ResourceId(Uuid::new_v4())
     }
 
-    #[cfg(feature = "proptest")]
-    pub(crate) fn from_u128(v: u128) -> Self {
+    pub fn from_u128(v: u128) -> Self {
         Self(Uuid::from_u128(v))
     }
 }
@@ -57,7 +56,7 @@ impl GatewayId {
     }
 }
 
-#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Hash, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ClientId(Uuid);
 
 impl FromStr for ClientId {
@@ -91,27 +90,45 @@ impl FromStr for GatewayId {
     }
 }
 
+// We display the IDs as u128 in the proptests because shrinking will reduce them to short numbers that take less space.
+
 impl fmt::Display for ResourceId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        if cfg!(feature = "proptest") {
+            write!(f, "{:X}", self.0.as_u128())
+        } else {
+            write!(f, "{}", self.0)
+        }
     }
 }
 
 impl fmt::Display for ClientId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        if cfg!(feature = "proptest") {
+            write!(f, "{:X}", self.0.as_u128())
+        } else {
+            write!(f, "{}", self.0)
+        }
     }
 }
 
 impl fmt::Display for GatewayId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        if cfg!(feature = "proptest") {
+            write!(f, "{:X}", self.0.as_u128())
+        } else {
+            write!(f, "{}", self.0)
+        }
     }
 }
 
 impl fmt::Display for RelayId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        if cfg!(feature = "proptest") {
+            write!(f, "{:X}", self.0.as_u128())
+        } else {
+            write!(f, "{}", self.0)
+        }
     }
 }
 

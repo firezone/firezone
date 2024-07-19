@@ -4,7 +4,7 @@
 // and named pipes on Windows, so TODO de-dupe the IPC code
 
 use crate::client::auth::Response as AuthResponse;
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Context as _, Result};
 use secrecy::{ExposeSecret, SecretString};
 use url::Url;
 
@@ -143,7 +143,9 @@ mod tests {
     /// Will fail with permission error if Firezone already ran as sudo
     #[tokio::test]
     async fn socket_smoke_test() -> Result<()> {
-        let server = super::Server::new().context("Couldn't start Server")?;
+        let server = super::Server::new()
+            .await
+            .context("Couldn't start Server")?;
         let server_task = tokio::spawn(async move {
             let bytes = server.accept().await?;
             Ok::<_, anyhow::Error>(bytes)

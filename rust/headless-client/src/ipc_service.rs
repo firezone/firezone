@@ -1,22 +1,30 @@
 use crate::{
     device_id,
     dns_control::{self, DnsController},
-    known_dirs, CallbackHandler, CliCommon, InternalServerMsg, IpcServerMsg, SignalKind, Signals,
+    known_dirs, signals, CallbackHandler, CliCommon, InternalServerMsg, IpcServerMsg,
     TOKEN_ENV_KEY,
 };
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session, Sockets};
-use connlib_shared::tun_device_manager;
-use futures::{future, SinkExt as _, StreamExt as _};
-use std::{net::IpAddr, path::PathBuf, pin::pin, time::Duration};
+use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
+use futures::{
+    future::poll_fn,
+    task::{Context, Poll},
+    Future as _, SinkExt as _, Stream as _,
+};
+use std::{net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
 use tokio::{sync::mpsc, time::Instant};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
 use url::Url;
 
 pub mod ipc;
+use backoff::ExponentialBackoffBuilder;
+use connlib_shared::get_user_agent;
+use firezone_bin_shared::TunDeviceManager;
 use ipc::{Server as IpcServer, ServiceId};
+use phoenix_channel::PhoenixChannel;
+use secrecy::Secret;
 
 #[cfg(target_os = "linux")]
 #[path = "ipc_service/linux.rs"]
@@ -51,6 +59,7 @@ enum Cmd {
     Install,
     Run,
     RunDebug,
+    RunSmokeTest,
 }
 
 impl Default for Cmd {
@@ -84,76 +93,133 @@ pub fn run_only_ipc_service() -> Result<()> {
         Cmd::Install => platform::install_ipc_service(),
         Cmd::Run => platform::run_ipc_service(cli.common),
         Cmd::RunDebug => run_debug_ipc_service(),
+        Cmd::RunSmokeTest => run_smoke_test(),
     }
 }
 
 fn run_debug_ipc_service() -> Result<()> {
     crate::setup_stdout_logging()?;
+    tracing::info!(
+        arch = std::env::consts::ARCH,
+        git_version = crate::GIT_VERSION,
+        system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
+    );
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
-    rt.spawn(crate::heartbeat::heartbeat());
-    let mut signals = Signals::new()?;
+    let mut signals = signals::Terminate::new()?;
+
+    rt.block_on(ipc_listen(&mut signals))
+}
+
+#[cfg(not(debug_assertions))]
+fn run_smoke_test() -> Result<()> {
+    anyhow::bail!("Smoke test is not built for release binaries.");
+}
+
+/// Listen for exactly one connection from a GUI, then exit
+///
+/// This makes the timing neater in case the GUI starts up slowly.
+#[cfg(debug_assertions)]
+fn run_smoke_test() -> Result<()> {
+    crate::setup_stdout_logging()?;
+    let rt = tokio::runtime::Runtime::new()?;
+    let _guard = rt.enter();
+    let mut dns_controller = DnsController::default();
+    // Deactivate Firezone DNS control in case the system or IPC service crashed
+    // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
+    dns_controller.deactivate()?;
+    let mut signals = signals::Terminate::new()?;
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
-        let ipc_service = pin!(ipc_listen());
-
-        match future::select(pin!(signals.recv()), ipc_service).await {
-            future::Either::Left((SignalKind::Hangup, _)) => {
-                bail!("Exiting, SIGHUP not implemented for the IPC service");
-            }
-            future::Either::Left((SignalKind::Interrupt, _)) => {
-                tracing::info!("Caught Interrupt signal");
-                Ok(())
-            }
-            future::Either::Right((Ok(impossible), _)) => match impossible {},
-            future::Either::Right((Err(error), _)) => Err(error).context("ipc_listen failed"),
-        }
+        device_id::get_or_create().context("Failed to read / create device ID")?;
+        let mut server = IpcServer::new(ServiceId::Prod).await?;
+        let _ = Handler::new(&mut server, &mut dns_controller)
+            .await?
+            .run(&mut signals)
+            .await;
+        Ok::<_, anyhow::Error>(())
     })
 }
 
-async fn ipc_listen() -> Result<std::convert::Infallible> {
+/// Run the IPC service and terminate gracefully if we catch a terminate signal
+///
+/// If an IPC client is connected when we catch a terminate signal, we send the
+/// client a hint about that before we exit.
+async fn ipc_listen(signals: &mut signals::Terminate) -> Result<()> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
     device_id::get_or_create().context("Failed to read / create device ID")?;
     let mut server = IpcServer::new(ServiceId::Prod).await?;
+    let mut dns_controller = DnsController::default();
     loop {
-        dns_control::deactivate()?;
-        let (rx, tx) = server
-            .next_client_split()
-            .await
-            .context("Failed to wait for incoming IPC connection from a GUI")?;
-        Handler::new(rx, tx)?.run().await;
+        let mut handler_fut = pin!(Handler::new(&mut server, &mut dns_controller));
+        let Some(handler) = poll_fn(|cx| {
+            if let Poll::Ready(()) = signals.poll_recv(cx) {
+                Poll::Ready(None)
+            } else if let Poll::Ready(handler) = handler_fut.as_mut().poll(cx) {
+                Poll::Ready(Some(handler))
+            } else {
+                Poll::Pending
+            }
+        })
+        .await
+        else {
+            tracing::info!("Caught SIGINT / SIGTERM / Ctrl+C while waiting on the next client.");
+            break;
+        };
+        let mut handler = handler?;
+        if let HandlerOk::ServiceTerminating = handler.run(signals).await {
+            break;
+        }
     }
+    Ok(())
 }
 
 /// Handles one IPC client
-struct Handler {
+struct Handler<'a> {
     callback_handler: CallbackHandler,
     cb_rx: mpsc::Receiver<InternalServerMsg>,
     connlib: Option<connlib_client_shared::Session>,
-    dns_controller: DnsController,
+    dns_controller: &'a mut DnsController,
     ipc_rx: ipc::ServerRead,
     ipc_tx: ipc::ServerWrite,
     last_connlib_start_instant: Option<Instant>,
-    tun_device: tun_device_manager::TunDeviceManager,
+    tun_device: TunDeviceManager,
 }
 
 enum Event {
     Callback(InternalServerMsg),
+    CallbackChannelClosed,
     Ipc(ClientMsg),
+    IpcDisconnected,
+    IpcError(anyhow::Error),
+    Terminate,
 }
 
-impl Handler {
-    fn new(ipc_rx: ipc::ServerRead, ipc_tx: ipc::ServerWrite) -> Result<Self> {
+// Open to better names
+#[must_use]
+enum HandlerOk {
+    ClientDisconnected,
+    Err,
+    ServiceTerminating,
+}
+
+impl<'a> Handler<'a> {
+    async fn new(server: &mut IpcServer, dns_controller: &'a mut DnsController) -> Result<Self> {
+        dns_controller.deactivate()?;
+        let (ipc_rx, ipc_tx) = server
+            .next_client_split()
+            .await
+            .context("Failed to wait for incoming IPC connection from a GUI")?;
         let (cb_tx, cb_rx) = mpsc::channel(10);
-        let tun_device = tun_device_manager::TunDeviceManager::new()?;
+        let tun_device = TunDeviceManager::new()?;
 
         Ok(Self {
             callback_handler: CallbackHandler { cb_tx },
             cb_rx,
             connlib: None,
-            dns_controller: Default::default(),
+            dns_controller,
             ipc_rx,
             ipc_tx,
             last_connlib_start_instant: None,
@@ -161,35 +227,24 @@ impl Handler {
         })
     }
 
-    // Infallible so that we only give up on an IPC client explicitly
-    async fn run(&mut self) {
+    /// Run the event loop to communicate with an IPC client.
+    ///
+    /// If the IPC service needs to terminate, we catch that from `signals` and send
+    /// the client a hint to shut itself down gracefully.
+    ///
+    /// The return type is infallible so that we only give up on an IPC client explicitly
+    async fn run(&mut self, signals: &mut signals::Terminate) -> HandlerOk {
         loop {
-            let event = {
-                // This borrows `self` so we must drop it before handling the `Event`.
-                let cb = pin!(self.cb_rx.recv());
-                match future::select(self.ipc_rx.next(), cb).await {
-                    future::Either::Left((Some(Ok(x)), _)) => Event::Ipc(x),
-                    future::Either::Left((Some(Err(error)), _)) => {
-                        tracing::error!(?error, "Error while deserializing IPC message");
-                        continue;
-                    }
-                    future::Either::Left((None, _)) => {
-                        tracing::info!("IPC client disconnected");
-                        break;
-                    }
-                    future::Either::Right((Some(x), _)) => Event::Callback(x),
-                    future::Either::Right((None, _)) => {
-                        tracing::error!("Impossible - Callback channel closed");
-                        break;
-                    }
-                }
-            };
-            match event {
+            match poll_fn(|cx| self.next_event(cx, signals)).await {
                 Event::Callback(x) => {
                     if let Err(error) = self.handle_connlib_cb(x).await {
                         tracing::error!(?error, "Error while handling connlib callback");
                         continue;
                     }
+                }
+                Event::CallbackChannelClosed => {
+                    tracing::error!("Impossible - Callback channel closed");
+                    break HandlerOk::Err;
                 }
                 Event::Ipc(msg) => {
                     if let Err(error) = self.handle_ipc_msg(msg) {
@@ -197,8 +252,53 @@ impl Handler {
                         continue;
                     }
                 }
+                Event::IpcDisconnected => {
+                    tracing::info!("IPC client disconnected");
+                    break HandlerOk::ClientDisconnected;
+                }
+                Event::IpcError(error) => {
+                    tracing::error!(?error, "Error while deserializing IPC message");
+                    continue;
+                }
+                Event::Terminate => {
+                    tracing::info!(
+                        "Caught SIGINT / SIGTERM / Ctrl+C while an IPC client is connected"
+                    );
+                    self.ipc_tx
+                        .send(&IpcServerMsg::TerminatingGracefully)
+                        .await
+                        .unwrap();
+                    break HandlerOk::ServiceTerminating;
+                }
             }
         }
+    }
+
+    fn next_event(
+        &mut self,
+        cx: &mut Context<'_>,
+        signals: &mut signals::Terminate,
+    ) -> Poll<Event> {
+        // `recv` on signals is cancel-safe.
+        if let Poll::Ready(()) = signals.poll_recv(cx) {
+            return Poll::Ready(Event::Terminate);
+        }
+        // `FramedRead::next` is cancel-safe.
+        if let Poll::Ready(result) = pin!(&mut self.ipc_rx).poll_next(cx) {
+            return match result {
+                Some(Ok(x)) => Poll::Ready(Event::Ipc(x)),
+                Some(Err(error)) => Poll::Ready(Event::IpcError(error)),
+                None => Poll::Ready(Event::IpcDisconnected),
+            };
+        }
+        // `tokio::sync::mpsc::Receiver::recv` is cancel-safe.
+        if let Poll::Ready(option) = self.cb_rx.poll_recv(cx) {
+            return match option {
+                Some(x) => Poll::Ready(Event::Callback(x)),
+                None => Poll::Ready(Event::CallbackChannelClosed),
+            };
+        }
+        Poll::Pending
     }
 
     async fn handle_connlib_cb(&mut self, msg: InternalServerMsg) -> Result<()> {
@@ -207,9 +307,11 @@ impl Handler {
                 // The first `OnUpdateResources` marks when connlib is fully initialized
                 if let IpcServerMsg::OnUpdateResources(_) = &msg {
                     if let Some(instant) = self.last_connlib_start_instant.take() {
-                        let dur = instant.elapsed();
-                        tracing::info!(?dur, "Connlib started");
+                        tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
                     }
+
+                    // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
+                    self.dns_controller.flush()?;
                 }
                 self.ipc_tx
                     .send(&msg)
@@ -219,10 +321,6 @@ impl Handler {
             InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                 self.tun_device.set_ips(ipv4, ipv6).await?;
                 self.dns_controller.set_dns(&dns).await?;
-                self.ipc_tx
-                    .send(&IpcServerMsg::OnTunnelReady)
-                    .await
-                    .context("Error while sending `OnTunnelReady`")?
             }
             InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                 self.tun_device.set_routes(ipv4, ipv6).await?
@@ -235,6 +333,9 @@ impl Handler {
         match msg {
             ClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);
+                // There isn't an airtight way to implement a "disconnect and reconnect"
+                // right now because `Session::disconnect` is fire-and-forget:
+                // <https://github.com/firezone/firezone/blob/663367b6055ced7432866a40a60f9525db13288b/rust/connlib/clients/shared/src/lib.rs#L98-L103>
                 assert!(self.connlib.is_none());
                 let device_id =
                     device_id::get_or_create().context("Failed to get / create device ID")?;
@@ -250,21 +351,32 @@ impl Handler {
 
                 self.last_connlib_start_instant = Some(Instant::now());
                 let args = ConnectArgs {
-                    url,
-                    sockets: Sockets::new(),
+                    tcp_socket_factory: Arc::new(crate::tcp_socket_factory),
+                    udp_socket_factory: Arc::new(crate::udp_socket_factory),
                     private_key,
-                    os_version_override: None,
-                    app_version: env!("CARGO_PKG_VERSION").to_string(),
                     callbacks: self.callback_handler.clone(),
-                    max_partition_time: Some(Duration::from_secs(60 * 60 * 24 * 30)),
                 };
-                let new_session = Session::connect(args, tokio::runtime::Handle::try_current()?);
+                let portal = PhoenixChannel::connect(
+                    Secret::new(url),
+                    get_user_agent(None, env!("CARGO_PKG_VERSION")),
+                    "client",
+                    (),
+                    ExponentialBackoffBuilder::default()
+                        .with_max_elapsed_time(Some(Duration::from_secs(60 * 60 * 24 * 30)))
+                        .build(),
+                    Arc::new(crate::tcp_socket_factory),
+                )?;
+
+                let new_session =
+                    Session::connect(args, portal, tokio::runtime::Handle::try_current()?);
+                new_session.set_tun(self.tun_device.make_tun()?);
                 new_session.set_dns(dns_control::system_resolvers().unwrap_or_default());
                 self.connlib = Some(new_session);
             }
             ClientMsg::Disconnect => {
                 if let Some(connlib) = self.connlib.take() {
                     connlib.disconnect();
+                    self.dns_controller.deactivate()?;
                 } else {
                     tracing::error!("Error - Got Disconnect when we're already not connected");
                 }
@@ -297,11 +409,16 @@ fn setup_logging(log_dir: Option<PathBuf>) -> Result<connlib_client_shared::file
     std::fs::create_dir_all(&log_dir)
         .context("We should have permissions to create our log dir")?;
     let (layer, handle) = file_logger::layer(&log_dir);
-    let log_filter = get_log_filter().context("Couldn't read log filter")?;
-    let filter = EnvFilter::new(&log_filter);
+    let directives = get_log_filter().context("Couldn't read log filter")?;
+    let filter = EnvFilter::new(&directives);
     let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber).context("`set_global_default` should always work)")?;
-    tracing::info!(git_version = crate::GIT_VERSION, ?log_filter);
+    tracing::info!(
+        arch = std::env::consts::ARCH,
+        git_version = crate::GIT_VERSION,
+        system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
+        ?directives
+    );
     Ok(handle)
 }
 

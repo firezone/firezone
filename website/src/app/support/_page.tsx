@@ -21,8 +21,9 @@ import { FaSlack } from "react-icons/fa";
 
 export default function _Page() {
   const openChat = (e: React.MouseEvent) => {
+    const winAny = window as any;
     e.preventDefault();
-    window.HubSpotConversations.widget.open();
+    winAny.HubSpotConversations.widget.open();
   };
 
   return (
@@ -47,7 +48,7 @@ export default function _Page() {
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-8">
           <Link
             href="/kb/deploy"
-            className="p-6 hover:shadow rounded border-2 hover:border-accent-200 hover:bg-accent-100 transition duration-100"
+            className="p-6 hover:shadow rounded border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
           >
             <h3 className="text-neutral-800 text-lg font-semibold tracking-tight">
               <HiOutlineServerStack className="w-5 h-5 mr-2" />
@@ -61,7 +62,7 @@ export default function _Page() {
           </Link>
           <Link
             href="/kb/user-guides"
-            className="p-6 hover:shadow rounded border-2 hover:border-accent-200 hover:bg-accent-100 transition duration-100"
+            className="p-6 hover:shadow rounded border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
           >
             <h3 className="text-neutral-800 text-lg font-semibold tracking-tight">
               <HiOutlineUserCircle className="w-5 h-5 mr-2" />
@@ -74,7 +75,7 @@ export default function _Page() {
           </Link>
           <Link
             href="/kb/administer/troubleshooting"
-            className="p-6 hover:shadow rounded border-2 hover:border-accent-200 hover:bg-accent-100 transition duration-100"
+            className="p-6 hover:shadow rounded border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
           >
             <h3 className="text-neutral-800 text-lg font-semibold tracking-tight">
               <HiOutlineCommandLine className="w-5 h-5 mr-2" />
@@ -88,7 +89,7 @@ export default function _Page() {
           </Link>
           <Link
             href="/kb/reference/faq"
-            className="p-6 hover:shadow rounded border-2 hover:border-accent-200 hover:bg-accent-100 transition duration-100"
+            className="p-6 hover:shadow rounded border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
           >
             <h3 className="text-neutral-800 text-lg font-semibold tracking-tight">
               <HiOutlineQuestionMarkCircle className="w-5 h-5 mr-2" />
@@ -123,17 +124,19 @@ export default function _Page() {
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           <Link
             href="https://www.github.com/firezone/firezone/issues"
-            className="p-6 hover:shadow rounded border-2 hover:border-accent-200 hover:bg-accent-100 transition duration-100"
+            className="p-6 hover:shadow rounded border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
           >
             <h3 className="text-neutral-800 text-lg font-semibold tracking-tight">
               <HiOutlineMagnifyingGlass className="w-5 h-5 mr-2" />
               Issue search
             </h3>
-            <p className="mt-8">Search our open issues and leave a comment.</p>
+            <p className="mt-8">
+              Search our open GitHub issues and leave a comment.
+            </p>
           </Link>
           <Link
-            href="/kb/user-guides"
-            className="p-6 hover:shadow rounded border-2 hover:border-accent-200 hover:bg-accent-100 transition duration-100"
+            href="https://github.com/orgs/firezone/projects/9"
+            className="p-6 hover:shadow rounded border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
           >
             <h3 className="text-neutral-800 text-lg font-semibold tracking-tight">
               <HiOutlineMap className="w-5 h-5 mr-2" />
@@ -146,7 +149,7 @@ export default function _Page() {
           </Link>
           <Link
             href="/kb/administer/troubleshooting"
-            className="p-6 hover:shadow rounded border-2 hover:border-accent-200 hover:bg-accent-100 transition duration-100"
+            className="p-6 hover:shadow rounded border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
           >
             <h3 className="text-neutral-800 text-lg font-semibold tracking-tight">
               <HiOutlineDocumentPlus className="w-5 h-5 mr-2" />

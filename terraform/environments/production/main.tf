@@ -43,7 +43,7 @@ module "google-cloud-project" {
   id                 = "firezone-prod"
   name               = "Production Environment"
   organization_id    = "335836213177"
-  billing_account_id = "01DFC9-3D6951-579BE1"
+  billing_account_id = "0199BA-489CDD-F385C8"
 
   auto_create_network = false
 }
@@ -147,7 +147,7 @@ resource "google_storage_bucket_iam_member" "public-firezone-binary-artifacts" {
   member = "allUsers"
 }
 
-# Create a VPC
+# Create a VPCs
 module "google-cloud-vpc" {
   source = "../../modules/google-cloud/vpc"
 
@@ -171,7 +171,7 @@ module "google-cloud-dns" {
   project_id = module.google-cloud-project.project.project_id
 
   tld            = local.tld
-  dnssec_enabled = false
+  dnssec_enabled = true
 }
 
 # Create the Cloud SQL database
@@ -191,7 +191,13 @@ module "google-cloud-sql" {
   database_highly_available = true
   database_backups_enabled  = true
 
-  database_read_replica_locations = []
+  database_read_replica_locations = [
+    {
+      ipv4_enabled = true
+      region       = local.region
+      network      = module.google-cloud-vpc.id
+    }
+  ]
 
   database_flags = {
     # Increase the connections count a bit, but we need to set it to Ecto ((pool_count * pool_size) + 50)

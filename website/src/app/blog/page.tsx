@@ -13,14 +13,32 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <section>
+      <div className="bg-neutral-50 border-b border-neutral-100">
+        <div className="py-8 px-4 sm:py-10 sm:px-6 md:py-12 md:px-8 lg:py-14 lg:px-10 mx-auto max-w-screen-lg w-full">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold tracking-tight">
+            Blog
+          </h1>
+          <p className="text-md sm:text-lg md:text-xl lg:text-2xl mt-4 md:mt-6 lg:mt-8 tracking-tight">
+            Announcements, how-tos, and more from the Firezone team.
+          </p>
+        </div>
+      </div>
       <div className="py-6 px-4 sm:py-8 sm:px-6 md:py-10 md:px-8 lg:py-12 lg:px-10 mx-auto max-w-screen-lg w-full">
-        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold tracking-tight mt-8">
-          Blog
-        </h1>
-        <p className="text-lg md:text-xl lg:text-2xl mt-4 md:mt-6 lg:mt-8 tracking-tight">
-          Announcements, insights, and more from the Firezone team.
-        </p>
-        <div className="mt-14 grid divide-y">
+        <div className="grid divide-y">
+          <SummaryCard
+            title="sans-IO: The secret to effective Rust for network services"
+            date="July 2, 2024"
+            href="/blog/sans-io"
+            authorName="Thomas Eizinger"
+            authorAvatarSrc={gravatar("thomas@firezone.dev")}
+            type="Learn"
+          >
+            <p className="mb-2">
+              Firezone's data plane extensively uses the sans-IO design pattern.
+              This post explains why we chose it and how you too can make use of
+              it.
+            </p>
+          </SummaryCard>
           <SummaryCard
             title="June 2024 update"
             date="June 21, 2024"

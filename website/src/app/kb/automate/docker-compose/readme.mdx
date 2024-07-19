@@ -1,0 +1,64 @@
+import Alert from "@/components/DocsAlert";
+
+# Deploy Firezone using Docker Compose
+
+Firezone Gateways can be deployed using Docker Compose. This configuration uses
+the same options shown in the Docker run command shown in the admin portal when
+deploying a Docker-based Gateway.
+
+## Prerequisites
+
+1. [Docker Engine](https://docs.docker.com/get-docker/) for Linux. Docker
+   Desktop can be used for testing purposes but is not supported for production
+   deployments.
+1. [Compose plugin for Docker Engine](https://docs.docker.com/compose/install/#scenario-two-install-the-compose-plugin)
+   version 2.0.0 or later. We recommend using the latest version available.
+
+## Deployment
+
+Use the following `docker-compose.yml`, customizing as needed:
+
+```yaml
+services:
+  firezone-gateway:
+    image: "ghcr.io/firezone/gateway:1"
+    environment:
+      # Use a unique ID for each Gateway in your Firezone account. If left blank,
+      # the Gateway will generate a random ID saved in /var/lib/firezone
+      # - FIREZONE_ID=<id>
+
+      # REQUIRED. The token shown when deploying a Gateway in the admin portal.
+      - FIREZONE_TOKEN=<token>
+
+      # Configure log output. Other options are "trace", "debug", "info", "warn", "error", and "off".
+      # See https://docs.rs/env_logger/latest/env_logger/ for more information.
+      - RUST_LOG=str0m=warn,info
+
+      # Enable or disable masquerading. Default enabled. Disabling this can prevent
+      # the Gateway from reaching other hosts in your subnet or the internet.
+      # - FIREZONE_ENABLE_MASQUERADE=1
+
+      # Human-friendly name to use for this Gateway in the admin portal.
+      # $(hostname) is used by default if not set.
+      # - FIREZONE_NAME=<name-of-gateway>
+    volumes:
+      # Persist the FIREZONE_ID. Can be omitted if FIREZONE_ID is set above.
+      - /var/lib/firezone:/var/lib/firezone
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      # Enable IP forwarding
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv6.conf.all.forwarding=1
+      - net.ipv6.conf.default.forwarding=1
+    healthcheck:
+      test: ["CMD", "ip", "link", "|", "grep", "tun-firezone"]
+      interval: 5s
+      timeout: 10s
+      retries: 3
+      start_period: 1m
+    devices:
+      - /dev/net/tun:/dev/net/tun
+```

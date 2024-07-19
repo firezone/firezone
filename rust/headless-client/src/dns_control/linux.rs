@@ -1,6 +1,6 @@
 use anyhow::{bail, Context as _, Result};
-use connlib_shared::tun_device_manager::linux::IFACE_NAME;
-use std::{net::IpAddr, str::FromStr};
+use firezone_bin_shared::TunDeviceManager;
+use std::{net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;
 
@@ -25,6 +25,11 @@ enum DnsControlMethod {
     Systemd,
 }
 
+/// Controls system-wide DNS.
+///
+/// Always call `deactivate` when Firezone starts.
+///
+/// Only one of these should exist on the entire system at a time.
 pub(crate) struct DnsController {
     dns_control_method: Option<DnsControlMethod>,
 }
@@ -41,19 +46,29 @@ impl Default for DnsController {
 
 impl Drop for DnsController {
     fn drop(&mut self) {
-        tracing::debug!("Reverting DNS control...");
-        if let Some(DnsControlMethod::EtcResolvConf) = self.dns_control_method {
-            // TODO: Check that nobody else modified the file while we were running.
-            etc_resolv_conf::revert().ok();
+        if let Err(error) = self.deactivate() {
+            tracing::error!(?error, "Failed to deactivate DNS control");
         }
     }
 }
 
 impl DnsController {
+    #[allow(clippy::unnecessary_wraps)]
+    pub(crate) fn deactivate(&mut self) -> Result<()> {
+        tracing::debug!("Deactivating DNS control...");
+        if let Some(DnsControlMethod::EtcResolvConf) = self.dns_control_method {
+            // TODO: Check that nobody else modified the file while we were running.
+            etc_resolv_conf::revert()?;
+        }
+        Ok(())
+    }
+
     /// Set the computer's system-wide DNS servers
     ///
     /// The `mut` in `&mut self` is not needed by Rust's rules, but
     /// it would be bad if this was called from 2 threads at once.
+    ///
+    /// Cancel safety: Try not to cancel this.
     pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
         match self.dns_control_method {
             None => Ok(()),
@@ -62,6 +77,19 @@ impl DnsController {
             Some(DnsControlMethod::Systemd) => configure_systemd_resolved(dns_config).await,
         }
         .context("Failed to control DNS")
+    }
+
+    /// Flush systemd-resolved's system-wide DNS cache
+    ///
+    /// Does nothing if we're using other DNS control methods or none at all
+    pub(crate) fn flush(&self) -> Result<()> {
+        // Flushing is only implemented for systemd-resolved
+        if matches!(self.dns_control_method, Some(DnsControlMethod::Systemd)) {
+            tracing::debug!("Flushing systemd-resolved DNS cache...");
+            Command::new("resolvectl").arg("flush-caches").status()?;
+            tracing::debug!("Flushed DNS.");
+        }
+        Ok(())
     }
 }
 
@@ -79,10 +107,14 @@ fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
     anyhow::bail!("DNS control with NetworkManager is not implemented yet",)
 }
 
+/// Sets the system-wide resolvers by configuring `systemd-resolved`
+///
+/// Cancel safety: Cancelling the future may leave running subprocesses
+/// which should eventually exit on their own.
 async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
     let status = tokio::process::Command::new("resolvectl")
         .arg("dns")
-        .arg(IFACE_NAME)
+        .arg(TunDeviceManager::IFACE_NAME)
         .args(dns_config.iter().map(ToString::to_string))
         .status()
         .await
@@ -93,7 +125,7 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
 
     let status = tokio::process::Command::new("resolvectl")
         .arg("domain")
-        .arg(IFACE_NAME)
+        .arg(TunDeviceManager::IFACE_NAME)
         .arg("~.")
         .status()
         .await
@@ -164,12 +196,6 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
         .flat_map(|line| line.split(' '))
         .filter_map(|word| IpAddr::from_str(word).ok())
         .collect()
-}
-
-// Does nothing on Linux, needed to match the Windows interface
-#[allow(clippy::unnecessary_wraps)]
-pub(crate) fn deactivate() -> Result<()> {
-    Ok(())
 }
 
 #[cfg(test)]

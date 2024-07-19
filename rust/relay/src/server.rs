@@ -12,6 +12,7 @@ use crate::{ClientSocket, IpStack, PeerSocket};
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
+use hex_display::HexDisplayExt as _;
 use opentelemetry::metrics::{Counter, Unit, UpDownCounter};
 use opentelemetry::KeyValue;
 use rand::Rng;
@@ -19,6 +20,7 @@ use secrecy::SecretString;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
+use std::ops::RangeInclusive;
 use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,
@@ -61,8 +63,8 @@ pub struct Server<R> {
         HashMap<(AllocationPort, PeerSocket), (ClientSocket, ChannelNumber)>,
 
     listen_port: u16,
-    lowest_port: u16,
-    highest_port: u16,
+
+    ports: RangeInclusive<u16>,
 
     /// Channel numbers are unique by client, thus indexed by both.
     channels_by_client_and_number: HashMap<(ClientSocket, ChannelNumber), Channel>,
@@ -156,8 +158,7 @@ where
         public_address: impl Into<IpStack>,
         mut rng: R,
         listen_port: u16,
-        lowest_port: u16,
-        highest_port: u16,
+        ports: RangeInclusive<u16>,
     ) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
@@ -184,8 +185,7 @@ where
             allocations: Default::default(),
             clients_by_allocation: Default::default(),
             listen_port,
-            lowest_port,
-            highest_port,
+            ports,
             channels_by_client_and_number: Default::default(),
             channel_numbers_by_client_and_peer: Default::default(),
             pending_commands: Default::default(),
@@ -202,6 +202,18 @@ where
 
     pub fn auth_secret(&self) -> &SecretString {
         &self.auth_secret
+    }
+
+    pub fn public_address(&self) -> IpStack {
+        self.public_address
+    }
+
+    pub fn public_ip4(&self) -> Option<IpAddr> {
+        Some(IpAddr::V4(*self.public_address.as_v4()?))
+    }
+
+    pub fn public_ip6(&self) -> Option<IpAddr> {
+        Some(IpAddr::V6(*self.public_address.as_v6()?))
     }
 
     pub fn listen_port(&self) -> u16 {
@@ -249,8 +261,10 @@ where
                 return self.handle_client_message(message, sender, now);
             }
             // Could parse the bytes but message was semantically invalid (like missing attribute).
-            Ok(Err(error_code)) => {
-                self.queue_error_response(sender, error_code);
+            Ok(Err(error_response)) => {
+                tracing::warn!(target: "relay", %sender, method = %error_response.method(), "Failed to decode message");
+
+                self.send_message(error_response, sender);
             }
             // Parsing the bytes failed.
             Err(client_message::Error::BadChannelData(ref error)) => {
@@ -298,34 +312,9 @@ where
             return None;
         };
 
-        self.queue_error_response(sender, error_response);
+        self.send_message(error_response, sender);
 
         None
-    }
-
-    fn queue_error_response(
-        &mut self,
-        sender: ClientSocket,
-        mut error_response: Message<Attribute>,
-    ) {
-        let Some(error) = error_response.get_attribute::<ErrorCode>().cloned() else {
-            debug_assert!(false, "Error response without an `ErrorCode`");
-            return;
-        };
-
-        // In case of a 401 or 438 response, attach a realm and nonce.
-        if error == ErrorCode::from(Unauthorized) || error == ErrorCode::from(StaleNonce) {
-            let new_nonce = Uuid::from_u128(self.rng.gen());
-
-            self.add_nonce(new_nonce);
-
-            error_response.add_attribute(Nonce::new(new_nonce.to_string()).unwrap());
-            error_response.add_attribute((*FIREZONE).clone());
-        }
-
-        tracing::warn!(target: "relay", "{} failed: {}", error_response.method(), error.reason_phrase());
-
-        self.send_message(error_response, sender);
     }
 
     /// Process the bytes received from an allocation.
@@ -426,7 +415,7 @@ where
         }
     }
 
-    #[tracing::instrument(level = "info", skip_all, fields(transaction_id = ?request.transaction_id(), %sender))]
+    #[tracing::instrument(level = "info", skip_all, fields(tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_binding_request(&mut self, request: Binding, sender: ClientSocket) {
         let mut message = Message::new(
             MessageClass::SuccessResponse,
@@ -443,7 +432,7 @@ where
     /// Handle a TURN allocate request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque> for details.
-    #[tracing::instrument(level = "info", skip_all, fields(allocation, transaction_id = ?request.transaction_id(), %sender))]
+    #[tracing::instrument(level = "info", skip_all, fields(allocation, tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_allocate_request(
         &mut self,
         request: Allocate,
@@ -456,21 +445,29 @@ where
             Span::current().record("allocation", display(&allocation.port));
             tracing::warn!(target: "relay", "Client already has an allocation");
 
-            return Err(error_response(AllocationMismatch, &request));
+            return Err(self.make_error_response(
+                AllocationMismatch,
+                &request,
+                ResponseErrorLevel::Warn,
+            ));
         }
 
         let max_available_ports = self.max_available_ports() as usize;
         if self.clients_by_allocation.len() == max_available_ports {
             tracing::warn!(target: "relay", %max_available_ports, "No more ports available");
 
-            return Err(error_response(InsufficientCapacity, &request));
+            return Err(self.make_error_response(
+                InsufficientCapacity,
+                &request,
+                ResponseErrorLevel::Warn,
+            ));
         }
 
         let requested_protocol = request.requested_transport().protocol();
         if requested_protocol != UDP_TRANSPORT {
             tracing::warn!(target: "relay", %requested_protocol, "Unsupported protocol");
 
-            return Err(error_response(BadRequest, &request));
+            return Err(self.make_error_response(BadRequest, &request, ResponseErrorLevel::Warn));
         }
 
         let (first_relay_address, maybe_second_relay_addr) = derive_relay_addresses(
@@ -478,7 +475,7 @@ where
             request.requested_address_family(),
             request.additional_address_family(),
         )
-        .map_err(|e| error_response(e, &request))?;
+        .map_err(|e| self.make_error_response(e, &request, ResponseErrorLevel::Warn))?;
 
         // TODO: Do we need to handle DONT-FRAGMENT?
         // TODO: Do we need to handle EVEN/ODD-PORT?
@@ -554,7 +551,7 @@ where
     /// Handle a TURN refresh request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-refresh-request> for details.
-    #[tracing::instrument(level = "info", skip_all, fields(allocation, transaction_id = ?request.transaction_id(), %sender))]
+    #[tracing::instrument(level = "info", skip_all, fields(allocation, tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_refresh_request(
         &mut self,
         request: Refresh,
@@ -564,10 +561,13 @@ where
         self.verify_auth(&request)?;
 
         // TODO: Verify that this is the correct error code.
-        let allocation = self
-            .allocations
-            .get_mut(&sender)
-            .ok_or(error_response(AllocationMismatch, &request))?;
+        let Some(allocation) = self.allocations.get_mut(&sender) else {
+            return Err(self.make_error_response(
+                AllocationMismatch,
+                &request,
+                ResponseErrorLevel::Warn,
+            ));
+        };
 
         Span::current().record("allocation", display(&allocation.port));
 
@@ -600,7 +600,7 @@ where
     /// Handle a TURN channel bind request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-channelbind-req> for details.
-    #[tracing::instrument(level = "info", skip_all, fields(allocation, peer, channel, transaction_id = ?request.transaction_id(), %sender))]
+    #[tracing::instrument(level = "info", skip_all, fields(allocation, peer, channel, tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_channel_bind_request(
         &mut self,
         request: ChannelBind,
@@ -609,10 +609,13 @@ where
     ) -> Result<(), Message<Attribute>> {
         self.verify_auth(&request)?;
 
-        let allocation: &mut Allocation = self
-            .allocations
-            .get_mut(&sender)
-            .ok_or(error_response(AllocationMismatch, &request))?;
+        let Some(allocation) = self.allocations.get_mut(&sender) else {
+            return Err(self.make_error_response(
+                AllocationMismatch,
+                &request,
+                ResponseErrorLevel::Warn,
+            ));
+        };
 
         // Note: `channel_number` is enforced to be in the correct range.
         let requested_channel = request.channel_number();
@@ -626,7 +629,11 @@ where
         if !allocation.can_relay_to(peer_address) {
             tracing::warn!(target: "relay", "Allocation cannot relay to peer");
 
-            return Err(error_response(PeerAddressFamilyMismatch, &request));
+            return Err(self.make_error_response(
+                PeerAddressFamilyMismatch,
+                &request,
+                ResponseErrorLevel::Warn,
+            ));
         }
 
         // Ensure the same address isn't already bound to a different channel.
@@ -637,7 +644,11 @@ where
             if number != &requested_channel {
                 tracing::warn!(target: "relay", existing_channel = %number.value(), "Peer is already bound to another channel");
 
-                return Err(error_response(BadRequest, &request));
+                return Err(self.make_error_response(
+                    BadRequest,
+                    &request,
+                    ResponseErrorLevel::Warn,
+                ));
             }
         }
 
@@ -649,7 +660,11 @@ where
             if channel.peer_address != peer_address {
                 tracing::warn!(target: "relay", existing_peer = %channel.peer_address, "Channel is already bound to a different peer");
 
-                return Err(error_response(BadRequest, &request));
+                return Err(self.make_error_response(
+                    BadRequest,
+                    &request,
+                    ResponseErrorLevel::Warn,
+                ));
             }
 
             // Binding requests for existing channels act as a refresh for the binding.
@@ -689,7 +704,7 @@ where
     ///
     /// This TURN server implementation does not support relaying data other than through channels.
     /// Thus, creating a permission is a no-op that always succeeds.
-    #[tracing::instrument(level = "info", skip_all, fields(transaction_id = ?request.transaction_id(), %sender))]
+    #[tracing::instrument(level = "info", skip_all, fields(tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_create_permission_request(
         &mut self,
         request: CreatePermission,
@@ -746,28 +761,34 @@ where
         &mut self,
         request: &(impl StunRequest + ProtectedRequest),
     ) -> Result<(), Message<Attribute>> {
-        let message_integrity = request
-            .message_integrity()
-            .map_err(|e| error_response(e, request))?;
-        let username = request.username().map_err(|e| error_response(e, request))?;
+        let message_integrity = request.message_integrity().ok_or_else(|| {
+            self.make_error_response(Unauthorized, request, ResponseErrorLevel::Warn)
+        })?;
+        let username = request.username().ok_or_else(|| {
+            self.make_error_response(Unauthorized, request, ResponseErrorLevel::Warn)
+        })?;
         let nonce = request
             .nonce()
-            .map_err(|e| error_response(e, request))?
+            .ok_or_else(|| {
+                self.make_error_response(Unauthorized, request, ResponseErrorLevel::Debug)
+            })?
             .value()
             .parse::<Uuid>()
             .map_err(|e| {
                 tracing::debug!(target: "relay", "failed to parse nonce: {e}");
 
-                error_response(Unauthorized, request)
+                self.make_error_response(Unauthorized, request, ResponseErrorLevel::Warn)
             })?;
 
-        self.nonces
-            .handle_nonce_used(nonce)
-            .map_err(|_| error_response(StaleNonce, request))?;
+        self.nonces.handle_nonce_used(nonce).map_err(|_| {
+            self.make_error_response(StaleNonce, request, ResponseErrorLevel::Debug)
+        })?;
 
         message_integrity
             .verify(&self.auth_secret, username.name(), SystemTime::now()) // This is impure but we don't need to control this in our tests.
-            .map_err(|_| error_response(Unauthorized, request))?;
+            .map_err(|_| {
+                self.make_error_response(Unauthorized, request, ResponseErrorLevel::Warn)
+            })?;
 
         Ok(())
     }
@@ -785,7 +806,7 @@ where
         );
 
         let port = loop {
-            let candidate = AllocationPort(self.rng.gen_range(self.lowest_port..self.highest_port));
+            let candidate = AllocationPort(self.rng.gen_range(self.ports.clone()));
 
             if !self.clients_by_allocation.contains_key(&candidate) {
                 break candidate;
@@ -801,7 +822,7 @@ where
     }
 
     fn max_available_ports(&self) -> u16 {
-        self.highest_port - self.lowest_port
+        self.ports.clone().count() as u16
     }
 
     fn create_channel_binding(
@@ -955,6 +976,52 @@ where
 
         tracing::info!(target: "relay", channel = %chan.value(), %client, %peer, %allocation, "Channel binding is now deleted (and can be rebound)");
     }
+
+    fn make_error_response(
+        &mut self,
+        error_code: impl Into<ErrorCode>,
+        request: &impl StunRequest,
+        error_level: ResponseErrorLevel,
+    ) -> Message<Attribute> {
+        let error_code = error_code.into();
+
+        match error_level {
+            ResponseErrorLevel::Warn => {
+                tracing::warn!(target: "relay", "{} failed: {}", request.method(), error_code.reason_phrase());
+            }
+            ResponseErrorLevel::Debug => {
+                tracing::debug!(target: "relay", "{} failed: {}", request.method(), error_code.reason_phrase());
+            }
+        }
+
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            request.method(),
+            request.transaction_id(),
+        );
+
+        let is_auth_error = error_code == ErrorCode::from(Unauthorized)
+            || error_code == ErrorCode::from(StaleNonce);
+
+        message.add_attribute(Attribute::from(error_code));
+
+        // In case of a 401 or 438 response, attach a realm and nonce.
+        if is_auth_error {
+            let new_nonce = Uuid::from_u128(self.rng.gen());
+
+            self.add_nonce(new_nonce);
+
+            message.add_attribute(Nonce::new(new_nonce.to_string()).unwrap());
+            message.add_attribute((*FIREZONE).clone());
+        }
+
+        message
+    }
+}
+
+enum ResponseErrorLevel {
+    Warn,
+    Debug,
 }
 
 fn refresh_success_response(
@@ -1048,20 +1115,6 @@ impl Allocation {
     }
 }
 
-fn error_response(
-    error_code: impl Into<ErrorCode>,
-    request: &impl StunRequest,
-) -> Message<Attribute> {
-    let mut message = Message::new(
-        MessageClass::ErrorResponse,
-        request.method(),
-        request.transaction_id(),
-    );
-    message.add_attribute(Attribute::from(error_code.into()));
-
-    message
-}
-
 /// Derive the relay address for the client based on the request and the supported IP stack of the relay server.
 ///
 /// By default, a client gets an IPv4 address.
@@ -1137,7 +1190,6 @@ fn derive_relay_addresses(
     }
 }
 
-/// Private helper trait to make [`error_response`] more ergonomic to use.
 trait StunRequest {
     fn transaction_id(&self) -> TransactionId;
     fn method(&self) -> Method;
@@ -1164,24 +1216,24 @@ impl_stun_request_for!(Refresh, REFRESH);
 
 /// Private helper trait to make [`Server::verify_auth`] more ergonomic to use.
 trait ProtectedRequest {
-    fn message_integrity(&self) -> Result<&MessageIntegrity, Unauthorized>;
-    fn username(&self) -> Result<&Username, Unauthorized>;
-    fn nonce(&self) -> Result<&Nonce, Unauthorized>;
+    fn message_integrity(&self) -> Option<&MessageIntegrity>;
+    fn username(&self) -> Option<&Username>;
+    fn nonce(&self) -> Option<&Nonce>;
 }
 
 macro_rules! impl_protected_request_for {
     ($t:ty) => {
         impl ProtectedRequest for $t {
-            fn message_integrity(&self) -> Result<&MessageIntegrity, Unauthorized> {
-                self.message_integrity().ok_or(Unauthorized)
+            fn message_integrity(&self) -> Option<&MessageIntegrity> {
+                self.message_integrity()
             }
 
-            fn username(&self) -> Result<&Username, Unauthorized> {
-                self.username().ok_or(Unauthorized)
+            fn username(&self) -> Option<&Username> {
+                self.username()
             }
 
-            fn nonce(&self) -> Result<&Nonce, Unauthorized> {
-                self.nonce().ok_or(Unauthorized)
+            fn nonce(&self) -> Option<&Nonce> {
+                self.nonce()
             }
         }
     };

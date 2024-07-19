@@ -28,7 +28,7 @@ pub struct ResourceDescriptionDns {
 }
 
 impl ResourceDescriptionDns {
-    fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionDns {
+    pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionDns {
         crate::callbacks::ResourceDescriptionDns {
             id: self.id,
             address: self.address,
@@ -58,7 +58,7 @@ pub struct ResourceDescriptionCidr {
 }
 
 impl ResourceDescriptionCidr {
-    fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionCidr {
+    pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionCidr {
         crate::callbacks::ResourceDescriptionCidr {
             id: self.id,
             address: self.address,
@@ -70,10 +70,32 @@ impl ResourceDescriptionCidr {
     }
 }
 
+/// Description of an internet resource.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ResourceDescriptionInternet {
+    /// Resource's id.
+    pub id: ResourceId,
+    // TBD
+    #[serde(rename = "gateway_groups")]
+    pub sites: Vec<Site>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialOrd, Ord)]
 pub struct Site {
-    pub name: String,
     pub id: SiteId,
+    pub name: String,
+}
+
+impl std::hash::Hash for Site {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl PartialEq for Site {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -98,7 +120,7 @@ impl ResourceDescription {
     pub fn dns_name(&self) -> Option<&str> {
         match self {
             ResourceDescription::Dns(r) => Some(&r.address),
-            ResourceDescription::Cidr(_) => None,
+            ResourceDescription::Cidr(_) | ResourceDescription::Internet(_) => None,
         }
     }
 
@@ -106,6 +128,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => r.id,
             ResourceDescription::Cidr(r) => r.id,
+            ResourceDescription::Internet(r) => r.id,
         }
     }
 
@@ -113,6 +136,15 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => HashSet::from_iter(r.sites.iter()),
             ResourceDescription::Cidr(r) => HashSet::from_iter(r.sites.iter()),
+            ResourceDescription::Internet(_) => HashSet::default(),
+        }
+    }
+
+    pub fn sites_mut(&mut self) -> &mut Vec<Site> {
+        match self {
+            ResourceDescription::Dns(r) => &mut r.sites,
+            ResourceDescription::Cidr(r) => &mut r.sites,
+            ResourceDescription::Internet(r) => &mut r.sites,
         }
     }
 
@@ -121,6 +153,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => &r.name,
             ResourceDescription::Cidr(r) => &r.name,
+            ResourceDescription::Internet(_) => "Internet",
         }
     }
 
@@ -144,6 +177,7 @@ impl ResourceDescription {
             ResourceDescription::Cidr(r) => {
                 crate::callbacks::ResourceDescription::Cidr(r.with_status(status))
             }
+            ResourceDescription::Internet(_) => todo!(),
         }
     }
 }
@@ -165,4 +199,43 @@ impl Ord for ResourceDescription {
 pub enum ResourceDescription {
     Dns(ResourceDescriptionDns),
     Cidr(ResourceDescriptionCidr),
+    Internet(ResourceDescriptionInternet),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn can_deserialize_internet_resource() {
+        let resources = r#"[
+            {
+                "id": "73037362-715d-4a83-a749-f18eadd970e6",
+                "type": "cidr",
+                "name": "172.172.0.0/16",
+                "address": "172.172.0.0/16",
+                "address_description": "cidr resource",
+                "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]
+            },
+            {
+                "id": "03000143-e25e-45c7-aafb-144990e57dcd",
+                "type": "dns",
+                "name": "gitlab.mycorp.com",
+                "address": "gitlab.mycorp.com",
+                "address_description": "dns resource",
+                "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]
+            },
+            {
+                "id": "1106047c-cd5d-4151-b679-96b93da7383b",
+                "type": "internet",
+                "gateway_groups": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
+                "not": "relevant",
+                "some_other": [
+                    "field"
+                ]
+            }
+        ]"#;
+
+        serde_json::from_str::<Vec<ResourceDescription>>(resources).unwrap();
+    }
 }

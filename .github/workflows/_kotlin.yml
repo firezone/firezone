@@ -22,18 +22,19 @@ jobs:
           distribution: temurin
           java-version: 17
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@v3
+        uses: gradle/actions/wrapper-validation@v3
       - name: Setup Gradle
-        uses: gradle/gradle-build-action@v3
+        uses: gradle/actions/setup-gradle@v3
         with:
           build-root-directory: ./kotlin/android
       - run: touch local.properties
       - name: Run linter
         run: ./gradlew spotlessCheck
 
-  build:
+  build_release:
     # Android SDK tools hardware accel is available only on Linux runners
     runs-on: ubuntu-22.04
+    name: build-release
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
@@ -44,7 +45,7 @@ jobs:
           distribution: temurin
           java-version: 17
       - name: Setup Gradle
-        uses: gradle/gradle-build-action@v3
+        uses: gradle/actions/setup-gradle@v3
         with:
           build-root-directory: ./kotlin/android
       - run: touch local.properties
@@ -75,6 +76,33 @@ jobs:
         run: |
           echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > $FIREBASE_CREDENTIALS_PATH
           ./gradlew --info appDistributionUploadRelease uploadCrashlyticsSymbolFileRelease
+  build_debug:
+    # Android SDK tools hardware accel is available only on Linux runners
+    runs-on: ubuntu-22.04
+    name: build-debug
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android i686-linux-android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          build-root-directory: ./kotlin/android
+      - run: touch local.properties
+      - name: Build debug APK
+        run: |
+          ./gradlew assembleDebug
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android debug APK
+          path: |
+            ./kotlin/android/app/build/outputs/apk/*
 
   ui-test:
     # FIXME

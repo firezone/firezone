@@ -23,11 +23,17 @@ import {
   DockerIcon,
 } from "@/components/Icons";
 
-import { SlideIn, RotatingWords, Strike } from "@/components/Animations";
+import {
+  SlideIn,
+  RotatingWords,
+  Strike,
+  FadeIn,
+} from "@/components/Animations";
 import SpeedChart from "@/components/Animations/SpeedChart";
 import UpgradeDiagram from "@/components/Animations/UpgradeDiagram";
 import ComplianceDiagram from "@/components/Animations/ComplianceDiagram";
 import SimpleArchitecture from "@/components/Animations/SimpleArchitecture";
+import "@/styles/hero.css";
 
 export const metadata: Metadata = {
   title: "Firezone: Zero trust access that scales",
@@ -35,53 +41,88 @@ export const metadata: Metadata = {
     "Firezone is a fast, flexible VPN replacement built on WireGuard® that eliminates tedious configuration and integrates with your identity provider.",
 };
 
-function ActionButtons() {
-  return (
-    <div className="w-full max-w-screen-sm flex flex-wrap justify-between mt-8">
-      <button
-        type="button"
-        className="mx-auto mb-8 w-64 inline-flex justify-center items-center py-3 px-5 text-base font-semibold hover:font-bold text-center text-primary-450 rounded border border-primary-450 bg-white hover:scale-105 duration-0 transform transition"
-      >
-        <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
-      </button>
-      <button
-        type="button"
-        className="mx-auto mb-8 w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 text-base font-semibold hover:font-bold text-center text-white rounded bg-primary-450 hover:scale-105 duration-0 transform transition"
-      >
-        <Link href="/contact/sales">Request demo</Link>
-        <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
-      </button>
-    </div>
-  );
-}
-
 export default function Page() {
   return (
     <>
-      <section className="bg-neutral-100 pt-24">
-        <div className="px-4 py-8 mx-auto max-w-screen-xl text-center lg:py-16 lg:px-12">
-          <h1 className="mb-8 md:text-6xl text-5xl justify-center inline-block font-extrabold tracking-tight leading-none text-neutral-900">
-            Secure remote access.
-            <SlideIn
-              direction="left"
-              delay={0.5}
-              className="ml-2 text-primary-450 underline md:inline-block"
-            >
-              That scales.
-            </SlideIn>
-          </h1>
-          <div className="max-w-screen-md mx-auto">
-            <h3 className="mb-8 text-xl tracking-tight justify-center font-medium text-neutral-900 inline-block">
-              Firezone is a fast, flexible VPN replacement built on WireGuard®
-              that{" "}
-              <span className="text-primary-450 font-bold">eliminates</span>{" "}
-              tedious configuration and integrates with your identity provider.
-            </h3>
+      <section className="hero-background">
+        <div className="pt-24 md:pt-32 xl:pt-48 pb-14 md:pb-24 xl:pb-36 bg-gradient-to-br from-neutral-900/10 to-neutral-900/10 via-primary-700/10">
+          <div className="md:flex md:flex-wrap mx-auto max-w-screen-xl px-8 mb-8 md:mb-16 lg:mb-22 xl:mb-28">
+            <div className="md:w-2/3 px-4">
+              <h1 className="mb-8 inline-block font-medium tracking-tight leading-none text-neutral-200">
+                <SlideIn
+                  direction="right"
+                  delay={0.0}
+                  className="md:text-7xl text-4xl md:block"
+                >
+                  Zero-trust access
+                </SlideIn>
+                <SlideIn
+                  direction="left"
+                  delay={0.25}
+                  className="md:text-4xl text-2xl text-primary-450 underline underline-offset-4 md:block"
+                >
+                  For humans.
+                </SlideIn>
+              </h1>
+              <div className="flex items-center">
+                <SlideIn delay={0.5} direction="top" className="mr-4">
+                  <Image
+                    src="/images/ross-oss.svg"
+                    width={250}
+                    height={100}
+                    alt="Ross OSS"
+                    className="bg-neutral-50 rounded shadow shadow-neutral-300"
+                  />
+                </SlideIn>
+                <SlideIn delay={0.75} direction="top">
+                  <Link href="https://www.ycombinator.com/companies/firezone">
+                    <Image
+                      width={125}
+                      height={125}
+                      src="/images/yc-logo.svg"
+                      alt="YC Logo"
+                      className="bg-neutral-50 rounded shadow shadow-neutral-300"
+                    />
+                  </Link>
+                </SlideIn>
+              </div>
+            </div>
+            <div className="md:w-1/3 px-4 my-auto">
+              <h3 className="md:mt-0 my-4 text-xl tracking-tight font-medium text-neutral-200 inline-block">
+                Firezone is a fast, flexible VPN replacement built on
+                WireGuard® that{" "}
+                <span className="text-primary-450 font-semibold inline-block">
+                  conceals
+                </span>{" "}
+                your apps and networks{" "}
+                <span className="text-primary-450 font-semibold inline-block">
+                  without
+                </span>{" "}
+                tedious configuration.
+              </h3>
+              <div className="flex flex-wrap justify-between mt-4">
+                <div className="my-4 mr-4 flex items-center">
+                  <Link
+                    href="https://app.firezone.dev/sign_up"
+                    className="group inline-flex items-center py-0.5 text-neutral-200 text-lg font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
+                  >
+                    Sign up now
+                    <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
+                  </Link>
+                </div>
+                <div className="my-4 flex items-center">
+                  <button
+                    type="button"
+                    className="group shadow-lg shadow-primary-700 text-lg w-48 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
+                  >
+                    <Link href="/contact/sales">Book a demo</Link>
+                    <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="mb-12 flex flex-col px-4 justify-center items-center">
-            <ActionButtons />
-          </div>
-          <div className="flex items-center justify-center">
+          <div className="flex items-center justify-center px-4 md:px-0">
             <video
               className="shadow-lg rounded"
               width="960"
@@ -104,10 +145,12 @@ export default function Page() {
         <CustomerLogos />
       </section>
 
+      {/* TODO: ACLs for the rest of us */}
+
       {/* Feature section 1: Secure access to your most sensitive resources in minutes. */}
       <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
-          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
+          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
             Upgrade to zero-trust access in{" "}
             <span className="text-primary-450">minutes</span>.
           </h3>
@@ -183,8 +226,8 @@ export default function Page() {
 
       {/* Feature section 2: Achieve compliance in minutes, not weeks. */}
       <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
-          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
+          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
             Achieve compliance{" "}
             <span className="text-primary-450">without </span>
             the headache.
@@ -219,8 +262,8 @@ export default function Page() {
 
       {/* Feature section 3: Add 2FA to WireGuard. */}
       <section className="bg-neutral-50 py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
-          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
+          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
             Add <span className="text-primary-450">two-factor </span>
             auth to WireGuard.
           </h3>
@@ -258,8 +301,8 @@ export default function Page() {
 
       {/* Feature section 4: Say goodbye to bandwidth problems. */}
       <section className="bg-neutral-900 text-neutral-50 py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
-          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
+          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
             <Strike>Bandwidth problems.</Strike>
           </h3>
         </div>
@@ -289,8 +332,8 @@ export default function Page() {
 
       {/* Feature section 5: No more open firewall ports. */}
       <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
-          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
+          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
             Say <span className="text-primary-450">goodbye</span> to firewall
             configuration.
           </h3>
@@ -321,16 +364,16 @@ export default function Page() {
 
       {/* Feature section 6: Runs everywhere your business does. */}
       <section className="bg-neutral-50 py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
-          <h3 className="text-2xl md:text-4xl tracking-tight font-bold inline-block">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
+          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
             Runs <span className="text-primary-450">everywhere </span>
             your business does.
           </h3>
         </div>
 
         <div className="mx-auto px-4 mt-8 max-w-screen-lg grid sm:grid-cols-2 gap-8 lg:gap-16">
-          <div className="p-4">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col p-4">
+            <div className="mb-12 grid grid-cols-2 gap-4">
               <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
                 <AppleIcon size={12} href="/kb/user-guides/macos-client">
                   <span className="inline-block pt-4 w-full text-center">
@@ -374,82 +417,88 @@ export default function Page() {
                 </AppleIcon>
               </div>
             </div>
-            <p className="mt-4 md:mt-8 text-md md:text-xl tracking-tight md:text-justify">
-              Clients are available for every major platform, require no
-              configuration, and stay connected even when switching WiFi
-              networks.
-            </p>
-            <p className="mt-4">
-              <ActionLink
-                className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
-                href="/kb/user-guides"
-              >
-                Download Client apps
-              </ActionLink>
-            </p>
-          </div>
-          <div className="p-4">
-            <div className="py-0.5 flex flex-col justify-between space-y-8 md:space-y-12">
-              <div className="mx-8 md:mx-16 flex justify-start">
-                <Image
-                  width={200}
-                  height={200}
-                  alt="Gateway"
-                  src="/images/docker.svg"
-                />
-              </div>
-              <div className="mx-8 md:mx-16 flex justify-end">
-                <Image
-                  width={200}
-                  height={200}
-                  alt="Gateway"
-                  src="/images/terraform.svg"
-                />
-              </div>
-              <div className="mx-8 md:mx-16 flex justify-start">
-                <Image
-                  width={200}
-                  height={200}
-                  alt="Gateway"
-                  src="/images/kubernetes.svg"
-                />
-              </div>
-              <div className="mx-8 md:mx-16 flex justify-end">
-                <Image
-                  width={200}
-                  height={200}
-                  alt="Gateway"
-                  src="/images/pulumi.svg"
-                />
-              </div>
+            <div className="mt-auto">
+              <p className="text-md md:text-xl tracking-tight md:text-justify">
+                Clients are available for every major platform, require no
+                configuration, and stay connected even when switching WiFi
+                networks.
+              </p>
+              <p className="mt-4">
+                <ActionLink
+                  className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+                  href="/kb/user-guides"
+                >
+                  Download Client apps
+                </ActionLink>
+              </p>
             </div>
-            <pre className="mt-4 md:mt-8 text-xs p-2 bg-neutral-900 rounded shadow text-neutral-50 text-wrap">
-              <code>
-                <strong>FIREZONE_TOKEN</strong>=&lt;your-token&gt; \<br /> ./
-                <strong>firezone-gateway</strong>
-              </code>
-            </pre>
-            <p className="mt-4 md:mt-8 text-md md:text-xl tracking-tight md:text-justify">
-              Gateways are lightweight Linux binaries you deploy anywhere you
-              need access. Just configure a token with your preferred
-              orchestration tool and you're done.
-            </p>
-            <p className="mt-4">
-              <ActionLink
-                className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
-                href="/kb/deploy/gateways"
-              >
-                Deploy your first Gateway
-              </ActionLink>
-            </p>
+          </div>
+          <div className="flex flex-col p-4">
+            <div className="mb-12">
+              <div className="py-0.5 flex flex-col justify-between space-y-8 md:space-y-12">
+                <div className="mx-8 md:mx-16 flex justify-start">
+                  <Image
+                    width={200}
+                    height={200}
+                    alt="Gateway"
+                    src="/images/docker.svg"
+                  />
+                </div>
+                <div className="mx-8 md:mx-16 flex justify-end">
+                  <Image
+                    width={200}
+                    height={200}
+                    alt="Gateway"
+                    src="/images/terraform.svg"
+                  />
+                </div>
+                <div className="mx-8 md:mx-16 flex justify-start">
+                  <Image
+                    width={200}
+                    height={200}
+                    alt="Gateway"
+                    src="/images/kubernetes.svg"
+                  />
+                </div>
+                <div className="mx-8 md:mx-16 flex justify-end">
+                  <Image
+                    width={200}
+                    height={200}
+                    alt="Gateway"
+                    src="/images/pulumi.svg"
+                  />
+                </div>
+              </div>
+              <pre className="mt-4 md:mt-8 text-xs p-2 bg-neutral-900 rounded shadow text-neutral-50 text-wrap">
+                <code>
+                  <strong>FIREZONE_TOKEN</strong>=&lt;your-token&gt; \<br /> ./
+                  <strong>firezone-gateway</strong>
+                </code>
+              </pre>
+            </div>
+            <div className="mt-auto">
+              <p className="text-md md:text-xl tracking-tight md:text-justify">
+                Gateways are lightweight Linux binaries you deploy anywhere you
+                need access. Just configure a token with your preferred
+                orchestration tool and you're done.
+              </p>
+              <p className="mt-4">
+                <ActionLink
+                  className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+                  href="/kb/deploy/gateways"
+                >
+                  Deploy your first Gateway
+                </ActionLink>
+              </p>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Feature section 7: Open source for transparency and trust. */}
       <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-2 md:mb-4 sm:text-center">
-          <h3 className="text-xl sm:text-2xl md:text-4xl tracking-tight font-bold inline-block">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
+          <h3 className="text-xl sm:text-2xl md:text-6xl tracking-tight font-bold inline-block">
             <span className="text-primary-450">Open source</span> for
             transparency and trust.
           </h3>
@@ -701,13 +750,37 @@ export default function Page() {
 
       <section className="border-t border-neutral-200 py-24 bg-neutral-900">
         <div className="flex flex-col px-4 justify-center items-center">
-          <h3 className="mb-4 text-4xl tracking-tight text-center font-bold text-neutral-50">
+          <h3 className="mb-4 text-2xl md:text-6xl tracking-tight text-center font-bold text-neutral-50">
             Ready to get started?
           </h3>
           <h4 className="my-4 font-medium text-xl max-w-screen-md tracking-tight text-center text-neutral-200 ">
             Give your team secure access to company resources in minutes.
           </h4>
-          <ActionButtons />
+          <div className="w-full max-w-screen-sm flex flex-wrap justify-between mt-8">
+            <div className="mb-8 mx-auto w-64">
+              <button
+                type="button"
+                className="text-xl w-64 inline-flex justify-center items-center py-3 px-5 font-semibold text-center text-primary-450 rounded border border-primary-450 bg-white hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
+              >
+                <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
+              </button>
+              <p className="mt-3 text-sm text-neutral-400">
+                No credit card required. Cancel anytime.
+              </p>
+            </div>
+            <div className="mx-auto w-64">
+              <button
+                type="button"
+                className="text-xl w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
+              >
+                <Link href="/contact/sales">Book a demo</Link>
+                <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
+              </button>
+              <p className="mt-3 text-sm text-neutral-400">
+                Get a personalized walkthrough of Firezone.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
     </>

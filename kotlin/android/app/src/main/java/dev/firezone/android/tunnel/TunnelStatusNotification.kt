@@ -8,7 +8,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Context.NOTIFICATION_SERVICE
 import android.content.Intent
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import dev.firezone.android.R
 import dev.firezone.android.core.presentation.MainActivity
@@ -25,7 +24,6 @@ object TunnelStatusNotification {
         context: Context,
         status: StatusType,
     ): NotificationCompat.Builder {
-        Log.d(TAG, "update")
         val manager = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
         val chan =
@@ -44,7 +42,6 @@ object TunnelStatusNotification {
     }
 
     private fun configIntent(context: Context): PendingIntent {
-        Log.d(TAG, "configIntent")
         val intent = Intent(context, MainActivity::class.java)
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         return PendingIntent.getActivity(

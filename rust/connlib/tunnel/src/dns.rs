@@ -1,12 +1,12 @@
 use crate::client::IpProvider;
-use connlib_shared::messages::client::ResourceDescriptionDns;
 use connlib_shared::messages::{DnsServer, ResourceId};
 use connlib_shared::DomainName;
 use domain::base::RelativeName;
 use domain::base::{
     iana::{Class, Rcode, Rtype},
-    Message, MessageBuilder, Question, ToName,
+    Message, MessageBuilder, ToName,
 };
+use domain::rdata::AllRecordData;
 use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::error::{ProtoError, ProtoErrorKind};
 use hickory_resolver::proto::op::MessageType;
@@ -25,13 +25,14 @@ const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
 const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
 const DNS_PORT: u16 = 53;
 
-/// Tells the Client how to reply to a single DNS query
-#[derive(Debug)]
-pub(crate) enum ResolveStrategy<'a> {
-    /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
-    LocalResponse(IpPacket<'static>),
-    /// The query is for a non-Resource, forward it to an upstream or system resolver
-    ForwardQuery(DnsQuery<'a>),
+pub struct StubResolver {
+    fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
+    ips_to_fqdn: HashMap<IpAddr, (DomainName, ResourceId)>,
+    ip_provider: IpProvider,
+    /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
+    dns_resources: HashMap<String, ResourceId>,
+    /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
+    known_hosts: KnownHosts,
 }
 
 #[derive(Debug)]
@@ -41,6 +42,217 @@ pub struct DnsQuery<'a> {
     // We could be much more efficient with this field,
     // we only need the header to create the response.
     pub query: ip_packet::IpPacket<'a>,
+}
+
+/// Tells the Client how to reply to a single DNS query
+#[derive(Debug)]
+pub(crate) enum ResolveStrategy<'a> {
+    /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
+    LocalResponse(IpPacket<'static>),
+    /// The query is for a non-Resource, forward it to an upstream or system resolver
+    ForwardQuery(DnsQuery<'a>),
+}
+
+struct KnownHosts {
+    fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
+    ips_to_fqdn: HashMap<IpAddr, DomainName>,
+}
+
+impl KnownHosts {
+    fn new(hosts: HashMap<String, Vec<IpAddr>>) -> KnownHosts {
+        KnownHosts {
+            fqdn_to_ips: fqdn_to_ips_for_known_hosts(&hosts),
+            ips_to_fqdn: ips_to_fqdn_for_known_hosts(&hosts),
+        }
+    }
+
+    fn get_records(
+        &self,
+        qtype: Rtype,
+        domain: &DomainName,
+    ) -> Option<Vec<AllRecordData<Vec<u8>, DomainName>>> {
+        match qtype {
+            Rtype::A => {
+                let ips = self.fqdn_to_ips.get::<DomainName>(domain)?;
+
+                Some(to_a_records(ips.iter().copied()))
+            }
+
+            Rtype::AAAA => {
+                let ips = self.fqdn_to_ips.get::<DomainName>(domain)?;
+
+                Some(to_aaaa_records(ips.iter().copied()))
+            }
+            Rtype::PTR => {
+                let ip = reverse_dns_addr(&domain.to_string())?;
+                let fqdn = self.ips_to_fqdn.get(&ip)?;
+
+                Some(vec![AllRecordData::Ptr(domain::rdata::Ptr::new(
+                    fqdn.clone(),
+                ))])
+            }
+            _ => None,
+        }
+    }
+}
+
+impl StubResolver {
+    pub(crate) fn new(known_hosts: HashMap<String, Vec<IpAddr>>) -> StubResolver {
+        StubResolver {
+            fqdn_to_ips: Default::default(),
+            ips_to_fqdn: Default::default(),
+            ip_provider: IpProvider::for_resources(),
+            dns_resources: Default::default(),
+            known_hosts: KnownHosts::new(known_hosts),
+        }
+    }
+
+    /// Attempts to resolve an IP to a given resource.
+    ///
+    /// Semantically, this is like a PTR query, i.e. we check whether we handed out this IP as part of answering a DNS query for one of our resources.
+    /// This is in the hot-path of packet routing and must be fast!
+    pub(crate) fn resolve_resource_by_ip(&self, ip: &IpAddr) -> Option<ResourceId> {
+        let (_, resource_id) = self.ips_to_fqdn.get(ip)?;
+
+        Some(*resource_id)
+    }
+
+    pub(crate) fn get_fqdn(&self, ip: &IpAddr) -> Option<(&DomainName, &Vec<IpAddr>)> {
+        let (fqdn, _) = self.ips_to_fqdn.get(ip)?;
+        Some((fqdn, self.fqdn_to_ips.get(fqdn).unwrap()))
+    }
+
+    pub(crate) fn add_resource(&mut self, id: ResourceId, address: String) {
+        let existing = self.dns_resources.insert(address.clone(), id);
+
+        if existing.is_none() {
+            tracing::info!(%address, "Activating DNS resource");
+        }
+    }
+
+    pub(crate) fn remove_resource(&mut self, id: ResourceId) {
+        self.dns_resources.retain(|address, r| {
+            if *r == id {
+                tracing::info!(%address, "Deactivating DNS resource");
+                return false;
+            }
+
+            true
+        });
+    }
+
+    fn get_or_assign_a_records(
+        &mut self,
+        fqdn: DomainName,
+        resource_id: ResourceId,
+    ) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
+        to_a_records(self.get_or_assign_ips(fqdn, resource_id).into_iter())
+    }
+
+    fn get_or_assign_aaaa_records(
+        &mut self,
+        fqdn: DomainName,
+        resource_id: ResourceId,
+    ) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
+        to_aaaa_records(self.get_or_assign_ips(fqdn, resource_id).into_iter())
+    }
+
+    fn get_or_assign_ips(&mut self, fqdn: DomainName, resource_id: ResourceId) -> Vec<IpAddr> {
+        let ips = self
+            .fqdn_to_ips
+            .entry(fqdn.clone())
+            .or_insert_with(|| {
+                // TODO: the side effeccts are executed even if this is not inserted
+                // make it so that's not the case
+                let mut ips = self.ip_provider.get_n_ipv4(4);
+                ips.extend_from_slice(&self.ip_provider.get_n_ipv6(4));
+                ips
+            })
+            .clone();
+        for ip in &ips {
+            self.ips_to_fqdn.insert(*ip, (fqdn.clone(), resource_id));
+        }
+
+        ips
+    }
+
+    fn match_resource(&self, domain_name: &DomainName) -> Option<ResourceId> {
+        match_domain(domain_name, &self.dns_resources)
+    }
+
+    fn resource_address_name_by_reservse_dns(
+        &self,
+        reverse_dns_name: &DomainName,
+    ) -> Option<DomainName> {
+        let address = reverse_dns_addr(&reverse_dns_name.to_string())?;
+        let (domain, _) = self.ips_to_fqdn.get(&address)?;
+
+        Some(domain.clone())
+    }
+
+    // TODO: we can save a few allocations here still
+    // We don't need to support multiple questions/qname in a single query because
+    // nobody does it and since this run with each packet we want to squeeze as much optimization
+    // as we can therefore we won't do it.
+    //
+    // See: https://stackoverflow.com/a/55093896
+    /// Parses an incoming packet as a DNS query and decides how to respond to it
+    ///
+    /// Returns:
+    /// - `None` if the packet is not a valid DNS query destined for one of our sentinel resolvers
+    /// - Otherwise, a strategy for responding to the query
+    pub(crate) fn handle<'a>(
+        &mut self,
+        dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
+        packet: IpPacket<'a>,
+    ) -> Option<ResolveStrategy<'a>> {
+        dns_mapping.get_by_left(&packet.destination())?;
+        let datagram = packet.as_udp()?;
+        let message = as_dns(&datagram)?;
+        if message.header().qr() {
+            return None;
+        }
+
+        let question = message.first_question()?;
+        let domain = question.qname().to_vec();
+        let qtype = question.qtype();
+
+        tracing::trace!("Parsed packet as DNS query: '{qtype} {domain}'");
+
+        if let Some(records) = self.known_hosts.get_records(qtype, &domain) {
+            let response = build_dns_with_answer(message, domain, records)?;
+            return Some(ResolveStrategy::LocalResponse(build_response(
+                packet, response,
+            )));
+        }
+
+        let maybe_resource = self.match_resource(&domain);
+
+        let resource_records = match (qtype, maybe_resource) {
+            (Rtype::A, Some(resource)) => self.get_or_assign_a_records(domain.clone(), resource),
+            (Rtype::AAAA, Some(resource)) => {
+                self.get_or_assign_aaaa_records(domain.clone(), resource)
+            }
+            (Rtype::PTR, _) => {
+                let fqdn = self.resource_address_name_by_reservse_dns(&domain)?;
+
+                vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
+            }
+            _ => {
+                return Some(ResolveStrategy::ForwardQuery(DnsQuery {
+                    name: domain,
+                    record_type: u16::from(qtype).into(),
+                    query: packet,
+                }))
+            }
+        };
+
+        let response = build_dns_with_answer(message, domain, resource_records)?;
+
+        Some(ResolveStrategy::LocalResponse(build_response(
+            packet, response,
+        )))
+    }
 }
 
 impl<'a> DnsQuery<'a> {
@@ -72,159 +284,18 @@ impl Clone for DnsQuery<'static> {
     }
 }
 
-pub struct StubResolver {
-    fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
-    ips_to_fqdn: HashMap<IpAddr, DomainName>,
-    ip_provider: IpProvider,
-    /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
-    dns_resources: HashMap<String, ResourceDescriptionDns>,
+fn to_a_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
+    ips.filter_map(get_v4)
+        .map(domain::rdata::A::new)
+        .map(AllRecordData::A)
+        .collect_vec()
 }
 
-// We don't need to support multiple questions/qname in a single query because
-// nobody does it and since this run with each packet we want to squeeze as much optimization
-// as we can therefore we won't do it.
-//
-// See: https://stackoverflow.com/a/55093896
-/// Parses an incoming packet as a DNS query and decides how to respond to it
-///
-/// Returns:
-/// - `None` if the packet is not a valid DNS query destined for one of our sentinel resolvers
-/// - Otherwise, a strategy for responding to the query
-impl StubResolver {
-    pub(crate) fn new() -> StubResolver {
-        StubResolver {
-            fqdn_to_ips: Default::default(),
-            ips_to_fqdn: Default::default(),
-            ip_provider: IpProvider::for_resources(),
-            dns_resources: Default::default(),
-        }
-    }
-
-    pub(crate) fn get_description(&self, ip: &IpAddr) -> Option<ResourceDescriptionDns> {
-        let name = self.ips_to_fqdn.get(ip)?;
-        get_description(name, &self.dns_resources)
-    }
-
-    pub(crate) fn get_fqdn(&self, ip: &IpAddr) -> Option<(&DomainName, &Vec<IpAddr>)> {
-        let fqdn = self.ips_to_fqdn.get(ip)?;
-        Some((fqdn, self.fqdn_to_ips.get(fqdn).unwrap()))
-    }
-
-    pub(crate) fn add_resource(&mut self, resource: &ResourceDescriptionDns) {
-        let existing = self
-            .dns_resources
-            .insert(resource.address.clone(), resource.clone());
-
-        if existing.is_none() {
-            tracing::info!(address = %resource.address, "Activating DNS resource");
-        }
-    }
-
-    pub(crate) fn remove_resource(&mut self, id: ResourceId) {
-        self.dns_resources.retain(|_, r| {
-            if r.id == id {
-                tracing::info!(address = %r.address, "Deactivating DNS resource");
-                return false;
-            }
-
-            true
-        });
-    }
-
-    fn get_or_assign_ips(&mut self, fqdn: DomainName) -> Vec<IpAddr> {
-        let ips = self
-            .fqdn_to_ips
-            .entry(fqdn.clone())
-            .or_insert_with(|| {
-                // TODO: the side effeccts are executed even if this is not inserted
-                // make it so that's not the case
-                let mut ips = self.ip_provider.get_n_ipv4(4);
-                ips.extend_from_slice(&self.ip_provider.get_n_ipv6(4));
-                ips
-            })
-            .clone();
-        for ip in &ips {
-            self.ips_to_fqdn.insert(*ip, fqdn.clone());
-        }
-
-        ips
-    }
-
-    // This function will panic if it's called with an invalid PTR question
-    fn get_records<N: ToName>(&mut self, question: &Question<N>) -> Vec<RecordData<DomainName>> {
-        match question.qtype() {
-            Rtype::A => self
-                .get_or_assign_ips(question.qname().to_name())
-                .iter()
-                .copied()
-                .filter_map(get_v4)
-                .map(domain::rdata::A::new)
-                .map(RecordData::A)
-                .collect_vec(),
-
-            Rtype::AAAA => self
-                .get_or_assign_ips(question.qname().to_name())
-                .iter()
-                .copied()
-                .filter_map(get_v6)
-                .map(domain::rdata::Aaaa::new)
-                .map(RecordData::Aaaa)
-                .collect_vec(),
-            Rtype::PTR => {
-                let ip = reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())
-                    .expect("ptr isn't a valid");
-                let Some(fqdn) = self.ips_to_fqdn.get(&ip) else {
-                    debug_assert!(false, "we expect this function to be called only with PTR records for resource ips");
-                    return Vec::new();
-                };
-
-                vec![RecordData::Ptr(domain::rdata::Ptr::new(fqdn.clone()))]
-            }
-            _ => Vec::new(),
-        }
-    }
-
-    fn is_resource(&self, question: &Question<impl ToName>) -> bool {
-        // TODO: we can shave off time from the lookup if we keep a hashset of ips
-        match question.qtype() {
-            Rtype::PTR => reverse_dns_addr(&question.qname().to_name::<Vec<_>>().to_string())
-                .is_some_and(|addr| self.fqdn_to_ips.values().flatten().contains(&addr)),
-            _ => get_description(&question.qname().to_name(), &self.dns_resources).is_some(),
-        }
-    }
-
-    // TODO: we can save a few allocations here still
-    pub(crate) fn handle<'a>(
-        &mut self,
-        dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
-        packet: IpPacket<'a>,
-    ) -> Option<ResolveStrategy<'a>> {
-        dns_mapping.get_by_left(&packet.destination())?;
-        let datagram = packet.as_udp()?;
-        let message = as_dns(&datagram)?;
-        if message.header().qr() {
-            return None;
-        }
-
-        let question = message.first_question()?;
-
-        tracing::trace!("Parsed packet as DNS query: '{question}'");
-
-        if !self.is_resource(&question) {
-            return Some(ResolveStrategy::ForwardQuery(DnsQuery {
-                name: ToName::to_vec(question.qname()),
-                record_type: u16::from(question.qtype()).into(),
-                query: packet,
-            }));
-        }
-
-        let resource_records = self.get_records(&question);
-
-        let response = build_dns_with_answer(message, question.qname(), resource_records)?;
-        Some(ResolveStrategy::LocalResponse(build_response(
-            packet, response,
-        )))
-    }
+fn to_aaaa_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
+    ips.filter_map(get_v6)
+        .map(domain::rdata::Aaaa::new)
+        .map(AllRecordData::Aaaa)
+        .collect_vec()
 }
 
 pub(crate) fn build_response_from_resolve_result(
@@ -300,44 +371,23 @@ fn build_response(original_pkt: IpPacket<'_>, mut dns_answer: Vec<u8>) -> IpPack
     IpPacket::owned(res_buf).unwrap()
 }
 
-fn build_dns_with_answer<N>(
+fn build_dns_with_answer(
     message: &Message<[u8]>,
-    qname: &N,
-    records: Vec<RecordData<DomainName>>,
-) -> Option<Vec<u8>>
-where
-    N: ToName + ?Sized,
-{
+    qname: DomainName,
+    records: Vec<AllRecordData<Vec<u8>, DomainName>>,
+) -> Option<Vec<u8>> {
     let msg_buf = Vec::with_capacity(message.as_slice().len() * 2);
     let msg_builder = MessageBuilder::from_target(msg_buf).expect(
         "Developer error: we should be always be able to create a MessageBuilder from a Vec",
     );
 
-    if records.is_empty() {
-        tracing::debug!("No records for {}, returning NXDOMAIN", qname.to_vec());
-        return Some(
-            msg_builder
-                .start_answer(message, Rcode::NXDOMAIN)
-                .ok()?
-                .finish(),
-        );
-    }
-
     let mut answer_builder = msg_builder.start_answer(message, Rcode::NOERROR).ok()?;
     answer_builder.header_mut().set_ra(true);
 
     for record in records {
-        match record {
-            RecordData::A(record) => answer_builder
-                .push((qname, Class::IN, DNS_TTL, record))
-                .ok()?,
-            RecordData::Aaaa(record) => answer_builder
-                .push((qname, Class::IN, DNS_TTL, record))
-                .ok()?,
-            RecordData::Ptr(record) => answer_builder
-                .push((qname, Class::IN, DNS_TTL, record))
-                .ok()?,
-        }
+        answer_builder
+            .push((&qname, Class::IN, DNS_TTL, record))
+            .ok()?;
     }
 
     Some(answer_builder.finish())
@@ -347,15 +397,6 @@ pub fn as_dns<'a>(pkt: &'a UdpPacket<'a>) -> Option<&'a Message<[u8]>> {
     (pkt.get_destination() == DNS_PORT)
         .then(|| Message::from_slice(pkt.payload()).ok())
         .flatten()
-}
-
-// No object safety for ComposeRecordData
-// meaning we need to have this enum to move them around
-#[derive(Clone)]
-enum RecordData<T> {
-    A(domain::rdata::A),
-    Aaaa(domain::rdata::Aaaa),
-    Ptr(domain::rdata::Ptr<T>),
 }
 
 pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
@@ -380,41 +421,47 @@ pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
     name == &resource
 }
 
-fn get_description(
-    name: &DomainName,
-    dns_resources: &HashMap<String, ResourceDescriptionDns>,
-) -> Option<ResourceDescriptionDns> {
-    if let Some(resource) = dns_resources.get(&name.to_string()) {
-        return Some(resource.clone());
+fn match_domain<T>(name: &DomainName, resources: &HashMap<String, T>) -> Option<T>
+where
+    T: Copy,
+{
+    // Safety: `?` is less than 254 bytes long.
+    const QUESTION_MARK: RelativeName<&'static [u8]> =
+        unsafe { RelativeName::from_octets_unchecked(b"\x01?") };
+    // Safety: `*` is less than 254 bytes long.
+    const WILDCARD: RelativeName<&'static [u8]> =
+        unsafe { RelativeName::from_octets_unchecked(b"\x01*") };
+
+    // First, check for full match.
+    if let Some(resource) = resources.get(&name.to_string()) {
+        return Some(*resource);
     }
 
-    if let Some(resource) = dns_resources.get(
-        &RelativeName::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
-            .ok()?
-            .chain(name)
-            .ok()?
-            .to_string(),
-    ) {
-        return Some(resource.clone());
+    // Second, check for `?` matching this domain exactly.
+    let qm_dot_domain = QUESTION_MARK.chain(name).ok()?.to_string();
+    if let Some(resource) = resources.get(&qm_dot_domain) {
+        return Some(*resource);
     }
 
+    // Third, check for `?` matching up to 1 parent.
     if let Some(parent) = name.parent() {
-        if let Some(resource) = dns_resources.get(
-            &RelativeName::<Vec<_>>::from_octets(b"\x01?".as_ref().into())
-                .ok()?
-                .chain(parent)
-                .ok()?
-                .to_string(),
-        ) {
-            return Some(resource.clone());
+        let qm_dot_parent = QUESTION_MARK.chain(parent).ok()?.to_string();
+
+        if let Some(resource) = resources.get(&qm_dot_parent) {
+            return Some(*resource);
         }
     }
 
-    name.iter_suffixes().find_map(|n| {
-        dns_resources
-            .get(&RelativeName::wildcard_vec().chain(n).ok()?.to_string())
-            .cloned()
-    })
+    // Last, check for any wildcard domains, starting with the most specific one.
+    for suffix in name.iter_suffixes() {
+        let wildcard_dot_suffix = WILDCARD.chain(suffix).ok()?.to_string();
+
+        if let Some(resource) = resources.get(&wildcard_dot_suffix) {
+            return Some(*resource);
+        }
+    }
+
+    None
 }
 
 fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
@@ -464,65 +511,32 @@ fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
     }
 }
 
+fn fqdn_to_ips_for_known_hosts(
+    hosts: &HashMap<String, Vec<IpAddr>>,
+) -> HashMap<DomainName, Vec<IpAddr>> {
+    hosts
+        .iter()
+        .filter_map(|(d, a)| DomainName::vec_from_str(d).ok().map(|d| (d, a.clone())))
+        .collect()
+}
+
+fn ips_to_fqdn_for_known_hosts(
+    hosts: &HashMap<String, Vec<IpAddr>>,
+) -> HashMap<IpAddr, DomainName> {
+    hosts
+        .iter()
+        .filter_map(|(d, a)| {
+            DomainName::vec_from_str(d)
+                .ok()
+                .map(|d| a.iter().map(move |a| (*a, d.clone())))
+        })
+        .flatten()
+        .collect()
+}
+
 #[cfg(test)]
-mod test {
-    use connlib_shared::{messages::client::ResourceDescriptionDns, DomainName};
-
-    use crate::dns::is_subdomain;
-
-    use super::{get_description, reverse_dns_addr};
-    use std::{collections::HashMap, net::Ipv4Addr};
-
-    fn foo() -> ResourceDescriptionDns {
-        serde_json::from_str(
-            r#"{
-                "id": "c4bb3d79-afa7-4660-8918-06c38fda3a4a",
-                "address": "*.foo.com",
-                "name": "foo.com wildcard",
-                "address_description": "foo",
-                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}]
-            }"#,
-        )
-        .unwrap()
-    }
-
-    fn bar() -> ResourceDescriptionDns {
-        serde_json::from_str(
-            r#"{
-                "id": "c4bb3d79-afa7-4660-8918-06c38fda3a4b",
-                "address": "*.bar.com",
-                "name": "bar.com wildcard",
-                "address_description": "bar",
-                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}]
-            }"#,
-        )
-        .unwrap()
-    }
-
-    fn baz() -> ResourceDescriptionDns {
-        serde_json::from_str(
-            r#"{
-                "id": "c4bb3d79-afa7-4660-8918-06c38fda3a4c",
-                "address": "baz.com",
-                "name": "baz.com",
-                "address_description": "baz",
-                "gateway_groups": [{"id": "bf56f32d-7b2c-4f5d-a784-788977d014a4", "name": "test"}]
-            }"#,
-        )
-        .unwrap()
-    }
-
-    fn dns_resource_fixture() -> HashMap<String, ResourceDescriptionDns> {
-        let mut dns_resources_fixture = HashMap::new();
-
-        dns_resources_fixture.insert("*.foo.com".to_string(), foo());
-
-        dns_resources_fixture.insert("?.bar.com".to_string(), bar());
-
-        dns_resources_fixture.insert("baz.com".to_string(), baz());
-
-        dns_resources_fixture
-    }
+mod tests {
+    use super::*;
 
     #[test]
     fn reverse_dns_addr_works_v4() {
@@ -579,198 +593,65 @@ mod test {
 
     #[test]
     fn wildcard_matching() {
-        let dns_resources_fixture = dns_resource_fixture();
+        let resources = HashMap::from([("*.foo.com".to_string(), 0), ("*.com".to_string(), 1)]);
 
-        assert_eq!(
-            get_description(
-                &DomainName::vec_from_str("a.foo.com").unwrap(),
-                &dns_resources_fixture,
-            )
-            .unwrap(),
-            foo(),
-        );
-
-        assert_eq!(
-            get_description(
-                &DomainName::vec_from_str("foo.com").unwrap(),
-                &dns_resources_fixture,
-            )
-            .unwrap(),
-            foo(),
-        );
-
-        assert_eq!(
-            get_description(
-                &DomainName::vec_from_str("a.b.foo.com").unwrap(),
-                &dns_resources_fixture,
-            )
-            .unwrap(),
-            foo(),
-        );
-
-        assert!(get_description(
-            &DomainName::vec_from_str("oo.com").unwrap(),
-            &dns_resources_fixture,
-        )
-        .is_none(),);
+        assert_eq!(match_domain(&domain("a.foo.com"), &resources), Some(0));
+        assert_eq!(match_domain(&domain("foo.com"), &resources), Some(0));
+        assert_eq!(match_domain(&domain("a.b.foo.com"), &resources), Some(0));
+        assert_eq!(match_domain(&domain("oo.com"), &resources), Some(1));
+        assert_eq!(match_domain(&domain("oo.xyz"), &resources), None);
     }
 
     #[test]
     fn question_mark_matching() {
-        let dns_resources_fixture = dns_resource_fixture();
+        let resources = HashMap::from([("?.bar.com".to_string(), 1)]);
 
-        assert_eq!(
-            get_description(
-                &DomainName::vec_from_str("a.bar.com").unwrap(),
-                &dns_resources_fixture,
-            )
-            .unwrap(),
-            bar(),
-        );
-
-        assert_eq!(
-            get_description(
-                &DomainName::vec_from_str("bar.com").unwrap(),
-                &dns_resources_fixture,
-            )
-            .unwrap(),
-            bar(),
-        );
-
-        assert!(get_description(
-            &DomainName::vec_from_str("a.b.bar.com").unwrap(),
-            &dns_resources_fixture,
-        )
-        .is_none(),);
+        assert_eq!(match_domain(&domain("a.bar.com"), &resources), Some(1));
+        assert_eq!(match_domain(&domain("bar.com"), &resources), Some(1));
+        assert_eq!(match_domain(&domain("a.b.bar.com"), &resources), None);
     }
 
     #[test]
     fn exact_matching() {
-        let dns_resources_fixture = dns_resource_fixture();
+        let resources = HashMap::from([("baz.com".to_string(), 2)]);
 
-        assert_eq!(
-            get_description(
-                &DomainName::vec_from_str("baz.com").unwrap(),
-                &dns_resources_fixture,
-            )
-            .unwrap(),
-            baz(),
-        );
-
-        assert!(get_description(
-            &DomainName::vec_from_str("a.baz.com").unwrap(),
-            &dns_resources_fixture,
-        )
-        .is_none());
-
-        assert!(get_description(
-            &DomainName::vec_from_str("a.b.baz.com").unwrap(),
-            &dns_resources_fixture,
-        )
-        .is_none(),);
+        assert_eq!(match_domain(&domain("baz.com"), &resources), Some(2));
+        assert_eq!(match_domain(&domain("a.baz.com"), &resources), None);
+        assert_eq!(match_domain(&domain("a.b.baz.com"), &resources), None);
     }
 
     #[test]
     fn exact_subdomain_match() {
-        assert!(is_subdomain(
-            &DomainName::vec_from_str("foo.com").unwrap(),
-            "foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("a.foo.com").unwrap(),
-            "foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("a.b.foo.com").unwrap(),
-            "foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("foo.com").unwrap(),
-            "a.foo.com"
-        ));
+        assert!(is_subdomain(&domain("foo.com"), "foo.com"));
+        assert!(!is_subdomain(&domain("a.foo.com"), "foo.com"));
+        assert!(!is_subdomain(&domain("a.b.foo.com"), "foo.com"));
+        assert!(!is_subdomain(&domain("foo.com"), "a.foo.com"));
     }
 
     #[test]
     fn wildcard_subdomain_match() {
-        assert!(is_subdomain(
-            &DomainName::vec_from_str("foo.com").unwrap(),
-            "*.foo.com"
-        ));
-
-        assert!(is_subdomain(
-            &DomainName::vec_from_str("a.foo.com").unwrap(),
-            "*.foo.com"
-        ));
-
-        assert!(is_subdomain(
-            &DomainName::vec_from_str("a.foo.com").unwrap(),
-            "*.a.foo.com"
-        ));
-
-        assert!(is_subdomain(
-            &DomainName::vec_from_str("b.a.foo.com").unwrap(),
-            "*.a.foo.com"
-        ));
-
-        assert!(is_subdomain(
-            &DomainName::vec_from_str("a.b.foo.com").unwrap(),
-            "*.foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("afoo.com").unwrap(),
-            "*.foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("b.afoo.com").unwrap(),
-            "*.foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("bar.com").unwrap(),
-            "*.foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("foo.com").unwrap(),
-            "*.a.foo.com"
-        ));
+        assert!(is_subdomain(&domain("foo.com"), "*.foo.com"));
+        assert!(is_subdomain(&domain("a.foo.com"), "*.foo.com"));
+        assert!(is_subdomain(&domain("a.foo.com"), "*.a.foo.com"));
+        assert!(is_subdomain(&domain("b.a.foo.com"), "*.a.foo.com"));
+        assert!(is_subdomain(&domain("a.b.foo.com"), "*.foo.com"));
+        assert!(!is_subdomain(&domain("afoo.com"), "*.foo.com"));
+        assert!(!is_subdomain(&domain("b.afoo.com"), "*.foo.com"));
+        assert!(!is_subdomain(&domain("bar.com"), "*.foo.com"));
+        assert!(!is_subdomain(&domain("foo.com"), "*.a.foo.com"));
     }
 
     #[test]
     fn question_mark_subdomain_match() {
-        assert!(is_subdomain(
-            &DomainName::vec_from_str("foo.com").unwrap(),
-            "?.foo.com"
-        ));
+        assert!(is_subdomain(&domain("foo.com"), "?.foo.com"));
+        assert!(is_subdomain(&domain("a.foo.com"), "?.foo.com"));
+        assert!(!is_subdomain(&domain("a.b.foo.com"), "?.foo.com"));
+        assert!(!is_subdomain(&domain("bar.com"), "?.foo.com"));
+        assert!(!is_subdomain(&domain("foo.com"), "?.a.foo.com"));
+        assert!(!is_subdomain(&domain("afoo.com"), "?.foo.com"));
+    }
 
-        assert!(is_subdomain(
-            &DomainName::vec_from_str("a.foo.com").unwrap(),
-            "?.foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("a.b.foo.com").unwrap(),
-            "?.foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("bar.com").unwrap(),
-            "?.foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("foo.com").unwrap(),
-            "?.a.foo.com"
-        ));
-
-        assert!(!is_subdomain(
-            &DomainName::vec_from_str("afoo.com").unwrap(),
-            "?.foo.com"
-        ));
+    fn domain(name: &str) -> DomainName {
+        DomainName::vec_from_str(name).unwrap()
     }
 }

@@ -2,7 +2,6 @@ use crate::messages::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
 };
-use crate::CallbackHandler;
 use anyhow::Result;
 use boringtun::x25519::PublicKey;
 use connlib_shared::messages::{
@@ -40,7 +39,7 @@ enum ResolveTrigger {
 }
 
 pub struct Eventloop {
-    tunnel: GatewayTunnel<CallbackHandler>,
+    tunnel: GatewayTunnel,
     portal: PhoenixChannel<(), IngressMessages, ()>,
     tun_device_channel: mpsc::Sender<Interface>,
 
@@ -49,7 +48,7 @@ pub struct Eventloop {
 
 impl Eventloop {
     pub(crate) fn new(
-        tunnel: GatewayTunnel<CallbackHandler>,
+        tunnel: GatewayTunnel,
         portal: PhoenixChannel<(), IngressMessages, ()>,
         tun_device_channel: mpsc::Sender<Interface>,
     ) -> Self {
@@ -107,27 +106,27 @@ impl Eventloop {
 
     fn handle_tunnel_event(&mut self, event: firezone_tunnel::GatewayEvent) {
         match event {
-            firezone_tunnel::GatewayEvent::NewIceCandidate {
+            firezone_tunnel::GatewayEvent::AddedIceCandidates {
                 conn_id: client,
-                candidate,
+                candidates,
             } => {
                 self.portal.send(
                     PHOENIX_TOPIC,
                     EgressMessages::BroadcastIceCandidates(ClientsIceCandidates {
                         client_ids: vec![client],
-                        candidates: vec![candidate],
+                        candidates,
                     }),
                 );
             }
-            firezone_tunnel::GatewayEvent::InvalidIceCandidate {
+            firezone_tunnel::GatewayEvent::RemovedIceCandidates {
                 conn_id: client,
-                candidate,
+                candidates,
             } => {
                 self.portal.send(
                     PHOENIX_TOPIC,
                     EgressMessages::BroadcastInvalidatedIceCandidates(ClientsIceCandidates {
                         client_ids: vec![client],
-                        candidates: vec![candidate],
+                        candidates,
                     }),
                 );
             }
@@ -230,9 +229,6 @@ impl Eventloop {
                 msg: IngressMessages::Init(init),
                 ..
             } => {
-                if let Err(e) = self.tunnel.set_interface(&init.interface) {
-                    tracing::warn!("Failed to set interface: {e}");
-                };
                 self.tunnel.update_relays(HashSet::default(), init.relays);
 
                 // FIXME(tech-debt): Currently, the `Tunnel` creates the TUN device as part of `set_interface`.
@@ -276,7 +272,6 @@ impl Eventloop {
             PublicKey::from(req.client.peer.public_key.0),
             req.client.peer.ipv4,
             req.client.peer.ipv6,
-            req.relays,
             req.client.payload.domain.as_ref().map(|r| r.as_tuple()),
             req.expires_at,
             req.resource.into_resolved(addresses.clone()),

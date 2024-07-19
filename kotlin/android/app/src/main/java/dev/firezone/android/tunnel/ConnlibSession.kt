@@ -20,5 +20,10 @@ object ConnlibSession {
         dnsList: String,
     ): Boolean
 
+    external fun setTun(
+        connlibSession: Long,
+        fd: Int,
+    ): Boolean
+
     external fun reconnect(connlibSession: Long): Boolean
 }

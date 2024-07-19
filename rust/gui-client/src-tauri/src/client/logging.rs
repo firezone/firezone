@@ -6,7 +6,8 @@ use connlib_client_shared::file_logger;
 use firezone_headless_client::known_dirs;
 use serde::Serialize;
 use std::{
-    fs, io,
+    fs,
+    io::{self, ErrorKind::NotFound},
     path::{Path, PathBuf},
     result::Result as StdResult,
 };
@@ -20,8 +21,10 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, reload, EnvFilter, Layer, Re
 #[must_use]
 pub(crate) struct Handles {
     pub logger: file_logger::Handle,
-    pub _reloader: reload::Handle<EnvFilter, Registry>,
+    pub reloader: Reloader,
 }
+
+pub(crate) type Reloader = reload::Handle<EnvFilter, Registry>;
 
 struct LogPath {
     /// Where to find the logs on disk
@@ -56,10 +59,9 @@ pub(crate) fn setup(directives: &str) -> Result<Handles> {
 
     std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
     let (layer, logger) = file_logger::layer(&log_path);
-    let (filter_2, reloader) = reload::Layer::new(EnvFilter::try_new(directives)?);
-    let subscriber = Registry::default()
-        .with(layer.with_filter(filter_2))
-        .with(fmt::layer().with_filter(EnvFilter::try_new(directives)?));
+    let layer = layer.and_then(fmt::layer());
+    let (filter, reloader) = reload::Layer::new(EnvFilter::try_new(directives)?);
+    let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber)?;
     if let Err(error) = output_vt100::try_init() {
         tracing::warn!(
@@ -69,10 +71,7 @@ pub(crate) fn setup(directives: &str) -> Result<Handles> {
     }
     LogTracer::init()?;
     tracing::debug!(?log_path, "Log path");
-    Ok(Handles {
-        logger,
-        _reloader: reloader,
-    })
+    Ok(Handles { logger, reloader })
 }
 
 #[tauri::command]
@@ -113,7 +112,17 @@ pub(crate) async fn clear_logs_inner() -> Result<()> {
     let mut result = Ok(());
 
     for log_path in log_paths()?.into_iter().map(|x| x.src) {
-        let mut dir = tokio::fs::read_dir(log_path).await?;
+        let mut dir = match tokio::fs::read_dir(log_path).await {
+            Ok(x) => x,
+            Err(error) => {
+                if matches!(error.kind(), NotFound) {
+                    // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not delete the non-existent files
+                    return Ok(());
+                }
+                // But any other error like permissions errors, should bubble.
+                return Err(error.into());
+            }
+        };
         while let Some(entry) = dir.next_entry().await? {
             let path = entry.path();
             if let Err(error) = tokio::fs::remove_file(&path).await {
@@ -193,7 +202,18 @@ fn add_dir_to_zip(
     dst_stem: &Path,
 ) -> Result<()> {
     let options = zip::write::SimpleFileOptions::default();
-    for entry in fs::read_dir(src_dir).context("Failed to `read_dir` log dir")? {
+    let dir = match fs::read_dir(src_dir) {
+        Ok(x) => x,
+        Err(error) => {
+            if matches!(error.kind(), NotFound) {
+                // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not add any files to the zip
+                return Ok(());
+            }
+            // But any other error like permissions errors, should bubble.
+            return Err(error.into());
+        }
+    };
+    for entry in dir {
         let entry = entry.context("Got bad entry from `read_dir`")?;
         let Some(path) = dst_stem
             .join(entry.file_name())
