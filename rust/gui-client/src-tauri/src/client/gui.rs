@@ -796,11 +796,10 @@ async fn run_controller(
         win.show().context("Couldn't show Welcome window")?;
     }
 
-    let mut network_listener = network_changes::network_listener()?;
-    let mut dns_listener = network_changes::dns_listener(
-        tokio::runtime::Handle::try_current()
-            .expect("Can't get a Handle to the current Tokio context"),
-    )?;
+    let tokio_handle = tokio::runtime::Handle::try_current()
+        .expect("Can't get a Handle to the current Tokio context");
+    let mut network_notifier = network_changes::network_notifier(tokio_handle.clone())?;
+    let mut dns_notifier = network_changes::dns_notifier(tokio_handle)?;
 
     let mut have_internet =
         network_changes::check_internet().context("Failed initial check for internet")?;
@@ -810,7 +809,7 @@ async fn run_controller(
         // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
         // `tokio::select!` with a `poll_*` function
         tokio::select! {
-            () = network_listener.notified() => {
+            () = network_notifier.notified() => {
                 let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
                 if new_have_internet != have_internet {
                     have_internet = new_have_internet;
@@ -820,7 +819,7 @@ async fn run_controller(
                     }
                 }
             },
-            () = dns_listener.notified() => {
+            () = dns_notifier.notified() => {
                 if controller.status.connlib_is_up() {
                     let resolvers = firezone_headless_client::dns_control::system_resolvers_for_gui()
                     .unwrap_or_default();
@@ -854,10 +853,10 @@ async fn run_controller(
         // Code down here may not run because the `select` sometimes `continue`s.
     }
 
-    if let Err(error) = dns_listener.close() {
+    if let Err(error) = dns_notifier.close() {
         tracing::error!(?error, "Error while closing DNS listener");
     }
-    if let Err(error) = network_listener.close() {
+    if let Err(error) = network_notifier.close() {
         tracing::error!(?error, "Error while closing network listener");
     }
     if let Err(error) = controller.ipc_client.disconnect_from_ipc().await {

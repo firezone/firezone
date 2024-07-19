@@ -83,8 +83,8 @@ pub(crate) enum Error {
     #[error("Couldn't initialize COM: {0}")]
     ComInitialize(windows::core::Error),
     #[error("Couldn't stop worker thread")]
-    CouldntStopWorkerThread,
-    #[error("Couldn't creat NetworkListManager")]
+    CouldntStopWorker,
+    #[error("Couldn't create NetworkListManager")]
     CreateNetworkListManager(windows::core::Error),
     #[error("Couldn't start listening to network events: {0}")]
     Listening(windows::core::Error),
@@ -111,7 +111,7 @@ pub fn check_internet() -> Result<bool> {
     Ok(have_internet)
 }
 
-/// Worker thread that can be joined explicitly, and joins on Drop
+/// Worker thread (on Windows) that can be joined explicitly, and joins on Drop
 pub(crate) struct Worker {
     inner: Option<WorkerInner>,
     rx: mpsc::Receiver<()>,
@@ -123,7 +123,7 @@ struct WorkerInner {
     shutdown_tx: oneshot::Sender<()>,
 }
 
-pub(crate) fn dns_listener(tokio_handle: tokio::runtime::Handle) -> Result<Worker> {
+pub(crate) fn dns_notifier(tokio_handle: tokio::runtime::Handle) -> Result<Worker> {
     Worker::new("DNS listener", move |tx, mut shutdown_rx| {
         // Do `block_on` so we use our own worker thread
         tokio_handle.block_on(async move {
@@ -134,27 +134,36 @@ pub(crate) fn dns_listener(tokio_handle: tokio::runtime::Handle) -> Result<Worke
             local
                 .run_until(async move {
                     // Use `spawn_local` to keep everything inside the worker thread
-                    tokio::task::spawn_local(async move {
-                        let mut dns_listener = async_dns::CombinedListener::new()?;
-                        loop {
-                            tokio::select! {
-                                _ = &mut shutdown_rx => break,
-                                result = dns_listener.notified() => {
-                                    result?;
-                                    tx.send(()).await?;
-                                }
-                            }
-                        }
-                        Ok::<_, anyhow::Error>(())
-                    })
-                    .await
+                    tokio::task::spawn_local(dns_worker_task(tx, shutdown_rx)).await
                 })
                 .await
         })?
     })
 }
 
-pub(crate) fn network_listener() -> Result<Worker> {
+/// Listens for DNS change (on Windows) and signals when we see one
+///
+/// This is meant to be spawned. Cancelling it will cause gaps in DNS listening.
+///
+/// On Windows this must run inside a worker thread because `HANDLE` is `!Send` as of
+/// `windows` 0.58.0.
+async fn dns_worker_task(tx: mpsc::Sender<()>, shutdown_rx: oneshot::Receiver<()>) -> Result<()> {
+    let mut dns_listener = async_dns::CombinedListener::new()?;
+    loop {
+        match futures::future::select(&mut shutdown_rx, dns_listener.notified()).await {
+            Either::Left(((), _)) => break,
+            Either::Right((Err(error), _)) => {
+                tracing::error!(?error, "Error while listening for DNS changes");
+                break;
+            }
+            Either::Right((Ok(()), _)) => {}
+        }
+        tx.send(()).await?;
+    }
+    Ok(())
+}
+
+pub(crate) fn network_notifier(_tokio_handle: tokio::runtime::Handle) -> Result<Worker> {
     Worker::new("Network listener", |tx, shutdown_rx| {
         let com = ComGuard::new()?;
         {
@@ -168,7 +177,7 @@ pub(crate) fn network_listener() -> Result<Worker> {
 }
 
 impl Worker {
-    pub(crate) fn new<
+    fn new<
         F: FnOnce(mpsc::Sender<()>, oneshot::Receiver<()>) -> Result<()> + Send + 'static,
         S: Into<String>,
     >(
@@ -176,7 +185,6 @@ impl Worker {
         func: F,
     ) -> Result<Self> {
         let (tx, rx) = mpsc::channel(1);
-
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
         let thread = {
             thread::Builder::new()
@@ -195,15 +203,16 @@ impl Worker {
 
     /// Same as `drop`, but you can catch errors
     pub(crate) fn close(&mut self) -> Result<()> {
-        if let Some(inner) = self.inner.take() {
-            inner
-                .shutdown_tx
-                .send(())
-                .map_err(|_| Error::CouldntStopWorkerThread)?;
-            match inner.thread.join() {
-                Err(e) => std::panic::resume_unwind(e),
-                Ok(x) => x?,
-            }
+        let Some(inner) = self.inner.take() else {
+            return Ok(());
+        };
+        inner
+            .shutdown_tx
+            .send(())
+            .map_err(|_| Error::CouldntStopWorkerThread)?;
+        match inner.thread.join() {
+            Err(e) => std::panic::resume_unwind(e),
+            Ok(x) => x?,
         }
         Ok(())
     }
