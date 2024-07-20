@@ -11,7 +11,7 @@ proptest = ["dep:proptest"]
 
 [dependencies]
 hickory-proto = { workspace = true }
-pnet_packet = { version = "0.34" }
+pnet_packet = { version = "0.35" }
 proptest = { version = "1", optional = true }
 thiserror = "1"
 tracing = "0.1"
