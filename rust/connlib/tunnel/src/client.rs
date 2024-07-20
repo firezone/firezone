@@ -583,6 +583,14 @@ impl ClientState {
         })));
     }
 
+    fn is_upstream_set_by_the_portal(&self) -> bool {
+        let Some(interface) = &self.interface_config else {
+            return false;
+        };
+
+        !interface.upstream_dns.is_empty()
+    }
+
     /// Attempt to handle the given packet as a DNS packet.
     ///
     /// Returns `Ok` if the packet is in fact a DNS query with an optional response to send back.
@@ -599,13 +607,14 @@ impl ClientState {
             Some(dns::ResolveStrategy::ForwardQuery(query)) => {
                 // There's an edge case here, where the resolver's ip has been resolved before as
                 // a dns resource... we will ignore that weird case for now.
-                // Assuming a single upstream dns until #3123 lands
                 if let Some(upstream_dns) = self.dns_mapping.get_by_left(&query.query.destination())
                 {
                     let ip = upstream_dns.ip();
 
                     // In case the DNS server is a CIDR resource, it needs to go through the tunnel.
-                    if self.cidr_resources.longest_match(ip).is_some() {
+                    if self.is_upstream_set_by_the_portal()
+                        && self.cidr_resources.longest_match(ip).is_some()
+                    {
                         return Err((packet, ip));
                     }
                 }
