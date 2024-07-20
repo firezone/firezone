@@ -323,6 +323,7 @@ impl ReferenceStateMachine for ReferenceState {
             {
                 Some(resource)
                     if !state.client.inner().is_connected_to_cidr(resource)
+                        && !state.client.inner().upstream_dns_resolvers.is_empty()
                         && !state.client.inner().is_known_host(&domain.to_string()) =>
                 {
                     state
