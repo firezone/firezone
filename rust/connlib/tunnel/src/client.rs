@@ -384,6 +384,13 @@ impl ClientState {
         })
     }
 
+    fn is_dns_resource(&self, resource: &ResourceId) -> bool {
+        matches!(
+            self.resources_by_id.get(resource),
+            Some(ResourceDescription::Dns(_))
+        )
+    }
+
     pub(crate) fn encapsulate<'s>(
         &'s mut self,
         packet: MutableIpPacket<'_>,
@@ -406,6 +413,9 @@ impl ClientState {
             return None;
         };
 
+        // We read this here to prevent problems with the borrow checker
+        let is_dns_resource = self.is_dns_resource(&resource);
+
         let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
         else {
             self.on_not_connected_resource(resource, &dst, now);
@@ -419,7 +429,9 @@ impl ClientState {
             now,
         );
 
-        if peer.allowed_ips.longest_match(dst).is_none() {
+        // Allowed IPs will track the IPs that we have sent to the gateway along with a list of ResourceIds
+        // for DNS resource we will send the IP one at a time.
+        if is_dns_resource && peer.allowed_ips.exact_match(dst).is_none() {
             let gateway_id = peer.id();
             self.send_proxy_ips(&dst, resource, gateway_id);
             return None;
