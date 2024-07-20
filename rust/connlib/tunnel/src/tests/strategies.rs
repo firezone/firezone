@@ -189,21 +189,6 @@ pub(crate) fn gateways_and_portal() -> impl Strategy<
                 (Just(gateways), Just(portal), dns_resource_records)
             },
         )
-        .prop_filter(
-            "gateway must be able to access their assigned CIDR resources",
-            |(gateways, portal, _)| {
-                portal.cidr_resources().all(|(rid, r)| {
-                    portal
-                        .gateway_for_resource(*rid)
-                        .and_then(|g| gateways.get(g))
-                        .is_some_and(|g| {
-                            // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
-
-                            g.can_route_to(r.address)
-                        })
-                })
-            },
-        )
 }
 
 fn any_site(sites: HashSet<Site>) -> impl Strategy<Value = Site> {

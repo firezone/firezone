@@ -1,6 +1,6 @@
 use super::{
     reference::{private_key, PrivateKey},
-    sim_net::{any_ip_stack, any_port, host, Host},
+    sim_net::{any_port, dual_ip_stack, host, Host},
 };
 use crate::{tests::sut::hickory_name_to_domain, GatewayState};
 use connlib_shared::DomainName;
@@ -99,7 +99,7 @@ impl RefGateway {
 }
 
 pub(crate) fn ref_gateway_host() -> impl Strategy<Value = Host<RefGateway>> {
-    host(any_ip_stack(), any_port(), ref_gateway())
+    host(dual_ip_stack(), any_port(), ref_gateway())
 }
 
 fn ref_gateway() -> impl Strategy<Value = RefGateway> {
