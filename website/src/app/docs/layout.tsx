@@ -1,7 +1,16 @@
+import fs from "fs";
+import path from "path";
+
+import LastUpdated from "@/components/LastUpdated";
 import DocsSidebar from "@/components/DocsSidebar";
 import Banner from "./banner.mdx";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
+  // timestamps.json was generated during build
+  const timestampsFile = path.resolve("timestamps.json");
+  const timestampsData = fs.readFileSync(timestampsFile, "utf-8");
+  const timestamps = JSON.parse(timestampsData);
+
   return (
     <div className="flex">
       <DocsSidebar />
@@ -11,6 +20,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <Banner />
             {children}
           </article>
+          <div className="mt-8 flex justify-end text-sm text-neutral-600">
+            <LastUpdated timestamps={timestamps} />
+          </div>
         </div>
       </main>
     </div>
