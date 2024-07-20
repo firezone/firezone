@@ -13,6 +13,7 @@ import {
 import ActionLink from "@/components/ActionLink";
 import { usePathname } from "next/navigation";
 import { HiBars3 } from "react-icons/hi2";
+import Button from "@/components/Button";
 
 function NavbarLink({
   href,
@@ -51,7 +52,7 @@ function DropdownItem({
 
 export default function NewNavbar() {
   return (
-    <Navbar className="font-manrope flex justify-between fixed t-0 z-50 w-full !px-12 !py-5 bg-transparent ">
+    <Navbar className="font-manrope flex justify-between fixed t-0 z-50 w-full !px-5 !py-5 bg-transparent ">
       <NavbarBrand as={Link} href="/">
         <Image
           width={150}
@@ -61,6 +62,13 @@ export default function NewNavbar() {
           className="flex w-32 "
         />
       </NavbarBrand>
+      <ActionLink
+        href="https://app.firezone.dev/"
+        className="flex md:hidden py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-300 md:border-transparent hover:text-primary-450 duration-50 transition transform"
+        size="w-5 h-5 ml-1"
+      >
+        Sign in
+      </ActionLink>
       <NavbarToggle barIcon={HiBars3} />
       <NavbarCollapse>
         <Dropdown label="Product" className="!text-white !font-normal" inline>
@@ -77,19 +85,23 @@ export default function NewNavbar() {
           <DropdownItem href="/changelog">Changelog</DropdownItem>
         </Dropdown>
         <NavbarLink href="/kb">Docs</NavbarLink>
-        <NavbarLink href="/pricing">Manrope</NavbarLink>
+        <NavbarLink href="/pricing">Pricing</NavbarLink>
         <NavbarLink href="/blog">Blog</NavbarLink>
         <NavbarLink href="/support">Support</NavbarLink>
+
         <div className="md:hidden">
           <NavbarLink href="/contact/sales">Book a demo</NavbarLink>
         </div>
         <ActionLink
           href="https://app.firezone.dev/"
-          className="hidden md:inline-flex py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-700 md:border-transparent hover:text-primary-450 hover:bg-neutral-200 md:hover:bg-transparent md:border-b-2 md:hover:border-primary-450 duration-50 transition transform"
+          className="hidden md:inline-flex py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-300 md:border-transparent hover:text-primary-450 hover:bg-neutral-200 md:hover:bg-transparent md:border-b-2 md:hover:border-primary-450 duration-50 transition transform"
           size="w-5 h-5 ml-1"
         >
           Sign in
         </ActionLink>
+        <Button type="cta" href="/contact/sales">
+          Book a demo
+        </Button>
       </NavbarCollapse>
     </Navbar>
   );
