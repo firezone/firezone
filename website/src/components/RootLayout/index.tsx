@@ -4,6 +4,7 @@ import Link from "next/link";
 import "@/app/globals.css";
 import "highlight.js/styles/a11y-dark.css";
 import RootNavbar from "@/components/RootNavbar";
+import Navbar from "@/components/NewNavbar";
 import Banner from "@/components/Banner";
 import Script from "next/script";
 import Footer from "@/components/Footer";
@@ -56,7 +57,8 @@ export default function RootLayout({
             now to get started.
           </p>
         </Banner>
-        <RootNavbar />
+        {/* <RootNavbar /> */}
+        <Navbar />
         {children}
         <Footer />
         <Script

@@ -57,6 +57,9 @@ module.exports = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        manrope: ["Manrope", "sans-serif"],
+      },
       typography: ({ theme }) => ({
         firezone: {
           css: {

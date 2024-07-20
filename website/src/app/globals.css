@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -26,5 +28,11 @@
 
   *:is(code) {
     @apply overflow-x-auto rounded text-sm;
+  }
+}
+
+@layer base {
+  html {
+    font-family: "Manrope";
   }
 }

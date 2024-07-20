@@ -34,6 +34,8 @@ import UpgradeDiagram from "@/components/Animations/UpgradeDiagram";
 import ComplianceDiagram from "@/components/Animations/ComplianceDiagram";
 import SimpleArchitecture from "@/components/Animations/SimpleArchitecture";
 import "@/styles/hero.css";
+import Hero from "@/components/Hero";
+import NewNavbar from "@/components/NewNavbar";
 
 export const metadata: Metadata = {
   title: "Firezone: Zero trust access that scales",
@@ -44,7 +46,9 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="hero-background">
+      <NewNavbar />
+      <Hero />
+      {/* <section className="hero-background">
         <div className="pt-24 md:pt-32 xl:pt-48 pb-14 md:pb-24 xl:pb-36 bg-gradient-to-br from-neutral-900/10 to-neutral-900/10 via-primary-700/10">
           <div className="md:flex md:flex-wrap mx-auto max-w-screen-xl px-8 mb-8 md:mb-16 lg:mb-22 xl:mb-28">
             <div className="md:w-2/3 px-4">
@@ -89,8 +93,8 @@ export default function Page() {
             </div>
             <div className="md:w-1/3 px-4 my-auto">
               <h3 className="md:mt-0 my-4 text-xl tracking-tight font-medium text-neutral-200 inline-block">
-                Firezone is a fast, flexible VPN replacement built on
-                WireGuard® that{" "}
+                Firezone is a fast, flexible VPN replacement built on WireGuard®
+                that{" "}
                 <span className="text-primary-450 font-semibold inline-block">
                   conceals
                 </span>{" "}
@@ -138,7 +142,7 @@ export default function Page() {
             </video>
           </div>
         </div>
-      </section>
+      </section> */}
 
       {/* Customer logos */}
       <section className="py-24 bg-gradient-to-b to-white from-neutral-100 via-primary-100">
