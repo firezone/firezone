@@ -7,8 +7,7 @@ defmodule Domain.Resources.Connection.Changeset do
 
   def changeset(account_id, connection, attrs, %Auth.Subject{} = subject) do
     changeset(account_id, connection, attrs)
-    |> put_change(:created_by, :identity)
-    |> put_change(:created_by_identity_id, subject.identity.id)
+    |> put_created_by(subject)
   end
 
   def changeset(account_id, connection, attrs) do

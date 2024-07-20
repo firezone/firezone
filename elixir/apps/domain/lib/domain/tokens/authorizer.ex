@@ -13,6 +13,13 @@ defmodule Domain.Tokens.Authorizer do
     ]
   end
 
+  def list_permissions_for_role(:api_client) do
+    [
+      manage_tokens_permission(),
+      manage_own_tokens_permission()
+    ]
+  end
+
   def list_permissions_for_role(:account_user) do
     [
       manage_own_tokens_permission()
