@@ -99,10 +99,10 @@ impl<T> Host<T> {
         }
     }
 
-    pub(crate) fn can_route_to(&self, network: IpNetwork) -> bool {
-        match network {
-            IpNetwork::V4(_) => self.ip4.is_some(),
-            IpNetwork::V6(_) => self.ip6.is_some(),
+    pub(crate) fn is_sender(&self, src: IpAddr) -> bool {
+        match src {
+            IpAddr::V4(src) => self.ip4.is_some_and(|v4| v4 == src),
+            IpAddr::V6(src) => self.ip6.is_some_and(|v6| v6 == src),
         }
     }
 }

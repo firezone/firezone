@@ -50,6 +50,7 @@ pub(crate) struct TunnelTest {
     pub(crate) gateways: HashMap<GatewayId, Host<SimGateway>>,
     relays: HashMap<RelayId, Host<SimRelay>>,
 
+    drop_direct_client_traffic: bool,
     network: RoutingTable,
 
     #[allow(dead_code)]
@@ -130,6 +131,7 @@ impl StateMachineTest for TunnelTest {
             now: ref_state.now,
             utc_now: ref_state.utc_now,
             network: ref_state.network.clone(),
+            drop_direct_client_traffic: ref_state.drop_direct_client_traffic,
             client,
             gateways,
             logger,
@@ -504,6 +506,12 @@ impl TunnelTest {
                     .exec_mut(|c| c.handle_packet(payload, src, dst, self.now));
             }
             HostId::Gateway(id) => {
+                if self.drop_direct_client_traffic && self.client.is_sender(src.ip()) {
+                    tracing::debug!("Dropping direct traffic from client -> gateway");
+
+                    return;
+                }
+
                 let gateway = self.gateways.get_mut(&id).expect("unknown gateway");
 
                 let Some(transmit) = gateway

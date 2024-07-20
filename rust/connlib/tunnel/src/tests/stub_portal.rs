@@ -78,12 +78,6 @@ impl StubPortal {
             .collect()
     }
 
-    pub(crate) fn cidr_resources(
-        &self,
-    ) -> impl Iterator<Item = (&ResourceId, &client::ResourceDescriptionCidr)> + '_ {
-        self.cidr_resources.iter()
-    }
-
     /// Picks, which gateway and site we should connect to for the given resource.
     pub(crate) fn handle_connection_intent(
         &self,
