@@ -65,10 +65,23 @@ the [upstream resolvers](#configuring-client-dns-upstream-resolvers) if
 configured in your account. Otherwise, it forwards the query to the default
 system resolver on the Client host.
 
+<Alert color="warning">
+
+Queries forwarded to upstream resolvers are **never** routed through Firezone
+unless (1) you've defined custom upstream resolver(s) below, and (2) those
+resolvers are defined as Resources in your account. This ensures that queries
+for Firezone infrastructure and services on the Client's local LAN continue to
+be resolvable even if the Client's DHCP-provided DNS server collides with an IP
+or CIDR Resource in your account.
+
+</Alert>
+
 <Alert color="info">
-  Firezone only intercepts queries for the `A`, `AAAA`, and `PTR` record types
-  for your DNS Resources. All other record types are forwarded to the upstream
-  resolver(s).
+
+Firezone only intercepts queries for the `A`, `AAAA`, and `PTR` record types for
+your DNS Resources. All other record types are forwarded to the upstream
+resolver(s).
+
 </Alert>
 
 ## Configuring Client DNS upstream resolvers
@@ -100,7 +113,8 @@ network.
 ## Configuring Gateway resolvers
 
 Firezone makes no assumptions about the DNS environment in which the Gateway
-runs. It uses the default system resolver you've configured on the Gateway host.
+runs. It uses the default system resolver you've configured on the Gateway host,
+typically defined in `/etc/resolv.conf`.
 
 This resolver is used for DNS Resources defined in your Firezone account so it's
 important that your Gateway host has DNS configured properly for Clients to
