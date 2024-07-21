@@ -1,5 +1,4 @@
 import { Metadata } from "next";
-import LastUpdated from "@/components/LastUpdated";
 import _Page from "./_page";
 
 export const metadata: Metadata = {
@@ -8,10 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return (
-    <>
-      <_Page />
-      <LastUpdated dirname={__dirname} />
-    </>
-  );
+  return <_Page />;
 }

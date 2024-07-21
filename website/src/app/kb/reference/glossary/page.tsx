@@ -1,6 +1,5 @@
 import { Metadata } from "next";
 import Content from "./readme.mdx";
-import LastUpdated from "@/components/LastUpdated";
 
 export const metadata: Metadata = {
   title: "Glossary • Firezone Docs",
@@ -8,10 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return (
-    <>
-      <Content />
-      <LastUpdated dirname={__dirname} />
-    </>
-  );
+  return <Content />;
 }

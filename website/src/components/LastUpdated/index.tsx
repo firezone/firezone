@@ -1,27 +1,19 @@
-import fs from "fs";
-import path from "path";
+"use client";
 
-export default function LastUpdated({ dirname }: { dirname: string }) {
-  // timestamps.json was generated during build
-  const timestampsFile = path.resolve("timestamps.json");
-  const timestampsData = fs.readFileSync(timestampsFile, "utf-8");
-  const timestamps = JSON.parse(timestampsData);
+import { usePathname } from "next/navigation";
 
-  // Hack to get the path to the readme file
-  const filePath = path.join(
-    "src",
-    dirname.split(".next/server")[1],
-    "readme.mdx"
-  );
+type Timestamps = { [key: string]: string };
 
-  const timestamp = timestamps[filePath];
+export default function LastUpdated({
+  timestamps,
+}: {
+  timestamps: Timestamps;
+}) {
+  const pathname = usePathname();
+  const timestamp = timestamps[pathname];
 
   if (timestamp) {
-    return (
-      <div className="flex justify-end text-sm text-gray-500">
-        Last updated: {timestamp}
-      </div>
-    );
+    return <div>Last updated: {timestamp}</div>;
   } else {
     return null;
   }
