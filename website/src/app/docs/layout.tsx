@@ -20,7 +20,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <Banner />
             {children}
           </article>
-          <div className="mt-8 flex justify-end text-sm text-neutral-600">
+          <div className="mt-8 flex flex-wrap justify-end text-sm text-neutral-600">
             <LastUpdated timestamps={timestamps} />
           </div>
         </div>

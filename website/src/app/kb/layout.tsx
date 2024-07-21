@@ -19,7 +19,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <article className="max-w-full md:max-w-md lg:max-w-3xl xl:max-w-4xl tracking-[-0.01em] format format-sm md:format-md lg:format-lg format-firezone">
             {children}
           </article>
-          <div className="mt-8 flex justify-between text-sm text-neutral-600">
+          <div className="mt-8 flex justify-between flex-wrap text-sm text-neutral-600">
             <DocsFeedback />
             <LastUpdated timestamps={timestamps} />
           </div>
