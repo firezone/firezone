@@ -75,7 +75,7 @@ defmodule Web.ConnCase do
     |> Plug.Conn.assign(:subject, subject)
   end
 
-  def put_magic_link_auth_state(
+  def put_email_auth_state(
         conn,
         account,
         %{adapter: :email} = provider,
@@ -86,7 +86,7 @@ defmodule Web.ConnCase do
       Map.merge(%{"email" => %{"provider_identifier" => identity.provider_identifier}}, params)
 
     redirected_conn =
-      post(conn, ~p"/#{account}/sign_in/providers/#{provider.id}/request_magic_link", params)
+      post(conn, ~p"/#{account}/sign_in/providers/#{provider.id}/request_email_otp", params)
 
     assert_received {:email, email}
     [_match, secret] = Regex.run(~r/secret=([^&\n]*)/, email.text_body)
@@ -136,7 +136,7 @@ defmodule Web.ConnCase do
       )
 
     redirected_conn =
-      post(conn, ~p"/#{account}/sign_in/providers/#{provider.id}/request_magic_link", params)
+      post(conn, ~p"/#{account}/sign_in/providers/#{provider.id}/request_email_otp", params)
 
     assert_received {:email, email}
     [_match, secret] = Regex.run(~r/secret=([^&\n]*)/, email.text_body)
