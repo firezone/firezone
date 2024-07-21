@@ -191,15 +191,9 @@ defmodule Web.Resources.New do
       {:ok, resource} ->
         socket = put_flash(socket, :info, "Resource #{resource.name} created successfully.")
 
-        if site_id = socket.assigns.params["site_id"] do
-          {:noreply,
-           socket
-           |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{site_id}")}
-        else
-          {:noreply,
-           socket
-           |> push_navigate(to: ~p"/#{socket.assigns.account}/resources")}
-        end
+        {:noreply,
+         socket
+         |> push_navigate(to: ~p"/#{socket.assigns.account}/policies/new?resource_id=#{resource}")}
 
       {:error, changeset} ->
         changeset = Map.put(changeset, :action, :validate)
