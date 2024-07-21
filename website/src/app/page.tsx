@@ -46,7 +46,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <NewNavbar />
+      {/* <NewNavbar /> */}
       <Hero />
       {/* <section className="hero-background">
         <div className="pt-24 md:pt-32 xl:pt-48 pb-14 md:pb-24 xl:pb-36 bg-gradient-to-br from-neutral-900/10 to-neutral-900/10 via-primary-700/10">

@@ -5,6 +5,10 @@ export default function Hero() {
   return (
     <section className="bg-neutral-950 h-[800px] px-5 pt-24">
       <div className="flex flex-col items-center py-16 gap-6 mx-auto max-w-screen-md text-center">
+        <button className="flex shadow-[inset_0_-8px_11px_0_rgba(255,255,255,0.05)] gap-2 text-xs items-center p-1.5 text-neutral-500 font-manrope font-semibold border-[1px] rounded-full border-neutral-800">
+          <img src="/images/play-icon.svg" />
+          See our latest wins
+        </button>
         <h1 className="font-manrope inline tracking-tight font-medium bg-gradient-to-b from-white from-70% to-slate-400 text-transparent bg-clip-text text-6xl sm:text-6xl md:text-7xl">
           Upgrade your workforce with zero trust
         </h1>

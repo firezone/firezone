@@ -71,7 +71,7 @@ export default function NewNavbar() {
       </ActionLink>
       <NavbarToggle barIcon={HiBars3} />
       <NavbarCollapse>
-        <Dropdown label="Product" className="!text-white !font-normal" inline>
+        <Dropdown label="Product" inline>
           <DropdownItem href="/kb/user-guides">Download</DropdownItem>
           <DropdownItem href="/contact/sales">Book a demo</DropdownItem>
           <DropdownItem href="/kb/use-cases">Use cases</DropdownItem>
@@ -92,6 +92,8 @@ export default function NewNavbar() {
         <div className="md:hidden">
           <NavbarLink href="/contact/sales">Book a demo</NavbarLink>
         </div>
+      </NavbarCollapse>
+      <div className="hidden md:flex space-x-4 items-center">
         <ActionLink
           href="https://app.firezone.dev/"
           className="hidden md:inline-flex py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-300 md:border-transparent hover:text-primary-450 hover:bg-neutral-200 md:hover:bg-transparent md:border-b-2 md:hover:border-primary-450 duration-50 transition transform"
@@ -102,7 +104,7 @@ export default function NewNavbar() {
         <Button type="cta" href="/contact/sales">
           Book a demo
         </Button>
-      </NavbarCollapse>
+      </div>
     </Navbar>
   );
 }

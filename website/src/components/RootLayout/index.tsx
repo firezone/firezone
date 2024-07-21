@@ -4,7 +4,6 @@ import Link from "next/link";
 import "@/app/globals.css";
 import "highlight.js/styles/a11y-dark.css";
 import RootNavbar from "@/components/RootNavbar";
-import Navbar from "@/components/NewNavbar";
 import Banner from "@/components/Banner";
 import Script from "next/script";
 import Footer from "@/components/Footer";
@@ -16,6 +15,7 @@ const source_sans_3 = Source_Sans_3({
 import { HiArrowLongRight } from "react-icons/hi2";
 import { usePathname, useSearchParams } from "next/navigation";
 import Analytics from "@/components/Analytics";
+import NewNavbar from "@/components/NewNavbar";
 
 export const metadata: Metadata = {
   title: "WireGuard® for Enterprise • Firezone",
@@ -58,7 +58,7 @@ export default function RootLayout({
           </p>
         </Banner>
         {/* <RootNavbar /> */}
-        <Navbar />
+        <NewNavbar />
         {children}
         <Footer />
         <Script
