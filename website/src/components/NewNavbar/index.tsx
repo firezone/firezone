@@ -11,9 +11,57 @@ import {
   DropdownItem as FlowbiteDropdownItem,
 } from "flowbite-react";
 import ActionLink from "@/components/ActionLink";
+import type { CustomFlowbiteTheme } from "flowbite-react";
 import { usePathname } from "next/navigation";
 import { HiBars3 } from "react-icons/hi2";
 import Button from "@/components/Button";
+
+const navbarTheme: CustomFlowbiteTheme["navbar"] = {
+  root: {
+    base: "fixed t-0 font-manrope flex justify-between z-50 w-full !p-5 md:p-8 bg-transparent transition-shadow",
+    rounded: {
+      on: "rounded",
+      off: "",
+    },
+    bordered: {
+      on: "border",
+      off: "",
+    },
+    inner: {
+      base: "mx-auto flex flex-wrap items-center justify-between",
+      fluid: {
+        on: "",
+        off: "container",
+      },
+    },
+  },
+  brand: {
+    base: "flex items-center",
+  },
+  collapse: {
+    base: "w-full md:block md:w-auto shadow md:shadow-none",
+    list: "mt-4 flex flex-col md:mt-0 md:flex-row md:space-x-8 md:text-md md:font-medium",
+    hidden: {
+      on: "hidden",
+      off: "",
+    },
+  },
+  link: {
+    base: "block py-2 pl-3 pr-4 md:p-0 border-b border-neutral-200 md:border-transparent",
+    active: {
+      on: "bg-neutral-200 rounded text-white md:bg-transparent text-primary-450 font-semibold",
+      off: "text-neutral-700 hover:text-primary-450 hover:bg-neutral-100 transition transform duration-50 md:hover:bg-transparent md:hover:border-b-2 md:hover:border-primary-450",
+    },
+    disabled: {
+      on: "text-neutral-400 hover:cursor-not-allowed",
+      off: "",
+    },
+  },
+  toggle: {
+    base: "inline-flex items-center rounded p-2 text-neutral-700 hover:bg-neutral-100 md:hidden",
+    icon: "h-6 w-6 shrink-0",
+  },
+};
 
 function NavbarLink({
   href,
@@ -62,14 +110,21 @@ export default function NewNavbar() {
           className="flex w-32 "
         />
       </NavbarBrand>
-      <ActionLink
-        href="https://app.firezone.dev/"
-        className="flex md:hidden py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-300 md:border-transparent hover:text-primary-450 duration-50 transition transform"
-        size="w-5 h-5 ml-1"
-      >
-        Sign in
-      </ActionLink>
-      <NavbarToggle barIcon={HiBars3} />
+      <div className="flex md:order-2">
+        <ActionLink
+          href="https://app.firezone.dev/"
+          className="py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-300 md:border-transparent hover:text-primary-450 duration-50 transition transform"
+          size="w-5 h-5 ml-1"
+        >
+          Sign in
+        </ActionLink>
+        <NavbarToggle barIcon={HiBars3} />
+        <div className="hidden md:flex ">
+          <Button type="cta" href="/contact/sales">
+            Book a demo
+          </Button>
+        </div>
+      </div>
       <NavbarCollapse>
         <Dropdown label="Product" inline>
           <DropdownItem href="/kb/user-guides">Download</DropdownItem>
@@ -93,18 +148,6 @@ export default function NewNavbar() {
           <NavbarLink href="/contact/sales">Book a demo</NavbarLink>
         </div>
       </NavbarCollapse>
-      <div className="hidden md:flex space-x-4 items-center">
-        <ActionLink
-          href="https://app.firezone.dev/"
-          className="hidden md:inline-flex py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-300 md:border-transparent hover:text-primary-450 hover:bg-neutral-200 md:hover:bg-transparent md:border-b-2 md:hover:border-primary-450 duration-50 transition transform"
-          size="w-5 h-5 ml-1"
-        >
-          Sign in
-        </ActionLink>
-        <Button type="cta" href="/contact/sales">
-          Book a demo
-        </Button>
-      </div>
     </Navbar>
   );
 }
