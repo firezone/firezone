@@ -19,7 +19,7 @@ impl TokenStorage {
 
     // `&mut` is probably not needed here, but it feels like it should be
     pub(crate) fn delete(&mut self) -> Result<(), Error> {
-        match self.keyring_entry()?.delete_password() {
+        match self.keyring_entry()?.delete_credential() {
             Ok(_) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(e) => Err(e)?,
         }
@@ -65,8 +65,11 @@ mod tests {
 
         assert_eq!(actual, expected);
 
-        keyring::Entry::new_with_target(name_1, "", "")?.delete_password()?;
-        keyring::Entry::new_with_target(name_2, "", "")?.delete_password()?;
+        keyring::Entry::new_with_target(name_1, "", "")?.delete_credential()?;
+        keyring::Entry::new_with_target(name_2, "", "")?.delete_credential()?;
+
+        assert!(keyring::Entry::new_with_target(name_1, "", "").is_err());
+        assert!(keyring::Entry::new_with_target(name_2, "", "").is_err());
 
         Ok(())
     }

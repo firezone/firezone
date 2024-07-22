@@ -24,7 +24,7 @@ firezone-headless-client = { path = "../../headless-client" }
 futures = { version = "0.3", default-features = false }
 git-version = "0.3.9"
 hex = "0.4.3"
-keyring = "2.3.3"
+keyring = "3.0.3"
 minidumper = "0.8.2"
 native-dialog = "0.7.0"
 output_vt100 = "0.1"
@@ -36,7 +36,7 @@ semver = { version = "1.0.22", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 subtle = "2.5.0"
-tauri = { version = "1.6.7", features = [ "dialog", "icon-png", "notification", "shell-open-api", "system-tray" ] }
+tauri = { version = "1.7.1", features = [ "dialog", "icon-png", "notification", "shell-open-api", "system-tray" ] }
 tauri-runtime = "0.14.2"
 tauri-utils = "1.5.3"
 thiserror = { version = "1.0", default-features = false }
