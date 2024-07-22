@@ -497,12 +497,20 @@ impl TunnelTest {
 
         match host {
             HostId::Client(_) => {
+                if self.drop_direct_client_traffic
+                    && self.gateways.values().any(|g| g.is_sender(src.ip()))
+                {
+                    tracing::debug!(%src, %dst, "Dropping direct traffic");
+
+                    return;
+                }
+
                 self.client
                     .exec_mut(|c| c.handle_packet(payload, src, dst, self.now));
             }
             HostId::Gateway(id) => {
                 if self.drop_direct_client_traffic && self.client.is_sender(src.ip()) {
-                    tracing::debug!("Dropping direct traffic from client -> gateway");
+                    tracing::debug!(%src, %dst, "Dropping direct traffic");
 
                     return;
                 }
