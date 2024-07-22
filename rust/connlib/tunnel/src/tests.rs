@@ -2,8 +2,8 @@ use crate::tests::sut::TunnelTest;
 use proptest::test_runner::Config;
 
 mod assertions;
-mod clock;
 mod composite_strategy;
+mod flux_capacitor;
 mod reference;
 mod run_count_appender;
 mod sim_client;
