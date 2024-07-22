@@ -292,6 +292,32 @@ mod tests {
         states_dont_match();
     }
 
+    #[test]
+    fn keyring_rs() {
+        // We used this test to find that `service` is not used on Windows - We have to namespace on our own.
+
+        let name_1 = "dev.firezone.client/test_1/token";
+        let name_2 = "dev.firezone.client/test_2/token";
+
+        // Accessing the same keys from different `Entry` instances doesn't work well,
+        // even within the same thread
+        let entry = keyring::Entry::new_with_target(name_1, "", "").unwrap();
+        entry.set_password("test_password_1").unwrap();
+
+        {
+            // In the middle of accessing one token, access another to make sure they don't interfere much
+            let entry = keyring::Entry::new_with_target(name_2, "", "").unwrap();
+            entry.set_password("test_password_2").unwrap();
+            assert_eq!(entry.get_password().unwrap(), "test_password_2");
+            entry.delete_password().unwrap();
+            assert!(entry.get_password().is_err());
+        }
+
+        assert_eq!(entry.get_password().unwrap(), "test_password_1");
+        entry.delete_password().unwrap();
+        assert!(entry.get_password().is_err());
+    }
+
     fn utils() {
         // This doesn't test for constant-time properties, it just makes sure the function
         // gives the right result
