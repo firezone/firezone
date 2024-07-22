@@ -299,8 +299,6 @@ mod tests {
         let name_1 = "dev.firezone.client/test_1/token";
         let name_2 = "dev.firezone.client/test_2/token";
 
-        // Accessing the same keys from different `Entry` instances doesn't work well,
-        // even within the same thread
         let entry = keyring::Entry::new_with_target(name_1, "", "").unwrap();
         entry.set_password("test_password_1").unwrap();
 
@@ -308,6 +306,13 @@ mod tests {
             // In the middle of accessing one token, access another to make sure they don't interfere much
             let entry = keyring::Entry::new_with_target(name_2, "", "").unwrap();
             entry.set_password("test_password_2").unwrap();
+            assert_eq!(entry.get_password().unwrap(), "test_password_2");
+        }
+
+        {
+            // Make sure that closing and re-opening the `Entry` on the same thread
+            // gives the correct result
+            let entry = keyring::Entry::new_with_target(name_2, "", "").unwrap();
             assert_eq!(entry.get_password().unwrap(), "test_password_2");
             entry.delete_credential().unwrap();
             assert!(entry.get_password().is_err());

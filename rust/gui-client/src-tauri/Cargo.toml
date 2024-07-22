@@ -24,7 +24,7 @@ firezone-headless-client = { path = "../../headless-client" }
 futures = { version = "0.3", default-features = false }
 git-version = "0.3.9"
 hex = "0.4.3"
-keyring = "3.0.3"
+keyring = { version = "3.0.3", features = ["async-secret-service", "crypto-rust", "tokio", "windows-native"] } # Must explicitly ask for each platform
 minidumper = "0.8.2"
 native-dialog = "0.7.0"
 output_vt100 = "0.1"
