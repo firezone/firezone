@@ -32,7 +32,14 @@ jobs:
         working-directory: terraform
         run: |
           terraform fmt --check --recursive
-      - name: Upload Configuration
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            terraform:
+              - 'terraform/**'
+      - if: steps.changes.outputs.terraform == 'true'
+        name: Upload Configuration
         uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.3.0
         id: plan-upload
         with:
@@ -41,7 +48,8 @@ jobs:
           # https://app.terraform.io/app/firezone/workspaces/staging/settings/general
           directory: "./"
           speculative: true
-      - name: Create Plan Run
+      - if: steps.changes.outputs.terraform == 'true'
+        name: Create Plan Run
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.3.0
         id: plan-run
         env:
@@ -51,7 +59,8 @@ jobs:
           configuration_version:
             ${{ steps.plan-upload.outputs.configuration_version_id }}
           plan_only: true
-      - name: Get Plan Output
+      - if: steps.changes.outputs.terraform == 'true'
+        name: Get Plan Output
         uses: hashicorp/tfc-workflows-github/actions/plan-output@v1.3.0
         id: plan-output
         with:
@@ -61,7 +70,7 @@ jobs:
         id: plan-comment
         if: ${{ github.event_name == 'pull_request' }}
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN && steps.changes.outputs.terraform == 'true' }}
           script: |
             // 1. Retrieve existing bot comments for the PR
             const { data: comments } = await github.rest.issues.listComments({
