@@ -85,8 +85,14 @@ module.exports = [
    */
   {
     // TODO: Remove on or after 2024-10-21 after crawlers have re-indexed
-    source: "/kb/user-guides:path",
-    destination: "/kb/client-apps:path",
+    source: "/kb/user-guides/:path",
+    destination: "/kb/client-apps/:path",
+    permanent: true,
+  },
+  {
+    // TODO: Remove on or after 2024-10-21 after crawlers have re-indexed
+    source: "/kb/user-guides",
+    destination: "/kb/client-apps",
     permanent: true,
   },
 ];
