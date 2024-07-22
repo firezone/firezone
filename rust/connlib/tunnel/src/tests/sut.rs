@@ -340,6 +340,7 @@ impl TunnelTest {
     /// Consequently, this function needs to loop until no host can make progress at which point we consider the [`Transition`] complete.
     fn advance(&mut self, ref_state: &ReferenceState, buffered_transmits: &mut BufferedTransmits) {
         'outer: loop {
+            self.handle_timeout();
             if let Some(transmit) = buffered_transmits.pop(self.clock.now()) {
                 self.dispatch_transmit(transmit, buffered_transmits, &ref_state.global_dns_records);
                 continue;
@@ -424,57 +425,25 @@ impl TunnelTest {
 
             self.clock.tick();
 
-            if self.handle_timeout() {
-                continue;
-            }
             if buffered_transmits.is_empty() {
                 break;
             }
         }
     }
 
-    /// Forwards time to the given instant iff the corresponding host would like that (i.e. returns a timestamp <= from `poll_timeout`).
-    ///
-    /// Tying the forwarding of time to the result of `poll_timeout` gives us better coverage because in production, we suspend until the value of `poll_timeout`.
-    fn handle_timeout(&mut self) -> bool {
+    fn handle_timeout(&mut self) {
         let now = self.clock.now();
         let utc = self.clock.utc_now();
 
-        let mut any_advanced = false;
-
-        if self
-            .client
-            .exec_mut(|c| c.sut.poll_timeout())
-            .is_some_and(|t| t <= now)
-        {
-            any_advanced = true;
-
-            self.client.exec_mut(|c| c.sut.handle_timeout(now));
-        };
+        self.client.exec_mut(|c| c.sut.handle_timeout(now));
 
         for (_, gateway) in self.gateways.iter_mut() {
-            if gateway
-                .exec_mut(|g| g.sut.poll_timeout())
-                .is_some_and(|t| t <= now)
-            {
-                any_advanced = true;
-
-                gateway.exec_mut(|g| g.sut.handle_timeout(now, utc))
-            };
+            gateway.exec_mut(|g| g.sut.handle_timeout(now, utc));
         }
 
         for (_, relay) in self.relays.iter_mut() {
-            if relay
-                .exec_mut(|r| r.sut.poll_timeout())
-                .is_some_and(|t| t <= now)
-            {
-                any_advanced = true;
-
-                relay.exec_mut(|r| r.sut.handle_timeout(now))
-            };
+            relay.exec_mut(|r| r.sut.handle_timeout(now))
         }
-
-        any_advanced
     }
 
     /// Dispatches a [`Transmit`] to the correct host.
