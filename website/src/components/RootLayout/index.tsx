@@ -7,7 +7,7 @@ import RootNavbar from "@/components/RootNavbar";
 import Banner from "@/components/Banner";
 import Script from "next/script";
 import Footer from "@/components/Footer";
-import source_sans_3 from "@/fonts/SourceSans3";
+import { source_sans_3 } from "@/lib/fonts";
 import { HiArrowLongRight } from "react-icons/hi2";
 import { usePathname, useSearchParams } from "next/navigation";
 import Analytics from "@/components/Analytics";
