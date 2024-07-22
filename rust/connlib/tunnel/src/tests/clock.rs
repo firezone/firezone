@@ -6,20 +6,21 @@ use std::{
 };
 use tracing_subscriber::fmt::{format::Writer, time::FormatTime};
 
+/// A device that allows us to travel into the future.
 #[derive(Debug, Clone)]
-pub(crate) struct Clock {
+pub(crate) struct FluxCapacitor {
     start: Instant,
     now: Arc<Mutex<(Instant, DateTime<Utc>)>>,
 }
 
-impl FormatTime for Clock {
+impl FormatTime for FluxCapacitor {
     fn format_time(&self, w: &mut Writer<'_>) -> fmt::Result {
         let e = self.elapsed();
         write!(w, "{:3}.{:03}s", e.as_secs(), e.subsec_millis())
     }
 }
 
-impl Default for Clock {
+impl Default for FluxCapacitor {
     fn default() -> Self {
         let start = Instant::now();
         let utc_start = Utc::now();
@@ -31,7 +32,7 @@ impl Default for Clock {
     }
 }
 
-impl Clock {
+impl FluxCapacitor {
     const SMALL_TICK: Duration = Duration::from_millis(10);
     const LARGE_TICK: Duration = Duration::from_millis(100);
 
