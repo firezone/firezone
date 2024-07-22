@@ -204,7 +204,7 @@ defmodule Web.SignIn do
     ~H"""
     <.form
       for={@email_form}
-      action={~p"/#{@account}/sign_in/providers/#{@provider.id}/request_magic_link"}
+      action={~p"/#{@account}/sign_in/providers/#{@provider.id}/request_email_otp"}
       class="space-y-4 lg:space-y-6"
       id="email_form"
       phx-update="ignore"

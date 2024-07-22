@@ -404,13 +404,13 @@ Interactive Elixir (1.15.2) - press Ctrl+C to exit (type h() ENTER for help)
 iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)1> {:ok, account} = Domain.Accounts.create_account(%{name: "Firezone", slug: "firezone"})
 {:ok, ...}
 
-iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)2> {:ok, magic_link_provider} = Domain.Auth.create_provider(account, %{name: "Email", adapter: :email, adapter_config: %{}})
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)2> {:ok, email_provider} = Domain.Auth.create_provider(account, %{name: "Email (OTP)", adapter: :email, adapter_config: %{}})
 {:ok, ...}
 
 iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)3> {:ok, actor} = Domain.Actors.create_actor(account, %{type: :account_admin_user, name: "Andrii Dryga"})
 {:ok, ...}
 
-iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)4> {:ok, identity} = Domain.Auth.upsert_identity(actor, magic_link_provider, %{provider_identifier: "a@firezone.dev", provider_identifier_confirmation: "a@firezone.dev"})
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)4> {:ok, identity} = Domain.Auth.upsert_identity(actor, email_provider, %{provider_identifier: "a@firezone.dev", provider_identifier_confirmation: "a@firezone.dev"})
 ...
 
 iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)5> context = %Domain.Auth.Context{type: :browser, user_agent: "User-Agent: iOS/12.7 (iPhone) connlib/0.7.412", remote_ip: {127, 0, 0, 1}}

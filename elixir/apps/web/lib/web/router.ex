@@ -93,7 +93,7 @@ defmodule Web.Router do
       post "/verify_credentials", AuthController, :verify_credentials
 
       # Email
-      post "/request_magic_link", AuthController, :request_magic_link
+      post "/request_email_otp", AuthController, :request_email_otp
       get "/verify_sign_in_token", AuthController, :verify_sign_in_token
 
       # IdP

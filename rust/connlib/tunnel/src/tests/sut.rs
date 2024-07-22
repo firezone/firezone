@@ -379,10 +379,12 @@ impl TunnelTest {
             });
 
             for (_, gateway) in self.gateways.iter_mut() {
-                if let Some(transmit) = gateway.exec_mut(|g| g.sut.poll_transmit()) {
-                    buffered_transmits.push(transmit, gateway);
-                    continue 'outer;
-                }
+                let Some(transmit) = gateway.exec_mut(|g| g.sut.poll_transmit()) else {
+                    continue;
+                };
+
+                buffered_transmits.push(transmit, gateway);
+                continue 'outer;
             }
 
             for (id, gateway) in self.gateways.iter_mut() {

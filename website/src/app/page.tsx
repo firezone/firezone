@@ -714,7 +714,7 @@ export default function Page() {
                   <li className="flex space-x-2.5">
                     <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                     <span className="leading-tight text-lg text-neutral-900 ">
-                      Authenticate with Magic link or OIDC
+                      Authenticate with Email OTP or OIDC
                     </span>
                   </li>
                   <li className="flex space-x-2.5">
