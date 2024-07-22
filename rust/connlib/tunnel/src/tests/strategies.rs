@@ -122,8 +122,7 @@ pub(crate) fn gateways_and_portal() -> impl Strategy<
             let dns_resources = collection::hash_set(
                 prop_oneof![
                     non_wildcard_dns_resource(any_site(sites.clone())),
-                    star_wildcard_dns_resource(any_site(sites.clone())),
-                    question_mark_wildcard_dns_resource(any_site(sites)),
+                    star_wildcard_dns_resource(any_site(sites)),
                 ],
                 1..5,
             );
@@ -160,11 +159,6 @@ pub(crate) fn gateways_and_portal() -> impl Strategy<
                             '*' => subdomain_records(
                                 address.trim_start_matches("*.").to_owned(),
                                 domain_name(1..3),
-                            )
-                            .boxed(),
-                            '?' => subdomain_records(
-                                address.trim_start_matches("?.").to_owned(),
-                                domain_label(),
                             )
                             .boxed(),
                             _ => resolved_ips()
