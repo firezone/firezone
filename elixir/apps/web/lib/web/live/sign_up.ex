@@ -180,7 +180,7 @@ defmodule Web.SignUp do
           id="resend-email"
           as={:email}
           class="inline"
-          action={~p"/#{@account}/sign_in/providers/#{@provider}/request_magic_link"}
+          action={~p"/#{@account}/sign_in/providers/#{@provider}/request_email_otp"}
           method="post"
         >
           <.input

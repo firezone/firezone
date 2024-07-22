@@ -27,7 +27,7 @@ defmodule Web.SignIn.EmailTest do
     identity: identity,
     conn: conn
   } do
-    {conn, _secret} = put_magic_link_auth_state(conn, account, provider, identity)
+    {conn, _secret} = put_email_auth_state(conn, account, provider, identity)
 
     signed_provider_identifier =
       Plug.Crypto.sign(
@@ -53,7 +53,7 @@ defmodule Web.SignIn.EmailTest do
     identity: identity,
     conn: conn
   } do
-    {conn, secret} = put_magic_link_auth_state(conn, account, provider, identity)
+    {conn, secret} = put_email_auth_state(conn, account, provider, identity)
 
     signed_provider_identifier =
       Plug.Crypto.sign(
@@ -99,7 +99,7 @@ defmodule Web.SignIn.EmailTest do
       "redirect_to" => "/foo"
     }
 
-    {conn, secret} = put_magic_link_auth_state(conn, account, provider, identity, redirect_params)
+    {conn, secret} = put_email_auth_state(conn, account, provider, identity, redirect_params)
 
     signed_provider_identifier =
       Plug.Crypto.sign(
@@ -139,7 +139,7 @@ defmodule Web.SignIn.EmailTest do
     identity: identity,
     conn: conn
   } do
-    {conn, _secret} = put_magic_link_auth_state(conn, account, provider, identity)
+    {conn, _secret} = put_email_auth_state(conn, account, provider, identity)
 
     signed_provider_identifier =
       Plug.Crypto.sign(

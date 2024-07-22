@@ -267,9 +267,9 @@ defmodule Domain.Billing.EventHandler do
               membership_rules: [%{operator: true}]
             })
 
-          {:ok, magic_link_provider} =
+          {:ok, email_provider} =
             Domain.Auth.create_provider(account, %{
-              name: "Email",
+              name: "Email (OTP)",
               adapter: :email,
               adapter_config: %{}
             })
@@ -281,7 +281,7 @@ defmodule Domain.Billing.EventHandler do
             })
 
           {:ok, _identity} =
-            Domain.Auth.upsert_identity(actor, magic_link_provider, %{
+            Domain.Auth.upsert_identity(actor, email_provider, %{
               provider_identifier: metadata["account_admin_email"] || account_email,
               provider_identifier_confirmation: metadata["account_admin_email"] || account_email
             })

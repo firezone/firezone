@@ -27,7 +27,7 @@ defmodule Domain.Ops do
           membership_rules: [%{operator: true}]
         })
 
-      {:ok, magic_link_provider} =
+      {:ok, email_provider} =
         Domain.Auth.create_provider(account, %{
           name: "Email",
           adapter: :email,
@@ -41,12 +41,12 @@ defmodule Domain.Ops do
         })
 
       {:ok, identity} =
-        Domain.Auth.upsert_identity(actor, magic_link_provider, %{
+        Domain.Auth.upsert_identity(actor, email_provider, %{
           provider_identifier: account_admin_email,
           provider_identifier_confirmation: account_admin_email
         })
 
-      %{account: account, provider: magic_link_provider, actor: actor, identity: identity}
+      %{account: account, provider: email_provider, actor: actor, identity: identity}
     end)
   end
 
@@ -76,13 +76,13 @@ defmodule Domain.Ops do
     Domain.Repo.transaction(fn ->
       {:ok, account} = Domain.Accounts.fetch_account_by_id_or_slug(account_slug)
       providers = Domain.Auth.all_active_providers_for_account!(account)
-      magic_link_provider = Enum.find(providers, fn provider -> provider.adapter == :email end)
+      email_provider = Enum.find(providers, fn provider -> provider.adapter == :email end)
 
       {:ok, actor} =
         Domain.Actors.create_actor(account, %{type: :account_admin_user, name: "Firezone Support"})
 
       {:ok, identity} =
-        Domain.Auth.upsert_identity(actor, magic_link_provider, %{
+        Domain.Auth.upsert_identity(actor, email_provider, %{
           provider_identifier: "ent-support@firezone.dev",
           provider_identifier_confirmation: "ent-support@firezone.dev"
         })

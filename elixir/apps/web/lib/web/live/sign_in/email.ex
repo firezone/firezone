@@ -158,7 +158,7 @@ defmodule Web.SignIn.Email do
       as={:email}
       class="inline"
       action={
-        ~p"/#{@account_id_or_slug}/sign_in/providers/#{@provider_id}/request_magic_link?resend=true"
+        ~p"/#{@account_id_or_slug}/sign_in/providers/#{@provider_id}/request_email_otp?resend=true"
       }
       method="post"
     >
