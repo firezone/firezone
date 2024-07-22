@@ -24,6 +24,18 @@ const SIGNED_OUT_ICON: &[u8] = include_bytes!("../../../icons/tray/Signed out.pn
 const TOOLTIP: &str = "Firezone";
 const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
 
+const NO_ACTIVITY: &str = "[-] No activity";
+const GATEWAY_CONNECTED: &str = "[O] Gateway connected";
+const ALL_GATEWAYS_OFFLINE: &str = "[X] All Gateways offline";
+
+const ADD_FAVORITE: &str = "Add to favorites";
+const REMOVE_FAVORITE: &str = "Remove from favorites";
+const FAVORITE_RESOURCES: &str = "Favorite Resources";
+const RESOURCES: &str = "Resources";
+const OTHER_RESOURCES: &str = "Other Resources";
+const SIGN_OUT: &str = "Sign out";
+const DISCONNECT_AND_QUIT: &str = "Disconnect and quit Firezone";
+
 pub(crate) fn loading() -> SystemTray {
     SystemTray::new()
         .with_icon(tauri::Icon::Raw(BUSY_ICON.into()))
@@ -67,18 +79,17 @@ impl<'a> SignedIn<'a> {
             .copyable(res.pastable().as_ref());
 
         let submenu = if self.is_favorite(res) {
-            submenu
-                .add_item(item(Event::RemoveFavorite(res.id()), "Remove from favorites").selected())
+            submenu.add_item(item(Event::RemoveFavorite(res.id()), REMOVE_FAVORITE).selected())
         } else {
-            submenu.item(Event::AddFavorite(res.id()), "Add to favorites")
+            submenu.item(Event::AddFavorite(res.id()), ADD_FAVORITE)
         };
 
         if let Some(site) = res.sites().first() {
             // Emojis may be causing an issue on some Ubuntu desktop environments.
             let status = match res.status() {
-                Status::Unknown => "[-] No activity",
-                Status::Online => "[O] Gateway connected",
-                Status::Offline => "[X] All Gateways offline",
+                Status::Unknown => NO_ACTIVITY,
+                Status::Online => GATEWAY_CONNECTED,
+                Status::Offline => ALL_GATEWAYS_OFFLINE,
             };
 
             submenu
@@ -200,7 +211,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
 
     let mut menu = Menu::default()
         .disabled(format!("Signed in as {actor_name}"))
-        .item(Event::SignOut, "Sign out")
+        .item(Event::SignOut, SIGN_OUT)
         .separator();
 
     tracing::info!(
@@ -208,7 +219,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         "Building signed-in tray menu"
     );
     if has_any_favorites {
-        menu = menu.disabled("Favorite Resources");
+        menu = menu.disabled(FAVORITE_RESOURCES);
         // The user has some favorites and they're in the list, so only show those
         // Always show Resources in the original order
         for res in resources
@@ -218,7 +229,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
             menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
     } else {
-        menu = menu.disabled("Resources");
+        menu = menu.disabled(RESOURCES);
         // No favorites, show every Resource normally, just like before
         // the favoriting feature was created
         // Always show Resources in the original order
@@ -236,9 +247,9 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         {
             submenu = submenu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
-        menu = menu.separator().add_submenu("Other Resources", submenu);
+        menu = menu.separator().add_submenu(OTHER_RESOURCES, submenu);
     }
-    menu.add_bottom_section("Disconnect and quit Firezone")
+    menu.add_bottom_section(DISCONNECT_AND_QUIT)
 }
 
 fn signing_in(waiting_message: &str) -> Menu {
@@ -300,10 +311,10 @@ mod tests {
         let actual = input.to_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
-            .item(Event::SignOut, "Sign out")
+            .item(Event::SignOut, SIGN_OUT)
             .separator()
-            .disabled("Resources")
-            .add_bottom_section("Disconnect and quit Firezone"); // Skip testing the bottom section, it's simple
+            .disabled(RESOURCES)
+            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -327,12 +338,12 @@ mod tests {
         let actual = input.to_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
-            .item(Event::SignOut, "Sign out")
+            .item(Event::SignOut, SIGN_OUT)
             .separator()
-            .disabled("Favorite Resources")
+            .disabled(FAVORITE_RESOURCES)
             .separator()
-            .add_submenu("Other Resources", Menu::default()) // The empty submenu here feels odd
-            .add_bottom_section("Disconnect and quit Firezone"); // Skip testing the bottom section, it's simple
+            .add_submenu(OTHER_RESOURCES, Menu::default()) // The empty submenu here feels odd
+            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -356,9 +367,9 @@ mod tests {
         let actual = input.to_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
-            .item(Event::SignOut, "Sign out")
+            .item(Event::SignOut, SIGN_OUT)
             .separator()
-            .disabled("Resources")
+            .disabled(RESOURCES)
             .add_submenu(
                 "172.172.0.0/16",
                 Menu::default()
@@ -371,12 +382,12 @@ mod tests {
                         Event::AddFavorite(ResourceId::from_str(
                             "73037362-715d-4a83-a749-f18eadd970e6",
                         )?),
-                        "Add to favorites",
+                        ADD_FAVORITE,
                     )
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable("[-] No activity"),
+                    .copyable(NO_ACTIVITY),
             )
             .add_submenu(
                 "gitlab.mycorp.com",
@@ -390,12 +401,12 @@ mod tests {
                         Event::AddFavorite(ResourceId::from_str(
                             "03000143-e25e-45c7-aafb-144990e57dcd",
                         )?),
-                        "Add to favorites",
+                        ADD_FAVORITE,
                     )
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable("[O] Gateway connected"),
+                    .copyable(GATEWAY_CONNECTED),
             )
             .add_submenu(
                 "Internet",
@@ -409,14 +420,14 @@ mod tests {
                         Event::AddFavorite(ResourceId::from_str(
                             "1106047c-cd5d-4151-b679-96b93da7383b",
                         )?),
-                        "Add to favorites",
+                        ADD_FAVORITE,
                     )
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable("[X] All Gateways offline"),
+                    .copyable(ALL_GATEWAYS_OFFLINE),
             )
-            .add_bottom_section("Disconnect and quit Firezone"); // Skip testing the bottom section, it's simple
+            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -442,9 +453,9 @@ mod tests {
         let actual = input.to_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
-            .item(Event::SignOut, "Sign out")
+            .item(Event::SignOut, SIGN_OUT)
             .separator()
-            .disabled("Favorite Resources")
+            .disabled(FAVORITE_RESOURCES)
             .add_submenu(
                 "gitlab.mycorp.com",
                 Menu::default()
@@ -458,18 +469,18 @@ mod tests {
                             Event::RemoveFavorite(ResourceId::from_str(
                                 "03000143-e25e-45c7-aafb-144990e57dcd",
                             )?),
-                            "Remove from favorites",
+                            REMOVE_FAVORITE,
                         )
                         .selected(),
                     )
                     .separator()
                     .disabled("Site")
                     .copyable("test")
-                    .copyable("[O] Gateway connected"),
+                    .copyable(GATEWAY_CONNECTED),
             )
             .separator()
             .add_submenu(
-                "Other Resources",
+                OTHER_RESOURCES,
                 Menu::default()
                     .add_submenu(
                         "172.172.0.0/16",
@@ -483,12 +494,12 @@ mod tests {
                                 Event::AddFavorite(ResourceId::from_str(
                                     "73037362-715d-4a83-a749-f18eadd970e6",
                                 )?),
-                                "Add to favorites",
+                                ADD_FAVORITE,
                             )
                             .separator()
                             .disabled("Site")
                             .copyable("test")
-                            .copyable("[-] No activity"),
+                            .copyable(NO_ACTIVITY),
                     )
                     .add_submenu(
                         "Internet",
@@ -502,15 +513,15 @@ mod tests {
                                 Event::AddFavorite(ResourceId::from_str(
                                     "1106047c-cd5d-4151-b679-96b93da7383b",
                                 )?),
-                                "Add to favorites",
+                                ADD_FAVORITE,
                             )
                             .separator()
                             .disabled("Site")
                             .copyable("test")
-                            .copyable("[X] All Gateways offline"),
+                            .copyable(ALL_GATEWAYS_OFFLINE),
                     ),
             )
-            .add_bottom_section("Disconnect and quit Firezone"); // Skip testing the bottom section, it's simple
+            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -536,12 +547,12 @@ mod tests {
         let actual = input.to_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
-            .item(Event::SignOut, "Sign out")
+            .item(Event::SignOut, SIGN_OUT)
             .separator()
-            .disabled("Favorite Resources") // This empty menu is a bit weird
+            .disabled(FAVORITE_RESOURCES) // This empty menu is a bit weird
             .separator()
             .add_submenu(
-                "Other Resources",
+                OTHER_RESOURCES,
                 Menu::default()
                     .add_submenu(
                         "172.172.0.0/16",
@@ -555,12 +566,12 @@ mod tests {
                                 Event::AddFavorite(ResourceId::from_str(
                                     "73037362-715d-4a83-a749-f18eadd970e6",
                                 )?),
-                                "Add to favorites",
+                                ADD_FAVORITE,
                             )
                             .separator()
                             .disabled("Site")
                             .copyable("test")
-                            .copyable("[-] No activity"),
+                            .copyable(NO_ACTIVITY),
                     )
                     .add_submenu(
                         "gitlab.mycorp.com",
@@ -574,12 +585,12 @@ mod tests {
                                 Event::AddFavorite(ResourceId::from_str(
                                     "03000143-e25e-45c7-aafb-144990e57dcd",
                                 )?),
-                                "Add to favorites",
+                                ADD_FAVORITE,
                             )
                             .separator()
                             .disabled("Site")
                             .copyable("test")
-                            .copyable("[O] Gateway connected"),
+                            .copyable(GATEWAY_CONNECTED),
                     )
                     .add_submenu(
                         "Internet",
@@ -593,15 +604,15 @@ mod tests {
                                 Event::AddFavorite(ResourceId::from_str(
                                     "1106047c-cd5d-4151-b679-96b93da7383b",
                                 )?),
-                                "Add to favorites",
+                                ADD_FAVORITE,
                             )
                             .separator()
                             .disabled("Site")
                             .copyable("test")
-                            .copyable("[X] All Gateways offline"),
+                            .copyable(ALL_GATEWAYS_OFFLINE),
                     ),
             )
-            .add_bottom_section("Disconnect and quit Firezone"); // Skip testing the bottom section, it's simple
+            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
