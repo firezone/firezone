@@ -106,12 +106,12 @@ Hooks.Copy = {
  * double submissions and cases where the submit handler is slow (e.g. constant-time auth).
  */
 const handleDisableSubmit = (ev) => {
-  let submit = this.el.querySelector('[type="submit"]');
+  let submit = ev.el.querySelector('[type="submit"]');
   submit.setAttribute("disabled", "disabled");
   submit.classList.add("cursor-wait");
   submit.classList.add("opacity-75");
 
-  this.el.submit();
+  ev.el.submit();
 
   setTimeout(() => {
     submit.classList.remove("cursor-wait");
