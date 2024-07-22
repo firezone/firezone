@@ -161,8 +161,7 @@ jobs:
 
   perf-tests:
     name: perf-tests
-    needs:
-      - build-perf-artifacts
+    needs: build-perf-artifacts
     runs-on: ubuntu-22.04
     permissions:
       contents: read
