@@ -101,7 +101,7 @@ pub(crate) fn tunnel_ip6s() -> impl Iterator<Item = Ipv6Addr> {
 /// Lastly, we also sample a set of DNS records for the DNS resources that we created.
 pub(crate) fn gateways_and_portal() -> impl Strategy<
     Value = (
-        HashMap<GatewayId, Host<RefGateway>>,
+        BTreeMap<GatewayId, Host<RefGateway>>,
         StubPortal,
         HashMap<DomainName, HashSet<IpAddr>>,
     ),
@@ -132,7 +132,7 @@ pub(crate) fn gateways_and_portal() -> impl Strategy<
             |(gateways, cidr_resources, dns_resources, gateway_selector)| {
                 let (gateways, gateways_by_site) = gateways.into_iter().fold(
                     (
-                        HashMap::<GatewayId, _>::default(),
+                        BTreeMap::<GatewayId, _>::default(),
                         HashMap::<SiteId, HashSet<GatewayId>>::default(),
                     ),
                     |(mut gateways, mut sites), (gid, (gateway, site))| {
