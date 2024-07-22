@@ -509,7 +509,7 @@ impl TunnelTest {
                 if self.drop_direct_client_traffic
                     && self.gateways.values().any(|g| g.is_sender(src.ip()))
                 {
-                    tracing::debug!(%src, %dst, "Dropping direct traffic");
+                    tracing::trace!(%src, %dst, "Dropping direct traffic");
 
                     return;
                 }
@@ -519,7 +519,7 @@ impl TunnelTest {
             }
             HostId::Gateway(id) => {
                 if self.drop_direct_client_traffic && self.client.is_sender(src.ip()) {
-                    tracing::debug!(%src, %dst, "Dropping direct traffic");
+                    tracing::trace!(%src, %dst, "Dropping direct traffic");
 
                     return;
                 }
