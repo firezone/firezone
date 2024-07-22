@@ -7,11 +7,7 @@ import RootNavbar from "@/components/RootNavbar";
 import Banner from "@/components/Banner";
 import Script from "next/script";
 import Footer from "@/components/Footer";
-import { Source_Sans_3 } from "next/font/google";
-const source_sans_3 = Source_Sans_3({
-  subsets: ["latin"],
-  weight: ["200", "300", "400", "500", "600", "700", "800", "900"],
-});
+import source_sans_3 from "@/fonts/SourceSans3";
 import { HiArrowLongRight } from "react-icons/hi2";
 import { usePathname, useSearchParams } from "next/navigation";
 import Analytics from "@/components/Analytics";
