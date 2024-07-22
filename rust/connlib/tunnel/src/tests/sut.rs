@@ -23,8 +23,14 @@ use hickory_resolver::lookup::Lookup;
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::{collections::HashSet, net::IpAddr, str::FromStr as _, sync::Arc, time::Instant};
+use std::cmp::Reverse;
+use std::{
+    collections::{BTreeMap, BinaryHeap, HashSet},
+    net::IpAddr,
+    str::FromStr as _,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tracing::debug_span;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::layer::SubscriberExt;
@@ -182,7 +188,7 @@ impl StateMachineTest for TunnelTest {
                     .client
                     .exec_mut(|sim| sim.encapsulate(packet, state.now));
 
-                buffered_transmits.push(transmit, &state.client);
+                buffered_transmits.push(transmit, &state.client, state.now);
             }
             Transition::SendICMPPacketToDnsResource {
                 src,
@@ -211,7 +217,7 @@ impl StateMachineTest for TunnelTest {
                     .client
                     .exec_mut(|sim| Some(sim.encapsulate(packet, state.now)?.into_owned()));
 
-                buffered_transmits.push(transmit, &state.client);
+                buffered_transmits.push(transmit, &state.client, state.now);
             }
             Transition::SendDnsQuery {
                 domain,
@@ -223,7 +229,7 @@ impl StateMachineTest for TunnelTest {
                     sim.send_dns_query_for(domain, r_type, query_id, dns_server, state.now)
                 });
 
-                buffered_transmits.push(transmit, &state.client);
+                buffered_transmits.push(transmit, &state.client, state.now);
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 state
@@ -333,13 +339,13 @@ impl TunnelTest {
     /// Consequently, this function needs to loop until no host can make progress at which point we consider the [`Transition`] complete.
     fn advance(&mut self, ref_state: &ReferenceState, buffered_transmits: &mut BufferedTransmits) {
         'outer: loop {
-            if let Some(transmit) = buffered_transmits.pop() {
+            if let Some(transmit) = buffered_transmits.pop(self.now) {
                 self.dispatch_transmit(transmit, buffered_transmits, &ref_state.global_dns_records);
                 continue;
             }
 
             if let Some(transmit) = self.client.exec_mut(|sim| sim.sut.poll_transmit()) {
-                buffered_transmits.push(transmit, &self.client);
+                buffered_transmits.push(transmit, &self.client, self.now);
                 continue;
             }
             if let Some(event) = self.client.exec_mut(|c| c.sut.poll_event()) {
@@ -366,7 +372,7 @@ impl TunnelTest {
                     continue;
                 };
 
-                buffered_transmits.push(transmit, gateway);
+                buffered_transmits.push(transmit, gateway, self.now);
                 continue 'outer;
             }
 
@@ -398,6 +404,7 @@ impl TunnelTest {
                                 payload: payload.into(),
                             },
                             relay,
+                            self.now,
                         );
                     }
 
@@ -414,10 +421,17 @@ impl TunnelTest {
                 continue 'outer;
             }
 
+            const TICK: Duration = Duration::from_millis(10);
+
+            self.now += TICK;
+            self.utc_now += TICK;
+
             if self.handle_timeout(self.now, self.utc_now) {
                 continue;
             }
-            break;
+            if buffered_transmits.is_empty() {
+                break;
+            }
         }
     }
 
@@ -512,7 +526,7 @@ impl TunnelTest {
                     return;
                 };
 
-                buffered_transmits.push(transmit, gateway);
+                buffered_transmits.push(transmit, gateway, self.now);
             }
             HostId::Relay(id) => {
                 let relay = self.relays.get_mut(&id).expect("unknown relay");
@@ -523,7 +537,7 @@ impl TunnelTest {
                     return;
                 };
 
-                buffered_transmits.push(transmit, relay);
+                buffered_transmits.push(transmit, relay, self.now);
             }
             HostId::Stale => {
                 tracing::debug!(%dst, "Dropping packet because host roamed away or is offline");
@@ -794,17 +808,32 @@ pub(crate) fn domain_to_hickory_name(domain: DomainName) -> hickory_proto::rr::N
 
 #[derive(Debug, Default)]
 struct BufferedTransmits {
-    inner: VecDeque<Transmit<'static>>,
+    // Transmits are stored in reverse ordering to emit the earliest first.
+    inner: BinaryHeap<Reverse<ByTime<Transmit<'static>>>>,
+}
+
+#[derive(Debug, PartialEq, PartialOrd, Eq, Ord)]
+struct ByTime<T> {
+    at: Instant,
+    value: T,
 }
 
 impl BufferedTransmits {
-    fn push<T>(&mut self, transmit: impl Into<Option<Transmit<'static>>>, sending_host: &Host<T>) {
+    fn push<T>(
+        &mut self,
+        transmit: impl Into<Option<Transmit<'static>>>,
+        sending_host: &Host<T>,
+        now: Instant,
+    ) {
         let Some(transmit) = transmit.into() else {
             return;
         };
 
         if transmit.src.is_some() {
-            self.inner.push_back(transmit);
+            self.inner.push(Reverse(ByTime {
+                at: now + sending_host.latency(),
+                value: transmit,
+            }));
             return;
         }
 
@@ -818,17 +847,74 @@ impl BufferedTransmits {
             return;
         };
 
-        self.inner.push_back(Transmit {
-            src: Some(src),
-            ..transmit
-        });
+        self.inner.push(Reverse(ByTime {
+            at: now + sending_host.latency(),
+            value: Transmit {
+                src: Some(src),
+                ..transmit
+            },
+        }));
     }
 
-    fn pop(&mut self) -> Option<Transmit<'static>> {
-        self.inner.pop_front()
+    fn pop(&mut self, now: Instant) -> Option<Transmit<'static>> {
+        let next = self.inner.peek()?.0.at;
+
+        if next > now {
+            return None;
+        }
+
+        let next = self.inner.pop().unwrap().0;
+
+        Some(next.value)
     }
 
     fn is_empty(&self) -> bool {
         self.inner.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn by_time_orders_from_earliest_to_latest() {
+        let mut heap = BinaryHeap::new();
+        let start = Instant::now();
+
+        heap.push(ByTime {
+            at: start + Duration::from_secs(1),
+            value: 1,
+        });
+        heap.push(ByTime {
+            at: start,
+            value: 0,
+        });
+        heap.push(ByTime {
+            at: start + Duration::from_secs(2),
+            value: 2,
+        });
+
+        assert_eq!(
+            heap.pop().unwrap(),
+            ByTime {
+                at: start + Duration::from_secs(2),
+                value: 2
+            },
+        );
+        assert_eq!(
+            heap.pop().unwrap(),
+            ByTime {
+                at: start + Duration::from_secs(1),
+                value: 1
+            }
+        );
+        assert_eq!(
+            heap.pop().unwrap(),
+            ByTime {
+                at: start,
+                value: 0
+            }
+        );
     }
 }

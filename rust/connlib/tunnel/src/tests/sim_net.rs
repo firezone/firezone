@@ -30,7 +30,7 @@ pub(crate) struct Host<T> {
     default_port: u16,
     allocated_ports: HashSet<(u16, AddressFamily)>,
 
-    // The latency of incoming and outgoing packets.
+    // The latency of outgoing packets.
     latency: Duration,
 
     #[derivative(Debug = "ignore")]
@@ -109,6 +109,10 @@ impl<T> Host<T> {
             IpAddr::V4(src) => self.ip4.is_some_and(|v4| v4 == src),
             IpAddr::V6(src) => self.ip6.is_some_and(|v6| v6 == src),
         }
+    }
+
+    pub(crate) fn latency(&self) -> Duration {
+        self.latency
     }
 }
 
