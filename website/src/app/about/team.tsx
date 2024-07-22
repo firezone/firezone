@@ -66,7 +66,7 @@ export default function Team() {
     {
       name: "Gabriel Steinberg",
       title: "Senior Backend Engineer",
-      imgSrc: "/images/avatars/gabriel.png",
+      imgSrc: gravatar("gabriel@firezone.dev", 200),
       xUrl: new URL("https://x.com/tapingmemory"),
       githubUrl: new URL("https://github.com/conectado"),
     },
@@ -111,7 +111,8 @@ export default function Team() {
     {
       name: "Robert Laurence",
       title: "Advisor",
-      imgSrc: gravatar("rb.laur@gmail.com"),
+      imgSrc: "/images/avatars/robert_laurence.jpeg",
+      linkedinUrl: new URL("https://www.linkedin.com/in/boblaurence/"),
     },
   ];
 
@@ -119,7 +120,7 @@ export default function Team() {
     <section className="border-t border-neutral-200 bg-neutral-100">
       <div className="py-8 px-4 mx-auto max-w-screen-lg text-center lg:py-16 lg:px-6">
         <div className="border-b text-neutral-800 sm:text-lg">
-          <h2 className="mb-14 justify-center md:text-5xl text-4xl tracking-tight font-extrabold text-neutral-900 leading-none">
+          <h2 className="mb-14 justify-center md:text-5xl text-4xl tracking-tight font-semibold text-neutral-900 leading-none">
             Meet the team.
           </h2>
           <p className="mb-8 text-xl tracking-tight text-neutral-800 sm:px-16 xl:px-32">
@@ -135,6 +136,11 @@ export default function Team() {
             . The team has experience building enterprise networking solutions
             at companies like Cisco, Marqeta, Instacart, and more.
           </p>
+        </div>
+        <div className="my-12 flex justify-center">
+          <h3 className="uppercase text-2xl tracking-tight font-semibold text-neutral-900 leading-none">
+            Core team members
+          </h3>
         </div>
         <div className="mt-16 grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8 lg:gap-16">
           {team.map((person) => {

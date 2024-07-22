@@ -53,7 +53,7 @@ export default function Story() {
                   of the Firezone codebase is made.
                 </p>
               </li>
-              <li className="ms-4">
+              <li className="mb-12 ms-4">
                 <div className="absolute w-3 h-3 bg-neutral-400 rounded-full mt-1.5 -start-1.5 border border-white"></div>
                 <time className="mb-1 text-sm font-normal leading-none text-neutral-800">
                   September 2021
@@ -86,7 +86,7 @@ export default function Story() {
                   Firezone is accepted into YC's Winter 2022 batch.
                 </p>
               </li>
-              <li className="ms-4">
+              <li className="mb-12 ms-4">
                 <div className="absolute w-3 h-3 bg-neutral-400 rounded-full mt-1.5 -start-1.5 border border-white"></div>
                 <time className="mb-1 text-sm font-normal leading-none text-neutral-800">
                   April 2022
@@ -97,6 +97,19 @@ export default function Story() {
                 <p className="text-base font-normal text-neutral-800">
                   Firezone graduates from the YC Winter 2022 batch and raises a
                   seed round.
+                </p>
+              </li>
+              <li className="ms-4">
+                <div className="absolute w-3 h-3 bg-neutral-400 rounded-full mt-1.5 -start-1.5 border border-white"></div>
+                <time className="mb-1 text-sm font-normal leading-none text-neutral-800">
+                  April 2024
+                </time>
+                <h3 className="text-lg font-semibold text-neutral-800 ">
+                  1.0 Launch
+                </h3>
+                <p className="text-base font-normal text-neutral-800">
+                  Firezone launches the first commercial version of its
+                  innovative zero-trust product.
                 </p>
               </li>
             </ol>

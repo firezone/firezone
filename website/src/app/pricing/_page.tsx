@@ -247,6 +247,12 @@ export default function _Page() {
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <span className="leading-tight">
+                  40-hour pentest &amp; SOC 2 reports
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <HiCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">Roadmap acceleration</span>
               </li>
               <li className="flex space-x-2.5">
@@ -256,14 +262,6 @@ export default function _Page() {
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">Annual invoicing</span>
-              </li>
-              <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5" />
-                <span className="leading-tight">
-                  Pentested &{" "}
-                  <span className="font-semibold text-primary-450">SOC 2</span>{" "}
-                  compliant
-                </span>
               </li>
             </ul>
           </div>

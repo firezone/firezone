@@ -5,8 +5,8 @@ export default function Investors() {
   return (
     <section className="border-t border-neutral-200 bg-neutral-100">
       <div className="py-8 px-4 mx-auto max-w-screen-xl lg:py-16 lg:px-6">
-        <h2 className="mb-14 justify-center md:text-5xl text-4xl tracking-tight font-extrabold text-neutral-900 leading-none">
-          INVESTORS
+        <h2 className="uppercase mb-14 justify-center md:text-5xl text-4xl tracking-tight font-semibold text-neutral-900 leading-none">
+          Investors
         </h2>
         <div className="pt-12 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-12">
           <div className="flex p-4">
