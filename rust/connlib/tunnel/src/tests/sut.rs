@@ -9,6 +9,7 @@ use crate::tests::assertions::*;
 use crate::tests::clock::Clock;
 use crate::tests::sim_relay::map_explode;
 use crate::tests::transition::Transition;
+use crate::utils::earliest;
 use crate::{dns::DnsQuery, ClientEvent, GatewayEvent, Request};
 use connlib_shared::messages::client::ResourceDescription;
 use connlib_shared::{
@@ -340,6 +341,9 @@ impl TunnelTest {
     ///
     /// Consequently, this function needs to loop until no host can make progress at which point we consider the [`Transition`] complete.
     fn advance(&mut self, ref_state: &ReferenceState, buffered_transmits: &mut BufferedTransmits) {
+        const MAX_IDLE: Duration = Duration::from_secs(1); // How long we will at most idle.
+        let mut time_spent_idling = Duration::ZERO; // How much time we've spent idling so far.
+
         'outer: loop {
             self.handle_timeout();
 
@@ -425,11 +429,23 @@ impl TunnelTest {
                 continue;
             }
 
-            self.clock.tick();
+            if !buffered_transmits.is_empty() {
+                self.clock.small_tick(); // Small tick to advance to next transmit.
 
-            if buffered_transmits.is_empty() {
-                break;
+                continue;
             }
+
+            let time_to_next_action = self.time_to_next_action();
+
+            // Allow for a few "idle" clock ticks if we want to do something "soon".
+            if time_to_next_action.is_some_and(|dur| dur < MAX_IDLE) && time_spent_idling < MAX_IDLE
+            {
+                time_spent_idling += self.clock.large_tick(); // Large tick to more quickly advance to potential next timeout.
+
+                continue;
+            }
+
+            break;
         }
     }
 
@@ -446,6 +462,24 @@ impl TunnelTest {
         for (_, relay) in self.relays.iter_mut() {
             relay.exec_mut(|r| r.sut.handle_timeout(now))
         }
+    }
+
+    fn time_to_next_action(&mut self) -> Option<Duration> {
+        let client = self.client.exec_mut(|c| c.sut.poll_timeout());
+        let gateway = self
+            .gateways
+            .values_mut()
+            .flat_map(|g| g.exec_mut(|g| g.sut.poll_timeout()))
+            .min();
+        let relay = self
+            .relays
+            .values_mut()
+            .flat_map(|r| r.exec_mut(|r| r.sut.poll_timeout()))
+            .min();
+
+        let timeout = earliest(client, earliest(gateway, relay))?;
+
+        Some(timeout.duration_since(self.clock.now()))
     }
 
     /// Dispatches a [`Transmit`] to the correct host.

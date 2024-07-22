@@ -32,6 +32,9 @@ impl Default for Clock {
 }
 
 impl Clock {
+    const SMALL_TICK: Duration = Duration::from_millis(10);
+    const LARGE_TICK: Duration = Duration::from_millis(100);
+
     pub(crate) fn now(&self) -> Instant {
         let (now, _) = *self.now.lock().unwrap();
 
@@ -44,13 +47,23 @@ impl Clock {
         utc
     }
 
-    pub(crate) fn tick(&self) {
-        const TICK: Duration = Duration::from_millis(10);
+    pub(crate) fn small_tick(&self) -> Duration {
+        self.tick(Self::SMALL_TICK);
 
+        Self::SMALL_TICK
+    }
+
+    pub(crate) fn large_tick(&self) -> Duration {
+        self.tick(Self::LARGE_TICK);
+
+        Self::LARGE_TICK
+    }
+
+    fn tick(&self, tick: Duration) {
         let mut guard = self.now.lock().unwrap();
 
-        guard.0 += TICK;
-        guard.1 += TICK;
+        guard.0 += tick;
+        guard.1 += tick;
     }
 
     fn elapsed(&self) -> Duration {
