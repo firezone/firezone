@@ -155,12 +155,14 @@ pub(crate) fn gateways_and_portal() -> impl Strategy<
                     .map(|resource| {
                         let address = resource.address;
 
-                        match address.chars().next().unwrap() {
-                            '*' => subdomain_records(
-                                address.trim_start_matches("*.").to_owned(),
-                                domain_name(1..3),
-                            )
-                            .boxed(),
+                        // Only generate simple wildcard domains for these tests.
+                        // The matching logic is extensively unit-tested so we don't need to cover all cases here.
+                        // What we do want to cover is multiple domains pointing to the same resource.
+                        // For example, `*.example.com` and `app.example.com`.
+                        match address.split_once('.') {
+                            Some(("*", base)) => {
+                                subdomain_records(base.to_owned(), domain_label()).boxed()
+                            }
                             _ => resolved_ips()
                                 .prop_map(move |resolved_ips| {
                                     HashMap::from([(address.parse().unwrap(), resolved_ips)])
