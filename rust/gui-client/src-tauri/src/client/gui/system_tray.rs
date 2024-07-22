@@ -538,7 +538,7 @@ mod tests {
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, "Sign out")
             .separator()
-            .disabled("Favorite Resources")
+            .disabled("Favorite Resources") // This empty menu is a bit weird
             .separator()
             .add_submenu(
                 "Other Resources",
