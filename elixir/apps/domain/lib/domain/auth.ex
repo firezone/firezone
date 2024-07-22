@@ -72,7 +72,7 @@ defmodule Domain.Auth do
   alias Domain.Auth.Identity
 
   # This session duration is used when IdP doesn't return the token expiration date,
-  # or no IdP is used (eg. sign in via magic link or userpass).
+  # or no IdP is used (eg. sign in via email or userpass).
   @default_session_duration_hours [
     browser: [
       account_admin_user: 10,
@@ -310,7 +310,7 @@ defmodule Domain.Auth do
     end)
   end
 
-  # used during magic link auth flow
+  # used during email auth flow
   def fetch_active_identity_by_provider_and_identifier(
         %Provider{adapter: :email} = provider,
         provider_identifier,
