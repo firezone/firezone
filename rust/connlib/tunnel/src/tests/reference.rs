@@ -17,7 +17,7 @@ use prop::collection;
 use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     fmt, iter,
     net::IpAddr,
     time::Instant,
@@ -31,8 +31,8 @@ pub(crate) struct ReferenceState {
     pub(crate) now: Instant,
     pub(crate) utc_now: DateTime<Utc>,
     pub(crate) client: Host<RefClient>,
-    pub(crate) gateways: HashMap<GatewayId, Host<RefGateway>>,
-    pub(crate) relays: HashMap<RelayId, Host<u64>>,
+    pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
+    pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
     pub(crate) portal: StubPortal,
 
     /// All IP addresses a domain resolves to in our test.
@@ -66,7 +66,7 @@ impl ReferenceStateMachine for ReferenceState {
         (
             ref_client_host(Just(client_tunnel_ip4), Just(client_tunnel_ip6)),
             gateways_and_portal(),
-            collection::hash_map(relay_id(), relay_prototype(), 1..=2),
+            collection::btree_map(relay_id(), relay_prototype(), 1..=2),
             global_dns_records(), // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
             any::<bool>(),
             Just(Instant::now()),

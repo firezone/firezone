@@ -25,14 +25,8 @@ use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use rand::SeedableRng as _;
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
-use std::collections::BTreeMap;
-use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    net::IpAddr,
-    str::FromStr as _,
-    sync::Arc,
-    time::Instant,
-};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::{collections::HashSet, net::IpAddr, str::FromStr as _, sync::Arc, time::Instant};
 use tracing::debug_span;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::layer::SubscriberExt;
@@ -47,8 +41,8 @@ pub(crate) struct TunnelTest {
     utc_now: DateTime<Utc>,
 
     pub(crate) client: Host<SimClient>,
-    pub(crate) gateways: HashMap<GatewayId, Host<SimGateway>>,
-    relays: HashMap<RelayId, Host<SimRelay>>,
+    pub(crate) gateways: BTreeMap<GatewayId, Host<SimGateway>>,
+    relays: BTreeMap<RelayId, Host<SimRelay>>,
 
     drop_direct_client_traffic: bool,
     network: RoutingTable,
@@ -87,7 +81,7 @@ impl StateMachineTest for TunnelTest {
 
                 (*id, gateway)
             })
-            .collect::<HashMap<_, _>>();
+            .collect::<BTreeMap<_, _>>();
 
         let relays = ref_state
             .relays
@@ -107,21 +101,21 @@ impl StateMachineTest for TunnelTest {
 
                 (*id, relay)
             })
-            .collect::<HashMap<_, _>>();
+            .collect::<BTreeMap<_, _>>();
 
         // Configure client and gateway with the relays.
         client.exec_mut(|c| {
             c.sut.update_relays(
-                HashSet::default(),
-                HashSet::from_iter(map_explode(relays.iter(), "client")),
+                BTreeSet::default(),
+                BTreeSet::from_iter(map_explode(relays.iter(), "client")),
                 ref_state.now,
             )
         });
         for (id, gateway) in &mut gateways {
             gateway.exec_mut(|g| {
                 g.sut.update_relays(
-                    HashSet::default(),
-                    HashSet::from_iter(map_explode(relays.iter(), &format!("gateway_{id}"))),
+                    BTreeSet::default(),
+                    BTreeSet::from_iter(map_explode(relays.iter(), &format!("gateway_{id}"))),
                     ref_state.now,
                 )
             });
@@ -267,8 +261,8 @@ impl StateMachineTest for TunnelTest {
 
                     // In prod, we reconnect to the portal and receive a new `init` message.
                     c.sut.update_relays(
-                        HashSet::default(),
-                        HashSet::from_iter(map_explode(state.relays.iter(), "client")),
+                        BTreeSet::default(),
+                        BTreeSet::from_iter(map_explode(state.relays.iter(), "client")),
                         ref_state.now,
                     );
                     c.sut
@@ -279,7 +273,7 @@ impl StateMachineTest for TunnelTest {
                 let ipv4 = state.client.inner().sut.tunnel_ip4().unwrap();
                 let ipv6 = state.client.inner().sut.tunnel_ip6().unwrap();
                 let upstream_dns = ref_state.client.inner().upstream_dns_resolvers.clone();
-                let relays = HashSet::from_iter(map_explode(state.relays.iter(), "client"));
+                let relays = BTreeSet::from_iter(map_explode(state.relays.iter(), "client"));
                 let all_resources = ref_state.client.inner().all_resources();
 
                 // Simulate receiving `init`.
@@ -290,7 +284,7 @@ impl StateMachineTest for TunnelTest {
                         upstream_dns,
                     });
                     c.sut
-                        .update_relays(HashSet::default(), relays, ref_state.now);
+                        .update_relays(BTreeSet::default(), relays, ref_state.now);
                     c.sut.set_resources(all_resources);
                 });
             }
@@ -434,7 +428,6 @@ impl TunnelTest {
             if self.handle_timeout(self.now, self.utc_now) {
                 continue;
             }
-
             break;
         }
     }

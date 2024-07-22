@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::BTreeSet,
     future::poll_fn,
     net::{Ipv4Addr, SocketAddrV4},
     str::FromStr,
@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
                 "firezone".to_owned(),
             )
         });
-    let relays = HashSet::from_iter(relay_stun_only.into_iter().chain(relay_valid_turn));
+    let relays = BTreeSet::from_iter(relay_stun_only.into_iter().chain(relay_valid_turn));
 
     tracing::info!(%listen_addr);
 
@@ -89,7 +89,7 @@ async fn main() -> Result<()> {
     match role {
         Role::Dialer => {
             let mut pool = ClientNode::<u64, u64>::new(private_key);
-            pool.update_relays(HashSet::new(), &relays, Instant::now());
+            pool.update_relays(BTreeSet::new(), &relays, Instant::now());
 
             let offer = pool.new_connection(1, Instant::now(), Instant::now());
 
@@ -169,7 +169,7 @@ async fn main() -> Result<()> {
         }
         Role::Listener => {
             let mut pool = ServerNode::<u64, u64>::new(private_key);
-            pool.update_relays(HashSet::new(), &relays, Instant::now());
+            pool.update_relays(BTreeSet::new(), &relays, Instant::now());
 
             let offer = redis_connection
                 .blpop::<_, (String, wire::Offer)>("offers", 10.0)

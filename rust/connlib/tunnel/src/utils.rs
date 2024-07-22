@@ -3,9 +3,9 @@ use connlib_shared::messages::{Relay, RelayId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use snownet::RelaySocket;
-use std::{collections::HashSet, net::SocketAddr, time::Instant};
+use std::{collections::BTreeSet, net::SocketAddr, time::Instant};
 
-pub fn turn(relays: &[Relay]) -> HashSet<(RelayId, RelaySocket, String, String, String)> {
+pub fn turn(relays: &[Relay]) -> BTreeSet<(RelayId, RelaySocket, String, String, String)> {
     relays
         .iter()
         .filter_map(|r| {

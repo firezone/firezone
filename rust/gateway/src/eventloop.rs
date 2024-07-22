@@ -14,7 +14,7 @@ use firezone_tunnel::GatewayTunnel;
 use futures::channel::mpsc;
 use futures_bounded::Timeout;
 use phoenix_channel::PhoenixChannel;
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::convert::Infallible;
 use std::net::IpAddr;
 use std::task::{Context, Poll};
@@ -224,12 +224,12 @@ impl Eventloop {
                 ..
             } => self
                 .tunnel
-                .update_relays(HashSet::from_iter(disconnected_ids), connected),
+                .update_relays(BTreeSet::from_iter(disconnected_ids), connected),
             phoenix_channel::Event::InboundMessage {
                 msg: IngressMessages::Init(init),
                 ..
             } => {
-                self.tunnel.update_relays(HashSet::default(), init.relays);
+                self.tunnel.update_relays(BTreeSet::default(), init.relays);
 
                 // FIXME(tech-debt): Currently, the `Tunnel` creates the TUN device as part of `set_interface`.
                 // For the gateway, it doesn't do anything else so in an ideal world, we would cause the side-effect out here and just pass an opaque `Device` to the `Tunnel`.

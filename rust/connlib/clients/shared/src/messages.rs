@@ -4,7 +4,10 @@ use connlib_shared::messages::{
     ResourceId, ReuseConnection,
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, net::IpAddr};
+use std::{
+    collections::{BTreeSet, HashSet},
+    net::IpAddr,
+};
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
 pub struct InitClient {
@@ -61,7 +64,7 @@ pub struct GatewaysIceCandidates {
     /// The list of gateway IDs these candidates will be broadcast to.
     pub gateway_ids: Vec<GatewayId>,
     /// Actual RTC ice candidates
-    pub candidates: HashSet<String>,
+    pub candidates: BTreeSet<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -117,7 +120,7 @@ mod test {
             "client",
             EgressMessages::BroadcastIceCandidates(GatewaysIceCandidates {
                 gateway_ids: vec!["b3d34a15-55ab-40df-994b-a838e75d65d7".parse().unwrap()],
-                candidates: HashSet::from([
+                candidates: BTreeSet::from([
                     "candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"
                         .to_owned(),
                 ]),

@@ -4,7 +4,7 @@ use ip_packet::*;
 use rand::rngs::OsRng;
 use snownet::{Answer, Client, ClientNode, Event, Node, RelaySocket, Server, ServerNode, Transmit};
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{BTreeSet, HashSet, VecDeque},
     iter,
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
     time::{Duration, Instant, SystemTime},
@@ -30,13 +30,13 @@ fn migrate_connection_to_new_relay() {
     )];
     let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80").with_relays(
         "alice",
-        HashSet::default(),
+        BTreeSet::default(),
         &mut relays,
         clock.now,
     );
     let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(
         "bob",
-        HashSet::default(),
+        BTreeSet::default(),
         &mut relays,
         clock.now,
     );
@@ -62,8 +62,8 @@ fn migrate_connection_to_new_relay() {
             debug_span!("Robert"),
         ),
     )];
-    alice = alice.with_relays("alice", HashSet::from([1]), &mut relays, clock.now);
-    bob = bob.with_relays("bob", HashSet::from([1]), &mut relays, clock.now);
+    alice = alice.with_relays("alice", BTreeSet::from([1]), &mut relays, clock.now);
+    bob = bob.with_relays("bob", BTreeSet::from([1]), &mut relays, clock.now);
 
     // Make some progress. (the fact that we only need 22 clock ticks means we are no relying on timeouts here (22 * 100ms = 2.2s))
     for _ in 0..22 {
@@ -95,13 +95,13 @@ fn idle_connection_is_closed_after_5_minutes() {
     )];
     let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80").with_relays(
         "alice",
-        HashSet::default(),
+        BTreeSet::default(),
         &mut relays,
         clock.now,
     );
     let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(
         "bob",
-        HashSet::default(),
+        BTreeSet::default(),
         &mut relays,
         clock.now,
     );
@@ -580,7 +580,7 @@ impl<R> TestNode<R> {
     fn with_relays(
         mut self,
         username: &str,
-        to_remove: HashSet<u64>,
+        to_remove: BTreeSet<u64>,
         relays: &mut [(u64, TestRelay)],
         now: Instant,
     ) -> Self {
@@ -597,7 +597,7 @@ impl<R> TestNode<R> {
                     "firezone".to_owned(),
                 )
             })
-            .collect::<HashSet<_>>();
+            .collect::<BTreeSet<_>>();
 
         self.span
             .in_scope(|| self.node.update_relays(to_remove, &turn_servers, now));
