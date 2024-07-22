@@ -459,17 +459,18 @@ impl TunnelTest {
     }
 
     fn handle_timeout(&mut self) {
-        let now = self.flux_capacitor.now();
-        let utc = self.flux_capacitor.utc_now();
-
-        self.client.exec_mut(|c| c.sut.handle_timeout(now));
+        self.client
+            .exec_mut(|c| c.sut.handle_timeout(self.flux_capacitor.now()));
 
         for (_, gateway) in self.gateways.iter_mut() {
-            gateway.exec_mut(|g| g.sut.handle_timeout(now, utc));
+            gateway.exec_mut(|g| {
+                g.sut
+                    .handle_timeout(self.flux_capacitor.now(), self.flux_capacitor.now())
+            });
         }
 
         for (_, relay) in self.relays.iter_mut() {
-            relay.exec_mut(|r| r.sut.handle_timeout(now))
+            relay.exec_mut(|r| r.sut.handle_timeout(self.flux_capacitor.now()))
         }
     }
 
