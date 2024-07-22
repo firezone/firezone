@@ -45,8 +45,8 @@ proptest-state-machine = "0.3"
 rand = "0.8"
 serde_json = "1.0"
 test-strategy = "0.3.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2.3"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [target.'cfg(target_os = "windows")'.dev-dependencies]
 firezone-bin-shared = { workspace = true } # Required for benchmark.
