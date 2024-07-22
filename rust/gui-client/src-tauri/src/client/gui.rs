@@ -769,7 +769,7 @@ async fn run_controller(
     let mut controller = Controller {
         advanced_settings,
         app: app.clone(),
-        auth: client::auth::Auth::new(),
+        auth: client::auth::Auth::new()?,
         ctlr_tx,
         ipc_client,
         log_filter_reloader,
