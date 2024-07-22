@@ -79,4 +79,14 @@ module.exports = [
       "https://www.github.com/firezone/firezone/releases/download/gateway-1.1.2/firezone-gateway_1.1.2_armv7",
     permanent: false,
   },
+  /*
+   * Redirects for old KB URLs
+   *
+   */
+  {
+    // TODO: Remove on or after 2024-10-21 after crawlers have re-indexed
+    source: "/kb/user-guides/:path",
+    destination: "/kb/client-apps/:path",
+    permanent: true,
+  },
 ];
