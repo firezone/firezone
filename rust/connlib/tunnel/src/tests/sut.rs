@@ -144,6 +144,7 @@ impl StateMachineTest for TunnelTest {
         transition: <Self::Reference as ReferenceStateMachine>::Transition,
     ) -> Self::SystemUnderTest {
         let mut buffered_transmits = BufferedTransmits::default();
+        let now = state.flux_capacitor.now();
 
         // Act: Apply the transition
         match transition {
@@ -185,11 +186,9 @@ impl StateMachineTest for TunnelTest {
             } => {
                 let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
 
-                let transmit = state
-                    .client
-                    .exec_mut(|sim| sim.encapsulate(packet, state.flux_capacitor.now()));
+                let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
 
-                buffered_transmits.push(transmit, &state.client, state.flux_capacitor.now());
+                buffered_transmits.push(transmit, &state.client, now);
             }
             Transition::SendICMPPacketToDnsResource {
                 src,
@@ -214,14 +213,11 @@ impl StateMachineTest for TunnelTest {
 
                 let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
 
-                let transmit = state.client.exec_mut(|sim| {
-                    Some(
-                        sim.encapsulate(packet, state.flux_capacitor.now())?
-                            .into_owned(),
-                    )
-                });
+                let transmit = state
+                    .client
+                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?.into_owned()));
 
-                buffered_transmits.push(transmit, &state.client, state.flux_capacitor.now());
+                buffered_transmits.push(transmit, &state.client, now);
             }
             Transition::SendDnsQuery {
                 domain,
@@ -230,16 +226,10 @@ impl StateMachineTest for TunnelTest {
                 dns_server,
             } => {
                 let transmit = state.client.exec_mut(|sim| {
-                    sim.send_dns_query_for(
-                        domain,
-                        r_type,
-                        query_id,
-                        dns_server,
-                        state.flux_capacitor.now(),
-                    )
+                    sim.send_dns_query_for(domain, r_type, query_id, dns_server, now)
                 });
 
-                buffered_transmits.push(transmit, &state.client, state.flux_capacitor.now());
+                buffered_transmits.push(transmit, &state.client, now);
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 state
@@ -269,7 +259,7 @@ impl StateMachineTest for TunnelTest {
                     c.sut.update_relays(
                         BTreeSet::default(),
                         BTreeSet::from_iter(map_explode(state.relays.iter(), "client")),
-                        state.flux_capacitor.now(),
+                        now,
                     );
                     c.sut
                         .set_resources(ref_state.client.inner().all_resources());
@@ -289,8 +279,7 @@ impl StateMachineTest for TunnelTest {
                         ipv6,
                         upstream_dns,
                     });
-                    c.sut
-                        .update_relays(BTreeSet::default(), relays, state.flux_capacitor.now());
+                    c.sut.update_relays(BTreeSet::default(), relays, now);
                     c.sut.set_resources(all_resources);
                 });
             }
@@ -355,6 +344,7 @@ impl TunnelTest {
 
         'outer: loop {
             self.handle_timeout();
+            let now = self.flux_capacitor.now();
 
             for (_, relay) in self.relays.iter_mut() {
                 let Some(message) = relay.exec_mut(|r| r.sut.next_command()) else {
@@ -375,7 +365,7 @@ impl TunnelTest {
                                 payload: payload.into(),
                             },
                             relay,
-                            self.flux_capacitor.now(),
+                            now,
                         );
                     }
 
@@ -397,7 +387,7 @@ impl TunnelTest {
                     continue;
                 };
 
-                buffered_transmits.push(transmit, gateway, self.flux_capacitor.now());
+                buffered_transmits.push(transmit, gateway, now);
                 continue 'outer;
             }
 
@@ -406,12 +396,12 @@ impl TunnelTest {
                     continue;
                 };
 
-                on_gateway_event(*id, event, &mut self.client, self.flux_capacitor.now());
+                on_gateway_event(*id, event, &mut self.client, now);
                 continue 'outer;
             }
 
             if let Some(transmit) = self.client.exec_mut(|sim| sim.sut.poll_transmit()) {
-                buffered_transmits.push(transmit, &self.client, self.flux_capacitor.now());
+                buffered_transmits.push(transmit, &self.client, now);
                 continue;
             }
             if let Some(event) = self.client.exec_mut(|c| c.sut.poll_event()) {
@@ -433,7 +423,7 @@ impl TunnelTest {
                 }
             });
 
-            if let Some(transmit) = buffered_transmits.pop(self.flux_capacitor.now()) {
+            if let Some(transmit) = buffered_transmits.pop(now) {
                 self.dispatch_transmit(transmit, buffered_transmits, &ref_state.global_dns_records);
                 continue;
             }
@@ -509,6 +499,7 @@ impl TunnelTest {
             .expect("`src` should always be set in these tests");
         let dst = transmit.dst;
         let payload = &transmit.payload;
+        let now = self.flux_capacitor.now();
 
         let Some(host) = self.network.host_by_ip(dst.ip()) else {
             panic!("Unhandled packet: {src} -> {dst}")
@@ -525,7 +516,7 @@ impl TunnelTest {
                 }
 
                 self.client
-                    .exec_mut(|c| c.handle_packet(payload, src, dst, self.flux_capacitor.now()));
+                    .exec_mut(|c| c.handle_packet(payload, src, dst, now));
             }
             HostId::Gateway(id) => {
                 if self.drop_direct_client_traffic && self.client.is_sender(src.ip()) {
@@ -536,30 +527,23 @@ impl TunnelTest {
 
                 let gateway = self.gateways.get_mut(&id).expect("unknown gateway");
 
-                let Some(transmit) = gateway.exec_mut(|g| {
-                    g.handle_packet(
-                        global_dns_records,
-                        payload,
-                        src,
-                        dst,
-                        self.flux_capacitor.now(),
-                    )
-                }) else {
-                    return;
-                };
-
-                buffered_transmits.push(transmit, gateway, self.flux_capacitor.now());
-            }
-            HostId::Relay(id) => {
-                let relay = self.relays.get_mut(&id).expect("unknown relay");
-
-                let Some(transmit) = relay
-                    .exec_mut(|r| r.handle_packet(payload, src, dst, self.flux_capacitor.now()))
+                let Some(transmit) = gateway
+                    .exec_mut(|g| g.handle_packet(global_dns_records, payload, src, dst, now))
                 else {
                     return;
                 };
 
-                buffered_transmits.push(transmit, relay, self.flux_capacitor.now());
+                buffered_transmits.push(transmit, gateway, now);
+            }
+            HostId::Relay(id) => {
+                let relay = self.relays.get_mut(&id).expect("unknown relay");
+
+                let Some(transmit) = relay.exec_mut(|r| r.handle_packet(payload, src, dst, now))
+                else {
+                    return;
+                };
+
+                buffered_transmits.push(transmit, relay, now);
             }
             HostId::Stale => {
                 tracing::debug!(%dst, "Dropping packet because host roamed away or is offline");
@@ -574,6 +558,8 @@ impl TunnelTest {
         portal: &StubPortal,
         global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
     ) {
+        let now = self.flux_capacitor.now();
+
         match event {
             ClientEvent::AddedIceCandidates {
                 candidates,
@@ -583,8 +569,7 @@ impl TunnelTest {
 
                 gateway.exec_mut(|g| {
                     for candidate in candidates {
-                        g.sut
-                            .add_ice_candidate(src, candidate, self.flux_capacitor.now())
+                        g.sut.add_ice_candidate(src, candidate, now)
                     }
                 })
             }
@@ -664,7 +649,7 @@ impl TunnelTest {
                                         .map(|r| (r.name, r.proxy_ips)),
                                     None, // TODO: How to generate expiry?
                                     resource,
-                                    self.flux_capacitor.now(),
+                                    now,
                                 )
                             })
                             .unwrap();
@@ -680,7 +665,7 @@ impl TunnelTest {
                                     },
                                     resource_id,
                                     gateway.inner().sut.public_key(),
-                                    self.flux_capacitor.now(),
+                                    now,
                                 )
                             })
                             .unwrap();
@@ -698,7 +683,7 @@ impl TunnelTest {
                                     self.client.inner().id,
                                     None,
                                     reuse_connection.payload.map(|r| (r.name, r.proxy_ips)),
-                                    self.flux_capacitor.now(),
+                                    now,
                                 )
                             })
                             .unwrap();
@@ -734,7 +719,7 @@ impl TunnelTest {
                                 self.client.inner().id,
                                 None,
                                 reuse_connection.payload.map(|r| (r.name, r.proxy_ips)),
-                                self.flux_capacitor.now(),
+                                now,
                             )
                         })
                         .unwrap();
