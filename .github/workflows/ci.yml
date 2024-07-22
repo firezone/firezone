@@ -318,7 +318,7 @@ jobs:
             ]);
       - name: Report results to bencher
         run: |
-          jq -s 'reduce .[] as $item ({}; . * $item)' *.bmf.json > bmf.json
+          jq -s 'reduce .[] as $item ({}; . * $item)' ./${{ github.sha }}/*.bmf.json > bmf.json
 
           bencher run --file bmf.json --adapter json --github-actions ${{ secrets.GITHUB_TOKEN }}
         env:
