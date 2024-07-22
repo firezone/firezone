@@ -40,7 +40,7 @@ Best performed on a clean VM
 1. Sign out of Firezone without quitting
 1. Check the IP again, expect your own IP (Checks for regressions in https://github.com/firezone/firezone/pull/5828)
 1. Export the logs
-1. Expect the zip file to start with "firezone*logs*"
+1. Expect the zip file to start with `firezone_logs_`
 1. Expect `zipinfo` to show a single directory in the root of the zip, to prevent zip bombing
 1. Expect two subdirectories in the zip, "connlib", and "app", with 3 and 2 files respectively, totalling 5 files
 
