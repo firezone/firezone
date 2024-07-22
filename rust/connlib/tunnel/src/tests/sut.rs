@@ -15,14 +15,12 @@ use connlib_shared::{
     messages::{ClientId, GatewayId, Interface, RelayId},
     DomainName,
 };
-use firezone_relay::IpStack;
 use hickory_proto::{
     op::Query,
     rr::{RData, Record, RecordType},
 };
 use hickory_resolver::lookup::Lookup;
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
-use rand::SeedableRng as _;
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -86,20 +84,10 @@ impl StateMachineTest for TunnelTest {
         let relays = ref_state
             .relays
             .iter()
-            .map(|(id, relay)| {
-                let relay = relay.map(
-                    |seed, ip4, ip6| {
-                        SimRelay::new(firezone_relay::Server::new(
-                            IpStack::from((ip4, ip6)),
-                            rand::rngs::StdRng::seed_from_u64(seed),
-                            3478,
-                            49152..=65535,
-                        ))
-                    },
-                    debug_span!("relay", rid = %id),
-                );
+            .map(|(rid, relay)| {
+                let relay = relay.map(SimRelay::new, debug_span!("relay", %rid));
 
-                (*id, relay)
+                (*rid, relay)
             })
             .collect::<BTreeMap<_, _>>();
 
