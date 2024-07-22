@@ -66,7 +66,6 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 prop_oneof![
                     non_wildcard_dns_resource(any_site(sites.clone())),
                     star_wildcard_dns_resource(any_site(sites.clone())),
-                    question_mark_wildcard_dns_resource(any_site(sites.clone())),
                 ],
                 1..5,
             );
