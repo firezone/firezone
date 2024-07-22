@@ -2068,6 +2068,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "tracing-appender",
  "tracing-subscriber",
  "uuid",
  "windows 0.57.0",

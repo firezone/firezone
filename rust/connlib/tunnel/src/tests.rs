@@ -5,6 +5,7 @@ mod assertions;
 mod clock;
 mod composite_strategy;
 mod reference;
+mod run_count_appender;
 mod sim_client;
 mod sim_gateway;
 mod sim_net;

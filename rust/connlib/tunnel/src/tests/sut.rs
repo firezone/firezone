@@ -66,6 +66,7 @@ impl StateMachineTest for TunnelTest {
 
         let logger = tracing_subscriber::fmt()
             .with_test_writer()
+            // .with_writer(crate::tests::run_count_appender::appender()) // Useful for diffing logs between runs.
             .with_timer(clock.clone())
             .with_env_filter(EnvFilter::from_default_env())
             .finish()
@@ -341,6 +342,7 @@ impl TunnelTest {
     fn advance(&mut self, ref_state: &ReferenceState, buffered_transmits: &mut BufferedTransmits) {
         'outer: loop {
             self.handle_timeout();
+
             if let Some(transmit) = buffered_transmits.pop(self.clock.now()) {
                 self.dispatch_transmit(transmit, buffered_transmits, &ref_state.global_dns_records);
                 continue;
