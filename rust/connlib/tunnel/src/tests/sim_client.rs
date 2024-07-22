@@ -1,7 +1,7 @@
 use super::{
     reference::{private_key, PrivateKey, ResourceDst},
     sim_net::{any_ip_stack, any_port, host, Host},
-    strategies::{system_dns_servers, upstream_dns_servers},
+    strategies::{latency, system_dns_servers, upstream_dns_servers},
     sut::domain_to_hickory_name,
     IcmpIdentifier, IcmpSeq, QueryId,
 };
@@ -593,6 +593,7 @@ pub(crate) fn ref_client_host(
         any_ip_stack(),
         any_port(),
         ref_client(tunnel_ip4s, tunnel_ip6s),
+        latency(),
     )
     .prop_filter("at least one DNS server needs to be reachable", |host| {
         // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!

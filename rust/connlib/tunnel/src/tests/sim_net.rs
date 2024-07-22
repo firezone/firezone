@@ -11,6 +11,7 @@ use std::{
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     num::NonZeroU16,
+    time::Duration,
 };
 use tracing::Span;
 
@@ -29,12 +30,15 @@ pub(crate) struct Host<T> {
     default_port: u16,
     allocated_ports: HashSet<(u16, AddressFamily)>,
 
+    // The latency of incoming and outgoing packets.
+    latency: Duration,
+
     #[derivative(Debug = "ignore")]
     span: Span,
 }
 
 impl<T> Host<T> {
-    pub(crate) fn new(inner: T) -> Self {
+    pub(crate) fn new(inner: T, latency: Duration) -> Self {
         Self {
             inner,
             ip4: None,
@@ -43,6 +47,7 @@ impl<T> Host<T> {
             default_port: 0,
             allocated_ports: HashSet::default(),
             old_ports: HashSet::default(),
+            latency,
         }
     }
 
@@ -124,6 +129,7 @@ where
             default_port: self.default_port,
             allocated_ports: self.allocated_ports.clone(),
             old_ports: self.old_ports.clone(),
+            latency: self.latency,
         }
     }
 }
@@ -241,12 +247,13 @@ pub(crate) fn host<T>(
     socket_ips: impl Strategy<Value = IpStack>,
     default_port: impl Strategy<Value = u16>,
     state: impl Strategy<Value = T>,
+    latency: impl Strategy<Value = Duration>,
 ) -> impl Strategy<Value = Host<T>>
 where
     T: fmt::Debug,
 {
-    (state, socket_ips, default_port).prop_map(move |(state, ip_stack, port)| {
-        let mut host = Host::new(state);
+    (state, socket_ips, default_port, latency).prop_map(move |(state, ip_stack, port, latency)| {
+        let mut host = Host::new(state, latency);
         host.update_interface(ip_stack.as_v4().copied(), ip_stack.as_v6().copied(), port);
 
         host
