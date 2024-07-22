@@ -13,6 +13,13 @@ defmodule Domain.Actors.Authorizer do
     ]
   end
 
+  def list_permissions_for_role(:api_client) do
+    [
+      manage_actors_permission(),
+      edit_own_profile_permission()
+    ]
+  end
+
   def list_permissions_for_role(:account_user) do
     [
       edit_own_profile_permission()

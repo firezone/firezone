@@ -18,8 +18,7 @@ defmodule Domain.Resources.Resource.Changeset do
       with: &Connection.Changeset.changeset(account.id, &1, &2, subject),
       required: true
     )
-    |> put_change(:created_by, :identity)
-    |> put_change(:created_by_identity_id, subject.identity.id)
+    |> put_created_by(subject)
   end
 
   def create(%Accounts.Account{} = account, attrs) do

@@ -23,6 +23,12 @@ variable "compute_instance_availability_zones" {
   description = "List of availability zone for the VMs. It must be in the same region as `var.compute_instance_region`."
 }
 
+variable "compute_boot_disk_type" {
+  type        = string
+  default     = "pd-ssd"
+  description = "Type of the boot disk."
+}
+
 ################################################################################
 ## VPC
 ################################################################################

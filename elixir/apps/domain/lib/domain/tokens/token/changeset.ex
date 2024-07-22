@@ -46,8 +46,7 @@ defmodule Domain.Tokens.Token.Changeset do
       :service_account_client
     ])
     |> changeset()
-    |> put_change(:created_by, :identity)
-    |> put_change(:created_by_identity_id, subject.identity.id)
+    |> put_created_by(subject)
   end
 
   defp changeset(changeset) do
