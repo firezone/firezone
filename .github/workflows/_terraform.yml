@@ -68,9 +68,9 @@ jobs:
       - name: Update PR
         uses: actions/github-script@v7
         id: plan-comment
-        if: ${{ github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request' && steps.changes.outputs.terraform == 'true' }}
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN && steps.changes.outputs.terraform == 'true' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             // 1. Retrieve existing bot comments for the PR
             const { data: comments } = await github.rest.issues.listComments({
