@@ -1,6 +1,6 @@
 //! Client related messages that are needed within connlib
 
-use std::{collections::HashSet, str::FromStr};
+use std::{collections::HashSet, fmt, str::FromStr};
 
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
@@ -98,7 +98,7 @@ impl PartialEq for Site {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SiteId(Uuid);
 
 impl FromStr for SiteId {
@@ -113,6 +113,22 @@ impl SiteId {
     #[cfg(feature = "proptest")]
     pub fn from_u128(v: u128) -> Self {
         Self(Uuid::from_u128(v))
+    }
+}
+
+impl fmt::Display for SiteId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if cfg!(feature = "proptest") {
+            write!(f, "{:X}", self.0.as_u128())
+        } else {
+            write!(f, "{}", self.0)
+        }
+    }
+}
+
+impl fmt::Debug for SiteId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
     }
 }
 
