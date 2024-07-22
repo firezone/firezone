@@ -62,6 +62,8 @@ impl StateMachineTest for TunnelTest {
             .with_env_filter(EnvFilter::from_default_env())
             .finish()
             .set_default();
+        let now = Instant::now();
+        let utc_now = Utc::now();
 
         // Construct client, gateway and relay from the initial state.
         let mut client = ref_state
@@ -96,7 +98,7 @@ impl StateMachineTest for TunnelTest {
             c.sut.update_relays(
                 BTreeSet::default(),
                 BTreeSet::from_iter(map_explode(relays.iter(), "client")),
-                ref_state.now,
+                now,
             )
         });
         for (id, gateway) in &mut gateways {
@@ -104,14 +106,14 @@ impl StateMachineTest for TunnelTest {
                 g.sut.update_relays(
                     BTreeSet::default(),
                     BTreeSet::from_iter(map_explode(relays.iter(), &format!("gateway_{id}"))),
-                    ref_state.now,
+                    now,
                 )
             });
         }
 
         let mut this = Self {
-            now: ref_state.now,
-            utc_now: ref_state.utc_now,
+            now,
+            utc_now,
             network: ref_state.network.clone(),
             drop_direct_client_traffic: ref_state.drop_direct_client_traffic,
             client,
@@ -251,7 +253,7 @@ impl StateMachineTest for TunnelTest {
                     c.sut.update_relays(
                         BTreeSet::default(),
                         BTreeSet::from_iter(map_explode(state.relays.iter(), "client")),
-                        ref_state.now,
+                        state.now,
                     );
                     c.sut
                         .set_resources(ref_state.client.inner().all_resources());
@@ -271,8 +273,7 @@ impl StateMachineTest for TunnelTest {
                         ipv6,
                         upstream_dns,
                     });
-                    c.sut
-                        .update_relays(BTreeSet::default(), relays, ref_state.now);
+                    c.sut.update_relays(BTreeSet::default(), relays, state.now);
                     c.sut.set_resources(all_resources);
                 });
             }
