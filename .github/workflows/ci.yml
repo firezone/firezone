@@ -242,19 +242,17 @@ jobs:
         timeout-minutes: 5
         env:
           TEST_NAME: ${{ matrix.test_name }}
-          BENCHER_PROJECT: firezone-1l75jv1z
-          BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
-          BENCHER_BRANCH: ${{ github.head_ref || github.ref_name }}
-          BENCHER_BRANCH_START: ${{ github.base_ref }}
-          BENCHER_TESTBED: github-actions
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./scripts/tests/perf/${{ matrix.test_name }}.sh
+        run: |
+          ./scripts/tests/perf/${{ matrix.test_name }}.sh
+          jq '{ "${{ matrix.test_name }}": { "throughput": { "value": .end.sum_received.bits_per_second } } }' ./${{ matrix.test_name }}.json > ./${{ matrix.test_name }}.bmf.json
       - name: 'Save performance test results: ${{ matrix.test_name }}'
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
           name: ${{ matrix.test_name }}-${{ matrix.version.sha }}-iperf3results
-          path: ./${{ matrix.test_name }}.json
+          path: |
+            ./${{ matrix.test_name }}.json
+            ./${{ matrix.test_name }}.bmf.json
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
@@ -318,3 +316,14 @@ jobs:
               'relayed-udp-client2server',
               'relayed-udp-server2client'
             ]);
+      - name: Report results to bencher
+        run: |
+          jq -s 'reduce .[] as $item ({}; . * $item)' *.bmf.json > bmf.json
+
+          bencher run --file bmf.json --adapter json --github-actions ${{ secrets.GITHUB_TOKEN }}
+        env:
+          BENCHER_PROJECT: firezone-1l75jv1z
+          BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+          BENCHER_BRANCH: ${{ github.head_ref || github.ref_name }}
+          BENCHER_BRANCH_START: ${{ github.base_ref }}
+          BENCHER_TESTBED: github-actions
