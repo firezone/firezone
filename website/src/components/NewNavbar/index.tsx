@@ -15,10 +15,11 @@ import type { CustomFlowbiteTheme } from "flowbite-react";
 import { usePathname } from "next/navigation";
 import { HiBars3 } from "react-icons/hi2";
 import Button from "@/components/Button";
+import { HiArrowLongRight } from "react-icons/hi2";
 
 const navbarTheme: CustomFlowbiteTheme["navbar"] = {
   root: {
-    base: "fixed t-0 font-manrope flex justify-between z-50 w-full !p-5 md:p-8 bg-transparent transition-shadow",
+    base: "fixed t-0 text-neutral-300 text-sm font-manrope z-50 w-full !p-5 md:p-8 bg-transparent transition-shadow",
     rounded: {
       on: "rounded",
       off: "",
@@ -50,7 +51,7 @@ const navbarTheme: CustomFlowbiteTheme["navbar"] = {
     base: "block py-2 pl-3 pr-4 md:p-0 border-b border-neutral-200 md:border-transparent",
     active: {
       on: "bg-neutral-200 rounded text-white md:bg-transparent text-primary-450 font-semibold",
-      off: "text-neutral-700 hover:text-primary-450 hover:bg-neutral-100 transition transform duration-50 md:hover:bg-transparent md:hover:border-b-2 md:hover:border-primary-450",
+      off: "text-neutral-300 hover:text-primary-450 hover:bg-neutral-100 transition transform duration-50 md:hover:bg-transparent md:hover:border-b-2 md:hover:border-primary-450",
     },
     disabled: {
       on: "text-neutral-400 hover:cursor-not-allowed",
@@ -58,7 +59,7 @@ const navbarTheme: CustomFlowbiteTheme["navbar"] = {
     },
   },
   toggle: {
-    base: "inline-flex items-center rounded p-2 text-neutral-700 hover:bg-neutral-100 md:hidden",
+    base: "inline-flex items-center rounded p-2 text-neutral-300 hover:bg-neutral-100 md:hidden",
     icon: "h-6 w-6 shrink-0",
   },
 };
@@ -100,7 +101,7 @@ function DropdownItem({
 
 export default function NewNavbar() {
   return (
-    <Navbar className="font-manrope flex justify-between fixed t-0 z-50 w-full !px-5 !py-5 bg-transparent ">
+    <Navbar theme={navbarTheme}>
       <NavbarBrand as={Link} href="/">
         <Image
           width={150}
@@ -110,10 +111,10 @@ export default function NewNavbar() {
           className="flex w-32 "
         />
       </NavbarBrand>
-      <div className="flex md:order-2">
+      <div className="flex gap-2 md:order-2">
         <ActionLink
           href="https://app.firezone.dev/"
-          className="py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-300 md:border-transparent hover:text-primary-450 duration-50 transition transform"
+          className="py-2 pl-3 pr-4 text-sm md:p-0 font-medium text-neutral-300 md:border-transparent hover:text-primary-450 duration-50 transition transform"
           size="w-5 h-5 ml-1"
         >
           Sign in
@@ -122,6 +123,11 @@ export default function NewNavbar() {
         <div className="hidden md:flex ">
           <Button type="cta" href="/contact/sales">
             Book a demo
+            <HiArrowLongRight
+              className={
+                "group-hover:translate-x-1 group-hover:scale-110 duration-100 transform transition "
+              }
+            />
           </Button>
         </div>
       </div>

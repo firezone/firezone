@@ -18,7 +18,7 @@ export default function Hero() {
           workforce.
         </p>
         <span className="flex text-white font-manrope space-x-4 mt-8">
-          <button className=" flex px-8 py-3.5 font-normal items-center gap-1 rounded-lg">
+          <button className=" flex px-8 py-3.5 text-sm font-normal items-center gap-1 rounded-lg">
             Get started for free
             <HiArrowLongRight
               className={
@@ -26,14 +26,14 @@ export default function Hero() {
               }
             />
           </button>
-          <button className="font-bold flex px-8 py-3.5 items-center gap-1 bg-primary-450 rounded-lg">
+          <Button type="cta" href="/contact/sales">
             Book a demo
             <HiArrowLongRight
               className={
                 "group-hover:translate-x-1 group-hover:scale-110 duration-100 transform transition "
               }
             />
-          </button>
+          </Button>
         </span>
       </div>
     </section>
