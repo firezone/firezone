@@ -201,7 +201,6 @@ jobs:
       - name: Seed database
         run:
           docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
-      - uses: bencherdev/bencher@main
       - name: Start docker compose in the background
         run: |
           # We need to increase the log level to make sure that they don't hold off storm of packets
@@ -262,6 +261,7 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
+      - uses: bencherdev/bencher@main
       - name: Download performance test results
         uses: actions/download-artifact@v4
         with:
