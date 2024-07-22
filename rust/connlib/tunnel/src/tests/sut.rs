@@ -343,52 +343,6 @@ impl TunnelTest {
         'outer: loop {
             self.handle_timeout();
 
-            if let Some(transmit) = buffered_transmits.pop(self.clock.now()) {
-                self.dispatch_transmit(transmit, buffered_transmits, &ref_state.global_dns_records);
-                continue;
-            }
-
-            if let Some(transmit) = self.client.exec_mut(|sim| sim.sut.poll_transmit()) {
-                buffered_transmits.push(transmit, &self.client, self.clock.now());
-                continue;
-            }
-            if let Some(event) = self.client.exec_mut(|c| c.sut.poll_event()) {
-                self.on_client_event(
-                    self.client.inner().id,
-                    event,
-                    &ref_state.portal,
-                    &ref_state.global_dns_records,
-                );
-                continue;
-            }
-            if let Some(query) = self.client.exec_mut(|client| client.sut.poll_dns_queries()) {
-                self.on_forwarded_dns_query(query, ref_state);
-                continue;
-            }
-            self.client.exec_mut(|sim| {
-                while let Some(packet) = sim.sut.poll_packets() {
-                    sim.on_received_packet(packet)
-                }
-            });
-
-            for (_, gateway) in self.gateways.iter_mut() {
-                let Some(transmit) = gateway.exec_mut(|g| g.sut.poll_transmit()) else {
-                    continue;
-                };
-
-                buffered_transmits.push(transmit, gateway, self.clock.now());
-                continue 'outer;
-            }
-
-            for (id, gateway) in self.gateways.iter_mut() {
-                let Some(event) = gateway.exec_mut(|g| g.sut.poll_event()) else {
-                    continue;
-                };
-
-                on_gateway_event(*id, event, &mut self.client, self.clock.now());
-                continue 'outer;
-            }
-
             for (_, relay) in self.relays.iter_mut() {
                 let Some(message) = relay.exec_mut(|r| r.sut.next_command()) else {
                     continue;
@@ -423,6 +377,52 @@ impl TunnelTest {
                 }
 
                 continue 'outer;
+            }
+
+            for (_, gateway) in self.gateways.iter_mut() {
+                let Some(transmit) = gateway.exec_mut(|g| g.sut.poll_transmit()) else {
+                    continue;
+                };
+
+                buffered_transmits.push(transmit, gateway, self.clock.now());
+                continue 'outer;
+            }
+
+            for (id, gateway) in self.gateways.iter_mut() {
+                let Some(event) = gateway.exec_mut(|g| g.sut.poll_event()) else {
+                    continue;
+                };
+
+                on_gateway_event(*id, event, &mut self.client, self.clock.now());
+                continue 'outer;
+            }
+
+            if let Some(transmit) = self.client.exec_mut(|sim| sim.sut.poll_transmit()) {
+                buffered_transmits.push(transmit, &self.client, self.clock.now());
+                continue;
+            }
+            if let Some(event) = self.client.exec_mut(|c| c.sut.poll_event()) {
+                self.on_client_event(
+                    self.client.inner().id,
+                    event,
+                    &ref_state.portal,
+                    &ref_state.global_dns_records,
+                );
+                continue;
+            }
+            if let Some(query) = self.client.exec_mut(|client| client.sut.poll_dns_queries()) {
+                self.on_forwarded_dns_query(query, ref_state);
+                continue;
+            }
+            self.client.exec_mut(|sim| {
+                while let Some(packet) = sim.sut.poll_packets() {
+                    sim.on_received_packet(packet)
+                }
+            });
+
+            if let Some(transmit) = buffered_transmits.pop(self.clock.now()) {
+                self.dispatch_transmit(transmit, buffered_transmits, &ref_state.global_dns_records);
+                continue;
             }
 
             self.clock.tick();
