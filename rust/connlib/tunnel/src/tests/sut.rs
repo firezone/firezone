@@ -6,7 +6,7 @@ use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
 use crate::dns::is_subdomain;
 use crate::tests::assertions::*;
-use crate::tests::clock::FluxCapacitor;
+use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::sim_relay::map_explode;
 use crate::tests::transition::Transition;
 use crate::utils::earliest;
