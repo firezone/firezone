@@ -4,6 +4,7 @@
 mod make_writer;
 mod tun;
 
+use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
     callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
@@ -39,7 +40,7 @@ mod ffi {
     extern "Rust" {
         type WrappedSession;
 
-        #[swift_bridge(associated_to = WrappedSession)]
+        #[swift_bridge(associated_to = WrappedSession, return_with = err_to_string)]
         fn connect(
             api_url: String,
             token: String,
@@ -176,8 +177,8 @@ impl WrappedSession {
         log_dir: String,
         log_filter: String,
         callback_handler: ffi::CallbackHandler,
-    ) -> Result<Self, String> {
-        let logger = init_logging(log_dir.into(), log_filter).map_err(|e| e.to_string())?;
+    ) -> Result<Self> {
+        let logger = init_logging(log_dir.into(), log_filter)?;
         let secret = SecretString::from(token);
 
         let (private_key, public_key) = keypair();
@@ -187,15 +188,13 @@ impl WrappedSession {
             device_id,
             device_name_override,
             public_key.to_bytes(),
-        )
-        .map_err(|e| e.to_string())?;
+        )?;
 
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
             .thread_name("connlib")
             .enable_all()
-            .build()
-            .map_err(|e| e.to_string())?;
+            .build()?;
         let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
         let args = ConnectArgs {
@@ -215,8 +214,7 @@ impl WrappedSession {
                 .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
                 .build(),
             Arc::new(socket_factory::tcp),
-        )
-        .map_err(|e| e.to_string())?;
+        )?;
         let session = Session::connect(args, portal, runtime.handle().clone());
         session.set_tun(Box::new(Tun::new().map_err(|e| e.to_string())?));
 
@@ -239,4 +237,8 @@ impl WrappedSession {
     fn disconnect(self) {
         self.inner.disconnect()
     }
+}
+
+fn err_to_string(result: Result<WrappedSession>) -> Result<WrappedSession, String> {
+    result.map_err(|e| format!("{e:#}"))
 }
