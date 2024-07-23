@@ -256,11 +256,6 @@ defmodule Web.Policies.Components do
           providers={@providers}
           disabled={@policy_conditions_enabled? == false}
         />
-        <.current_utc_datetime_condition_form
-          form={@form}
-          timezone={@timezone}
-          disabled={@policy_conditions_enabled? == false}
-        />
       </div>
     </fieldset>
     """
@@ -523,93 +518,94 @@ defmodule Web.Policies.Components do
     """
   end
 
-  defp current_utc_datetime_condition_form(assigns) do
-    assigns = assign_new(assigns, :days_of_week, fn -> @days_of_week end)
+  # TODO: Uncomment this once policy time conditions are finished
+  # defp current_utc_datetime_condition_form(assigns) do
+  #  assigns = assign_new(assigns, :days_of_week, fn -> @days_of_week end)
 
-    ~H"""
-    <fieldset class="mb-2">
-      <% condition_form = find_condition_form(@form[:conditions], :current_utc_datetime) %>
+  #  ~H"""
+  #  <fieldset class="mb-2">
+  #    <% condition_form = find_condition_form(@form[:conditions], :current_utc_datetime) %>
 
-      <.input
-        type="hidden"
-        field={condition_form[:property]}
-        name="policy[conditions][current_utc_datetime][property]"
-        id="policy_conditions_current_utc_datetime_property"
-        value="current_utc_datetime"
-      />
+  #    <.input
+  #      type="hidden"
+  #      field={condition_form[:property]}
+  #      name="policy[conditions][current_utc_datetime][property]"
+  #      id="policy_conditions_current_utc_datetime_property"
+  #      value="current_utc_datetime"
+  #    />
 
-      <.input
-        type="hidden"
-        name="policy[conditions][current_utc_datetime][operator]"
-        id="policy_conditions_current_utc_datetime_operator"
-        field={condition_form[:operator]}
-        value={:is_in_day_of_week_time_ranges}
-      />
+  #    <.input
+  #      type="hidden"
+  #      name="policy[conditions][current_utc_datetime][operator]"
+  #      id="policy_conditions_current_utc_datetime_operator"
+  #      field={condition_form[:operator]}
+  #      value={:is_in_day_of_week_time_ranges}
+  #    />
 
-      <div
-        class="hover:bg-neutral-100 cursor-pointer border border-neutral-200 shadow-b rounded-t px-4 py-2"
-        phx-click={
-          JS.toggle_class("hidden",
-            to: "#policy_conditions_current_utc_datetime_condition"
-          )
-          |> JS.toggle_class("bg-neutral-50")
-          |> JS.toggle_class("hero-chevron-down",
-            to: "#policy_conditions_current_utc_datetime_chevron"
-          )
-          |> JS.toggle_class("hero-chevron-up",
-            to: "#policy_conditions_current_utc_datetime_chevron"
-          )
-        }
-      >
-        <legend class="flex justify-between items-center text-neutral-700">
-          <span class="flex items-center">
-            <.icon name="hero-clock" class="w-5 h-5 mr-2" /> Current time
-          </span>
-          <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
-            <.icon
-              id="policy_conditions_current_utc_datetime_chevron"
-              name="hero-chevron-down"
-              class="w-5 h-5"
-            />
-          </span>
-        </legend>
-      </div>
+  #    <div
+  #      class="hover:bg-neutral-100 cursor-pointer border border-neutral-200 shadow-b rounded-t px-4 py-2"
+  #      phx-click={
+  #        JS.toggle_class("hidden",
+  #          to: "#policy_conditions_current_utc_datetime_condition"
+  #        )
+  #        |> JS.toggle_class("bg-neutral-50")
+  #        |> JS.toggle_class("hero-chevron-down",
+  #          to: "#policy_conditions_current_utc_datetime_chevron"
+  #        )
+  #        |> JS.toggle_class("hero-chevron-up",
+  #          to: "#policy_conditions_current_utc_datetime_chevron"
+  #        )
+  #      }
+  #    >
+  #      <legend class="flex justify-between items-center text-neutral-700">
+  #        <span class="flex items-center">
+  #          <.icon name="hero-clock" class="w-5 h-5 mr-2" /> Current time
+  #        </span>
+  #        <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
+  #          <.icon
+  #            id="policy_conditions_current_utc_datetime_chevron"
+  #            name="hero-chevron-down"
+  #            class="w-5 h-5"
+  #          />
+  #        </span>
+  #      </legend>
+  #    </div>
 
-      <div
-        id="policy_conditions_current_utc_datetime_condition"
-        class={[
-          "p-4 border-neutral-200 border-l border-r border-b rounded-b",
-          condition_values_empty?(condition_form) && "hidden"
-        ]}
-      >
-        <p class="text-sm text-neutral-500 mb-2">
-          Restrict access based on the current time of the day in 24hr format. Multiple time ranges per day are supported.
-        </p>
-        <div class="space-y-2">
-          <.input
-            type="select"
-            label="Timezone"
-            name="policy[conditions][current_utc_datetime][timezone]"
-            id="policy_conditions_current_utc_datetime_timezone"
-            field={condition_form[:timezone]}
-            options={Tzdata.zone_list()}
-            disabled={@disabled}
-            value={condition_form[:timezone].value || @timezone}
-          />
+  #    <div
+  #      id="policy_conditions_current_utc_datetime_condition"
+  #      class={[
+  #        "p-4 border-neutral-200 border-l border-r border-b rounded-b",
+  #        condition_values_empty?(condition_form) && "hidden"
+  #      ]}
+  #    >
+  #      <p class="text-sm text-neutral-500 mb-2">
+  #        Restrict access based on the current time of the day in 24hr format. Multiple time ranges per day are supported.
+  #      </p>
+  #      <div class="space-y-2">
+  #        <.input
+  #          type="select"
+  #          label="Timezone"
+  #          name="policy[conditions][current_utc_datetime][timezone]"
+  #          id="policy_conditions_current_utc_datetime_timezone"
+  #          field={condition_form[:timezone]}
+  #          options={Tzdata.zone_list()}
+  #          disabled={@disabled}
+  #          value={condition_form[:timezone].value || @timezone}
+  #        />
 
-          <div class="space-y-2">
-            <.current_utc_datetime_condition_day_input
-              :for={{code, _name} <- @days_of_week}
-              disabled={@disabled}
-              condition_form={condition_form}
-              day={code}
-            />
-          </div>
-        </div>
-      </div>
-    </fieldset>
-    """
-  end
+  #        <div class="space-y-2">
+  #          <.current_utc_datetime_condition_day_input
+  #            :for={{code, _name} <- @days_of_week}
+  #            disabled={@disabled}
+  #            condition_form={condition_form}
+  #            day={code}
+  #          />
+  #        </div>
+  #      </div>
+  #    </div>
+  #  </fieldset>
+  #  """
+  # end
 
   defp find_condition_form(form_field, property) do
     condition_form =
@@ -623,30 +619,32 @@ defmodule Web.Policies.Components do
     condition_form || to_form(%{})
   end
 
-  defp current_utc_datetime_condition_day_input(assigns) do
-    ~H"""
-    <.input
-      type="text"
-      label={day_of_week_name(@day)}
-      field={@condition_form[:values]}
-      name={"policy[conditions][current_utc_datetime][values][#{@day}]"}
-      id={"policy_conditions_current_utc_datetime_values_#{@day}"}
-      placeholder="E.g. 9:00-12:00, 13:00-17:00"
-      value={get_datetime_range_for_day_of_week(@day, @condition_form[:values])}
-      disabled={@disabled}
-      value_index={day_of_week_index(@day)}
-    />
-    """
-  end
+  # TODO: Uncomment this once policy time conditions are finished
+  # defp current_utc_datetime_condition_day_input(assigns) do
+  #  ~H"""
+  #  <.input
+  #    type="text"
+  #    label={day_of_week_name(@day)}
+  #    field={@condition_form[:values]}
+  #    name={"policy[conditions][current_utc_datetime][values][#{@day}]"}
+  #    id={"policy_conditions_current_utc_datetime_values_#{@day}"}
+  #    placeholder="E.g. 9:00-12:00, 13:00-17:00"
+  #    value={get_datetime_range_for_day_of_week(@day, @condition_form[:values])}
+  #    disabled={@disabled}
+  #    value_index={day_of_week_index(@day)}
+  #  />
+  #  """
+  # end
 
-  defp get_datetime_range_for_day_of_week(day, form_field) do
-    Enum.find_value(form_field.value || [], fn dow_time_ranges ->
-      case String.split(dow_time_ranges, "/", parts: 3) do
-        [^day, ranges, _timezone] -> ranges
-        _other -> false
-      end
-    end)
-  end
+  # TODO: Uncomment this once policy time conditions are finished
+  # defp get_datetime_range_for_day_of_week(day, form_field) do
+  #  Enum.find_value(form_field.value || [], fn dow_time_ranges ->
+  #    case String.split(dow_time_ranges, "/", parts: 3) do
+  #      [^day, ranges, _timezone] -> ranges
+  #      _other -> false
+  #    end
+  #  end)
+  # end
 
   defp condition_operator_options(property) do
     Domain.Policies.Condition.Changeset.valid_operators_for_property(property)
