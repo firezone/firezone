@@ -144,17 +144,14 @@ impl SimClient {
         Some(self.sut.encapsulate(packet, now)?.into_owned())
     }
 
-    pub(crate) fn handle_packet(
-        &mut self,
-        payload: &[u8],
-        src: SocketAddr,
-        dst: SocketAddr,
-        now: Instant,
-    ) {
-        let Some(packet) = self
-            .sut
-            .decapsulate(dst, src, payload, now, &mut self.buffer)
-        else {
+    pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) {
+        let Some(packet) = self.sut.decapsulate(
+            transmit.dst,
+            transmit.src.unwrap(),
+            &transmit.payload,
+            now,
+            &mut self.buffer,
+        ) else {
             return;
         };
         let packet = packet.to_owned();

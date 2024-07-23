@@ -6,13 +6,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[derive(Debug, Default)]
+/// A buffer for network packets that need to be handled at a certain point in time.
+#[derive(Debug, Clone, Default)]
 pub(crate) struct BufferedTransmits {
     // Transmits are stored in reverse ordering to emit the earliest first.
     inner: BinaryHeap<Reverse<ByTime<Transmit<'static>>>>,
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 struct ByTime<T> {
     at: Instant,
     value: T,

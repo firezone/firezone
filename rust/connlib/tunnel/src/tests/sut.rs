@@ -341,7 +341,7 @@ impl TunnelTest {
         let cut_off = self.flux_capacitor.now::<Instant>() + Duration::from_secs(10);
 
         'outer: while self.flux_capacitor.now::<Instant>() < cut_off {
-            self.handle_timeout();
+            self.handle_timeout(&ref_state.global_dns_records, buffered_transmits);
             let now = self.flux_capacitor.now();
 
             for (_, relay) in self.relays.iter_mut() {
@@ -422,7 +422,7 @@ impl TunnelTest {
             });
 
             if let Some(transmit) = buffered_transmits.pop(now) {
-                self.dispatch_transmit(transmit, buffered_transmits, &ref_state.global_dns_records);
+                self.dispatch_transmit(transmit);
                 continue;
             }
 
@@ -443,19 +443,42 @@ impl TunnelTest {
         }
     }
 
-    fn handle_timeout(&mut self) {
-        self.client
-            .exec_mut(|c| c.sut.handle_timeout(self.flux_capacitor.now()));
+    fn handle_timeout(
+        &mut self,
+        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        buffered_transmits: &mut BufferedTransmits,
+    ) {
+        let now = self.flux_capacitor.now();
+
+        while let Some(transmit) = self.client.poll_transmit(now) {
+            self.client.exec_mut(|c| c.receive(transmit, now))
+        }
+        self.client.exec_mut(|c| c.sut.handle_timeout(now));
 
         for (_, gateway) in self.gateways.iter_mut() {
-            gateway.exec_mut(|g| {
-                g.sut
-                    .handle_timeout(self.flux_capacitor.now(), self.flux_capacitor.now())
-            });
+            while let Some(transmit) = gateway.poll_transmit(now) {
+                let Some(reply) =
+                    gateway.exec_mut(|g| g.receive(global_dns_records, transmit, now))
+                else {
+                    continue;
+                };
+
+                buffered_transmits.push_from(reply, gateway, now);
+            }
+
+            gateway.exec_mut(|g| g.sut.handle_timeout(now, self.flux_capacitor.now()));
         }
 
         for (_, relay) in self.relays.iter_mut() {
-            relay.exec_mut(|r| r.sut.handle_timeout(self.flux_capacitor.now()))
+            while let Some(transmit) = relay.poll_transmit(now) {
+                let Some(reply) = relay.exec_mut(|g| g.receive(transmit, now)) else {
+                    continue;
+                };
+
+                buffered_transmits.push_from(reply, relay, now);
+            }
+
+            relay.exec_mut(|r| r.sut.handle_timeout(now))
         }
     }
 
@@ -481,17 +504,11 @@ impl TunnelTest {
     /// It takes a [`Transmit`] and checks, which host accepts it, i.e. has configured the correct IP address.
     ///
     /// Currently, the network topology of our tests are a single subnet without NAT.
-    fn dispatch_transmit(
-        &mut self,
-        transmit: Transmit,
-        buffered_transmits: &mut BufferedTransmits,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
-    ) {
+    fn dispatch_transmit(&mut self, transmit: Transmit<'static>) {
         let src = transmit
             .src
             .expect("`src` should always be set in these tests");
         let dst = transmit.dst;
-        let payload = &transmit.payload;
         let now = self.flux_capacitor.now();
 
         let Some(host) = self.network.host_by_ip(dst.ip()) else {
@@ -508,8 +525,7 @@ impl TunnelTest {
                     return;
                 }
 
-                self.client
-                    .exec_mut(|c| c.handle_packet(payload, src, dst, now));
+                self.client.receive_transmit(transmit, now);
             }
             HostId::Gateway(id) => {
                 if self.drop_direct_client_traffic && self.client.is_sender(src.ip()) {
@@ -518,25 +534,31 @@ impl TunnelTest {
                     return;
                 }
 
-                let gateway = self.gateways.get_mut(&id).expect("unknown gateway");
+                self.gateways
+                    .get_mut(&id)
+                    .expect("unknown gateway")
+                    .receive_transmit(transmit, now);
 
-                let Some(transmit) = gateway
-                    .exec_mut(|g| g.handle_packet(global_dns_records, payload, src, dst, now))
-                else {
-                    return;
-                };
+                // let Some(transmit) = gateway
+                //     .exec_mut(|g| g.handle_packet(global_dns_records, payload, src, dst, now))
+                // else {
+                //     return;
+                // };
 
-                buffered_transmits.push_from(transmit, gateway, now);
+                // buffered_transmits.push_from(transmit, gateway, now);
             }
             HostId::Relay(id) => {
-                let relay = self.relays.get_mut(&id).expect("unknown relay");
+                self.relays
+                    .get_mut(&id)
+                    .expect("unknown relay")
+                    .receive_transmit(transmit, now);
 
-                let Some(transmit) = relay.exec_mut(|r| r.handle_packet(payload, src, dst, now))
-                else {
-                    return;
-                };
+                // let Some(transmit) = relay.exec_mut(|r| r.handle_packet(payload, src, dst, now))
+                // else {
+                //     return;
+                // };
 
-                buffered_transmits.push_from(transmit, relay, now);
+                // buffered_transmits.push_from(transmit, relay, now);
             }
             HostId::Stale => {
                 tracing::debug!(%dst, "Dropping packet because host roamed away or is offline");

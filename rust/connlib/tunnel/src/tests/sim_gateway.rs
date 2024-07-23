@@ -10,7 +10,7 @@ use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, HashSet, VecDeque},
-    net::{IpAddr, SocketAddr},
+    net::IpAddr,
     time::Instant,
 };
 
@@ -32,17 +32,21 @@ impl SimGateway {
         }
     }
 
-    pub(crate) fn handle_packet(
+    pub(crate) fn receive(
         &mut self,
         global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
-        payload: &[u8],
-        src: SocketAddr,
-        dst: SocketAddr,
+        transmit: Transmit,
         now: Instant,
     ) -> Option<Transmit<'static>> {
         let packet = self
             .sut
-            .decapsulate(dst, src, payload, now, &mut self.buffer)?
+            .decapsulate(
+                transmit.dst,
+                transmit.src.unwrap(),
+                &transmit.payload,
+                now,
+                &mut self.buffer,
+            )?
             .to_owned();
 
         self.on_received_packet(global_dns_records, packet, now)

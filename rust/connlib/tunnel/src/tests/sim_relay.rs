@@ -85,13 +85,15 @@ impl SimRelay {
         }
     }
 
-    pub(crate) fn handle_packet(
+    pub(crate) fn receive(
         &mut self,
-        payload: &[u8],
-        sender: SocketAddr,
-        dst: SocketAddr,
+        transmit: Transmit,
         now: Instant,
     ) -> Option<Transmit<'static>> {
+        let dst = transmit.dst;
+        let payload = &transmit.payload;
+        let sender = transmit.src.unwrap();
+
         if self
             .matching_listen_socket(dst, self.sut.public_address())
             .is_some_and(|s| s == dst)
