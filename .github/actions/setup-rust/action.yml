@@ -63,6 +63,8 @@ runs:
       env:
         SEGMENT_DOWNLOAD_TIMEOUT_MINS: 2
 
+    - uses: rui314/setup-mold@v1
+
     - name: Disable Windows Defender
       if: ${{ inputs.cache_backend == 'sccache' && runner.os == 'Windows' }}
       run: Set-MpPreference -DisableRealtimeMonitoring $true
