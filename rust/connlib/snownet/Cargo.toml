@@ -18,6 +18,7 @@ str0m = { workspace = true }
 stun_codec = "0.3.4"
 thiserror = "1"
 tracing = { workspace = true }
+mutants = "0.0.3"
 
 [dev-dependencies]
 firezone-relay = { workspace = true }

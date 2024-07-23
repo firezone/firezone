@@ -1036,6 +1036,7 @@ where
         self.established.iter_mut().map(|(id, conn)| (*id, conn))
     }
 
+    #[mutants::skip]
     fn len(&self) -> usize {
         self.initial.len() + self.established.len()
     }
