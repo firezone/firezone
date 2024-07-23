@@ -1,4 +1,4 @@
-use super::buffered_transmits::BufferedTransmits;
+use crate::tests::buffered_transmits::BufferedTransmits;
 use crate::tests::strategies::documentation_ip6s;
 use connlib_shared::messages::{ClientId, GatewayId, RelayId};
 use firezone_relay::{AddressFamily, IpStack};
@@ -123,7 +123,7 @@ impl<T> Host<T> {
         self.latency
     }
 
-    pub(crate) fn receive_transmit(&mut self, transmit: Transmit<'static>, now: Instant) {
+    pub(crate) fn receive(&mut self, transmit: Transmit<'static>, now: Instant) {
         self.inbox.push(transmit, self.latency, now);
     }
 

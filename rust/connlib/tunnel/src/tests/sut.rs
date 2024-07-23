@@ -525,7 +525,7 @@ impl TunnelTest {
                     return;
                 }
 
-                self.client.receive_transmit(transmit, now);
+                self.client.receive(transmit, now);
             }
             HostId::Gateway(id) => {
                 if self.drop_direct_client_traffic && self.client.is_sender(src.ip()) {
@@ -537,28 +537,13 @@ impl TunnelTest {
                 self.gateways
                     .get_mut(&id)
                     .expect("unknown gateway")
-                    .receive_transmit(transmit, now);
-
-                // let Some(transmit) = gateway
-                //     .exec_mut(|g| g.handle_packet(global_dns_records, payload, src, dst, now))
-                // else {
-                //     return;
-                // };
-
-                // buffered_transmits.push_from(transmit, gateway, now);
+                    .receive(transmit, now);
             }
             HostId::Relay(id) => {
                 self.relays
                     .get_mut(&id)
                     .expect("unknown relay")
-                    .receive_transmit(transmit, now);
-
-                // let Some(transmit) = relay.exec_mut(|r| r.handle_packet(payload, src, dst, now))
-                // else {
-                //     return;
-                // };
-
-                // buffered_transmits.push_from(transmit, relay, now);
+                    .receive(transmit, now);
             }
             HostId::Stale => {
                 tracing::debug!(%dst, "Dropping packet because host roamed away or is offline");
