@@ -93,6 +93,10 @@ pub(crate) enum Error {
     Unadvise(windows::core::Error),
 }
 
+pub(crate) async fn network_notifier(_tokio_handle: tokio::runtime::Handle) -> Result<Worker> {
+    Worker::new().await
+}
+
 /// Worker thread that can be joined explicitly, and joins on Drop
 pub(crate) struct Worker {
     inner: Option<WorkerInner>,
@@ -108,7 +112,7 @@ struct WorkerInner {
 impl Worker {
     // Async on Linux due to `zbus`
     #[allow(clippy::unused_async)]
-    pub(crate) async fn new() -> Result<Self> {
+    async fn new() -> Result<Self> {
         let (tx, rx) = mpsc::channel(1);
 
         let (stopper, stopper_rx) = tokio::sync::oneshot::channel();
