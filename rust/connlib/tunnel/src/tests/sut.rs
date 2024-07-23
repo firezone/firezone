@@ -186,7 +186,7 @@ impl StateMachineTest for TunnelTest {
 
                 let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
 
-                buffered_transmits.push(transmit, &state.client, now);
+                buffered_transmits.push_from(transmit, &state.client, now);
             }
             Transition::SendICMPPacketToDnsResource {
                 src,
@@ -215,7 +215,7 @@ impl StateMachineTest for TunnelTest {
                     .client
                     .exec_mut(|sim| Some(sim.encapsulate(packet, now)?.into_owned()));
 
-                buffered_transmits.push(transmit, &state.client, now);
+                buffered_transmits.push_from(transmit, &state.client, now);
             }
             Transition::SendDnsQuery {
                 domain,
@@ -227,7 +227,7 @@ impl StateMachineTest for TunnelTest {
                     sim.send_dns_query_for(domain, r_type, query_id, dns_server, now)
                 });
 
-                buffered_transmits.push(transmit, &state.client, now);
+                buffered_transmits.push_from(transmit, &state.client, now);
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 state
@@ -356,7 +356,7 @@ impl TunnelTest {
                             .sending_socket_for(dst.ip())
                             .expect("relay to never emit packets without a matching socket");
 
-                        buffered_transmits.push(
+                        buffered_transmits.push_from(
                             Transmit {
                                 src: Some(src),
                                 dst,
@@ -385,7 +385,7 @@ impl TunnelTest {
                     continue;
                 };
 
-                buffered_transmits.push(transmit, gateway, now);
+                buffered_transmits.push_from(transmit, gateway, now);
                 continue 'outer;
             }
 
@@ -399,7 +399,7 @@ impl TunnelTest {
             }
 
             if let Some(transmit) = self.client.exec_mut(|sim| sim.sut.poll_transmit()) {
-                buffered_transmits.push(transmit, &self.client, now);
+                buffered_transmits.push_from(transmit, &self.client, now);
                 continue;
             }
             if let Some(event) = self.client.exec_mut(|c| c.sut.poll_event()) {
@@ -526,7 +526,7 @@ impl TunnelTest {
                     return;
                 };
 
-                buffered_transmits.push(transmit, gateway, now);
+                buffered_transmits.push_from(transmit, gateway, now);
             }
             HostId::Relay(id) => {
                 let relay = self.relays.get_mut(&id).expect("unknown relay");
@@ -536,7 +536,7 @@ impl TunnelTest {
                     return;
                 };
 
-                buffered_transmits.push(transmit, relay, now);
+                buffered_transmits.push_from(transmit, relay, now);
             }
             HostId::Stale => {
                 tracing::debug!(%dst, "Dropping packet because host roamed away or is offline");

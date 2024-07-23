@@ -1,6 +1,10 @@
 use super::sim_net::Host;
 use snownet::Transmit;
-use std::{cmp::Reverse, collections::BinaryHeap, time::Instant};
+use std::{
+    cmp::Reverse,
+    collections::BinaryHeap,
+    time::{Duration, Instant},
+};
 
 #[derive(Debug, Default)]
 pub(crate) struct BufferedTransmits {
@@ -15,7 +19,8 @@ struct ByTime<T> {
 }
 
 impl BufferedTransmits {
-    pub(crate) fn push<T>(
+    /// Pushes a new [`Transmit`] from a given [`Host`].
+    pub(crate) fn push_from<T>(
         &mut self,
         transmit: impl Into<Option<Transmit<'static>>>,
         sending_host: &Host<T>,
@@ -26,10 +31,7 @@ impl BufferedTransmits {
         };
 
         if transmit.src.is_some() {
-            self.inner.push(Reverse(ByTime {
-                at: now + sending_host.latency(),
-                value: transmit,
-            }));
+            self.push(transmit, sending_host.latency(), now);
             return;
         }
 
@@ -43,12 +45,31 @@ impl BufferedTransmits {
             return;
         };
 
-        self.inner.push(Reverse(ByTime {
-            at: now + sending_host.latency(),
-            value: Transmit {
+        self.push(
+            Transmit {
                 src: Some(src),
                 ..transmit
             },
+            sending_host.latency(),
+            now,
+        );
+    }
+
+    pub(crate) fn push(
+        &mut self,
+        transmit: impl Into<Option<Transmit<'static>>>,
+        latency: Duration,
+        now: Instant,
+    ) {
+        let Some(transmit) = transmit.into() else {
+            return;
+        };
+
+        debug_assert!(transmit.src.is_some(), "src must be set for `push`");
+
+        self.inner.push(Reverse(ByTime {
+            at: now + latency,
+            value: transmit,
         }));
     }
 
