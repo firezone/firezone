@@ -263,7 +263,6 @@ fn secure_equality(a: &SecretString, b: &SecretString) -> bool {
 mod tests {
     use super::*;
 
-    #[test]
     #[cfg(not(target_os = "linux"))]
     fn bogus_secret(x: &str) -> SecretString {
         SecretString::new(x.into())
