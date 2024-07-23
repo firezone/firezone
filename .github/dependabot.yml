@@ -33,6 +33,7 @@ updates:
           - opentelemetry-otlp
           - tracing-opentelemetry
           - tracing-stackdriver
+          - opentelemetry_sdk
         update-types:
           - minor
       windows:
