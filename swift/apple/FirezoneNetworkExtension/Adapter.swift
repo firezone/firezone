@@ -132,15 +132,15 @@ class Adapter {
           logFilter,
           callbackHandler
         )
-      // Update our internal state
-      self.state = .tunnelStarted(session: session)
 
       // Start listening for network change events. The first few will be our
       // tunnel interface coming up, but that's ok -- it will trigger a `set_dns`
       // connlib.
       beginPathMonitoring()
+
+      // Update state in case everything succeeded
+      self.state = .tunnelStarted(session: session)
     } catch let error {
-      state = .tunnelStopped
       throw AdapterError.connlibConnectError(error)
     }
   }
