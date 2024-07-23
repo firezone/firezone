@@ -142,6 +142,7 @@ class Adapter {
       self.state = .tunnelStarted(session: session)
     } catch let error {
       let msg = error as! RustString
+      // `toString` needed to deep copy the string and avoid a possible dangling pointer
       throw AdapterError.connlibConnectError(msg.toString())
     }
   }
