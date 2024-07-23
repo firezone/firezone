@@ -271,6 +271,7 @@ jobs:
           path: ./${{ github.sha }}
       - name: Report results to bencher
         run: |
+          # Merge multiple JSONs into one
           jq -s 'reduce .[] as $item ({}; . * $item)' ./${{ github.sha }}/*.bmf.json > bmf.json
 
           bencher run --file bmf.json --adapter json --github-actions ${{ secrets.GITHUB_TOKEN }}
