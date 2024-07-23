@@ -2001,6 +2001,7 @@ dependencies = [
  "hex-display",
  "http-health-check",
  "mio",
+ "mutants",
  "once_cell",
  "opentelemetry",
  "opentelemetry-otlp",
