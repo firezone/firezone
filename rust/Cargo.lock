@@ -2050,6 +2050,7 @@ dependencies = [
  "ip_network",
  "ip_network_table",
  "itertools 0.13.0",
+ "mutants",
  "proptest",
  "proptest-state-machine",
  "quinn-udp",

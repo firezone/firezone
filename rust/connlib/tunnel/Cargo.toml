@@ -34,6 +34,7 @@ thiserror = { version = "1.0", default-features = false }
 tokio = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
+mutants = "0.0.3"
 
 [dev-dependencies]
 derivative = "2.2.0"
