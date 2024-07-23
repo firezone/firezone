@@ -98,6 +98,28 @@ jobs:
         name: "cargo test"
         shell: bash
 
+  incremental-mutants:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+      - uses: taiki-e/install-action@v2
+        name: Install cargo-mutants using install-action
+        with:
+          tool: cargo-mutants
+      - run: cargo mutants --no-shuffle --in-place --package firezone-tunnel --package snownet --package firezone-relay --shard ${{ matrix.shard }}/10
+      - name: Archive mutants.out
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutants-incremental.out
+          path: mutants.out
+
   # Runs the Tauri client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
   gui-smoke-test:
