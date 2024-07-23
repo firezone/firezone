@@ -112,7 +112,7 @@ jobs:
         name: Install cargo-mutants using install-action
         with:
           tool: cargo-mutants
-      - run: cargo mutants --no-shuffle --in-place --package firezone-tunnel --package snownet --package firezone-relay --shard ${{ matrix.shard }}/15
+      - run: cargo mutants --no-shuffle --in-place --package firezone-tunnel --package snownet --package firezone-relay --features proptest --shard ${{ matrix.shard }}/15
       - name: Archive mutants.out
         uses: actions/upload-artifact@v4
         if: always()
