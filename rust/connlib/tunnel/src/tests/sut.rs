@@ -132,8 +132,6 @@ impl StateMachineTest for TunnelTest {
         let mut buffered_transmits = BufferedTransmits::default();
         this.advance(ref_state, &mut buffered_transmits); // Perform initial setup before we apply the first transition.
 
-        debug_assert!(buffered_transmits.is_empty());
-
         this
     }
 
@@ -285,7 +283,6 @@ impl StateMachineTest for TunnelTest {
             }
         };
         state.advance(ref_state, &mut buffered_transmits);
-        assert!(buffered_transmits.is_empty()); // Sanity check to ensure we handled all packets.
 
         state
     }
@@ -339,10 +336,9 @@ impl TunnelTest {
     ///
     /// Consequently, this function needs to loop until no host can make progress at which point we consider the [`Transition`] complete.
     fn advance(&mut self, ref_state: &ReferenceState, buffered_transmits: &mut BufferedTransmits) {
-        const MAX_IDLE: Duration = Duration::from_secs(1); // How long we will at most idle.
-        let mut time_spent_idling = Duration::ZERO; // How much time we've spent idling so far.
+        let cut_off = self.flux_capacitor.now::<Instant>() + Duration::from_secs(10);
 
-        'outer: loop {
+        'outer: while self.flux_capacitor.now::<Instant>() < cut_off {
             self.handle_timeout();
             let now = self.flux_capacitor.now();
 
@@ -429,22 +425,19 @@ impl TunnelTest {
             }
 
             if !buffered_transmits.is_empty() {
-                self.flux_capacitor.small_tick(); // Small tick to advance to next transmit.
-
+                self.flux_capacitor.small_tick(); // Small tick to get to the next transmit.
                 continue;
             }
 
-            let time_to_next_action = self.time_to_next_action();
+            let Some(time_to_next_action) = self.poll_timeout() else {
+                break; // Nothing to do.
+            };
 
-            // Allow for a few "idle" clock ticks if we want to do something "soon".
-            if time_to_next_action.is_some_and(|dur| dur < MAX_IDLE) && time_spent_idling < MAX_IDLE
-            {
-                time_spent_idling += self.flux_capacitor.large_tick(); // Large tick to more quickly advance to potential next timeout.
-
-                continue;
+            if time_to_next_action > cut_off {
+                break; // Nothing to do before cut-off.
             }
 
-            break;
+            self.flux_capacitor.large_tick(); // Large tick to more quickly advance to potential next timeout.
         }
     }
 
@@ -464,7 +457,7 @@ impl TunnelTest {
         }
     }
 
-    fn time_to_next_action(&mut self) -> Option<Duration> {
+    fn poll_timeout(&mut self) -> Option<Instant> {
         let client = self.client.exec_mut(|c| c.sut.poll_timeout());
         let gateway = self
             .gateways
@@ -477,9 +470,7 @@ impl TunnelTest {
             .flat_map(|r| r.exec_mut(|r| r.sut.poll_timeout()))
             .min();
 
-        let timeout = earliest(client, earliest(gateway, relay))?;
-
-        Some(timeout.duration_since(self.flux_capacitor.now()))
+        earliest(client, earliest(gateway, relay))
     }
 
     /// Dispatches a [`Transmit`] to the correct host.

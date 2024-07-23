@@ -94,8 +94,8 @@ pub(crate) fn tunnel_ip6s() -> impl Iterator<Item = Ipv6Addr> {
         .map(|n| n.network_address())
 }
 
-pub(crate) fn latency() -> impl Strategy<Value = Duration> {
-    (10..100u64).prop_map(Duration::from_millis)
+pub(crate) fn latency(max: u64) -> impl Strategy<Value = Duration> {
+    (10..max).prop_map(Duration::from_millis)
 }
 
 /// A [`Strategy`] for sampling a set of gateways and a corresponding [`StubPortal`] that has a set of [`Site`]s configured with those gateways.

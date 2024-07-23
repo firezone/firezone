@@ -100,7 +100,12 @@ impl RefGateway {
 }
 
 pub(crate) fn ref_gateway_host() -> impl Strategy<Value = Host<RefGateway>> {
-    host(dual_ip_stack(), any_port(), ref_gateway(), latency())
+    host(
+        dual_ip_stack(),
+        any_port(),
+        ref_gateway(),
+        latency(200), // We assume gateways have a somewhat decent Internet connection.
+    )
 }
 
 fn ref_gateway() -> impl Strategy<Value = RefGateway> {

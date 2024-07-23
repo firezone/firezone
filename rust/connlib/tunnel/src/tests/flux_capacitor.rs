@@ -46,23 +46,25 @@ impl FluxCapacitor {
         T::pick_now(now, utc_now)
     }
 
-    pub(crate) fn small_tick(&self) -> Duration {
+    pub(crate) fn small_tick(&self) {
         self.tick(Self::SMALL_TICK);
-
-        Self::SMALL_TICK
     }
 
-    pub(crate) fn large_tick(&self) -> Duration {
+    pub(crate) fn large_tick(&self) {
         self.tick(Self::LARGE_TICK);
-
-        Self::LARGE_TICK
     }
 
     fn tick(&self, tick: Duration) {
-        let mut guard = self.now.lock().unwrap();
+        {
+            let mut guard = self.now.lock().unwrap();
 
-        guard.0 += tick;
-        guard.1 += tick;
+            guard.0 += tick;
+            guard.1 += tick;
+        }
+
+        if self.elapsed().subsec_millis() == 0 {
+            tracing::trace!("Tick");
+        }
     }
 
     fn elapsed(&self) -> Duration {

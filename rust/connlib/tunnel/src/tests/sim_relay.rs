@@ -199,6 +199,6 @@ pub(crate) fn relay_prototype() -> impl Strategy<Value = Host<u64>> {
         dual_ip_stack(), // For this test, our relays always run in dual-stack mode to ensure connectivity!
         Just(3478),
         any::<u64>(),
-        latency(),
+        latency(50), // We assume our relays have a good Internet connection.
     )
 }
