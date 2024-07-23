@@ -13,7 +13,7 @@ public enum AdapterError: Error {
   case invalidState
 
   /// connlib failed to start
-  case connlibConnectError(Error)
+  case connlibConnectFailed
 }
 
 /// Enum representing internal state of the  adapter
@@ -119,30 +119,28 @@ class Adapter {
     }
 
     Log.tunnel.log("Adapter.start: Starting connlib")
-    do {
-      // Grab a session pointer
-      let session =
-        try WrappedSession.connect(
-          apiURL,
-          token,
-          DeviceMetadata.getOrCreateFirezoneId(),
-          DeviceMetadata.getDeviceName(),
-          DeviceMetadata.getOSVersion(),
-          connlibLogFolderPath,
-          logFilter,
-          callbackHandler
-        )
 
-      // Start listening for network change events. The first few will be our
-      // tunnel interface coming up, but that's ok -- it will trigger a `set_dns`
-      // connlib.
-      beginPathMonitoring()
-
-      // Update state in case everything succeeded
-      self.state = .tunnelStarted(session: session)
-    } catch let error {
-      throw AdapterError.connlibConnectError(error)
+    // Grab a session pointer
+    guard let session = WrappedSession.connect(
+      apiURL,
+      token,
+      DeviceMetadata.getOrCreateFirezoneId(),
+      DeviceMetadata.getDeviceName(),
+      DeviceMetadata.getOSVersion(),
+      connlibLogFolderPath,
+      logFilter,
+      callbackHandler
+    ) else {
+      throw AdapterError.connlibConnectFailed
     }
+
+    // Start listening for network change events. The first few will be our
+    // tunnel interface coming up, but that's ok -- it will trigger a `set_dns`
+    // connlib.
+    beginPathMonitoring()
+
+    // Update state in case everything succeeded
+    self.state = .tunnelStarted(session: session)
   }
 
   /// Final callback called by packetTunnelProvider when tunnel is to be stopped.

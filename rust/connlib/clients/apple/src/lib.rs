@@ -3,6 +3,7 @@
 
 mod make_writer;
 
+use anyhow::{Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
     callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
@@ -37,7 +38,7 @@ mod ffi {
     extern "Rust" {
         type WrappedSession;
 
-        #[swift_bridge(associated_to = WrappedSession)]
+        #[swift_bridge(associated_to = WrappedSession, return_with = log_and_convert)]
         fn connect(
             api_url: String,
             token: String,
@@ -47,7 +48,7 @@ mod ffi {
             log_dir: String,
             log_filter: String,
             callback_handler: CallbackHandler,
-        ) -> Result<WrappedSession, String>;
+        ) -> Option<WrappedSession>;
 
         fn reconnect(&mut self);
 
@@ -174,8 +175,8 @@ impl WrappedSession {
         log_dir: String,
         log_filter: String,
         callback_handler: ffi::CallbackHandler,
-    ) -> Result<Self, String> {
-        let logger = init_logging(log_dir.into(), log_filter).map_err(|e| e.to_string())?;
+    ) -> Result<Self> {
+        let logger = init_logging(log_dir.into(), log_filter).context("Failed to init logger")?;
         let secret = SecretString::from(token);
 
         let (private_key, public_key) = keypair();
@@ -186,14 +187,14 @@ impl WrappedSession {
             device_name_override,
             public_key.to_bytes(),
         )
-        .map_err(|e| e.to_string())?;
+        .context("Failed to create LoginUrl")?;
 
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
             .thread_name("connlib")
             .enable_all()
             .build()
-            .map_err(|e| e.to_string())?;
+            .context("Failed to make runtime")?;
         let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
         let args = ConnectArgs {
@@ -214,9 +215,9 @@ impl WrappedSession {
                 .build(),
             Arc::new(socket_factory::tcp),
         )
-        .map_err(|e| e.to_string())?;
+        .context("Failed to connect phoenix channel")?;
         let session = Session::connect(args, portal, runtime.handle().clone());
-        session.set_tun(Tun::new().map_err(|e| e.to_string())?);
+        session.set_tun(Tun::new().context("Failed to create Tun device")?);
 
         Ok(Self {
             inner: session,
@@ -237,4 +238,10 @@ impl WrappedSession {
     fn disconnect(self) {
         self.inner.disconnect()
     }
+}
+
+fn log_and_convert(result: Result<WrappedSession>) -> Option<WrappedSession> {
+    result
+        .map_err(|e| tracing::error!("Failed to connect: {e:#}"))
+        .ok()
 }
