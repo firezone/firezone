@@ -13,7 +13,7 @@ public enum AdapterError: Error {
   case invalidState
 
   /// connlib failed to start
-  case connlibConnectError(Error)
+  case connlibConnectError(String)
 }
 
 /// Enum representing internal state of the  adapter
@@ -141,7 +141,8 @@ class Adapter {
       // Update state in case everything succeeded
       self.state = .tunnelStarted(session: session)
     } catch let error {
-      throw AdapterError.connlibConnectError(error)
+      let msg = error as! RustString
+      throw AdapterError.connlibConnectError(msg.toString())
     }
   }
 
