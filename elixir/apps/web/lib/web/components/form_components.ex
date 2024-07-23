@@ -97,7 +97,8 @@ defmodule Web.FormComponents do
     |> input()
   end
 
-  def input(%{type: "radio"} = assigns) do
+  # radio with label
+  def input(%{type: "radio", label: _label} = assigns) do
     ~H"""
     <div>
       <label class="flex items-center gap-2 text-neutral-900">
@@ -117,6 +118,24 @@ defmodule Web.FormComponents do
         <%= if @inner_block, do: render_slot(@inner_block) %>
       </label>
     </div>
+    """
+  end
+
+  # radio without label
+  def input(%{type: "radio_button_group"} = assigns) do
+    ~H"""
+    <input
+      type="radio"
+      id={@id}
+      name={@name}
+      value={@value}
+      checked={@checked}
+      class={[
+        "hidden peer",
+        @class
+      ]}
+      {@rest}
+    />
     """
   end
 
@@ -172,7 +191,8 @@ defmodule Web.FormComponents do
         class={[
           "text-sm bg-neutral-50",
           "border border-neutral-300 text-neutral-900 rounded",
-          "block w-full p-2",
+          "block p-2",
+          !@inline_errors && "w-full",
           @errors != [] && "border-rose-400 focus:border-rose-400"
         ]}
         multiple={@multiple}
@@ -213,7 +233,8 @@ defmodule Web.FormComponents do
         class={[
           "text-sm bg-neutral-50",
           "border border-neutral-300 text-neutral-900 rounded",
-          "block w-full p-2.5",
+          "block p-2.5",
+          !@inline_errors && "w-full",
           @errors != [] && "border-rose-400 focus:border-rose-400"
         ]}
         multiple={@multiple}
@@ -237,10 +258,11 @@ defmodule Web.FormComponents do
         id={@id}
         name={@name}
         class={[
-          "block w-full rounded sm:text-sm sm:leading-6",
+          "block rounded sm:text-sm sm:leading-6",
           "bg-neutral-50",
           "border border-neutral-300 rounded",
           "min-h-[6rem]",
+          !@inline_errors && "w-full",
           @errors != [] && "border-rose-400 focus:border-rose-400",
           @class
         ]}
@@ -295,7 +317,7 @@ defmodule Web.FormComponents do
         "flex",
         "text-sm text-neutral-900 bg-neutral-50",
         "border border-neutral-300 rounded",
-        "w-full",
+        !@inline_errors && "w-full",
         "focus-within:outline-none focus-within:border-accent-600",
         "peer-disabled:bg-neutral-50 peer-disabled:text-neutral-500 peer-disabled:border-neutral-200 peer-disabled:shadow-none",
         @errors != [] && "border-rose-400 focus:border-rose-400"
@@ -341,7 +363,8 @@ defmodule Web.FormComponents do
         id={@id}
         value={Phoenix.HTML.Form.normalize_value(@type, @value)}
         class={[
-          "block w-full",
+          "block",
+          !@inline_errors && "w-full",
           "p-2.5 rounded",
           "bg-neutral-50 text-neutral-900 text-sm",
           "border border-neutral-300",
