@@ -220,7 +220,7 @@ jobs:
           TEST_NAME: ${{ matrix.test_name }}
         run: |
           ./scripts/tests/perf/${{ matrix.test_name }}.sh
-          jq '{ "${{ matrix.test_name }}": { "throughput": { "value": .end.sum_received.bits_per_second / 8 / 1000 / 1000 } } }' ./${{ matrix.test_name }}.json > ./${{ matrix.test_name }}.bmf.json
+          jq '{ "${{ matrix.test_name }}": { "throughput": { "value": (.end.sum_received.bits_per_second / 8 / 1000 / 1000) } } }' ./${{ matrix.test_name }}.json > ./${{ matrix.test_name }}.bmf.json
       - name: 'Save performance test results: ${{ matrix.test_name }}'
         uses: actions/upload-artifact@v4
         with:
