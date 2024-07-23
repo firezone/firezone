@@ -4,18 +4,19 @@ defmodule Web.Settings.ApiClients.New do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    unless Domain.Config.global_feature_enabled?(:rest_api),
-      do: raise(Web.LiveErrors.NotFoundError)
+    unless Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
+      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
+    else
+      changeset = Actors.new_actor(%{type: :api_client})
 
-    changeset = Actors.new_actor(%{type: :api_client})
+      socket =
+        assign(socket,
+          form: to_form(changeset),
+          page_title: "Add an API Client"
+        )
 
-    socket =
-      assign(socket,
-        form: to_form(changeset),
-        page_title: "Add an API Client"
-      )
-
-    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+    end
   end
 
   def render(assigns) do

@@ -3,28 +3,29 @@ defmodule Web.Settings.ApiClients.Index do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    unless Domain.Config.global_feature_enabled?(:rest_api),
-      do: raise(Web.LiveErrors.NotFoundError)
+    unless Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
+      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
+    else
+      socket =
+        socket
+        |> assign(page_title: "API Clients")
+        |> assign_live_table("actors",
+          query_module: Actors.Actor.Query,
+          sortable_fields: [
+            {:actors, :name},
+            {:actors, :status}
+          ],
+          enforce_filters: [
+            {:type, "api_client"}
+          ],
+          hide_filters: [
+            :provider_id
+          ],
+          callback: &handle_api_clients_update!/2
+        )
 
-    socket =
-      socket
-      |> assign(page_title: "API Clients")
-      |> assign_live_table("actors",
-        query_module: Actors.Actor.Query,
-        sortable_fields: [
-          {:actors, :name},
-          {:actors, :status}
-        ],
-        enforce_filters: [
-          {:type, "api_client"}
-        ],
-        hide_filters: [
-          :provider_id
-        ],
-        callback: &handle_api_clients_update!/2
-      )
-
-    {:ok, socket}
+      {:ok, socket}
+    end
   end
 
   def handle_params(params, uri, socket) do
