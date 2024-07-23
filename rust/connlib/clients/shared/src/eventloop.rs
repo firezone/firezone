@@ -13,7 +13,7 @@ use connlib_shared::{
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     net::IpAddr,
     task::{Context, Poll},
 };
@@ -227,7 +227,7 @@ where
 
                 tracing::info!("Firezone Started!");
                 self.tunnel.set_resources(resources);
-                self.tunnel.update_relays(HashSet::default(), relays)
+                self.tunnel.update_relays(BTreeSet::default(), relays)
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
                 self.tunnel.add_resource(resource);
@@ -240,7 +240,7 @@ where
                 connected,
             }) => self
                 .tunnel
-                .update_relays(HashSet::from_iter(disconnected_ids), connected),
+                .update_relays(BTreeSet::from_iter(disconnected_ids), connected),
             IngressMessages::InvalidateIceCandidates(GatewayIceCandidates {
                 gateway_id,
                 candidates,

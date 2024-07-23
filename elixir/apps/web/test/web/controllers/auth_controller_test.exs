@@ -323,7 +323,7 @@ defmodule Web.AuthControllerTest do
     end
   end
 
-  describe "request_magic_link/2" do
+  describe "request_email_otp/2" do
     test "sends a login link to the user email", %{conn: conn} do
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)
@@ -332,7 +332,7 @@ defmodule Web.AuthControllerTest do
       conn =
         post(
           conn,
-          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/request_magic_link",
+          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/request_email_otp",
           %{
             "email" => %{
               "provider_identifier" => identity.provider_identifier
@@ -361,8 +361,8 @@ defmodule Web.AuthControllerTest do
       provider = Fixtures.Auth.create_email_provider(account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
 
-      for _ <- 1..10 do
-        post(conn, ~p"/#{account}/sign_in/providers/#{provider}/request_magic_link", %{
+      for _ <- 1..3 do
+        post(conn, ~p"/#{account}/sign_in/providers/#{provider}/request_email_otp", %{
           "email" => %{
             "provider_identifier" => identity.provider_identifier
           }
@@ -373,7 +373,7 @@ defmodule Web.AuthControllerTest do
         end)
       end
 
-      post(conn, ~p"/#{account}/sign_in/providers/#{provider}/request_magic_link", %{
+      post(conn, ~p"/#{account}/sign_in/providers/#{provider}/request_email_otp", %{
         "email" => %{
           "provider_identifier" => identity.provider_identifier
         }
@@ -390,7 +390,7 @@ defmodule Web.AuthControllerTest do
       conn =
         post(
           conn,
-          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/request_magic_link",
+          ~p"/#{provider.account_id}/sign_in/providers/#{provider.id}/request_email_otp",
           %{
             "as" => "client",
             "nonce" => "NONCE",
@@ -425,7 +425,7 @@ defmodule Web.AuthControllerTest do
       conn =
         post(
           conn,
-          ~p"/#{account.id}/sign_in/providers/#{provider_id}/request_magic_link",
+          ~p"/#{account.id}/sign_in/providers/#{provider_id}/request_email_otp",
           %{"email" => %{"provider_identifier" => "foo@bar.com"}}
         )
 
@@ -440,7 +440,7 @@ defmodule Web.AuthControllerTest do
       conn =
         post(
           conn,
-          ~p"/#{account.id}/sign_in/providers/#{provider_id}/request_magic_link",
+          ~p"/#{account.id}/sign_in/providers/#{provider_id}/request_email_otp",
           %{"email" => %{"provider_identifier" => "foo"}}
         )
 
@@ -455,7 +455,7 @@ defmodule Web.AuthControllerTest do
       conn =
         post(
           conn,
-          ~p"/#{account.id}/sign_in/providers/#{provider.id}/request_magic_link",
+          ~p"/#{account.id}/sign_in/providers/#{provider.id}/request_email_otp",
           %{"email" => %{"provider_identifier" => "foo@bar"}}
         )
 
@@ -480,7 +480,7 @@ defmodule Web.AuthControllerTest do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
-      {conn_with_cookie, secret} = put_magic_link_auth_state(conn, account, provider, identity)
+      {conn_with_cookie, secret} = put_email_auth_state(conn, account, provider, identity)
 
       %{
         account: account,
@@ -596,7 +596,7 @@ defmodule Web.AuthControllerTest do
       }
 
       {conn_with_cookie, _secret} =
-        put_magic_link_auth_state(conn, account, provider, identity, redirect_params)
+        put_email_auth_state(conn, account, provider, identity, redirect_params)
 
       conn =
         conn_with_cookie
@@ -679,7 +679,7 @@ defmodule Web.AuthControllerTest do
       }
 
       {conn_with_cookie, secret} =
-        put_magic_link_auth_state(conn, account, provider, identity, redirect_params)
+        put_email_auth_state(conn, account, provider, identity, redirect_params)
 
       conn =
         conn_with_cookie
@@ -1233,7 +1233,7 @@ defmodule Web.AuthControllerTest do
             provider: provider
           )
 
-        {conn, secret} = put_magic_link_auth_state(conn, account, provider, identity)
+        {conn, secret} = put_email_auth_state(conn, account, provider, identity)
 
         authorized_conn =
           conn

@@ -62,7 +62,7 @@ defmodule Web.AuthController do
   @doc """
   This is a callback for the Email provider which sends login link.
   """
-  def request_magic_link(
+  def request_email_otp(
         conn,
         %{
           "account_id_or_slug" => account_id_or_slug,
@@ -76,7 +76,7 @@ defmodule Web.AuthController do
 
     with true <- String.contains?(provider_identifier, "@"),
          {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id) do
-      conn = maybe_send_magic_link_email(conn, provider, provider_identifier, redirect_params)
+      conn = maybe_send_email_otp(conn, provider, provider_identifier, redirect_params)
 
       signed_provider_identifier =
         Plug.Crypto.sign(
@@ -110,7 +110,7 @@ defmodule Web.AuthController do
     end
   end
 
-  defp maybe_send_magic_link_email(conn, provider, provider_identifier, redirect_params) do
+  defp maybe_send_email_otp(conn, provider, provider_identifier, redirect_params) do
     context_type = Web.Auth.fetch_auth_context_type!(redirect_params)
     context = Web.Auth.get_auth_context(conn, context_type)
 
@@ -125,7 +125,7 @@ defmodule Web.AuthController do
                  ),
                {:ok, identity} <-
                  Domain.Auth.Adapters.Email.request_sign_in_token(identity, context),
-               {:ok, fragment} <- send_magic_link_email(conn, identity, redirect_params) do
+               {:ok, fragment} <- send_email_otp(conn, identity, redirect_params) do
             fragment
           else
             _ ->
@@ -144,7 +144,7 @@ defmodule Web.AuthController do
     put_auth_state(conn, provider.id, {fragment, provider_identifier, redirect_params})
   end
 
-  defp send_magic_link_email(conn, identity, redirect_params) do
+  defp send_email_otp(conn, identity, redirect_params) do
     # Nonce is the short part that is sent to the user in the email
     nonce = identity.provider_virtual_state.nonce
 
@@ -161,7 +161,7 @@ defmodule Web.AuthController do
     )
     |> Web.Mailer.deliver_with_rate_limit(
       rate_limit_key: {:sign_in_link, identity.id},
-      rate_limit: 10,
+      rate_limit: 3,
       rate_limit_interval: :timer.minutes(15)
     )
     |> case do

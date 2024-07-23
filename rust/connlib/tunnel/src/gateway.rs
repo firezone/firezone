@@ -12,7 +12,7 @@ use connlib_shared::{DomainName, Error, Result, StaticSecret};
 use ip_packet::{IpPacket, MutableIpPacket};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{RelaySocket, ServerNode};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
 use tun::Tun;
@@ -332,8 +332,8 @@ impl GatewayState {
             Some(_) => {}
         }
 
-        let mut added_ice_candidates = HashMap::<ClientId, HashSet<String>>::default();
-        let mut removed_ice_candidates = HashMap::<ClientId, HashSet<String>>::default();
+        let mut added_ice_candidates = BTreeMap::<ClientId, BTreeSet<String>>::default();
+        let mut removed_ice_candidates = BTreeMap::<ClientId, BTreeSet<String>>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -362,7 +362,7 @@ impl GatewayState {
             }
         }
 
-        for (conn_id, candidates) in added_ice_candidates.drain() {
+        for (conn_id, candidates) in added_ice_candidates.into_iter() {
             self.buffered_events
                 .push_back(GatewayEvent::AddedIceCandidates {
                     conn_id,
@@ -370,7 +370,7 @@ impl GatewayState {
                 })
         }
 
-        for (conn_id, candidates) in removed_ice_candidates.drain() {
+        for (conn_id, candidates) in removed_ice_candidates.into_iter() {
             self.buffered_events
                 .push_back(GatewayEvent::RemovedIceCandidates {
                     conn_id,
@@ -399,8 +399,8 @@ impl GatewayState {
 
     pub fn update_relays(
         &mut self,
-        to_remove: HashSet<RelayId>,
-        to_add: HashSet<(RelayId, RelaySocket, String, String, String)>,
+        to_remove: BTreeSet<RelayId>,
+        to_add: BTreeSet<(RelayId, RelaySocket, String, String, String)>,
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);

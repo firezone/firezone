@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ActionLink from "@/components/ActionLink";
 import Image from "next/image";
 import ConsentPreferences from "@/components/ConsentPreferences";
 
@@ -189,15 +190,20 @@ export default function Footer() {
             </div>
           </div>
         </div>
-        <div className="sm:flex sm:items-center sm:justify-start mt-4">
-          <span className="text-xs">
-            WireGuard is a registered trademark of Jason A. Donenfeld.
-          </span>
-        </div>
-        <div className="sm:flex sm:items-center sm:justify-start lg:mt-2">
-          <span className="text-xs">
-            Firezone is a registered trademark of Firezone, Inc.
-          </span>
+        <div className="sm:flex sm:justify-between sm:items-center mt-4 sm:mt-8">
+          <div className="text-xs">
+            <p>WireGuard is a registered trademark of Jason A. Donenfeld.</p>
+            <p>Firezone is a registered trademark of Firezone, Inc.</p>
+          </div>
+          <div className="mt-4 sm:mt-0">
+            <ActionLink
+              href="https://probe.sh"
+              size="ml-1 -mr-1 w-5 h-5"
+              className="text-sm text-neutral-800 hover:underline"
+            >
+              Test your WireGuard connection
+            </ActionLink>
+          </div>
         </div>
         <hr className="my-2 border-neutral-200 sm:mx-auto lg:mb-8 lg:mt-4" />
         <div className="flex grid sm:grid-cols-3">
