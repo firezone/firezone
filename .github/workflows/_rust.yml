@@ -98,7 +98,7 @@ jobs:
         name: "cargo test"
         shell: bash
 
-  incremental-mutants:
+  mutants:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     strategy:
@@ -117,7 +117,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mutants-incremental.out
+          name: mutants.out
           path: mutants.out
 
   # Runs the Tauri client smoke test, built in debug mode. We can't run it in release
