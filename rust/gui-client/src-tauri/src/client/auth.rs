@@ -1,15 +1,12 @@
 //! Fulfills <https://github.com/firezone/firezone/issues/2823>
 
+use anyhow::Result;
 use firezone_headless_client::known_dirs;
 use rand::{thread_rng, RngCore};
 use secrecy::{ExposeSecret, SecretString};
 use std::path::PathBuf;
 use subtle::ConstantTimeEq;
 use url::Url;
-
-mod token_storage_keyring;
-
-use token_storage_keyring::TokenStorage;
 
 const NONCE_LENGTH: usize = 32;
 
@@ -35,11 +32,9 @@ pub(crate) enum Error {
     WriteActorName(std::io::Error),
 }
 
-type Result<T> = std::result::Result<T, Error>;
-
 pub(crate) struct Auth {
     /// Implementation details in case we need to disable `keyring-rs`
-    token_store: TokenStorage,
+    token_store: keyring::Entry,
     state: State,
 }
 
@@ -85,15 +80,16 @@ impl Auth {
     /// Creates a new Auth struct using the "dev.firezone.client/token" keyring key. If the token is stored on disk, the struct is automatically signed in.
     ///
     /// Performs I/O.
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         Self::new_with_key("dev.firezone.client/token")
     }
 
     /// Creates a new Auth struct with a custom keyring key for testing.
     ///
     /// `new` also just wraps this.
-    fn new_with_key(keyring_key: &'static str) -> Self {
-        let token_store = TokenStorage::new(keyring_key);
+    fn new_with_key(keyring_key: &'static str) -> Result<Self> {
+        // The 2nd and 3rd args are ignored on some platforms, so don't use them
+        let token_store = keyring::Entry::new_with_target(keyring_key, "", "")?;
         let mut this = Self {
             token_store,
             state: State::SignedOut,
@@ -111,7 +107,7 @@ impl Auth {
             Ok(None) => tracing::info!("No token on disk, starting in signed-out state."),
         }
 
-        this
+        Ok(this)
     }
 
     /// Returns the session iff we are signed in.
@@ -125,8 +121,8 @@ impl Auth {
     /// Mark the session as signed out, or cancel an ongoing sign-in flow
     ///
     /// Performs I/O.
-    pub fn sign_out(&mut self) -> Result<()> {
-        if let Err(error) = self.token_store.delete() {
+    pub fn sign_out(&mut self) -> Result<(), Error> {
+        if let Err(error) = self.token_store.delete_credential() {
             tracing::warn!(?error, "Couldn't delete token while signing out");
         }
         if let Err(error) = std::fs::remove_file(actor_name_path()?) {
@@ -143,7 +139,7 @@ impl Auth {
     ///
     /// Returns parameters used to make a URL for the web browser to open
     /// May return Ok(None) if we're already signed in
-    pub fn start_sign_in(&mut self) -> Result<Option<&Request>> {
+    pub fn start_sign_in(&mut self) -> Result<Option<&Request>, Error> {
         self.sign_out()?;
         self.state = State::NeedResponse(Request {
             nonce: generate_nonce(),
@@ -158,7 +154,7 @@ impl Auth {
     /// Performs I/O.
     ///
     /// Errors if we don't have any ongoing flow, or if the response is invalid
-    pub fn handle_response(&mut self, resp: Response) -> Result<SecretString> {
+    pub fn handle_response(&mut self, resp: Response) -> Result<SecretString, Error> {
         let req = self.ongoing_request()?;
 
         if !secure_equality(&resp.state, &req.state) {
@@ -175,7 +171,7 @@ impl Auth {
 
         // This MUST be the only place the GUI can call `set_password`, since
         // the actor name is also saved here.
-        self.token_store.set(token.clone())?;
+        self.token_store.set_password(token.expose_secret())?;
         let path = actor_name_path()?;
         std::fs::create_dir_all(path.parent().ok_or(Error::ActorNamePathWrong)?)
             .map_err(Error::CreateDirAll)?;
@@ -189,7 +185,7 @@ impl Auth {
     /// Returns the token if we are signed in
     ///
     /// This will always make syscalls, but it should be fast enough for normal use.
-    pub fn token(&self) -> Result<Option<SecretString>> {
+    pub fn token(&self) -> Result<Option<SecretString>, Error> {
         match self.state {
             State::SignedIn(_) => {}
             State::NeedResponse(_) | State::SignedOut => return Ok(None),
@@ -203,7 +199,7 @@ impl Auth {
     /// Retrieves the token from disk regardless of in-memory state
     ///
     /// Performs I/O
-    fn get_token_from_disk(&self) -> Result<Option<SessionAndToken>> {
+    fn get_token_from_disk(&self) -> Result<Option<SessionAndToken>, Error> {
         let actor_name = match std::fs::read_to_string(actor_name_path()?) {
             Ok(x) => x,
             // It can happen with dev systems that actor_name.txt doesn't exist
@@ -215,9 +211,10 @@ impl Auth {
 
         // This MUST be the only place the GUI can call `get_password`, since the
         // actor name is also loaded here.
-        let Some(token) = self.token_store.get()? else {
+        let Ok(token) = self.token_store.get_password() else {
             return Ok(None);
         };
+        let token = SecretString::from(token);
 
         Ok(Some(SessionAndToken {
             session: Session { actor_name },
@@ -225,7 +222,7 @@ impl Auth {
         }))
     }
 
-    pub fn ongoing_request(&self) -> Result<&Request> {
+    pub fn ongoing_request(&self) -> Result<&Request, Error> {
         match &self.state {
             State::NeedResponse(x) => Ok(x),
             State::SignedIn(_) | State::SignedOut => Err(Error::NoInflightRequest),
@@ -236,7 +233,7 @@ impl Auth {
 /// Returns a path to a file where we can save the actor name
 ///
 /// Hopefully we don't need to save anything else, or there will be a migration step
-fn actor_name_path() -> Result<PathBuf> {
+fn actor_name_path() -> Result<PathBuf, Error> {
     Ok(known_dirs::session()
         .ok_or(Error::CantFindKnownDir)?
         .join("actor_name.txt"))
@@ -262,39 +259,93 @@ fn secure_equality(a: &SecretString, b: &SecretString) -> bool {
     a.ct_eq(b).into()
 }
 
-// The Linux CI is headless so it's hard to test keyrings in it
-// There is a trick, but it requires some setup outside of `cargo test`:
-// <https://github.com/hwchen/keyring-rs/blob/master/linux-test.sh>
-#[cfg(not(target_os = "linux"))]
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[cfg(not(target_os = "linux"))]
     fn bogus_secret(x: &str) -> SecretString {
         SecretString::new(x.into())
     }
 
     #[test]
-    fn actor_name_path() {
-        assert!(super::actor_name_path()
+    fn actor_name() {
+        assert!(actor_name_path()
             .expect("`actor_name_path` should return Ok")
             .components()
             .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref())));
     }
 
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn keyring_is_persistent() {
+        assert!(matches!(
+            keyring::secret_service::default_credential_builder().persistence(),
+            keyring::credential::CredentialPersistence::UntilDelete
+        ));
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn keyring_is_persistent() {
+        assert!(matches!(
+            keyring::windows::default_credential_builder().persistence(),
+            keyring::credential::CredentialPersistence::UntilDelete
+        ));
+    }
+
     /// Runs everything in one test so that `cargo test` can't multi-thread it
     /// This should work around a bug we had <https://github.com/firezone/firezone/issues/3256>
     #[test]
+    // The Linux CI is headless so it's hard to test keyrings in it
+    #[cfg(not(target_os = "linux"))]
     fn everything() {
         // Run `happy_path` first to make sure it reacts okay if our `data` dir is missing
         // TODO: Re-enable happy path tests once `keyring-rs` is working in CI tests
-        // happy_path("");
-        // happy_path("Jane Doe");
+        happy_path("");
+        happy_path("Jane Doe");
         utils();
         no_inflight_request();
         states_dont_match();
     }
 
+    // The Linux CI is headless so it's hard to test keyrings in it
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn keyring_rs() {
+        // We used this test to find that `service` is not used on Windows - We have to namespace on our own.
+
+        let name_1 = "dev.firezone.client/test_1/token";
+        let name_2 = "dev.firezone.client/test_2/token";
+
+        let test_password_1 = "test_password_1";
+        let test_password_2 = "test_password_2";
+
+        let entry = keyring::Entry::new_with_target(name_1, "", "").unwrap();
+        entry.set_password("test_password_1").unwrap();
+
+        {
+            // In the middle of accessing one token, access another to make sure they don't interfere much
+            let entry = keyring::Entry::new_with_target(name_2, "", "").unwrap();
+            entry.set_password(test_password_2).unwrap();
+            assert_eq!(entry.get_password().unwrap(), test_password_2);
+        }
+
+        {
+            // Make sure that closing and re-opening the `Entry` on the same thread
+            // gives the correct result
+            let entry = keyring::Entry::new_with_target(name_2, "", "").unwrap();
+            assert_eq!(entry.get_password().unwrap(), test_password_2);
+            entry.delete_credential().unwrap();
+            assert!(entry.get_password().is_err());
+        }
+
+        assert_eq!(entry.get_password().unwrap(), test_password_1);
+        entry.delete_credential().unwrap();
+        assert!(entry.get_password().is_err());
+    }
+
+    #[cfg(not(target_os = "linux"))]
     fn utils() {
         // This doesn't test for constant-time properties, it just makes sure the function
         // gives the right result
@@ -319,14 +370,14 @@ mod tests {
         );
     }
 
-    // TODO: Re-enable
-    fn _happy_path(actor_name: &str) {
+    #[cfg(not(target_os = "linux"))]
+    fn happy_path(actor_name: &str) {
         // Key for credential manager. This is not what we use in production
         let key = "dev.firezone.client/test_DMRCZ67A_happy_path/token";
 
         {
             // Start the program
-            let mut state = Auth::new_with_key(key);
+            let mut state = Auth::new_with_key(key).unwrap();
 
             // Delete any token on disk from previous test runs
             state.sign_out().unwrap();
@@ -351,7 +402,7 @@ mod tests {
 
         // Recreate the state to simulate closing and re-opening the app
         {
-            let mut state = Auth::new_with_key(key);
+            let mut state = Auth::new_with_key(key).unwrap();
 
             // Make sure we automatically got the token and actor_name back
             assert!(state.token().unwrap().is_some());
@@ -369,10 +420,11 @@ mod tests {
         }
     }
 
+    #[cfg(not(target_os = "linux"))]
     fn no_inflight_request() {
         // Start the program
         let mut state =
-            Auth::new_with_key("dev.firezone.client/test_DMRCZ67A_invalid_response/token");
+            Auth::new_with_key("dev.firezone.client/test_DMRCZ67A_invalid_response/token").unwrap();
 
         // Delete any token on disk from previous test runs
         state.sign_out().unwrap();
@@ -394,10 +446,12 @@ mod tests {
         state.sign_out().unwrap();
     }
 
+    #[cfg(not(target_os = "linux"))]
     fn states_dont_match() {
         // Start the program
         let mut state =
-            Auth::new_with_key("dev.firezone.client/test_DMRCZ67A_states_dont_match/token");
+            Auth::new_with_key("dev.firezone.client/test_DMRCZ67A_states_dont_match/token")
+                .unwrap();
 
         // Delete any token on disk from previous test runs
         state.sign_out().unwrap();

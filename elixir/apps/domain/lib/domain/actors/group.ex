@@ -20,8 +20,9 @@ defmodule Domain.Actors.Group do
     # ref https://github.com/firezone/firezone/issues/2162
     has_many :actors, through: [:memberships, :actor]
 
-    field :created_by, Ecto.Enum, values: ~w[system identity provider]a
+    field :created_by, Ecto.Enum, values: ~w[actor identity provider system]a
     belongs_to :created_by_identity, Domain.Auth.Identity
+    belongs_to :created_by_actor, Domain.Actors.Actor
 
     belongs_to :account, Domain.Accounts.Account
 

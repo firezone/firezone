@@ -4,34 +4,27 @@ use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
+use crate::dns::is_subdomain;
 use crate::tests::assertions::*;
 use crate::tests::sim_relay::map_explode;
 use crate::tests::transition::Transition;
 use crate::{dns::DnsQuery, ClientEvent, GatewayEvent, Request};
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::{Interface, RelayId};
+use connlib_shared::messages::client::ResourceDescription;
 use connlib_shared::{
-    messages::{client::ResourceDescription, ClientId, GatewayId},
+    messages::{ClientId, GatewayId, Interface, RelayId},
     DomainName,
 };
-use firezone_relay::IpStack;
 use hickory_proto::{
     op::Query,
     rr::{RData, Record, RecordType},
 };
 use hickory_resolver::lookup::Lookup;
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
-use rand::SeedableRng as _;
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
-use std::collections::BTreeMap;
-use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    net::IpAddr,
-    str::FromStr as _,
-    sync::Arc,
-    time::Instant,
-};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::{collections::HashSet, net::IpAddr, str::FromStr as _, sync::Arc, time::Instant};
 use tracing::debug_span;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::layer::SubscriberExt;
@@ -45,10 +38,11 @@ pub(crate) struct TunnelTest {
     now: Instant,
     utc_now: DateTime<Utc>,
 
-    pub(crate) client: Host<SimClient>,
-    pub(crate) gateways: HashMap<GatewayId, Host<SimGateway>>,
-    relays: HashMap<RelayId, Host<SimRelay>>,
+    client: Host<SimClient>,
+    gateways: BTreeMap<GatewayId, Host<SimGateway>>,
+    relays: BTreeMap<RelayId, Host<SimRelay>>,
 
+    drop_direct_client_traffic: bool,
     network: RoutingTable,
 
     #[allow(dead_code)]
@@ -85,41 +79,31 @@ impl StateMachineTest for TunnelTest {
 
                 (*id, gateway)
             })
-            .collect::<HashMap<_, _>>();
+            .collect::<BTreeMap<_, _>>();
 
         let relays = ref_state
             .relays
             .iter()
-            .map(|(id, relay)| {
-                let relay = relay.map(
-                    |seed, ip4, ip6| {
-                        SimRelay::new(firezone_relay::Server::new(
-                            IpStack::from((ip4, ip6)),
-                            rand::rngs::StdRng::seed_from_u64(seed),
-                            3478,
-                            49152..=65535,
-                        ))
-                    },
-                    debug_span!("relay", rid = %id),
-                );
+            .map(|(rid, relay)| {
+                let relay = relay.map(SimRelay::new, debug_span!("relay", %rid));
 
-                (*id, relay)
+                (*rid, relay)
             })
-            .collect::<HashMap<_, _>>();
+            .collect::<BTreeMap<_, _>>();
 
         // Configure client and gateway with the relays.
         client.exec_mut(|c| {
             c.sut.update_relays(
-                HashSet::default(),
-                HashSet::from_iter(map_explode(relays.iter(), "client")),
+                BTreeSet::default(),
+                BTreeSet::from_iter(map_explode(relays.iter(), "client")),
                 ref_state.now,
             )
         });
         for (id, gateway) in &mut gateways {
             gateway.exec_mut(|g| {
                 g.sut.update_relays(
-                    HashSet::default(),
-                    HashSet::from_iter(map_explode(relays.iter(), &format!("gateway_{id}"))),
+                    BTreeSet::default(),
+                    BTreeSet::from_iter(map_explode(relays.iter(), &format!("gateway_{id}"))),
                     ref_state.now,
                 )
             });
@@ -129,6 +113,7 @@ impl StateMachineTest for TunnelTest {
             now: ref_state.now,
             utc_now: ref_state.utc_now,
             network: ref_state.network.clone(),
+            drop_direct_client_traffic: ref_state.drop_direct_client_traffic,
             client,
             gateways,
             logger,
@@ -153,15 +138,29 @@ impl StateMachineTest for TunnelTest {
 
         // Act: Apply the transition
         match transition {
-            Transition::AddCidrResource { resource } => {
-                state
-                    .client
-                    .exec_mut(|c| c.sut.add_resource(ResourceDescription::Cidr(resource)));
+            Transition::ActivateResource(resource) => {
+                state.client.exec_mut(|c| {
+                    // Flush DNS.
+                    match &resource {
+                        ResourceDescription::Dns(r) => {
+                            c.dns_records.retain(|domain, _| {
+                                if is_subdomain(domain, &r.address) {
+                                    return false;
+                                }
+
+                                true
+                            });
+                        }
+                        ResourceDescription::Cidr(_) => {}
+                        ResourceDescription::Internet(_) => {}
+                    }
+
+                    c.sut.add_resource(resource);
+                });
             }
-            Transition::AddDnsResource { resource, .. } => state
-                .client
-                .exec_mut(|c| c.sut.add_resource(ResourceDescription::Dns(resource))),
-            Transition::RemoveResource(id) => state.client.exec_mut(|c| c.sut.remove_resource(id)),
+            Transition::DeactivateResource(id) => {
+                state.client.exec_mut(|c| c.sut.remove_resource(id))
+            }
             Transition::SendICMPPacketToNonResourceIp {
                 src,
                 dst,
@@ -173,6 +172,7 @@ impl StateMachineTest for TunnelTest {
                 dst,
                 seq,
                 identifier,
+                ..
             } => {
                 let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
 
@@ -188,6 +188,7 @@ impl StateMachineTest for TunnelTest {
                 seq,
                 identifier,
                 resolved_ip,
+                ..
             } => {
                 let available_ips = state
                     .client
@@ -248,8 +249,8 @@ impl StateMachineTest for TunnelTest {
 
                     // In prod, we reconnect to the portal and receive a new `init` message.
                     c.sut.update_relays(
-                        HashSet::default(),
-                        HashSet::from_iter(map_explode(state.relays.iter(), "client")),
+                        BTreeSet::default(),
+                        BTreeSet::from_iter(map_explode(state.relays.iter(), "client")),
                         ref_state.now,
                     );
                     c.sut
@@ -260,7 +261,7 @@ impl StateMachineTest for TunnelTest {
                 let ipv4 = state.client.inner().sut.tunnel_ip4().unwrap();
                 let ipv6 = state.client.inner().sut.tunnel_ip6().unwrap();
                 let upstream_dns = ref_state.client.inner().upstream_dns_resolvers.clone();
-                let relays = HashSet::from_iter(map_explode(state.relays.iter(), "client"));
+                let relays = BTreeSet::from_iter(map_explode(state.relays.iter(), "client"));
                 let all_resources = ref_state.client.inner().all_resources();
 
                 // Simulate receiving `init`.
@@ -271,7 +272,7 @@ impl StateMachineTest for TunnelTest {
                         upstream_dns,
                     });
                     c.sut
-                        .update_relays(HashSet::default(), relays, ref_state.now);
+                        .update_relays(BTreeSet::default(), relays, ref_state.now);
                     c.sut.set_resources(all_resources);
                 });
             }
@@ -360,10 +361,12 @@ impl TunnelTest {
             });
 
             for (_, gateway) in self.gateways.iter_mut() {
-                if let Some(transmit) = gateway.exec_mut(|g| g.sut.poll_transmit()) {
-                    buffered_transmits.push(transmit, gateway);
-                    continue 'outer;
-                }
+                let Some(transmit) = gateway.exec_mut(|g| g.sut.poll_transmit()) else {
+                    continue;
+                };
+
+                buffered_transmits.push(transmit, gateway);
+                continue 'outer;
             }
 
             for (id, gateway) in self.gateways.iter_mut() {
@@ -413,7 +416,6 @@ impl TunnelTest {
             if self.handle_timeout(self.now, self.utc_now) {
                 continue;
             }
-
             break;
         }
     }
@@ -483,10 +485,24 @@ impl TunnelTest {
 
         match host {
             HostId::Client(_) => {
+                if self.drop_direct_client_traffic
+                    && self.gateways.values().any(|g| g.is_sender(src.ip()))
+                {
+                    tracing::debug!(%src, %dst, "Dropping direct traffic");
+
+                    return;
+                }
+
                 self.client
                     .exec_mut(|c| c.handle_packet(payload, src, dst, self.now));
             }
             HostId::Gateway(id) => {
+                if self.drop_direct_client_traffic && self.client.is_sender(src.ip()) {
+                    tracing::debug!(%src, %dst, "Dropping direct traffic");
+
+                    return;
+                }
+
                 let gateway = self.gateways.get_mut(&id).expect("unknown gateway");
 
                 let Some(transmit) = gateway

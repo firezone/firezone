@@ -27,7 +27,7 @@ use core::fmt;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, RelaySocket};
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
@@ -67,7 +67,7 @@ impl ClientTunnel {
         self.io.device_mut().set_tun(tun);
     }
 
-    pub fn update_relays(&mut self, to_remove: HashSet<RelayId>, to_add: Vec<Relay>) {
+    pub fn update_relays(&mut self, to_remove: BTreeSet<RelayId>, to_add: Vec<Relay>) {
         self.role_state
             .update_relays(to_remove, turn(&to_add), Instant::now())
     }
@@ -384,6 +384,13 @@ impl ClientState {
         })
     }
 
+    fn is_dns_resource(&self, resource: &ResourceId) -> bool {
+        matches!(
+            self.resources_by_id.get(resource),
+            Some(ResourceDescription::Dns(_))
+        )
+    }
+
     pub(crate) fn encapsulate<'s>(
         &'s mut self,
         packet: MutableIpPacket<'_>,
@@ -406,6 +413,9 @@ impl ClientState {
             return None;
         };
 
+        // We read this here to prevent problems with the borrow checker
+        let is_dns_resource = self.is_dns_resource(&resource);
+
         let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
         else {
             self.on_not_connected_resource(resource, &dst, now);
@@ -419,7 +429,9 @@ impl ClientState {
             now,
         );
 
-        if peer.allowed_ips.longest_match(dst).is_none() {
+        // Allowed IPs will track the IPs that we have sent to the gateway along with a list of ResourceIds
+        // for DNS resource we will send the IP one at a time.
+        if is_dns_resource && peer.allowed_ips.exact_match(dst).is_none() {
             let gateway_id = peer.id();
             self.send_proxy_ips(&dst, resource, gateway_id);
             return None;
@@ -571,6 +583,14 @@ impl ClientState {
         })));
     }
 
+    fn is_upstream_set_by_the_portal(&self) -> bool {
+        let Some(interface) = &self.interface_config else {
+            return false;
+        };
+
+        !interface.upstream_dns.is_empty()
+    }
+
     /// Attempt to handle the given packet as a DNS packet.
     ///
     /// Returns `Ok` if the packet is in fact a DNS query with an optional response to send back.
@@ -587,13 +607,14 @@ impl ClientState {
             Some(dns::ResolveStrategy::ForwardQuery(query)) => {
                 // There's an edge case here, where the resolver's ip has been resolved before as
                 // a dns resource... we will ignore that weird case for now.
-                // Assuming a single upstream dns until #3123 lands
                 if let Some(upstream_dns) = self.dns_mapping.get_by_left(&query.query.destination())
                 {
                     let ip = upstream_dns.ip();
 
                     // In case the DNS server is a CIDR resource, it needs to go through the tunnel.
-                    if self.cidr_resources.longest_match(ip).is_some() {
+                    if self.is_upstream_set_by_the_portal()
+                        && self.cidr_resources.longest_match(ip).is_some()
+                    {
                         return Err((packet, ip));
                     }
                 }
@@ -799,8 +820,8 @@ impl ClientState {
 
     fn drain_node_events(&mut self) {
         let mut resources_changed = false; // Track this separately to batch together `ResourcesChanged` events.
-        let mut added_ice_candidates = HashMap::<GatewayId, HashSet<String>>::default();
-        let mut removed_ice_candidates = HashMap::<GatewayId, HashSet<String>>::default();
+        let mut added_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
+        let mut removed_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -840,7 +861,7 @@ impl ClientState {
                 });
         }
 
-        for (conn_id, candidates) in added_ice_candidates.drain() {
+        for (conn_id, candidates) in added_ice_candidates.into_iter() {
             self.buffered_events
                 .push_back(ClientEvent::AddedIceCandidates {
                     conn_id,
@@ -848,7 +869,7 @@ impl ClientState {
                 })
         }
 
-        for (conn_id, candidates) in removed_ice_candidates.drain() {
+        for (conn_id, candidates) in removed_ice_candidates.into_iter() {
             self.buffered_events
                 .push_back(ClientEvent::RemovedIceCandidates {
                     conn_id,
@@ -979,6 +1000,8 @@ impl ClientState {
             self.update_site_status_by_gateway(&gateway_id, Status::Unknown);
             // TODO: should we have a Node::remove_connection?
         }
+
+        self.resources_gateways.remove(&id);
     }
 
     fn update_dns_mapping(&mut self) -> bool {
@@ -1030,8 +1053,8 @@ impl ClientState {
 
     pub fn update_relays(
         &mut self,
-        to_remove: HashSet<RelayId>,
-        to_add: HashSet<(RelayId, RelaySocket, String, String, String)>,
+        to_remove: BTreeSet<RelayId>,
+        to_add: BTreeSet<(RelayId, RelaySocket, String, String, String)>,
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);
