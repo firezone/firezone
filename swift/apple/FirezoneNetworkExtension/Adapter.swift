@@ -148,7 +148,6 @@ class Adapter {
       // `connected`.
       completionHandler(nil)
     } catch let error {
-      Log.tunnel.error("\(#function): Adapter.start: Error: \(error)")
       state = .tunnelStopped
       throw AdapterError.connlibConnectError(error)
     }
