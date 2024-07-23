@@ -11,6 +11,7 @@ mock = ["connlib-client-shared/mock"]
 swift-bridge-build = "0.1.53"
 
 [dependencies]
+anyhow = "1.0.86"
 backoff = "0.4.0"
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
