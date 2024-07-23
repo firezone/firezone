@@ -4,7 +4,7 @@ A less exhaustive version of [Manual Testing](manual_testing.md)
 
 ## Smoke test checklist (Ubuntu)
 
-Keep this synchronized with the Linux GUI docs in `/website/src/app/kb/user-guides/linux-gui-client`
+Keep this synchronized with the Linux GUI docs in `/website/src/app/kb/client-apps/linux-gui-client`
 
 Best performed on a clean VM
 
@@ -40,13 +40,13 @@ Best performed on a clean VM
 1. Sign out of Firezone without quitting
 1. Check the IP again, expect your own IP (Checks for regressions in https://github.com/firezone/firezone/pull/5828)
 1. Export the logs
-1. Expect the zip file to start with "firezone_logs_"
+1. Expect the zip file to start with `firezone_logs_`
 1. Expect `zipinfo` to show a single directory in the root of the zip, to prevent zip bombing
 1. Expect two subdirectories in the zip, "connlib", and "app", with 3 and 2 files respectively, totalling 5 files
 
 ## Smoke test checklist (Windows)
 
-Keep this synchronized with the Windows GUI docs in `/website/src/app/kb/user-guides/windows-client`
+Keep this synchronized with the Windows GUI docs in `/website/src/app/kb/client-apps/windows-client`
 
 x86_64 only, see issue #2992. Best performed on a clean VM.
 
@@ -108,4 +108,5 @@ x86_64 only, see issue #2992. Best performed on a clean VM.
 - Auth base URL and API URL changes take effect on the next sign-in
 
 Refs:
+
 - https://github.com/firezone/firezone/pull/3868

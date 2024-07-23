@@ -33,7 +33,7 @@ Given that `main` is tested:
 1. Open a PR and make the following changes:
 1. Update [scripts/Makefile](../scripts/Makefile) with the new version number(s). Run `make -f scripts/Makefile version` to propagate the versions in the Makefile to all components.
 1. Update the Changelog (e.g. `../website/src/components/Changelog/GUI.tsx`) with the new version number(s) and release notes.
-1. Update the known issues in `website/src/app/kb/user-guides/*`
+1. Update the known issues in `website/src/app/kb/client-apps/*`
 1. When the PR merges, the website will now redirect to the new version(s).
 
 This results in a gap where GitHub knows about the release but nobody else does.

@@ -61,12 +61,12 @@ export default function _Page() {
             </p>
           </Link>
           <Link
-            href="/kb/user-guides"
+            href="/kb/client-apps"
             className="p-6 hover:shadow rounded border-2 hover:border-accent-200 hover:bg-accent-50 transition duration-100"
           >
             <h3 className="text-neutral-800 text-lg font-semibold tracking-tight">
               <HiOutlineUserCircle className="w-5 h-5 mr-2" />
-              End-user guides
+              Client apps
             </h3>
             <p className="mt-8">
               Installation and usage instructions for the Firezone Clients

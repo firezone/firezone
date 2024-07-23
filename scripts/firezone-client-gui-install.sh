@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Keep this synchronized with the Linux GUI docs in `/website/src/app/kb/user-guides/linux-gui-client`
+# Keep this synchronized with the Linux GUI docs in `/website/src/app/kb/client-apps/linux-gui-client`
 # Usage: ./firezone-client-gui-install.sh ./firezone-client-gui_VERSION_ARCH.deb
 #
 # The `./` is necessary

@@ -186,7 +186,7 @@ export default function RootNavbar() {
       <NavbarToggle barIcon={HiBars3} />
       <NavbarCollapse>
         <Dropdown theme={dropdownTheme} label="Product" inline>
-          <DropdownItem href="/kb/user-guides">Download</DropdownItem>
+          <DropdownItem href="/kb/client-apps">Download</DropdownItem>
           <DropdownItem href="/contact/sales">Book a demo</DropdownItem>
           <DropdownItem href="/kb/use-cases">Use cases</DropdownItem>
           <DropdownItem href="https://www.github.com/firezone/firezone">
