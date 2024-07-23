@@ -2,30 +2,39 @@
 
 use anyhow::Result;
 use firezone_headless_client::dns_control::system_resolvers_for_gui;
+use futures::StreamExt;
 use std::net::IpAddr;
 use tokio::time::Interval;
 
-/// TODO: Implement for Linux
-pub(crate) fn check_internet() -> Result<bool> {
-    Ok(true)
+const DESTINATION: &str = "org.freedesktop.NetworkManager";
+const PATH: &str = "/org/freedesktop/NetworkManager";
+const INTERFACE: &str = "org.freedesktop.NetworkManager";
+const SIGNAL_NAME: &str = "StateChanged";
+
+pub(crate) async fn network_notifier(_tokio_handle: tokio::runtime::Handle) -> Result<Worker> {
+    Worker::new().await
 }
 
-pub(crate) struct Worker {}
+pub(crate) struct Worker {
+    stream: zbus::proxy::SignalStream<'static>,
+}
 
 impl Worker {
-    pub(crate) fn new() -> Result<Self> {
-        Ok(Self {})
+    async fn new() -> Result<Self> {
+        let cxn = zbus::Connection::system().await?;
+        let proxy = zbus::Proxy::new_owned(cxn, DESTINATION, PATH, INTERFACE).await?;
+        let stream = proxy.receive_signal(SIGNAL_NAME).await?;
+        Ok(Self { stream })
     }
 
     pub(crate) fn close(&mut self) -> Result<()> {
         Ok(())
     }
 
-    /// Not implemented on Linux
-    ///
-    /// On Windows this returns when we gain or lose Internet.
     pub(crate) async fn notified(&mut self) {
-        futures::future::pending().await
+        if self.stream.next().await.is_none() {
+            futures::future::pending::<()>().await;
+        }
     }
 }
 

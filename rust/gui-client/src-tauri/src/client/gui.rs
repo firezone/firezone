@@ -796,12 +796,9 @@ async fn run_controller(
         win.show().context("Couldn't show Welcome window")?;
     }
 
-    let mut have_internet =
-        network_changes::check_internet().context("Failed initial check for internet")?;
-    tracing::info!(?have_internet);
-
-    let mut com_worker =
-        network_changes::Worker::new().context("Failed to listen for network changes")?;
+    let mut network_notifier = network_changes::network_notifier(tokio::runtime::Handle::current())
+        .await
+        .context("Failed to listen for network changes")?;
 
     let mut dns_listener = network_changes::DnsListener::new()?;
 
@@ -809,14 +806,10 @@ async fn run_controller(
         // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
         // `tokio::select!` with a `poll_*` function
         tokio::select! {
-            () = com_worker.notified() => {
-                let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
-                if new_have_internet != have_internet {
-                    have_internet = new_have_internet;
-                    if controller.status.connlib_is_up() {
-                        tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
-                        controller.ipc_client.reconnect().await?;
-                    }
+            () = network_notifier.notified() => {
+                if controller.status.connlib_is_up() {
+                    tracing::debug!("Internet may have changed, calling `Session::reconnect`");
+                    controller.ipc_client.reconnect().await?;
                 }
             },
             resolvers = dns_listener.notified() => {
@@ -852,7 +845,7 @@ async fn run_controller(
         // Code down here may not run because the `select` sometimes `continue`s.
     }
 
-    if let Err(error) = com_worker.close() {
+    if let Err(error) = network_notifier.close() {
         tracing::error!(?error, "com_worker");
     }
     if let Err(error) = controller.ipc_client.disconnect_from_ipc().await {

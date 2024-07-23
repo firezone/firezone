@@ -61,6 +61,7 @@ features = [
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
 nix = { version = "0.28.0", features = ["user"] }
+zbus = "4.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 
