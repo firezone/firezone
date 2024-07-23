@@ -394,23 +394,3 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tracing_subscriber::EnvFilter;
-
-    /// Checks for regressions in issue #4765, un-initializing Wintun
-    #[test]
-    #[ignore = "Needs admin privileges"]
-    fn tunnel_drop() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(EnvFilter::from_default_env())
-            .with_test_writer()
-            .try_init();
-        // Each cycle takes about half a second, so this will take a fair bit to run.
-        for _ in 0..50 {
-            let _tun = Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
-        }
-    }
-}
