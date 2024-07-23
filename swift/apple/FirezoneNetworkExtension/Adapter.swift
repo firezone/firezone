@@ -111,9 +111,7 @@ class Adapter {
   public func start(completionHandler: @escaping (AdapterError?) -> Void) throws {
     Log.tunnel.log("Adapter.start")
     guard case .tunnelStopped = self.state else {
-      Log.tunnel.error("\(#function): Invalid Adapter state")
-      completionHandler(.invalidState)
-      return
+      throw AdapterError.invalidState
     }
 
     callbackHandler.delegate = self
