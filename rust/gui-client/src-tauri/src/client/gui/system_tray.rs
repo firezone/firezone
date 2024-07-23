@@ -184,10 +184,10 @@ impl Icon {
 
 impl<'a> AppState<'a> {
     fn build(self) -> tauri::SystemTrayMenu {
-        self.to_menu().build()
+        self.into_menu().build()
     }
 
-    fn to_menu(self) -> Menu {
+    fn into_menu(self) -> Menu {
         match self {
             Self::Loading => Menu::default().disabled("Loading..."),
             Self::SignedOut => Menu::default()
@@ -300,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    fn no_resources_no_favorites() -> Result<()> {
+    fn no_resources_no_favorites() {
         let resources = vec![];
         let favorites = HashSet::default();
         let input = AppState::SignedIn(SignedIn {
@@ -308,7 +308,7 @@ mod tests {
             favorite_resources: &favorites,
             resources: &resources,
         });
-        let actual = input.to_menu();
+        let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
@@ -322,12 +322,10 @@ mod tests {
             "{}",
             serde_json::to_string_pretty(&actual).unwrap()
         );
-
-        Ok(())
     }
 
     #[test]
-    fn no_resources_invalid_favorite() -> Result<()> {
+    fn no_resources_invalid_favorite() {
         let resources = vec![];
         let favorites = HashSet::from([ResourceId::from_u128(42)]);
         let input = AppState::SignedIn(SignedIn {
@@ -335,7 +333,7 @@ mod tests {
             favorite_resources: &favorites,
             resources: &resources,
         });
-        let actual = input.to_menu();
+        let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
@@ -351,8 +349,6 @@ mod tests {
             "{}",
             serde_json::to_string_pretty(&actual).unwrap()
         );
-
-        Ok(())
     }
 
     #[test]
@@ -364,7 +360,7 @@ mod tests {
             favorite_resources: &favorites,
             resources: &resources,
         });
-        let actual = input.to_menu();
+        let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
@@ -450,7 +446,7 @@ mod tests {
             favorite_resources: &favorites,
             resources: &resources,
         });
-        let actual = input.to_menu();
+        let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
@@ -544,7 +540,7 @@ mod tests {
             favorite_resources: &favorites,
             resources: &resources,
         });
-        let actual = input.to_menu();
+        let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
