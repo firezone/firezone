@@ -1,3 +1,4 @@
+use super::buffered_transmits::BufferedTransmits;
 use super::reference::ReferenceState;
 use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
@@ -24,9 +25,8 @@ use hickory_resolver::lookup::Lookup;
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
-use std::cmp::Reverse;
 use std::{
-    collections::{BTreeMap, BTreeSet, BinaryHeap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     net::IpAddr,
     str::FromStr as _,
     sync::Arc,
@@ -805,117 +805,4 @@ pub(crate) fn domain_to_hickory_name(domain: DomainName) -> hickory_proto::rr::N
     debug_assert_eq!(name.to_string(), domain);
 
     name
-}
-
-#[derive(Debug, Default)]
-struct BufferedTransmits {
-    // Transmits are stored in reverse ordering to emit the earliest first.
-    inner: BinaryHeap<Reverse<ByTime<Transmit<'static>>>>,
-}
-
-#[derive(Debug, PartialEq, PartialOrd, Eq, Ord)]
-struct ByTime<T> {
-    at: Instant,
-    value: T,
-}
-
-impl BufferedTransmits {
-    fn push<T>(
-        &mut self,
-        transmit: impl Into<Option<Transmit<'static>>>,
-        sending_host: &Host<T>,
-        now: Instant,
-    ) {
-        let Some(transmit) = transmit.into() else {
-            return;
-        };
-
-        if transmit.src.is_some() {
-            self.inner.push(Reverse(ByTime {
-                at: now + sending_host.latency(),
-                value: transmit,
-            }));
-            return;
-        }
-
-        // The `src` of a [`Transmit`] is empty if we want to send if via the default interface.
-        // In production, the kernel does this for us.
-        // In this test, we need to always set a `src` so that the remote peer knows where the packet is coming from.
-
-        let Some(src) = sending_host.sending_socket_for(transmit.dst.ip()) else {
-            tracing::debug!(dst = %transmit.dst, "No socket");
-
-            return;
-        };
-
-        self.inner.push(Reverse(ByTime {
-            at: now + sending_host.latency(),
-            value: Transmit {
-                src: Some(src),
-                ..transmit
-            },
-        }));
-    }
-
-    fn pop(&mut self, now: Instant) -> Option<Transmit<'static>> {
-        let next = self.inner.peek()?.0.at;
-
-        if next > now {
-            return None;
-        }
-
-        let next = self.inner.pop().unwrap().0;
-
-        Some(next.value)
-    }
-
-    fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn by_time_orders_from_earliest_to_latest() {
-        let mut heap = BinaryHeap::new();
-        let start = Instant::now();
-
-        heap.push(ByTime {
-            at: start + Duration::from_secs(1),
-            value: 1,
-        });
-        heap.push(ByTime {
-            at: start,
-            value: 0,
-        });
-        heap.push(ByTime {
-            at: start + Duration::from_secs(2),
-            value: 2,
-        });
-
-        assert_eq!(
-            heap.pop().unwrap(),
-            ByTime {
-                at: start + Duration::from_secs(2),
-                value: 2
-            },
-        );
-        assert_eq!(
-            heap.pop().unwrap(),
-            ByTime {
-                at: start + Duration::from_secs(1),
-                value: 1
-            }
-        );
-        assert_eq!(
-            heap.pop().unwrap(),
-            ByTime {
-                at: start,
-                value: 0
-            }
-        );
-    }
 }
