@@ -1,20 +1,22 @@
 exclude_globs = [
-    "connlib/tunnel/src/lib.rs",
-    "connlib/tunnel/src/io.rs",
     "connlib/tunnel/src/device_channel.rs",
     "connlib/tunnel/src/device_channel/*",
+    "connlib/tunnel/src/io.rs",
+    "connlib/tunnel/src/lib.rs",
+    "connlib/tunnel/src/sockets.rs",
     "connlib/tunnel/src/tests.rs",
     "connlib/tunnel/src/tests/*",
-    "connlib/tunnel/src/sockets.rs",
-    "relay/src/sockets.rs",
-    "relay/src/proptests.rs",
     "relay/src/main.rs",
-    "relay/src/sleep.rs",
+    "relay/src/proptest.rs",
+    "relay/src/proptests.rs",
     "relay/src/server/client_message.rs",
+    "relay/src/sleep.rs",
+    "relay/src/sockets.rs",
 ]
 exclude_re = [
     "tests::",
     "proptests::",
     "ClientTunnel::",
     "GatewayTunnel::",
+    "impl Display"
 ]
