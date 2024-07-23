@@ -11,6 +11,9 @@ const PATH: &str = "/org/freedesktop/NetworkManager";
 const INTERFACE: &str = "org.freedesktop.NetworkManager";
 const SIGNAL_NAME: &str = "StateChanged";
 
+/// Listens for changes between Wi-Fi networks
+///
+/// Should be similar to `dbus-monitor --system "type='signal',interface='org.freedesktop.NetworkManager',member='StateChanged'"`
 pub(crate) async fn network_notifier(_tokio_handle: tokio::runtime::Handle) -> Result<Worker> {
     Worker::new().await
 }
@@ -38,6 +41,9 @@ impl Worker {
     }
 }
 
+/// Listens for changes of DNS resolvers
+///
+/// Should be similar to `dbus-monitor --system "type='signal',interface='org.freedesktop.DBus.Properties',path='/org/freedesktop/resolve1',member='PropertiesChanged'"`
 pub(crate) struct DnsListener {
     interval: Interval,
     last_seen: Vec<IpAddr>,
