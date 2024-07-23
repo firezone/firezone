@@ -6,6 +6,11 @@ exclude_globs = [
     "connlib/tunnel/src/tests.rs",
     "connlib/tunnel/src/tests/*",
     "connlib/tunnel/src/sockets.rs",
+    "relay/src/sockets.rs",
+    "relay/src/proptests.rs",
+    "relay/src/main.rs",
+    "relay/src/sleep.rs",
+    "relay/src/server/client_message.rs",
 ]
 exclude_re = [
     "tests::",
