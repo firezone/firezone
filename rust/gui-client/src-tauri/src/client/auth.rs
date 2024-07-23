@@ -259,39 +259,59 @@ fn secure_equality(a: &SecretString, b: &SecretString) -> bool {
     a.ct_eq(b).into()
 }
 
-// The Linux CI is headless so it's hard to test keyrings in it
-// There is a trick, but it requires some setup outside of `cargo test`:
-// <https://github.com/hwchen/keyring-rs/blob/master/linux-test.sh>
-#[cfg(not(target_os = "linux"))]
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[test]
+    #[cfg(not(target_os = "linux"))]
     fn bogus_secret(x: &str) -> SecretString {
         SecretString::new(x.into())
     }
 
     #[test]
-    fn actor_name_path() {
-        assert!(super::actor_name_path()
+    fn actor_name() {
+        assert!(actor_name_path()
             .expect("`actor_name_path` should return Ok")
             .components()
             .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref())));
     }
 
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn keyring_is_persistent() {
+        assert!(matches!(
+            keyring::secret_service::default_credential_builder().persistence(),
+            keyring::credential::CredentialPersistence::UntilDelete
+        ));
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn keyring_is_persistent() {
+        assert!(matches!(
+            keyring::windows::default_credential_builder().persistence(),
+            keyring::credential::CredentialPersistence::UntilDelete
+        ));
+    }
+
     /// Runs everything in one test so that `cargo test` can't multi-thread it
     /// This should work around a bug we had <https://github.com/firezone/firezone/issues/3256>
     #[test]
+    // The Linux CI is headless so it's hard to test keyrings in it
+    #[cfg(not(target_os = "linux"))]
     fn everything() {
         // Run `happy_path` first to make sure it reacts okay if our `data` dir is missing
         // TODO: Re-enable happy path tests once `keyring-rs` is working in CI tests
-        // happy_path("");
-        // happy_path("Jane Doe");
+        happy_path("");
+        happy_path("Jane Doe");
         utils();
         no_inflight_request();
         states_dont_match();
     }
 
+    // The Linux CI is headless so it's hard to test keyrings in it
+    #[cfg(not(target_os = "linux"))]
     #[test]
     fn keyring_rs() {
         // We used this test to find that `service` is not used on Windows - We have to namespace on our own.
@@ -326,6 +346,7 @@ mod tests {
         assert!(entry.get_password().is_err());
     }
 
+    #[cfg(not(target_os = "linux"))]
     fn utils() {
         // This doesn't test for constant-time properties, it just makes sure the function
         // gives the right result
@@ -350,8 +371,8 @@ mod tests {
         );
     }
 
-    // TODO: Re-enable
-    fn _happy_path(actor_name: &str) {
+    #[cfg(not(target_os = "linux"))]
+    fn happy_path(actor_name: &str) {
         // Key for credential manager. This is not what we use in production
         let key = "dev.firezone.client/test_DMRCZ67A_happy_path/token";
 
@@ -400,6 +421,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(target_os = "linux"))]
     fn no_inflight_request() {
         // Start the program
         let mut state =
@@ -425,6 +447,7 @@ mod tests {
         state.sign_out().unwrap();
     }
 
+    #[cfg(not(target_os = "linux"))]
     fn states_dont_match() {
         // Start the program
         let mut state =

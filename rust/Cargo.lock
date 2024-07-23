@@ -3311,7 +3311,6 @@ dependencies = [
  "dbus-secret-service",
  "secret-service",
  "windows-sys 0.52.0",
- "zbus",
 ]
 
 [[package]]
@@ -6439,7 +6438,6 @@ dependencies = [
  "signal-hook-registry",
  "socket2",
  "tokio-macros",
- "tracing",
  "windows-sys 0.48.0",
 ]
 
@@ -8029,7 +8027,6 @@ dependencies = [
  "serde_repr",
  "sha1",
  "static_assertions",
- "tokio",
  "tracing",
  "uds_windows",
  "windows-sys 0.52.0",

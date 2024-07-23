@@ -24,7 +24,6 @@ firezone-headless-client = { path = "../../headless-client" }
 futures = { version = "0.3", default-features = false }
 git-version = "0.3.9"
 hex = "0.4.3"
-keyring = { version = "3.0.3", features = ["async-secret-service", "crypto-rust", "tokio", "windows-native"] } # Must explicitly ask for each platform
 minidumper = "0.8.2"
 native-dialog = "0.7.0"
 output_vt100 = "0.1"
@@ -50,6 +49,14 @@ tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 url = { version = "2.5.0", features = ["serde"] }
 uuid = { version = "1.7.0", features = ["v4"] }
 zip = { version = "2", features = ["deflate", "time"], default-features = false }
+
+[dependencies.keyring]
+version = "3.0.3"
+features = [
+    "crypto-rust", # Don't rely on OpenSSL
+    "sync-secret-service", # Can't use Tokio because of <https://github.com/hwchen/keyring-rs/issues/132>
+    "windows-native", # Yes, really, we must actually explicitly ask for every platform. Otherwise it defaults to an in-memory mock store. Really. That's really how `keyring` 3.x is designed.
+]
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
