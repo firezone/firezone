@@ -1,0 +1,8 @@
+exclude_globs = [
+    "connlib/tunnel/src/io.rs",
+    "connlib/tunnel/src/device_channel.rs",
+    "connlib/tunnel/src/device_channel/*",
+    "connlib/tunnel/src/tests.rs",
+    "connlib/tunnel/src/tests/*",
+    "connlib/tunnel/src/sockets.rs",
+]
