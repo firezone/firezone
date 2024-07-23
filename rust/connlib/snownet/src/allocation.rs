@@ -93,7 +93,7 @@ struct Credentials {
 }
 
 /// Describes the socket address(es) we know about the relay.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RelaySocket {
     /// The relay is only reachable via IPv4.
     V4(SocketAddrV4),

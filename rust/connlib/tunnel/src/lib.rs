@@ -12,7 +12,7 @@ use connlib_shared::{
 };
 use io::Io;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
     task::{Context, Poll},
@@ -181,7 +181,7 @@ impl GatewayTunnel {
         })
     }
 
-    pub fn update_relays(&mut self, to_remove: HashSet<RelayId>, to_add: Vec<Relay>) {
+    pub fn update_relays(&mut self, to_remove: BTreeSet<RelayId>, to_add: Vec<Relay>) {
         self.role_state
             .update_relays(to_remove, turn(&to_add), Instant::now())
     }
@@ -255,11 +255,11 @@ impl GatewayTunnel {
 pub enum ClientEvent {
     AddedIceCandidates {
         conn_id: GatewayId,
-        candidates: HashSet<String>,
+        candidates: BTreeSet<String>,
     },
     RemovedIceCandidates {
         conn_id: GatewayId,
-        candidates: HashSet<String>,
+        candidates: BTreeSet<String>,
     },
     ConnectionIntent {
         resource: ResourceId,
@@ -294,11 +294,11 @@ pub enum ClientEvent {
 pub enum GatewayEvent {
     AddedIceCandidates {
         conn_id: ClientId,
-        candidates: HashSet<String>,
+        candidates: BTreeSet<String>,
     },
     RemovedIceCandidates {
         conn_id: ClientId,
-        candidates: HashSet<String>,
+        candidates: BTreeSet<String>,
     },
     RefreshDns {
         name: DomainName,
