@@ -24,7 +24,7 @@ url = "2.4.1"
 uuid = { version = "1.7", default-features = false, features = ["std", "v4"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-hostname = "0.4.0"
+windows = { version = "0.57", features = ["Win32_Foundation", "Win32_System_SystemInformation"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }
