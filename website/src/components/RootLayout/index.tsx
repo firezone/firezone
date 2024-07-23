@@ -44,7 +44,7 @@ export default function RootLayout({
             </Link>{" "}
             or{" "}
             <Link
-              href="/kb/user-guides"
+              href="/kb/client-apps"
               className="hover:underline text-accent-500"
             >
               download

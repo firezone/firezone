@@ -299,7 +299,7 @@ export default function _Page() {
                 </Link>
                 and can be accomplished with by installing the{" "}
                 <Link
-                  href="/kb/user-guides"
+                  href="/kb/client-apps"
                   className="hover:underline text-accent-500"
                 >
                   Firezone Client
