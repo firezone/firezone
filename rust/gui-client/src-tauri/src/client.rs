@@ -1,4 +1,4 @@
-use anyhow::{bail, Context as _, Result};
+use anyhow::{bail, Result};
 use clap::{Args, Parser};
 use std::path::PathBuf;
 use tracing::instrument;
@@ -72,7 +72,7 @@ pub(crate) fn run() -> Result<()> {
                 Ok(true) => run_gui(cli),
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
                 Err(error) => {
-                    gui::show_error_dialog(&error)?;
+                    gui::show_error_dialog(&error);
                     Err(error.into())
                 }
             }
@@ -119,7 +119,7 @@ pub(crate) fn run() -> Result<()> {
 // Can't `instrument` this because logging isn't running when we enter it.
 fn run_gui(cli: Cli) -> Result<()> {
     let mut settings = settings::load_advanced_settings().unwrap_or_default();
-    fix_log_filter(&mut settings)?;
+    fix_log_filter(&mut settings);
     let logging::Handles {
         logger: _logger,
         reloader,
@@ -129,27 +129,24 @@ fn run_gui(cli: Cli) -> Result<()> {
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
         tracing::error!(?error, error_msg = %error);
-        gui::show_error_dialog(error)?;
+        gui::show_error_dialog(error);
     }
 
     Ok(result?)
 }
 
 /// Parse the log filter from settings, showing an error and fixing it if needed
-fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
+fn fix_log_filter(settings: &mut AdvancedSettings) {
     if EnvFilter::try_new(&settings.log_filter).is_ok() {
-        return Ok(());
+        return;
     }
     settings.log_filter = AdvancedSettings::default().log_filter;
 
-    native_dialog::MessageDialog::new()
+    rfd::MessageDialog::new()
         .set_title("Log filter error")
-        .set_text("The custom log filter is not parsable. Using the default log filter.")
-        .set_type(native_dialog::MessageType::Error)
-        .show_alert()
-        .context("Can't show log filter error dialog")?;
-
-    Ok(())
+        .set_description("The custom log filter is not parsable. Using the default log filter.")
+        .set_level(rfd::MessageLevel::Error)
+        .show();
 }
 
 /// Starts logging

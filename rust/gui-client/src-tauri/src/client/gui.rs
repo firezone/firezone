@@ -219,7 +219,7 @@ pub(crate) fn run(
                         }
                         Ok(Err(error)) => {
                             tracing::error!(?error, "run_controller returned an error");
-                            errors::show_error_dialog(&error).unwrap();
+                            errors::show_error_dialog(&error);
                             1
                         }
                         Ok(Ok(_)) => 0,
@@ -654,12 +654,12 @@ impl Controller {
                     )?;
                 } else {
                     tracing::error!(?error_msg, "Disconnected");
-                    native_dialog::MessageDialog::new()
+                    rfd::AsyncMessageDialog::new()
                         .set_title("Firezone Error")
-                        .set_text(&error_msg)
-                        .set_type(native_dialog::MessageType::Error)
-                        .show_alert()
-                        .context("Couldn't show Disconnected alert")?;
+                        .set_description(&error_msg)
+                        .set_level(rfd::MessageLevel::Error)
+                        .show()
+                        .await;
                 }
                 Ok(())
             }
