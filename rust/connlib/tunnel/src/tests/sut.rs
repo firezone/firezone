@@ -38,8 +38,8 @@ pub(crate) struct TunnelTest {
     now: Instant,
     utc_now: DateTime<Utc>,
 
-    pub(crate) client: Host<SimClient>,
-    pub(crate) gateways: BTreeMap<GatewayId, Host<SimGateway>>,
+    client: Host<SimClient>,
+    gateways: BTreeMap<GatewayId, Host<SimGateway>>,
     relays: BTreeMap<RelayId, Host<SimRelay>>,
 
     drop_direct_client_traffic: bool,
