@@ -216,7 +216,7 @@ impl WrappedSession {
             Arc::new(socket_factory::tcp),
         )?;
         let session = Session::connect(args, portal, runtime.handle().clone());
-        session.set_tun(Box::new(Tun::new().map_err(|e| e.to_string())?));
+        session.set_tun(Box::new(Tun::new()?));
 
         Ok(Self {
             inner: session,
