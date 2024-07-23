@@ -106,9 +106,7 @@ class Adapter {
   }
 
   /// Start the tunnel.
-  /// - Parameters:
-  ///   - completionHandler: completion handler.
-  public func start(completionHandler: @escaping (AdapterError?) -> Void) throws {
+  public func start() throws {
     Log.tunnel.log("Adapter.start")
     guard case .tunnelStopped = self.state else {
       throw AdapterError.invalidState
@@ -141,10 +139,6 @@ class Adapter {
       // tunnel interface coming up, but that's ok -- it will trigger a `set_dns`
       // connlib.
       beginPathMonitoring()
-
-      // Tell the system the tunnel is up, moving the tunnelManager status to
-      // `connected`.
-      completionHandler(nil)
     } catch let error {
       state = .tunnelStopped
       throw AdapterError.connlibConnectError(error)
