@@ -5897,7 +5897,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.5.1"
-source = "git+https://github.com/firezone/str0m?branch=main#07c4fb0449db1fdde4b3421a61b666312ec81106"
+source = "git+https://github.com/firezone/str0m?branch=main#b59f9eb58a5a5b506e12163b7fb8ccd088f057f1"
 dependencies = [
  "combine",
  "crc",
@@ -6351,9 +6351,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-utils"
-version = "1.5.4"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "450b17a7102e5d46d4bdabae0d1590fd27953e704e691fc081f06c06d2253b35"
+checksum = "2826db448309d382dac14d520f0c0a40839b87b57b977e59cf5f296b3ace6a93"
 dependencies = [
  "brotli",
  "ctor",
