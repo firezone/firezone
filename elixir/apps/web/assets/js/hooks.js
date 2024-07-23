@@ -105,26 +105,27 @@ Hooks.Copy = {
  * However, we need to disable the submit button for regular forms as well to prevent
  * double submissions and cases where the submit handler is slow (e.g. constant-time auth).
  */
+const handleDisableSubmit = (ev) => {
+  let submit = ev.target.querySelector('[type="submit"]');
+  submit.setAttribute("disabled", "disabled");
+  submit.classList.add("cursor-wait");
+  submit.classList.add("opacity-75");
+
+  ev.target.submit();
+
+  setTimeout(() => {
+    submit.classList.remove("cursor-wait");
+    submit.classList.remove("opacity-75");
+    submit.removeAttribute("disabled");
+  }, 5000);
+};
 Hooks.AttachDisableSubmit = {
   mounted() {
-    this.el.addEventListener("form:disable_and_submit", (ev) => {
-      let submit = this.el.querySelector('[type="submit"]');
-      submit.setAttribute("disabled", "disabled");
-      submit.classList.add("cursor-wait");
-      submit.classList.add("opacity-75");
-
-      this.el.submit();
-
-      setTimeout(() => {
-        submit.classList.remove("cursor-wait");
-        submit.classList.remove("opacity-75");
-        submit.removeAttribute("disabled");
-      }, 5000);
-    });
+    this.el.addEventListener("form:disable_and_submit", handleDisableSubmit);
   },
 
   destroyed() {
-    this.el.removeEventListener("form:disable_and_submit");
+    this.el.removeEventListener("form:disable_and_submit", handleDisableSubmit);
   },
 };
 
