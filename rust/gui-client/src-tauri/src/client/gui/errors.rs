@@ -38,7 +38,7 @@ pub(crate) fn show_error_dialog(error: &Error) -> Result<()> {
     // messages in the log which only need to be used for `git grep`.
     let user_friendly_error_msg = match error {
         // TODO: Update this URL
-        Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/user-guides/windows-client>.".to_string(),
+        Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/client-apps/windows-client>.".to_string(),
         Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
         Error::DeepLink(deep_link::Error::Other(error)) => error.to_string(),
         Error::Ipc(ipc::Error::NotFound(path)) => {
