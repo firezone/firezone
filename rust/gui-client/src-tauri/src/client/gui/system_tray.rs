@@ -207,7 +207,11 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         resources, // Make sure these are presented in the order we receive them
     } = signed_in;
 
-    let has_any_favorites = !favorite_resources.is_empty();
+    let has_any_favorites = resources
+        .iter()
+        .filter(|res| favorite_resources.contains(&res.id()))
+        .next()
+        .is_some();
 
     let mut menu = Menu::default()
         .disabled(format!("Signed in as {actor_name}"))
@@ -338,9 +342,7 @@ mod tests {
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
             .separator()
-            .disabled(FAVORITE_RESOURCES)
-            .separator()
-            .add_submenu(OTHER_RESOURCES, Menu::default()) // The empty submenu here feels odd
+            .disabled(RESOURCES)
             .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
         assert_eq!(
@@ -545,68 +547,63 @@ mod tests {
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
             .separator()
-            .disabled(FAVORITE_RESOURCES) // This empty menu is a bit weird
-            .separator()
+            .disabled(RESOURCES)
             .add_submenu(
-                OTHER_RESOURCES,
+                "172.172.0.0/16",
                 Menu::default()
-                    .add_submenu(
-                        "172.172.0.0/16",
-                        Menu::default()
-                            .copyable("cidr resource")
-                            .separator()
-                            .disabled("Resource")
-                            .copyable("172.172.0.0/16")
-                            .copyable("172.172.0.0/16")
-                            .item(
-                                Event::AddFavorite(ResourceId::from_str(
-                                    "73037362-715d-4a83-a749-f18eadd970e6",
-                                )?),
-                                ADD_FAVORITE,
-                            )
-                            .separator()
-                            .disabled("Site")
-                            .copyable("test")
-                            .copyable(NO_ACTIVITY),
+                    .copyable("cidr resource")
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("172.172.0.0/16")
+                    .copyable("172.172.0.0/16")
+                    .item(
+                        Event::AddFavorite(ResourceId::from_str(
+                            "73037362-715d-4a83-a749-f18eadd970e6",
+                        )?),
+                        ADD_FAVORITE,
                     )
-                    .add_submenu(
-                        "gitlab.mycorp.com",
-                        Menu::default()
-                            .copyable("dns resource")
-                            .separator()
-                            .disabled("Resource")
-                            .copyable("gitlab.mycorp.com")
-                            .copyable("gitlab.mycorp.com")
-                            .item(
-                                Event::AddFavorite(ResourceId::from_str(
-                                    "03000143-e25e-45c7-aafb-144990e57dcd",
-                                )?),
-                                ADD_FAVORITE,
-                            )
-                            .separator()
-                            .disabled("Site")
-                            .copyable("test")
-                            .copyable(GATEWAY_CONNECTED),
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable(NO_ACTIVITY),
+            )
+            .add_submenu(
+                "gitlab.mycorp.com",
+                Menu::default()
+                    .copyable("dns resource")
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("gitlab.mycorp.com")
+                    .copyable("gitlab.mycorp.com")
+                    .item(
+                        Event::AddFavorite(ResourceId::from_str(
+                            "03000143-e25e-45c7-aafb-144990e57dcd",
+                        )?),
+                        ADD_FAVORITE,
                     )
-                    .add_submenu(
-                        "Internet",
-                        Menu::default()
-                            .copyable("")
-                            .separator()
-                            .disabled("Resource")
-                            .copyable("Internet")
-                            .copyable("")
-                            .item(
-                                Event::AddFavorite(ResourceId::from_str(
-                                    "1106047c-cd5d-4151-b679-96b93da7383b",
-                                )?),
-                                ADD_FAVORITE,
-                            )
-                            .separator()
-                            .disabled("Site")
-                            .copyable("test")
-                            .copyable(ALL_GATEWAYS_OFFLINE),
-                    ),
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable(GATEWAY_CONNECTED),
+            )
+            .add_submenu(
+                "Internet",
+                Menu::default()
+                    .copyable("")
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("Internet")
+                    .copyable("")
+                    .item(
+                        Event::AddFavorite(ResourceId::from_str(
+                            "1106047c-cd5d-4151-b679-96b93da7383b",
+                        )?),
+                        ADD_FAVORITE,
+                    )
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable(ALL_GATEWAYS_OFFLINE),
             )
             .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
