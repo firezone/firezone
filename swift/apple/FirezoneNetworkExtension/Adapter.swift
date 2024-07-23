@@ -106,14 +106,10 @@ class Adapter {
   }
 
   /// Start the tunnel.
-  /// - Parameters:
-  ///   - completionHandler: completion handler.
-  public func start(completionHandler: @escaping (AdapterError?) -> Void) throws {
+  public func start() throws {
     Log.tunnel.log("Adapter.start")
     guard case .tunnelStopped = self.state else {
-      Log.tunnel.error("\(#function): Invalid Adapter state")
-      completionHandler(.invalidState)
-      return
+      throw AdapterError.invalidState
     }
 
     callbackHandler.delegate = self
@@ -136,20 +132,15 @@ class Adapter {
           logFilter,
           callbackHandler
         )
-      // Update our internal state
-      self.state = .tunnelStarted(session: session)
 
       // Start listening for network change events. The first few will be our
       // tunnel interface coming up, but that's ok -- it will trigger a `set_dns`
       // connlib.
       beginPathMonitoring()
 
-      // Tell the system the tunnel is up, moving the tunnelManager status to
-      // `connected`.
-      completionHandler(nil)
+      // Update state in case everything succeeded
+      self.state = .tunnelStarted(session: session)
     } catch let error {
-      Log.tunnel.error("\(#function): Adapter.start: Error: \(error)")
-      state = .tunnelStopped
       throw AdapterError.connlibConnectError(error)
     }
   }

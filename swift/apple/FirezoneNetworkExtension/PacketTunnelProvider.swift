@@ -82,7 +82,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           apiURL: apiURL, token: token, logFilter: logFilter, packetTunnelProvider: self)
         self.adapter = adapter
 
-        try adapter.start(completionHandler: completionHandler)
+        try adapter.start()
+
+        // Tell the system the tunnel is up, moving the tunnelManager status to
+        // `connected`.
+        completionHandler(nil)
       } catch {
         Log.tunnel.error("\(#function): Error! \(error)")
         completionHandler(error)
