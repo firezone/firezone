@@ -3,9 +3,7 @@ defmodule Web.Settings.ApiClients.Show do
   alias Domain.{Actors, Tokens}
 
   def mount(%{"id" => id}, _session, socket) do
-    unless Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
-      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
-    else
+    if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
       with {:ok, actor} <- Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: []) do
         socket =
           socket
@@ -21,6 +19,8 @@ defmodule Web.Settings.ApiClients.Show do
 
         {:ok, socket}
       end
+    else
+      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
     end
   end
 

@@ -3,9 +3,7 @@ defmodule Web.Settings.ApiClients.Index do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    unless Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
-      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
-    else
+    if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
       socket =
         socket
         |> assign(page_title: "API Clients")
@@ -25,6 +23,8 @@ defmodule Web.Settings.ApiClients.Index do
         )
 
       {:ok, socket}
+    else
+      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
     end
   end
 

@@ -4,9 +4,7 @@ defmodule Web.Settings.ApiClients.New do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    unless Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
-      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
-    else
+    if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
       changeset = Actors.new_actor(%{type: :api_client})
 
       socket =
@@ -16,6 +14,8 @@ defmodule Web.Settings.ApiClients.New do
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+    else
+      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
     end
   end
 
