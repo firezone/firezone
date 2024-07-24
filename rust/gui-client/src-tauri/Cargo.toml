@@ -47,7 +47,7 @@ tracing-log = "0.2"
 tracing-panic = "0.1.2"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 url = { version = "2.5.0", features = ["serde"] }
-uuid = { version = "1.7.0", features = ["v4"] }
+uuid = { version = "1.10.0", features = ["v4"] }
 zip = { version = "2", features = ["deflate", "time"], default-features = false }
 
 [dependencies.keyring]

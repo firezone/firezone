@@ -37,7 +37,7 @@ tracing-stackdriver = { version = "0.10.0", features = ["opentelemetry"] }
 tracing-subscriber = { workspace = true, features = ["env-filter", "json", "fmt"] }
 trackable = "1.3.0"
 url = "2.4.1"
-uuid = { version = "1.7.0", features = ["v4"] }
+uuid = { version = "1.10.0", features = ["v4"] }
 
 [dev-dependencies]
 difference = "2.0.0"
