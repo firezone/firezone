@@ -579,7 +579,8 @@ defmodule Web.Policies.Components do
   #      ]}
   #    >
   #      <p class="text-sm text-neutral-500 mb-2">
-  #        Restrict access based on the current time of the day in 24hr format. Multiple time ranges per day are supported.
+  #        Restrict access based on the current time of the day in 24hr format.
+  #        Multiple time ranges per day are supported.
   #      </p>
   #      <div class="space-y-2">
   #        <.input
