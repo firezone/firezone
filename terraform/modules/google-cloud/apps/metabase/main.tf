@@ -24,7 +24,7 @@ locals {
 
 # Fetch most recent COS image
 data "google_compute_image" "coreos" {
-  family  = "cos-109-lts"
+  family  = "cos-113-lts"
   project = "cos-cloud"
 }
 
@@ -37,6 +37,26 @@ resource "google_compute_address" "metabase" {
   subnetwork = var.compute_subnetwork
 
   address_type = "INTERNAL"
+}
+
+# Reserve instances for the metabase
+# If you don't reserve them deployment takes much longer and there is no guarantee that instances will be created at all,
+# Google Cloud Platform does not guarantee that instances will be available when you need them.
+resource "google_compute_reservation" "reservation" {
+  project = var.project_id
+
+  name = "${local.application_name}-${var.compute_instance_availability_zone}-${var.compute_instance_type}"
+  zone = var.compute_instance_availability_zone
+
+  specific_reservation_required = true
+
+  specific_reservation {
+    count = 1
+
+    instance_properties {
+      machine_type = var.compute_instance_type
+    }
+  }
 }
 
 resource "google_compute_instance" "metabase" {
@@ -62,6 +82,15 @@ resource "google_compute_instance" "metabase" {
     automatic_restart   = true
     on_host_maintenance = "MIGRATE"
     provisioning_model  = "STANDARD"
+  }
+
+  reservation_affinity {
+    type = "SPECIFIC_RESERVATION"
+
+    specific_reservation {
+      key    = "compute.googleapis.com/reservation-name"
+      values = ["${local.application_name}-${var.compute_instance_availability_zone}-${var.compute_instance_type}"]
+    }
   }
 
   boot_disk {
@@ -147,6 +176,7 @@ resource "google_compute_instance" "metabase" {
     google_project_iam_member.metrics,
     google_project_iam_member.service_management,
     google_project_iam_member.cloudtrace,
+    google_compute_reservation.reservation,
   ]
 
   allow_stopping_for_update = true

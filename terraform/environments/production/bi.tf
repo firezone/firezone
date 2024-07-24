@@ -65,7 +65,7 @@ module "metabase" {
   compute_network    = module.google-cloud-vpc.id
   compute_subnetwork = google_compute_subnetwork.tools.self_link
 
-  compute_instance_type              = "n1-standard-1"
+  compute_instance_type              = "n2-standard-2"
   compute_region                     = local.metabase_region
   compute_instance_availability_zone = local.metabase_zone
 
