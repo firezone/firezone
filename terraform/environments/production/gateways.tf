@@ -2,8 +2,8 @@
 locals {
   gateways_region         = local.region
   gateways_zone           = local.availability_zone
-  gateways_instance_type  = "e2-highcpu-2"
-  gateways_instance_count = 1
+  gateways_instance_type  = "n1-standard-1"
+  gateways_instance_count = 2
 }
 
 # Reserve instances for the gateway
