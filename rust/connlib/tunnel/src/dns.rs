@@ -1,8 +1,8 @@
 use crate::client::IpProvider;
 use connlib_shared::messages::{DnsServer, ResourceId};
 use connlib_shared::DomainName;
+use core::fmt;
 use hickory_proto::op::{Message, ResponseCode};
-use hickory_proto::rr::domain::Label;
 use hickory_proto::rr::rdata::{self, PTR};
 use hickory_proto::rr::{RData, Record, RecordType};
 use hickory_resolver::lookup::Lookup;
@@ -27,7 +27,7 @@ pub struct StubResolver {
     ips_to_fqdn: HashMap<IpAddr, (DomainName, ResourceId)>,
     ip_provider: IpProvider,
     /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
-    dns_resources: HashMap<String, ResourceId>,
+    dns_resources: HashMap<DomainName, ResourceId>,
     /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
     known_hosts: KnownHosts,
 }
@@ -116,7 +116,16 @@ impl StubResolver {
     }
 
     pub(crate) fn add_resource(&mut self, id: ResourceId, address: String) {
-        let existing = self.dns_resources.insert(address.clone(), id);
+        let mut domain = match DomainName::from_utf8(&address) {
+            Ok(domain) => domain,
+            Err(e) => {
+                tracing::warn!(%address, "Failed to parse resource address as domain: {e}");
+                return;
+            }
+        };
+        domain.set_fqdn(true);
+
+        let existing = self.dns_resources.insert(domain, id);
 
         if existing.is_none() {
             tracing::info!(%address, "Activating DNS resource");
@@ -166,6 +175,11 @@ impl StubResolver {
     }
 
     fn match_resource(&self, domain_name: &DomainName) -> Option<ResourceId> {
+        debug_assert!(
+            domain_name.is_fqdn(),
+            "Domains must be fully-qualified to match against resources"
+        );
+
         match_domain(domain_name, &self.dns_resources)
     }
 
@@ -387,63 +401,52 @@ pub fn as_dns(pkt: &UdpPacket) -> Option<Message> {
 }
 
 pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
-    let question_mark = Label::from_ascii("?").unwrap();
-    let wildcard = Label::from_ascii("*").unwrap();
-
     let Ok(resource) = DomainName::from_ascii(resource) else {
         return false;
     };
     let resource_base = resource.base_name();
 
-    if resource
-        .iter()
-        .next()
-        .is_some_and(|l| l == question_mark.as_bytes())
-    {
+    if resource.iter().next().is_some_and(|l| l == b"?") {
         return resource_base.zone_of(name);
     }
 
-    if resource
-        .iter()
-        .next()
-        .is_some_and(|l| l == wildcard.as_bytes())
-    {
+    if resource.iter().next().is_some_and(|l| l == b"*") {
         return resource_base.zone_of(name);
     }
 
     name == &resource
 }
 
-fn match_domain<T>(name: &DomainName, resources: &HashMap<String, T>) -> Option<T>
+fn match_domain<T>(name: &DomainName, resources: &HashMap<DomainName, T>) -> Option<T>
 where
-    T: Copy,
+    T: Copy + fmt::Debug,
 {
-    let question_mark = DomainName::from_ascii("?").unwrap();
-    let wildcard = DomainName::from_ascii("*").unwrap();
-
     // First, check for full match.
-    if let Some(resource) = resources.get(&name.to_string()) {
+    if let Some(resource) = resources.get(name) {
         return Some(*resource);
     }
 
     // Second, check for `?` matching this domain exactly.
-    let qm_dot_domain = question_mark.clone().append_domain(name).ok()?.to_ascii();
+    let qm_dot_domain = name.clone().into_question_mark();
     if let Some(resource) = resources.get(&qm_dot_domain) {
         return Some(*resource);
     }
 
+    // Third, check for `?` matching up to 1 parent.
     let mut base = name.base_name();
 
-    // Third, check for `?` matching up to 1 parent.
-    let qm_dot_parent = question_mark.append_domain(&base).ok()?.to_ascii();
-
-    if let Some(resource) = resources.get(&qm_dot_parent) {
+    let qm_dot_parent = base.clone().into_question_mark();
+    if let Some(resource) = resources.get(dbg!(&qm_dot_parent)) {
         return Some(*resource);
     }
 
     // Last, check for any wildcard domains, starting with the most specific one.
-    while !base.is_root() {
-        let wildcard_dot_suffix = wildcard.clone().append_domain(&base).ok()?.to_ascii();
+    loop {
+        if base.is_root() {
+            break;
+        }
+
+        let wildcard_dot_suffix = base.clone().into_wildcard();
 
         if let Some(resource) = resources.get(&wildcard_dot_suffix) {
             return Some(*resource);
@@ -453,6 +456,25 @@ where
     }
 
     None
+}
+
+/// Designed after [`DomainName::into_wildcard`].
+trait IntoQuestionMark {
+    /// Prepends a `?` label in front of the domain name, i.e. turns `example.com` into `?.example.com`.
+    fn into_question_mark(self) -> DomainName;
+}
+
+impl IntoQuestionMark for DomainName {
+    fn into_question_mark(self) -> DomainName {
+        if self.num_labels() == 0 {
+            return DomainName::root();
+        }
+
+        DomainName::from_ascii("?")
+            .unwrap()
+            .append_domain(&self)
+            .unwrap()
+    }
 }
 
 fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
@@ -586,60 +608,60 @@ mod tests {
     fn wildcard_matching() {
         let res = resolver([("*.foo.com", rid(0)), ("*.com", rid(1))]);
 
-        assert_eq!(res.match_resource(&domain("a.foo.com")), Some(rid(0)));
-        assert_eq!(res.match_resource(&domain("foo.com")), Some(rid(0)));
-        assert_eq!(res.match_resource(&domain("a.b.foo.com")), Some(rid(0)));
-        assert_eq!(res.match_resource(&domain("oo.com")), Some(rid(1)));
-        assert_eq!(res.match_resource(&domain("oo.xyz")), None);
+        assert_eq!(res.match_resource(&domain("a.foo.com.")), Some(rid(0)));
+        assert_eq!(res.match_resource(&domain("foo.com.")), Some(rid(0)));
+        assert_eq!(res.match_resource(&domain("a.b.foo.com.")), Some(rid(0)));
+        assert_eq!(res.match_resource(&domain("oo.com.")), Some(rid(1)));
+        assert_eq!(res.match_resource(&domain("oo.xyz.")), None);
     }
 
     #[test]
     fn question_mark_matching() {
         let res = resolver([("?.bar.com", rid(1))]);
 
-        assert_eq!(res.match_resource(&domain("a.bar.com")), Some(rid(1)));
-        assert_eq!(res.match_resource(&domain("bar.com")), Some(rid(1)));
-        assert_eq!(res.match_resource(&domain("a.b.bar.com")), None);
+        assert_eq!(res.match_resource(&domain("a.bar.com.")), Some(rid(1)));
+        assert_eq!(res.match_resource(&domain("bar.com.")), Some(rid(1)));
+        assert_eq!(res.match_resource(&domain("a.b.bar.com.")), None);
     }
 
     #[test]
     fn exact_matching() {
         let res = resolver([("baz.com", rid(2))]);
 
-        assert_eq!(res.match_resource(&domain("baz.com")), Some(rid(2)));
-        assert_eq!(res.match_resource(&domain("a.baz.com")), None);
-        assert_eq!(res.match_resource(&domain("a.b.baz.com")), None);
+        assert_eq!(res.match_resource(&domain("baz.com.")), Some(rid(2)));
+        assert_eq!(res.match_resource(&domain("a.baz.com.")), None);
+        assert_eq!(res.match_resource(&domain("a.b.baz.com.")), None);
     }
 
     #[test]
     fn exact_subdomain_match() {
-        assert!(is_subdomain(&domain("foo.com"), "foo.com"));
-        assert!(!is_subdomain(&domain("a.foo.com"), "foo.com"));
-        assert!(!is_subdomain(&domain("a.b.foo.com"), "foo.com"));
-        assert!(!is_subdomain(&domain("foo.com"), "a.foo.com"));
+        assert!(is_subdomain(&domain("foo.com."), "foo.com"));
+        assert!(!is_subdomain(&domain("a.foo.com."), "foo.com"));
+        assert!(!is_subdomain(&domain("a.b.foo.com."), "foo.com"));
+        assert!(!is_subdomain(&domain("foo.com."), "a.foo.com"));
     }
 
     #[test]
     fn wildcard_subdomain_match() {
-        assert!(is_subdomain(&domain("foo.com"), "*.foo.com"));
-        assert!(is_subdomain(&domain("a.foo.com"), "*.foo.com"));
-        assert!(is_subdomain(&domain("a.foo.com"), "*.a.foo.com"));
-        assert!(is_subdomain(&domain("b.a.foo.com"), "*.a.foo.com"));
-        assert!(is_subdomain(&domain("a.b.foo.com"), "*.foo.com"));
-        assert!(!is_subdomain(&domain("afoo.com"), "*.foo.com"));
-        assert!(!is_subdomain(&domain("b.afoo.com"), "*.foo.com"));
-        assert!(!is_subdomain(&domain("bar.com"), "*.foo.com"));
-        assert!(!is_subdomain(&domain("foo.com"), "*.a.foo.com"));
+        assert!(is_subdomain(&domain("foo.com."), "*.foo.com"));
+        assert!(is_subdomain(&domain("a.foo.com."), "*.foo.com"));
+        assert!(is_subdomain(&domain("a.foo.com."), "*.a.foo.com"));
+        assert!(is_subdomain(&domain("b.a.foo.com."), "*.a.foo.com"));
+        assert!(is_subdomain(&domain("a.b.foo.com."), "*.foo.com"));
+        assert!(!is_subdomain(&domain("afoo.com."), "*.foo.com"));
+        assert!(!is_subdomain(&domain("b.afoo.com."), "*.foo.com"));
+        assert!(!is_subdomain(&domain("bar.com."), "*.foo.com"));
+        assert!(!is_subdomain(&domain("foo.com."), "*.a.foo.com"));
     }
 
     #[test]
     fn question_mark_subdomain_match() {
-        assert!(is_subdomain(&domain("foo.com"), "?.foo.com"));
-        assert!(is_subdomain(&domain("a.foo.com"), "?.foo.com"));
-        assert!(!is_subdomain(&domain("a.b.foo.com"), "?.foo.com"));
-        assert!(!is_subdomain(&domain("bar.com"), "?.foo.com"));
-        assert!(!is_subdomain(&domain("foo.com"), "?.a.foo.com"));
-        assert!(!is_subdomain(&domain("afoo.com"), "?.foo.com"));
+        assert!(is_subdomain(&domain("foo.com."), "?.foo.com"));
+        assert!(is_subdomain(&domain("a.foo.com."), "?.foo.com"));
+        assert!(!is_subdomain(&domain("a.b.foo.com."), "?.foo.com"));
+        assert!(!is_subdomain(&domain("bar.com."), "?.foo.com"));
+        assert!(!is_subdomain(&domain("foo.com."), "?.a.foo.com"));
+        assert!(!is_subdomain(&domain("afoo.com."), "?.foo.com"));
     }
 
     fn domain(name: &str) -> DomainName {
