@@ -54,7 +54,7 @@ impl FluxCapacitor {
         self.tick(Self::LARGE_TICK);
     }
 
-    fn tick(&self, tick: Duration) {
+    pub(crate) fn tick(&self, tick: Duration) {
         {
             let mut guard = self.now.lock().unwrap();
 
