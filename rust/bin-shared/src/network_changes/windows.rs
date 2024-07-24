@@ -64,7 +64,7 @@
 //!
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
-use anyhow::Result;
+use anyhow::{anyhow, Context as _, Result};
 use tokio::sync::mpsc;
 use windows::{
     core::{Interface, Result as WinResult, GUID},
@@ -79,20 +79,6 @@ use windows::{
 
 pub use async_dns::CombinedListener as DnsNotifier;
 
-#[derive(thiserror::Error, Debug)]
-pub(crate) enum Error {
-    #[error("Couldn't initialize COM: {0}")]
-    ComInitialize(windows::core::Error),
-    #[error("Couldn't stop worker thread")]
-    CouldntStopWorkerThread,
-    #[error("Couldn't creat NetworkListManager")]
-    CreateNetworkListManager(windows::core::Error),
-    #[error("Couldn't start listening to network events: {0}")]
-    Listening(windows::core::Error),
-    #[error("Couldn't stop listening to network events: {0}")]
-    Unadvise(windows::core::Error),
-}
-
 /// Notifies when we change Wi-Fi networks, change between Wi-Fi and Ethernet, or gain / lose Internet
 pub struct NetworkNotifier {
     inner: Option<WorkerInner>,
@@ -101,7 +87,7 @@ pub struct NetworkNotifier {
 
 /// Needed so that `Drop` can consume the oneshot Sender and the thread's JoinHandle
 struct WorkerInner {
-    thread: std::thread::JoinHandle<Result<(), Error>>,
+    thread: std::thread::JoinHandle<Result<()>>,
     stopper: tokio::sync::oneshot::Sender<()>,
 }
 
@@ -136,7 +122,7 @@ impl NetworkNotifier {
             inner
                 .stopper
                 .send(())
-                .map_err(|_| Error::CouldntStopWorkerThread)?;
+                .map_err(|_| anyhow!("Couldn't stop `NetworkNotifier` worker thread"))?;
             match inner.thread.join() {
                 Err(e) => std::panic::resume_unwind(e),
                 Ok(x) => x?,
@@ -150,7 +136,7 @@ impl NetworkNotifier {
     }
 }
 
-impl Drop for Worker {
+impl Drop for NetworkNotifier {
     fn drop(&mut self) {
         self.close()
             .expect("should be able to close Worker cleanly");
@@ -174,12 +160,12 @@ type PhantomUnsendUnsync = std::marker::PhantomData<*const ()>;
 impl ComGuard {
     /// Initialize a "Multi-threaded apartment" so that Windows COM stuff
     /// can be called, and COM callbacks can work.
-    pub fn new() -> Result<Self, Error> {
+    pub fn new() -> Result<Self> {
         // SAFETY: Threading shouldn't be a problem since this is meant to initialize
         // COM per-thread anyway.
         unsafe { Com::CoInitializeEx(None, Com::COINIT_MULTITHREADED) }
             .ok()
-            .map_err(Error::ComInitialize)?;
+            .context("Failed in `CoInitializeEx`")?;
         Ok(Self {
             dropped: false,
             _unsend_unsync: Default::default(),
@@ -234,19 +220,20 @@ impl<'a> Listener<'a> {
     ///   on the same thread as `new` is called on.
     /// * `tx` - A Sender to notify when Windows detects
     ///   connectivity changes. Some notifications may be spurious.
-    fn new(com: &'a ComGuard, tx: mpsc::Sender<()>) -> Result<Self, Error> {
+    fn new(com: &'a ComGuard, tx: mpsc::Sender<()>) -> Result<Self> {
         // `windows-rs` automatically releases (de-refs) COM objects on Drop:
         // https://github.com/microsoft/windows-rs/issues/2123#issuecomment-1293194755
         // https://github.com/microsoft/windows-rs/blob/cefdabd15e4a7a7f71b7a2d8b12d5dc148c99adb/crates/samples/windows/wmi/src/main.rs#L22
         // SAFETY: TODO
         let network_list_manager: INetworkListManager =
             unsafe { Com::CoCreateInstance(&NetworkListManager, None, Com::CLSCTX_ALL) }
-                .map_err(Error::CreateNetworkListManager)?;
-        let cpc: Com::IConnectionPointContainer =
-            network_list_manager.cast().map_err(Error::Listening)?;
+                .context("Failed in `CoCreateInstance`")?;
+        let cpc: Com::IConnectionPointContainer = network_list_manager
+            .cast()
+            .context("Failed to cast network list manager")?;
         // SAFETY: TODO
-        let cxn_point_net =
-            unsafe { cpc.FindConnectionPoint(&INetworkEvents::IID) }.map_err(Error::Listening)?;
+        let cxn_point_net = unsafe { cpc.FindConnectionPoint(&INetworkEvents::IID) }
+            .context("Failed in `FindConnectionPoint`")?;
 
         let mut this = Listener {
             advise_cookie_net: None,
@@ -261,8 +248,10 @@ impl<'a> Listener<'a> {
         // SAFETY: What happens if Windows sends us a network change event while
         // we're dropping Listener?
         // Is it safe to Advise on `this` and then immediately move it?
-        this.advise_cookie_net =
-            Some(unsafe { this.cxn_point_net.Advise(&callbacks) }.map_err(Error::Listening)?);
+        this.advise_cookie_net = Some(
+            unsafe { this.cxn_point_net.Advise(&callbacks) }
+                .context("Failed to listen for network event callbacks")?,
+        );
 
         // After we call `Advise`, notify. This should avoid a problem if this happens:
         //
@@ -278,10 +267,11 @@ impl<'a> Listener<'a> {
     /// Like `drop`, but you can catch errors
     ///
     /// Unregisters the network change callbacks
-    pub fn close(&mut self) -> Result<(), Error> {
+    pub fn close(&mut self) -> Result<()> {
         if let Some(cookie) = self.advise_cookie_net.take() {
             // SAFETY: I don't see any memory safety issues.
-            unsafe { self.cxn_point_net.Unadvise(cookie) }.map_err(Error::Unadvise)?;
+            unsafe { self.cxn_point_net.Unadvise(cookie) }
+                .context("Failed to unadvise connection point")?;
             tracing::debug!("Unadvised");
         }
         Ok(())
@@ -324,7 +314,7 @@ impl Drop for Callback {
 
 mod async_dns {
     use anyhow::{Context, Result};
-    use std::{ffi::c_void, net::IpAddr, ops::Deref, path::Path};
+    use std::{ffi::c_void, ops::Deref, path::Path};
     use tokio::sync::mpsc;
     use windows::Win32::{
         Foundation::{CloseHandle, BOOLEAN, HANDLE, INVALID_HANDLE_VALUE},
@@ -377,15 +367,12 @@ mod async_dns {
             })
         }
 
-        pub async fn notified(&mut self) -> Result<Vec<IpAddr>> {
+        pub async fn notified(&mut self) -> Result<()> {
             tokio::select! {
                 r = self.listener_4.notified() => r?,
                 r = self.listener_6.notified() => r?,
             }
-            Ok(
-                firezone_headless_client::dns_control::system_resolvers_for_gui()
-                    .unwrap_or_default(),
-            )
+            Ok(())
         }
     }
 
