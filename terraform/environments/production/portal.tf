@@ -455,10 +455,10 @@ module "web" {
   source     = "../../modules/google-cloud/apps/elixir"
   project_id = module.google-cloud-project.project.project_id
 
-  compute_instance_type               = "n2-standard-2"
+  compute_instance_type               = "n4-standard-2"
   compute_instance_region             = local.region
   compute_instance_availability_zones = ["${local.region}-d"]
-  compute_boot_disk_type              = "pd-ssd"
+  compute_boot_disk_type              = "hyperdisk-balanced"
 
   dns_managed_zone_name = module.google-cloud-dns.zone_name
 
