@@ -35,7 +35,6 @@ hickory-resolver = { git = "https://github.com/hickory-dns/hickory-dns", rev = "
 hickory-proto = { git = "https://github.com/hickory-dns/hickory-dns", rev = "a3669bd80f3f7b97f0c301c15f1cba6368d97b63" }
 str0m = { version = "0.5", default-features = false }
 futures-bounded = "0.2.1"
-domain = { version = "0.10", features = ["serde"] }
 dns-lookup = "2.0"
 tokio-tungstenite = "0.21"
 rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_socket"] }

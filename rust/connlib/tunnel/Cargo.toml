@@ -10,7 +10,6 @@ boringtun = { workspace = true }
 bytes = { version = "1.4", default-features = false, features = ["std"] }
 chrono = { workspace = true }
 connlib-shared = { workspace = true }
-domain = { workspace = true }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-bounded = { workspace = true }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }

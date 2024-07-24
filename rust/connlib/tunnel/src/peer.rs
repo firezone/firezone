@@ -287,7 +287,7 @@ impl ClientOnGateway {
             if self
                 .permanent_translations
                 .values()
-                .filter(|state| state.resource_id == resource_id && state.name == domain)
+                .filter(|state| state.resource_id == resource_id && &state.name == domain)
                 .all(|state| state.no_incoming_in_120s(now))
             {
                 tracing::debug!(%domain, conn_id = %self.id, %resource_id, %resolved_ip, %proxy_ip, "Refreshing DNS");

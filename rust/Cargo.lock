@@ -1117,9 +1117,9 @@ dependencies = [
  "base64 0.22.1",
  "boringtun",
  "chrono",
- "domain",
  "futures",
  "futures-util",
+ "hickory-proto",
  "ip-packet",
  "ip_network",
  "itertools 0.13.0",
@@ -1581,20 +1581,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "domain"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cd50aea158e9a57c9c9075ca7a3dfa4c08d9a468b405832383876f9df85379b"
-dependencies = [
- "bytes",
- "octseq",
- "pin-project-lite",
- "rand 0.8.5",
- "serde",
- "time",
-]
-
-[[package]]
 name = "dtoa"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1862,7 +1848,6 @@ dependencies = [
  "clap",
  "connlib-shared",
  "dns-lookup",
- "domain",
  "either",
  "firezone-bin-shared",
  "firezone-tunnel",
@@ -2037,7 +2022,6 @@ dependencies = [
  "chrono",
  "connlib-shared",
  "derivative",
- "domain",
  "firezone-relay",
  "futures",
  "futures-bounded",
@@ -2708,6 +2692,7 @@ dependencies = [
  "ipnet",
  "once_cell",
  "rand 0.8.5",
+ "serde",
  "thiserror",
  "tinyvec",
  "tokio",
@@ -4142,16 +4127,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6a622008b6e321afc04970976f62ee297fdbaa6f95318ca343e3eebb9648441"
 dependencies = [
  "memchr",
-]
-
-[[package]]
-name = "octseq"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ed2eaec452d98ccc1c615dd843fd039d9445f2fb4da114ee7e6af5fcb68be98"
-dependencies = [
- "bytes",
- "serde",
 ]
 
 [[package]]

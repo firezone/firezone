@@ -3,7 +3,7 @@ use super::{
     sim_net::{any_port, dual_ip_stack, host, Host},
     strategies::latency,
 };
-use crate::{tests::sut::hickory_name_to_domain, GatewayState};
+use crate::GatewayState;
 use connlib_shared::DomainName;
 use ip_packet::IpPacket;
 use proptest::prelude::*;
@@ -72,11 +72,7 @@ impl SimGateway {
 
         if packet.as_udp().is_some() {
             let response = ip_packet::make::dns_ok_response(packet, |name| {
-                global_dns_records
-                    .get(&hickory_name_to_domain(name.clone()))
-                    .cloned()
-                    .into_iter()
-                    .flatten()
+                global_dns_records.get(name).cloned().into_iter().flatten()
             });
 
             let transmit = self.sut.encapsulate(response, now)?.into_owned();

@@ -13,7 +13,6 @@ anyhow = "1.0.82"
 base64 = { version = "0.22", default-features = false, features = ["std"] }
 boringtun = { workspace = true }
 chrono = { workspace = true }
-domain = { workspace = true }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
 ip-packet = { workspace = true }
@@ -32,6 +31,7 @@ serde_json = { version = "1.0", default-features = false, features = ["std"] }
 thiserror = { version = "1.0", default-features = false }
 tokio = { workspace = true, features = ["fs"] }
 tracing = { workspace = true }
+hickory-proto = { workspace = true, features = ["serde-config"] }
 url = { version = "2.4.1", default-features = false }
 uuid = { version = "1.10", default-features = false, features = ["std", "v4", "serde"] }
 

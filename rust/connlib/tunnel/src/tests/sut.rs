@@ -28,7 +28,6 @@ use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     net::IpAddr,
-    str::FromStr as _,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -757,7 +756,7 @@ impl TunnelTest {
             .get(&query.name)
             .expect("Forwarded DNS query to be for known domain");
 
-        let name = domain_to_hickory_name(query.name.clone());
+        let name = query.name.clone();
         let requested_type = query.record_type;
 
         let record_data = all_ips
@@ -802,23 +801,4 @@ fn on_gateway_event(
         }),
         GatewayEvent::RefreshDns { .. } => todo!(),
     }
-}
-
-pub(crate) fn hickory_name_to_domain(mut name: hickory_proto::rr::Name) -> DomainName {
-    name.set_fqdn(false); // Hack to work around hickory always parsing as FQ
-    let name = name.to_string();
-
-    let domain = DomainName::from_chars(name.chars()).unwrap();
-    debug_assert_eq!(name, domain.to_string());
-
-    domain
-}
-
-pub(crate) fn domain_to_hickory_name(domain: DomainName) -> hickory_proto::rr::Name {
-    let domain = domain.to_string();
-
-    let name = hickory_proto::rr::Name::from_str(&domain).unwrap();
-    debug_assert_eq!(name.to_string(), domain);
-
-    name
 }

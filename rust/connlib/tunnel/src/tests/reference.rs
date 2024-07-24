@@ -542,7 +542,7 @@ impl ReferenceState {
                 client
                     .known_hosts
                     .keys()
-                    .map(|h| DomainName::vec_from_str(h).unwrap()),
+                    .map(|h| DomainName::from_utf8(h).unwrap()),
             )
             .collect()
     }

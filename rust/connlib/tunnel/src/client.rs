@@ -1187,7 +1187,7 @@ fn maybe_mangle_dns_query_to_cidr_resource<'p>(
         return packet;
     };
 
-    let Ok(message) = domain::base::Message::from_slice(dgm.payload()) else {
+    let Ok(message) = hickory_proto::op::Message::from_vec(dgm.payload()) else {
         return packet;
     };
 
@@ -1218,7 +1218,7 @@ fn maybe_mangle_dns_response_from_cidr_resource<'p>(
         return packet;
     };
 
-    let Ok(message) = domain::base::Message::from_slice(udp.payload()) else {
+    let Ok(message) = hickory_proto::op::Message::from_vec(udp.payload()) else {
         return packet;
     };
 
@@ -1231,10 +1231,7 @@ fn maybe_mangle_dns_response_from_cidr_resource<'p>(
 
     let rtt = now.duration_since(query_sent_at);
 
-    let domains = message
-        .question()
-        .filter_map(|q| Some(q.ok()?.into_qname()))
-        .join(",");
+    let domains = message.queries().iter().map(|q| q.name()).join(",");
 
     tracing::trace!(old_src = %src_ip, new_src = %sentinel, ?rtt, %domains, "Mangling DNS response from CIDR resource");
 

@@ -2,10 +2,9 @@ use super::{
     reference::{private_key, PrivateKey, ResourceDst},
     sim_net::{any_ip_stack, any_port, host, Host},
     strategies::{latency, system_dns_servers, upstream_dns_servers},
-    sut::domain_to_hickory_name,
     IcmpIdentifier, IcmpSeq, QueryId,
 };
-use crate::{tests::sut::hickory_name_to_domain, ClientState};
+use crate::ClientState;
 use bimap::BiMap;
 use connlib_shared::{
     messages::{
@@ -91,15 +90,13 @@ impl SimClient {
 
         tracing::debug!(%dns_server, %domain, "Sending DNS query");
 
-        let name = domain_to_hickory_name(domain);
-
         let src = self
             .sut
             .tunnel_ip_for(dns_server)
             .expect("tunnel should be initialised");
 
         let packet = ip_packet::make::dns_query(
-            name,
+            domain,
             r_type,
             SocketAddr::new(src, 9999), // An application would pick a random source port that is free.
             SocketAddr::new(dns_server, 53),
@@ -181,7 +178,7 @@ impl SimClient {
                     .insert(message.id(), packet.to_owned());
 
                 for record in message.take_answers().into_iter() {
-                    let domain = hickory_name_to_domain(record.name().clone());
+                    let domain = record.name().clone();
 
                     let ip = match record.data() {
                         Some(RData::A(rdata::A(ip4))) => IpAddr::from(*ip4),
