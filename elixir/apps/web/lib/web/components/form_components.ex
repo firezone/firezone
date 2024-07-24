@@ -407,13 +407,12 @@ defmodule Web.FormComponents do
       id={"#{@id}_dialog"}
       class={[
         "backdrop:bg-gray-800/75 bg-transparent",
-        "p-4 w-full max-w-2xl md:inset-0 max-h-full",
-        "overflow-y-auto overflow-x-hidden",
-        "justify-center items-center"
+        "p-4 w-full md:inset-0 max-h-full",
+        "overflow-y-auto overflow-x-hidden"
       ]}
     >
-      <form method="dialog">
-        <div class="relative bg-white rounded-lg shadow">
+      <form method="dialog" class="flex items-center justify-center">
+        <div class="relative bg-white rounded-lg shadow max-w-2xl">
           <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
             <h3 class="text-xl font-semibold text-neutral-900">
               <%= render_slot(@dialog_title) %>
@@ -427,7 +426,7 @@ defmodule Web.FormComponents do
               <span class="sr-only">Close modal</span>
             </button>
           </div>
-          <div class="p-4 md:p-5 text-neutral-500">
+          <div class="p-4 md:p-5 text-neutral-500 text-base">
             <%= render_slot(@dialog_content) %>
           </div>
           <div class="flex items-center justify-end p-4 md:p-5 border-t border-gray-200 rounded-b">

@@ -45,24 +45,46 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
         </.edit_button>
       </:action>
       <:action :if={is_nil(@provider.deleted_at)}>
-        <.button
+        <.button_with_confirmation
           :if={is_nil(@provider.disabled_at)}
-          phx-click="disable"
+          id="disable"
           style="warning"
           icon="hero-lock-closed"
-          data-confirm="Are you sure you want to disable this provider? All users signed into this provider will be immediately signed out."
+          on_confirm="disable"
         >
+          <:dialog_title>Disable the Provider</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to disable this Provider?
+            This will <strong>immediately</strong>
+            sign out all Actors who were signed in using this Provider.
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Disable
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Disable
-        </.button>
-        <.button
+        </.button_with_confirmation>
+        <.button_with_confirmation
           :if={not is_nil(@provider.disabled_at)}
-          phx-click="enable"
+          id="enable"
           style="warning"
           icon="hero-lock-open"
-          data-confirm="Are you sure you want to enable this provider?"
+          on_confirm="enable"
         >
+          <:dialog_title>Enable the Provider</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to enable this provider?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Enable
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Enable
-        </.button>
+        </.button_with_confirmation>
       </:action>
       <:action :if={is_nil(@provider.deleted_at)}>
         <.button
@@ -142,8 +164,8 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
         >
           <:dialog_title>Delete Identity Provider</:dialog_title>
           <:dialog_content>
-            Are you sure you want to delete this provider? This will remove
-            <strong>all</strong> Actors and Groups associated with this provider.
+            Are you sure you want to delete this provider? This will remove <strong>all</strong>
+            Actors and Groups associated with this provider.
           </:dialog_content>
           <:dialog_confirm_button>
             Delete Identity Provider

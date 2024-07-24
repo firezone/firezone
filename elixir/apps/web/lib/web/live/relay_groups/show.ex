@@ -100,12 +100,25 @@ defmodule Web.RelayGroups.Show do
         </.add_button>
       </:action>
       <:action :if={is_nil(@group.deleted_at)}>
-        <.delete_button
-          phx-click="revoke_all_tokens"
-          data-confirm="Are you sure you want to revoke all tokens? This will immediately sign the actor out of all clients."
+        <.button_with_confirmation
+          id="delete_site"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="revoke_all_tokens"
         >
+          <:dialog_title>Revoke all tokens</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to revoke all tokens for this Relay Group?
+            This will <strong>immediately</strong> disconnect all associated Relays.
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Revoke All Tokens
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Revoke All Tokens
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
       <:content flash={@flash}>
         <div class="relative overflow-x-auto">

@@ -249,15 +249,29 @@ defmodule Web.Actors.Show do
             </.button>
           </:action>
           <:action :let={identity}>
-            <.delete_button
+            <.button_with_confirmation
               :if={identity.created_by != :provider}
+              id={"delete_identity_#{identity.id}"}
+              style="danger"
+              icon="hero-trash-solid"
+              on_confirm="delete_identity"
+              on_confirm_id={identity.id}
               size="xs"
-              phx-click="delete_identity"
-              data-confirm="Are you sure you want to delete this identity?"
-              phx-value-id={identity.id}
             >
+              <:dialog_title>Delete Identity</:dialog_title>
+              <:dialog_content>
+                Are you sure you want to delete this identity?
+                This will <strong>immediately</strong>
+                sign out all clients associated with this identity.
+              </:dialog_content>
+              <:dialog_confirm_button>
+                Delete
+              </:dialog_confirm_button>
+              <:dialog_cancel_button>
+                Cancel
+              </:dialog_cancel_button>
               Delete
-            </.delete_button>
+            </.button_with_confirmation>
           </:action>
           <:empty>
             <div class="flex justify-center text-center text-neutral-500 p-4">
@@ -304,12 +318,25 @@ defmodule Web.Actors.Show do
       </:action>
 
       <:action :if={is_nil(@actor.deleted_at)}>
-        <.delete_button
-          phx-click="revoke_all_tokens"
-          data-confirm="Are you sure you want to revoke all tokens? This will immediately sign the actor out of all clients."
+        <.button_with_confirmation
+          id="revoke_all_tokens"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="revoke_all_tokens"
         >
-          Revoke All
-        </.delete_button>
+          <:dialog_title>Revoke All Tokens</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to revoke all tokens?
+            This will <strong>immediately</strong> sign the actor out of all clients.
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Revoke All Tokens
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
+          Revoke All Tokens
+        </.button_with_confirmation>
       </:action>
 
       <:content>
@@ -360,14 +387,28 @@ defmodule Web.Actors.Show do
             <span :if={token.type != :client}>N/A</span>
           </:col>
           <:action :let={token}>
-            <.delete_button
+            <.button_with_confirmation
+              id={"revoke_token_#{token.id}"}
+              style="danger"
+              icon="hero-trash-solid"
+              on_confirm="revoke_token"
+              on_confirm_id={token.id}
               size="xs"
-              phx-click="revoke_token"
-              data-confirm="Are you sure you want to revoke this token?"
-              phx-value-id={token.id}
             >
+              <:dialog_title>Revoke the Token</:dialog_title>
+              <:dialog_content>
+                Are you sure you want to revoke the token?
+                This will <strong>immediately</strong>
+                sign the clients out of all associated client sessions.
+              </:dialog_content>
+              <:dialog_confirm_button>
+                Revoke
+              </:dialog_confirm_button>
+              <:dialog_cancel_button>
+                Cancel
+              </:dialog_cancel_button>
               Revoke
-            </.delete_button>
+            </.button_with_confirmation>
           </:action>
           <:empty>
             <div class="text-center text-neutral-500 p-4">No authentication tokens to display.</div>
