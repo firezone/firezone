@@ -144,12 +144,12 @@ defmodule Web.Sites.Show do
             This will <strong>immediately</strong> disconnect all associated Gateways.
           </:dialog_content>
           <:dialog_confirm_button>
-            Revoke All Tokens
+            Revoke All
           </:dialog_confirm_button>
           <:dialog_cancel_button>
             Cancel
           </:dialog_cancel_button>
-          Revoke All Tokens
+          Revoke All
         </.button_with_confirmation>
       </:action>
       <:help :if={is_nil(@group.deleted_at)}>

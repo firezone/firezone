@@ -112,12 +112,12 @@ defmodule Web.RelayGroups.Show do
             This will <strong>immediately</strong> disconnect all associated Relays.
           </:dialog_content>
           <:dialog_confirm_button>
-            Revoke All Tokens
+            Revoke All
           </:dialog_confirm_button>
           <:dialog_cancel_button>
             Cancel
           </:dialog_cancel_button>
-          Revoke All Tokens
+          Revoke All
         </.button_with_confirmation>
       </:action>
       <:content flash={@flash}>
