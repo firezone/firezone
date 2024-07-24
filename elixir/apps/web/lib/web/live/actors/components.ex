@@ -74,6 +74,11 @@ defmodule Web.Actors.Components do
         placeholder="Role"
         required
       />
+      <p class="mt-2 text-xs text-gray-500">
+        Select <strong>Admin</strong>
+        to grant this user access to the admin portal. Otherwise, select <strong>User</strong>
+        to limit access to the Client apps only.
+      </p>
     </div>
     """
   end
@@ -157,29 +162,6 @@ defmodule Web.Actors.Components do
         />
       </div>
     </.inputs_for>
-    """
-  end
-
-  def option(assigns) do
-    ~H"""
-    <div>
-      <div class="flex items-center mb-4">
-        <input
-          id={"idp-option-#{@type}"}
-          type="radio"
-          name="next"
-          value={next_step_path(@type, @account)}
-          class={~w[w-4 h-4 border-neutral-300]}
-          required
-        />
-        <label for={"idp-option-#{@type}"} class="block ml-2 text-lg text-neutral-900">
-          <%= @name %>
-        </label>
-      </div>
-      <p class="ml-6 mb-6 text-sm text-neutral-500">
-        <%= @description %>
-      </p>
-    </div>
     """
   end
 

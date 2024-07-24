@@ -43,7 +43,7 @@ defmodule Domain.Policies.Policy.Changeset do
     |> unique_constraint(
       :base,
       name: :policies_account_id_resource_id_actor_group_id_index,
-      message: "Policy with Group and Resource already exists"
+      message: "Policy for the selected Group and Resource already exists"
     )
     |> assoc_constraint(:resource)
     |> assoc_constraint(:actor_group)

@@ -18,9 +18,7 @@ defmodule Web.Actors.New do
       <.breadcrumb path={~p"/#{@account}/actors/new"}>Add</.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title>
-        Add Actor
-      </:title>
+      <:title><%= @page_title %></:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <h2 class="mb-4 text-xl text-neutral-900">Choose type</h2>
@@ -29,22 +27,65 @@ defmodule Web.Actors.New do
               <fieldset>
                 <legend class="sr-only">Choose Actor Type</legend>
 
-                <.option
-                  account={@account}
-                  type={:user}
-                  name="User"
-                  description="Admin or regular user accounts can be used to sign in to Firezone and access private resources."
-                />
-                <.option
-                  account={@account}
-                  type={:service_account}
-                  name="Service Account"
-                  description="Service accounts can be used for headless clients or to access Firezone APIs."
-                />
+                <ul class="grid w-full gap-6 md:grid-cols-2">
+                  <li>
+                    <.input
+                      id="idp-option-user"
+                      type="radio_button_group"
+                      name="next"
+                      value={next_step_path(:user, @account)}
+                      checked={false}
+                      required
+                    />
+                    <label for="idp-option-user" class={~w[
+                    inline-flex items-center justify-between w-full
+                    p-5 text-gray-500 bg-white border border-gray-200
+                    rounded cursor-pointer peer-checked:border-accent-500
+                    peer-checked:text-accent-500 hover:text-gray-600 hover:bg-gray-100
+                  ]}>
+                      <div class="block">
+                        <div class="w-full font-semibold mb-3">
+                          <.icon name="hero-user" class="w-5 h-5 mr-1" /> User
+                        </div>
+                        <div class="w-full text-sm">
+                          User accounts can sign in to the Firezone Client apps or to
+                          the admin portal depending on their role.
+                        </div>
+                      </div>
+                    </label>
+                  </li>
+
+                  <li>
+                    <.input
+                      id="idp-option-service_account"
+                      type="radio_button_group"
+                      name="next"
+                      value={next_step_path(:service_account, @account)}
+                      checked={false}
+                      required
+                    />
+                    <label for="idp-option-service_account" class={~w[
+                    inline-flex items-center justify-between w-full
+                    p-5 text-gray-500 bg-white border border-gray-200
+                    rounded cursor-pointer peer-checked:border-accent-500
+                    peer-checked:text-accent-500 hover:text-gray-600 hover:bg-gray-100
+                  ]}>
+                      <div class="block">
+                        <div class="w-full font-semibold mb-3">
+                          <.icon name="hero-server" class="w-5 h-5 mr-1" /> Service Account
+                        </div>
+                        <div class="w-full text-sm">
+                          Service accounts are used to authenticate headless Clients on
+                          machines where a user isn't physically present.
+                        </div>
+                      </div>
+                    </label>
+                  </li>
+                </ul>
               </fieldset>
             </div>
             <.submit_button>
-              Next: Create Actor
+              Next: Actor Details
             </.submit_button>
           </.form>
         </div>

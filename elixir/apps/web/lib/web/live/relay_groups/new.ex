@@ -26,9 +26,7 @@ defmodule Web.RelayGroups.New do
       <.breadcrumb path={~p"/#{@account}/relay_groups/new"}>Add</.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title>
-        Add Relay Instance Group
-      </:title>
+      <:title><%= @page_title %></:title>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
           <.form for={@form} phx-change={:change} phx-submit={:submit}>

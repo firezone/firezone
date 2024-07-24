@@ -17,7 +17,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.New do
       assign(socket,
         id: id,
         form: to_form(changeset),
-        page_title: "New Identity Provider",
+        page_title: "New Identity Provider: OpenID Connect",
         provider: params["provider"]
       )
 
@@ -38,9 +38,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.New do
       </.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title>
-        Add a new OpenID Connect Identity Provider
-      </:title>
+      <:title><%= @page_title %></:title>
       <:content>
         <.provider_form account={@account} id={@id} form={@form} show_sync_msg={!!@provider} />
       </:content>

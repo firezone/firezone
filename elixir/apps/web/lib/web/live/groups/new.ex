@@ -21,25 +21,24 @@ defmodule Web.Groups.New do
       <.breadcrumb path={~p"/#{@account}/groups/new"}>Add</.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title>
-        Create Group
-      </:title>
+      <:title><%= @page_title %></:title>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
+          <h2 class="mb-4 text-xl text-neutral-900">
+            Group details
+          </h2>
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <.input type="hidden" field={@form[:type]} value="static" />
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <div>
-                <.input
-                  label="Group name"
-                  field={@form[:name]}
-                  placeholder="Enter a name for this Group, e.g. Engineering"
-                  required
-                />
+                <.input label="Name" field={@form[:name]} placeholder="E.g. Engineering" required />
+                <p class="text-sm mt-2 text-neutral-600">
+                  Enter a name for this Group.
+                </p>
               </div>
             </div>
             <.submit_button>
-              Save
+              Next: Select Members
             </.submit_button>
           </.form>
         </div>

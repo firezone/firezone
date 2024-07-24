@@ -24,13 +24,11 @@ defmodule Web.Actors.ServiceAccounts.New do
     </.breadcrumbs>
 
     <.section>
-      <:title>
-        Create Actor
-      </:title>
+      <:title><%= @page_title %></:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <h2 class="mb-4 text-xl text-neutral-900">
-            Create a Service Account
+            Service Account details
           </h2>
           <.flash kind={:error} flash={@flash} />
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
@@ -38,7 +36,7 @@ defmodule Web.Actors.ServiceAccounts.New do
               <.actor_form form={@form} type={:service_account} subject={@subject} />
             </div>
             <.submit_button>
-              Create
+              Next: Create Token
             </.submit_button>
           </.form>
         </div>

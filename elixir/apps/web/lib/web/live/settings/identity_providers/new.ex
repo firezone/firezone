@@ -33,9 +33,7 @@ defmodule Web.Settings.IdentityProviders.New do
       </.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title>
-        Add a new Identity Provider
-      </:title>
+      <:title><%= @page_title %></:title>
       <:help>
         Set up SSO authentication using your own identity provider. Directory sync
         also available for certain providers. <br /> Learn more about
