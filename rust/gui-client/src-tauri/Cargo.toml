@@ -51,7 +51,7 @@ uuid = { version = "1.10.0", features = ["v4"] }
 zip = { version = "2", features = ["deflate", "time"], default-features = false }
 
 [dependencies.keyring]
-version = "3.0.3"
+version = "3.0.4"
 features = [
     "crypto-rust", # Don't rely on OpenSSL
     "sync-secret-service", # Can't use Tokio because of <https://github.com/hwchen/keyring-rs/issues/132>
