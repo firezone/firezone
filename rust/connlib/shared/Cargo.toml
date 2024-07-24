@@ -33,7 +33,7 @@ thiserror = { version = "1.0", default-features = false }
 tokio = { workspace = true, features = ["fs"] }
 tracing = { workspace = true }
 url = { version = "2.4.1", default-features = false }
-uuid = { version = "1.7", default-features = false, features = ["std", "v4", "serde"] }
+uuid = { version = "1.10", default-features = false, features = ["std", "v4", "serde"] }
 
 [dev-dependencies]
 tokio = { version = "1.38", features = ["macros", "rt"] }

@@ -44,8 +44,8 @@ use tracing_subscriber::{util::SubscriberInitExt as _, EnvFilter};
 pub(crate) struct TunnelTest {
     flux_capacitor: FluxCapacitor,
 
-    pub(crate) client: Host<SimClient>,
-    pub(crate) gateways: BTreeMap<GatewayId, Host<SimGateway>>,
+    client: Host<SimClient>,
+    gateways: BTreeMap<GatewayId, Host<SimGateway>>,
     relays: BTreeMap<RelayId, Host<SimRelay>>,
 
     drop_direct_client_traffic: bool,
