@@ -314,7 +314,8 @@ impl Drop for Callback {
 
 mod async_dns {
     use anyhow::{Context, Result};
-    use std::{ffi::c_void, ops::Deref, path::Path};
+    use futures::FutureExt as _;
+    use std::{ffi::c_void, ops::Deref, path::Path, pin::pin};
     use tokio::sync::mpsc;
     use windows::Win32::{
         Foundation::{CloseHandle, BOOLEAN, HANDLE, INVALID_HANDLE_VALUE},
@@ -368,9 +369,11 @@ mod async_dns {
         }
 
         pub async fn notified(&mut self) -> Result<()> {
-            tokio::select! {
-                r = self.listener_4.notified() => r?,
-                r = self.listener_6.notified() => r?,
+            let mut fut_4 = pin!(self.listener_4.notified().fuse());
+            let mut fut_6 = pin!(self.listener_6.notified().fuse());
+            futures::select! {
+                r = fut_4 => r?,
+                r = fut_6 => r?,
             }
             Ok(())
         }
