@@ -68,6 +68,8 @@ runs:
       run: Set-MpPreference -DisableRealtimeMonitoring $true
       shell: powershell
 
+    - uses: rui314/setup-mold@v1
+
     # Common to either cache backend
     - name: Extract Rust version
       run: |
