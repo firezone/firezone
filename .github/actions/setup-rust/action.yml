@@ -68,7 +68,13 @@ runs:
       run: Set-MpPreference -DisableRealtimeMonitoring $true
       shell: powershell
 
-    - uses: rui314/setup-mold@v1
+    - name: Use mold on Linux
+      if: ${{ runner.os == 'Linux' }}
+      uses: rui314/setup-mold@v1
+
+    - name: Use lld on Windows
+      if: ${{ runner.os == 'Windows' }}
+      run: echo "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=rust-lld" >> $GITHUB_ENV;
 
     # Common to either cache backend
     - name: Extract Rust version
