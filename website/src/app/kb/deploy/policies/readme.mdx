@@ -69,24 +69,6 @@ Restrict access to a specific IP address or range of Client IP addresses.
 Restrict access based on the authentication provider that was used to
 authenticate the Client.
 
-### Time of day
-
-<Image
-  src="/images/kb/deploy/policies/client_tod.png"
-  alt="Time of day"
-  width={600}
-  height={600}
-  className="mx-auto shadow rounded"
-/>
-
-Restrict access to certain time windows throughout the week based on the 24hr
-time and specified time zone.
-
-The time zone determines the offset used when determining whether to allow
-access for a particular Client. For example, if you specify a time window of
-`08:00-17:00` and time zone of `Eastern`, Clients in the `Pacific` timezone 3
-hours behind will be allowed access from `05:00-14:00` Eastern time.
-
 <NextStep href="/kb/deploy/clients">Next: Install Clients</NextStep>
 
 <SupportOptions />
