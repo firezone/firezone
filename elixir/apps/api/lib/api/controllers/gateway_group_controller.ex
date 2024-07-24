@@ -79,6 +79,14 @@ defmodule API.GatewayGroupController do
 
   operation :update,
     summary: "Update a Gateway Group",
+    parameters: [
+      id: [
+        in: :path,
+        description: "Gateway Group ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
     request_body:
       {"Gateway Group Attributes", "application/json", API.Schemas.GatewayGroup.Request,
        required: true},

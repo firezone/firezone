@@ -6,7 +6,7 @@ defmodule API.Schemas.IdentityProvider do
     alias OpenApiSpex.Schema
 
     OpenApiSpex.schema(%{
-      title: "Identity Provider",
+      title: "IdentityProvider",
       description: "Identity Provider",
       type: :object,
       properties: %{
@@ -27,7 +27,7 @@ defmodule API.Schemas.IdentityProvider do
     alias API.Schemas.IdentityProvider
 
     OpenApiSpex.schema(%{
-      title: "Identity Provider Response",
+      title: "IdentityProviderResponse",
       description: "Response schema for single Identity Provider",
       type: :object,
       properties: %{
@@ -48,7 +48,7 @@ defmodule API.Schemas.IdentityProvider do
     alias API.Schemas.IdentityProvider
 
     OpenApiSpex.schema(%{
-      title: "Identity Provider List Response",
+      title: "IdentityProviderListResponse",
       description: "Response schema for multiple Identity Providers",
       type: :object,
       properties: %{

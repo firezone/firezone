@@ -73,6 +73,14 @@ defmodule API.PolicyController do
 
   operation :update,
     summary: "Update a Policy",
+    parameters: [
+      id: [
+        in: :path,
+        description: "Policy ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
     request_body:
       {"Policy Attributes", "application/json", API.Schemas.Policy.Request, required: true},
     responses: [

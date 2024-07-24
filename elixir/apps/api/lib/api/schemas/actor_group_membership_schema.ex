@@ -6,7 +6,7 @@ defmodule API.Schemas.ActorGroupMembership do
     alias OpenApiSpex.Schema
 
     OpenApiSpex.schema(%{
-      title: "Actor Group Membership",
+      title: "ActorGroupMembership",
       description: "Actor Group Membership",
       type: :array,
       items: %Schema{
@@ -33,7 +33,7 @@ defmodule API.Schemas.ActorGroupMembership do
     alias API.Schemas.ActorGroupMembership
 
     OpenApiSpex.schema(%{
-      title: "Actor Group Membership Patch Request",
+      title: "ActorGroupMembershipPatchRequest",
       description: "PATCH body for updating Actor Group Memberships",
       type: :object,
       properties: %{
@@ -72,7 +72,7 @@ defmodule API.Schemas.ActorGroupMembership do
     alias API.Schemas.ActorGroupMembership
 
     OpenApiSpex.schema(%{
-      title: "Actor Group Membership Put Request",
+      title: "ActorGroupMembershipPutRequest",
       description: "PUT body for updating Actor Group Memberships",
       type: :object,
       properties: %{
@@ -102,7 +102,7 @@ defmodule API.Schemas.ActorGroupMembership do
     alias API.Schemas.ActorGroupMembership
 
     OpenApiSpex.schema(%{
-      title: "Actor Group Membership List Response",
+      title: "ActorGroupMembershipListResponse",
       description: "Response schema for Actor Group Memberships",
       type: :object,
       properties: %{
@@ -141,7 +141,7 @@ defmodule API.Schemas.ActorGroupMembership do
     alias OpenApiSpex.Schema
 
     OpenApiSpex.schema(%{
-      title: "Actor Group Membership Response",
+      title: "ActorGroupMembershipResponse",
       description: "Response schema for Actor Group Membership Updates",
       type: :object,
       properties: %{
