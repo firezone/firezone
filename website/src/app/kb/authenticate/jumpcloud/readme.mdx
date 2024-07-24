@@ -214,4 +214,13 @@ Once directory sync is enabled, users and groups will be synced every few
 minutes to ensure that your Firezone account remains up-to-date with the latest
 identity data from JumpCloud.
 
+<Alert color="info">
+
+Synced users will be assigned the `User` role by default, allowing them access
+to sign in from the Firezone Client only. If you need to grant access to the
+admin portal, you need to manually promote the user to the `Admin` role by
+visiting `Actors -> <actor name> -> Edit User` and updating their role.
+
+</Alert>
+
 <SupportOptions />

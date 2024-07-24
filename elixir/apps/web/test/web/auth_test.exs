@@ -226,7 +226,9 @@ defmodule Web.AuthTest do
         |> signed_in(provider, user_identity, context, user_encoded_fragment, %{})
 
       assert redirected_to(conn) == ~p"/#{account}"
-      assert conn.assigns.flash["error"] == "Please use a client application to access Firezone."
+
+      assert conn.assigns.flash["error"] ==
+               "You must have the admin role in Firezone to sign in to the admin portal."
 
       conn =
         %{init_conn | path_params: %{"account_id_or_slug" => account.slug}}
@@ -237,7 +239,9 @@ defmodule Web.AuthTest do
         })
 
       assert redirected_to(conn) == ~p"/#{account}"
-      assert conn.assigns.flash["error"] == "Please use a client application to access Firezone."
+
+      assert conn.assigns.flash["error"] ==
+               "You must have the admin role in Firezone to sign in to the admin portal."
 
       conn =
         %{init_conn | path_params: %{"account_id_or_slug" => account.slug}}
@@ -248,7 +252,9 @@ defmodule Web.AuthTest do
         })
 
       assert redirected_to(conn) == ~p"/#{account}"
-      assert conn.assigns.flash["error"] == "Please use a client application to access Firezone."
+
+      assert conn.assigns.flash["error"] ==
+               "You must have the admin role in Firezone to sign in to the admin portal."
     end
 
     test "redirects non-admin users to the sign in success page for client contexts", %{
@@ -344,7 +350,9 @@ defmodule Web.AuthTest do
         |> signed_in(provider, identity, context, encoded_fragment, %{})
 
       assert redirected_to(conn) == ~p"/#{account}"
-      assert conn.assigns.flash["error"] == "Please use a client application to access Firezone."
+
+      assert conn.assigns.flash["error"] ==
+               "You must have the admin role in Firezone to sign in to the admin portal."
     end
 
     test "redirects admin user to the return path path for browser contexts", %{

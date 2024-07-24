@@ -108,7 +108,7 @@ defmodule Web.Auth do
       conn
       |> Phoenix.Controller.put_flash(
         :error,
-        "Please use a client application to access Firezone."
+        "You must have the admin role in Firezone to sign in to the admin portal."
       )
       |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}")
       |> Plug.Conn.halt()
@@ -153,7 +153,10 @@ defmodule Web.Auth do
          _params
        ) do
     conn
-    |> Phoenix.Controller.put_flash(:error, "Please use a client application to access Firezone.")
+    |> Phoenix.Controller.put_flash(
+      :error,
+      "You must have the admin role in Firezone to sign in to the admin portal."
+    )
     |> Phoenix.Controller.redirect(to: ~p"/#{conn.path_params["account_id_or_slug"]}")
     |> Plug.Conn.halt()
   end

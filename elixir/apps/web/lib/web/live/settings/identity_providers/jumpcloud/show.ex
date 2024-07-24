@@ -85,12 +85,16 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Show do
         </.button>
       </:action>
       <:help>
-        Directory sync is enabled for this provider. Users and groups will be synced every 10
-        minutes on average, but could take longer for very large organizations.
-        <.website_link path="/kb/authenticate/directory-sync">
-          Read more
-        </.website_link>
-        about directory sync.
+        <p>
+          Directory sync is enabled for this provider. Users and groups will be synced every few
+          minutes on average, but could take longer for very large organizations.
+        </p>
+        <p>
+          <.website_link path="/kb/authenticate/directory-sync">
+            Read more
+          </.website_link>
+          about directory sync.
+        </p>
       </:help>
       <:content>
         <.header>

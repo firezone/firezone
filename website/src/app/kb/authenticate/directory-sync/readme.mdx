@@ -17,6 +17,19 @@ setup step is required after creating the connector to activate JumpCloud's SCIM
 API. Once the connector is activated, users, groups, and organizational units
 will be synced from your identity provider every few minutes.
 
+## Role mapping
+
+All synced users are assigned the unprivileged `User` role by default. This role
+is allowed to sign in from the Firezone Client, but has no access to the admin
+portal. If you need to grant a synced user access to the admin portal, you can
+manually assign the user the `Admin` role by going to
+`Actors -> <actor name> -> Edit User` and updating their role appropriately.
+
+Automatic role mapping is not currently supported. If this is a feature you
+would like to see, please let us know by
+[leaving a comment](https://github.com/firezone/firezone/issues/5931) on our
+GitHub issue tracker.
+
 ## How Firezone treats deleted entities
 
 When you delete a user or group in your identity provider, Firezone soft-deletes
