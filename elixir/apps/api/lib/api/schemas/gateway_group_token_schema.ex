@@ -6,7 +6,7 @@ defmodule API.Schemas.GatewayGroupToken do
     alias OpenApiSpex.Schema
 
     OpenApiSpex.schema(%{
-      title: "GatewayGroupToken",
+      title: "Gateway Group Token",
       description: "Gateway Group Token",
       type: :object,
       properties: %{
@@ -27,7 +27,7 @@ defmodule API.Schemas.GatewayGroupToken do
     alias API.Schemas.GatewayGroupToken
 
     OpenApiSpex.schema(%{
-      title: "NewGatewayGroupTokenResponse",
+      title: "New Gateway Group Token Response",
       description: "Response schema for a new Gateway Group Token",
       type: :object,
       properties: %{
@@ -48,7 +48,7 @@ defmodule API.Schemas.GatewayGroupToken do
     alias API.Schemas.GatewayGroupToken
 
     OpenApiSpex.schema(%{
-      title: "DeletedGatewayGroupTokenResponse",
+      title: "Deleted Gateway Group Token Response",
       description: "Response schema for a new Gateway Group Token",
       type: :object,
       properties: %{
@@ -68,7 +68,7 @@ defmodule API.Schemas.GatewayGroupToken do
     alias API.Schemas.GatewayGroupToken
 
     OpenApiSpex.schema(%{
-      title: "DeletedGatewayGroupTokenListResponse",
+      title: "Deleted Gateway Group Token List Response",
       description: "Response schema for deleted Gateway Group Tokens",
       type: :object,
       properties: %{

@@ -6,7 +6,7 @@ defmodule API.Schemas.GatewayGroup do
     alias OpenApiSpex.Schema
 
     OpenApiSpex.schema(%{
-      title: "GatewayGroup",
+      title: "Gateway Group",
       description: "Gateway Group",
       type: :object,
       properties: %{
@@ -27,7 +27,7 @@ defmodule API.Schemas.GatewayGroup do
     alias API.Schemas.GatewayGroup
 
     OpenApiSpex.schema(%{
-      title: "GatewayGroupRequest",
+      title: "Gateway GroupRequest",
       description: "POST body for creating a Gateway Group",
       type: :object,
       properties: %{
@@ -48,7 +48,7 @@ defmodule API.Schemas.GatewayGroup do
     alias API.Schemas.GatewayGroup
 
     OpenApiSpex.schema(%{
-      title: "GatewayGroupResponse",
+      title: "Gateway GroupResponse",
       description: "Response schema for single Gateway Group",
       type: :object,
       properties: %{
@@ -69,7 +69,7 @@ defmodule API.Schemas.GatewayGroup do
     alias API.Schemas.GatewayGroup
 
     OpenApiSpex.schema(%{
-      title: "GatewayGroupListResponse",
+      title: "Gateway Group List Response",
       description: "Response schema for multiple Gateway Groups",
       type: :object,
       properties: %{

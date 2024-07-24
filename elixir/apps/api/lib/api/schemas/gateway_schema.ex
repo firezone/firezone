@@ -46,7 +46,7 @@ defmodule API.Schemas.Gateway do
     alias API.Schemas.Gateway
 
     OpenApiSpex.schema(%{
-      title: "GatewayResponse",
+      title: "Gateway Response",
       description: "Response schema for single Gateway",
       type: :object,
       properties: %{

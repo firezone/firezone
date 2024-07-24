@@ -31,7 +31,7 @@ defmodule API.Schemas.Policy do
     alias API.Schemas.Policy
 
     OpenApiSpex.schema(%{
-      title: "PolicyRequest",
+      title: "Policy Request",
       description: "POST body for creating a Policy",
       type: :object,
       properties: %{
@@ -54,7 +54,7 @@ defmodule API.Schemas.Policy do
     alias API.Schemas.Policy
 
     OpenApiSpex.schema(%{
-      title: "PolicyResponse",
+      title: "Policy Response",
       description: "Response schema for single Policy",
       type: :object,
       properties: %{
@@ -77,7 +77,7 @@ defmodule API.Schemas.Policy do
     alias API.Schemas.Policy
 
     OpenApiSpex.schema(%{
-      title: "PolicyListResponse",
+      title: "Policy List Response",
       description: "Response schema for multiple Policies",
       type: :object,
       properties: %{
