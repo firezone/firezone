@@ -175,6 +175,8 @@ async fn main() -> Result<()> {
 ///
 /// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
 fn setup_tracing(args: &Args) -> Result<()> {
+    use opentelemetry::trace::TracerProvider as _;
+
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
     let temp_logger_guard = tracing_core::dispatcher::set_default(
@@ -192,7 +194,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
                 .tonic()
                 .with_endpoint(grpc_endpoint.clone());
 
-            let tracer = opentelemetry_otlp::new_pipeline()
+            let provider = opentelemetry_otlp::new_pipeline()
                 .tracing()
                 .with_exporter(exporter)
                 .with_trace_config(opentelemetry_sdk::trace::Config::default().with_resource(
@@ -219,7 +221,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
                 .with(log_layer(args))
                 .with(
                     tracing_opentelemetry::layer()
-                        .with_tracer(tracer)
+                        .with_tracer(provider.tracer("relay"))
                         .with_filter(env_filter()),
                 )
                 .into()
