@@ -222,8 +222,7 @@ pub fn run_only_headless_client() -> Result<()> {
                     is_authentication_error: _,
                 }) => return Err(anyhow!(error_msg).context("Firezone disconnected")),
                 InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {
-                    tracing::info!("OnUpdateResources");
-                    // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
+                    // On every Resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                     dns_controller.flush()?;
                     if let Some(instant) = last_connlib_start_instant.take() {
                         // `OnUpdateResources` appears to be the latest callback that happens during startup
