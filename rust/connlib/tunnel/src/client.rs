@@ -63,7 +63,7 @@ impl ClientTunnel {
             });
     }
 
-    pub fn set_tun(&mut self, tun: Tun) {
+    pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
         self.io.device_mut().set_tun(tun);
     }
 

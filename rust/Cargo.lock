@@ -1041,6 +1041,7 @@ dependencies = [
  "connlib-shared",
  "ip_network",
  "jni 0.21.1",
+ "libc",
  "log",
  "phoenix-channel",
  "secrecy",
@@ -1051,6 +1052,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "tun",
  "url",
 ]
 
@@ -1075,6 +1077,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "tun",
  "url",
 ]
 
@@ -1102,6 +1105,7 @@ dependencies = [
  "tracing-appender",
  "tracing-stackdriver",
  "tracing-subscriber",
+ "tun",
  "url",
 ]
 
@@ -1828,9 +1832,10 @@ dependencies = [
  "anyhow",
  "clap",
  "connlib-shared",
- "firezone-tunnel",
  "futures",
+ "ip-packet",
  "ip_network",
+ "libc",
  "netlink-packet-core",
  "netlink-packet-route",
  "rtnetlink",
@@ -1838,8 +1843,11 @@ dependencies = [
  "tracing",
  "tracing-log",
  "tracing-subscriber",
+ "tun",
  "url",
+ "uuid",
  "windows 0.57.0",
+ "wintun",
 ]
 
 [[package]]
@@ -2023,7 +2031,6 @@ name = "firezone-tunnel"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "bimap",
  "boringtun",
  "bytes",
@@ -2031,7 +2038,6 @@ dependencies = [
  "connlib-shared",
  "derivative",
  "domain",
- "firezone-bin-shared",
  "firezone-relay",
  "futures",
  "futures-bounded",
@@ -2043,7 +2049,6 @@ dependencies = [
  "ip_network",
  "ip_network_table",
  "itertools 0.13.0",
- "libc",
  "proptest",
  "proptest-state-machine",
  "quinn-udp",
@@ -2060,10 +2065,9 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "tracing-appender",
  "tracing-subscriber",
- "uuid",
- "windows 0.57.0",
- "wintun",
+ "tun",
 ]
 
 [[package]]
@@ -5346,9 +5350,9 @@ dependencies = [
 
 [[package]]
 name = "sd-notify"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "621e3680f3e07db4c9c2c3fb07c6223ab2fab2e54bd3c04c3ae037990f428c32"
+checksum = "4646d6f919800cd25c50edb49438a1381e2cd4833c027e75e8897981c50b8b5e"
 
 [[package]]
 name = "secrecy"
@@ -6829,6 +6833,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
+name = "tun"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tokio",
+]
+
+[[package]]
 name = "tungstenite"
 version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6926,9 +6938,9 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
 name = "url"
-version = "2.5.0"
+version = "2.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31e6302e3bb753d46e83516cae55ae196fc0c309407cf11ab35cc51a4c2a4633"
+checksum = "22784dbdf76fdde8af1aeda5622b546b422b6fc585325248a2bf9f5e41e94d6c"
 dependencies = [
  "form_urlencoded",
  "idna",
@@ -6956,9 +6968,9 @@ checksum = "711b9620af191e0cdc7468a8d14e709c3dcdb115b36f838e601583af800a370a"
 
 [[package]]
 name = "uuid"
-version = "1.8.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a183cf7feeba97b4dd1c0d46788634f6221d87fa961b305bed08c851829efcc0"
+checksum = "81dfa00651efa65069b0b6b651f4aaa31ba9e3c3ce0137aaad053604ee7e0314"
 dependencies = [
  "getrandom 0.2.12",
  "serde",
