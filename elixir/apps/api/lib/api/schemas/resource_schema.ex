@@ -82,8 +82,8 @@ defmodule API.Schemas.Resource do
     alias API.Schemas.Resource
 
     OpenApiSpex.schema(%{
-      title: "ResourceListResponse",
-      description: "Response schema for multiple Resources",
+      title: "GatewayListResponse",
+      description: "Response schema for multiple Gateways",
       type: :object,
       properties: %{
         data: %Schema{description: "Resource details", type: :array, items: Resource.Schema},
