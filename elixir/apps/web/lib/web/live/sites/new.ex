@@ -16,15 +16,21 @@ defmodule Web.Sites.New do
     </.breadcrumbs>
 
     <.section>
-      <:title>
-        Add a new Site
-      </:title>
+      <:title><%= @page_title %></:title>
       <:content>
         <.flash kind={:error} flash={@flash} />
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
+          <h2 class="mb-6 text-xl text-neutral-900">
+            Site details
+          </h2>
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-              <.input label="Name" field={@form[:name]} placeholder="Name of this Site" required />
+              <div>
+                <.input label="Name" field={@form[:name]} placeholder="Name of this Site" required />
+                <p class="mt-2 text-xs text-neutral-500">
+                  Enter a name for this Site.
+                </p>
+              </div>
             </div>
             <.submit_button>
               Create
