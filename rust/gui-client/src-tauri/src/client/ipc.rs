@@ -6,7 +6,6 @@ use firezone_headless_client::{
 };
 use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
-use std::net::IpAddr;
 
 pub(crate) struct Client {
     task: tokio::task::JoinHandle<Result<()>>,
@@ -83,14 +82,6 @@ impl Client {
         self.send_msg(&IpcClientMsg::Reconnect)
             .await
             .context("Couldn't send Reconnect")?;
-        Ok(())
-    }
-
-    /// Tell connlib about the system's default resolvers
-    pub(crate) async fn set_dns(&mut self, dns: Vec<IpAddr>) -> Result<()> {
-        self.send_msg(&IpcClientMsg::SetDns(dns))
-            .await
-            .context("Couldn't send SetDns")?;
         Ok(())
     }
 }

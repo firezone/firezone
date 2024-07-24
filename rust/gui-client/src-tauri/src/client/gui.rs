@@ -10,7 +10,7 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use connlib_client_shared::callbacks::ResourceDescription;
-use firezone_headless_client::IpcServerMsg;
+use firezone_headless_client::{IpcClientMsg, IpcServerMsg};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     path::PathBuf,
@@ -796,20 +796,20 @@ async fn run_controller(
         win.show().context("Couldn't show Welcome window")?;
     }
 
+    let tokio_handle = tokio::runtime::Handle::try_current()
+        .expect("Can't get a Handle to the current Tokio context");
+    let mut network_notifier = network_changes::network_notifier(tokio_handle.clone())?;
+    let mut dns_notifier = network_changes::dns_notifier(tokio_handle)?;
+
     let mut have_internet =
         network_changes::check_internet().context("Failed initial check for internet")?;
     tracing::info!(?have_internet);
-
-    let mut com_worker =
-        network_changes::Worker::new().context("Failed to listen for network changes")?;
-
-    let mut dns_listener = network_changes::DnsListener::new()?;
 
     loop {
         // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
         // `tokio::select!` with a `poll_*` function
         tokio::select! {
-            () = com_worker.notified() => {
+            () = network_notifier.notified() => {
                 let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
                 if new_have_internet != have_internet {
                     have_internet = new_have_internet;
@@ -819,11 +819,11 @@ async fn run_controller(
                     }
                 }
             },
-            resolvers = dns_listener.notified() => {
-                let resolvers = resolvers?;
+            () = dns_notifier.notified() => {
                 if controller.status.connlib_is_up() {
-                    tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
-                    controller.ipc_client.set_dns(resolvers).await?;
+                    // On Linux this should just happen every 5 seconds
+                    tracing::trace!("Telling connlib that DNS servers may have changed");
+                    controller.ipc_client.send_msg(&IpcClientMsg::DnsChanged).await?;
                 }
             },
             req = rx.recv() => {
@@ -852,8 +852,11 @@ async fn run_controller(
         // Code down here may not run because the `select` sometimes `continue`s.
     }
 
-    if let Err(error) = com_worker.close() {
-        tracing::error!(?error, "com_worker");
+    if let Err(error) = dns_notifier.close() {
+        tracing::error!(?error, "Error while closing DNS listener");
+    }
+    if let Err(error) = network_notifier.close() {
+        tracing::error!(?error, "Error while closing network listener");
     }
     if let Err(error) = controller.ipc_client.disconnect_from_ipc().await {
         tracing::error!(?error, "ipc_client");

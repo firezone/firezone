@@ -65,7 +65,9 @@
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
 use anyhow::Result;
-use tokio::sync::mpsc;
+use futures::future::Either;
+use std::{pin::pin, thread};
+use tokio::sync::{mpsc, oneshot};
 use windows::{
     core::{Interface, Result as WinResult, GUID},
     Win32::{
@@ -77,15 +79,13 @@ use windows::{
     },
 };
 
-pub(crate) use async_dns::CombinedListener as DnsListener;
-
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
     #[error("Couldn't initialize COM: {0}")]
     ComInitialize(windows::core::Error),
     #[error("Couldn't stop worker thread")]
-    CouldntStopWorkerThread,
-    #[error("Couldn't creat NetworkListManager")]
+    CouldntStopWorker,
+    #[error("Couldn't create NetworkListManager")]
     CreateNetworkListManager(windows::core::Error),
     #[error("Couldn't start listening to network events: {0}")]
     Listening(windows::core::Error),
@@ -112,7 +112,7 @@ pub fn check_internet() -> Result<bool> {
     Ok(have_internet)
 }
 
-/// Worker thread that can be joined explicitly, and joins on Drop
+/// Worker thread (on Windows) that can be joined explicitly, and joins on Drop
 pub(crate) struct Worker {
     inner: Option<WorkerInner>,
     rx: mpsc::Receiver<()>,
@@ -120,46 +120,103 @@ pub(crate) struct Worker {
 
 /// Needed so that `Drop` can consume the oneshot Sender and the thread's JoinHandle
 struct WorkerInner {
-    thread: std::thread::JoinHandle<Result<(), Error>>,
-    stopper: tokio::sync::oneshot::Sender<()>,
+    thread: thread::JoinHandle<Result<()>>,
+    shutdown_tx: oneshot::Sender<()>,
+}
+
+pub(crate) fn dns_notifier(tokio_handle: tokio::runtime::Handle) -> Result<Worker> {
+    Worker::new("DNS listener", move |tx, shutdown_rx| {
+        // Do `block_on` so we use our own worker thread
+        tokio_handle.block_on(async move {
+            // Use `LocalSet` so we can have the runtime put all our tasks
+            // onto this worker thread, which means they don't need to impl
+            // `Send`.
+            let local = tokio::task::LocalSet::new();
+            local
+                .run_until(async move {
+                    // Use `spawn_local` to keep everything inside the worker thread
+                    tokio::task::spawn_local(dns_worker_task(tx, shutdown_rx)).await
+                })
+                .await
+        })?
+    })
+}
+
+/// Listens for DNS change (on Windows) and signals when we see one
+///
+/// This is meant to be spawned. Cancelling it will cause gaps in DNS listening.
+///
+/// On Windows this must run inside a worker thread because `HANDLE` is `!Send` as of
+/// `windows` 0.58.0.
+async fn dns_worker_task(
+    tx: mpsc::Sender<()>,
+    mut shutdown_rx: oneshot::Receiver<()>,
+) -> Result<()> {
+    let mut dns_listener = async_dns::CombinedListener::new()?;
+    loop {
+        match futures::future::select(&mut shutdown_rx, pin!(dns_listener.notified())).await {
+            Either::Left((_, _)) => break,
+            Either::Right((Err(error), _)) => {
+                tracing::error!(?error, "Error while listening for DNS changes");
+                break;
+            }
+            Either::Right((Ok(()), _)) => {}
+        }
+        tx.send(()).await?;
+    }
+    Ok(())
+}
+
+pub(crate) fn network_notifier(_tokio_handle: tokio::runtime::Handle) -> Result<Worker> {
+    Worker::new("Network listener", |tx, shutdown_rx| {
+        let com = ComGuard::new()?;
+        {
+            let _network_change_listener = Listener::new(&com, tx)?;
+            shutdown_rx.blocking_recv().ok();
+        }
+        drop(com);
+        tracing::debug!("COM worker thread shut down gracefully");
+        Ok(())
+    })
 }
 
 impl Worker {
-    pub(crate) fn new() -> Result<Self> {
+    fn new<
+        F: FnOnce(mpsc::Sender<()>, oneshot::Receiver<()>) -> Result<()> + Send + 'static,
+        S: Into<String>,
+    >(
+        thread_name: S,
+        func: F,
+    ) -> Result<Self> {
         let (tx, rx) = mpsc::channel(1);
-
-        let (stopper, stopper_rx) = tokio::sync::oneshot::channel();
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
         let thread = {
-            std::thread::Builder::new()
-                .name("Firezone COM worker".into())
-                .spawn(move || {
-                    {
-                        let com = ComGuard::new()?;
-                        let _network_change_listener = Listener::new(&com, tx)?;
-                        stopper_rx.blocking_recv().ok();
-                    }
-                    tracing::debug!("COM worker thread shut down gracefully");
-                    Ok(())
-                })?
+            thread::Builder::new()
+                .name(thread_name.into())
+                .spawn(move || func(tx, shutdown_rx))?
         };
 
         Ok(Self {
-            inner: Some(WorkerInner { thread, stopper }),
+            inner: Some(WorkerInner {
+                thread,
+                shutdown_tx,
+            }),
             rx,
         })
     }
 
     /// Same as `drop`, but you can catch errors
     pub(crate) fn close(&mut self) -> Result<()> {
-        if let Some(inner) = self.inner.take() {
-            inner
-                .stopper
-                .send(())
-                .map_err(|_| Error::CouldntStopWorkerThread)?;
-            match inner.thread.join() {
-                Err(e) => std::panic::resume_unwind(e),
-                Ok(x) => x?,
-            }
+        let Some(inner) = self.inner.take() else {
+            return Ok(());
+        };
+        inner
+            .shutdown_tx
+            .send(())
+            .map_err(|_| Error::CouldntStopWorker)?;
+        match inner.thread.join() {
+            Err(e) => std::panic::resume_unwind(e),
+            Ok(x) => x?,
         }
         Ok(())
     }
@@ -239,6 +296,9 @@ struct Callback {
 }
 
 impl<'a> Drop for Listener<'a> {
+    // Might never be called. Due to the way the scopes ended up,
+    // we crash the GUI process before we can get back to the main thread
+    // and drop the DNS listeners
     fn drop(&mut self) {
         self.close().unwrap();
     }
@@ -307,7 +367,8 @@ impl<'a> Listener<'a> {
     }
 }
 
-impl INetworkEvents_Impl for Callback {
+// <https://github.com/microsoft/windows-rs/pull/3065>
+impl INetworkEvents_Impl for Callback_Impl {
     fn NetworkAdded(&self, _networkid: &GUID) -> WinResult<()> {
         Ok(())
     }
@@ -343,7 +404,7 @@ impl Drop for Callback {
 
 mod async_dns {
     use anyhow::{Context, Result};
-    use std::{ffi::c_void, net::IpAddr, ops::Deref, path::Path};
+    use std::{ffi::c_void, ops::Deref, path::Path};
     use tokio::sync::mpsc;
     use windows::Win32::{
         Foundation::{CloseHandle, BOOLEAN, HANDLE, INVALID_HANDLE_VALUE},
@@ -396,15 +457,12 @@ mod async_dns {
             })
         }
 
-        pub(crate) async fn notified(&mut self) -> Result<Vec<IpAddr>> {
+        pub(crate) async fn notified(&mut self) -> Result<()> {
             tokio::select! {
                 r = self.listener_4.notified() => r?,
                 r = self.listener_6.notified() => r?,
             }
-            Ok(
-                firezone_headless_client::dns_control::system_resolvers_for_gui()
-                    .unwrap_or_default(),
-            )
+            Ok(())
         }
     }
 
@@ -437,12 +495,17 @@ mod async_dns {
     }
 
     impl Listener {
+        /// Constructs a `Listener`
+        ///
+        /// Parameters:
+        /// - `key` - The registry key to listen to
+        /// - `tx` - A Sender for an MPSC channel of size 1 or more
         pub(crate) fn new(key: winreg::RegKey) -> Result<Self> {
             let (tx, rx) = mpsc::channel(1);
             let tx = Box::new(tx);
             let tx_ptr: *const _ = tx.deref();
             let event = unsafe { CreateEventA(None, false, false, None) }?;
-            let mut wait_handle = HANDLE(0isize);
+            let mut wait_handle = HANDLE::default();
 
             // The docs say that `RegisterWaitForSingleObject` uses "a worker thread" from
             // "the thread pool".
@@ -474,8 +537,8 @@ mod async_dns {
 
             let mut that = Self {
                 key,
-                _tx: tx,
                 rx,
+                _tx: tx,
                 wait_handle,
                 event,
             };
@@ -519,7 +582,7 @@ mod async_dns {
         //
         // > Each time a process calls RegNotifyChangeKeyValue with the same set of parameters, it establishes another wait operation, creating a resource leak. Therefore, check that you are not calling RegNotifyChangeKeyValue with the same parameters until the previous wait operation has completed.
         fn register_callback(&mut self) -> Result<()> {
-            let key_handle = Registry::HKEY(self.key.raw_handle());
+            let key_handle = Registry::HKEY(self.key.raw_handle() as *mut c_void);
             let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
                 | Registry::REG_NOTIFY_CHANGE_LAST_SET
                 | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
@@ -573,7 +636,7 @@ mod async_dns {
             let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
                 | Registry::REG_NOTIFY_CHANGE_LAST_SET
                 | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
-            let key_handle = Registry::HKEY(key.raw_handle());
+            let key_handle = Registry::HKEY(key.raw_handle() as *mut c_void);
             unsafe {
                 Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, event, true)
             }
