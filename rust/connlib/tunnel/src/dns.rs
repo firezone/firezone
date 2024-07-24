@@ -593,31 +593,31 @@ mod tests {
 
     #[test]
     fn wildcard_matching() {
-        let resources = HashMap::from([("*.foo.com".to_string(), 0), ("*.com".to_string(), 1)]);
+        let res = resolver([("*.foo.com", rid(0)), ("*.com", rid(1))]);
 
-        assert_eq!(match_domain(&domain("a.foo.com"), &resources), Some(0));
-        assert_eq!(match_domain(&domain("foo.com"), &resources), Some(0));
-        assert_eq!(match_domain(&domain("a.b.foo.com"), &resources), Some(0));
-        assert_eq!(match_domain(&domain("oo.com"), &resources), Some(1));
-        assert_eq!(match_domain(&domain("oo.xyz"), &resources), None);
+        assert_eq!(res.match_resource(&domain("a.foo.com")), Some(rid(0)));
+        assert_eq!(res.match_resource(&domain("foo.com")), Some(rid(0)));
+        assert_eq!(res.match_resource(&domain("a.b.foo.com")), Some(rid(0)));
+        assert_eq!(res.match_resource(&domain("oo.com")), Some(rid(1)));
+        assert_eq!(res.match_resource(&domain("oo.xyz")), None);
     }
 
     #[test]
     fn question_mark_matching() {
-        let resources = HashMap::from([("?.bar.com".to_string(), 1)]);
+        let res = resolver([("?.bar.com", rid(1))]);
 
-        assert_eq!(match_domain(&domain("a.bar.com"), &resources), Some(1));
-        assert_eq!(match_domain(&domain("bar.com"), &resources), Some(1));
-        assert_eq!(match_domain(&domain("a.b.bar.com"), &resources), None);
+        assert_eq!(res.match_resource(&domain("a.bar.com")), Some(rid(1)));
+        assert_eq!(res.match_resource(&domain("bar.com")), Some(rid(1)));
+        assert_eq!(res.match_resource(&domain("a.b.bar.com")), None);
     }
 
     #[test]
     fn exact_matching() {
-        let resources = HashMap::from([("baz.com".to_string(), 2)]);
+        let res = resolver([("baz.com", rid(2))]);
 
-        assert_eq!(match_domain(&domain("baz.com"), &resources), Some(2));
-        assert_eq!(match_domain(&domain("a.baz.com"), &resources), None);
-        assert_eq!(match_domain(&domain("a.b.baz.com"), &resources), None);
+        assert_eq!(res.match_resource(&domain("baz.com")), Some(rid(2)));
+        assert_eq!(res.match_resource(&domain("a.baz.com")), None);
+        assert_eq!(res.match_resource(&domain("a.b.baz.com")), None);
     }
 
     #[test]
@@ -653,5 +653,19 @@ mod tests {
 
     fn domain(name: &str) -> DomainName {
         DomainName::vec_from_str(name).unwrap()
+    }
+
+    fn resolver<const N: usize>(records: [(&str, ResourceId); N]) -> StubResolver {
+        let mut stub_resolver = StubResolver::new(HashMap::default());
+
+        for (domain, id) in records {
+            stub_resolver.add_resource(id, domain.to_owned())
+        }
+
+        stub_resolver
+    }
+
+    fn rid(id: u128) -> ResourceId {
+        ResourceId::from_u128(id)
     }
 }
