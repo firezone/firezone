@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^1.5",
-    "@tauri-apps/cli": "^1.5",
+    "@tauri-apps/cli": "^1.6",
     "flowbite": "^2.4.1"
   },
   "devDependencies": {
