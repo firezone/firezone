@@ -1,4 +1,4 @@
-use connlib_shared::BUNDLE_ID;
+use firezone_bin_shared::BUNDLE_ID;
 use std::path::PathBuf;
 
 /// Path for IPC service config that either the IPC service or GUI can write

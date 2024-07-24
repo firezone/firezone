@@ -2,7 +2,7 @@
 
 use super::TOKEN_ENV_KEY;
 use anyhow::{bail, Result};
-use firezone_bin_shared::FIREZONE_MARK;
+use firezone_bin_shared::{BUNDLE_ID, FIREZONE_MARK};
 use nix::sys::socket::{setsockopt, sockopt};
 use std::{
     io,
@@ -28,9 +28,7 @@ pub(crate) fn udp_socket_factory(socket_addr: &SocketAddr) -> io::Result<tokio::
 }
 
 pub(crate) fn default_token_path() -> PathBuf {
-    PathBuf::from("/etc")
-        .join(connlib_shared::BUNDLE_ID)
-        .join("token")
+    PathBuf::from("/etc").join(BUNDLE_ID).join("token")
 }
 
 pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
