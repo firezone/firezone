@@ -360,13 +360,13 @@ defmodule Web.CoreComponents do
     ~H"""
     <p
       class={[
-        "w-full flex gap-3 text-sm leading-6",
+        "flex items-center gap-2 text-sm leading-6",
         "text-rose-600",
-        (@inline && "ml-3") || "mt-3"
+        (@inline && "ml-2") || "mt-2 w-full"
       ]}
       {@rest}
     >
-      <.icon name="hero-exclamation-circle-mini" class="mt-0.5 h-5 w-5 flex-none" />
+      <.icon name="hero-exclamation-circle-mini" class="h-4 w-4 flex-none" />
       <%= render_slot(@inner_block) %>
     </p>
     """
