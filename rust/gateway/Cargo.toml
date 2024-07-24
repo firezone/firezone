@@ -33,7 +33,7 @@ tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread", "fs
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 tracing = { workspace = true }
 tracing-subscriber = "0.3.17"
-url = { version = "2.4.1", default-features = false }
+url = { version = "2.5.2", default-features = false }
 uuid = { version = "1.10.0", features = ["v4"] }
 
 [dev-dependencies]
