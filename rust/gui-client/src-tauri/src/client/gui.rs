@@ -796,11 +796,12 @@ async fn run_controller(
         win.show().context("Couldn't show Welcome window")?;
     }
 
-    let mut network_notifier = network_changes::network_notifier(tokio::runtime::Handle::current())
+    let tokio_handle = tokio::runtime::Handle::current();
+    let mut network_notifier = network_changes::network_notifier(tokio_handle.clone())
         .await
         .context("Failed to listen for network changes")?;
-
-    let mut dns_listener = network_changes::DnsListener::new()?;
+    let mut dns_notifier = network_changes::dns_notifier(tokio_handle.clone()).await?;
+    drop(tokio_handle);
 
     loop {
         // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
@@ -812,8 +813,9 @@ async fn run_controller(
                     controller.ipc_client.reconnect().await?;
                 }
             },
-            resolvers = dns_listener.notified() => {
-                let resolvers = resolvers?;
+            result = dns_notifier.notified() => {
+                result?;
+                let resolvers = firezone_headless_client::dns_control::system_resolvers_for_gui().unwrap_or_default();
                 if controller.status.connlib_is_up() {
                     tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
                     controller.ipc_client.set_dns(resolvers).await?;

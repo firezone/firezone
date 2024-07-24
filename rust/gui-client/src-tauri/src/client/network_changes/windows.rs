@@ -77,8 +77,6 @@ use windows::{
     },
 };
 
-pub(crate) use async_dns::CombinedListener as DnsListener;
-
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
     #[error("Couldn't initialize COM: {0}")]
@@ -91,6 +89,14 @@ pub(crate) enum Error {
     Listening(windows::core::Error),
     #[error("Couldn't stop listening to network events: {0}")]
     Unadvise(windows::core::Error),
+}
+
+// async needed to match Linux
+#[allow(clippy::unused_async)]
+pub(crate) async fn dns_notifier(
+    _tokio_handle: tokio::runtime::Handle,
+) -> Result<async_dns::CombinedListener> {
+    async_dns::CombinedListener::new()
 }
 
 pub(crate) async fn network_notifier(_tokio_handle: tokio::runtime::Handle) -> Result<Worker> {
@@ -330,7 +336,7 @@ impl Drop for Callback {
 
 mod async_dns {
     use anyhow::{Context, Result};
-    use std::{ffi::c_void, net::IpAddr, ops::Deref, path::Path};
+    use std::{ffi::c_void, ops::Deref, path::Path};
     use tokio::sync::mpsc;
     use windows::Win32::{
         Foundation::{CloseHandle, BOOLEAN, HANDLE, INVALID_HANDLE_VALUE},
@@ -383,15 +389,12 @@ mod async_dns {
             })
         }
 
-        pub(crate) async fn notified(&mut self) -> Result<Vec<IpAddr>> {
+        pub(crate) async fn notified(&mut self) -> Result<()> {
             tokio::select! {
                 r = self.listener_4.notified() => r?,
                 r = self.listener_6.notified() => r?,
             }
-            Ok(
-                firezone_headless_client::dns_control::system_resolvers_for_gui()
-                    .unwrap_or_default(),
-            )
+            Ok(())
         }
     }
 
