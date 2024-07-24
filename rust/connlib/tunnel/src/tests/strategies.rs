@@ -22,6 +22,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     str::FromStr as _,
+    time::Duration,
 };
 
 pub(crate) fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
@@ -91,6 +92,10 @@ pub(crate) fn tunnel_ip6s() -> impl Iterator<Item = Ipv6Addr> {
         .unwrap()
         .subnets_with_prefix(128)
         .map(|n| n.network_address())
+}
+
+pub(crate) fn latency(max: u64) -> impl Strategy<Value = Duration> {
+    (10..max).prop_map(Duration::from_millis)
 }
 
 /// A [`Strategy`] for sampling a set of gateways and a corresponding [`StubPortal`] that has a set of [`Site`]s configured with those gateways.

@@ -2065,6 +2065,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "tracing-appender",
  "tracing-subscriber",
  "tun",
 ]

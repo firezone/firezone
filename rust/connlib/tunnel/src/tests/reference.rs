@@ -3,7 +3,6 @@ use super::{
     strategies::*, stub_portal::StubPortal, transition::*,
 };
 use crate::dns::is_subdomain;
-use chrono::{DateTime, Utc};
 use connlib_shared::{
     messages::{
         client::{self, ResourceDescription},
@@ -20,7 +19,6 @@ use std::{
     collections::{BTreeMap, HashSet},
     fmt, iter,
     net::IpAddr,
-    time::Instant,
 };
 
 /// The reference state machine of the tunnel.
@@ -28,8 +26,6 @@ use std::{
 /// This is the "expected" part of our test.
 #[derive(Clone, Debug)]
 pub(crate) struct ReferenceState {
-    pub(crate) now: Instant,
-    pub(crate) utc_now: DateTime<Utc>,
     pub(crate) client: Host<RefClient>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
@@ -69,8 +65,6 @@ impl ReferenceStateMachine for ReferenceState {
             collection::btree_map(relay_id(), relay_prototype(), 1..=2),
             global_dns_records(), // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
             any::<bool>(),
-            Just(Instant::now()),
-            Just(Utc::now()),
         )
             .prop_filter_map(
                 "network IPs must be unique",
@@ -80,8 +74,6 @@ impl ReferenceStateMachine for ReferenceState {
                     relays,
                     mut global_dns,
                     drop_direct_client_traffic,
-                    now,
-                    utc_now,
                 )| {
                     let mut routing_table = RoutingTable::default();
 
@@ -110,15 +102,13 @@ impl ReferenceStateMachine for ReferenceState {
                         portal,
                         global_dns,
                         drop_direct_client_traffic,
-                        now,
-                        utc_now,
                         routing_table,
                     ))
                 },
             )
             .prop_filter(
                 "private keys must be unique",
-                |(c, gateways, _, _, _, _, _, _, _)| {
+                |(c, gateways, _, _, _, _, _)| {
                     let different_keys = gateways
                         .iter()
                         .map(|(_, g)| g.inner().key)
@@ -136,13 +126,9 @@ impl ReferenceStateMachine for ReferenceState {
                     portal,
                     global_dns_records,
                     drop_direct_client_traffic,
-                    now,
-                    utc_now,
                     network,
                 )| {
                     Self {
-                        now,
-                        utc_now,
                         client,
                         gateways,
                         relays,

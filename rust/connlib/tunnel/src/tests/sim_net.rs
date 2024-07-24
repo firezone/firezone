@@ -1,3 +1,4 @@
+use crate::tests::buffered_transmits::BufferedTransmits;
 use crate::tests::strategies::documentation_ip6s;
 use connlib_shared::messages::{ClientId, GatewayId, RelayId};
 use firezone_relay::{AddressFamily, IpStack};
@@ -6,11 +7,13 @@ use ip_network_table::IpNetworkTable;
 use itertools::Itertools as _;
 use prop::sample;
 use proptest::prelude::*;
+use snownet::Transmit;
 use std::{
     collections::HashSet,
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     num::NonZeroU16,
+    time::{Duration, Instant},
 };
 use tracing::Span;
 
@@ -29,12 +32,20 @@ pub(crate) struct Host<T> {
     default_port: u16,
     allocated_ports: HashSet<(u16, AddressFamily)>,
 
+    // The latency of incoming and outgoing packets.
+    latency: Duration,
+
     #[derivative(Debug = "ignore")]
     span: Span,
+
+    /// Messages that have "arrived" and are waiting to be dispatched.
+    ///
+    /// We buffer them here because we need also apply our latency on inbound packets.
+    inbox: BufferedTransmits,
 }
 
 impl<T> Host<T> {
-    pub(crate) fn new(inner: T) -> Self {
+    pub(crate) fn new(inner: T, latency: Duration) -> Self {
         Self {
             inner,
             ip4: None,
@@ -43,6 +54,8 @@ impl<T> Host<T> {
             default_port: 0,
             allocated_ports: HashSet::default(),
             old_ports: HashSet::default(),
+            latency,
+            inbox: BufferedTransmits::default(),
         }
     }
 
@@ -105,6 +118,18 @@ impl<T> Host<T> {
             IpAddr::V6(src) => self.ip6.is_some_and(|v6| v6 == src),
         }
     }
+
+    pub(crate) fn latency(&self) -> Duration {
+        self.latency
+    }
+
+    pub(crate) fn receive(&mut self, transmit: Transmit<'static>, now: Instant) {
+        self.inbox.push(transmit, self.latency, now);
+    }
+
+    pub(crate) fn poll_transmit(&mut self, now: Instant) -> Option<Transmit<'static>> {
+        self.inbox.pop(now)
+    }
 }
 
 impl<T> Host<T>
@@ -124,6 +149,8 @@ where
             default_port: self.default_port,
             allocated_ports: self.allocated_ports.clone(),
             old_ports: self.old_ports.clone(),
+            latency: self.latency,
+            inbox: self.inbox.clone(),
         }
     }
 }
@@ -241,12 +268,13 @@ pub(crate) fn host<T>(
     socket_ips: impl Strategy<Value = IpStack>,
     default_port: impl Strategy<Value = u16>,
     state: impl Strategy<Value = T>,
+    latency: impl Strategy<Value = Duration>,
 ) -> impl Strategy<Value = Host<T>>
 where
     T: fmt::Debug,
 {
-    (state, socket_ips, default_port).prop_map(move |(state, ip_stack, port)| {
-        let mut host = Host::new(state);
+    (state, socket_ips, default_port, latency).prop_map(move |(state, ip_stack, port, latency)| {
+        let mut host = Host::new(state, latency);
         host.update_interface(ip_stack.as_v4().copied(), ip_stack.as_v6().copied(), port);
 
         host
