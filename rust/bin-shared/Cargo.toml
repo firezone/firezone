@@ -30,7 +30,7 @@ libc = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 wintun = "0.4.0"
-uuid = { version = "1.7.0", features = ["v4"] }
+uuid = { version = "1.10.0", features = ["v4"] }
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.57.0"
