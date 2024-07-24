@@ -813,8 +813,7 @@ async fn run_controller(
                     controller.ipc_client.reconnect().await?;
                 }
             },
-            result = dns_notifier.notified() => {
-                result?;
+            () = dns_notifier.notified() => {
                 let resolvers = firezone_headless_client::dns_control::system_resolvers_for_gui().unwrap_or_default();
                 if controller.status.connlib_is_up() {
                     tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
