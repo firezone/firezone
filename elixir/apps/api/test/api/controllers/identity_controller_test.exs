@@ -109,11 +109,8 @@ defmodule API.IdentityControllerTest do
   end
 
   describe "create/2" do
-    test "returns error when not authorized", %{conn: conn, account: account, actor: actor} do
-      {oidc_provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
-      conn = post(conn, "/actors/#{actor.id}/providers/#{oidc_provider.id}/identities", %{})
+    test "returns error when not authorized", %{conn: conn, actor: actor} do
+      conn = post(conn, "/actors/#{actor.id}/identities", %{})
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
@@ -122,16 +119,13 @@ defmodule API.IdentityControllerTest do
       account: account,
       actor: api_actor
     } do
-      {oidc_provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
       actor = Fixtures.Actors.create_actor(account: account)
 
       conn =
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{actor.id}/providers/#{oidc_provider.id}/identities")
+        |> post("/actors/#{actor.id}/identities")
 
       assert resp = json_response(conn, 400)
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
@@ -150,7 +144,8 @@ defmodule API.IdentityControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{actor.id}/providers/1234/identities",
+        |> post("/actors/#{actor.id}/identities",
+          provider_id: "1234",
           identity: attrs
         )
 
@@ -174,7 +169,8 @@ defmodule API.IdentityControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{actor.id}/providers/#{oidc_provider.id}/identities",
+        |> post("/actors/#{actor.id}/identities",
+          provider_id: oidc_provider.id,
           identity: attrs
         )
 
@@ -205,7 +201,8 @@ defmodule API.IdentityControllerTest do
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{actor.id}/providers/#{oidc_provider.id}/identities",
+        |> post("/actors/#{actor.id}/identities",
+          provider_id: oidc_provider.id,
           identity: attrs
         )
 
