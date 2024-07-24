@@ -87,9 +87,6 @@ jobs:
       - name: Build release exe and MSI / deb
         # Signs the exe before bundling it into the MSI
         run: pnpm build
-      - name: Check what linker was used
-        if: ${{ runner.os == 'Linux' }}
-        run: readelf -p .comment ${{ matrix.binary-dest-path }}
       # We need to sign the exe inside the MSI. Currently
       # we do this in a "beforeBundleCommand" hook in tauri.windows.conf.json.
       # But this will soon be natively supported in Tauri.
@@ -127,3 +124,6 @@ jobs:
           TAG_NAME: gui-client-1.1.8
         shell: bash
         run: ${{ matrix.upload-script }}
+      - name: Check what linker was used
+        if: ${{ runner.os == 'Linux' }}
+        run: readelf -p .comment ${{ matrix.binary-dest-path }}
