@@ -37,44 +37,86 @@ defmodule Web.Resources.New do
           <h2 class="mb-4 text-xl text-neutral-900">Resource details</h2>
           <.form for={@form} class="space-y-4 lg:space-y-6" phx-submit="submit" phx-change="change">
             <div>
-              <label for="resource_type" class="block mb-2 text-sm text-neutral-900">
+              <p class="mb-2 text-sm text-neutral-900">
                 Type
-              </label>
-              <div class="flex text-sm leading-6 text-neutral-600">
-                <div class="flex items-center me-4">
+              </p>
+              <ul class="grid w-full gap-6 md:grid-cols-3">
+                <li>
                   <.input
                     id="resource-type--dns"
-                    type="radio"
+                    type="radio_button_group"
                     field={@form[:type]}
                     value="dns"
-                    label="DNS"
                     checked={@form[:type].value == :dns}
                     required
                   />
-                </div>
-                <div class="flex items-center me-4">
+                  <label for="resource-type--dns" class={~w[
+                    inline-flex items-center justify-between w-full
+                    p-5 text-gray-500 bg-white border border-gray-200
+                    rounded cursor-pointer peer-checked:border-accent-500
+                    peer-checked:text-accent-500 hover:text-gray-600 hover:bg-gray-100
+                  ]}>
+                    <div class="block">
+                      <div class="w-full font-semibold mb-3">
+                        <.icon name="hero-globe-alt" class="w-5 h-5 mr-1" /> DNS
+                      </div>
+                      <div class="w-full text-sm">
+                        Manage access to an application or service by DNS address.
+                      </div>
+                    </div>
+                  </label>
+                </li>
+                <li>
                   <.input
                     id="resource-type--ip"
-                    type="radio"
+                    type="radio_button_group"
                     field={@form[:type]}
                     value="ip"
-                    label="IP"
                     checked={@form[:type].value == :ip}
                     required
                   />
-                </div>
-                <div class="flex items-center me-4">
+                  <label for="resource-type--ip" class={~w[
+                    inline-flex items-center justify-between w-full
+                    p-5 text-gray-500 bg-white border border-gray-200
+                    rounded cursor-pointer peer-checked:border-accent-600
+                    peer-checked:text-accent-500 hover:text-gray-600 hover:bg-gray-100
+                  ]}>
+                    <div class="block">
+                      <div class="w-full font-semibold mb-3">
+                        <.icon name="hero-server" class="w-5 h-5 mr-1" /> IP
+                      </div>
+                      <div class="w-full text-sm">
+                        Manage access to a specific host by IP address.
+                      </div>
+                    </div>
+                  </label>
+                </li>
+                <li>
                   <.input
                     id="resource-type--cidr"
-                    type="radio"
+                    type="radio_button_group"
                     field={@form[:type]}
                     value="cidr"
-                    label="CIDR"
                     checked={@form[:type].value == :cidr}
                     required
                   />
-                </div>
-              </div>
+                  <label for="resource-type--cidr" class={~w[
+                    inline-flex items-center justify-between w-full
+                    p-5 text-gray-500 bg-white border border-gray-200
+                    rounded cursor-pointer peer-checked:border-accent-500
+                    peer-checked:text-accent-500 hover:text-gray-600 hover:bg-gray-100
+                  ]}>
+                    <div class="block">
+                      <div class="w-full font-semibold mb-3">
+                        <.icon name="hero-server-stack" class="w-5 h-5 mr-1" /> CIDR
+                      </div>
+                      <div class="w-full text-sm">
+                        Manage access to a network, VPC or subnet by CIDR address.
+                      </div>
+                    </div>
+                  </label>
+                </li>
+              </ul>
             </div>
 
             <div>
@@ -87,7 +129,7 @@ defmodule Web.Resources.New do
                     @form[:type].value == :dns -> "gitlab.company.com"
                     @form[:type].value == :cidr -> "10.0.0.0/24"
                     @form[:type].value == :ip -> "10.3.2.1"
-                    true -> "Please select a Type from the options first"
+                    true -> "First select a type above"
                   end
                 }
                 class={is_nil(@form[:type].value) && "cursor-not-allowed"}
