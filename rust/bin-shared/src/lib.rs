@@ -12,7 +12,7 @@ use url::Url;
 pub const FIREZONE_MARK: u32 = 0xfd002021;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-pub use network_changes::{DnsListener, NetworkListener};
+pub use network_changes::{DnsNotifier, NetworkNotifier};
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use tun_device_manager::TunDeviceManager;

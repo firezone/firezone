@@ -10,7 +10,7 @@ use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
 use connlib_shared::get_user_agent;
 use firezone_bin_shared::{
-    setup_global_subscriber, DnsListener, NetworkListener, TunDeviceManager,
+    setup_global_subscriber, DnsNotifier, NetworkNotifier, TunDeviceManager,
 };
 use futures::{FutureExt as _, StreamExt as _};
 use phoenix_channel::PhoenixChannel;
@@ -199,16 +199,16 @@ pub fn run_only_headless_client() -> Result<()> {
         let mut tun_device = TunDeviceManager::new()?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
-        let mut dns_listener = DnsListener::new()?;
-        let mut network_listener = NetworkListener::new()?;
+        let mut dns_notifier = DnsNotifier::new()?;
+        let mut network_notifier = NetworkNotifier::new()?;
 
         let tun = tun_device.make_tun()?;
         session.set_tun(Box::new(tun));
         session.set_dns(dns_control::system_resolvers().unwrap_or_default());
 
         loop {
-            let mut dns_changed = pin!(dns_listener.notified().fuse());
-            let mut network_changed = pin!(network_listener.notified().fuse());
+            let mut dns_changed = pin!(dns_notifier.notified().fuse());
+            let mut network_changed = pin!(network_notifier.notified().fuse());
 
             let cb = futures::select! {
                 () = terminate => {
@@ -264,7 +264,7 @@ pub fn run_only_headless_client() -> Result<()> {
             }
         }
 
-        if let Err(error) = network_listener.close() {
+        if let Err(error) = network_notifier.close() {
             tracing::error!(?error, "network listener");
         }
 

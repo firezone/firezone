@@ -77,7 +77,7 @@ use windows::{
     },
 };
 
-pub use async_dns::CombinedListener as DnsListener;
+pub use async_dns::CombinedListener as DnsNotifier;
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
@@ -94,7 +94,7 @@ pub(crate) enum Error {
 }
 
 /// Notifies when we change Wi-Fi networks, change between Wi-Fi and Ethernet, or gain / lose Internet
-pub struct NetworkListener {
+pub struct NetworkNotifier {
     inner: Option<WorkerInner>,
     rx: mpsc::Receiver<()>,
 }
@@ -105,7 +105,7 @@ struct WorkerInner {
     stopper: tokio::sync::oneshot::Sender<()>,
 }
 
-impl NetworkListener {
+impl NetworkNotifier {
     pub fn new() -> Result<Self> {
         let (tx, rx) = mpsc::channel(1);
 

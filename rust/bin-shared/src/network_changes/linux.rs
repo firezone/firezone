@@ -3,9 +3,9 @@
 use anyhow::Result;
 use tokio::time::Interval;
 
-pub struct NetworkListener {}
+pub struct NetworkNotifier {}
 
-impl NetworkListener {
+impl NetworkNotifier {
     pub fn new() -> Result<Self> {
         Ok(Self {})
     }
@@ -22,11 +22,11 @@ impl NetworkListener {
     }
 }
 
-pub struct DnsListener {
+pub struct DnsNotifier {
     interval: Interval,
 }
 
-impl DnsListener {
+impl DnsNotifier {
     pub fn new() -> Result<Self> {
         Ok(Self {
             interval: create_interval(),

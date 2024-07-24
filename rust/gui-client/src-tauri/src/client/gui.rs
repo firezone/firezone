@@ -10,7 +10,7 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use connlib_client_shared::callbacks::ResourceDescription;
-use firezone_bin_shared::{DnsListener, NetworkListener};
+use firezone_bin_shared::{DnsNotifier, NetworkNotifier};
 use firezone_headless_client::IpcServerMsg;
 use secrecy::{ExposeSecret, SecretString};
 use std::{
@@ -797,9 +797,9 @@ async fn run_controller(
         win.show().context("Couldn't show Welcome window")?;
     }
 
-    let mut com_worker = NetworkListener::new().context("Failed to listen for network changes")?;
+    let mut com_worker = NetworkNotifier::new().context("Failed to listen for network changes")?;
 
-    let mut dns_listener = DnsListener::new()?;
+    let mut dns_listener = DnsNotifier::new()?;
 
     loop {
         // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
