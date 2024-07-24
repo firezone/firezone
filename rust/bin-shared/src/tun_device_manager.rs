@@ -30,11 +30,11 @@ mod tests {
         #[cfg(target_os = "windows")]
         {
             // Install wintun so the test can run
-            let wintun_path = connlib_shared::windows::wintun_dll_path().unwrap();
+            let wintun_path = crate::windows::wintun_dll_path().unwrap();
             tokio::fs::create_dir_all(wintun_path.parent().unwrap())
                 .await
                 .unwrap();
-            tokio::fs::write(&wintun_path, connlib_shared::windows::wintun_bytes())
+            tokio::fs::write(&wintun_path, crate::windows::wintun_bytes().bytes)
                 .await
                 .unwrap();
         }
