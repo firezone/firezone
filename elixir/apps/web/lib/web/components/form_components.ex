@@ -32,8 +32,9 @@ defmodule Web.FormComponents do
 
   attr :type, :string,
     default: "text",
-    values: ~w(checkbox color date datetime-local email file hidden month number password
-               range radio readonly search group_select select tel text textarea time url week)
+    values:
+      ~w(checkbox color date datetime-local email file hidden month number password
+               range radio radio_button_group readonly search group_select select tel text textarea time url week)
 
   attr :field, Phoenix.HTML.FormField,
     doc: "a form field struct retrieved from the form, for example: @form[:email]"
