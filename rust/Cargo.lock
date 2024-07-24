@@ -1767,6 +1767,9 @@ dependencies = [
  "url",
  "uuid",
  "windows 0.57.0",
+ "windows-core 0.57.0",
+ "windows-implement 0.57.0",
+ "winreg 0.52.0",
  "wintun",
  "zbus",
 ]
@@ -1854,8 +1857,6 @@ dependencies = [
  "url",
  "uuid",
  "windows 0.57.0",
- "windows-core 0.57.0",
- "windows-implement 0.57.0",
  "winreg 0.52.0",
  "wintun",
  "zip",
