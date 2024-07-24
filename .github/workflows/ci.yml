@@ -252,8 +252,7 @@ jobs:
         if: "!cancelled()"
         run: docker compose logs iperf3
 
-  upload_bencher:
-    name: upload-bencher
+  upload-bencher:
     needs: perf-tests
     runs-on: ubuntu-22.04
     permissions:
