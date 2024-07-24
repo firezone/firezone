@@ -183,7 +183,6 @@ pub fn run_only_headless_client() -> Result<()> {
         Arc::new(crate::tcp_socket_factory),
     )?;
     let session = Session::connect(args, portal, rt.handle().clone());
-    platform::notify_service_controller()?;
 
     let result = rt.block_on(async {
         let mut terminate = signals::Terminate::new()?;
@@ -223,8 +222,18 @@ pub fn run_only_headless_client() -> Result<()> {
                     is_authentication_error: _,
                 }) => return Err(anyhow!(error_msg).context("Firezone disconnected")),
                 InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {
+                    tracing::info!("OnUpdateResources");
                     // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                     dns_controller.flush()?;
+                    if let Some(instant) = last_connlib_start_instant.take() {
+                        // `OnUpdateResources` appears to be the latest callback that happens during startup
+                        tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
+                        platform::notify_service_controller()?;
+                    }
+                    if cli.exit {
+                        tracing::info!("Exiting due to `--exit` CLI flag");
+                        break Ok(());
+                    }
                 }
                 InternalServerMsg::Ipc(IpcServerMsg::TerminatingGracefully) => unimplemented!(
                     "The standalone Client does not send `TerminatingGracefully` messages"
@@ -235,13 +244,6 @@ pub fn run_only_headless_client() -> Result<()> {
                 }
                 InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                     tun_device.set_routes(ipv4, ipv6).await?;
-                    if let Some(instant) = last_connlib_start_instant.take() {
-                        tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
-                    }
-                    if cli.exit {
-                        tracing::info!("Exiting due to `--exit` CLI flag");
-                        break Ok(());
-                    }
                 }
             }
         }
