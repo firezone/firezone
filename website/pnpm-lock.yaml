@@ -30,8 +30,8 @@ importers:
         specifier: ^2.49.0
         version: 2.49.0
       '@types/node':
-        specifier: 20.14.9
-        version: 20.14.9
+        specifier: 20.14.12
+        version: 20.14.12
       '@types/react':
         specifier: 18.3.3
         version: 18.3.3
@@ -440,6 +440,9 @@ packages:
 
   '@types/ms@0.7.34':
     resolution: {integrity: sha512-nG96G3Wp6acyAgJqGasjODb+acrI7KltPiRxzHPXnP3NgI28bpQDRv53olbqGXbfcgF5aiiHmO3xpwEpS5Ld9g==}
+
+  '@types/node@20.14.12':
+    resolution: {integrity: sha512-r7wNXakLeSsGT0H1AU863vS2wa5wBOK4bWMjZz2wj+8nBx+m5PeIn0k8AloSLpRuiwdRQZwarZqHE4FNArPuJQ==}
 
   '@types/node@20.14.9':
     resolution: {integrity: sha512-06OCtnTXtWOZBJlRApleWndH4JsRVs1pDCc8dLSQp+7PpUpX3ePdHyeNSFTeSe7FtKyQkrlPvHwJOW3SLd8Oyg==}
@@ -2224,6 +2227,10 @@ snapshots:
   '@types/mixpanel-browser@2.49.0': {}
 
   '@types/ms@0.7.34': {}
+
+  '@types/node@20.14.12':
+    dependencies:
+      undici-types: 5.26.5
 
   '@types/node@20.14.9':
     dependencies:
