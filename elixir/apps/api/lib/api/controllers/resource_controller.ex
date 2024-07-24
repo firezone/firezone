@@ -73,14 +73,6 @@ defmodule API.ResourceController do
 
   operation :update,
     summary: "Update Resource",
-    parameters: [
-      id: [
-        in: :path,
-        description: "Resource ID",
-        type: :string,
-        example: "00000000-0000-0000-0000-000000000000"
-      ]
-    ],
     request_body:
       {"Resource Attributes", "application/json", API.Schemas.Resource.Request, required: true},
     responses: [
