@@ -14,16 +14,13 @@ use ip_packet::{
 use rand::random;
 use secrecy::{ExposeSecret, Secret};
 use std::borrow::Cow;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
-use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    net::SocketAddr,
-    sync::Arc,
-};
+use std::{collections::VecDeque, net::SocketAddr, sync::Arc};
 use str0m::ice::{IceAgent, IceAgentEvent, IceCreds, StunMessage, StunPacket};
 use str0m::net::Protocol;
 use str0m::{Candidate, CandidateKind, IceConnectionState};
@@ -89,7 +86,7 @@ pub struct Node<T, TId, RId> {
 
     next_rate_limiter_reset: Option<Instant>,
 
-    allocations: HashMap<RId, Allocation>,
+    allocations: BTreeMap<RId, Allocation>,
 
     connections: Connections<TId, RId>,
     pending_events: VecDeque<Event<TId>>,
@@ -121,8 +118,8 @@ pub enum Error {
 
 impl<T, TId, RId> Node<T, TId, RId>
 where
-    TId: Eq + Hash + Copy + fmt::Display,
-    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
+    TId: Eq + Hash + Copy + Ord + fmt::Display,
+    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
     pub fn new(private_key: StaticSecret) -> Self {
         let public_key = &(&private_key).into();
@@ -132,12 +129,12 @@ where
             marker: Default::default(),
             index: IndexLfsr::default(),
             rate_limiter: Arc::new(RateLimiter::new(public_key, HANDSHAKE_RATE_LIMIT)),
-            host_candidates: HashSet::default(),
+            host_candidates: Default::default(),
             buffered_transmits: VecDeque::default(),
             next_rate_limiter_reset: None,
             pending_events: VecDeque::default(),
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
-            allocations: HashMap::default(),
+            allocations: Default::default(),
             connections: Default::default(),
             stats: Default::default(),
         }
@@ -491,8 +488,8 @@ where
 
     pub fn update_relays(
         &mut self,
-        to_remove: HashSet<RId>,
-        to_add: &HashSet<(RId, RelaySocket, String, String, String)>,
+        to_remove: BTreeSet<RId>,
+        to_add: &BTreeSet<(RId, RelaySocket, String, String, String)>,
         now: Instant,
     ) {
         // First, invalidate all candidates from relays that we should stop using.
@@ -576,7 +573,7 @@ where
             signalling_completed_at: now,
             remote_pub_key: remote,
             state: ConnectionState::Connecting {
-                possible_sockets: HashSet::default(),
+                possible_sockets: BTreeSet::default(),
                 buffered: RingBuffer::new(10),
             },
             last_outgoing: now,
@@ -609,7 +606,7 @@ where
     /// Tries to handle the packet using one of our [`Allocation`]s.
     ///
     /// This function is in the hot-path of packet processing and thus must be as efficient as possible.
-    /// Even look-ups in [`HashMap`]s and linear searches across small lists are expensive at this point.
+    /// Even look-ups in [`BTreeMap`]s and linear searches across small lists are expensive at this point.
     /// Thus, we use the first byte of the message as a heuristic for whether we should attempt to handle it here.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2> for details on de-multiplexing.
@@ -783,8 +780,8 @@ where
 
 impl<TId, RId> Node<Client, TId, RId>
 where
-    TId: Eq + Hash + Copy + fmt::Display,
-    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
+    TId: Eq + Hash + Copy + Ord + fmt::Display,
+    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
     /// Create a new connection indexed by the given ID.
     ///
@@ -874,8 +871,8 @@ where
 
 impl<TId, RId> Node<Server, TId, RId>
 where
-    TId: Eq + Hash + Copy + fmt::Display,
-    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
+    TId: Eq + Hash + Copy + Ord + fmt::Display,
+    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
     /// Accept a new connection indexed by the given ID.
     ///
@@ -959,8 +956,8 @@ where
 }
 
 struct Connections<TId, RId> {
-    initial: HashMap<TId, InitialConnection>,
-    established: HashMap<TId, Connection<RId>>,
+    initial: BTreeMap<TId, InitialConnection>,
+    established: BTreeMap<TId, Connection<RId>>,
 }
 
 impl<TId, RId> Default for Connections<TId, RId> {
@@ -974,8 +971,8 @@ impl<TId, RId> Default for Connections<TId, RId> {
 
 impl<TId, RId> Connections<TId, RId>
 where
-    TId: Eq + Hash + Copy + fmt::Display,
-    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
+    TId: Eq + Hash + Copy + Ord + fmt::Display,
+    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
     fn gc(&mut self, events: &mut VecDeque<Event<TId>>) {
         self.initial.retain(|id, conn| {
@@ -1062,11 +1059,11 @@ fn encode_as_channel_data<RId>(
     relay: RId,
     dest: SocketAddr,
     contents: &[u8],
-    allocations: &mut HashMap<RId, Allocation>,
+    allocations: &mut BTreeMap<RId, Allocation>,
     now: Instant,
 ) -> Result<Transmit<'static>, EncodeError>
 where
-    RId: Copy + Eq + Hash + PartialEq + fmt::Debug,
+    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug,
 {
     let allocation = allocations
         .get_mut(&relay)
@@ -1206,7 +1203,7 @@ pub enum Event<TId> {
     ConnectionClosed(TId),
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Transmit<'a> {
     /// The local interface from which this packet should be sent.
     ///
@@ -1310,7 +1307,7 @@ enum ConnectionState<RId> {
     /// We are still running ICE to figure out, which socket to use to send data.
     Connecting {
         /// Socket addresses from which we might receive data (even before we are connected).
-        possible_sockets: HashSet<SocketAddr>,
+        possible_sockets: BTreeSet<SocketAddr>,
         /// Packets emitted by wireguard whilst are still running ICE.
         ///
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
@@ -1322,7 +1319,7 @@ enum ConnectionState<RId> {
         /// Our nominated socket.
         peer_socket: PeerSocket<RId>,
         /// Other addresses that we might see traffic from (e.g. STUN messages during roaming).
-        possible_sockets: HashSet<SocketAddr>,
+        possible_sockets: BTreeSet<SocketAddr>,
     },
     /// The connection failed in an unrecoverable way and will be GC'd.
     Failed,
@@ -1361,7 +1358,7 @@ enum PeerSocket<RId> {
 
 impl<RId> Connection<RId>
 where
-    RId: PartialEq + Eq + Hash + fmt::Debug + Copy,
+    RId: PartialEq + Eq + Hash + fmt::Debug + Copy + Ord,
 {
     /// Checks if we want to accept a packet from a certain address.
     ///
@@ -1428,11 +1425,11 @@ where
         &mut self,
         cid: TId,
         now: Instant,
-        allocations: &mut HashMap<RId, Allocation>,
+        allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit<'static>>,
     ) where
-        TId: fmt::Display + Copy,
-        RId: Copy + fmt::Display,
+        TId: Copy + Ord + fmt::Display,
+        RId: Copy + Ord + fmt::Display,
     {
         self.agent.handle_timeout(now);
 
@@ -1621,7 +1618,7 @@ where
         &mut self,
         packet: &[u8],
         buffer: &'b mut [u8],
-        allocations: &mut HashMap<RId, Allocation>,
+        allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, MutableIpPacket<'b>> {
@@ -1705,7 +1702,7 @@ where
 
     fn force_handshake(
         &mut self,
-        allocations: &mut HashMap<RId, Allocation>,
+        allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
     ) where
@@ -1753,11 +1750,11 @@ where
 fn make_owned_transmit<RId>(
     socket: PeerSocket<RId>,
     message: &[u8],
-    allocations: &mut HashMap<RId, Allocation>,
+    allocations: &mut BTreeMap<RId, Allocation>,
     now: Instant,
 ) -> Option<Transmit<'static>>
 where
-    RId: Copy + Eq + Hash + PartialEq + fmt::Debug,
+    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug,
 {
     let transmit = match socket {
         PeerSocket::Direct {

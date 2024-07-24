@@ -27,7 +27,7 @@ use core::fmt;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, RelaySocket};
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::str::FromStr;
@@ -63,11 +63,11 @@ impl ClientTunnel {
             });
     }
 
-    pub fn set_tun(&mut self, tun: Tun) {
+    pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
         self.io.device_mut().set_tun(tun);
     }
 
-    pub fn update_relays(&mut self, to_remove: HashSet<RelayId>, to_add: Vec<Relay>) {
+    pub fn update_relays(&mut self, to_remove: BTreeSet<RelayId>, to_add: Vec<Relay>) {
         self.role_state
             .update_relays(to_remove, turn(&to_add), Instant::now())
     }
@@ -820,8 +820,8 @@ impl ClientState {
 
     fn drain_node_events(&mut self) {
         let mut resources_changed = false; // Track this separately to batch together `ResourcesChanged` events.
-        let mut added_ice_candidates = HashMap::<GatewayId, HashSet<String>>::default();
-        let mut removed_ice_candidates = HashMap::<GatewayId, HashSet<String>>::default();
+        let mut added_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
+        let mut removed_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -861,7 +861,7 @@ impl ClientState {
                 });
         }
 
-        for (conn_id, candidates) in added_ice_candidates.drain() {
+        for (conn_id, candidates) in added_ice_candidates.into_iter() {
             self.buffered_events
                 .push_back(ClientEvent::AddedIceCandidates {
                     conn_id,
@@ -869,7 +869,7 @@ impl ClientState {
                 })
         }
 
-        for (conn_id, candidates) in removed_ice_candidates.drain() {
+        for (conn_id, candidates) in removed_ice_candidates.into_iter() {
             self.buffered_events
                 .push_back(ClientEvent::RemovedIceCandidates {
                     conn_id,
@@ -1053,8 +1053,8 @@ impl ClientState {
 
     pub fn update_relays(
         &mut self,
-        to_remove: HashSet<RelayId>,
-        to_add: HashSet<(RelayId, RelaySocket, String, String, String)>,
+        to_remove: BTreeSet<RelayId>,
+        to_add: BTreeSet<(RelayId, RelaySocket, String, String, String)>,
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);

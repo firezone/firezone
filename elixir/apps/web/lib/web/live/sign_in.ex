@@ -109,7 +109,7 @@ defmodule Web.SignIn do
         <div :if={Web.Auth.fetch_auth_context_type!(@params) == :browser} class="mx-auto p-6 sm:p-8">
           <p class="py-2">
             Meant to sign in from a client instead?
-            <.website_link path="/kb/user-guides">Read the docs.</.website_link>
+            <.website_link path="/kb/client-apps">Read the docs.</.website_link>
           </p>
           <p class="py-2">
             Looking for a different account?
@@ -204,7 +204,7 @@ defmodule Web.SignIn do
     ~H"""
     <.form
       for={@email_form}
-      action={~p"/#{@account}/sign_in/providers/#{@provider.id}/request_magic_link"}
+      action={~p"/#{@account}/sign_in/providers/#{@provider.id}/request_email_otp"}
       class="space-y-4 lg:space-y-6"
       id="email_form"
       phx-update="ignore"

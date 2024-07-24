@@ -50,7 +50,7 @@ locals {
 
 # Fetch most recent COS image
 data "google_compute_image" "coreos" {
-  family  = "cos-109-lts"
+  family  = "cos-113-lts"
   project = "cos-cloud"
 }
 
@@ -152,6 +152,25 @@ resource "google_compute_subnetwork" "subnetwork" {
   private_ip_google_access = true
 }
 
+resource "google_compute_reservation" "relay_reservation" {
+  for_each = var.instances
+
+  project = var.project_id
+
+  name = "relays-${element(each.value.zones, length(each.value.zones) - 1)}-${each.value.type}"
+  zone = element(each.value.zones, length(each.value.zones) - 1)
+
+  specific_reservation_required = true
+
+  specific_reservation {
+    count = each.value.replicas
+
+    instance_properties {
+      machine_type = each.value.type
+    }
+  }
+}
+
 # Deploy app
 resource "google_compute_instance_template" "application" {
   for_each = var.instances
@@ -160,7 +179,7 @@ resource "google_compute_instance_template" "application" {
 
   name_prefix = "${local.application_name}-${each.key}-"
 
-  description = "This template is used to create ${local.application_name} instances."
+  description = "This template is used to create ${local.application_name} instances using Terraform."
 
   machine_type = each.value.type
 
@@ -177,6 +196,15 @@ resource "google_compute_instance_template" "application" {
     automatic_restart   = true
     on_host_maintenance = "MIGRATE"
     provisioning_model  = "STANDARD"
+  }
+
+  reservation_affinity {
+    type = "SPECIFIC_RESERVATION"
+
+    specific_reservation {
+      key    = "compute.googleapis.com/reservation-name"
+      values = ["relays-${element(each.value.zones, length(each.value.zones) - 1)}-${each.value.type}"]
+    }
   }
 
   disk {
@@ -262,6 +290,7 @@ resource "google_compute_instance_template" "application" {
     google_project_iam_member.metrics,
     google_project_iam_member.service_management,
     google_project_iam_member.cloudtrace,
+    google_compute_reservation.relay_reservation,
   ]
 
   lifecycle {
@@ -335,8 +364,14 @@ resource "google_compute_region_instance_group_manager" "application" {
     type           = "PROACTIVE"
     minimal_action = "REPLACE"
 
-    max_unavailable_fixed = each.value.replicas == 1 ? 0 : 1
-    max_surge_fixed       = max(length(each.value.zones), each.value.replicas - 1)
+    # For all regions we need to take one replica down first because the reservation
+    # won't allow to create surge instances
+    # max_unavailable_fixed = each.value.replicas == 1 ? 0 : 1
+    max_unavailable_fixed = 1
+
+    # Reservations won't allow surge instances
+    # max_surge_fixed       = max(length(each.value.zones), each.value.replicas - 1)
+    max_surge_fixed = 0
   }
 
   timeouts {

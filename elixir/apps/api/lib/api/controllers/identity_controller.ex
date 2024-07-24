@@ -77,6 +77,12 @@ defmodule API.IdentityController do
   operation :show,
     summary: "Show Identity",
     parameters: [
+      actor_id: [
+        in: :path,
+        description: "Actor ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ],
       id: [
         in: :path,
         description: "Identity ID",

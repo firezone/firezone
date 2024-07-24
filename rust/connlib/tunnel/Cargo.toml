@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
-async-trait = { version = "0.1", default-features = false }
 bimap = "0.6"
 boringtun = { workspace = true }
 bytes = { version = "1.4", default-features = false, features = ["std"] }
@@ -22,7 +21,6 @@ ip-packet = { workspace = true }
 ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
 itertools = { version = "0.13", default-features = false, features = ["use_std"] }
-libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
 proptest = { version = "1", optional = true }
 quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" }
 rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
@@ -34,7 +32,8 @@ socket-factory = { workspace = true }
 socket2 = { workspace = true }
 thiserror = { version = "1.0", default-features = false }
 tokio = { workspace = true }
-tracing = { workspace = true }
+tracing = { workspace = true, features = ["attributes"] }
+tun = { workspace = true }
 
 [dev-dependencies]
 derivative = "2.2.0"
@@ -45,33 +44,11 @@ proptest-state-machine = "0.3"
 rand = "0.8"
 serde_json = "1.0"
 test-strategy = "0.3.1"
+tracing-appender = "0.2.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-[target.'cfg(target_os = "windows")'.dev-dependencies]
-firezone-bin-shared = { workspace = true } # Required for benchmark.
-
-[[bench]]
-name = "tunnel"
-harness = false
 
 [features]
 proptest = ["dep:proptest", "connlib-shared/proptest"]
-
-# Windows tunnel dependencies
-[target.'cfg(target_os = "windows")'.dependencies]
-tokio = { workspace = true, features = ["sync"] }
-uuid = { version = "1.7.0", features = ["v4"] }
-wintun = "0.4.0"
-
-# Windows Win32 API
-[target.'cfg(target_os = "windows")'.dependencies.windows]
-version = "0.57.0"
-features = [
-  "Win32_Foundation",
-  "Win32_NetworkManagement_IpHelper",
-  "Win32_NetworkManagement_Ndis",
-  "Win32_Networking_WinSock",
-]
 
 [lints]
 workspace = true

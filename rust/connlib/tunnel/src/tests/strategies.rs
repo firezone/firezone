@@ -22,6 +22,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     str::FromStr as _,
+    time::Duration,
 };
 
 pub(crate) fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
@@ -93,6 +94,10 @@ pub(crate) fn tunnel_ip6s() -> impl Iterator<Item = Ipv6Addr> {
         .map(|n| n.network_address())
 }
 
+pub(crate) fn latency(max: u64) -> impl Strategy<Value = Duration> {
+    (10..max).prop_map(Duration::from_millis)
+}
+
 /// A [`Strategy`] for sampling a set of gateways and a corresponding [`StubPortal`] that has a set of [`Site`]s configured with those gateways.
 ///
 /// Similar as in production, the portal holds a list of DNS and CIDR resources (those are also sampled from the given sites).
@@ -101,7 +106,7 @@ pub(crate) fn tunnel_ip6s() -> impl Iterator<Item = Ipv6Addr> {
 /// Lastly, we also sample a set of DNS records for the DNS resources that we created.
 pub(crate) fn gateways_and_portal() -> impl Strategy<
     Value = (
-        HashMap<GatewayId, Host<RefGateway>>,
+        BTreeMap<GatewayId, Host<RefGateway>>,
         StubPortal,
         HashMap<DomainName, HashSet<IpAddr>>,
     ),
@@ -132,7 +137,7 @@ pub(crate) fn gateways_and_portal() -> impl Strategy<
             |(gateways, cidr_resources, dns_resources, gateway_selector)| {
                 let (gateways, gateways_by_site) = gateways.into_iter().fold(
                     (
-                        HashMap::<GatewayId, _>::default(),
+                        BTreeMap::<GatewayId, _>::default(),
                         HashMap::<SiteId, HashSet<GatewayId>>::default(),
                     ),
                     |(mut gateways, mut sites), (gid, (gateway, site))| {

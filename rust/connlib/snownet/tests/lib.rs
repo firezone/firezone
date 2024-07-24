@@ -4,7 +4,7 @@ use ip_packet::*;
 use rand::rngs::OsRng;
 use snownet::{Answer, Client, ClientNode, Event, Node, RelaySocket, Server, ServerNode, Transmit};
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{BTreeSet, HashSet, VecDeque},
     iter,
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
     time::{Duration, Instant, SystemTime},
@@ -30,13 +30,13 @@ fn migrate_connection_to_new_relay() {
     )];
     let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80").with_relays(
         "alice",
-        HashSet::default(),
+        BTreeSet::default(),
         &mut relays,
         clock.now,
     );
     let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(
         "bob",
-        HashSet::default(),
+        BTreeSet::default(),
         &mut relays,
         clock.now,
     );
@@ -62,8 +62,8 @@ fn migrate_connection_to_new_relay() {
             debug_span!("Robert"),
         ),
     )];
-    alice = alice.with_relays("alice", HashSet::from([1]), &mut relays, clock.now);
-    bob = bob.with_relays("bob", HashSet::from([1]), &mut relays, clock.now);
+    alice = alice.with_relays("alice", BTreeSet::from([1]), &mut relays, clock.now);
+    bob = bob.with_relays("bob", BTreeSet::from([1]), &mut relays, clock.now);
 
     // Make some progress. (the fact that we only need 22 clock ticks means we are no relying on timeouts here (22 * 100ms = 2.2s))
     for _ in 0..22 {
@@ -77,63 +77,6 @@ fn migrate_connection_to_new_relay() {
     bob.ping(ip("8.8.8.8"), ip("9.9.9.9"), &alice, clock.now);
     progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
     assert_eq!(alice.packets_from(ip("8.8.8.8")).count(), 1);
-}
-
-#[test]
-fn idle_connection_is_closed_after_5_minutes() {
-    let _guard = setup_tracing();
-    let mut clock = Clock::new();
-
-    let (alice, bob) = alice_and_bob();
-
-    let mut relays = [(
-        1,
-        TestRelay::new(
-            SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478),
-            debug_span!("Roger"),
-        ),
-    )];
-    let mut alice = TestNode::new(debug_span!("Alice"), alice, "1.1.1.1:80").with_relays(
-        "alice",
-        HashSet::default(),
-        &mut relays,
-        clock.now,
-    );
-    let mut bob = TestNode::new(debug_span!("Bob"), bob, "2.2.2.2:80").with_relays(
-        "bob",
-        HashSet::default(),
-        &mut relays,
-        clock.now,
-    );
-    let firewall = Firewall::default();
-
-    handshake(&mut alice, &mut bob, &clock);
-
-    loop {
-        if alice.is_connected_to(&bob) && bob.is_connected_to(&alice) {
-            break;
-        }
-
-        progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
-    }
-
-    alice.ping(ip("9.9.9.9"), ip("8.8.8.8"), &bob, clock.now);
-    bob.ping(ip("8.8.8.8"), ip("9.9.9.9"), &alice, clock.now);
-
-    let start = clock.now;
-
-    while clock.elapsed(start) <= Duration::from_secs(5 * 60) {
-        progress(&mut alice, &mut bob, &mut relays, &firewall, &mut clock);
-    }
-
-    assert_eq!(alice.packets_from(ip("8.8.8.8")).count(), 1);
-    assert_eq!(bob.packets_from(ip("9.9.9.9")).count(), 1);
-    assert!(alice
-        .events
-        .contains(&(Event::ConnectionClosed(1), clock.now)));
-    assert!(bob
-        .events
-        .contains(&(Event::ConnectionClosed(1), clock.now)));
 }
 
 #[test]
@@ -580,7 +523,7 @@ impl<R> TestNode<R> {
     fn with_relays(
         mut self,
         username: &str,
-        to_remove: HashSet<u64>,
+        to_remove: BTreeSet<u64>,
         relays: &mut [(u64, TestRelay)],
         now: Instant,
     ) -> Self {
@@ -597,7 +540,7 @@ impl<R> TestNode<R> {
                     "firezone".to_owned(),
                 )
             })
-            .collect::<HashSet<_>>();
+            .collect::<BTreeSet<_>>();
 
         self.span
             .in_scope(|| self.node.update_relays(to_remove, &turn_servers, now));

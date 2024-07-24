@@ -3,5 +3,16 @@
   "tabWidth": 2,
   "semi": true,
   "singleQuote": false,
-  "proseWrap": "preserve"
+  "proseWrap": "always",
+  "overrides": [
+    {
+      "files": [
+        "website/src/app/blog/**/*.md",
+        "website/src/app/blog/**/*.mdx"
+      ],
+      "options": {
+        "proseWrap": "preserve"
+      }
+    }
+  ]
 }
