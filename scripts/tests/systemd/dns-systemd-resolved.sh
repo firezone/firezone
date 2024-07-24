@@ -44,9 +44,6 @@ resolvectl dns tun-firezone && exit 1
 stat "/usr/bin/$BINARY_NAME"
 sudo systemctl start "$SERVICE_NAME" || debug_exit
 
-# Wait for connlib to set DNS sentinel and update Resources
-sleep 3
-
 resolvectl dns tun-firezone
 resolvectl query "$HTTPBIN" || debug_exit
 
