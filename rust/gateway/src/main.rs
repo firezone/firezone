@@ -4,7 +4,7 @@ use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_shared::{get_user_agent, keypair, messages::Interface, LoginUrl, StaticSecret};
 use firezone_bin_shared::{setup_global_subscriber, CommonArgs, TunDeviceManager};
-use firezone_tunnel::{GatewayTunnel, Tun};
+use firezone_tunnel::GatewayTunnel;
 
 use futures::channel::mpsc;
 use futures::{future, StreamExt, TryFutureExt};
@@ -113,8 +113,9 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
     )?;
 
     let (sender, receiver) = mpsc::channel::<Interface>(10);
-    let tun_device_manager = TunDeviceManager::new()?;
-    tunnel.set_tun(Tun::new()?);
+    let mut tun_device_manager = TunDeviceManager::new()?;
+    let tun = tun_device_manager.make_tun()?;
+    tunnel.set_tun(Box::new(tun));
 
     let update_device_task = update_device_task(tun_device_manager, receiver);
 

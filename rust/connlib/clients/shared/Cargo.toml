@@ -25,6 +25,7 @@ tracing = { workspace = true }
 tracing-appender = { version = "0.2.2" }
 tracing-stackdriver = { version = "0.10.0" }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tun = { workspace = true }
 url = { version = "2.4.1", features = ["serde"] }
 
 [target.'cfg(target_os = "android")'.dependencies]

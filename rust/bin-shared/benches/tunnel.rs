@@ -37,6 +37,7 @@ mod platform {
         net::UdpSocket,
         time::{timeout, Instant},
     };
+    use tun::Tun as _;
 
     pub(crate) async fn perf() -> Result<()> {
         // Install wintun so the test can run

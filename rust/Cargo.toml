@@ -18,6 +18,7 @@ members = [
   "relay",
   "snownet-tests",
   "socket-factory",
+  "tun"
 ]
 
 resolver = "2"
@@ -55,6 +56,7 @@ phoenix-channel = { path = "phoenix-channel" }
 http-health-check = { path = "http-health-check" }
 ip-packet = { path = "ip-packet" }
 socket-factory = { path = "socket-factory" }
+tun = { path = "tun" }
 socket2 = { version = "0.5" }
 
 [workspace.lints.clippy]

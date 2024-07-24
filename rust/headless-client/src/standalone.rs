@@ -197,7 +197,8 @@ pub fn run_only_headless_client() -> Result<()> {
         let mut tun_device = TunDeviceManager::new()?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
-        session.set_tun(tun_device.make_tun()?);
+        let tun = tun_device.make_tun()?;
+        session.set_tun(Box::new(tun));
         // TODO: DNS should be added dynamically
         session.set_dns(dns_control::system_resolvers().unwrap_or_default());
 

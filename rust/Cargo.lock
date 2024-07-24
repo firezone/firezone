@@ -1041,6 +1041,7 @@ dependencies = [
  "connlib-shared",
  "ip_network",
  "jni 0.21.1",
+ "libc",
  "log",
  "phoenix-channel",
  "secrecy",
@@ -1051,6 +1052,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "tun",
  "url",
 ]
 
@@ -1075,6 +1077,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "tun",
  "url",
 ]
 
@@ -1102,6 +1105,7 @@ dependencies = [
  "tracing-appender",
  "tracing-stackdriver",
  "tracing-subscriber",
+ "tun",
  "url",
 ]
 
@@ -1828,9 +1832,10 @@ dependencies = [
  "anyhow",
  "clap",
  "connlib-shared",
- "firezone-tunnel",
  "futures",
+ "ip-packet",
  "ip_network",
+ "libc",
  "netlink-packet-core",
  "netlink-packet-route",
  "rtnetlink",
@@ -1838,8 +1843,11 @@ dependencies = [
  "tracing",
  "tracing-log",
  "tracing-subscriber",
+ "tun",
  "url",
+ "uuid",
  "windows 0.57.0",
+ "wintun",
 ]
 
 [[package]]
@@ -2023,7 +2031,6 @@ name = "firezone-tunnel"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "bimap",
  "boringtun",
  "bytes",
@@ -2031,7 +2038,6 @@ dependencies = [
  "connlib-shared",
  "derivative",
  "domain",
- "firezone-bin-shared",
  "firezone-relay",
  "futures",
  "futures-bounded",
@@ -2043,7 +2049,6 @@ dependencies = [
  "ip_network",
  "ip_network_table",
  "itertools 0.13.0",
- "libc",
  "proptest",
  "proptest-state-machine",
  "quinn-udp",
@@ -2061,9 +2066,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "uuid",
- "windows 0.57.0",
- "wintun",
+ "tun",
 ]
 
 [[package]]
@@ -6827,6 +6830,14 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+
+[[package]]
+name = "tun"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "tokio",
+]
 
 [[package]]
 name = "tungstenite"
