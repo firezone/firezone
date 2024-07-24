@@ -77,7 +77,7 @@ use windows::{
     },
 };
 
-pub(crate) use async_dns::CombinedListener as DnsListener;
+pub use async_dns::CombinedListener as DnsListener;
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
@@ -93,27 +93,8 @@ pub(crate) enum Error {
     Unadvise(windows::core::Error),
 }
 
-/// Returns true if Windows thinks we have Internet access per [IsConnectedToInternet](https://learn.microsoft.com/en-us/windows/win32/api/netlistmgr/nf-netlistmgr-inetworklistmanager-get_isconnectedtointernet)
-///
-/// Call this when `Listener` notifies you.
-pub fn check_internet() -> Result<bool> {
-    // Retrieving the INetworkListManager takes less than half a millisecond, and this
-    // makes the lifetimes and Send+Sync much simpler for callers, so just retrieve it
-    // every single time.
-    // SAFETY: No lifetime problems. TODO: Could threading be a problem?
-    // I think in practice we'll never call this from two threads, but what if we did?
-    // Maybe make it a method on a `!Send + !Sync` guard struct?
-    let network_list_manager: INetworkListManager =
-        unsafe { Com::CoCreateInstance(&NetworkListManager, None, Com::CLSCTX_ALL) }?;
-    // SAFETY: `network_list_manager` isn't shared between threads, and the lifetime
-    // should be good.
-    let have_internet = unsafe { network_list_manager.IsConnectedToInternet() }?.as_bool();
-
-    Ok(have_internet)
-}
-
-/// Worker thread that can be joined explicitly, and joins on Drop
-pub(crate) struct Worker {
+/// Notifies when we change Wi-Fi networks, change between Wi-Fi and Ethernet, or gain / lose Internet
+pub struct NetworkListener {
     inner: Option<WorkerInner>,
     rx: mpsc::Receiver<()>,
 }
@@ -124,8 +105,8 @@ struct WorkerInner {
     stopper: tokio::sync::oneshot::Sender<()>,
 }
 
-impl Worker {
-    pub(crate) fn new() -> Result<Self> {
+impl NetworkListener {
+    pub fn new() -> Result<Self> {
         let (tx, rx) = mpsc::channel(1);
 
         let (stopper, stopper_rx) = tokio::sync::oneshot::channel();
@@ -150,7 +131,7 @@ impl Worker {
     }
 
     /// Same as `drop`, but you can catch errors
-    pub(crate) fn close(&mut self) -> Result<()> {
+    pub fn close(&mut self) -> Result<()> {
         if let Some(inner) = self.inner.take() {
             inner
                 .stopper
@@ -164,7 +145,7 @@ impl Worker {
         Ok(())
     }
 
-    pub(crate) async fn notified(&mut self) {
+    pub async fn notified(&mut self) {
         self.rx.recv().await;
     }
 }
@@ -219,7 +200,7 @@ impl Drop for ComGuard {
     }
 }
 
-/// Listens to network connectivity change eents
+/// Listens to network connectivity change events
 struct Listener<'a> {
     /// The cookies we get back from `Advise`. Can be None if the owner called `close`
     ///
@@ -379,13 +360,13 @@ mod async_dns {
         ))
     }
 
-    pub(crate) struct CombinedListener {
+    pub struct CombinedListener {
         listener_4: Listener,
         listener_6: Listener,
     }
 
     impl CombinedListener {
-        pub(crate) fn new() -> Result<Self> {
+        pub fn new() -> Result<Self> {
             let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
             let listener_4 = Listener::new(key_ipv4)?;
             let listener_6 = Listener::new(key_ipv6)?;
@@ -396,7 +377,7 @@ mod async_dns {
             })
         }
 
-        pub(crate) async fn notified(&mut self) -> Result<Vec<IpAddr>> {
+        pub async fn notified(&mut self) -> Result<Vec<IpAddr>> {
             tokio::select! {
                 r = self.listener_4.notified() => r?,
                 r = self.listener_6.notified() => r?,

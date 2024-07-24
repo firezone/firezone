@@ -1854,6 +1854,7 @@ dependencies = [
  "connlib-shared",
  "crash-handler",
  "dirs",
+ "firezone-bin-shared",
  "firezone-headless-client",
  "futures",
  "git-version",
