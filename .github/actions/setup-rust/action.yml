@@ -75,6 +75,7 @@ runs:
     - name: Use lld on Windows
       if: ${{ runner.os == 'Windows' }}
       run: echo "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=rust-lld" >> $GITHUB_ENV;
+      shell: bash
 
     # Common to either cache backend
     - name: Extract Rust version
