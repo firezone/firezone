@@ -277,19 +277,9 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "linux")]
     fn keyring_is_persistent() {
         assert!(matches!(
-            keyring::secret_service::default_credential_builder().persistence(),
-            keyring::credential::CredentialPersistence::UntilDelete
-        ));
-    }
-
-    #[test]
-    #[cfg(target_os = "windows")]
-    fn keyring_is_persistent() {
-        assert!(matches!(
-            keyring::windows::default_credential_builder().persistence(),
+            keyring::default::default_credential_builder().persistence(),
             keyring::credential::CredentialPersistence::UntilDelete
         ));
     }

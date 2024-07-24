@@ -93,18 +93,20 @@ pub(crate) enum Error {
 
 // async needed to match Linux
 #[allow(clippy::unused_async)]
-pub(crate) async fn dns_notifier(
+pub(crate) async fn new_dns_notifier(
     _tokio_handle: tokio::runtime::Handle,
 ) -> Result<async_dns::CombinedListener> {
     async_dns::CombinedListener::new()
 }
 
-pub(crate) async fn network_notifier(_tokio_handle: tokio::runtime::Handle) -> Result<Worker> {
-    Worker::new().await
+pub(crate) async fn new_network_notifier(
+    _tokio_handle: tokio::runtime::Handle,
+) -> Result<NetworkNotifier> {
+    NetworkNotifier::new().await
 }
 
-/// Worker thread that can be joined explicitly, and joins on Drop
-pub(crate) struct Worker {
+/// Notifies when we change Wi-Fi networks, change between Wi-Fi and Ethernet, or gain / lose Internet
+pub struct NetworkNotifier {
     inner: Option<WorkerInner>,
     rx: mpsc::Receiver<()>,
 }
@@ -115,10 +117,10 @@ struct WorkerInner {
     stopper: tokio::sync::oneshot::Sender<()>,
 }
 
-impl Worker {
+impl NetworkNotifier {
     // Async on Linux due to `zbus`
     #[allow(clippy::unused_async)]
-    async fn new() -> Result<Self> {
+    pub async fn new() -> Result<Self> {
         let (tx, rx) = mpsc::channel(1);
 
         let (stopper, stopper_rx) = tokio::sync::oneshot::channel();
@@ -143,7 +145,7 @@ impl Worker {
     }
 
     /// Same as `drop`, but you can catch errors
-    pub(crate) fn close(&mut self) -> Result<()> {
+    pub fn close(&mut self) -> Result<()> {
         if let Some(inner) = self.inner.take() {
             inner
                 .stopper
@@ -157,7 +159,7 @@ impl Worker {
         Ok(())
     }
 
-    pub(crate) async fn notified(&mut self) {
+    pub async fn notified(&mut self) {
         self.rx.recv().await;
     }
 }
@@ -212,7 +214,7 @@ impl Drop for ComGuard {
     }
 }
 
-/// Listens to network connectivity change eents
+/// Listens to network connectivity change events
 struct Listener<'a> {
     /// The cookies we get back from `Advise`. Can be None if the owner called `close`
     ///
@@ -372,13 +374,13 @@ mod async_dns {
         ))
     }
 
-    pub(crate) struct CombinedListener {
+    pub struct DnsNotifier {
         listener_4: Listener,
         listener_6: Listener,
     }
 
-    impl CombinedListener {
-        pub(crate) fn new() -> Result<Self> {
+    impl DnsNotifier {
+        pub fn new() -> Result<Self> {
             let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
             let listener_4 = Listener::new(key_ipv4)?;
             let listener_6 = Listener::new(key_ipv6)?;
@@ -389,7 +391,7 @@ mod async_dns {
             })
         }
 
-        pub(crate) async fn notified(&mut self) -> Result<()> {
+        pub async fn notified(&mut self) -> Result<()> {
             tokio::select! {
                 r = self.listener_4.notified() => r?,
                 r = self.listener_6.notified() => r?,

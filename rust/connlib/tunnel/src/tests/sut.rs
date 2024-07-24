@@ -350,6 +350,7 @@ impl TunnelTest {
         let cut_off = self.flux_capacitor.now::<Instant>() + Duration::from_secs(10);
 
         'outer: while self.flux_capacitor.now::<Instant>() < cut_off {
+            // `handle_timeout` needs to be called at the very top to advance state after we have made other modifications.
             self.handle_timeout(&ref_state.global_dns_records, buffered_transmits);
             let now = self.flux_capacitor.now();
 

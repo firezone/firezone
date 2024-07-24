@@ -23,10 +23,11 @@ url = { version = "2.5.2", default-features = false }
 tokio = { workspace = true, features = ["macros"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
 netlink-packet-core = { version = "0.7", default-features = false }
 netlink-packet-route = { version = "0.19", default-features = false }
 rtnetlink = { workspace = true }
-libc = "0.2"
+zbus = "4.4"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 wintun = "0.4.0"

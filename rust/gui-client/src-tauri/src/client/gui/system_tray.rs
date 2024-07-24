@@ -210,7 +210,6 @@ fn signing_in(waiting_message: &str) -> SystemTrayMenu {
 }
 
 trait FirezoneMenu {
-    fn accelerated(self, id: Event, title: &str, accelerator: &str) -> Self;
     fn add_bottom_section(self, quit_text: &str) -> Self;
     fn copyable(self, s: &str) -> Self;
     fn disabled<S: Into<String>>(self, title: S) -> Self;
@@ -219,13 +218,6 @@ trait FirezoneMenu {
 }
 
 impl FirezoneMenu for SystemTrayMenu {
-    /// An item with an event and a keyboard accelerator
-    ///
-    /// Doesn't work on Windows: <https://github.com/tauri-apps/wry/issues/451>
-    fn accelerated(self, id: Event, title: &str, accelerator: &str) -> Self {
-        self.add_item(item(id, title).accelerator(accelerator))
-    }
-
     /// Things that always show, like About, Settings, Help, Quit, etc.
     fn add_bottom_section(self, quit_text: &str) -> Self {
         self.separator()
@@ -243,13 +235,9 @@ impl FirezoneMenu for SystemTrayMenu {
                         "Support...",
                     ),
             ))
-            .accelerated(
-                Event::ShowWindow(Window::Settings),
-                "Settings",
-                "Ctrl+Shift+,",
-            )
+            .item(Event::ShowWindow(Window::Settings), "Settings")
             .separator()
-            .accelerated(Event::Quit, quit_text, "Ctrl+Q")
+            .item(Event::Quit, quit_text)
     }
 
     fn copyable(self, s: &str) -> Self {
