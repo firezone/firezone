@@ -81,86 +81,89 @@ defmodule Web.Resources.Components do
         protocols and ports are accessible.
       </p>
 
-      <div class={@traffic_filters_enabled? == false && "opacity-50"}>
-        <div>
+      <div class={[
+        @traffic_filters_enabled? == false && "opacity-50",
+        "mt-4"
+      ]}>
+        <div class="flex items-top h-20">
+          <.input type="hidden" name={"#{@form.name}[tcp][protocol]"} value="tcp" />
+          <div class="mt-2.5 w-24">
+            <.input
+              title="Restrict traffic to TCP traffic"
+              type="checkbox"
+              field={@forms_by_protocol[:tcp]}
+              name={"#{@form.name}[tcp][enabled]"}
+              checked={Map.has_key?(@forms_by_protocol, :tcp)}
+              value="true"
+              disabled={!@traffic_filters_enabled?}
+              label="TCP"
+            />
+          </div>
+
+          <div class="flex-none">
+            <% ports = (@forms_by_protocol[:tcp] || %{ports: %{value: []}})[:ports] %>
+            <.input
+              type="text"
+              inline_errors={true}
+              field={ports}
+              name={"#{@form.name}[tcp][ports]"}
+              value={Enum.any?(ports.value) && pretty_print_ports(ports.value)}
+              disabled={!@traffic_filters_enabled? || !Map.has_key?(@forms_by_protocol, :tcp)}
+              placeholder="E.g. 80, 443, 8080-8090"
+              class="w-96"
+            />
+            <p class="mt-2 text-xs text-neutral-500">
+              List of comma-separated port range(s), Matches all ports if empty.
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-top h-20">
+          <.input type="hidden" name={"#{@form.name}[udp][protocol]"} value="udp" />
+          <div class="mt-2.5 w-24">
+            <.input
+              type="checkbox"
+              field={@forms_by_protocol[:udp]}
+              name={"#{@form.name}[udp][enabled]"}
+              checked={Map.has_key?(@forms_by_protocol, :udp)}
+              value="true"
+              disabled={!@traffic_filters_enabled?}
+              label="UDP"
+            />
+          </div>
+
+          <div class="flex-none">
+            <% ports = (@forms_by_protocol[:udp] || %{ports: %{value: []}})[:ports] %>
+            <.input
+              type="text"
+              inline_errors={true}
+              field={ports}
+              name={"#{@form.name}[udp][ports]"}
+              value={Enum.any?(ports.value) && pretty_print_ports(ports.value)}
+              disabled={!@traffic_filters_enabled? || !Map.has_key?(@forms_by_protocol, :udp)}
+              placeholder="E.g. 53, 60000-61000"
+              class="w-96"
+            />
+            <p class="mt-2 text-xs text-neutral-500">
+              List of comma-separated port range(s), Matches all ports if empty.
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-top h-20">
           <.input type="hidden" name={"#{@form.name}[icmp][protocol]"} value="icmp" />
 
-          <div class="items-center flex flex-row h-12">
-            <div class="flex-none w-32">
-              <.input
-                title="Allow ICMP traffic"
-                type="checkbox"
-                field={@forms_by_protocol[:icmp]}
-                name={"#{@form.name}[icmp][enabled]"}
-                checked={Map.has_key?(@forms_by_protocol, :icmp)}
-                value="true"
-                disabled={!@traffic_filters_enabled?}
-                label="ICMP"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <.input type="hidden" name={"#{@form.name}[tcp][protocol]"} value="tcp" />
-
-          <div class="items-center flex flex-row h-12">
-            <div class="flex-none w-32">
-              <.input
-                title="Restrict traffic to TCP traffic"
-                type="checkbox"
-                field={@forms_by_protocol[:tcp]}
-                name={"#{@form.name}[tcp][enabled]"}
-                checked={Map.has_key?(@forms_by_protocol, :tcp)}
-                value="true"
-                disabled={!@traffic_filters_enabled?}
-                label="TCP"
-              />
-            </div>
-
-            <div class="flex-grow">
-              <% ports = (@forms_by_protocol[:tcp] || %{ports: %{value: []}})[:ports] %>
-              <.input
-                type="text"
-                inline_errors={true}
-                field={ports}
-                name={"#{@form.name}[tcp][ports]"}
-                value={Enum.any?(ports.value) && pretty_print_ports(ports.value)}
-                disabled={!@traffic_filters_enabled? || !Map.has_key?(@forms_by_protocol, :tcp)}
-                placeholder="Comma-separated port range(s), eg. 433, 80, 90-99. Matches all ports if empty."
-              />
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <.input type="hidden" name={"#{@form.name}[udp][protocol]"} value="udp" />
-
-          <div class="items-center flex flex-row h-12">
-            <div class="flex-none w-32">
-              <.input
-                type="checkbox"
-                field={@forms_by_protocol[:udp]}
-                name={"#{@form.name}[udp][enabled]"}
-                checked={Map.has_key?(@forms_by_protocol, :udp)}
-                value="true"
-                disabled={!@traffic_filters_enabled?}
-                label="UDP"
-              />
-            </div>
-
-            <div class="flex-grow">
-              <% ports = (@forms_by_protocol[:udp] || %{ports: %{value: []}})[:ports] %>
-              <.input
-                type="text"
-                inline_errors={true}
-                field={ports}
-                name={"#{@form.name}[udp][ports]"}
-                value={Enum.any?(ports.value) && pretty_print_ports(ports.value)}
-                disabled={!@traffic_filters_enabled? || !Map.has_key?(@forms_by_protocol, :udp)}
-                placeholder="Comma-separated port range(s), eg. 433, 80, 90-99. Matches all ports if empty."
-              />
-            </div>
+          <div class="mt-2.5 w-24">
+            <.input
+              title="Allow ICMP traffic"
+              type="checkbox"
+              field={@forms_by_protocol[:icmp]}
+              name={"#{@form.name}[icmp][enabled]"}
+              checked={Map.has_key?(@forms_by_protocol, :icmp)}
+              value="true"
+              disabled={!@traffic_filters_enabled?}
+              label="ICMP"
+            />
           </div>
         </div>
       </div>

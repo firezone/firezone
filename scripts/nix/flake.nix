@@ -1,7 +1,6 @@
 {
   inputs = {
     nixpkgs.url = "nixpkgs/nixos-23.11";
-    naersk.url = "github:nix-community/naersk";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
   };
@@ -15,7 +14,6 @@
             inherit system;
             overlays = [ (import rust-overlay) ];
           };
-          naersk = pkgs.callPackage inputs.naersk { };
           rust-nightly = pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default);
 
           # Wrap `cargo-udeps` to ensure it uses a nightly Rust version.
@@ -58,19 +56,14 @@
             buildInputs = rustVersion ++ packages;
             name = "rust-env";
             src = ../../rust;
-            shellHook =
-              ''
-                export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath libraries}:$LD_LIBRARY_PATH
-                export XDG_DATA_DIRS=${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS
-              '';
+
+            LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath libraries}:$LD_LIBRARY_PATH${pkgs.lib.makeLibraryPath libraries}:$LD_LIBRARY_PATH";
+            XDG_DATA_DIRS = "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS";
+            CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER = "${pkgs.llvmPackages.clangUseLLVM}/bin/clang";
+            CARGO_ENCODED_RUSTFLAGS = "-Clink-arg=-fuse-ld=${pkgs.mold}/bin/mold";
           };
         in
         {
-          packages.firezone-headless-client = naersk.buildPackage {
-            name = "foo";
-            src = ../../rust/headless-client;
-          };
-
           devShells.default = mkShellWithRustVersion [
             (pkgs.rust-bin.fromRustupToolchainFile ../../rust/rust-toolchain.toml)
           ];
