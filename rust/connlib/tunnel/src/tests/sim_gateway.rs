@@ -1,6 +1,7 @@
 use super::{
     reference::{private_key, PrivateKey},
     sim_net::{any_port, dual_ip_stack, host, Host},
+    strategies::latency,
 };
 use crate::{tests::sut::hickory_name_to_domain, GatewayState};
 use connlib_shared::DomainName;
@@ -9,7 +10,7 @@ use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, HashSet, VecDeque},
-    net::{IpAddr, SocketAddr},
+    net::IpAddr,
     time::Instant,
 };
 
@@ -31,17 +32,21 @@ impl SimGateway {
         }
     }
 
-    pub(crate) fn handle_packet(
+    pub(crate) fn receive(
         &mut self,
         global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
-        payload: &[u8],
-        src: SocketAddr,
-        dst: SocketAddr,
+        transmit: Transmit,
         now: Instant,
     ) -> Option<Transmit<'static>> {
         let packet = self
             .sut
-            .decapsulate(dst, src, payload, now, &mut self.buffer)?
+            .decapsulate(
+                transmit.dst,
+                transmit.src.unwrap(),
+                &transmit.payload,
+                now,
+                &mut self.buffer,
+            )?
             .to_owned();
 
         self.on_received_packet(global_dns_records, packet, now)
@@ -99,7 +104,12 @@ impl RefGateway {
 }
 
 pub(crate) fn ref_gateway_host() -> impl Strategy<Value = Host<RefGateway>> {
-    host(dual_ip_stack(), any_port(), ref_gateway())
+    host(
+        dual_ip_stack(),
+        any_port(),
+        ref_gateway(),
+        latency(200), // We assume gateways have a somewhat decent Internet connection.
+    )
 }
 
 fn ref_gateway() -> impl Strategy<Value = RefGateway> {

@@ -1,7 +1,7 @@
 use super::{
     reference::{private_key, PrivateKey, ResourceDst},
     sim_net::{any_ip_stack, any_port, host, Host},
-    strategies::{system_dns_servers, upstream_dns_servers},
+    strategies::{latency, system_dns_servers, upstream_dns_servers},
     sut::domain_to_hickory_name,
     IcmpIdentifier, IcmpSeq, QueryId,
 };
@@ -144,17 +144,14 @@ impl SimClient {
         Some(self.sut.encapsulate(packet, now)?.into_owned())
     }
 
-    pub(crate) fn handle_packet(
-        &mut self,
-        payload: &[u8],
-        src: SocketAddr,
-        dst: SocketAddr,
-        now: Instant,
-    ) {
-        let Some(packet) = self
-            .sut
-            .decapsulate(dst, src, payload, now, &mut self.buffer)
-        else {
+    pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) {
+        let Some(packet) = self.sut.decapsulate(
+            transmit.dst,
+            transmit.src.unwrap(),
+            &transmit.payload,
+            now,
+            &mut self.buffer,
+        ) else {
             return;
         };
         let packet = packet.to_owned();
@@ -593,6 +590,7 @@ pub(crate) fn ref_client_host(
         any_ip_stack(),
         any_port(),
         ref_client(tunnel_ip4s, tunnel_ip6s),
+        latency(2000), // Clients might have a horrible Internet connection.
     )
     .prop_filter("at least one DNS server needs to be reachable", |host| {
         // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
