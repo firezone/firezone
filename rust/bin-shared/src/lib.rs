@@ -1,11 +1,29 @@
 mod tun_device_manager;
 
+#[cfg(target_os = "windows")]
+pub mod windows;
+
 use clap::Args;
 use tracing_log::LogTracer;
 use tracing_subscriber::{
     fmt, prelude::__tracing_subscriber_SubscriberExt, EnvFilter, Layer, Registry,
 };
 use url::Url;
+
+/// Bundle ID / App ID that the client uses to distinguish itself from other programs on the system
+///
+/// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
+/// and Windows may use it to track things like the MSI installer, notification titles,
+/// deep link registration, etc.
+///
+/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
+/// but sometimes I need to use this before Tauri has booted up, or in a place where
+/// getting the Tauri app handle would be awkward.
+///
+/// Luckily this is also the AppUserModelId that Windows uses to label notifications,
+/// so if your dev system has Firezone installed by MSI, the notifications will look right.
+/// <https://learn.microsoft.com/en-us/windows/configuration/find-the-application-user-model-id-of-an-installed-app>
+pub const BUNDLE_ID: &str = "dev.firezone.client";
 
 /// Mark for Firezone sockets to prevent routing loops on Linux.
 pub const FIREZONE_MARK: u32 = 0xfd002021;

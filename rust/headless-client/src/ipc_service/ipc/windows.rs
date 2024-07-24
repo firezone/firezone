@@ -1,6 +1,6 @@
 use super::{Error, ServiceId};
 use anyhow::{bail, Context as _, Result};
-use connlib_shared::BUNDLE_ID;
+use firezone_bin_shared::BUNDLE_ID;
 use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Duration};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{

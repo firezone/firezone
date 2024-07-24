@@ -1,8 +1,6 @@
+use crate::windows::CREATE_NO_WINDOW;
 use anyhow::{Context as _, Result};
-use connlib_shared::{
-    windows::{CREATE_NO_WINDOW, TUNNEL_NAME},
-    DEFAULT_MTU,
-};
+use connlib_shared::DEFAULT_MTU;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use std::{
     collections::HashSet,
@@ -27,8 +25,9 @@ use windows::Win32::{
 };
 use wintun::Adapter;
 
-// Not sure how this and `TUNNEL_NAME` differ
-const ADAPTER_NAME: &str = "Firezone";
+// wintun automatically append " Tunnel" to this
+pub(crate) const TUNNEL_NAME: &str = "Firezone";
+
 /// The ring buffer size used for Wintun.
 ///
 /// Must be a power of two within a certain range <https://docs.rs/wintun/latest/wintun/struct.Adapter.html#method.start_session>
@@ -213,14 +212,14 @@ impl Tun {
 
         // SAFETY: we're loading a DLL from disk and it has arbitrary C code in it.
         // The Windows client, in `wintun_install` hashes the DLL at startup, before calling connlib, so it's unlikely for the DLL to be accidentally corrupted by the time we get here.
-        let path = connlib_shared::windows::wintun_dll_path()?;
+        let path = crate::windows::wintun_dll_path()?;
         let wintun = unsafe { wintun::load_from_path(path) }?;
 
         // Create wintun adapter
         let uuid = uuid::Uuid::from_str(TUNNEL_UUID)
             .expect("static UUID should always parse correctly")
             .as_u128();
-        let adapter = &Adapter::create(&wintun, ADAPTER_NAME, TUNNEL_NAME, Some(uuid))?;
+        let adapter = &Adapter::create(&wintun, TUNNEL_NAME, TUNNEL_NAME, Some(uuid))?;
         let iface_idx = adapter.get_adapter_index()?;
 
         set_iface_config(adapter.get_luid(), DEFAULT_MTU as u32)?;

@@ -1,6 +1,4 @@
-//! Windows-specific things like the well-known appdata path, bundle ID, etc.
-
-use crate::Error;
+use anyhow::{Context as _, Result};
 use known_folders::{get_known_folder_path, KnownFolder};
 use std::path::PathBuf;
 
@@ -10,17 +8,14 @@ use std::path::PathBuf;
 /// Also used for self-elevation
 pub const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-// wintun automatically append " Tunnel" to this
-pub const TUNNEL_NAME: &str = "Firezone";
-
 /// Returns e.g. `C:/Users/User/AppData/Local/dev.firezone.client
 ///
 /// This is where we can save config, logs, crash dumps, etc.
 /// It's per-user and doesn't roam across different PCs in the same domain.
 /// It's read-write for non-elevated processes.
-pub fn app_local_data_dir() -> Result<PathBuf, Error> {
+pub fn app_local_data_dir() -> Result<PathBuf> {
     let path = get_known_folder_path(KnownFolder::LocalAppData)
-        .ok_or(Error::CantFindLocalAppDataFolder)?
+        .context("Can't find %LOCALAPPDATA% dir")?
         .join(crate::BUNDLE_ID);
     Ok(path)
 }
@@ -28,17 +23,7 @@ pub fn app_local_data_dir() -> Result<PathBuf, Error> {
 /// Returns the absolute path for installing and loading `wintun.dll`
 ///
 /// e.g. `C:\Users\User\AppData\Local\dev.firezone.client\data\wintun.dll`
-pub fn wintun_dll_path() -> Result<PathBuf, Error> {
+pub fn wintun_dll_path() -> Result<PathBuf> {
     let path = app_local_data_dir()?.join("data").join("wintun.dll");
     Ok(path)
-}
-
-#[cfg(target_arch = "aarch64")]
-pub fn wintun_bytes() -> &'static [u8] {
-    include_bytes!("../../../headless-client/src/windows/wintun/bin/arm64/wintun.dll")
-}
-
-#[cfg(target_arch = "x86_64")]
-pub fn wintun_bytes() -> &'static [u8] {
-    include_bytes!("../../../headless-client/src/windows/wintun/bin/amd64/wintun.dll")
 }

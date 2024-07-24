@@ -1123,7 +1123,6 @@ dependencies = [
  "ip-packet",
  "ip_network",
  "itertools 0.13.0",
- "known-folders",
  "libc",
  "os_info",
  "phoenix-channel",
@@ -1140,8 +1139,6 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
- "windows 0.57.0",
- "wintun",
 ]
 
 [[package]]
@@ -1835,6 +1832,7 @@ dependencies = [
  "futures",
  "ip-packet",
  "ip_network",
+ "known-folders",
  "libc",
  "netlink-packet-core",
  "netlink-packet-route",
@@ -1896,9 +1894,9 @@ dependencies = [
  "chrono",
  "clap",
  "connlib-client-shared",
- "connlib-shared",
  "crash-handler",
  "dirs",
+ "firezone-bin-shared",
  "firezone-headless-client",
  "futures",
  "git-version",
