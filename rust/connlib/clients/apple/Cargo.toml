@@ -26,6 +26,7 @@ tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
 tracing-appender = "0.2"
 tracing-subscriber = "0.3"
+tun = { workspace = true }
 url = "2.5.0"
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
