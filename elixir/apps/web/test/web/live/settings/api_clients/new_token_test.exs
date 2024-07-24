@@ -139,7 +139,7 @@ defmodule Web.Live.Settings.ApiClient.NewTokenTest do
 
     assert html =~ "Your API Token"
     assert html =~ "Store this in a safe place."
-    assert html =~ "It won't be shown again."
+    assert html =~ "It won&#39;t be shown again."
 
     assert Floki.find(html, "code")
            |> element_to_text()
