@@ -34,7 +34,7 @@ tokio-tungstenite = { version = "0.21", default-features = false, features = ["c
 tracing = { workspace = true }
 tracing-subscriber = "0.3.17"
 url = { version = "2.4.1", default-features = false }
-uuid = { version = "1.7.0", features = ["v4"] }
+uuid = { version = "1.10.0", features = ["v4"] }
 
 [dev-dependencies]
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
