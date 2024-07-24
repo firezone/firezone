@@ -1,7 +1,27 @@
 # Deploy our dogfood gateways
 locals {
-  gateways_region = local.region
-  gateways_zones  = [local.availability_zone]
+  gateways_region         = local.region
+  gateways_zone           = local.availability_zone
+  gateways_instance_type  = "e2-highcpu-2"
+  gateways_instance_count = 1
+}
+
+# Reserve instances for the gateway
+# If you don't reserve them deployment takes much longer and there is no guarantee that instances will be created at all,
+# Google Cloud Platform does not guarantee that instances will be available when you need them.
+resource "google_compute_reservation" "gateways_reservation" {
+  project = module.google-cloud-project.project.project_id
+
+  name = "gateways-${local.availability_zone}-${local.gateways_instance_type}"
+  zone = local.gateways_zone
+
+  specific_reservation {
+    count = local.gateways_instance_count
+
+    instance_properties {
+      machine_type = local.gateways_instance_type
+    }
+  }
 }
 
 module "gateways" {
@@ -13,11 +33,11 @@ module "gateways" {
   compute_network    = module.google-cloud-vpc.id
   compute_subnetwork = google_compute_subnetwork.tools.self_link
 
-  compute_instance_type               = "n1-standard-1"
+  compute_instance_type               = local.gateways_instance_type
   compute_region                      = local.gateways_region
-  compute_instance_availability_zones = local.gateways_zones
+  compute_instance_availability_zones = [local.gateways_zone]
 
-  compute_instance_replicas = 2
+  compute_instance_replicas = local.gateways_instance_count
 
   observability_log_level = "info"
 
@@ -26,6 +46,10 @@ module "gateways" {
   token   = var.gateway_token
 
   vsn = local.gateway_image_tag
+
+  depends_on = [
+    google_compute_reservation.gateways_reservation
+  ]
 }
 
 # Allow gateways to access the Metabase
