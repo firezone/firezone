@@ -219,7 +219,7 @@ defmodule Web.Live.Policies.ShowTest do
       |> live(~p"/#{account}/policies/#{policy}")
 
     assert lv
-           |> element("button", "Delete Policy")
+           |> element("button[type=submit]", "Delete Policy")
            |> render_click() ==
              {:error, {:live_redirect, %{to: ~p"/#{account}/policies", kind: :push}}}
 
@@ -245,13 +245,13 @@ defmodule Web.Live.Policies.ShowTest do
       |> live(~p"/#{account}/policies/#{policy}")
 
     assert lv
-           |> element("button", "Disable")
+           |> element("button[type=submit]", "Disable")
            |> render_click() =~ "(disabled)"
 
     assert Repo.get(Domain.Policies.Policy, policy.id).disabled_at
 
     refute lv
-           |> element("button", "Enable")
+           |> element("button[type=submit]", "Enable")
            |> render_click() =~ "(disabled)"
 
     refute Repo.get(Domain.Policies.Policy, policy.id).disabled_at

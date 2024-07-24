@@ -180,7 +180,7 @@ defmodule Web.Live.Sites.ShowTest do
       |> live(~p"/#{account}/sites/#{group}")
 
     assert lv
-           |> element("button", "Revoke All")
+           |> element("button[type=submit]", "Revoke All")
            |> render_click() =~ "1 token(s) were revoked."
 
     assert Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id).deleted_at
@@ -295,7 +295,7 @@ defmodule Web.Live.Sites.ShowTest do
       |> live(~p"/#{account}/sites/#{group}")
 
     lv
-    |> element("button", "Delete")
+    |> element("button[type=submit]", "Delete")
     |> render_click()
 
     assert_redirected(lv, ~p"/#{account}/sites")

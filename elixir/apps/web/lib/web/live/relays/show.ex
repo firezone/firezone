@@ -114,9 +114,37 @@ defmodule Web.Relays.Show do
 
     <.danger_zone :if={is_nil(@relay.deleted_at)}>
       <:action :if={@relay.account_id}>
-        <.delete_button phx-click="delete" data-confirm="Are you sure you want to delete this relay?">
+        <.button_with_confirmation
+          id="delete_relay"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
+        >
+          <:dialog_title>Delete Relay</:dialog_title>
+          <:dialog_content>
+            <p>
+              Are you sure you want to delete this relay?
+            </p>
+            <p class="mt-4 text-sm">
+              Deleting the relay does not remove it's access token so it can be re-created again,
+              revoke the token on the
+              <.link
+                navigate={~p"/#{@account}/relay_groups/#{@relay.group}"}
+                class={["font-medium", link_style()]}
+              >
+                instance group
+              </.link>
+              page if you want to prevent the gateway from connecting to the portal.
+            </p>
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Relay
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete Relay
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """

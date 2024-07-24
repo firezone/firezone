@@ -196,7 +196,7 @@ defmodule Web.Live.RelayGroups.ShowTest do
       |> live(~p"/#{account}/relay_groups/#{group}")
 
     lv
-    |> element("button", "Delete")
+    |> element("button[type=submit]", "Delete")
     |> render_click()
 
     assert_redirected(lv, ~p"/#{account}/relay_groups")
@@ -216,7 +216,7 @@ defmodule Web.Live.RelayGroups.ShowTest do
       |> live(~p"/#{account}/relay_groups/#{group}")
 
     assert lv
-           |> element("button", "Revoke All")
+           |> element("button[type=submit]", "Revoke All")
            |> render_click() =~ "1 token(s) were revoked."
 
     assert Repo.get_by(Domain.Tokens.Token, relay_group_id: group.id).deleted_at

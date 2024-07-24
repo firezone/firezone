@@ -124,14 +124,14 @@ defmodule Web.Live.Settings.IdentityProviders.System.ShowTest do
       |> live(~p"/#{account}/settings/identity_providers/system/#{provider}")
 
     assert lv
-           |> element("button", "Disable")
+           |> element("button[type=submit]", "Disable")
            |> render_click()
            |> Floki.find("#provider")
            |> vertical_table_to_map()
            |> Map.fetch!("status") == "Disabled"
 
     assert lv
-           |> element("button", "Enable")
+           |> element("button[type=submit]", "Enable")
            |> render_click()
            |> Floki.find("#provider")
            |> vertical_table_to_map()

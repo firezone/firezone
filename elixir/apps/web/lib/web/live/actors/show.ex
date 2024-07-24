@@ -156,7 +156,7 @@ defmodule Web.Actors.Show do
           style="warning"
           icon="hero-lock-closed"
           phx-click="disable"
-          data-confirm={"Are you sure want to disable this #{actor_type(@actor.type)} and revoke all its tokens?"}
+          data-confirm={"Are you sure you want to disable this #{actor_type(@actor.type)} and revoke all its tokens?"}
         >
           Disable <%= actor_type(@actor.type) %>
         </.button>
@@ -166,7 +166,7 @@ defmodule Web.Actors.Show do
           style="warning"
           icon="hero-lock-open"
           phx-click="enable"
-          data-confirm={"Are you sure want to enable this #{actor_type(@actor.type)}?"}
+          data-confirm={"Are you sure you want to enable this #{actor_type(@actor.type)}?"}
         >
           Enable <%= actor_type(@actor.type) %>
         </.button>
@@ -249,15 +249,29 @@ defmodule Web.Actors.Show do
             </.button>
           </:action>
           <:action :let={identity}>
-            <.delete_button
+            <.button_with_confirmation
               :if={identity.created_by != :provider}
+              id={"delete_identity_#{identity.id}"}
+              style="danger"
+              icon="hero-trash-solid"
+              on_confirm="delete_identity"
+              on_confirm_id={identity.id}
               size="xs"
-              phx-click="delete_identity"
-              data-confirm="Are you sure you want to delete this identity?"
-              phx-value-id={identity.id}
             >
+              <:dialog_title>Delete Identity</:dialog_title>
+              <:dialog_content>
+                Are you sure you want to delete this identity?
+                This will <strong>immediately</strong>
+                sign out all clients associated with this identity.
+              </:dialog_content>
+              <:dialog_confirm_button>
+                Delete
+              </:dialog_confirm_button>
+              <:dialog_cancel_button>
+                Cancel
+              </:dialog_cancel_button>
               Delete
-            </.delete_button>
+            </.button_with_confirmation>
           </:action>
           <:empty>
             <div class="flex justify-center text-center text-neutral-500 p-4">
@@ -304,12 +318,25 @@ defmodule Web.Actors.Show do
       </:action>
 
       <:action :if={is_nil(@actor.deleted_at)}>
-        <.delete_button
-          phx-click="revoke_all_tokens"
-          data-confirm="Are you sure you want to revoke all tokens? This will immediately sign the actor out of all clients."
+        <.button_with_confirmation
+          id="revoke_all_tokens"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="revoke_all_tokens"
         >
+          <:dialog_title>Revoke All Tokens</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to revoke all tokens?
+            This will <strong>immediately</strong> sign the actor out of all clients.
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Revoke All
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Revoke All
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
 
       <:content>
@@ -360,14 +387,28 @@ defmodule Web.Actors.Show do
             <span :if={token.type != :client}>N/A</span>
           </:col>
           <:action :let={token}>
-            <.delete_button
+            <.button_with_confirmation
+              id={"revoke_token_#{token.id}"}
+              style="danger"
+              icon="hero-trash-solid"
+              on_confirm="revoke_token"
+              on_confirm_id={token.id}
               size="xs"
-              phx-click="revoke_token"
-              data-confirm="Are you sure you want to revoke this token?"
-              phx-value-id={token.id}
             >
+              <:dialog_title>Revoke the Token</:dialog_title>
+              <:dialog_content>
+                Are you sure you want to revoke the token?
+                This will <strong>immediately</strong>
+                sign the clients out of all associated client sessions.
+              </:dialog_content>
+              <:dialog_confirm_button>
+                Revoke
+              </:dialog_confirm_button>
+              <:dialog_cancel_button>
+                Cancel
+              </:dialog_cancel_button>
               Revoke
-            </.delete_button>
+            </.button_with_confirmation>
           </:action>
           <:empty>
             <div class="text-center text-neutral-500 p-4">No authentication tokens to display.</div>
@@ -405,9 +446,9 @@ defmodule Web.Actors.Show do
     </.section>
 
     <.section>
-      <:title>Authorized Activity</:title>
+      <:title>Authorized Sessions</:title>
       <:help>
-        Authorized attempts by actors to access the resource governed by this policy.
+        Authorized sessions opened by this Actor to access a Resource.
       </:help>
       <:content>
         <.live_table
@@ -489,12 +530,24 @@ defmodule Web.Actors.Show do
 
     <.danger_zone :if={is_nil(@actor.deleted_at)}>
       <:action :if={not Actors.actor_synced?(@actor) or @identities == []}>
-        <.delete_button
-          phx-click="delete"
-          data-confirm={"Are you sure want to delete this #{actor_type(@actor.type)} along with all associated identities?"}
+        <.button_with_confirmation
+          id="delete_actor"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
         >
+          <:dialog_title>Delete <%= actor_type(@actor.type) %></:dialog_title>
+          <:dialog_content>
+            Are you sure you want to delete this <%= String.downcase(actor_type(@actor.type)) %> along with all associated identities?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete <%= actor_type(@actor.type) %>
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete <%= actor_type(@actor.type) %>
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """

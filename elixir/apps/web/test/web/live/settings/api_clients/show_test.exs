@@ -139,7 +139,7 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
       |> live(~p"/#{account}/settings/api_clients/#{api_client}")
 
     lv
-    |> element("button", "Delete API Client")
+    |> element("button[type=submit]", "Delete API Client")
     |> render_click()
 
     assert_redirect(lv, ~p"/#{account}/settings/api_clients")
@@ -161,7 +161,7 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
     refute has_element?(lv, "button", "Enable API Client")
 
     assert lv
-           |> element("button", "Disable API Client")
+           |> element("button[type=submit]", "Disable")
            |> render_click()
            |> Floki.find(".flash-info")
            |> element_to_text() =~ "API Client was disabled."
@@ -182,10 +182,10 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}")
 
-    refute has_element?(lv, "button", "Disable API Client")
+    refute has_element?(lv, "button[type=submit]", "Disable API Client")
 
     assert lv
-           |> element("button", "Enable API Client")
+           |> element("button[type=submit]", "Enable")
            |> render_click()
            |> Floki.find(".flash-info")
            |> element_to_text() =~ "API Client was enabled."
@@ -215,7 +215,7 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
     assert row1["name"] == token.name
     assert row1["expires at"]
     assert row1["last used"] == "Never"
-    assert row1["actions"] == "Revoke"
+    assert row1["actions"] =~ "Revoke"
   end
 
   test "allows revoking tokens", %{
@@ -232,7 +232,7 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
       |> live(~p"/#{account}/settings/api_clients/#{api_client}")
 
     assert lv
-           |> element("td button", "Revoke")
+           |> element("td button[type=submit]", "Revoke")
            |> render_click()
 
     assert lv
@@ -262,7 +262,7 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
            |> table_to_map() != []
 
     assert lv
-           |> element("button", "Revoke All")
+           |> element("button[type=submit]", "Revoke All")
            |> render_click()
 
     assert lv
