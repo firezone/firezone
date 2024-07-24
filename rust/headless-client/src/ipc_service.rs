@@ -369,7 +369,8 @@ impl<'a> Handler<'a> {
 
                 let new_session =
                     Session::connect(args, portal, tokio::runtime::Handle::try_current()?);
-                new_session.set_tun(self.tun_device.make_tun()?);
+                let tun = self.tun_device.make_tun()?;
+                new_session.set_tun(Box::new(tun));
                 new_session.set_dns(dns_control::system_resolvers().unwrap_or_default());
                 self.connlib = Some(new_session);
             }

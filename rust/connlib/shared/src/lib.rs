@@ -39,7 +39,7 @@ pub type DomainName = domain::base::Name<Vec<u8>>;
 /// <https://learn.microsoft.com/en-us/windows/configuration/find-the-application-user-model-id-of-an-installed-app>
 pub const BUNDLE_ID: &str = "dev.firezone.client";
 
-pub const DEFAULT_MTU: u32 = 1280;
+pub const DEFAULT_MTU: usize = 1280;
 
 const LIB_NAME: &str = "connlib";
 

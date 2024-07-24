@@ -52,6 +52,10 @@ resource "google_compute_instance_template" "application" {
     provisioning_model  = "STANDARD"
   }
 
+  reservation_affinity {
+    type = "ANY_RESERVATION"
+  }
+
   disk {
     source_image = data.google_compute_image.ubuntu.self_link
     auto_delete  = true
