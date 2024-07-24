@@ -31,7 +31,7 @@ tokio-stream = "0.1.15"
 tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
-url = { version = "2.3.1", default-features = false }
+url = { version = "2.5.2", default-features = false }
 uuid = { version = "1.10", default-features = false, features = ["std", "v4", "serde"] }
 
 [dev-dependencies]
