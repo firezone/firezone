@@ -137,7 +137,9 @@ defmodule Web.Live.Settings.ApiClient.NewTokenTest do
       |> form("form", token: attrs)
       |> render_submit()
 
-    assert html =~ "Your API token (will be shown only once)"
+    assert html =~ "Your API Token"
+    assert html =~ "Store this in a safe place."
+    assert html =~ "It won't be shown again."
 
     assert Floki.find(html, "code")
            |> element_to_text()

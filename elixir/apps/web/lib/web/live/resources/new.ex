@@ -28,9 +28,7 @@ defmodule Web.Resources.New do
       <.breadcrumb path={~p"/#{@account}/resources/new"}>Add Resource</.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title>
-        Add Resource
-      </:title>
+      <:title><%= @page_title %></:title>
 
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
@@ -233,9 +231,20 @@ defmodule Web.Resources.New do
       {:ok, resource} ->
         socket = put_flash(socket, :info, "Resource #{resource.name} created successfully.")
 
-        {:noreply,
-         socket
-         |> push_navigate(to: ~p"/#{socket.assigns.account}/policies/new?resource_id=#{resource}")}
+        if site_id = socket.assigns.params["site_id"] do
+          {:noreply,
+           socket
+           |> push_navigate(
+             to:
+               ~p"/#{socket.assigns.account}/policies/new?resource_id=#{resource}&site_id=#{site_id}"
+           )}
+        else
+          {:noreply,
+           socket
+           |> push_navigate(
+             to: ~p"/#{socket.assigns.account}/policies/new?resource_id=#{resource}"
+           )}
+        end
 
       {:error, changeset} ->
         changeset = Map.put(changeset, :action, :validate)
