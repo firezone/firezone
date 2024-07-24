@@ -201,6 +201,7 @@ pub fn run_only_headless_client() -> Result<()> {
 
         let tokio_handle = tokio::runtime::Handle::current();
         let mut dns_notifier = new_dns_notifier(tokio_handle.clone()).await?;
+
         let mut network_notifier = new_network_notifier(tokio_handle.clone()).await?;
         drop(tokio_handle);
 

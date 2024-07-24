@@ -3,13 +3,22 @@
 use anyhow::Result;
 use futures::StreamExt as _;
 
-const DNS_CHANGE_PATH: &str = "/org/freedesktop/resolve1";
-const DNS_CHANGE_INTERFACE: &str = "org.freedesktop.DBus.Properties";
-const DNS_CHANGE_SIGNAL: &str = "PropertiesChanged";
-
-const NETWORK_CHANGE_PATH: &str = "/org/freedesktop/NetworkManager";
-const NETWORK_CHANGE_INTERFACE: &str = "org.freedesktop.NetworkManager";
-const NETWORK_CHANGE_SIGNAL: &str = "StateChanged";
+/// Parameters to tell `zbus` how to listen for a signal.
+struct SignalParams {
+    /// Destination, better called "peer".
+    ///
+    /// We don't send any data into the bus, but this tells `zbus` who
+    /// we expect to hear broadcasts from
+    dest: &'static str,
+    path: &'static str,
+    /// Interface, in the sense of a Rust trait.
+    ///
+    /// This tells us what shape the data will take. Currently we don't
+    /// process the data, we just notify when the signal comes in.
+    interface: &'static str,
+    /// The name of the signal we care about.
+    member: &'static str,
+}
 
 /// Listens for changes of system-wide DNS resolvers
 ///
@@ -18,18 +27,25 @@ const NETWORK_CHANGE_SIGNAL: &str = "StateChanged";
 ///
 /// Should be equivalent to `dbus-monitor --system "type='signal',interface='org.freedesktop.DBus.Properties',path='/org/freedesktop/resolve1',member='PropertiesChanged'"`
 pub async fn new_dns_notifier(_tokio_handle: tokio::runtime::Handle) -> Result<Worker> {
-    Worker::new(DNS_CHANGE_PATH, DNS_CHANGE_INTERFACE, DNS_CHANGE_SIGNAL).await
+    Worker::new(SignalParams {
+        dest: "org.freedesktop.resolve1",
+        path: "/org/freedesktop/resolve1",
+        interface: "org.freedesktop.DBus.Properties",
+        member: "PropertiesChanged",
+    })
+    .await
 }
 
 /// Listens for changes between Wi-Fi networks
 ///
 /// Should be similar to `dbus-monitor --system "type='signal',interface='org.freedesktop.NetworkManager',member='StateChanged'"`
 pub async fn new_network_notifier(_tokio_handle: tokio::runtime::Handle) -> Result<Worker> {
-    Worker::new(
-        NETWORK_CHANGE_PATH,
-        NETWORK_CHANGE_INTERFACE,
-        NETWORK_CHANGE_SIGNAL,
-    )
+    Worker::new(SignalParams {
+        dest: "org.freedesktop.NetworkManager",
+        path: "/org/freedesktop/NetworkManager",
+        interface: "org.freedesktop.NetworkManager",
+        member: "StateChanged",
+    })
     .await
 }
 
@@ -38,14 +54,17 @@ pub struct Worker {
 }
 
 impl Worker {
-    async fn new(
-        path: &'static str,
-        interface: &'static str,
-        signal_name: &'static str,
-    ) -> Result<Self> {
+    async fn new(params: SignalParams) -> Result<Self> {
+        let SignalParams {
+            dest,
+            path,
+            interface,
+            member,
+        } = params;
+
         let cxn = zbus::Connection::system().await?;
-        let proxy = zbus::Proxy::new_owned(cxn, interface, path, interface).await?;
-        let stream = proxy.receive_signal(signal_name).await?;
+        let proxy = zbus::Proxy::new_owned(cxn, dest, path, interface).await?;
+        let stream = proxy.receive_signal(member).await?;
         Ok(Self { stream })
     }
 
