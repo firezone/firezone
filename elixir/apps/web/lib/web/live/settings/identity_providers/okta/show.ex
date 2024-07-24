@@ -83,7 +83,7 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
       </:action>
       <:help>
         <p>
-          Directory sync is enabled for this provider. Users and groups will be synced every 10
+          Directory sync is enabled for this provider. Users and groups will be synced every few
           minutes on average, but could take longer for very large organizations.
         </p>
         <p>
