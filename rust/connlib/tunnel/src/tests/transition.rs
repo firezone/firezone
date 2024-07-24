@@ -65,6 +65,9 @@ pub(crate) enum Transition {
 
     /// Reconnect to the portal.
     ReconnectPortal,
+
+    /// Idle connlib for a while, forcing connection to auto-close.
+    Idle,
 }
 
 pub(crate) fn ping_random_ip<I>(

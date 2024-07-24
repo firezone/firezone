@@ -281,6 +281,15 @@ impl StateMachineTest for TunnelTest {
                     c.sut.set_resources(all_resources);
                 });
             }
+            Transition::Idle => {
+                const IDLE_DURATION: Duration = Duration::from_secs(5 * 60);
+                let cut_off = state.flux_capacitor.now::<Instant>() + IDLE_DURATION;
+
+                while state.flux_capacitor.now::<Instant>() <= cut_off {
+                    state.flux_capacitor.tick(Duration::from_secs(5));
+                    state.advance(ref_state, &mut buffered_transmits);
+                }
+            }
         };
         state.advance(ref_state, &mut buffered_transmits);
 
