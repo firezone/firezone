@@ -168,6 +168,7 @@ impl ReferenceStateMachine for ReferenceState {
             })
             .with(1, roam_client())
             .with(1, Just(Transition::ReconnectPortal))
+            .with(1, Just(Transition::Idle))
             .with_if_not_empty(
                 10,
                 state.client.inner().ipv4_cidr_resource_dsts(),
@@ -375,15 +376,19 @@ impl ReferenceStateMachine for ReferenceState {
                     .add_host(state.client.inner().id, &state.client));
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
-                state
-                    .client
-                    .exec_mut(|client| client.connected_cidr_resources.clear());
-                state
-                    .client
-                    .exec_mut(|client| client.connected_dns_resources.clear());
+                state.client.exec_mut(|client| {
+                    client.connected_cidr_resources.clear();
+                    client.connected_dns_resources.clear();
+                });
             }
             Transition::ReconnectPortal => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
+            }
+            Transition::Idle => {
+                state.client.exec_mut(|client| {
+                    client.connected_cidr_resources.clear();
+                    client.connected_dns_resources.clear();
+                });
             }
         };
 
@@ -522,6 +527,7 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::DeactivateResource(r) => {
                 state.client.inner().all_resource_ids().contains(r)
             }
+            Transition::Idle => true,
         }
     }
 }
