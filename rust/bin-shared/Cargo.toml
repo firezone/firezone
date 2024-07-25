@@ -32,15 +32,28 @@ libc = "0.2"
 known-folders = "1.1.0"
 ring = "0.17"
 uuid = { version = "1.10.0", features = ["v4"] }
+windows-core = "0.57.0"
+windows-implement = "0.57.0"
 wintun = "0.4.0"
+winreg = "0.52.0"
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.57.0"
 features = [
+  # For implementing COM interfaces
+  "implement",
   "Win32_Foundation",
+  # For listening for network change events
+  "Win32_Networking_NetworkListManager",
   "Win32_NetworkManagement_IpHelper",
   "Win32_NetworkManagement_Ndis",
   "Win32_Networking_WinSock",
+  "Win32_Security",
+  # COM is needed to listen for network change events
+  "Win32_System_Com",
+  # Needed to listen for system DNS changes
+  "Win32_System_Registry",
+  "Win32_System_Threading",
 ]
 
 [lints]
