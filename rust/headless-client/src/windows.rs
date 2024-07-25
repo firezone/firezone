@@ -63,7 +63,8 @@ fn get_best_route(dst: IpAddr, filter: &str) -> IpAddr {
         let mut luids = Vec::new();
         loop {
             let address: &IP_ADAPTER_ADDRESSES_LH = std::mem::transmute(next_address);
-            if &address.AdapterName.to_string().unwrap() == filter {
+            if !address.AdapterName.is_null() && &address.AdapterName.to_string().unwrap() == filter
+            {
                 continue;
             }
 
@@ -112,7 +113,7 @@ mod test {
     use super::*;
     #[test]
     fn best_route_works() {
-        dbg!(get_best_route("8.8.8.8".parse().unwrap()));
+        dbg!(get_best_route("8.8.8.8".parse().unwrap(), "Firezone"));
     }
 }
 
