@@ -100,7 +100,12 @@ fn get_best_route(dst: IpAddr, filter: &str) -> IpAddr {
 
         let addr = routes.first().unwrap().1;
         match addr.si_family {
-            ADDRESS_FAMILY(0) => todo!(),
+            // TODO: it might be better to only get the family that we care about?
+            // we will also want to discard the not matching version addresses
+            ADDRESS_FAMILY(0) => match dst {
+                IpAddr::V4(_) => Ipv4Addr::from(addr.Ipv4.sin_addr).into(),
+                IpAddr::V6(_) => Ipv6Addr::from(addr.Ipv6.sin6_addr).into(),
+            },
             ADDRESS_FAMILY(2) => Ipv4Addr::from(addr.Ipv4.sin_addr).into(),
             ADDRESS_FAMILY(23) => Ipv6Addr::from(addr.Ipv6.sin6_addr).into(),
             _ => panic!("Invalid address"),
