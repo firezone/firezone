@@ -26,7 +26,7 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
 }
 
 pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
-    let socket = socket_factory::udp(src_addr)?;
+    let mut socket = socket_factory::udp(src_addr)?;
     socket.set_source_ip_resolver(Box::new(|addr| {
         Some(get_best_route(addr, connlib_shared::windows::TUNNEL_NAME))
     }));
