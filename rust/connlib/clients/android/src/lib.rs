@@ -19,7 +19,7 @@ use jni::{
 };
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
-use socket_factory::SocketFactory;
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
@@ -532,9 +532,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
     session.inner.set_tun(Box::new(tun));
 }
 
-fn protected_tcp_socket_factory(
-    callbacks: CallbackHandler,
-) -> impl SocketFactory<tokio::net::TcpSocket> {
+fn protected_tcp_socket_factory(callbacks: CallbackHandler) -> impl SocketFactory<TcpSocket> {
     move |addr| {
         let socket = socket_factory::tcp(addr)?;
         callbacks.protect(socket.as_raw_fd())?;
@@ -542,9 +540,7 @@ fn protected_tcp_socket_factory(
     }
 }
 
-fn protected_udp_socket_factory(
-    callbacks: CallbackHandler,
-) -> impl SocketFactory<tokio::net::UdpSocket> {
+fn protected_udp_socket_factory(callbacks: CallbackHandler) -> impl SocketFactory<UdpSocket> {
     move |addr| {
         let socket = socket_factory::udp(addr)?;
         callbacks.protect(socket.as_raw_fd())?;
