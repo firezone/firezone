@@ -77,7 +77,9 @@ pub struct UdpSocket {
     inner: tokio::net::UdpSocket,
     state: quinn_udp::UdpSocketState,
     source_ip_resolver: Box<dyn Fn(IpAddr) -> Option<IpAddr> + Send + Sync + 'static>,
-    routes: HashMap<IpAddr, IpAddr>,
+
+    /// A cache of source IPs by their destination IPs.
+    src_by_dst_cache: HashMap<IpAddr, IpAddr>,
 
     port: u16,
 
@@ -94,13 +96,15 @@ impl UdpSocket {
             inner,
             source_ip_resolver: Box::new(|_| None),
             buffered_datagrams: VecDeque::new(),
-            routes: Default::default(),
+            src_by_dst_cache: Default::default(),
         })
     }
 
     /// Configures a new source IP resolver for this UDP socket.
     ///
     /// In case [`DatagramOut::src`] is [`None`], this function will be used to set a source IP given the destination IP of the datagram.
+    /// The resulting IPs will be cached.
+    /// To evict this cache, drop the [`UdpSocket`] and make a new one.
     pub fn with_source_ip_resolver(
         mut self,
         resolver: Box<dyn Fn(IpAddr) -> Option<IpAddr> + Send + Sync + 'static>,
@@ -245,7 +249,7 @@ impl UdpSocket {
     }
 
     fn get_source(&mut self, dst: IpAddr) -> Option<IpAddr> {
-        match self.routes.entry(dst) {
+        match self.src_by_dst_cache.entry(dst) {
             std::collections::hash_map::Entry::Occupied(entry) => Some(*entry.get()),
             std::collections::hash_map::Entry::Vacant(v) => {
                 let src = (self.source_ip_resolver)(dst)?;

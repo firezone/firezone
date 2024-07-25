@@ -43,6 +43,12 @@ fn get_best_non_tunnel_route(dst: IpAddr) -> IpAddr {
 /// To prevent routing loops on Windows, we need to explicitly set a source IP for all packets.
 /// Windows uses a computed metric per interface for routing.
 /// We implement the same logic here, with the addition of explicitly filtering out our TUN interface.
+///
+/// # Performance
+///
+/// This function performs multiple syscalls and is thus fairly expensive.
+/// It should **not** be called on a per-packet basis.
+/// Callers should instead cache the result until network interfaces change.
 fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> IpAddr {
     use std::mem::{size_of, size_of_val, MaybeUninit};
     use std::net::{Ipv4Addr, Ipv6Addr};
