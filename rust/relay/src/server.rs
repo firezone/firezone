@@ -13,7 +13,7 @@ use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
 use hex_display::HexDisplayExt as _;
-use opentelemetry::metrics::{Counter, UpDownCounter};
+use opentelemetry::metrics::{Counter, Unit, UpDownCounter};
 use opentelemetry::KeyValue;
 use rand::Rng;
 use secrecy::SecretString;
@@ -175,7 +175,7 @@ where
         let data_relayed_counter = meter
             .u64_counter("data_relayed_bytes")
             .with_description("The number of bytes relayed")
-            .with_unit("b")
+            .with_unit(Unit::new("b"))
             .init();
 
         Self {
