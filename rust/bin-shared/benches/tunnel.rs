@@ -40,15 +40,6 @@ mod platform {
     use tun::Tun as _;
 
     pub(crate) async fn perf() -> Result<()> {
-        // Install wintun so the test can run
-        let wintun_path = connlib_shared::windows::wintun_dll_path().unwrap();
-        tokio::fs::create_dir_all(wintun_path.parent().unwrap())
-            .await
-            .unwrap();
-        tokio::fs::write(&wintun_path, connlib_shared::windows::wintun_bytes())
-            .await
-            .unwrap();
-
         const MTU: usize = 1_280;
         const NUM_REQUESTS: u64 = 1_000;
         const REQ_CODE: u8 = 42;

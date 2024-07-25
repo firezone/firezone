@@ -52,12 +52,6 @@ pub enum ConnlibError {
     #[error("failed packet translation")]
     FailedTranslation,
     #[cfg(target_os = "windows")]
-    #[error("Windows error: {0}")]
-    WindowsError(#[from] windows::core::Error),
-    #[cfg(target_os = "windows")]
-    #[error(transparent)]
-    Wintun(#[from] wintun::Error),
-    #[cfg(target_os = "windows")]
     #[error("Can't compute path for wintun.dll")]
     WintunDllPath,
     #[cfg(target_os = "windows")]
