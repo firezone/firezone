@@ -61,6 +61,7 @@ impl std::os::fd::AsRawFd for TcpSocket {
     }
 }
 
+#[cfg(unix)]
 impl std::os::fd::AsFd for TcpSocket {
     fn as_fd(&self) -> std::os::fd::BorrowedFd<'_> {
         self.inner.as_fd()
@@ -96,6 +97,7 @@ impl std::os::fd::AsRawFd for UdpSocket {
     }
 }
 
+#[cfg(unix)]
 impl std::os::fd::AsFd for UdpSocket {
     fn as_fd(&self) -> std::os::fd::BorrowedFd<'_> {
         self.inner.as_fd()
