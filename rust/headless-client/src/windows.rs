@@ -15,7 +15,7 @@ use socket_factory::udp;
 use socket_factory::{TcpSocket, UdpSocket};
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
-    let local = get_best_non_tunnel_route(addr.ip());
+    let local = get_best_non_tunnel_route(addr.ip()).ok_or(io::Error::other("No route to host"))?;
 
     let socket = socket_factory::tcp(addr)?;
     socket.bind((local, 0).into()); // To avoid routing loops, all TCP sockets are bound to "best" source IP.
@@ -25,17 +25,17 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
 
 pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
     let socket = socket = socket_factory::udp(src_addr)?
-        .with_source_ip_resolver(Box::new(|addr| Some(get_best_non_tunnel_route(addr))));
+        .with_source_ip_resolver(Box::new(|addr| get_best_non_tunnel_route(addr)));
 
     Ok(socket)
 }
 
-fn get_best_non_tunnel_route(dst: IpAddr) -> IpAddr {
-    let src = get_best_route_excluding_interface(dst, TUNNEL_NAME);
+fn get_best_non_tunnel_route(dst: IpAddr) -> Option<IpAddr> {
+    let src = get_best_route_excluding_interface(dst, TUNNEL_NAME)?;
 
     tracing::debug!(%src, %dst, "Resolved best route outside of tunnel interface");
 
-    src
+    Some(src)
 }
 
 /// Finds the best route (i.e. source interface) for a given destination IP, excluding interfaces where the name matches the given filter.
@@ -49,7 +49,7 @@ fn get_best_non_tunnel_route(dst: IpAddr) -> IpAddr {
 /// This function performs multiple syscalls and is thus fairly expensive.
 /// It should **not** be called on a per-packet basis.
 /// Callers should instead cache the result until network interfaces change.
-fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> IpAddr {
+fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAddr> {
     use std::mem::{size_of, size_of_val, MaybeUninit};
     use std::net::{Ipv4Addr, Ipv6Addr};
     use std::ptr::null;
@@ -123,16 +123,16 @@ fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> IpAddr {
 
         routes.sort_by(|(a, _), (b, _)| a.Metric.cmp(&b.Metric));
 
-        let addr = routes.first().unwrap().1;
+        let addr = routes.first()?.1;
         match addr.si_family {
             // TODO: it might be better to only get the family that we care about?
             // we will also want to discard the not matching version addresses
             ADDRESS_FAMILY(0) => match dst {
-                IpAddr::V4(_) => Ipv4Addr::from(addr.Ipv4.sin_addr).into(),
-                IpAddr::V6(_) => Ipv6Addr::from(addr.Ipv6.sin6_addr).into(),
+                IpAddr::V4(_) => Some(Ipv4Addr::from(addr.Ipv4.sin_addr).into()),
+                IpAddr::V6(_) => Some(Ipv6Addr::from(addr.Ipv6.sin6_addr).into()),
             },
-            ADDRESS_FAMILY(2) => Ipv4Addr::from(addr.Ipv4.sin_addr).into(),
-            ADDRESS_FAMILY(23) => Ipv6Addr::from(addr.Ipv6.sin6_addr).into(),
+            ADDRESS_FAMILY(2) => Some(Ipv4Addr::from(addr.Ipv4.sin_addr).into()),
+            ADDRESS_FAMILY(23) => Some(Ipv6Addr::from(addr.Ipv6.sin6_addr).into()),
             _ => panic!("Invalid address"),
         }
     }
