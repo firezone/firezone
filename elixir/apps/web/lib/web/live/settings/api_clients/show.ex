@@ -62,24 +62,44 @@ defmodule Web.Settings.ApiClients.Show do
         </.edit_button>
       </:action>
       <:action :if={Actors.actor_active?(@actor)}>
-        <.button
+        <.button_with_confirmation
+          id="disable"
           style="warning"
           icon="hero-lock-closed"
-          phx-click="disable"
-          data-confirm="Are you sure want to disable this API Client and revoke all its tokens?"
+          on_confirm="disable"
         >
+          <:dialog_title>Disable the API Client</:dialog_title>
+          <:dialog_content>
+            Are you sure want to disable this API Client and revoke all its tokens?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Disable
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Disable API Client
-        </.button>
+        </.button_with_confirmation>
       </:action>
       <:action :if={is_nil(@actor.deleted_at) and Actors.actor_disabled?(@actor)}>
-        <.button
+        <.button_with_confirmation
+          id="enable"
           style="warning"
           icon="hero-lock-open"
-          phx-click="enable"
-          data-confirm="Are you sure want to enable this API Client?"
+          on_confirm="enable"
         >
+          <:dialog_title>Enable the API Client</:dialog_title>
+          <:dialog_content>
+            Are you sure want to enable this API Client?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Enable
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Enable API Client
-        </.button>
+        </.button_with_confirmation>
       </:action>
       <:content flash={@flash}>
         <.vertical_table id="api-client">
@@ -111,12 +131,24 @@ defmodule Web.Settings.ApiClients.Show do
       </:action>
 
       <:action :if={Actors.actor_active?(@actor)}>
-        <.delete_button
-          phx-click="revoke_all_tokens"
-          data-confirm="Are you sure you want to revoke all tokens for this API client?"
+        <.button_with_confirmation
+          id="revoke_all_tokens"
+          style="warning"
+          icon="hero-lock-open"
+          on_confirm="revoke_all_tokens"
         >
+          <:dialog_title>Revoke all API Client Tokens</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to revoke all Tokens for this API client?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Revoke All
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Revoke All
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
 
       <:content>
@@ -145,17 +177,26 @@ defmodule Web.Settings.ApiClients.Show do
             <%= token.last_seen_remote_ip %>
           </:col>
           <:action :let={token}>
-            <.delete_button
+            <.button_with_confirmation
+              id={"revoke_token_#{token.id}"}
+              style="warning"
+              icon="hero-trash-solid"
+              on_confirm="revoke_token"
+              on_confirm_id={token.id}
               size="xs"
-              phx-click="revoke_token"
-              data-confirm="Are you sure you want to revoke this token?"
-              phx-value-id={token.id}
-              class={[
-                "block w-full py-2 px-4 hover:bg-gray-100"
-              ]}
             >
+              <:dialog_title>Revoke the Token</:dialog_title>
+              <:dialog_content>
+                Are you sure you want to revoke this token?
+              </:dialog_content>
+              <:dialog_confirm_button>
+                Revoke
+              </:dialog_confirm_button>
+              <:dialog_cancel_button>
+                Cancel
+              </:dialog_cancel_button>
               Revoke
-            </.delete_button>
+            </.button_with_confirmation>
           </:action>
           <:empty>
             <div class="flex justify-center text-center text-neutral-500 p-4">
@@ -170,12 +211,24 @@ defmodule Web.Settings.ApiClients.Show do
 
     <.danger_zone :if={is_nil(@actor.deleted_at)}>
       <:action>
-        <.delete_button
-          phx-click="delete"
-          data-confirm="Are you sure want to delete this API Client along with all associated tokens?"
+        <.button_with_confirmation
+          id="delete_api_client"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
         >
+          <:dialog_title>Delete API Client</:dialog_title>
+          <:dialog_content>
+            Are you sure want to delete this API Client along with all associated tokens?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete API Client
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete API Client
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """

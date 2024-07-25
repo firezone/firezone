@@ -108,12 +108,37 @@ defmodule Web.Gateways.Show do
 
     <.danger_zone :if={is_nil(@gateway.deleted_at)}>
       <:action>
-        <.delete_button
-          phx-click="delete"
-          data-confirm="Are you sure you want to delete this gateway?"
+        <.button_with_confirmation
+          id="delete_gateway"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
         >
+          <:dialog_title>Delete Gateway</:dialog_title>
+          <:dialog_content>
+            <p>
+              Are you sure you want to delete this Gateway?
+            </p>
+            <p class="mt-4 text-sm">
+              Deleting the gateway does not remove it's access token so it can be re-created again,
+              revoke the token on the
+              <.link
+                navigate={~p"/#{@account}/sites/#{@gateway.group}"}
+                class={["font-medium", link_style()]}
+              >
+                site
+              </.link>
+              page if you want to prevent the gateway from connecting to the portal.
+            </p>
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Gateway
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete Gateway
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """

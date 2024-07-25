@@ -318,7 +318,7 @@ defmodule Web.Live.Resources.ShowTest do
       |> live(~p"/#{account}/resources/#{resource}")
 
     assert lv
-           |> element("button", "Delete Resource")
+           |> element("button[type=submit]", "Delete Resource")
            |> render_click() ==
              {:error, {:live_redirect, %{to: ~p"/#{account}/resources", kind: :push}}}
 

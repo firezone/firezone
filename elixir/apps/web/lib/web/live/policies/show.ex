@@ -76,24 +76,48 @@ defmodule Web.Policies.Show do
         </.edit_button>
       </:action>
       <:action :if={is_nil(@policy.deleted_at)}>
-        <.button
+        <.button_with_confirmation
           :if={is_nil(@policy.disabled_at)}
-          phx-click="disable"
+          id="disable"
           style="warning"
           icon="hero-lock-closed"
-          data-confirm="Are you sure? Access granted by this policy will be revoked immediately."
+          on_confirm="disable"
         >
+          <:dialog_title>Disable the Policy</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to disable this policy?
+            This will <strong>immediately</strong>
+            revoke all access granted by it. Keep in mind, other policies may still grant access to the same resource.
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Disable
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Disable
-        </.button>
-        <.button
+        </.button_with_confirmation>
+        <.button_with_confirmation
           :if={not is_nil(@policy.disabled_at)}
-          phx-click="enable"
+          id="enable"
           style="warning"
           icon="hero-lock-open"
-          data-confirm="Are you sure want to enable this policy?"
+          on_confirm="enable"
         >
+          <:dialog_title>Enable the Policy</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to enable this policy?
+            This will <strong>immediately</strong>
+            grant access to the specified resource to all members of the given group.
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Enable
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Enable
-        </.button>
+        </.button_with_confirmation>
       </:action>
       <:content>
         <.vertical_table id="policy">
@@ -158,9 +182,9 @@ defmodule Web.Policies.Show do
     </.section>
 
     <.section>
-      <:title>Authorized Activity</:title>
+      <:title>Authorized Sessions</:title>
       <:help>
-        Authorized attempts by actors to access the resource governed by this policy.
+        Authorized sessions opened by Actors to access the Resources governed by this Policy.
       </:help>
       <:content>
         <.live_table
@@ -209,13 +233,25 @@ defmodule Web.Policies.Show do
 
     <.danger_zone :if={is_nil(@policy.deleted_at)}>
       <:action>
-        <.delete_button
-          phx-click="delete"
-          phx-value-id={@policy.id}
-          data-confirm="Are you sure you want to delete this policy?"
+        <.button_with_confirmation
+          id="delete_policy"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
+          on_confirm_id={@policy.id}
         >
+          <:dialog_title>Delete Policy</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to delete this Policy? All sessions authorized by it will be expired.
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Policy
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete Policy
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """

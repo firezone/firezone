@@ -24,19 +24,17 @@ defmodule Web.Actors.Users.New do
     </.breadcrumbs>
 
     <.section>
-      <:title>
-        Create Actor
-      </:title>
+      <:title><%= @page_title %></:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl text-neutral-900">Create a User</h2>
+          <h2 class="mb-4 text-xl text-neutral-900">User details</h2>
           <.flash kind={:error} flash={@flash} />
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <.actor_form form={@form} type={:user} subject={@subject} />
             </div>
             <.submit_button>
-              Create
+              Next: Add an Identity
             </.submit_button>
           </.form>
         </div>
