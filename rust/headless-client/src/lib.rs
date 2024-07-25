@@ -130,7 +130,6 @@ impl Callbacks for CallbackHandler {
     }
 
     fn on_set_interface_config(&self, ipv4: Ipv4Addr, ipv6: Ipv6Addr, dns: Vec<IpAddr>) {
-        tracing::info!("TunnelReady (on_set_interface_config)");
         self.cb_tx
             .try_send(InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
             .expect("Should be able to send TunnelReady");

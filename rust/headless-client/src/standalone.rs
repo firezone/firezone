@@ -225,7 +225,9 @@ pub fn run_only_headless_client() -> Result<()> {
                 },
                 result = dns_changed => {
                     result?;
-                    tracing::info!("DNS change, notifying Session");
+                    // If the DNS control method is not `systemd-resolved`
+                    // then we'll use polling here, so no point logging every 5 seconds that we're checking the DNS
+                    tracing::trace!("DNS change, notifying Session");
                     session.set_dns(dns_control::system_resolvers()?);
                     continue;
                 },
