@@ -16,7 +16,7 @@ defmodule Web.Settings.ApiClients.NewToken do
           actor: actor,
           encoded_token: nil,
           form: to_form(changeset),
-          page_title: "Add an API Token"
+          page_title: "New API Token"
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
