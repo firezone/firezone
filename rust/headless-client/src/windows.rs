@@ -15,18 +15,22 @@ use socket_factory::{TcpSocket, UdpSocket};
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
     let socket = socket_factory::tcp(addr)?;
-    socket.bind(get_best_route(addr, connlib_shared::windows::TUNNEL_NAME));
+    socket.bind(get_best_route(
+        addr.ip(),
+        connlib_shared::windows::TUNNEL_NAME,
+    ));
     Ok(socket)
 }
 
 pub fn udp_socket_factory(addr: &SocketAddr) -> io::Result<UdpSocket> {
     let socket = socket_factory::udp(addr)?;
-    socket
-        .set_source_ip_resolver(|addr| get_best_route(addr, connlib_shared::windows::TUNNEL_NAME));
+    socket.set_source_ip_resolver(Box::new(|addr| {
+        get_best_route(addr.ip(), connlib_shared::windows::TUNNEL_NAME)
+    }));
     Ok(socket)
 }
 
-fn get_best_route(dst: IpAddr, filter: String) -> IpAddr {
+fn get_best_route(dst: IpAddr, filter: &str) -> IpAddr {
     use std::mem::{size_of, size_of_val, MaybeUninit};
     use std::net::{Ipv4Addr, Ipv6Addr};
     use std::ptr::null;
@@ -56,7 +60,7 @@ fn get_best_route(dst: IpAddr, filter: String) -> IpAddr {
         let mut luids = Vec::new();
         loop {
             let address: &IP_ADAPTER_ADDRESSES_LH = std::mem::transmute(next_address);
-            if address.AdapterName == filter {
+            if &address.AdapterName.to_string().unwrap() == filter {
                 continue;
             }
 

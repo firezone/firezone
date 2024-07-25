@@ -53,6 +53,10 @@ impl TcpSocket {
     pub async fn connect(self, addr: SocketAddr) -> io::Result<tokio::net::TcpStream> {
         self.inner.connect(addr).await
     }
+
+    pub fn bind(&self, addr: SocketAddr) -> io::Result<()> {
+        self.inner.bind(addr)
+    }
 }
 
 #[cfg(unix)]
