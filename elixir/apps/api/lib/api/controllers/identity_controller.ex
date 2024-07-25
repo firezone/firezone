@@ -33,7 +33,8 @@ defmodule API.IdentityController do
   operation :create,
     summary: "Create an Identity for an Actor",
     parameters: [
-      actor_id: [in: :path, description: "Actor ID", type: :string]
+      actor_id: [in: :path, description: "Actor ID", type: :string],
+      provider_id: [in: :path, description: "Provider ID", type: :string]
     ],
     request_body:
       {"Identity Attributes", "application/json", API.Schemas.Identity.Request, required: true},
