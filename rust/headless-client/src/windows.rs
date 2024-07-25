@@ -72,13 +72,12 @@ fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> IpAddr {
         loop {
             let address: &IP_ADAPTER_ADDRESSES_LH = std::mem::transmute(next_address);
 
-            if !address.FriendlyName.is_null()
-                && &address.FriendlyName.to_string().unwrap() == filter
+            if address.FriendlyName.is_null()
+                || &address.FriendlyName.to_string().unwrap() != filter
             {
-                continue;
+                luids.push(address.Luid);
             }
 
-            luids.push(address.Luid);
             if address.Next.is_null() {
                 break;
             }
