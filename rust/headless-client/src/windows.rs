@@ -10,15 +10,13 @@ use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 
 use connlib_shared::windows::TUNNEL_NAME;
-use socket_factory::tcp;
-use socket_factory::udp;
 use socket_factory::{TcpSocket, UdpSocket};
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
     let local = get_best_non_tunnel_route(addr.ip()).ok_or(io::Error::other("No route to host"))?;
 
     let socket = socket_factory::tcp(addr)?;
-    socket.bind((local, 0).into()); // To avoid routing loops, all TCP sockets are bound to "best" source IP.
+    socket.bind((local, 0).into())?; // To avoid routing loops, all TCP sockets are bound to "best" source IP.
 
     Ok(socket)
 }
@@ -50,7 +48,7 @@ fn get_best_non_tunnel_route(dst: IpAddr) -> Option<IpAddr> {
 /// It should **not** be called on a per-packet basis.
 /// Callers should instead cache the result until network interfaces change.
 fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAddr> {
-    use std::mem::{size_of, size_of_val, MaybeUninit};
+    use std::mem::MaybeUninit;
     use std::net::{Ipv4Addr, Ipv6Addr};
     use std::ptr::null;
 
