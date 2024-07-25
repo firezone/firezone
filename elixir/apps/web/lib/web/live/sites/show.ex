@@ -132,12 +132,25 @@ defmodule Web.Sites.Show do
         </.add_button>
       </:action>
       <:action :if={is_nil(@group.deleted_at)}>
-        <.delete_button
-          phx-click="revoke_all_tokens"
-          data-confirm="Are you sure you want to revoke all tokens? This will immediately disconnect all gateways in this site."
+        <.button_with_confirmation
+          id="revoke_all_tokens"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="revoke_all_tokens"
         >
-          Revoke All Tokens
-        </.delete_button>
+          <:dialog_title>Revoke all tokens</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to revoke all tokens for this Site?
+            This will <strong>immediately</strong> disconnect all associated Gateways.
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Revoke All
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
+          Revoke All
+        </.button_with_confirmation>
       </:action>
       <:help :if={is_nil(@group.deleted_at)}>
         Deploy gateways to terminate connections to your site's resources. All
@@ -260,12 +273,25 @@ defmodule Web.Sites.Show do
 
     <.danger_zone :if={is_nil(@group.deleted_at)}>
       <:action>
-        <.delete_button
-          phx-click="delete"
-          data-confirm="Are you sure you want to delete this Site and disconnect all its Gateways?"
+        <.button_with_confirmation
+          id="delete_site"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
         >
+          <:dialog_title>Delete Site</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to delete this Site? This will <strong>immediately</strong>
+            disconnect all associated Gateways.
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Site
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete Site
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """

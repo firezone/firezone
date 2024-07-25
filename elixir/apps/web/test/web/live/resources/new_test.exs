@@ -407,7 +407,7 @@ defmodule Web.Live.Resources.NewTest do
 
     resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
 
-    flash = assert_redirect(lv, ~p"/#{account}/resources")
+    flash = assert_redirect(lv, ~p"/#{account}/policies/new?resource_id=#{resource}")
     assert flash["info"] == "Resource #{resource.name} created successfully."
   end
 
@@ -449,7 +449,9 @@ defmodule Web.Live.Resources.NewTest do
 
     resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
 
-    flash = assert_redirect(lv, ~p"/#{account}/sites/#{group}")
+    flash =
+      assert_redirect(lv, ~p"/#{account}/policies/new?resource_id=#{resource}&site_id=#{group}")
+
     assert flash["info"] == "Resource #{resource.name} created successfully."
   end
 
@@ -516,7 +518,10 @@ defmodule Web.Live.Resources.NewTest do
     assert %{connections: [connection]} = Repo.preload(resource, :connections)
     assert connection.gateway_group_id == group.id
 
-    assert assert_redirect(lv, ~p"/#{account}/sites/#{group}")
+    assert assert_redirect(
+             lv,
+             ~p"/#{account}/policies/new?resource_id=#{resource}&site_id=#{group}"
+           )
   end
 
   test "prevents saving resource if traffic filters set when traffic filters disabled", %{

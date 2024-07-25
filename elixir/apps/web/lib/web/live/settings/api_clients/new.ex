@@ -12,7 +12,7 @@ defmodule Web.Settings.ApiClients.New do
     socket =
       assign(socket,
         form: to_form(changeset),
-        page_title: "New API Client"
+        page_title: "Add an API Client"
       )
 
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -30,7 +30,7 @@ defmodule Web.Settings.ApiClients.New do
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <h2 class="mb-4 text-xl text-neutral-900">
-            Create API Client
+            API Client details
           </h2>
           <.flash kind={:error} flash={@flash} />
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
@@ -38,7 +38,7 @@ defmodule Web.Settings.ApiClients.New do
               <.api_client_form form={@form} type={:api_client} subject={@subject} />
             </div>
             <.submit_button>
-              Create
+              Next: Add a token
             </.submit_button>
           </.form>
         </div>
