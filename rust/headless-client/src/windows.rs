@@ -52,13 +52,17 @@ fn get_best_route(dst: IpAddr, filter: &str) -> IpAddr {
         // TODO: iterate until it doesn't overflow
         let mut addresses: Vec<u8> = vec![0u8; 15000];
         let mut addresses_len = addresses.len() as u32;
-        GetAdaptersAddresses(
+        let res = GetAdaptersAddresses(
             AF_UNSPEC.0 as u32,
             GET_ADAPTERS_ADDRESSES_FLAGS(0),
             Some(null()),
             Some(addresses.as_mut_ptr() as *mut _),
             &mut addresses_len as *mut _,
         );
+
+        if res.is_err() {
+            todo!()
+        }
 
         let mut next_address = addresses.as_ptr() as *const _;
         let mut luids = Vec::new();
@@ -84,7 +88,7 @@ fn get_best_route(dst: IpAddr, filter: &str) -> IpAddr {
             let mut best_route: MaybeUninit<MIB_IPFORWARD_ROW2> = MaybeUninit::zeroed();
             let mut best_src: MaybeUninit<SOCKADDR_INET> = MaybeUninit::zeroed();
 
-            GetBestRoute2(
+            let res = GetBestRoute2(
                 Some(luid as *const _),
                 0,
                 None,
@@ -93,6 +97,10 @@ fn get_best_route(dst: IpAddr, filter: &str) -> IpAddr {
                 best_route.as_mut_ptr(),
                 best_src.as_mut_ptr(),
             );
+
+            if res.is_err() {
+                continue;
+            }
 
             let best_route = best_route.assume_init();
             let best_src = best_src.assume_init();
