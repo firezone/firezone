@@ -204,9 +204,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
                 ))
                 .install_batch(opentelemetry_sdk::runtime::Tokio)
                 .context("Failed to create OTLP trace pipeline")?;
-            let relay_tracer = tracer_provider.tracer("relay");
-
-            global::set_tracer_provider(tracer_provider);
+            global::set_tracer_provider(tracer_provider.clone());
 
             tracing::trace!(target: "relay", "Successfully initialized trace provider on tokio runtime");
 
@@ -227,7 +225,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
                 .with(log_layer(args).with_filter(env_filter()))
                 .with(
                     tracing_opentelemetry::layer()
-                        .with_tracer(relay_tracer)
+                        .with_tracer(tracer_provider.tracer("relay"))
                         .with_filter(env_filter()),
                 )
                 .into()
