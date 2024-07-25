@@ -10,7 +10,7 @@ defmodule Web.Settings.ApiClients.New do
       socket =
         assign(socket,
           form: to_form(changeset),
-          page_title: "Add an API Client"
+          page_title: "New API Client"
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
