@@ -29,8 +29,10 @@ rtnetlink = { workspace = true }
 libc = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-wintun = "0.4.0"
+known-folders = "1.1.0"
+ring = "0.17"
 uuid = { version = "1.10.0", features = ["v4"] }
+wintun = "0.4.0"
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.57.0"

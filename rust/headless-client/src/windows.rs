@@ -10,9 +10,6 @@ use std::path::{Path, PathBuf};
 pub(crate) use socket_factory::tcp as tcp_socket_factory;
 pub(crate) use socket_factory::udp as udp_socket_factory;
 
-#[path = "windows/wintun_install.rs"]
-mod wintun_install;
-
 // The return value is useful on Linux
 #[allow(clippy::unnecessary_wraps)]
 pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
@@ -30,10 +27,5 @@ pub(crate) fn default_token_path() -> std::path::PathBuf {
 // this could notify the Windows service controller too.
 #[allow(clippy::unnecessary_wraps)]
 pub(crate) fn notify_service_controller() -> Result<()> {
-    Ok(())
-}
-
-pub(crate) fn setup_before_connlib() -> Result<()> {
-    wintun_install::ensure_dll()?;
     Ok(())
 }
