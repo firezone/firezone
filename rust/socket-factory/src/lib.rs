@@ -9,6 +9,7 @@ use std::{
 };
 
 use socket2::SockAddr;
+use std::collections::hash_map::Entry;
 use tokio::io::Interest;
 
 pub trait SocketFactory<S>: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
@@ -248,14 +249,17 @@ impl UdpSocket {
         }
     }
 
-    fn get_source(&mut self, dst: IpAddr) -> Option<IpAddr> {
-        match self.src_by_dst_cache.entry(dst) {
-            std::collections::hash_map::Entry::Occupied(entry) => Some(*entry.get()),
-            std::collections::hash_map::Entry::Vacant(v) => {
+    /// Attempt to resolve the source IP to use for sending to the given destination IP.
+    fn resolve_source_for(&mut self, dst: IpAddr) -> Option<IpAddr> {
+        let src = match self.src_by_dst_cache.entry(dst) {
+            Entry::Occupied(occ) => *occ.get(),
+            Entry::Vacant(vac) => {
                 let src = (self.source_ip_resolver)(dst)?;
-                Some(*v.insert(src))
+                *vac.insert(src)
             }
-        }
+        };
+
+        Some(src)
     }
     pub fn try_send(&mut self, transmit: &DatagramOut) -> io::Result<()> {
         let transmit = quinn_udp::Transmit {
@@ -266,7 +270,7 @@ impl UdpSocket {
             src_ip: transmit
                 .src
                 .map(|s| s.ip())
-                .or_else(|| self.get_source(transmit.dst.ip())),
+                .or_else(|| self.resolve_source_for(transmit.dst.ip())),
         };
 
         self.inner.try_io(Interest::WRITABLE, || {
