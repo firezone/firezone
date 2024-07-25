@@ -4,12 +4,13 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::client::{
-    self, about, deep_link, ipc, logging, network_changes,
+    self, about, deep_link, ipc, logging,
     settings::{self, AdvancedSettings},
     Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use connlib_client_shared::callbacks::ResourceDescription;
+use firezone_bin_shared::{DnsNotifier, NetworkNotifier};
 use firezone_headless_client::IpcServerMsg;
 use secrecy::{ExposeSecret, SecretString};
 use std::{
@@ -796,32 +797,24 @@ async fn run_controller(
         win.show().context("Couldn't show Welcome window")?;
     }
 
-    let mut have_internet =
-        network_changes::check_internet().context("Failed initial check for internet")?;
-    tracing::info!(?have_internet);
+    let mut com_worker = NetworkNotifier::new().context("Failed to listen for network changes")?;
 
-    let mut com_worker =
-        network_changes::Worker::new().context("Failed to listen for network changes")?;
-
-    let mut dns_listener = network_changes::DnsListener::new()?;
+    let mut dns_listener = DnsNotifier::new()?;
 
     loop {
         // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
         // `tokio::select!` with a `poll_*` function
         tokio::select! {
             () = com_worker.notified() => {
-                let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
-                if new_have_internet != have_internet {
-                    have_internet = new_have_internet;
-                    if controller.status.connlib_is_up() {
-                        tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
-                        controller.ipc_client.reconnect().await?;
-                    }
+                if controller.status.connlib_is_up() {
+                    tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
+                    controller.ipc_client.reconnect().await?;
                 }
             },
-            resolvers = dns_listener.notified() => {
-                let resolvers = resolvers?;
+            result = dns_listener.notified() => {
+                result?;
                 if controller.status.connlib_is_up() {
+                    let resolvers = firezone_headless_client::dns_control::system_resolvers_for_gui()?;
                     tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
                     controller.ipc_client.set_dns(resolvers).await?;
                 }

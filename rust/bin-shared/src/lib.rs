@@ -1,3 +1,4 @@
+mod network_changes;
 mod tun_device_manager;
 
 #[cfg(target_os = "windows")]
@@ -27,6 +28,9 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 
 /// Mark for Firezone sockets to prevent routing loops on Linux.
 pub const FIREZONE_MARK: u32 = 0xfd002021;
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub use network_changes::{DnsNotifier, NetworkNotifier};
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use tun_device_manager::TunDeviceManager;
