@@ -15,17 +15,20 @@ use socket_factory::{TcpSocket, UdpSocket};
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
     let socket = socket_factory::tcp(addr)?;
-    socket.bind(get_best_route(
-        addr.ip(),
-        connlib_shared::windows::TUNNEL_NAME,
-    ));
+    socket.bind(
+        (
+            get_best_route(addr.ip(), connlib_shared::windows::TUNNEL_NAME),
+            0,
+        )
+            .into(),
+    );
     Ok(socket)
 }
 
-pub fn udp_socket_factory(addr: &SocketAddr) -> io::Result<UdpSocket> {
-    let socket = socket_factory::udp(addr)?;
+pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
+    let socket = socket_factory::udp(src_addr)?;
     socket.set_source_ip_resolver(Box::new(|addr| {
-        get_best_route(addr.ip(), connlib_shared::windows::TUNNEL_NAME)
+        Some(get_best_route(addr, connlib_shared::windows::TUNNEL_NAME))
     }));
     Ok(socket)
 }
