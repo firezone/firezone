@@ -14,7 +14,7 @@ pub trait SocketFactory<S>: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'st
 
 impl<F, S> SocketFactory<S> for F where F: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
 
-pub fn tcp(addr: &SocketAddr) -> io::Result<tokio::net::TcpSocket> {
+pub fn tcp(addr: &SocketAddr) -> io::Result<TcpSocket> {
     let socket = match addr {
         SocketAddr::V4(_) => tokio::net::TcpSocket::new_v4()?,
         SocketAddr::V6(_) => tokio::net::TcpSocket::new_v6()?,
@@ -22,8 +22,9 @@ pub fn tcp(addr: &SocketAddr) -> io::Result<tokio::net::TcpSocket> {
 
     socket.set_nodelay(true)?;
 
-    Ok(socket)
+    Ok(TcpSocket { inner: socket })
 }
+
 pub fn udp(addr: &SocketAddr) -> io::Result<UdpSocket> {
     let addr: SockAddr = (*addr).into();
     let socket = socket2::Socket::new(addr.domain(), socket2::Type::DGRAM, None)?;
@@ -41,6 +42,29 @@ pub fn udp(addr: &SocketAddr) -> io::Result<UdpSocket> {
     let socket = UdpSocket::new(socket)?;
 
     Ok(socket)
+}
+
+pub struct TcpSocket {
+    inner: tokio::net::TcpSocket,
+}
+
+impl TcpSocket {
+    pub async fn connect(self, addr: SocketAddr) -> io::Result<tokio::net::TcpStream> {
+        self.inner.connect(addr).await
+    }
+}
+
+#[cfg(unix)]
+impl std::os::fd::AsRawFd for TcpSocket {
+    fn as_raw_fd(&self) -> std::os::fd::RawFd {
+        self.inner.as_raw_fd()
+    }
+}
+
+impl std::os::fd::AsFd for TcpSocket {
+    fn as_fd(&self) -> std::os::fd::BorrowedFd<'_> {
+        self.inner.as_fd()
+    }
 }
 
 pub struct UdpSocket {

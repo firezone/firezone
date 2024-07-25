@@ -11,7 +11,7 @@ use eventloop::Command;
 use firezone_tunnel::ClientTunnel;
 use messages::{IngressMessages, ReplyMessages};
 use phoenix_channel::PhoenixChannel;
-use socket_factory::{SocketFactory, UdpSocket};
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -36,7 +36,7 @@ pub struct Session {
 
 /// Arguments for `connect`, since Clippy said 8 args is too many
 pub struct ConnectArgs<CB> {
-    pub tcp_socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
+    pub tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     pub udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     pub private_key: StaticSecret,
     pub callbacks: CB,

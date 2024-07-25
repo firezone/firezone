@@ -11,7 +11,7 @@ use hickory_resolver::{
     AsyncResolver, TokioHandle,
 };
 use ip_packet::{IpPacket, MutableIpPacket};
-use socket_factory::{DatagramIn, DatagramOut, SocketFactory, UdpSocket};
+use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::HashMap,
     io,
@@ -33,7 +33,7 @@ pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
 
-    tcp_socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
+    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
@@ -63,7 +63,7 @@ impl Io {
     ///
     /// Must be called within a Tokio runtime context so we can bind the sockets.
     pub fn new(
-        tcp_socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     ) -> io::Result<Self> {
         let mut sockets = Sockets::default();
@@ -206,13 +206,13 @@ pub enum DnsQueryError {
 #[derive(Clone)]
 struct TokioRuntimeProvider {
     handle: TokioHandle,
-    tcp_socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
+    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 }
 
 impl TokioRuntimeProvider {
     fn new(
-        tcp_socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     ) -> TokioRuntimeProvider {
         Self {

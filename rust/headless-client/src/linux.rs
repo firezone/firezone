@@ -4,7 +4,7 @@ use super::TOKEN_ENV_KEY;
 use anyhow::{bail, Result};
 use firezone_bin_shared::FIREZONE_MARK;
 use nix::sys::socket::{setsockopt, sockopt};
-use socket_factory::UdpSocket;
+use socket_factory::{TcpSocket, UdpSocket};
 use std::{
     io,
     net::SocketAddr,
@@ -16,7 +16,7 @@ use std::{
 const ROOT_GROUP: u32 = 0;
 const ROOT_USER: u32 = 0;
 
-pub(crate) fn tcp_socket_factory(socket_addr: &SocketAddr) -> io::Result<tokio::net::TcpSocket> {
+pub(crate) fn tcp_socket_factory(socket_addr: &SocketAddr) -> io::Result<TcpSocket> {
     let socket = socket_factory::tcp(socket_addr)?;
     setsockopt(&socket, sockopt::Mark, &FIREZONE_MARK)?;
     Ok(socket)

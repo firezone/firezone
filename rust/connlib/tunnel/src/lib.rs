@@ -44,7 +44,7 @@ pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::{ClientState, Request};
 pub use gateway::GatewayState;
-use socket_factory::UdpSocket;
+use socket_factory::{TcpSocket, UdpSocket};
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
@@ -71,7 +71,7 @@ pub struct Tunnel<TRoleState> {
 impl ClientTunnel {
     pub fn new(
         private_key: StaticSecret,
-        tcp_socket_factory: Arc<dyn socket_factory::SocketFactory<tokio::net::TcpSocket>>,
+        tcp_socket_factory: Arc<dyn socket_factory::SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn socket_factory::SocketFactory<UdpSocket>>,
         known_hosts: HashMap<String, Vec<IpAddr>>,
     ) -> std::io::Result<Self> {
