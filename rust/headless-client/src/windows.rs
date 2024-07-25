@@ -138,14 +138,8 @@ fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> IpAddr {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    #[test]
-    fn best_route_works() {
-        dbg!(get_best_route("8.8.8.8".parse().unwrap(), "Firezone"));
-    }
-}
+#[path = "windows/wintun_install.rs"]
+mod wintun_install;
 
 // The return value is useful on Linux
 #[allow(clippy::unnecessary_wraps)]
@@ -165,4 +159,19 @@ pub(crate) fn default_token_path() -> std::path::PathBuf {
 #[allow(clippy::unnecessary_wraps)]
 pub(crate) fn notify_service_controller() -> Result<()> {
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn best_route_ip4_does_not_fail() {
+        get_best_route_excluding_interface("8.8.8.8".parse().unwrap(), "Firezone");
+    }
+
+    #[test]
+    fn best_route_ip6_does_not_fail() {
+        get_best_route_excluding_interface("2404:6800:4006:811::200e".parse().unwrap(), "Firezone");
+    }
 }
