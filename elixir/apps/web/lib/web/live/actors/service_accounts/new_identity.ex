@@ -1,6 +1,5 @@
 defmodule Web.Actors.ServiceAccounts.NewIdentity do
   use Web, :live_view
-  import Web.Actors.Components
   alias Domain.{Auth, Actors, Tokens}
 
   def mount(%{"id" => id}, _session, socket) do
@@ -41,12 +40,10 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
     </.breadcrumbs>
 
     <.section>
-      <:title>
-        Create <%= actor_type(@actor.type) %> Token
-      </:title>
+      <:title><%= @page_title %></:title>
       <:content>
         <div :if={is_nil(@encoded_token)} class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl text-neutral-900">Create a Token</h2>
+          <h2 class="mb-4 text-xl text-neutral-900">Token details</h2>
           <.flash kind={:error} flash={@flash} />
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
@@ -75,14 +72,20 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
         <div :if={not is_nil(@encoded_token)} class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
             <div class="text-xl mb-2">
-              Your API token (will be shown only once):
+              Your Service Account token
+            </div>
+            <div>
+              <.code_block id="code-sample-docker" class="w-full mw-1/2 rounded" phx-no-format><%= @encoded_token %></.code_block>
+              <p class="mt-2 text-xs text-gray-500">
+                Store this in a safe place. <strong>It won't be shown again.</strong>
+              </p>
             </div>
 
-            <.code_block id="code-sample-docker" class="w-full mw-1/2 rounded" phx-no-format><%= @encoded_token %></.code_block>
-
-            <.button icon="hero-arrow-uturn-left" navigate={~p"/#{@account}/actors/#{@actor}"}>
-              Back to Actor
-            </.button>
+            <div class="flex justify-start">
+              <.button icon="hero-arrow-uturn-left" navigate={~p"/#{@account}/actors/#{@actor}"}>
+                Back to Service Account
+              </.button>
+            </div>
           </div>
         </div>
       </:content>

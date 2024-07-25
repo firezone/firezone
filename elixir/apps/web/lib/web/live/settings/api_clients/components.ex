@@ -50,14 +50,24 @@ defmodule Web.Settings.ApiClients.Components do
     ~H"""
     <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
       <div class="text-xl mb-2">
-        Your API token (will be shown only once):
+        Your API Token:
       </div>
 
-      <.code_block id="code-api-token" class="w-full mw-1/2 rounded" phx-no-format><%= @encoded_token %></.code_block>
+      <div>
+        <.code_block id="code-api-token" class="w-full mw-1/2 rounded" phx-no-format><%= @encoded_token %></.code_block>
+        <p class="mt-2 text-xs text-gray-500">
+          Store this in a safe place. <strong>It won't be shown again.</strong>
+        </p>
+      </div>
 
-      <.button icon="hero-arrow-uturn-left" navigate={~p"/#{@account}/settings/api_clients/#{@actor}"}>
-        Back to API Client
-      </.button>
+      <div class="flex justify-start">
+        <.button
+          icon="hero-arrow-uturn-left"
+          navigate={~p"/#{@account}/settings/api_clients/#{@actor}"}
+        >
+          Back to API Client
+        </.button>
+      </div>
     </div>
     """
   end

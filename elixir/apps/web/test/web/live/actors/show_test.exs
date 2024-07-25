@@ -590,7 +590,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       assert lv
-             |> element("#identity-#{other_identity.id} button", "Delete")
+             |> element("#identity-#{other_identity.id} button[type=submit]", "Delete")
              |> render_click()
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Identity was deleted."
@@ -667,7 +667,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert row1["last used"] == "Never"
       assert around_now?(row1["created"])
-      assert row1["actions"] == "Revoke"
+      assert row1["actions"] =~ "Revoke"
 
       assert row2["type"] == "client"
 
@@ -676,7 +676,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert row2["last used"] == "Never"
       assert around_now?(row2["created"])
-      assert row2["actions"] == "Revoke"
+      assert row2["actions"] =~ "Revoke"
     end
 
     test "allows revoking tokens", %{
@@ -701,7 +701,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       assert lv
-             |> element("td button", "Revoke")
+             |> element("td button[type=submit]", "Revoke")
              |> render_click()
 
       assert lv
@@ -734,7 +734,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       assert lv
-             |> element("button", "Revoke All")
+             |> element("button[type=submit]", "Revoke All")
              |> render_click()
 
       assert lv
@@ -776,7 +776,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       lv
-      |> element("button", "Delete User")
+      |> element("button[type=submit]", "Delete User")
       |> render_click()
 
       assert_redirect(lv, ~p"/#{account}/actors")
@@ -799,7 +799,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       lv
-      |> element("button", "Delete User")
+      |> element("button[type=submit]", "Delete User")
       |> render_click()
 
       assert_redirect(lv, ~p"/#{account}/actors")
@@ -819,7 +819,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       assert lv
-             |> element("button", "Delete User")
+             |> element("button[type=submit]", "Delete User")
              |> render_click()
              |> Floki.find(".flash-error")
              |> element_to_text() =~ "You can't delete the last admin of an account."
@@ -1002,7 +1002,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       lv
-      |> element("button", "Delete Service Account")
+      |> element("button[type=submit]", "Delete Service Account")
       |> render_click()
 
       assert_redirect(lv, ~p"/#{account}/actors")
@@ -1096,7 +1096,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert row1["last used"] == "Never"
       assert around_now?(row1["created"])
-      assert row1["actions"] == "Revoke"
+      assert row1["actions"] =~ "Revoke"
 
       assert row2["type"] == "client"
 
@@ -1105,7 +1105,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert row2["last used"] == "Never"
       assert around_now?(row2["created"])
-      assert row2["actions"] == "Revoke"
+      assert row2["actions"] =~ "Revoke"
     end
 
     test "allows revoking tokens", %{
@@ -1130,7 +1130,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       assert lv
-             |> element("td button", "Revoke")
+             |> element("td button[type=submit]", "Revoke")
              |> render_click()
 
       assert lv
@@ -1163,7 +1163,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       assert lv
-             |> element("button", "Revoke All")
+             |> element("button[type=submit]", "Revoke All")
              |> render_click()
 
       assert lv
