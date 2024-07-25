@@ -524,13 +524,14 @@ defmodule Web.FormComponents do
     </.submit_button>
   """
 
-  attr :rest, :global
+  attr :rest, :global, include: ~w(class icon)
+  attr :style, :string, default: "primary", doc: "The style of the button"
   slot :inner_block, required: true
 
   def submit_button(assigns) do
     ~H"""
     <div class="flex justify-end">
-      <.button type="submit" style="primary" {@rest}>
+      <.button type="submit" style={@style} {@rest}>
         <%= render_slot(@inner_block) %>
       </.button>
     </div>
