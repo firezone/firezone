@@ -5,10 +5,13 @@
 //! We must tell Windows explicitly when our service is stopping.
 
 use anyhow::Result;
+use std::io;
+use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 
 use socket_factory::tcp;
 use socket_factory::udp;
+use socket_factory::{TcpSocket, UdpSocket};
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
     let socket = socket_factory::tcp(addr)?;
@@ -16,7 +19,7 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
     Ok(socket)
 }
 
-pub fn socket_factory_udp(addr: &SocketAddr) -> io::Result<UdpSocket> {
+pub fn udp_socket_factory(addr: &SocketAddr) -> io::Result<UdpSocket> {
     let socket = socket_factory::udp(addr)?;
     socket
         .set_source_ip_resolver(|addr| get_best_route(addr, connlib_shared::windows::TUNNEL_NAME));
