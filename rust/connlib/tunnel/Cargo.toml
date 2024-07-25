@@ -22,13 +22,12 @@ ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
 itertools = { version = "0.13", default-features = false, features = ["use_std"] }
 proptest = { version = "1", optional = true }
-quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" }
 rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
 rangemap = "1.5.1"
 secrecy = { workspace = true }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 snownet = { workspace = true }
-socket-factory = { workspace = true }
+socket-factory = { workspace = true, features = ["hickory"] }
 socket2 = { workspace = true }
 thiserror = { version = "1.0", default-features = false }
 tokio = { workspace = true }

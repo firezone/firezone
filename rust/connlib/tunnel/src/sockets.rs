@@ -1,29 +1,23 @@
-use core::slice;
-use quinn_udp::{RecvMeta, UdpSockRef, UdpSocketState};
-use socket_factory::SocketFactory;
+use socket_factory::{DatagramIn, DatagramOut, SocketFactory, UdpSocket};
 use std::{
-    collections::VecDeque,
-    io::{self, IoSliceMut},
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    io,
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     task::{ready, Context, Poll},
 };
-use tokio::{io::Interest, net::UdpSocket};
 
-use crate::Result;
+const UNSPECIFIED_V4_SOCKET: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
+const UNSPECIFIED_V6_SOCKET: SocketAddrV6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0);
 
 #[derive(Default)]
 pub(crate) struct Sockets {
-    socket_v4: Option<Socket>,
-    socket_v6: Option<Socket>,
+    socket_v4: Option<UdpSocket>,
+    socket_v6: Option<UdpSocket>,
 }
 
 impl Sockets {
-    pub fn rebind(
-        &mut self,
-        socket_factory: &dyn SocketFactory<tokio::net::UdpSocket>,
-    ) -> io::Result<()> {
-        let socket_v4 = Socket::ip4(socket_factory);
-        let socket_v6 = Socket::ip6(socket_factory);
+    pub fn rebind(&mut self, socket_factory: &dyn SocketFactory<UdpSocket>) -> io::Result<()> {
+        let socket_v4 = socket_factory(&SocketAddr::V4(UNSPECIFIED_V4_SOCKET));
+        let socket_v6 = socket_factory(&SocketAddr::V6(UNSPECIFIED_V6_SOCKET));
 
         match (socket_v4.as_ref(), socket_v6.as_ref()) {
             (Err(e), Ok(_)) => {
@@ -65,8 +59,8 @@ impl Sockets {
         Poll::Ready(Ok(()))
     }
 
-    pub fn send(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
-        let socket = match transmit.dst {
+    pub fn send(&mut self, datagram: DatagramOut) -> io::Result<()> {
+        let socket = match datagram.dst {
             SocketAddr::V4(dst) => self.socket_v4.as_mut().ok_or(io::Error::new(
                 io::ErrorKind::NotConnected,
                 format!("failed send packet to {dst}: no IPv4 socket"),
@@ -76,7 +70,7 @@ impl Sockets {
                 format!("failed send packet to {dst}: no IPv6 socket"),
             ))?,
         };
-        socket.send(transmit)?;
+        socket.send(datagram)?;
 
         Ok(())
     }
@@ -86,7 +80,7 @@ impl Sockets {
         ip4_buffer: &'b mut [u8],
         ip6_buffer: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<impl Iterator<Item = Received<'b>>>> {
+    ) -> Poll<io::Result<impl Iterator<Item = DatagramIn<'b>>>> {
         let mut iter = PacketIter::new();
 
         if let Some(Poll::Ready(packets)) = self
@@ -133,10 +127,10 @@ impl<T4, T6> PacketIter<T4, T6> {
 
 impl<'a, T4, T6> Iterator for PacketIter<T4, T6>
 where
-    T4: Iterator<Item = Received<'a>>,
-    T6: Iterator<Item = Received<'a>>,
+    T4: Iterator<Item = DatagramIn<'a>>,
+    T6: Iterator<Item = DatagramIn<'a>>,
 {
-    type Item = Received<'a>;
+    type Item = DatagramIn<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(packet) = self.ip4.as_mut().and_then(|i| i.next()) {
@@ -148,162 +142,5 @@ where
         }
 
         None
-    }
-}
-
-pub struct Received<'a> {
-    pub local: SocketAddr,
-    pub from: SocketAddr,
-    pub packet: &'a [u8],
-}
-
-struct Socket {
-    state: UdpSocketState,
-    port: u16,
-    socket: UdpSocket,
-
-    buffered_transmits: VecDeque<snownet::Transmit<'static>>,
-}
-
-impl Socket {
-    fn ip(
-        socket_factory: &dyn SocketFactory<tokio::net::UdpSocket>,
-        addr: &SocketAddr,
-    ) -> Result<Socket> {
-        let socket = socket_factory(addr)?;
-        let port = socket.local_addr()?.port();
-
-        Ok(Socket {
-            state: UdpSocketState::new(UdpSockRef::from(&socket))?,
-            port,
-            socket,
-            buffered_transmits: VecDeque::new(),
-        })
-    }
-
-    fn ip4(socket_factory: &dyn SocketFactory<tokio::net::UdpSocket>) -> Result<Socket> {
-        Self::ip(
-            socket_factory,
-            &SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)),
-        )
-    }
-
-    fn ip6(socket_factory: &dyn SocketFactory<tokio::net::UdpSocket>) -> Result<Socket> {
-        Self::ip(
-            socket_factory,
-            &SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)),
-        )
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn poll_recv_from<'b>(
-        &self,
-        buffer: &'b mut [u8],
-        cx: &mut Context<'_>,
-    ) -> Poll<io::Result<impl Iterator<Item = Received<'b>>>> {
-        let Socket {
-            port,
-            socket,
-            state,
-            ..
-        } = self;
-
-        let bufs = &mut [IoSliceMut::new(buffer)];
-        let mut meta = RecvMeta::default();
-
-        loop {
-            ready!(socket.poll_recv_ready(cx))?;
-
-            if let Ok(len) = socket.try_io(Interest::READABLE, || {
-                state.recv((&socket).into(), bufs, slice::from_mut(&mut meta))
-            }) {
-                debug_assert_eq!(len, 1);
-
-                if meta.len == 0 {
-                    continue;
-                }
-
-                let Some(local_ip) = meta.dst_ip else {
-                    tracing::warn!("Skipping packet without local IP");
-                    continue;
-                };
-
-                let local = SocketAddr::new(local_ip, *port);
-
-                let iter = buffer[..meta.len]
-                    .chunks(meta.stride)
-                    .map(move |packet| Received {
-                        local,
-                        from: meta.addr,
-                        packet,
-                    })
-                    .inspect(|r| {
-                        tracing::trace!(target: "wire::net::recv", src = %r.from, dst = %r.local, num_bytes = %r.packet.len());
-                    });
-
-                return Poll::Ready(Ok(iter));
-            }
-        }
-    }
-
-    fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        loop {
-            ready!(self.socket.poll_send_ready(cx))?; // Ensure we are ready to send.
-
-            let Some(transmit) = self.buffered_transmits.pop_front() else {
-                break;
-            };
-
-            match self.try_send(&transmit) {
-                Ok(()) => continue, // Try to send another packet.
-                Err(e) => {
-                    self.buffered_transmits.push_front(transmit); // Don't lose the packet if we fail.
-
-                    if e.kind() == io::ErrorKind::WouldBlock {
-                        continue; // False positive send-readiness: Loop to `poll_send_ready` and return `Pending`.
-                    }
-
-                    return Poll::Ready(Err(e));
-                }
-            }
-        }
-
-        assert!(self.buffered_transmits.is_empty());
-
-        Poll::Ready(Ok(()))
-    }
-
-    fn send(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
-        tracing::trace!(target: "wire::net::send", src = ?transmit.src, dst = %transmit.dst, num_bytes = %transmit.payload.len());
-
-        debug_assert!(
-            self.buffered_transmits.len() < 10_000,
-            "We are not flushing the packets for some reason"
-        );
-
-        match self.try_send(&transmit) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                tracing::trace!("Buffering packet because socket is busy");
-
-                self.buffered_transmits.push_back(transmit.into_owned());
-                Ok(())
-            }
-            Err(e) => Err(e),
-        }
-    }
-
-    fn try_send(&self, transmit: &snownet::Transmit) -> io::Result<()> {
-        let transmit = quinn_udp::Transmit {
-            destination: transmit.dst,
-            ecn: None,
-            contents: &transmit.payload,
-            segment_size: None,
-            src_ip: transmit.src.map(|s| s.ip()),
-        };
-
-        self.socket.try_io(Interest::WRITABLE, || {
-            self.state.send((&self.socket).into(), &transmit)
-        })
     }
 }

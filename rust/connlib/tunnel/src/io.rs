@@ -1,8 +1,4 @@
-use crate::{
-    device_channel::Device,
-    dns::DnsQuery,
-    sockets::{Received, Sockets},
-};
+use crate::{device_channel::Device, dns::DnsQuery, sockets::Sockets};
 use connlib_shared::messages::DnsServer;
 use futures::Future;
 use futures_bounded::FuturesTupleSet;
@@ -15,7 +11,7 @@ use hickory_resolver::{
     AsyncResolver, TokioHandle,
 };
 use ip_packet::{IpPacket, MutableIpPacket};
-use socket_factory::SocketFactory;
+use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::HashMap,
     io,
@@ -25,7 +21,6 @@ use std::{
     task::{ready, Context, Poll},
     time::{Duration, Instant},
 };
-use tokio::net::{TcpSocket, UdpSocket};
 
 const DNS_QUERIES_QUEUE_SIZE: usize = 100;
 
@@ -94,7 +89,7 @@ impl Io {
         ip4_buffer: &'b mut [u8],
         ip6_bffer: &'b mut [u8],
         device_buffer: &'b mut [u8],
-    ) -> Poll<io::Result<Input<'b, impl Iterator<Item = Received<'b>>>>> {
+    ) -> Poll<io::Result<Input<'b, impl Iterator<Item = DatagramIn<'b>>>>> {
         if let Poll::Ready((response, query)) = self.forwarded_dns_queries.poll_unpin(cx) {
             return Poll::Ready(Ok(Input::DnsResponse(query, response)));
         }
@@ -185,7 +180,11 @@ impl Io {
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
-        self.sockets.send(transmit)?;
+        self.sockets.send(DatagramOut {
+            src: transmit.src,
+            dst: transmit.dst,
+            packet: transmit.payload,
+        })?;
 
         Ok(())
     }

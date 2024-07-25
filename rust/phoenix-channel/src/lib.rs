@@ -17,7 +17,7 @@ use heartbeat::{Heartbeat, MissedLastHeartbeat};
 use rand_core::{OsRng, RngCore};
 use secrecy::{ExposeSecret, Secret};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use socket_factory::SocketFactory;
+use socket_factory::{SocketFactory, TcpSocket};
 use std::task::{Context, Poll, Waker};
 use tokio::net::TcpStream;
 use tokio_tungstenite::client_async_tls;
@@ -35,7 +35,7 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     waker: Option<Waker>,
     pending_messages: VecDeque<String>,
     next_request_id: Arc<AtomicU64>,
-    socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
+    socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 
     heartbeat: Heartbeat,
 
@@ -67,7 +67,7 @@ impl State {
     fn connect(
         url: Secret<LoginUrl>,
         user_agent: String,
-        socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
+        socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Self {
         Self::Connecting(create_and_connect_websocket(url, user_agent, socket_factory).boxed())
     }
@@ -76,7 +76,7 @@ impl State {
 async fn create_and_connect_websocket(
     url: Secret<LoginUrl>,
     user_agent: String,
-    socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
+    socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
     let socket = make_socket(url.expose_secret().inner(), &*socket_factory).await?;
 
@@ -89,7 +89,7 @@ async fn create_and_connect_websocket(
 
 async fn make_socket(
     url: &Url,
-    socket_factory: &dyn SocketFactory<tokio::net::TcpSocket>,
+    socket_factory: &dyn SocketFactory<TcpSocket>,
 ) -> Result<TcpStream, InternalError> {
     let port = url
         .port_or_known_default()
@@ -229,7 +229,7 @@ where
         login: &'static str,
         init_req: TInitReq,
         reconnect_backoff: ExponentialBackoff,
-        socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
+        socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> io::Result<Self> {
         let next_request_id = Arc::new(AtomicU64::new(0));
 

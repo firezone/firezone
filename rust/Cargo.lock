@@ -2006,7 +2006,6 @@ dependencies = [
  "itertools 0.13.0",
  "proptest",
  "proptest-state-machine",
- "quinn-udp",
  "rand 0.8.5",
  "rand_core 0.6.4",
  "rangemap",
@@ -4746,8 +4745,8 @@ dependencies = [
 
 [[package]]
 name = "quinn-udp"
-version = "0.5.2"
-source = "git+https://github.com/quinn-rs/quinn?branch=main#3f489e2eab014ddd04de58e570ba56e9b027f0bc"
+version = "0.5.4"
+source = "git+https://github.com/quinn-rs/quinn?branch=main#061a74fb6ef67b12f78bc2a3cfc9906e54762eeb"
 dependencies = [
  "libc",
  "once_cell",
@@ -5626,8 +5625,12 @@ dependencies = [
 name = "socket-factory"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "hickory-proto",
+ "quinn-udp",
  "socket2",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
