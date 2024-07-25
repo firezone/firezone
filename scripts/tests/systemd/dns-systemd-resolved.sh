@@ -44,6 +44,11 @@ resolvectl dns tun-firezone && exit 1
 stat "/usr/bin/$BINARY_NAME"
 sudo systemctl start "$SERVICE_NAME" || debug_exit
 
+# TODO: Remove after #6026 merges
+# This is needed for the compatibility tests to pass, but once #6026
+# is in `main`, it should be redundant
+sleep 3
+
 resolvectl dns tun-firezone
 resolvectl query "$HTTPBIN" || debug_exit
 
