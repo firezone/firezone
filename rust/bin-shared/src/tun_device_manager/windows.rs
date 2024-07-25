@@ -110,16 +110,12 @@ impl TunDeviceManager {
                 .chain(v6.into_iter().map(IpNetwork::from)),
         );
 
-        if new_routes == self.routes {
-            return Ok(());
-        }
-
-        for new_route in new_routes.difference(&self.routes) {
-            add_route(*new_route, iface_idx)?;
-        }
-
         for old_route in self.routes.difference(&new_routes) {
             remove_route(*old_route, iface_idx)?;
+        }
+
+        for new_route in &new_routes {
+            add_route(*new_route, iface_idx)?;
         }
 
         self.routes = new_routes;
