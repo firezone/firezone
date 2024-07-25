@@ -5628,7 +5628,11 @@ dependencies = [
  "quinn-udp",
  "socket2",
  "tokio",
+<<<<<<< HEAD
  "tracing",
+=======
+ "windows 0.57.0",
+>>>>>>> a445f2c3a (wip get_best_route)
 ]
 
 [[package]]
