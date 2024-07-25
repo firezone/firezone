@@ -77,7 +77,8 @@ impl std::os::fd::AsFd for TcpSocket {
 pub struct UdpSocket {
     inner: tokio::net::UdpSocket,
     state: quinn_udp::UdpSocketState,
-    source_ip_resolver: Box<dyn Fn(IpAddr) -> Option<IpAddr> + Send + Sync + 'static>,
+    source_ip_resolver:
+        Box<dyn Fn(IpAddr) -> std::io::Result<Option<IpAddr>> + Send + Sync + 'static>,
 
     /// A cache of source IPs by their destination IPs.
     src_by_dst_cache: HashMap<IpAddr, IpAddr>,
@@ -95,7 +96,7 @@ impl UdpSocket {
             state: quinn_udp::UdpSocketState::new(quinn_udp::UdpSockRef::from(&inner))?,
             port,
             inner,
-            source_ip_resolver: Box::new(|_| None),
+            source_ip_resolver: Box::new(|_| Ok(None)),
             buffered_datagrams: VecDeque::new(),
             src_by_dst_cache: Default::default(),
         })
@@ -108,7 +109,7 @@ impl UdpSocket {
     /// To evict this cache, drop the [`UdpSocket`] and make a new one.
     pub fn with_source_ip_resolver(
         mut self,
-        resolver: Box<dyn Fn(IpAddr) -> Option<IpAddr> + Send + Sync + 'static>,
+        resolver: Box<dyn Fn(IpAddr) -> std::io::Result<Option<IpAddr>> + Send + Sync + 'static>,
     ) -> Self {
         self.source_ip_resolver = resolver;
         self
@@ -251,10 +252,12 @@ impl UdpSocket {
 
     pub fn try_send(&mut self, transmit: &DatagramOut) -> io::Result<()> {
         let destination = transmit.dst;
-        let src_ip = transmit
-            .src
-            .map(|s| s.ip())
-            .or_else(|| self.resolve_source_for(destination.ip()));
+        let src_ip = transmit.src.map(|s| s.ip());
+
+        let src_ip = match src_ip {
+            Some(src_ip) => Some(src_ip),
+            None => self.resolve_source_for(transmit.dst.ip())?,
+        };
 
         let transmit = quinn_udp::Transmit {
             destination,
@@ -270,16 +273,18 @@ impl UdpSocket {
     }
 
     /// Attempt to resolve the source IP to use for sending to the given destination IP.
-    fn resolve_source_for(&mut self, dst: IpAddr) -> Option<IpAddr> {
+    fn resolve_source_for(&mut self, dst: IpAddr) -> std::io::Result<Option<IpAddr>> {
         let src = match self.src_by_dst_cache.entry(dst) {
             Entry::Occupied(occ) => *occ.get(),
             Entry::Vacant(vac) => {
-                let src = (self.source_ip_resolver)(dst)?;
+                let Some(src) = (self.source_ip_resolver)(dst)? else {
+                    return Ok(None);
+                };
                 *vac.insert(src)
             }
         };
 
-        Some(src)
+        Ok(Some(src))
     }
 }
 

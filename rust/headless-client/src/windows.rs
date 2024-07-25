@@ -28,12 +28,13 @@ pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
     Ok(socket)
 }
 
-fn get_best_non_tunnel_route(dst: IpAddr) -> Option<IpAddr> {
-    let src = get_best_route_excluding_interface(dst, TUNNEL_NAME)?;
+fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<Option<IpAddr>> {
+    let src = get_best_route_excluding_interface(dst, TUNNEL_NAME)
+        .ok_or(io::Error::other("No route to host"))?;
 
     tracing::debug!(%src, %dst, "Resolved best route outside of tunnel interface");
 
-    Some(src)
+    Ok(src)
 }
 
 /// Finds the best route (i.e. source interface) for a given destination IP, excluding interfaces where the name matches the given filter.
