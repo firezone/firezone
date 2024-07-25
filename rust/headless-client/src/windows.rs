@@ -60,7 +60,7 @@ fn get_best_route(dst: IpAddr, filter: &str) -> IpAddr {
             &mut addresses_len as *mut _,
         );
 
-        if res.is_err() {
+        if res != 0 {
             todo!()
         }
 
