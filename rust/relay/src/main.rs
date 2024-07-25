@@ -186,7 +186,9 @@ fn setup_tracing(args: &Args) -> Result<()> {
     );
 
     let dispatch: Dispatch = match args.otlp_grpc_endpoint.clone() {
-        None => tracing_subscriber::registry().with(log_layer(args)).into(),
+        None => tracing_subscriber::registry()
+            .with(log_layer(args).with_filter(env_filter()))
+            .into(),
         Some(endpoint) => {
             let grpc_endpoint = format!("http://{endpoint}");
 
