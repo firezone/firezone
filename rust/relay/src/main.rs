@@ -7,8 +7,6 @@ use firezone_relay::{
     PeerSocket, Server, Sleep,
 };
 use futures::{future, FutureExt};
-use opentelemetry::{global, KeyValue};
-use opentelemetry_otlp::WithExportConfig;
 use phoenix_channel::{Event, LoginUrl, PhoenixChannel};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -175,7 +173,9 @@ async fn main() -> Result<()> {
 ///
 /// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
 fn setup_tracing(args: &Args) -> Result<()> {
-    use opentelemetry::trace::TracerProvider as _;
+    use opentelemetry::{global, trace::TracerProvider as _, KeyValue};
+    use opentelemetry_otlp::WithExportConfig;
+    use opentelemetry_sdk::{runtime::Tokio, trace::Config, Resource};
 
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
@@ -199,10 +199,11 @@ fn setup_tracing(args: &Args) -> Result<()> {
             let tracer_provider = opentelemetry_otlp::new_pipeline()
                 .tracing()
                 .with_exporter(exporter)
-                .with_trace_config(opentelemetry_sdk::trace::Config::default().with_resource(
-                    opentelemetry_sdk::Resource::new(vec![KeyValue::new("service.name", "relay")]),
-                ))
-                .install_batch(opentelemetry_sdk::runtime::Tokio)
+                .with_trace_config(
+                    Config::default()
+                        .with_resource(Resource::new(vec![KeyValue::new("service.name", "relay")])),
+                )
+                .install_batch(Tokio)
                 .context("Failed to create OTLP trace pipeline")?;
             global::set_tracer_provider(tracer_provider.clone());
 
@@ -213,13 +214,13 @@ fn setup_tracing(args: &Args) -> Result<()> {
                 .with_endpoint(grpc_endpoint);
 
             let meter_provider = opentelemetry_otlp::new_pipeline()
-                .metrics(opentelemetry_sdk::runtime::Tokio)
+                .metrics(Tokio)
                 .with_exporter(exporter)
                 .build()
                 .context("Failed to create OTLP metrics pipeline")?;
             global::set_meter_provider(meter_provider);
 
-            tracing::trace!(target: "relay", "Successfully initialized metric controller on tokio runtime");
+            tracing::trace!(target: "relay", "Successfully initialized metric provider on tokio runtime");
 
             tracing_subscriber::registry()
                 .with(log_layer(args).with_filter(env_filter()))
