@@ -14,14 +14,11 @@ use socket_factory::udp;
 use socket_factory::{TcpSocket, UdpSocket};
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
+    let local = get_best_route_excluding_interface(addr.ip(), connlib_shared::windows::TUNNEL_NAME);
+
     let socket = socket_factory::tcp(addr)?;
-    socket.bind(
-        (
-            get_best_route_excluding_interface(addr.ip(), connlib_shared::windows::TUNNEL_NAME),
-            0,
-        )
-            .into(),
-    );
+    socket.bind((local, 0).into());
+
     Ok(socket)
 }
 
