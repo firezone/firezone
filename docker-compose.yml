@@ -429,6 +429,7 @@ services:
       RUST_LOG: ${RUST_LOG:-debug}
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
+      OTLP_GRPC_ENDPOINT: otlp:4317
     build:
       target: dev
       context: rust
@@ -446,6 +447,8 @@ services:
       timeout: 5s
     depends_on:
       api:
+        condition: "service_healthy"
+      otel:
         condition: "service_healthy"
     # ports:
       # NOTE: Only 111 ports are used for local dev / testing because Docker Desktop
@@ -469,7 +472,6 @@ services:
       RUST_LOG: ${RUST_LOG:-debug}
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
-      OTLP_GRPC_ENDPOINT: otlp:4317
     build:
       target: dev
       context: rust
@@ -487,8 +489,6 @@ services:
       timeout: 5s
     depends_on:
       api:
-        condition: "service_healthy"
-      otel:
         condition: "service_healthy"
     networks:
       app:
