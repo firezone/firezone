@@ -13,6 +13,7 @@ use connlib_shared::{
 };
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -44,7 +45,6 @@ pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::{ClientState, Request};
 pub use gateway::GatewayState;
-use socket_factory::{TcpSocket, UdpSocket};
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
@@ -71,8 +71,8 @@ pub struct Tunnel<TRoleState> {
 impl ClientTunnel {
     pub fn new(
         private_key: StaticSecret,
-        tcp_socket_factory: Arc<dyn socket_factory::SocketFactory<TcpSocket>>,
-        udp_socket_factory: Arc<dyn socket_factory::SocketFactory<UdpSocket>>,
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         known_hosts: HashMap<String, Vec<IpAddr>>,
     ) -> std::io::Result<Self> {
         Ok(Self {
