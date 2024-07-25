@@ -14,6 +14,17 @@ defmodule Web.CoreComponents do
   alias Phoenix.LiveView.JS
   alias Domain.Actors
 
+  def hero_logo(assigns) do
+    ~H"""
+    <a href={~p"/"} class="mb-6">
+      <img src={~p"/images/logo.svg"} class="pl-10 h-32" alt="Firezone Logo" />
+      <p class="mt-4 text-3xl">
+        Welcome to Firezone.
+      </p>
+    </a>
+    """
+  end
+
   def logo(assigns) do
     ~H"""
     <a href={~p"/"} class="flex items-center mb-6 text-2xl">
