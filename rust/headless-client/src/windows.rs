@@ -18,7 +18,7 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
     let local = get_best_route_excluding_interface(addr.ip(), TUNNEL_NAME);
 
     let socket = socket_factory::tcp(addr)?;
-    socket.bind((local, 0).into());
+    socket.bind((local, 0).into()); // To avoid routing loops, all TCP sockets are bound to "best" source IP.
 
     Ok(socket)
 }
