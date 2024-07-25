@@ -1,15 +1,12 @@
-use std::net::SocketAddr;
+use std::{io, net::SocketAddr};
 
 use socket2::SockAddr;
 
-pub trait SocketFactory<S>: Fn(&SocketAddr) -> std::io::Result<S> + Send + Sync + 'static {}
+pub trait SocketFactory<S>: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
 
-impl<F, S> SocketFactory<S> for F where
-    F: Fn(&SocketAddr) -> std::io::Result<S> + Send + Sync + 'static
-{
-}
+impl<F, S> SocketFactory<S> for F where F: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
 
-pub fn tcp(addr: &SocketAddr) -> std::io::Result<tokio::net::TcpSocket> {
+pub fn tcp(addr: &SocketAddr) -> io::Result<tokio::net::TcpSocket> {
     let socket = match addr {
         SocketAddr::V4(_) => tokio::net::TcpSocket::new_v4()?,
         SocketAddr::V6(_) => tokio::net::TcpSocket::new_v6()?,
@@ -19,7 +16,7 @@ pub fn tcp(addr: &SocketAddr) -> std::io::Result<tokio::net::TcpSocket> {
 
     Ok(socket)
 }
-pub fn udp(addr: &SocketAddr) -> std::io::Result<tokio::net::UdpSocket> {
+pub fn udp(addr: &SocketAddr) -> io::Result<tokio::net::UdpSocket> {
     let addr: SockAddr = (*addr).into();
     let socket = socket2::Socket::new(addr.domain(), socket2::Type::DGRAM, None)?;
 
