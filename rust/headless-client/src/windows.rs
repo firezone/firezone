@@ -29,8 +29,3 @@ pub(crate) fn default_token_path() -> std::path::PathBuf {
 pub(crate) fn notify_service_controller() -> Result<()> {
     Ok(())
 }
-
-pub(crate) fn setup_before_connlib() -> Result<()> {
-    firezone_bin_shared::windows::ensure_dll()?;
-    Ok(())
-}

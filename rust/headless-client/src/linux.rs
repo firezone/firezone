@@ -65,11 +65,3 @@ pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
 pub(crate) fn notify_service_controller() -> Result<()> {
     Ok(sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?)
 }
-
-/// Platform-specific setup needed for connlib
-///
-/// On Linux this does nothing
-#[allow(clippy::unnecessary_wraps)]
-pub(crate) fn setup_before_connlib() -> Result<()> {
-    Ok(())
-}

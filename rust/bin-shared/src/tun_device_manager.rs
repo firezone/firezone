@@ -27,18 +27,6 @@ mod tests {
             .with_test_writer()
             .try_init();
 
-        #[cfg(target_os = "windows")]
-        {
-            // Install wintun so the test can run
-            let wintun_path = crate::windows::wintun_dll_path().unwrap();
-            tokio::fs::create_dir_all(wintun_path.parent().unwrap())
-                .await
-                .unwrap();
-            tokio::fs::write(&wintun_path, crate::windows::wintun_bytes().bytes)
-                .await
-                .unwrap();
-        }
-
         // Run these tests in series since they would fight over the tunnel interface
         // if they ran concurrently
         create_tun();

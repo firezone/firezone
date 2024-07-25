@@ -49,7 +49,6 @@ impl Server {
     /// This is async on Linux
     #[allow(clippy::unused_async)]
     pub(crate) async fn new(id: ServiceId) -> Result<Self> {
-        crate::platform::setup_before_connlib()?;
         let pipe_path = ipc_path(id);
         Ok(Self { pipe_path })
     }

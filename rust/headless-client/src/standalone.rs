@@ -164,7 +164,6 @@ pub fn run_only_headless_client() -> Result<()> {
 
     // The name matches that in `ipc_service.rs`
     let mut last_connlib_start_instant = Some(Instant::now());
-    platform::setup_before_connlib()?;
     let args = ConnectArgs {
         udp_socket_factory: Arc::new(crate::udp_socket_factory),
         tcp_socket_factory: Arc::new(crate::tcp_socket_factory),
