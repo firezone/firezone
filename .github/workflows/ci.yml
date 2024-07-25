@@ -279,6 +279,7 @@ jobs:
             --adapter json \
             --branch "${{ github.head_ref || github.ref_name }}" \
             --branch-start-point "${{ github.base_ref }}" \
-            --github-actions ${{ secrets.GITHUB_TOKEN }}
+            --github-actions ${{ secrets.GITHUB_TOKEN }} \
+            --ci-only-on-alert
         env:
           BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
