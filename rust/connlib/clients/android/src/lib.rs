@@ -19,7 +19,7 @@ use jni::{
 };
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
-use socket_factory::SocketFactory;
+use socket_factory::{SocketFactory, UdpSocket};
 use std::{io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
@@ -542,9 +542,7 @@ fn protected_tcp_socket_factory(
     }
 }
 
-fn protected_udp_socket_factory(
-    callbacks: CallbackHandler,
-) -> impl SocketFactory<tokio::net::UdpSocket> {
+fn protected_udp_socket_factory(callbacks: CallbackHandler) -> impl SocketFactory<UdpSocket> {
     move |addr| {
         let socket = socket_factory::udp(addr)?;
         callbacks.protect(socket.as_raw_fd())?;

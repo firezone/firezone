@@ -6,3 +6,10 @@ edition = "2021"
 [dependencies]
 socket2 = { workspace = true }
 tokio = { version = "1.38", features = ["net"] }
+quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" }
+tracing = "0.1"
+hickory-proto = { workspace = true, optional = true }
+async-trait = { version = "0.1", optional = true }
+
+[features]
+hickory = ["dep:hickory-proto", "dep:async-trait"]
