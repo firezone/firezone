@@ -274,4 +274,13 @@ done! Your Okta provider is now successfully configured. If directory sync is
 enabled, the first sync will occur within about 10 minutes. After that, users
 will be able to authenticate to Firezone using their Okta accounts.
 
+<Alert color="info">
+
+Synced users will be assigned the `User` role by default, allowing them access
+to sign in from the Firezone Client only. If you need to grant access to the
+admin portal, you need to manually promote the user to the `Admin` role by
+visiting `Actors -> <actor name> -> Edit User` and updating their role.
+
+</Alert>
+
 <SupportOptions />

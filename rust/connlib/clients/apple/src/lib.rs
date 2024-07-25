@@ -2,12 +2,13 @@
 #![allow(clippy::unnecessary_cast, improper_ctypes, non_camel_case_types)]
 
 mod make_writer;
+mod tun;
 
 use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
     callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
-    Session, Tun, V4RouteList, V6RouteList,
+    Session, V4RouteList, V6RouteList,
 };
 use connlib_shared::get_user_agent;
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -22,6 +23,7 @@ use std::{
 use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::{prelude::*, util::TryInitError};
+use tun::Tun;
 
 /// The Apple client implements reconnect logic in the upper layer using OS provided
 /// APIs to detect network connectivity changes. The reconnect timeout here only
@@ -214,7 +216,7 @@ impl WrappedSession {
             Arc::new(socket_factory::tcp),
         )?;
         let session = Session::connect(args, portal, runtime.handle().clone());
-        session.set_tun(Tun::new()?);
+        session.set_tun(Box::new(Tun::new()?));
 
         Ok(Self {
             inner: session,

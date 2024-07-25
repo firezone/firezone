@@ -135,7 +135,9 @@ defmodule Web.Acceptance.Auth.UserPassTest do
     session
     |> password_login_flow(account, identity.provider_identifier, password)
     |> assert_path(~p"/#{account}")
-    |> assert_error_flash("Please use a client application to access Firezone.")
+    |> assert_error_flash(
+      "You must have the admin role in Firezone to sign in to the admin portal."
+    )
   end
 
   feature "redirects to client deep link after successful sign in as account_admin_user", %{

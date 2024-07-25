@@ -7,9 +7,6 @@ pub mod callbacks;
 pub mod error;
 pub mod messages;
 
-#[cfg(target_os = "windows")]
-pub mod windows;
-
 #[cfg(feature = "proptest")]
 pub mod proptest;
 
@@ -24,22 +21,7 @@ use rand_core::OsRng;
 
 pub type DomainName = domain::base::Name<Vec<u8>>;
 
-/// Bundle ID / App ID that the client uses to distinguish itself from other programs on the system
-///
-/// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
-/// and Windows may use it to track things like the MSI installer, notification titles,
-/// deep link registration, etc.
-///
-/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
-/// but sometimes I need to use this before Tauri has booted up, or in a place where
-/// getting the Tauri app handle would be awkward.
-///
-/// Luckily this is also the AppUserModelId that Windows uses to label notifications,
-/// so if your dev system has Firezone installed by MSI, the notifications will look right.
-/// <https://learn.microsoft.com/en-us/windows/configuration/find-the-application-user-model-id-of-an-installed-app>
-pub const BUNDLE_ID: &str = "dev.firezone.client";
-
-pub const DEFAULT_MTU: u32 = 1280;
+pub const DEFAULT_MTU: usize = 1280;
 
 const LIB_NAME: &str = "connlib";
 

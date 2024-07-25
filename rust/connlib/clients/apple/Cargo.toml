@@ -26,7 +26,8 @@ tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
 tracing-appender = "0.2"
 tracing-subscriber = "0.3"
-url = "2.5.0"
+tun = { workspace = true }
+url = "2.5.2"
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 oslog = { version = "0.2.0", default-features = false }

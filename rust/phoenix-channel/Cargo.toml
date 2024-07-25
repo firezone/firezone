@@ -20,8 +20,8 @@ thiserror = "1.0.61"
 tokio = { workspace = true, features = ["net", "time"] }
 tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
 tracing = { workspace = true }
-url = "2.4.1"
-uuid = { version = "1.7", default-features = false, features = ["std", "v4"] }
+url = "2.5.2"
+uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.57", features = ["Win32_Foundation", "Win32_System_SystemInformation"] }

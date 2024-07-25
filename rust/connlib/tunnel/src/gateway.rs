@@ -1,7 +1,7 @@
 use crate::peer::ClientOnGateway;
 use crate::peer_store::PeerStore;
 use crate::utils::earliest;
-use crate::{GatewayEvent, GatewayTunnel, Tun};
+use crate::{GatewayEvent, GatewayTunnel};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
@@ -15,11 +15,12 @@ use snownet::{RelaySocket, ServerNode};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
+use tun::Tun;
 
 const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 
 impl GatewayTunnel {
-    pub fn set_tun(&mut self, tun: Tun) {
+    pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
         self.io.device_mut().set_tun(tun);
     }
 

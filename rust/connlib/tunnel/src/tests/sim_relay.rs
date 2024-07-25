@@ -1,4 +1,7 @@
-use super::sim_net::{dual_ip_stack, host, Host};
+use super::{
+    sim_net::{dual_ip_stack, host, Host},
+    strategies::latency,
+};
 use connlib_shared::messages::RelayId;
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
 use proptest::prelude::*;
@@ -82,13 +85,15 @@ impl SimRelay {
         }
     }
 
-    pub(crate) fn handle_packet(
+    pub(crate) fn receive(
         &mut self,
-        payload: &[u8],
-        sender: SocketAddr,
-        dst: SocketAddr,
+        transmit: Transmit,
         now: Instant,
     ) -> Option<Transmit<'static>> {
+        let dst = transmit.dst;
+        let payload = &transmit.payload;
+        let sender = transmit.src.unwrap();
+
         if self
             .matching_listen_socket(dst, self.sut.public_address())
             .is_some_and(|s| s == dst)
@@ -196,5 +201,6 @@ pub(crate) fn relay_prototype() -> impl Strategy<Value = Host<u64>> {
         dual_ip_stack(), // For this test, our relays always run in dual-stack mode to ensure connectivity!
         Just(3478),
         any::<u64>(),
+        latency(50), // We assume our relays have a good Internet connection.
     )
 }

@@ -130,7 +130,7 @@ defmodule Web.Live.Gateways.ShowTest do
       |> live(~p"/#{account}/gateways/#{gateway}")
 
     lv
-    |> element("button", "Delete Gateway")
+    |> element("button[type=submit]", "Delete Gateway")
     |> render_click()
 
     assert_redirected(lv, ~p"/#{account}/sites/#{gateway.group}")
