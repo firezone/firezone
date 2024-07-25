@@ -14,14 +14,16 @@ defmodule Web.CoreComponents do
   alias Phoenix.LiveView.JS
   alias Domain.Actors
 
+  attr :text, :string, default: "Welcome to Firezone."
+
   def hero_logo(assigns) do
     ~H"""
-    <a href={~p"/"} class="mb-6">
-      <img src={~p"/images/logo.svg"} class="pl-10 h-32" alt="Firezone Logo" />
+    <div class="mb-6">
+      <img src={~p"/images/logo.svg"} class="mx-auto pr-10 h-32" alt="Firezone Logo" />
       <p class="mt-4 text-3xl">
-        Welcome to Firezone.
+        <%= @text %>
       </p>
-    </a>
+    </div>
     """
   end
 

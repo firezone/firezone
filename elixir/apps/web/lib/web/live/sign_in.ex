@@ -45,14 +45,10 @@ defmodule Web.SignIn do
     ~H"""
     <section>
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
-        <.hero_logo />
+        <.hero_logo text={@account.name} />
 
         <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h1 class="pb-6 text-2xl sm:text-3xl text-center leading-tight tracking-tight text-neutral-900">
-              <%= @account.name %>
-            </h1>
-
             <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
               Sign in with a configured provider
             </h2>
