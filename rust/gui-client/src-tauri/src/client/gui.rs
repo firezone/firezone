@@ -186,7 +186,7 @@ pub(crate) fn run(
                 }
 
                 assert_eq!(
-                    connlib_shared::BUNDLE_ID,
+                    firezone_bin_shared::BUNDLE_ID,
                     app.handle().config().tauri.bundle.identifier,
                     "BUNDLE_ID should match bundle ID in tauri.conf.json"
                 );
