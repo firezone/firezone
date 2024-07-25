@@ -17,7 +17,7 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
     let socket = socket_factory::tcp(addr)?;
     socket.bind(
         (
-            get_best_route(addr.ip(), connlib_shared::windows::TUNNEL_NAME),
+            get_best_route_excluding_interface(addr.ip(), connlib_shared::windows::TUNNEL_NAME),
             0,
         )
             .into(),
@@ -28,13 +28,16 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
 pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
     let socket = socket =
         socket_factory::udp(src_addr)?.with_source_ip_resolver(Box::new(|addr| {
-            Some(get_best_route(addr, connlib_shared::windows::TUNNEL_NAME))
+            Some(get_best_route_excluding_interface(
+                addr,
+                connlib_shared::windows::TUNNEL_NAME,
+            ))
         }));
 
     Ok(socket)
 }
 
-fn get_best_route(dst: IpAddr, filter: &str) -> IpAddr {
+fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> IpAddr {
     use std::mem::{size_of, size_of_val, MaybeUninit};
     use std::net::{Ipv4Addr, Ipv6Addr};
     use std::ptr::null;
