@@ -20,7 +20,7 @@ defmodule Web.CoreComponents do
     ~H"""
     <div class="mb-6">
       <img src={~p"/images/logo.svg"} class="mx-auto pr-10 h-32" alt="Firezone Logo" />
-      <p class="mt-4 text-3xl">
+      <p class="text-center mt-4 text-3xl">
         <%= @text %>
       </p>
     </div>
