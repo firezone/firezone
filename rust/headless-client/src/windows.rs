@@ -164,6 +164,8 @@ pub(crate) fn notify_service_controller() -> Result<()> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use firezone_bin_shared::TunDeviceManager;
+    use socket_factory::{DatagramIn, DatagramOut};
 
     #[test]
     fn best_route_ip4_does_not_fail() {
@@ -173,5 +175,54 @@ mod test {
     #[test]
     fn best_route_ip6_does_not_fail() {
         get_best_route_excluding_interface("2404:6800:4006:811::200e".parse().unwrap(), "Firezone");
+    }
+
+    // Starts up a WinTUN device, adds a "full-route" (`0.0.0.0/0`) and checks if we can still send packets to IPs outside of our tunnel.
+    #[tokio::test]
+    #[ignore = "Needs admin & Internet"]
+    async fn no_packet_loops() {
+        // Install wintun so the test can run
+        let wintun_path = connlib_shared::windows::wintun_dll_path().unwrap();
+        std::fs::create_dir_all(wintun_path.parent().unwrap()).unwrap();
+        std::fs::write(&wintun_path, connlib_shared::windows::wintun_bytes()).unwrap();
+
+        let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
+        let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
+
+        let mut device_manager = TunDeviceManager::new().unwrap();
+        let mut tun = device_manager.make_tun().unwrap();
+        device_manager.set_ips(ipv4, ipv6).await.unwrap();
+
+        // Configure `0.0.0.0/0` route.
+        device_manager
+            .set_routes(vec![Ipv4Network::new(Ipv4Addr::UNSPECIFIED, 0)], vec![])
+            .await
+            .unwrap();
+
+        // Make a socket.
+        let socket =
+            udp_socket_factory(&SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)))
+                .unwrap();
+
+        // Send a STUN request.
+        let server = "stun.cloudflare.com:3478"
+            .to_socket_addrs()
+            .unwrap()
+            .next()
+            .unwrap();
+        socket
+            .send(DatagramOut {
+                src: None,
+                dst: Some(server),
+                packet: &hex_literal::hex_literal!("000100002112A4420123456789abcdef01234567"),
+            })
+            .unwrap();
+
+        let mut buf = [0u8; 1000];
+        let datagram = std::future::poll_fn(|cx| socket.poll_recv_from(&mut buf, cx))
+            .await
+            .unwrap()
+            .next()
+            .unwrap();
     }
 }

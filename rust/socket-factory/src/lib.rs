@@ -249,18 +249,6 @@ impl UdpSocket {
         }
     }
 
-    /// Attempt to resolve the source IP to use for sending to the given destination IP.
-    fn resolve_source_for(&mut self, dst: IpAddr) -> Option<IpAddr> {
-        let src = match self.src_by_dst_cache.entry(dst) {
-            Entry::Occupied(occ) => *occ.get(),
-            Entry::Vacant(vac) => {
-                let src = (self.source_ip_resolver)(dst)?;
-                *vac.insert(src)
-            }
-        };
-
-        Some(src)
-    }
     pub fn try_send(&mut self, transmit: &DatagramOut) -> io::Result<()> {
         let destination = transmit.dst;
         let src_ip = transmit
@@ -279,6 +267,19 @@ impl UdpSocket {
         self.inner.try_io(Interest::WRITABLE, || {
             self.state.send((&self.inner).into(), &transmit)
         })
+    }
+
+    /// Attempt to resolve the source IP to use for sending to the given destination IP.
+    fn resolve_source_for(&mut self, dst: IpAddr) -> Option<IpAddr> {
+        let src = match self.src_by_dst_cache.entry(dst) {
+            Entry::Occupied(occ) => *occ.get(),
+            Entry::Vacant(vac) => {
+                let src = (self.source_ip_resolver)(dst)?;
+                *vac.insert(src)
+            }
+        };
+
+        Some(src)
     }
 }
 

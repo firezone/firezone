@@ -35,6 +35,7 @@ url = { version = "2.5.2", default-features = false }
 uuid = { version = "1.10", default-features = false, features = ["std", "v4", "serde"] }
 
 [dev-dependencies]
+hex-literal = "0.4.1"
 tempfile = "3.10.1"
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
