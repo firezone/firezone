@@ -64,6 +64,7 @@
 //!
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
+use crate::platform::DnsControlMethod;
 use anyhow::{anyhow, Context as _, Result};
 use tokio::sync::mpsc;
 use windows::{
@@ -81,13 +82,21 @@ use windows::{
 #[allow(clippy::unused_async)]
 pub async fn new_dns_notifier(
     _tokio_handle: tokio::runtime::Handle,
+    method: Option<DnsControlMethod>,
 ) -> Result<async_dns::DnsNotifier> {
+    match method {
+        Some(DnsControlMethod::Nrpt) | None => {}
+    }
     async_dns::DnsNotifier::new()
 }
 
 pub async fn new_network_notifier(
     _tokio_handle: tokio::runtime::Handle,
+    method: Option<DnsControlMethod>,
 ) -> Result<NetworkNotifier> {
+    match method {
+        Some(DnsControlMethod::Nrpt) | None => {}
+    }
     NetworkNotifier::new().await
 }
 

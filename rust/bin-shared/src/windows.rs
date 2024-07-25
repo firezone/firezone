@@ -8,6 +8,26 @@ use std::path::PathBuf;
 /// Also used for self-elevation
 pub const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+#[derive(Clone, Copy, Debug)]
+pub enum DnsControlMethod {
+    /// NRPT, the only DNS control method we use on Windows.
+    Nrpt,
+}
+
+impl Default for DnsControlMethod {
+    fn default() -> Self {
+        Self::Nrpt
+    }
+}
+
+impl DnsControlMethod {
+    /// Needed to match Linux
+    #[allow(clippy::unnecessary_wraps)]
+    pub fn get_from_env() -> Option<DnsControlMethod> {
+        Some(DnsControlMethod::Nrpt)
+    }
+}
+
 /// Returns e.g. `C:/Users/User/AppData/Local/dev.firezone.client
 ///
 /// This is where we can save config, logs, crash dumps, etc.

@@ -2,10 +2,16 @@ mod network_changes;
 mod tun_device_manager;
 
 #[cfg(target_os = "linux")]
-mod linux;
+pub mod linux;
+
+#[cfg(target_os = "linux")]
+pub use linux as platform;
 
 #[cfg(target_os = "windows")]
 pub mod windows;
+
+#[cfg(target_os = "windows")]
+pub use windows as platform;
 
 use clap::Args;
 use tracing_log::LogTracer;
@@ -32,8 +38,7 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 /// Mark for Firezone sockets to prevent routing loops on Linux.
 pub const FIREZONE_MARK: u32 = 0xfd002021;
 
-#[cfg(target_os = "linux")]
-pub use linux::{get_dns_control_from_env, DnsControlMethod};
+pub use platform::DnsControlMethod;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use network_changes::{new_dns_notifier, new_network_notifier};

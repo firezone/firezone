@@ -19,11 +19,13 @@ impl Default for DnsControlMethod {
     }
 }
 
-/// Reads FIREZONE_DNS_CONTROL. Returns None if invalid or not set
-pub fn get_dns_control_from_env() -> Option<DnsControlMethod> {
-    match std::env::var(FIREZONE_DNS_CONTROL).as_deref() {
-        Ok("etc-resolv-conf") => Some(DnsControlMethod::EtcResolvConf),
-        Ok("systemd-resolved") => Some(DnsControlMethod::Systemd),
-        _ => None,
+impl DnsControlMethod {
+    /// Reads FIREZONE_DNS_CONTROL. Returns None if invalid or not set
+    pub fn from_env() -> Option<DnsControlMethod> {
+        match std::env::var(FIREZONE_DNS_CONTROL).as_deref() {
+            Ok("etc-resolv-conf") => Some(DnsControlMethod::EtcResolvConf),
+            Ok("systemd-resolved") => Some(DnsControlMethod::Systemd),
+            _ => None,
+        }
     }
 }

@@ -1,5 +1,5 @@
 use anyhow::{bail, Context as _, Result};
-use firezone_bin_shared::{get_dns_control_from_env, DnsControlMethod, TunDeviceManager};
+use firezone_bin_shared::{DnsControlMethod, TunDeviceManager};
 use std::{net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;
@@ -19,8 +19,8 @@ pub(crate) struct DnsController {
 
 impl Default for DnsController {
     fn default() -> Self {
-        // We'll remove `get_dns_control_from_env` in #5068
-        let dns_control_method = get_dns_control_from_env();
+        // We'll remove `get_from_env` in #5068
+        let dns_control_method = DnsControlMethod::get_from_env();
         tracing::info!(?dns_control_method);
 
         Self { dns_control_method }
