@@ -66,7 +66,7 @@ for some general guidelines depending on your expected traffic.
 
 ## Deployment
 
-1. [Download](https://raw.githubusercontent.com/firezone/terraform-azurerm-gateway/main/terraform/examples/azure/nat-gateway/main.tf)
+1. [Download](https://raw.githubusercontent.com/firezone/terraform-azurerm-gateway/main/examples/nat-gateway/main.tf)
    the `main.tf` from the example module.
 1. Customize it as desired. At a minimum, you will need to set the
    `firezone_token` and change `admin_ssh_key` to match your environment.
@@ -87,10 +87,10 @@ traffic.
 />
 
 <Alert color="info">
-  It can take a few minutes for the Firezone Gateway(s) to provision and connect
-  to the portal. If you suspect the Gateway(s) are not connecting, follow the
-  instructions in the [troubleshooting guide](/kb/administer/troubleshooting) to
-  diagnose the issue.
+  It can sometimes take **up to 30 minutes** for all of the resources in this
+  example to provision and connect to the portal. If you suspect the Gateway(s)
+  are not connecting, follow the instructions in the [troubleshooting
+  guide](/kb/administer/troubleshooting) to diagnose the issue.
 </Alert>
 
 <Alert color="warning">
