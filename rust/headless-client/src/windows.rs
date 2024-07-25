@@ -71,9 +71,9 @@ fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> IpAddr {
         let mut luids = Vec::new();
         loop {
             let address: &IP_ADAPTER_ADDRESSES_LH = std::mem::transmute(next_address);
-            // TODO: This is completely wrong as the AdapterName is some hex string and "Firezone" is just an alias
-            // We might need to use ConvertInterfaceLuidToAlias or ConvertAliasToLuid to compare
-            if !address.AdapterName.is_null() && &address.AdapterName.to_string().unwrap() == filter
+
+            if !address.FriendlyName.is_null()
+                && &address.FriendlyName.to_string().unwrap() == filter
             {
                 continue;
             }
