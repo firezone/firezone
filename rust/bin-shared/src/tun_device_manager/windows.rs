@@ -94,6 +94,8 @@ impl TunDeviceManager {
             .stdout(Stdio::null())
             .status()?;
 
+        self.routes.clear();
+
         Ok(())
     }
 
