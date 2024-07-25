@@ -200,7 +200,7 @@ pub fn run_only_headless_client() -> Result<()> {
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
         let tokio_handle = tokio::runtime::Handle::current();
-        let dns_control_method = DnsControlMethod::get_from_env();
+        let dns_control_method = DnsControlMethod::from_env();
 
         let mut dns_notifier = new_dns_notifier(tokio_handle.clone(), dns_control_method).await?;
 

@@ -20,9 +20,8 @@ pub(crate) struct DnsController {
 impl Default for DnsController {
     fn default() -> Self {
         // We'll remove `get_from_env` in #5068
-        let dns_control_method = DnsControlMethod::get_from_env();
+        let dns_control_method = DnsControlMethod::from_env();
         tracing::info!(?dns_control_method);
-
         Self { dns_control_method }
     }
 }
@@ -108,7 +107,7 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
 }
 
 pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
-    match crate::dns_control::platform::get_dns_control_from_env() {
+    match DnsControlMethod::from_env() {
         None => get_system_default_resolvers_resolv_conf(),
         Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf(),
         Some(DnsControlMethod::Systemd) => get_system_default_resolvers_systemd_resolved(),

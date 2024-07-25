@@ -23,7 +23,7 @@ impl Default for DnsControlMethod {
 impl DnsControlMethod {
     /// Needed to match Linux
     #[allow(clippy::unnecessary_wraps)]
-    pub fn get_from_env() -> Option<DnsControlMethod> {
+    pub fn from_env() -> Option<DnsControlMethod> {
         Some(DnsControlMethod::Nrpt)
     }
 }
