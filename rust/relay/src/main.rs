@@ -7,7 +7,7 @@ use firezone_relay::{
     PeerSocket, Server, Sleep,
 };
 use futures::{future, FutureExt};
-use opentelemetry::KeyValue;
+use opentelemetry::{global, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
 use phoenix_channel::{Event, LoginUrl, PhoenixChannel};
 use rand::rngs::StdRng;
@@ -196,7 +196,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
                 .tonic()
                 .with_endpoint(grpc_endpoint.clone());
 
-            let provider = opentelemetry_otlp::new_pipeline()
+            let tracer_provider = opentelemetry_otlp::new_pipeline()
                 .tracing()
                 .with_exporter(exporter)
                 .with_trace_config(opentelemetry_sdk::trace::Config::default().with_resource(
@@ -204,6 +204,9 @@ fn setup_tracing(args: &Args) -> Result<()> {
                 ))
                 .install_batch(opentelemetry_sdk::runtime::Tokio)
                 .context("Failed to create OTLP trace pipeline")?;
+            let relay_tracer = tracer_provider.tracer("relay");
+
+            global::set_tracer_provider(tracer_provider);
 
             tracing::trace!(target: "relay", "Successfully initialized trace provider on tokio runtime");
 
@@ -211,11 +214,12 @@ fn setup_tracing(args: &Args) -> Result<()> {
                 .tonic()
                 .with_endpoint(grpc_endpoint);
 
-            opentelemetry_otlp::new_pipeline()
+            let meter_provider = opentelemetry_otlp::new_pipeline()
                 .metrics(opentelemetry_sdk::runtime::Tokio)
                 .with_exporter(exporter)
                 .build()
                 .context("Failed to create OTLP metrics pipeline")?;
+            global::set_meter_provider(meter_provider);
 
             tracing::trace!(target: "relay", "Successfully initialized metric controller on tokio runtime");
 
@@ -223,7 +227,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
                 .with(log_layer(args).with_filter(env_filter()))
                 .with(
                     tracing_opentelemetry::layer()
-                        .with_tracer(provider.tracer("relay"))
+                        .with_tracer(relay_tracer)
                         .with_filter(env_filter()),
                 )
                 .into()
