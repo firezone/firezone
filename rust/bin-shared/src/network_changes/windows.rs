@@ -77,7 +77,7 @@ use windows::{
     },
 };
 
-pub use async_dns::CombinedListener as DnsNotifier;
+pub use async_dns::DnsNotifier;
 
 /// Notifies when we change Wi-Fi networks, change between Wi-Fi and Ethernet, or gain / lose Internet
 pub struct NetworkNotifier {
@@ -351,12 +351,12 @@ mod async_dns {
         ))
     }
 
-    pub struct CombinedListener {
+    pub struct DnsNotifier {
         listener_4: Listener,
         listener_6: Listener,
     }
 
-    impl CombinedListener {
+    impl DnsNotifier {
         pub fn new() -> Result<Self> {
             let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
             let listener_4 = Listener::new(key_ipv4)?;
