@@ -184,7 +184,9 @@ fn setup_tracing(args: &Args) -> Result<()> {
     );
 
     let dispatch: Dispatch = match args.otlp_grpc_endpoint.clone() {
-        None => tracing_subscriber::registry().with(log_layer(args)).into(),
+        None => tracing_subscriber::registry()
+            .with(log_layer(args).with_filter(env_filter()))
+            .into(),
         Some(endpoint) => {
             let grpc_endpoint = format!("http://{endpoint}");
 
@@ -218,7 +220,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
             tracing::trace!(target: "relay", "Successfully initialized metric controller on tokio runtime");
 
             tracing_subscriber::registry()
-                .with(log_layer(args))
+                .with(log_layer(args).with_filter(env_filter()))
                 .with(
                     tracing_opentelemetry::layer()
                         .with_tracer(provider.tracer("relay"))
@@ -248,7 +250,7 @@ fn log_layer<T>(args: &Args) -> Box<dyn Layer<T> + Send + Sync>
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
-    let log_layer = match (args.log_format, args.google_cloud_project_id.clone()) {
+    match (args.log_format, args.google_cloud_project_id.clone()) {
         (LogFormat::Human, _) => tracing_subscriber::fmt::layer().boxed(),
         (LogFormat::Json, _) => tracing_subscriber::fmt::layer().json().boxed(),
         (LogFormat::GoogleCloud, None) => {
@@ -259,9 +261,7 @@ where
         (LogFormat::GoogleCloud, Some(project_id)) => tracing_stackdriver::layer()
             .with_cloud_trace(CloudTraceConfiguration { project_id })
             .boxed(),
-    };
-
-    log_layer.with_filter(env_filter()).boxed()
+    }
 }
 
 fn env_filter() -> EnvFilter {
