@@ -1,6 +1,6 @@
 //! Not implemented for Linux yet
 
-use crate::linux::{get_dns_control_from_env, DnsControlMethod};
+use crate::linux::DnsControlMethod;
 use anyhow::Result;
 use futures::StreamExt as _;
 use std::time::Duration;
@@ -29,8 +29,11 @@ struct SignalParams {
 /// notify.
 ///
 /// Should be equivalent to `dbus-monitor --system "type='signal',interface='org.freedesktop.DBus.Properties',path='/org/freedesktop/resolve1',member='PropertiesChanged'"`
-pub async fn new_dns_notifier(_tokio_handle: tokio::runtime::Handle) -> Result<Worker> {
-    match get_dns_control_from_env() {
+pub async fn new_dns_notifier(
+    _tokio_handle: tokio::runtime::Handle,
+    method: Option<DnsControlMethod>,
+) -> Result<Worker> {
+    match method {
         Some(DnsControlMethod::EtcResolvConf) | None => Ok(Worker::new_dns_poller()),
         Some(DnsControlMethod::Systemd) => {
             Worker::new_dbus(SignalParams {
@@ -47,8 +50,11 @@ pub async fn new_dns_notifier(_tokio_handle: tokio::runtime::Handle) -> Result<W
 /// Listens for changes between Wi-Fi networks
 ///
 /// Should be similar to `dbus-monitor --system "type='signal',interface='org.freedesktop.NetworkManager',member='StateChanged'"`
-pub async fn new_network_notifier(_tokio_handle: tokio::runtime::Handle) -> Result<Worker> {
-    match get_dns_control_from_env() {
+pub async fn new_network_notifier(
+    _tokio_handle: tokio::runtime::Handle,
+    method: Option<DnsControlMethod>,
+) -> Result<Worker> {
+    match method {
         Some(DnsControlMethod::EtcResolvConf) | None => Ok(Worker::Null),
         Some(DnsControlMethod::Systemd) => {
             Worker::new_dbus(SignalParams {

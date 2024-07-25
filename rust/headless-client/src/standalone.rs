@@ -199,9 +199,12 @@ pub fn run_only_headless_client() -> Result<()> {
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
         let tokio_handle = tokio::runtime::Handle::current();
-        let mut dns_notifier = new_dns_notifier(tokio_handle.clone()).await?;
+        let dns_control_method = firezone_bin_shared::get_dns_control_from_env();
 
-        let mut network_notifier = new_network_notifier(tokio_handle.clone()).await?;
+        let mut dns_notifier = new_dns_notifier(tokio_handle.clone(), dns_control_method).await?;
+
+        let mut network_notifier =
+            new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
         drop(tokio_handle);
 
         let tun = tun_device.make_tun()?;

@@ -798,8 +798,11 @@ async fn run_controller(
     }
 
     let tokio_handle = tokio::runtime::Handle::current();
-    let mut dns_notifier = new_dns_notifier(tokio_handle.clone()).await?;
-    let mut network_notifier = new_network_notifier(tokio_handle.clone()).await?;
+    let dns_control_method = Some(Default::default());
+
+    let mut dns_notifier = new_dns_notifier(tokio_handle.clone(), dns_control_method).await?;
+    let mut network_notifier =
+        new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
     drop(tokio_handle);
 
     loop {
