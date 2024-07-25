@@ -15,7 +15,7 @@ use socket_factory::udp;
 use socket_factory::{TcpSocket, UdpSocket};
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
-    let local = get_best_route_excluding_interface(addr.ip(), TUNNEL_NAME);
+    let local = get_best_non_tunnel_route(addr.ip());
 
     let socket = socket_factory::tcp(addr)?;
     socket.bind((local, 0).into()); // To avoid routing loops, all TCP sockets are bound to "best" source IP.
@@ -24,12 +24,18 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
 }
 
 pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
-    let socket = socket =
-        socket_factory::udp(src_addr)?.with_source_ip_resolver(Box::new(|addr| {
-            Some(get_best_route_excluding_interface(addr, TUNNEL_NAME))
-        }));
+    let socket = socket = socket_factory::udp(src_addr)?
+        .with_source_ip_resolver(Box::new(|addr| Some(get_best_non_tunnel_route(addr))));
 
     Ok(socket)
+}
+
+fn get_best_non_tunnel_route(dst: IpAddr) -> IpAddr {
+    let src = get_best_route_excluding_interface(dst, TUNNEL_NAME);
+
+    tracing::debug!(%src, %dst, "Resolved best route outside of tunnel interface");
+
+    src
 }
 
 /// Finds the best route (i.e. source interface) for a given destination IP, excluding interfaces where the name matches the given filter.
