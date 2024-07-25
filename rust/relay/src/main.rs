@@ -180,9 +180,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
     let temp_logger_guard = tracing_core::dispatcher::set_default(
-        &tracing_subscriber::registry()
-            .with(log_layer(args).with_filter(LevelFilter::TRACE))
-            .into(),
+        &tracing_subscriber::registry().with(log_layer(args)).into(),
     );
 
     let dispatch: Dispatch = match args.otlp_grpc_endpoint.clone() {
