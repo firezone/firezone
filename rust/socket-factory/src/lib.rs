@@ -262,15 +262,18 @@ impl UdpSocket {
         Some(src)
     }
     pub fn try_send(&mut self, transmit: &DatagramOut) -> io::Result<()> {
+        let destination = transmit.dst;
+        let src_ip = transmit
+            .src
+            .map(|s| s.ip())
+            .or_else(|| self.resolve_source_for(destination.ip()));
+
         let transmit = quinn_udp::Transmit {
-            destination: transmit.dst,
+            destination,
             ecn: None,
             contents: &transmit.packet,
             segment_size: None,
-            src_ip: transmit
-                .src
-                .map(|s| s.ip())
-                .or_else(|| self.resolve_source_for(transmit.dst.ip())),
+            src_ip,
         };
 
         self.inner.try_io(Interest::WRITABLE, || {
