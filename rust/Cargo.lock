@@ -1084,7 +1084,6 @@ dependencies = [
  "proptest",
  "rand 0.8.5",
  "rand_core 0.6.4",
- "ring",
  "secrecy",
  "serde",
  "serde_json",
@@ -5628,11 +5627,7 @@ dependencies = [
  "quinn-udp",
  "socket2",
  "tokio",
-<<<<<<< HEAD
  "tracing",
-=======
- "windows 0.57.0",
->>>>>>> a445f2c3a (wip get_best_route)
 ]
 
 [[package]]
