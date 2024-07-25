@@ -1,5 +1,6 @@
 use super::{Error, ServiceId};
 use anyhow::{anyhow, Context as _, Result};
+use firezone_bin_shared::BUNDLE_ID;
 use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
 use tokio::net::{UnixListener, UnixStream};
 
@@ -88,9 +89,7 @@ impl Server {
 /// Test sockets live in e.g. `/run/user/1000/dev.firezone.client/data/`
 fn ipc_path(id: ServiceId) -> PathBuf {
     match id {
-        ServiceId::Prod => PathBuf::from("/run")
-            .join(connlib_shared::BUNDLE_ID)
-            .join("ipc.sock"),
+        ServiceId::Prod => PathBuf::from("/run").join(BUNDLE_ID).join("ipc.sock"),
         ServiceId::Test(id) => crate::known_dirs::runtime()
             .expect("`known_dirs::runtime()` should always work")
             .join(format!("ipc_test_{id}.sock")),

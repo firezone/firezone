@@ -1,4 +1,5 @@
 use anyhow::{Context as _, Result};
+use firezone_bin_shared::BUNDLE_ID;
 use tauri::api::notification::Notification;
 
 pub(crate) async fn set_autostart(enabled: bool) -> Result<()> {
@@ -44,7 +45,7 @@ pub(crate) fn show_update_notification(
 
 /// Show a notification in the bottom right of the screen
 pub(crate) fn show_notification(title: &str, body: &str) -> Result<()> {
-    Notification::new(connlib_shared::BUNDLE_ID)
+    Notification::new(BUNDLE_ID)
         .title(title)
         .body(body)
         .show()?;

@@ -4,7 +4,7 @@ use crate::linux::{get_dns_control_from_env, DnsControlMethod};
 use anyhow::Result;
 use futures::StreamExt as _;
 use std::time::Duration;
-use tokio::time::MissedTickBehavior;
+use tokio::time::{Interval, MissedTickBehavior};
 
 /// Parameters to tell `zbus` how to listen for a signal.
 struct SignalParams {
@@ -64,14 +64,14 @@ pub async fn new_network_notifier(_tokio_handle: tokio::runtime::Handle) -> Resu
 
 pub enum Worker {
     DBus(zbus::proxy::SignalStream<'static>),
-    DnsPoller(tokio::time::Interval),
+    DnsPoller(Interval),
     Null,
 }
 
 impl Worker {
     fn new_dns_poller() -> Self {
         let mut interval = tokio::time::interval(Duration::from_secs(5));
-        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
         Self::DnsPoller(interval)
     }
 
