@@ -163,7 +163,10 @@ pub(crate) fn notify_service_controller() -> Result<()> {
 mod test {
     use super::*;
     use firezone_bin_shared::TunDeviceManager;
+    use ip_network::Ipv4Network;
     use socket_factory::{DatagramIn, DatagramOut};
+    use std::net::ToSocketAddrs;
+    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 
     #[test]
     fn best_route_ip4_does_not_fail() {
