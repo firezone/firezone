@@ -32,6 +32,11 @@ pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
     Ok(socket)
 }
 
+/// Finds the best route (i.e. source interface) for a given destination IP, excluding interfaces where the name matches the given filter.
+///
+/// To prevent routing loops on Windows, we need to explicitly set a source IP for all packets.
+/// Windows uses a computed metric per interface for routing.
+/// We implement the same logic here, with the addition of explicitly filtering out our TUN interface.
 fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> IpAddr {
     use std::mem::{size_of, size_of_val, MaybeUninit};
     use std::net::{Ipv4Addr, Ipv6Addr};
