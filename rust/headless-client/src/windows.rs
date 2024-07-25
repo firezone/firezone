@@ -13,7 +13,8 @@ use connlib_shared::windows::TUNNEL_NAME;
 use socket_factory::{TcpSocket, UdpSocket};
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
-    let local = get_best_non_tunnel_route(addr.ip()).ok_or(io::Error::other("No route to host"))?;
+    let local =
+        get_best_non_tunnel_route(addr.ip())?.ok_or(io::Error::other("No route to host"))?;
 
     let socket = socket_factory::tcp(addr)?;
     socket.bind((local, 0).into())?; // To avoid routing loops, all TCP sockets are bound to "best" source IP.
