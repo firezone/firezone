@@ -100,7 +100,7 @@ impl UdpSocket {
 
     pub fn set_source_ip_resolver(
         &mut self,
-        resolver: Box<dyn Fn(IpAddr) -> Option<IpAddr> + 'static + Send + Sync>,
+        resolver: Box<dyn Fn(IpAddr) -> Option<IpAddr> + Send + Sync + 'static>,
     ) {
         self.source_ip_resolver = resolver;
     }
