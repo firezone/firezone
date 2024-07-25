@@ -24,8 +24,8 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
 }
 
 pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
-    let socket = socket = socket_factory::udp(src_addr)?
-        .with_source_ip_resolver(Box::new(|addr| get_best_non_tunnel_route(addr)));
+    let socket = socket =
+        socket_factory::udp(src_addr)?.with_source_ip_resolver(Box::new(get_best_non_tunnel_route));
 
     Ok(socket)
 }
