@@ -51,7 +51,7 @@ fn get_best_route(dst: IpAddr, filter: &str) -> IpAddr {
     unsafe {
         // TODO: iterate until it doesn't overflow
         let mut addresses: Vec<u8> = vec![0u8; 15000];
-        let mut addresses_len = size_of_val(&addresses) as u32;
+        let mut addresses_len = addresses.len() as u32;
         GetAdaptersAddresses(
             AF_UNSPEC.0 as u32,
             GET_ADAPTERS_ADDRESSES_FLAGS(0),
