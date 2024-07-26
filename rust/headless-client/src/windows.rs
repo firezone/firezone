@@ -196,7 +196,7 @@ fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAdd
         let Ok(route) = find_best_route_for_luid(luid, dst) else {
             continue;
         };
-        routes.push((best_route, best_src));
+        routes.push(route);
     }
 
     routes.sort_by(|a, b| a.metric.cmp(&b.metric));
