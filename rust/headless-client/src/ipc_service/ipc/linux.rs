@@ -60,6 +60,9 @@ impl Server {
             .with_context(|| format!("Couldn't bind UDS `{}`", sock_path.display()))?;
         let perms = std::fs::Permissions::from_mode(0o660);
         tokio::fs::set_permissions(&sock_path, perms).await?;
+
+        // TODO: Change this to `notify_service_controller` and put it in
+        // the same place in the IPC service's main loop as in the Headless Client.
         sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
         Ok(Self { listener })
     }

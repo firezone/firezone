@@ -153,6 +153,7 @@ jobs:
           # Wait a few seconds for the services to fully start. GH runners are
           # slow, so this gives the Client enough time to initialize its tun interface,
           # for example.
+          # Intended to mitigate <https://github.com/firezone/firezone/issues/5830>
           sleep 3
 
       - run: ./scripts/tests/${{ matrix.test.name }}.sh
