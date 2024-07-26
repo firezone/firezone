@@ -82,15 +82,15 @@ fn list_adapters() -> Result<Adapters> {
     let mut buffer: Vec<u8> = vec![0u8; 15000];
     let mut buffer_len = buffer.len() as u32;
     // Safety we just allocated buffer with the len we are passing
-    unsafe {
-        let mut res = GetAdaptersAddresses(
+    let mut res = unsafe {
+        GetAdaptersAddresses(
             AF_UNSPEC.0 as u32,
             GET_ADAPTERS_ADDRESSES_FLAGS(0),
             Some(null()),
             Some(buffer.as_mut_ptr() as *mut _),
             &mut buffer_len as *mut _,
-        );
-    }
+        )
+    };
 
     // Incase of a buffer overflow buffer_len will contain the neccesary length
     if res == ERROR_BUFFER_OVERFLOW {
