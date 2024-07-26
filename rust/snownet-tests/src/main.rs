@@ -8,7 +8,7 @@ use std::{
 };
 
 use anyhow::{bail, Context as _, Result};
-use boringtun::x25519::{PublicKey, StaticSecret};
+use boringtun::x25519::StaticSecret;
 use futures::{channel::mpsc, future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use ip_packet::IpPacket;
 use pnet_packet::{ip::IpNextHeaderProtocols, ipv4::Ipv4Packet};
@@ -80,7 +80,6 @@ async fn main() -> Result<()> {
 
     let socket = UdpSocket::bind((listen_addr, 0)).await?;
     let private_key = StaticSecret::random_from_rng(rand::thread_rng());
-    let public_key = PublicKey::from(&private_key);
 
     // The source and dst of our dummy IP packet that we send via the wireguard tunnel.
     let source = Ipv4Addr::new(172, 16, 0, 1);
@@ -88,10 +87,10 @@ async fn main() -> Result<()> {
 
     match role {
         Role::Dialer => {
-            let mut pool = ClientNode::<u64, u64>::new(private_key);
-            pool.update_relays(BTreeSet::new(), &relays, Instant::now());
+            let mut node = ClientNode::<u64, u64>::new(private_key);
+            node.update_relays(BTreeSet::new(), &relays, Instant::now());
 
-            let offer = pool.new_connection(1, Instant::now(), Instant::now());
+            let offer = node.new_connection(1, Instant::now(), Instant::now());
 
             redis_connection
                 .rpush(
@@ -100,7 +99,7 @@ async fn main() -> Result<()> {
                         session_key: *offer.session_key.expose_secret(),
                         username: offer.credentials.username,
                         password: offer.credentials.password,
-                        public_key: public_key.to_bytes(),
+                        public_key: node.public_key().to_bytes(),
                     },
                 )
                 .await
@@ -112,7 +111,7 @@ async fn main() -> Result<()> {
                 .context("Failed to pop answer")?
                 .1;
 
-            pool.accept_answer(
+            node.accept_answer(
                 1,
                 answer.public_key.into(),
                 Answer {
@@ -126,7 +125,7 @@ async fn main() -> Result<()> {
 
             let rx = spawn_candidate_task(redis_connection.clone(), "listener_candidates");
 
-            let mut eventloop = Eventloop::new(socket, pool, rx);
+            let mut eventloop = Eventloop::new(socket, node, rx);
 
             let ping_body = rand::random::<[u8; 32]>();
             let mut start = Instant::now();
@@ -168,8 +167,8 @@ async fn main() -> Result<()> {
             }
         }
         Role::Listener => {
-            let mut pool = ServerNode::<u64, u64>::new(private_key);
-            pool.update_relays(BTreeSet::new(), &relays, Instant::now());
+            let mut node = ServerNode::<u64, u64>::new(private_key);
+            node.update_relays(BTreeSet::new(), &relays, Instant::now());
 
             let offer = redis_connection
                 .blpop::<_, (String, wire::Offer)>("offers", 10.0)
@@ -177,7 +176,7 @@ async fn main() -> Result<()> {
                 .context("Failed to pop offer")?
                 .1;
 
-            let answer = pool.accept_connection(
+            let answer = node.accept_connection(
                 1,
                 Offer {
                     session_key: Secret::new(offer.session_key),
@@ -194,7 +193,7 @@ async fn main() -> Result<()> {
                 .rpush(
                     "answers",
                     wire::Answer {
-                        public_key: public_key.to_bytes(),
+                        public_key: node.public_key().to_bytes(),
                         username: answer.credentials.username,
                         password: answer.credentials.password,
                     },
@@ -204,7 +203,7 @@ async fn main() -> Result<()> {
 
             let rx = spawn_candidate_task(redis_connection.clone(), "dialer_candidates");
 
-            let mut eventloop = Eventloop::new(socket, pool, rx);
+            let mut eventloop = Eventloop::new(socket, node, rx);
 
             loop {
                 match poll_fn(|cx| eventloop.poll(cx)).await? {
