@@ -12,6 +12,7 @@ use ip_packet::{
     ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, MutableIpPacket, Packet as _,
 };
 use rand::rngs::StdRng;
+use rand::seq::IteratorRandom;
 use rand::{random, SeedableRng};
 use secrecy::{ExposeSecret, Secret};
 use std::borrow::Cow;
@@ -97,7 +98,7 @@ pub struct Node<T, TId, RId> {
     stats: NodeStats,
 
     marker: PhantomData<T>,
-    _rng: StdRng,
+    rng: StdRng,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -126,7 +127,7 @@ where
     pub fn new(private_key: StaticSecret, seed: [u8; 32]) -> Self {
         let public_key = &(&private_key).into();
         Self {
-            _rng: StdRng::from_seed(seed), // TODO: Use this seed for private key too. Requires refactoring of how we generate the login-url because that one needs to know the public key.
+            rng: StdRng::from_seed(seed), // TODO: Use this seed for private key too. Requires refactoring of how we generate the login-url because that one needs to know the public key.
             private_key,
             public_key: *public_key,
             marker: Default::default(),
@@ -549,6 +550,7 @@ where
         mut agent: IceAgent,
         remote: PublicKey,
         key: [u8; 32],
+        relay: Option<RId>,
         intent_sent_at: Instant,
         now: Instant,
     ) -> Connection<RId> {
@@ -578,6 +580,7 @@ where
             state: ConnectionState::Connecting {
                 possible_sockets: BTreeSet::default(),
                 buffered: RingBuffer::new(10),
+                relay,
             },
             last_outgoing: now,
             last_incoming: now,
@@ -779,6 +782,10 @@ where
             }
         }
     }
+
+    fn sample_relay(&mut self) -> Option<RId> {
+        self.allocations.keys().copied().choose(&mut self.rng)
+    }
 }
 
 impl<TId, RId> Node<Client, TId, RId>
@@ -822,6 +829,7 @@ where
             session_key,
             created_at: now,
             intent_sent_at,
+            relay: self.sample_relay(),
             is_failed: false,
         };
         let duration_since_intent = initial_connection.duration_since_intent(now);
@@ -859,6 +867,7 @@ where
             agent,
             remote,
             *initial.session_key.expose_secret(),
+            initial.relay,
             initial.intent_sent_at,
             now,
         );
@@ -915,11 +924,13 @@ where
         };
 
         self.seed_agent_with_local_candidates(cid, &mut agent);
+        let relay = self.sample_relay();
 
         let connection = self.init_connection(
             agent,
             remote,
             *offer.session_key.expose_secret(),
+            relay,
             now, // Technically, this isn't fully correct because gateways don't send intents so we just use the current time.
             now,
         );
@@ -959,7 +970,7 @@ where
 }
 
 struct Connections<TId, RId> {
-    initial: BTreeMap<TId, InitialConnection>,
+    initial: BTreeMap<TId, InitialConnection<RId>>,
     established: BTreeMap<TId, Connection<RId>>,
 }
 
@@ -1027,7 +1038,7 @@ where
         self.established.get_mut(id)
     }
 
-    fn iter_initial_mut(&mut self) -> impl Iterator<Item = (TId, &mut InitialConnection)> {
+    fn iter_initial_mut(&mut self) -> impl Iterator<Item = (TId, &mut InitialConnection<RId>)> {
         self.initial.iter_mut().map(|(id, conn)| (*id, conn))
     }
 
@@ -1247,9 +1258,14 @@ pub(crate) enum CandidateEvent {
     Invalid(Candidate),
 }
 
-struct InitialConnection {
+struct InitialConnection<RId> {
     agent: IceAgent,
     session_key: Secret<[u8; 32]>,
+
+    /// The fallback relay we sampled for this potential connection.
+    ///
+    /// `None` if we don't have any relays available.
+    relay: Option<RId>,
 
     created_at: Instant,
     intent_sent_at: Instant,
@@ -1257,7 +1273,7 @@ struct InitialConnection {
     is_failed: bool,
 }
 
-impl InitialConnection {
+impl<RId> InitialConnection<RId> {
     #[tracing::instrument(level = "debug", skip_all, fields(%cid))]
     fn handle_timeout<TId>(&mut self, cid: TId, now: Instant)
     where
@@ -1311,6 +1327,12 @@ enum ConnectionState<RId> {
     Connecting {
         /// Socket addresses from which we might receive data (even before we are connected).
         possible_sockets: BTreeSet<SocketAddr>,
+
+        /// The relay we have selected for this connection.
+        ///
+        /// `None` if we didn't have any relays available.
+        relay: Option<RId>,
+
         /// Packets emitted by wireguard whilst are still running ICE.
         ///
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
@@ -1517,6 +1539,7 @@ where
                         ConnectionState::Connecting {
                             possible_sockets,
                             buffered,
+                            ..
                         } => {
                             transmits.extend(buffered.into_iter().flat_map(|packet| {
                                 make_owned_transmit(remote_socket, &packet, allocations, now)
