@@ -245,21 +245,22 @@ where
                 // They are only useful to circumvent restrictive NATs in which case we are either talking to another relay candidate or a server-reflexive address.
                 return;
             }
-
-            CandidateKind::Relayed => {
-                // Optimisatically try to bind the channel only on the same relay as the remote peer.
-                if let Some(allocation) = self.same_relay_as_peer(&candidate) {
-                    allocation.bind_channel(candidate.addr(), now);
-                    return;
-                }
-            }
-            CandidateKind::ServerReflexive | CandidateKind::PeerReflexive => {}
+            CandidateKind::Relayed
+            | CandidateKind::ServerReflexive
+            | CandidateKind::PeerReflexive => {}
         }
 
-        // In other cases, bind on all relays.
-        for allocation in self.allocations.values_mut() {
-            allocation.bind_channel(candidate.addr(), now);
-        }
+        let Some(rid) = self.connections.relay(cid) else {
+            tracing::debug!("No relay selected for connection");
+            return;
+        };
+
+        let Some(allocation) = self.allocations.get_mut(&rid) else {
+            tracing::debug!(%rid, "Unknown relay");
+            return;
+        };
+
+        allocation.bind_channel(candidate.addr(), now);
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
@@ -275,20 +276,6 @@ where
         if let Some(agent) = self.connections.agent_mut(cid) {
             agent.invalidate_candidate(&candidate);
         }
-    }
-
-    /// Attempts to find the [`Allocation`] on the same relay as the remote's candidate.
-    ///
-    /// To do that, we need to check all candidates of each allocation and compare their IP.
-    /// The same relay might be reachable over IPv4 and IPv6.
-    #[must_use]
-    fn same_relay_as_peer(&mut self, candidate: &Candidate) -> Option<&mut Allocation> {
-        self.allocations.iter_mut().find_map(|(_, allocation)| {
-            allocation
-                .current_candidates()
-                .any(|c| c.addr().ip() == candidate.addr().ip())
-                .then_some(allocation)
-        })
     }
 
     /// Decapsulate an incoming packet.
@@ -763,13 +750,14 @@ where
     fn bindings_and_allocations_drain_events(&mut self) {
         let allocation_events = self
             .allocations
-            .values_mut()
-            .flat_map(|allocation| allocation.poll_event());
+            .iter_mut()
+            .flat_map(|(rid, allocation)| Some((*rid, allocation.poll_event()?)));
 
-        for event in allocation_events {
+        for (rid, event) in allocation_events {
             match event {
                 CandidateEvent::New(candidate) => {
                     add_local_candidate_to_all(
+                        rid,
                         candidate,
                         &mut self.connections,
                         &mut self.pending_events,
@@ -786,6 +774,7 @@ where
         }
     }
 
+    /// Sample a relay to use for a new connection.
     fn sample_relay(&mut self) -> Option<RId> {
         self.allocations.keys().copied().choose(&mut self.rng)
     }
@@ -864,13 +853,15 @@ where
             pass: answer.credentials.password,
         });
 
-        self.seed_agent_with_local_candidates(cid, &mut agent);
+        let selected_relay = initial.relay;
+
+        self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
 
         let connection = self.init_connection(
             agent,
             remote,
             *initial.session_key.expose_secret(),
-            initial.relay,
+            selected_relay,
             initial.intent_sent_at,
             now,
         );
@@ -926,14 +917,14 @@ where
             },
         };
 
-        self.seed_agent_with_local_candidates(cid, &mut agent);
-        let relay = self.sample_relay();
+        let selected_relay = self.sample_relay();
+        self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
 
         let connection = self.init_connection(
             agent,
             remote,
             *offer.session_key.expose_secret(),
-            relay,
+            selected_relay,
             now, // Technically, this isn't fully correct because gateways don't send intents so we just use the current time.
             now,
         );
@@ -952,14 +943,25 @@ where
     TId: Eq + Hash + Copy + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
 {
-    fn seed_agent_with_local_candidates(&mut self, connection: TId, agent: &mut IceAgent) {
+    fn seed_agent_with_local_candidates(
+        &mut self,
+        connection: TId,
+        selected_relay: Option<RId>,
+        agent: &mut IceAgent,
+    ) {
         for candidate in self.host_candidates.iter().cloned() {
             add_local_candidate(connection, agent, candidate, &mut self.pending_events);
         }
 
+        let Some(selected_relay) = selected_relay else {
+            tracing::debug!("Skipping seeding of relay candidates: No relay selected");
+            return;
+        };
+
         for candidate in self
             .allocations
-            .values()
+            .iter()
+            .filter_map(|(rid, allocation)| (*rid == selected_relay).then_some(allocation))
             .flat_map(|allocation| allocation.current_candidates())
         {
             add_local_candidate(
@@ -1023,6 +1025,13 @@ where
     fn agent_mut(&mut self, id: TId) -> Option<&mut IceAgent> {
         let maybe_initial_connection = self.initial.get_mut(&id).map(|i| &mut i.agent);
         let maybe_established_connection = self.established.get_mut(&id).map(|c| &mut c.agent);
+
+        maybe_initial_connection.or(maybe_established_connection)
+    }
+
+    fn relay(&mut self, id: TId) -> Option<RId> {
+        let maybe_initial_connection = self.initial.get_mut(&id).and_then(|i| i.relay);
+        let maybe_established_connection = self.established.get_mut(&id).and_then(|c| c.relay);
 
         maybe_initial_connection.or(maybe_established_connection)
     }
@@ -1099,22 +1108,27 @@ enum EncodeError {
 }
 
 fn add_local_candidate_to_all<TId, RId>(
+    rid: RId,
     candidate: Candidate,
     connections: &mut Connections<TId, RId>,
     pending_events: &mut VecDeque<Event<TId>>,
 ) where
     TId: Copy + fmt::Display,
+    RId: Copy + PartialEq,
 {
     let initial_connections = connections
         .initial
         .iter_mut()
-        .map(|(id, c)| (*id, &mut c.agent));
+        .flat_map(|(id, c)| Some((*id, &mut c.agent, c.relay?)));
     let established_connections = connections
         .established
         .iter_mut()
-        .map(|(id, c)| (*id, &mut c.agent));
+        .flat_map(|(id, c)| Some((*id, &mut c.agent, c.relay?)));
 
-    for (cid, agent) in initial_connections.chain(established_connections) {
+    for (cid, agent, _) in initial_connections
+        .chain(established_connections)
+        .filter(|(_, _, selected_relay)| *selected_relay == rid)
+    {
         let _span = info_span!("connection", %cid).entered();
 
         add_local_candidate(cid, agent, candidate.clone(), pending_events);
