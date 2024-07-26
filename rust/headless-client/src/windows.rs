@@ -222,11 +222,12 @@ mod test {
             })
             .unwrap();
 
-        let mut buf = [0u8; 1000];
-        let _response = std::future::poll_fn(|cx| socket.poll_recv_from(&mut buf, cx))
-            .await
-            .unwrap()
-            .next()
-            .unwrap();
+        std::future::poll_fn(|cx| {
+            let mut buf = [0u8; 1000];
+            let result = std::task::ready!(socket.poll_recv_from(&mut buf, cx));
+
+            let _response = result.uwrap().next().unwrap();
+        })
+        .await;
     }
 }
