@@ -5,7 +5,10 @@ use anyhow::{anyhow, Context as _, Result};
 use connlib_shared::DEFAULT_MTU;
 use futures::TryStreamExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use libc::{close, fcntl, makedev, mknod, open, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR, S_IFCHR};
+use libc::{
+    close, fcntl, makedev, mknod, open, EEXIST, ENOENT, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR,
+    S_IFCHR,
+};
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle, RouteAddRequest, RuleAddRequest};
@@ -33,7 +36,6 @@ const TUN_DEV_MINOR: u32 = 200;
 // Safety: We know that this is a valid C string.
 const TUN_FILE: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"/dev/net/tun\0") };
 
-const FILE_ALREADY_EXISTS: i32 = -17;
 const FIREZONE_TABLE: u32 = 0x2021_fd00;
 
 /// For lack of a better name
@@ -125,7 +127,7 @@ impl TunDeviceManager {
 
         if res_v4.is_ok() {
             if let Err(e) = make_rule(handle).v4().execute().await {
-                if !matches!(&e, NetlinkError(err) if err.raw_code() == FILE_ALREADY_EXISTS) {
+                if !matches!(&e, NetlinkError(err) if err.raw_code() == -EEXIST) {
                     tracing::warn!(
                         "Couldn't add ip rule for ipv4: {e:?}, ipv4 packets won't be routed"
                     );
@@ -138,7 +140,7 @@ impl TunDeviceManager {
 
         if res_v6.is_ok() {
             if let Err(e) = make_rule(handle).v6().execute().await {
-                if !matches!(&e, NetlinkError(err) if err.raw_code() == FILE_ALREADY_EXISTS) {
+                if !matches!(&e, NetlinkError(err) if err.raw_code() == -EEXIST) {
                     tracing::warn!(
                         "Couldn't add ip rule for ipv6: {e:?}, ipv6 packets won't be routed"
                     );
@@ -243,9 +245,16 @@ async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
         IpNetwork::V6(ipnet) => make_route_v6(idx, handle, *ipnet).execute().await,
     };
 
-    if let Err(err) = res {
-        tracing::debug!(%route, "Failed to add route: {err}");
+    let Err(err) = res else {
+        return;
+    };
+
+    // We expect this to be called often with an already existing route since set_routes always calls for all routes
+    if matches!(&err, NetlinkError(err) if err.raw_code() == -EEXIST) {
+        return;
     }
+
+    tracing::warn!(%route, "Failed to add route: {err}");
 }
 
 async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
@@ -256,9 +265,16 @@ async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
 
     let res = handle.route().del(message).execute().await;
 
-    if let Err(err) = res {
-        tracing::debug!(%route, "Failed to remove route: {err}");
+    let Err(err) = res else {
+        return;
+    };
+
+    // We expect this to be called often with an already existing route since set_routes always calls for all routes
+    if matches!(&err, NetlinkError(err) if err.raw_code() == -ENOENT) {
+        return;
     }
+
+    tracing::warn!(%route, "Failed to remove route: {err}");
 }
 
 #[derive(Debug)]
