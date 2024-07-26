@@ -207,15 +207,10 @@ mod test {
                 .unwrap();
 
         // Send a STUN request.
-        let server = "stun.cloudflare.com:3478"
-            .to_socket_addrs()
-            .unwrap()
-            .next()
-            .unwrap();
         socket
             .send(DatagramOut {
                 src: None,
-                dst: server,
+                dst: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(141, 101, 90, 0), 3478)), // stun.cloudflare.com,
                 packet: Cow::Borrowed(&hex_literal::hex!(
                     "000100002112A4420123456789abcdef01234567"
                 )),
