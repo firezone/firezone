@@ -1,4 +1,5 @@
 use crate::windows::CREATE_NO_WINDOW;
+use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
 use connlib_shared::DEFAULT_MTU;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -26,9 +27,6 @@ use windows::Win32::{
     Networking::WinSock::{AF_INET, AF_INET6},
 };
 use wintun::Adapter;
-
-// wintun automatically append " Tunnel" to this
-pub(crate) const TUNNEL_NAME: &str = "Firezone";
 
 /// The ring buffer size used for Wintun.
 ///

@@ -9,7 +9,7 @@ use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 
-use connlib_shared::windows::TUNNEL_NAME;
+use firezone_bin_shared::TUNNEL_NAME;
 use socket_factory::{TcpSocket, UdpSocket};
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
