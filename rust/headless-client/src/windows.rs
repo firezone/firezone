@@ -203,7 +203,7 @@ fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAdd
     }
 
     routes.sort_by(|a, b| a.metric.cmp(&b.metric));
-    routes.first()?.addr
+    Some(routes.first()?.addr)
 }
 
 // The return value is useful on Linux
