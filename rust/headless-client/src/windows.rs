@@ -117,7 +117,8 @@ fn is_adapter_name(adapter: &IP_ADAPTER_ADDRESSES_LH, name: &str) -> bool {
         return false;
     }
 
-    let Ok(friendly_name) = adapter.FriendlyName.to_string() else {
+    // SAFETY: It should be safe to call to_string since we checked it's not null and the reference should be valid
+    let Ok(friendly_name) = unsafe { adapter.FriendlyName.to_string() } else {
         return false;
     };
 
