@@ -550,19 +550,18 @@ impl ReferenceStateMachine for ReferenceState {
                 let all_old_are_present = disconnected
                     .iter()
                     .all(|rid| state.relays.contains_key(rid));
-                let any_new_are_present = online.keys().any(|rid| state.relays.contains_key(rid));
+                let no_new_are_present = online.keys().all(|rid| !state.relays.contains_key(rid));
 
-                let any_new_uses_assigned_ip4 = online
-                    .values()
-                    .any(|h| h.ip4.is_some_and(|ip| state.network.contains(ip)));
-                let any_new_uses_assigned_ip6 = online
-                    .values()
-                    .any(|h| h.ip6.is_some_and(|ip| state.network.contains(ip)));
+                let mut additional_routes = RoutingTable::default();
+                for (rid, relay) in online {
+                    if !additional_routes.add_host(*rid, relay) {
+                        return false;
+                    }
+                }
 
-                all_old_are_present
-                    && !any_new_are_present
-                    && !any_new_uses_assigned_ip4
-                    && !any_new_uses_assigned_ip6
+                let route_overlap = state.network.overlaps_with(&additional_routes);
+
+                all_old_are_present && no_new_are_present && !route_overlap
             }
             Transition::Idle => true,
         }
