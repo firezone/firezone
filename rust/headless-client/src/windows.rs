@@ -13,7 +13,7 @@ use std::{
     ptr::null,
 };
 
-use windows::Win32::NetworkManagement::IpHelper::GetAdaptersAddresses;
+use windows::Win32::NetworkManagement::{IpHelper::GetAdaptersAddresses, Ndis::NET_LUID_LH};
 use windows::Win32::Networking::WinSock::SOCKADDR_INET;
 use windows::Win32::{
     NetworkManagement::IpHelper::{
@@ -126,6 +126,53 @@ fn is_adapter_name(adapter: &IP_ADAPTER_ADDRESSES_LH, name: &str) -> bool {
     &friendly_name == name
 }
 
+struct Route {
+    metric: u32,
+    addr: IpAddr,
+}
+
+fn to_ip_addr(addr: SOCKADDR_INET, dst: IpAddr) -> Option<IpAddr> {
+    match (addr.si_family, dst) {
+        (ADDRESS_FAMILY(0), IpAddr::V4(_)) | (ADDRESS_FAMILY(2), _) => {
+            Some(Ipv4Addr::from(addr.Ipv4.sin_addr).into())
+        }
+        (ADDRESS_FAMILY(0), IpAddr::V6(_)) | (ADDRESS_FAMILY(23), _) => {
+            Some(Ipv6Addr::from(addr.Ipv6.sin6_addr).into())
+        }
+        _ => None,
+    }
+}
+
+fn find_best_route_for_luid(luid: &NET_LUID_H, dst: IpAddr) -> Result<Route> {
+    let addr: SOCKADDR_INET = SocketAddr::from((dst, 0)).into();
+    let mut best_route: MaybeUninit<MIB_IPFORWARD_ROW2> = MaybeUninit::zeroed();
+    let mut best_src: MaybeUninit<SOCKADDR_INET> = MaybeUninit::zeroed();
+
+    // SAFETY: all pointers w ejust allocated with the correct types so it must be safe
+    let res = unsafe {
+        GetBestRoute2(
+            Some(luid as *const _),
+            0,
+            None,
+            &addr as *const _,
+            0,
+            best_route.as_mut_ptr(),
+            best_src.as_mut_ptr(),
+        )
+    };
+
+    res.ok()?;
+
+    // SAFETY: we just successfully initialized these pointers
+    let best_route = unsafe { best_route.assume_init() };
+    let best_src = unsafe { best_src.assume_init() };
+
+    Ok(Route {
+        addr: to_ip_addr(best_src, dst),
+        metric: best_route.Metric,
+    })
+}
+
 /// Finds the best route (i.e. source interface) for a given destination IP, excluding interfaces where the name matches the given filter.
 ///
 /// To prevent routing loops on Windows, we need to explicitly set a source IP for all packets.
@@ -144,48 +191,16 @@ fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAdd
         .map(|adapter| adapter.Luid)
         .collect();
 
-    // SAFETY: lol
-    unsafe {
-        let mut routes: Vec<(MIB_IPFORWARD_ROW2, SOCKADDR_INET)> = Vec::new();
-        for luid in &luids {
-            let addr: SOCKADDR_INET = SocketAddr::from((dst, 0)).into();
-            let mut best_route: MaybeUninit<MIB_IPFORWARD_ROW2> = MaybeUninit::zeroed();
-            let mut best_src: MaybeUninit<SOCKADDR_INET> = MaybeUninit::zeroed();
-
-            let res = GetBestRoute2(
-                Some(luid as *const _),
-                0,
-                None,
-                &addr as *const _,
-                0,
-                best_route.as_mut_ptr(),
-                best_src.as_mut_ptr(),
-            );
-
-            if res.is_err() {
-                continue;
-            }
-
-            let best_route = best_route.assume_init();
-            let best_src = best_src.assume_init();
-            routes.push((best_route, best_src));
-        }
-
-        routes.sort_by(|(a, _), (b, _)| a.Metric.cmp(&b.Metric));
-
-        let addr = routes.first()?.1;
-        match addr.si_family {
-            // TODO: it might be better to only get the family that we care about?
-            // we will also want to discard the not matching version addresses
-            ADDRESS_FAMILY(0) => match dst {
-                IpAddr::V4(_) => Some(Ipv4Addr::from(addr.Ipv4.sin_addr).into()),
-                IpAddr::V6(_) => Some(Ipv6Addr::from(addr.Ipv6.sin6_addr).into()),
-            },
-            ADDRESS_FAMILY(2) => Some(Ipv4Addr::from(addr.Ipv4.sin_addr).into()),
-            ADDRESS_FAMILY(23) => Some(Ipv6Addr::from(addr.Ipv6.sin6_addr).into()),
-            _ => panic!("Invalid address"),
-        }
+    let mut routes: Vec<Route> = Vec::new();
+    for luid in &luids {
+        let Ok(route) = find_best_route_for_luid(luid, dst) else {
+            continue;
+        };
+        routes.push((best_route, best_src));
     }
+
+    routes.sort_by(|a, b| a.metric.cmp(&b.metric));
+    routes.first()?.addr
 }
 
 // The return value is useful on Linux
