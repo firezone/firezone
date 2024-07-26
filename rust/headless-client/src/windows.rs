@@ -192,7 +192,7 @@ fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAdd
         .ok()?
         .filter(|adapter| !is_adapter_name(adapter, filter))
         .map(|adapter| adapter.Luid)
-        .filter_map(|luid| find_best_route_for_luid(&luid, dst))
+        .filter_map(|luid| find_best_route_for_luid(&luid, dst).ok())
         .collect();
 
     routes.sort_by(|a, b| a.metric.cmp(&b.metric));
