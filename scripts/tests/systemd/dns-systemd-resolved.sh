@@ -44,7 +44,7 @@ resolvectl dns tun-firezone && exit 1
 stat "/usr/bin/$BINARY_NAME"
 sudo systemctl start "$SERVICE_NAME" || debug_exit
 
-# TODO: Remove after #6026 merges
+# TODO: Remove after #6026 goes into the next release. Until then, the compat tests will need the `sleep 3` to keep passing
 # This is needed for the compatibility tests to pass, but once #6026
 # is in `main`, it should be redundant
 sleep 3
