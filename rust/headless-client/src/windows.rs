@@ -128,6 +128,7 @@ fn is_adapter_name(adapter: &IP_ADAPTER_ADDRESSES_LH, name: &str) -> bool {
     &friendly_name == name
 }
 
+#[derive(PartialEq)]
 struct Route {
     metric: u32,
     addr: IpAddr,
