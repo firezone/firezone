@@ -270,6 +270,7 @@ fn create_resolvers(
 
             let mut resolver_opts = ResolverOpts::default();
             resolver_opts.edns0 = true;
+            resolver_opts.recursion_desired = false;
 
             (
                 sentinel,
