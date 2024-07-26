@@ -2,11 +2,16 @@ defmodule Web.Settings.ApiClients.Beta do
   use Web, :live_view
 
   def mount(_params, _session, socket) do
-    socket =
-      socket
-      |> assign(:page_title, "API Clients")
+    if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
+      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients")}
+    else
+      socket =
+        socket
+        |> assign(:page_title, "API Clients")
+        |> assign(:requested, false)
 
-    {:ok, socket}
+      {:ok, socket}
+    end
   end
 
   def render(assigns) do
@@ -23,48 +28,46 @@ defmodule Web.Settings.ApiClients.Beta do
         <a class={link_style()} href="api.firezone.dev/swaggerui">interactive API docs</a>
       </:help>
       <:content>
-        <div class="max-w-2xl px-4 py-2 mx-auto">
-          <div class="text-lg text-center">
-            The Firezone REST API is currently in closed beta.  You may request access by emailing
-            <.link
-              class={link_style()}
-              href={
-                mailto_support(@account, @subject, "REST API Closed Beta Request: #{@account.name}")
-              }
-            >
-              support@firezone.dev
-            </.link>
-            with the following message template.
-          </div>
-          <div class="my-4">
-            Subject: <.code_block
-              id="msg_subject"
-              class="w-full text-xs whitespace-pre-line"
-              phx-no-format
-              phx-update="ignore"
-            >REST API Closed Beta Request: <%= "#{@account.name}" %></.code_block>
-          </div>
-
-          <div class="my-4">
-            Body: <.code_block
-              id="msg_body"
-              class="w-full text-xs whitespace-pre-line"
-              phx-no-format
-              phx-update="ignore"
-            ><%= email_body(@account, @subject) %></.code_block>
-          </div>
-        </div>
+        <.flash kind={:info}>
+          <p class="flex items-center gap-1.5 text-sm font-semibold leading-6">
+            <span class="hero-wrench-screwdriver h-4 w-4"></span> REST API Beta
+          </p>
+          The REST API is currently in closed beta.
+          <span :if={@requested == false}>
+            <p>
+              <a
+                id="beta-request"
+                href="#"
+                class="text-accent-900 underline"
+                phx-click="request_access"
+              >
+                Click here
+              </a>
+              to request access.
+            </p>
+          </span>
+          <span :if={@requested == true}>
+            <p>
+              Your request to join the closed beta has been made.
+            </p>
+          </span>
+        </.flash>
       </:content>
     </.section>
     """
   end
 
-  defp email_body(account, subject) do
-    """
-    Account Name: #{account.name}
-    Account Slug: #{account.slug}
-    Account ID: #{account.id}
-    Actor ID: #{subject.actor.id}
-    """
+  def handle_event("request_access", _params, socket) do
+    Web.Mailer.BetaEmail.rest_api_beta_email(
+      socket.assigns.account,
+      socket.assigns.subject
+    )
+    |> Web.Mailer.deliver()
+
+    socket =
+      socket
+      |> assign(:requested, true)
+
+    {:noreply, socket}
   end
 end

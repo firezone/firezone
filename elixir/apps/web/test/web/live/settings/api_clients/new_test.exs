@@ -33,16 +33,8 @@ defmodule Web.Live.Settings.ApiClient.NewTest do
     identity: identity,
     conn: conn
   } do
-    attrs = %{
-      features: %{
-        rest_api: false,
-        traffic_filters: true,
-        flow_activities: true,
-        policy_conditions: true,
-        multi_site_resources: true,
-        idp_sync: true
-      }
-    }
+    features = Map.from_struct(account.features)
+    attrs = %{features: %{features | rest_api: false}}
 
     {:ok, account} = Domain.Accounts.update_account(account, attrs)
 
