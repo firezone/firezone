@@ -110,16 +110,12 @@ impl TunDeviceManager {
                 .chain(v6.into_iter().map(IpNetwork::from)),
         );
 
-        if new_routes == self.routes {
-            return Ok(());
-        }
-
-        for new_route in new_routes.difference(&self.routes) {
-            add_route(*new_route, iface_idx)?;
-        }
-
         for old_route in self.routes.difference(&new_routes) {
-            remove_route(*old_route, iface_idx)?;
+            remove_route(*old_route, iface_idx);
+        }
+
+        for new_route in &new_routes {
+            add_route(*new_route, iface_idx);
         }
 
         self.routes = new_routes;
@@ -129,28 +125,39 @@ impl TunDeviceManager {
 }
 
 // It's okay if this blocks until the route is added in the OS.
-fn add_route(route: IpNetwork, iface_idx: u32) -> Result<()> {
+fn add_route(route: IpNetwork, iface_idx: u32) {
     const DUPLICATE_ERR: u32 = 0x80071392;
     let entry = forward_entry(route, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
-    match unsafe { CreateIpForwardEntry2(&entry) }.ok() {
-        Ok(()) => Ok(()),
-        Err(e) if e.code().0 as u32 == DUPLICATE_ERR => {
-            tracing::debug!(%route, "Failed to add duplicate route, ignoring");
-            Ok(())
-        }
-        Err(e) => Err(e.into()),
+    let Err(e) = unsafe { CreateIpForwardEntry2(&entry) }.ok() else {
+        return;
+    };
+
+    // We expect set_routes to call add_route with the same routes always making this error expected
+    if e.code().0 as u32 == DUPLICATE_ERR {
+        return;
     }
+
+    tracing::warn!(%route, "Failed to add route: {e}");
 }
 
 // It's okay if this blocks until the route is removed in the OS.
-fn remove_route(route: IpNetwork, iface_idx: u32) -> Result<()> {
+fn remove_route(route: IpNetwork, iface_idx: u32) {
+    const ELEMENT_NOT_FOUND: u32 = 0x80070490;
     let entry = forward_entry(route, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
-    unsafe { DeleteIpForwardEntry2(&entry) }.ok()?;
-    Ok(())
+
+    let Err(e) = unsafe { DeleteIpForwardEntry2(&entry) }.ok() else {
+        return;
+    };
+
+    if e.code().0 as u32 == ELEMENT_NOT_FOUND {
+        return;
+    }
+
+    tracing::warn!(%route, "Failed to remove route: {e}")
 }
 
 fn forward_entry(route: IpNetwork, iface_idx: u32) -> MIB_IPFORWARD_ROW2 {
