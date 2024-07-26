@@ -18,8 +18,8 @@ atomicwrites = "0.4.3"
 chrono = { workspace = true }
 clap = { version = "4.5", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
-connlib-shared = { workspace = true }
 crash-handler = "0.6.2"
+firezone-bin-shared = { workspace = true }
 firezone-headless-client = { path = "../../headless-client" }
 futures = { version = "0.3", default-features = false }
 git-version = "0.3.9"
@@ -46,12 +46,12 @@ tracing = { workspace = true }
 tracing-log = "0.2"
 tracing-panic = "0.1.2"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
-url = { version = "2.5.0", features = ["serde"] }
-uuid = { version = "1.7.0", features = ["v4"] }
+url = { version = "2.5.2", features = ["serde"] }
+uuid = { version = "1.10.0", features = ["v4"] }
 zip = { version = "2", features = ["deflate", "time"], default-features = false }
 
 [dependencies.keyring]
-version = "3.0.3"
+version = "3.0.4"
 features = [
     "crypto-rust", # Don't rely on OpenSSL
     "sync-secret-service", # Can't use Tokio because of <https://github.com/hwchen/keyring-rs/issues/132>
@@ -66,23 +66,13 @@ nix = { version = "0.28.0", features = ["user"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 tauri-winrt-notification = "0.5.0"
-windows-core = "0.57.0"
-windows-implement = "0.57.0"
 winreg = "0.52.0"
 wintun = "0.4.0"
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
 version = "0.57.0"
 features = [
-  # For implementing COM interfaces
-  "implement",
   "Win32_Foundation",
-  # For listening for network change events
-  "Win32_Networking_NetworkListManager",
-  # COM is needed to listen for network change events
-  "Win32_System_Com",
-  # Needed to listen for system DNS changes
-  "Win32_System_Registry",
   "Win32_System_Threading",
 ]
 

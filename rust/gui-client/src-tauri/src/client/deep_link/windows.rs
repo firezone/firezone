@@ -3,7 +3,7 @@
 
 use super::FZ_SCHEME;
 use anyhow::{Context, Result};
-use connlib_shared::BUNDLE_ID;
+use firezone_bin_shared::BUNDLE_ID;
 use secrecy::Secret;
 use std::{io, path::Path, time::Duration};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};

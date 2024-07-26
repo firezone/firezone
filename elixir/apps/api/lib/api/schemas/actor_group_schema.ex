@@ -6,7 +6,7 @@ defmodule API.Schemas.ActorGroup do
     alias OpenApiSpex.Schema
 
     OpenApiSpex.schema(%{
-      title: "Actor Group",
+      title: "ActorGroup",
       description: "Actor Group",
       type: :object,
       properties: %{
@@ -27,7 +27,7 @@ defmodule API.Schemas.ActorGroup do
     alias API.Schemas.ActorGroup
 
     OpenApiSpex.schema(%{
-      title: "Actor Group Request",
+      title: "ActorGroupRequest",
       description: "POST body for creating an Actor Group",
       type: :object,
       properties: %{
@@ -48,7 +48,7 @@ defmodule API.Schemas.ActorGroup do
     alias API.Schemas.ActorGroup
 
     OpenApiSpex.schema(%{
-      title: "Actor GroupResponse",
+      title: "ActorGroupResponse",
       description: "Response schema for single Actor Group",
       type: :object,
       properties: %{
@@ -69,7 +69,7 @@ defmodule API.Schemas.ActorGroup do
     alias API.Schemas.ActorGroup
 
     OpenApiSpex.schema(%{
-      title: "Actor Group List Response",
+      title: "ActorGroupListResponse",
       description: "Response schema for multiple Actor Groups",
       type: :object,
       properties: %{

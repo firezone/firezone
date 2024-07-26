@@ -17,7 +17,7 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.New do
       assign(socket,
         id: id,
         form: to_form(changeset),
-        page_title: "New Identity Provider"
+        page_title: "New Identity Provider: Microsoft Entra"
       )
 
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -37,9 +37,7 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.New do
       </.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title>
-        Add a new Microsoft Entra ID Identity Provider
-      </:title>
+      <:title><%= @page_title %></:title>
       <:help>
         For a more detailed guide on setting up Firezone with Microsoft Entra ID, please <.link
           href="https://www.firezone.dev/kb/authenticate/entra"

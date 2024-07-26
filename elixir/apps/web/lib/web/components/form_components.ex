@@ -32,8 +32,9 @@ defmodule Web.FormComponents do
 
   attr :type, :string,
     default: "text",
-    values: ~w(checkbox color date datetime-local email file hidden month number password
-               range radio readonly search group_select select tel text textarea time url week)
+    values:
+      ~w(checkbox color date datetime-local email file hidden month number password
+               range radio radio_button_group readonly search group_select select tel text textarea time url week)
 
   attr :field, Phoenix.HTML.FormField,
     doc: "a form field struct retrieved from the form, for example: @form[:email]"
@@ -97,7 +98,8 @@ defmodule Web.FormComponents do
     |> input()
   end
 
-  def input(%{type: "radio"} = assigns) do
+  # radio with label
+  def input(%{type: "radio", label: _label} = assigns) do
     ~H"""
     <div>
       <label class="flex items-center gap-2 text-neutral-900">
@@ -117,6 +119,24 @@ defmodule Web.FormComponents do
         <%= if @inner_block, do: render_slot(@inner_block) %>
       </label>
     </div>
+    """
+  end
+
+  # radio without label
+  def input(%{type: "radio_button_group"} = assigns) do
+    ~H"""
+    <input
+      type="radio"
+      id={@id}
+      name={@name}
+      value={@value}
+      checked={@checked}
+      class={[
+        "hidden peer",
+        @class
+      ]}
+      {@rest}
+    />
     """
   end
 
@@ -172,7 +192,8 @@ defmodule Web.FormComponents do
         class={[
           "text-sm bg-neutral-50",
           "border border-neutral-300 text-neutral-900 rounded",
-          "block w-full p-2",
+          "block p-2",
+          !@inline_errors && "w-full",
           @errors != [] && "border-rose-400 focus:border-rose-400"
         ]}
         multiple={@multiple}
@@ -213,7 +234,8 @@ defmodule Web.FormComponents do
         class={[
           "text-sm bg-neutral-50",
           "border border-neutral-300 text-neutral-900 rounded",
-          "block w-full p-2.5",
+          "block p-2.5",
+          !@inline_errors && "w-full",
           @errors != [] && "border-rose-400 focus:border-rose-400"
         ]}
         multiple={@multiple}
@@ -237,10 +259,11 @@ defmodule Web.FormComponents do
         id={@id}
         name={@name}
         class={[
-          "block w-full rounded sm:text-sm sm:leading-6",
+          "block rounded sm:text-sm sm:leading-6",
           "bg-neutral-50",
           "border border-neutral-300 rounded",
           "min-h-[6rem]",
+          !@inline_errors && "w-full",
           @errors != [] && "border-rose-400 focus:border-rose-400",
           @class
         ]}
@@ -295,7 +318,7 @@ defmodule Web.FormComponents do
         "flex",
         "text-sm text-neutral-900 bg-neutral-50",
         "border border-neutral-300 rounded",
-        "w-full",
+        !@inline_errors && "w-full",
         "focus-within:outline-none focus-within:border-accent-600",
         "peer-disabled:bg-neutral-50 peer-disabled:text-neutral-500 peer-disabled:border-neutral-200 peer-disabled:shadow-none",
         @errors != [] && "border-rose-400 focus:border-rose-400"
@@ -341,7 +364,8 @@ defmodule Web.FormComponents do
         id={@id}
         value={Phoenix.HTML.Form.normalize_value(@type, @value)}
         class={[
-          "block w-full",
+          "block",
+          !@inline_errors && "w-full",
           "p-2.5 rounded",
           "bg-neutral-50 text-neutral-900 text-sm",
           "border border-neutral-300",
@@ -355,6 +379,84 @@ defmodule Web.FormComponents do
         <%= msg %>
       </.error>
     </div>
+    """
+  end
+
+  ### Dialogs ###
+
+  attr :id, :string, required: true, doc: "The id of the dialog"
+  attr :class, :string, default: "", doc: "Custom classes to be added to the button"
+  attr :style, :string, default: "danger", doc: "The style of the button"
+  attr :icon, :string, default: "hero-trash-solid", doc: "The icon of the button"
+  attr :size, :string, default: "md", doc: "The size of the button"
+  attr :on_confirm, :string, required: true, doc: "The phx event to broadcast on confirm"
+
+  attr :on_confirm_id, :string,
+    default: nil,
+    doc: "The phx event id value to broadcast on confirm"
+
+  slot :dialog_title, doc: "The title of the dialog"
+  slot :dialog_content, doc: "The content of the dialog"
+  slot :dialog_confirm_button, doc: "The content of the confirm button of the dialog"
+  slot :dialog_cancel_button, doc: "The content of the cancel button of the dialog"
+  slot :inner_block, required: true, doc: "The label for the button"
+
+  def button_with_confirmation(assigns) do
+    ~H"""
+    <dialog
+      id={"#{@id}_dialog"}
+      class={[
+        "backdrop:bg-gray-800/75 bg-transparent",
+        "p-4 w-full md:inset-0 max-h-full",
+        "overflow-y-auto overflow-x-hidden"
+      ]}
+    >
+      <form method="dialog" class="flex items-center justify-center">
+        <div class="relative bg-white rounded-lg shadow max-w-2xl">
+          <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+            <h3 class="text-xl font-semibold text-neutral-900">
+              <%= render_slot(@dialog_title) %>
+            </h3>
+            <button
+              class="text-neutral-400 bg-transparent hover:text-accent-900"
+              type="submit"
+              value="cancel"
+            >
+              <.icon name="hero-x-mark" class="h-4 w-4" />
+              <span class="sr-only">Close modal</span>
+            </button>
+          </div>
+          <div class="p-4 md:p-5 text-neutral-500 text-base">
+            <%= render_slot(@dialog_content) %>
+          </div>
+          <div class="flex items-center justify-end p-4 md:p-5 border-t border-gray-200 rounded-b">
+            <.button
+              data-dialog-action="cancel"
+              type="submit"
+              value="cancel"
+              style="info"
+              class="px-5 py-2.5"
+            >
+              <%= render_slot(@dialog_cancel_button) %>
+            </.button>
+            <.button
+              data-dialog-action="confirm"
+              phx-click={@on_confirm}
+              phx-value-id={@on_confirm_id}
+              type="submit"
+              style="danger"
+              value="confirm"
+              class="py-2.5 px-5 ms-3"
+            >
+              <%= render_slot(@dialog_confirm_button) %>
+            </.button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+    <.button id={@id} style={@style} size={@size} icon={@icon} class={@class} phx-hook="ConfirmDialog">
+      <%= render_slot(@inner_block) %>
+    </.button>
     """
   end
 
@@ -422,13 +524,14 @@ defmodule Web.FormComponents do
     </.submit_button>
   """
 
-  attr :rest, :global
+  attr :rest, :global, include: ~w(class icon)
+  attr :style, :string, default: "primary", doc: "The style of the button"
   slot :inner_block, required: true
 
   def submit_button(assigns) do
     ~H"""
     <div class="flex justify-end">
-      <.button type="submit" style="primary" {@rest}>
+      <.button type="submit" style={@style} {@rest}>
         <%= render_slot(@inner_block) %>
       </.button>
     </div>

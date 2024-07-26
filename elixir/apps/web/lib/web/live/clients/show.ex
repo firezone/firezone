@@ -156,9 +156,9 @@ defmodule Web.Clients.Show do
     </.section>
 
     <.section>
-      <:title>Authorized Activity</:title>
+      <:title>Authorized Sessions</:title>
       <:help>
-        Authorized attempts by actors to access the resource governed by this policy.
+        Authorized sessions opened by this Client to access a Resource.
       </:help>
       <:content>
         <.live_table

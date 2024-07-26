@@ -210,7 +210,6 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
     let has_any_favorites = resources
         .iter()
         .any(|res| favorite_resources.contains(&res.id()));
-
     let mut menu = Menu::default()
         .disabled(format!("Signed in as {actor_name}"))
         .item(Event::SignOut, SIGN_OUT)

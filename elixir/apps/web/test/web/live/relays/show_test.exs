@@ -157,7 +157,7 @@ defmodule Web.Live.Relays.ShowTest do
       |> live(~p"/#{account}/relays/#{relay}")
 
     lv
-    |> element("button", "Delete Relay")
+    |> element("button[type=submit]", "Delete Relay")
     |> render_click()
 
     assert_redirected(lv, ~p"/#{account}/relay_groups/#{relay.group}")

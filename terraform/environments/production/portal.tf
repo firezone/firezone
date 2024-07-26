@@ -392,7 +392,7 @@ module "domain" {
 
   compute_instance_type               = "n4-standard-2"
   compute_instance_region             = local.region
-  compute_instance_availability_zones = ["${local.region}-d", "${local.region}-c"]
+  compute_instance_availability_zones = ["${local.region}-d"]
   compute_boot_disk_type              = "hyperdisk-balanced"
 
   dns_managed_zone_name = module.google-cloud-dns.zone_name
@@ -457,7 +457,7 @@ module "web" {
 
   compute_instance_type               = "n4-standard-2"
   compute_instance_region             = local.region
-  compute_instance_availability_zones = ["${local.region}-d", "${local.region}-c"]
+  compute_instance_availability_zones = ["${local.region}-d"]
   compute_boot_disk_type              = "hyperdisk-balanced"
 
   dns_managed_zone_name = module.google-cloud-dns.zone_name
@@ -535,7 +535,7 @@ module "api" {
 
   compute_instance_type               = "n4-standard-2"
   compute_instance_region             = local.region
-  compute_instance_availability_zones = ["${local.region}-d", "${local.region}-c"]
+  compute_instance_availability_zones = ["${local.region}-d"]
   compute_boot_disk_type              = "hyperdisk-balanced"
 
   dns_managed_zone_name = module.google-cloud-dns.zone_name
