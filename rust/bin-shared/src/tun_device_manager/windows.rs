@@ -126,12 +126,20 @@ impl TunDeviceManager {
 
 // It's okay if this blocks until the route is added in the OS.
 fn add_route(route: IpNetwork, iface_idx: u32) {
+    const DUPLICATE_ERR: u32 = 0x80071392;
     let entry = forward_entry(route, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
-    if let Err(e) = unsafe { CreateIpForwardEntry2(&entry) }.ok() {
-        tracing::debug!(%route, "Failed to add route: {e}");
+    let Err(e) = unsafe { CreateIpForwardEntry2(&entry) }.ok() else {
+        return;
+    };
+
+    // We expect set_routes to call add_route with the same routes always making this error expected
+    if e.code.0 as u32 == DUPLICATE_ERR {
+        return;
     }
+
+    tracing::debug!(%route, "Failed to add route: {e}");
 }
 
 // It's okay if this blocks until the route is removed in the OS.
@@ -139,9 +147,12 @@ fn remove_route(route: IpNetwork, iface_idx: u32) {
     let entry = forward_entry(route, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
-    if let Err(e) = unsafe { DeleteIpForwardEntry2(&entry) }.ok()? {
-        tracing::debug!(%route, "Failed to remove route: {e}")
-    }
+
+    let Err(e) = unsafe { DeleteIpForwardEntry2(&entry) }.ok() else {
+        return;
+    };
+
+    tracing::debug!(%route, "Failed to remove route: {e}")
 }
 
 fn forward_entry(route: IpNetwork, iface_idx: u32) -> MIB_IPFORWARD_ROW2 {
