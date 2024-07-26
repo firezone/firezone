@@ -188,7 +188,7 @@ fn find_best_route_for_luid(luid: &NET_LUID_LH, dst: IpAddr) -> Result<Route> {
 /// It should **not** be called on a per-packet basis.
 /// Callers should instead cache the result until network interfaces change.
 fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAddr> {
-    let routes: Vec<_> = list_adapters()
+    let mut routes: Vec<_> = list_adapters()
         .ok()?
         .filter(|adapter| !is_adapter_name(adapter, filter))
         .map(|adapter| adapter.Luid)
