@@ -1853,6 +1853,7 @@ dependencies = [
  "chrono",
  "clap",
  "connlib-client-shared",
+ "connlib-shared",
  "crash-handler",
  "dirs",
  "firezone-bin-shared",
