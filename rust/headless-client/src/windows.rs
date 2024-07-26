@@ -167,6 +167,7 @@ mod test {
     use firezone_bin_shared::TunDeviceManager;
     use ip_network::Ipv4Network;
     use socket_factory::DatagramOut;
+    use std::borrow::Cow;
     use std::net::ToSocketAddrs;
     use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 
@@ -215,7 +216,9 @@ mod test {
             .send(DatagramOut {
                 src: None,
                 dst: server,
-                packet: &hex_literal::hex!("000100002112A4420123456789abcdef01234567"),
+                packet: Cow::Borrowed(&hex_literal::hex!(
+                    "000100002112A4420123456789abcdef01234567"
+                )),
             })
             .unwrap();
 
