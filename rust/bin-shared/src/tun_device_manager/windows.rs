@@ -1,14 +1,14 @@
+use crate::windows::CREATE_NO_WINDOW;
 use anyhow::{Context as _, Result};
-use connlib_shared::{
-    windows::{CREATE_NO_WINDOW, TUNNEL_NAME},
-    DEFAULT_MTU,
-};
+use connlib_shared::DEFAULT_MTU;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ring::digest;
 use std::{
     collections::HashSet,
-    io,
+    io::{self, Read as _},
     net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
     os::windows::process::CommandExt,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     str::FromStr,
     sync::Arc,
@@ -27,8 +27,9 @@ use windows::Win32::{
 };
 use wintun::Adapter;
 
-// Not sure how this and `TUNNEL_NAME` differ
-const ADAPTER_NAME: &str = "Firezone";
+// wintun automatically append " Tunnel" to this
+pub(crate) const TUNNEL_NAME: &str = "Firezone";
+
 /// The ring buffer size used for Wintun.
 ///
 /// Must be a power of two within a certain range <https://docs.rs/wintun/latest/wintun/struct.Adapter.html#method.start_session>
@@ -109,16 +110,12 @@ impl TunDeviceManager {
                 .chain(v6.into_iter().map(IpNetwork::from)),
         );
 
-        if new_routes == self.routes {
-            return Ok(());
-        }
-
-        for new_route in new_routes.difference(&self.routes) {
-            add_route(*new_route, iface_idx)?;
-        }
-
         for old_route in self.routes.difference(&new_routes) {
-            remove_route(*old_route, iface_idx)?;
+            remove_route(*old_route, iface_idx);
+        }
+
+        for new_route in &new_routes {
+            add_route(*new_route, iface_idx);
         }
 
         self.routes = new_routes;
@@ -128,28 +125,39 @@ impl TunDeviceManager {
 }
 
 // It's okay if this blocks until the route is added in the OS.
-fn add_route(route: IpNetwork, iface_idx: u32) -> Result<()> {
+fn add_route(route: IpNetwork, iface_idx: u32) {
     const DUPLICATE_ERR: u32 = 0x80071392;
     let entry = forward_entry(route, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
-    match unsafe { CreateIpForwardEntry2(&entry) }.ok() {
-        Ok(()) => Ok(()),
-        Err(e) if e.code().0 as u32 == DUPLICATE_ERR => {
-            tracing::debug!(%route, "Failed to add duplicate route, ignoring");
-            Ok(())
-        }
-        Err(e) => Err(e.into()),
+    let Err(e) = unsafe { CreateIpForwardEntry2(&entry) }.ok() else {
+        return;
+    };
+
+    // We expect set_routes to call add_route with the same routes always making this error expected
+    if e.code().0 as u32 == DUPLICATE_ERR {
+        return;
     }
+
+    tracing::warn!(%route, "Failed to add route: {e}");
 }
 
 // It's okay if this blocks until the route is removed in the OS.
-fn remove_route(route: IpNetwork, iface_idx: u32) -> Result<()> {
+fn remove_route(route: IpNetwork, iface_idx: u32) {
+    const ELEMENT_NOT_FOUND: u32 = 0x80070490;
     let entry = forward_entry(route, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
-    unsafe { DeleteIpForwardEntry2(&entry) }.ok()?;
-    Ok(())
+
+    let Err(e) = unsafe { DeleteIpForwardEntry2(&entry) }.ok() else {
+        return;
+    };
+
+    if e.code().0 as u32 == ELEMENT_NOT_FOUND {
+        return;
+    }
+
+    tracing::warn!(%route, "Failed to remove route: {e}")
 }
 
 fn forward_entry(route: IpNetwork, iface_idx: u32) -> MIB_IPFORWARD_ROW2 {
@@ -211,16 +219,15 @@ impl Tun {
     pub fn new() -> Result<Self> {
         const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
 
-        // SAFETY: we're loading a DLL from disk and it has arbitrary C code in it.
-        // The Windows client, in `wintun_install` hashes the DLL at startup, before calling connlib, so it's unlikely for the DLL to be accidentally corrupted by the time we get here.
-        let path = connlib_shared::windows::wintun_dll_path()?;
+        let path = ensure_dll()?;
+        // SAFETY: we're loading a DLL from disk and it has arbitrary C code in it. There's no perfect way to prove it's safe.
         let wintun = unsafe { wintun::load_from_path(path) }?;
 
         // Create wintun adapter
         let uuid = uuid::Uuid::from_str(TUNNEL_UUID)
             .expect("static UUID should always parse correctly")
             .as_u128();
-        let adapter = &Adapter::create(&wintun, ADAPTER_NAME, TUNNEL_NAME, Some(uuid))?;
+        let adapter = &Adapter::create(&wintun, TUNNEL_NAME, TUNNEL_NAME, Some(uuid))?;
         let iface_idx = adapter.get_adapter_index()?;
 
         set_iface_config(adapter.get_luid(), DEFAULT_MTU as u32)?;
@@ -393,4 +400,83 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
         unsafe { SetIpInterfaceEntry(&mut row) }.ok()?;
     }
     Ok(())
+}
+
+/// Installs the DLL in %LOCALAPPDATA% and returns the DLL's absolute path
+///
+/// e.g. `C:\Users\User\AppData\Local\dev.firezone.client\data\wintun.dll`
+/// Also verifies the SHA256 of the DLL on-disk with the expected bytes packed into the exe
+fn ensure_dll() -> Result<PathBuf> {
+    let dll_bytes = wintun_bytes();
+
+    let path = wintun_dll_path().context("Can't compute wintun.dll path")?;
+    // The DLL path should always have a parent
+    let dir = path.parent().context("wintun.dll path invalid")?;
+    std::fs::create_dir_all(dir).context("Can't create dirs for wintun.dll")?;
+
+    tracing::debug!(?path, "wintun.dll path");
+
+    // This hash check is not meant to protect against attacks. It only lets us skip redundant disk writes, and it updates the DLL if needed.
+    // `tun_windows.rs` in connlib, and `elevation.rs`, rely on thia.
+    if dll_already_exists(&path, &dll_bytes) {
+        return Ok(path);
+    }
+    std::fs::write(&path, dll_bytes.bytes).context("Failed to write wintun.dll")?;
+    Ok(path)
+}
+
+fn dll_already_exists(path: &Path, dll_bytes: &DllBytes) -> bool {
+    let mut f = match std::fs::File::open(path) {
+        Err(_) => return false,
+        Ok(x) => x,
+    };
+
+    let actual_len = usize::try_from(f.metadata().unwrap().len()).unwrap();
+    let expected_len = dll_bytes.bytes.len();
+    // If the dll is 100 MB instead of 0.5 MB, this allows us to skip a 100 MB read
+    if actual_len != expected_len {
+        return false;
+    }
+
+    let mut buf = vec![0u8; expected_len];
+    if f.read_exact(&mut buf).is_err() {
+        return false;
+    }
+
+    let expected = ring::test::from_hex(dll_bytes.expected_sha256).unwrap();
+    let actual = digest::digest(&digest::SHA256, &buf);
+    expected == actual.as_ref()
+}
+
+/// Returns the absolute path for installing and loading `wintun.dll`
+///
+/// e.g. `C:\Users\User\AppData\Local\dev.firezone.client\data\wintun.dll`
+fn wintun_dll_path() -> Result<PathBuf> {
+    let path = crate::windows::app_local_data_dir()?
+        .join("data")
+        .join("wintun.dll");
+    Ok(path)
+}
+
+struct DllBytes {
+    /// Bytes embedded in the client with `include_bytes`
+    pub bytes: &'static [u8],
+    /// Expected SHA256 hash
+    pub expected_sha256: &'static str,
+}
+
+#[cfg(target_arch = "x86_64")]
+fn wintun_bytes() -> DllBytes {
+    DllBytes {
+        bytes: include_bytes!("../wintun/bin/amd64/wintun.dll"),
+        expected_sha256: "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce",
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn wintun_bytes() -> DllBytes {
+    DllBytes {
+        bytes: include_bytes!("../wintun/bin/arm64/wintun.dll"),
+        expected_sha256: "f7ba89005544be9d85231a9e0d5f23b2d15b3311667e2dad0debd344918a3f80",
+    }
 }

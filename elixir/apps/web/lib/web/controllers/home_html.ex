@@ -5,20 +5,16 @@ defmodule Web.HomeHTML do
     ~H"""
     <section>
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
-        <.logo />
+        <.hero_logo />
 
         <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h1 class="text-xl text-center leading-tight tracking-tight text-neutral-900 sm:text-2xl">
-              Welcome to Firezone
-            </h1>
-
-            <h3
+            <h2
               :if={@accounts != []}
-              class="text-m leading-tight tracking-tight text-neutral-900 sm:text-xl"
+              class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900"
             >
-              Recently used accounts
-            </h3>
+              Sign in with a recently used account
+            </h2>
 
             <div :if={@accounts != []} class="space-y-3 items-center">
               <.account_button
@@ -33,6 +29,9 @@ defmodule Web.HomeHTML do
 
             <.flash kind={:error} flash={@flash} />
 
+            <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
+              Sign in using your account ID or slug
+            </h2>
             <.form :let={f} for={%{}} action={~p"/?#{@params}"} class="space-y-4 lg:space-y-6">
               <.input
                 field={f[:account_id_or_slug]}
@@ -44,7 +43,7 @@ defmodule Web.HomeHTML do
                 autofocus
               />
 
-              <.button class="w-full">
+              <.button class="w-full" style="info">
                 Go to Sign In page
               </.button>
             </.form>

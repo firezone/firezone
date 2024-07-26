@@ -9,7 +9,9 @@ use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
 use connlib_shared::get_user_agent;
-use firezone_bin_shared::{setup_global_subscriber, TunDeviceManager};
+use firezone_bin_shared::{
+    setup_global_subscriber, DnsNotifier, NetworkNotifier, TunDeviceManager,
+};
 use futures::{FutureExt as _, StreamExt as _};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
@@ -164,7 +166,6 @@ pub fn run_only_headless_client() -> Result<()> {
 
     // The name matches that in `ipc_service.rs`
     let mut last_connlib_start_instant = Some(Instant::now());
-    platform::setup_before_connlib()?;
     let args = ConnectArgs {
         udp_socket_factory: Arc::new(crate::udp_socket_factory),
         tcp_socket_factory: Arc::new(crate::tcp_socket_factory),
@@ -197,19 +198,35 @@ pub fn run_only_headless_client() -> Result<()> {
         let mut tun_device = TunDeviceManager::new()?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
+        let mut dns_notifier = DnsNotifier::new()?;
+        let mut network_notifier = NetworkNotifier::new()?;
+
         let tun = tun_device.make_tun()?;
         session.set_tun(Box::new(tun));
-        // TODO: DNS should be added dynamically
         session.set_dns(dns_control::system_resolvers().unwrap_or_default());
 
         loop {
+            let mut dns_changed = pin!(dns_notifier.notified().fuse());
+            let mut network_changed = pin!(network_notifier.notified().fuse());
+
             let cb = futures::select! {
                 () = terminate => {
                     tracing::info!("Caught SIGINT / SIGTERM / Ctrl+C");
-                    return Ok(());
+                    break;
                 },
                 () = hangup => {
                     tracing::info!("Caught SIGHUP");
+                    session.reconnect();
+                    continue;
+                },
+                result = dns_changed => {
+                    result?;
+                    tracing::info!("DNS change, notifying Session");
+                    session.set_dns(dns_control::system_resolvers()?);
+                    continue;
+                },
+                () = network_changed => {
+                    tracing::info!("Network change, reconnecting Session");
                     session.reconnect();
                     continue;
                 },
@@ -240,11 +257,17 @@ pub fn run_only_headless_client() -> Result<()> {
                     }
                     if cli.exit {
                         tracing::info!("Exiting due to `--exit` CLI flag");
-                        break Ok(());
+                        break;
                     }
                 }
             }
         }
+
+        if let Err(error) = network_notifier.close() {
+            tracing::error!(?error, "network listener");
+        }
+
+        Ok(())
     });
 
     session.disconnect();

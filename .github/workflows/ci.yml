@@ -271,10 +271,15 @@ jobs:
       - name: Merge benchmarks results into one report
         run: jq -s 'reduce .[] as $item ({}; . * $item)' ./${{ github.sha }}/*.bmf.json > bmf.json
       - name: Report results to bencher
-        run: bencher run --file bmf.json --adapter json --github-actions ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bencher run \
+            --project firezone-1l75jv1z \
+            --testbed github-actions \
+            --file bmf.json \
+            --adapter json \
+            --branch "${{ github.head_ref || github.ref_name }}" \
+            --branch-start-point "${{ github.base_ref }}" \
+            --github-actions ${{ secrets.GITHUB_TOKEN }} \
+            --ci-only-on-alert
         env:
-          BENCHER_PROJECT: firezone-1l75jv1z
           BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
-          BENCHER_BRANCH: ${{ github.head_ref || github.ref_name }}
-          BENCHER_BRANCH_START: ${{ github.base_ref }}
-          BENCHER_TESTBED: github-actions
