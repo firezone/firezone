@@ -241,6 +241,15 @@ pub fn run_only_headless_client() -> Result<()> {
                 InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {
                     // On every Resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                     dns_controller.flush()?;
+                }
+                InternalServerMsg::Ipc(IpcServerMsg::TerminatingGracefully) => unimplemented!(
+                    "The standalone Client does not send `TerminatingGracefully` messages"
+                ),
+                InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
+                    tun_device.set_ips(ipv4, ipv6).await?;
+                    dns_controller.set_dns(&dns).await?;
+                    // `on_set_interface_config` is guaranteed to be called when the tunnel is completely ready
+                    // <https://github.com/firezone/firezone/pull/6026#discussion_r1692297438>
                     if let Some(instant) = last_connlib_start_instant.take() {
                         // `OnUpdateResources` appears to be the latest callback that happens during startup
                         tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
@@ -250,13 +259,6 @@ pub fn run_only_headless_client() -> Result<()> {
                         tracing::info!("Exiting due to `--exit` CLI flag");
                         break Ok(());
                     }
-                }
-                InternalServerMsg::Ipc(IpcServerMsg::TerminatingGracefully) => unimplemented!(
-                    "The standalone Client does not send `TerminatingGracefully` messages"
-                ),
-                InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                    tun_device.set_ips(ipv4, ipv6).await?;
-                    dns_controller.set_dns(&dns).await?;
                 }
                 InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                     tun_device.set_routes(ipv4, ipv6).await?;
