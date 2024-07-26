@@ -60,13 +60,9 @@ impl Iterator for Adapters {
     type Item = &'static IP_ADAPTER_ADDRESSES_LH;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.next.is_null() {
-            return None;
-        }
-
-        // SAFETY: We expect windows to give us a valid linked list where each item fo the list is actually an IP_ADAPTER_ADDRESSES_LH
-        // furthermore, we return None if next is null in the previous line.
-        let adapter = unsafe { self.next.as_ref() };
+        // SAFETY: We expect windows to give us a valid linked list where each item fo the list is actually an IP_ADAPTER_ADDRESSES_LH.
+        // TODO: pointer alignment?
+        let adapter = unsafe { self.next.as_ref()? };
 
         self.next = adapter.Next;
 
