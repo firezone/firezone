@@ -189,7 +189,7 @@ mod test {
         let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
 
         let mut device_manager = TunDeviceManager::new().unwrap();
-        let mut tun = device_manager.make_tun().unwrap();
+        let _tun = device_manager.make_tun().unwrap();
         device_manager.set_ips(ipv4, ipv6).await.unwrap();
 
         // Configure `0.0.0.0/0` route.
@@ -202,7 +202,7 @@ mod test {
             .unwrap();
 
         // Make a socket.
-        let socket =
+        let mut socket =
             udp_socket_factory(&SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)))
                 .unwrap();
 
@@ -223,7 +223,7 @@ mod test {
             .unwrap();
 
         let mut buf = [0u8; 1000];
-        let datagram = std::future::poll_fn(|cx| socket.poll_recv_from(&mut buf, cx))
+        let _response = std::future::poll_fn(|cx| socket.poll_recv_from(&mut buf, cx))
             .await
             .unwrap()
             .next()
