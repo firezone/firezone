@@ -35,7 +35,7 @@ fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<Option<IpAddr>> {
 
     tracing::debug!(%src, %dst, "Resolved best route outside of tunnel interface");
 
-    Ok(src)
+    Ok(Some(src))
 }
 
 /// Finds the best route (i.e. source interface) for a given destination IP, excluding interfaces where the name matches the given filter.
