@@ -32,10 +32,6 @@ pub(crate) struct Item {
     pub(crate) event: Option<Event>,
     /// The text displayed to the user
     pub(crate) title: String,
-    /// A keyboard shortcut, e.g. Ctrl+Q for Quit.
-    ///
-    /// As far as we can tell these don't actually work.
-    pub(crate) keyboard_accelerator: Option<String>,
     /// If true, show a checkmark next to the item
     pub(crate) selected: bool,
 }
@@ -71,13 +67,6 @@ pub(crate) enum Window {
 }
 
 impl Menu {
-    /// Appends an item with an event and a keyboard accelerator
-    ///
-    /// Doesn't work on Windows: <https://github.com/tauri-apps/wry/issues/451>
-    fn accelerated(self, id: Event, title: &str, accelerator: &str) -> Self {
-        self.add_item(item(id, title).accelerator(accelerator))
-    }
-
     /// Appends things that always show, like About, Settings, Help, Quit, etc.
     pub(crate) fn add_bottom_section(self, quit_text: &str) -> Self {
         self.separator()
@@ -95,13 +84,9 @@ impl Menu {
                         "Support...",
                     ),
             )
-            .accelerated(
-                Event::ShowWindow(Window::Settings),
-                "Settings",
-                "Ctrl+Shift+,",
-            )
+            .item(Event::ShowWindow(Window::Settings), "Settings")
             .separator()
-            .accelerated(Event::Quit, quit_text, "Ctrl+Q")
+            .item(Event::Quit, quit_text)
     }
 
     pub(crate) fn add_item(mut self, item: Item) -> Self {
@@ -157,11 +142,6 @@ impl Menu {
 }
 
 impl Item {
-    fn accelerator<A: Into<String>>(mut self, accel: A) -> Self {
-        self.keyboard_accelerator = Some(accel.into());
-        self
-    }
-
     /// Builds this abstract `Item` into a real item that we can use in Tauri.
     fn build(&self) -> tauri::CustomMenuItem {
         let mut item = tauri::CustomMenuItem::new(
@@ -172,9 +152,6 @@ impl Item {
 
         if self.event.is_none() {
             item = item.disabled();
-        }
-        if let Some(accel) = &self.keyboard_accelerator {
-            item = item.accelerator(accel);
         }
         if self.selected {
             item = item.selected();
@@ -204,7 +181,6 @@ pub(crate) fn item<E: Into<Option<Event>>, S: Into<String>>(event: E, title: S) 
     Item {
         event: event.into(),
         title: title.into(),
-        keyboard_accelerator: None,
         selected: false,
     }
 }
