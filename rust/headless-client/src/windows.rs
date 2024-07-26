@@ -168,7 +168,6 @@ mod test {
     use ip_network::Ipv4Network;
     use socket_factory::DatagramOut;
     use std::borrow::Cow;
-    use std::net::ToSocketAddrs;
     use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 
     #[test]
