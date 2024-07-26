@@ -397,6 +397,14 @@ impl ReferenceStateMachine for ReferenceState {
                 let (id, relay) = new;
                 state.relays.insert(*id, relay.clone());
                 debug_assert!(state.network.add_host(*id, relay));
+
+                // In case we were using the relays, all connections will be cut and require us to make a new one.
+                if state.drop_direct_client_traffic {
+                    state.client.exec_mut(|client| {
+                        client.connected_cidr_resources.clear();
+                        client.connected_dns_resources.clear();
+                    });
+                }
             }
             Transition::Idle => {
                 state.client.exec_mut(|client| {
