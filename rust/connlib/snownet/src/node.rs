@@ -232,9 +232,12 @@ where
             }
         };
 
-        if let Some(agent) = self.connections.agent_mut(cid) {
-            agent.add_remote_candidate(candidate.clone());
-        }
+        let Some(agent) = self.connections.agent_mut(cid) else {
+            tracing::debug!("Unknown connection");
+            return;
+        };
+
+        agent.add_remote_candidate(candidate.clone());
 
         match candidate.kind() {
             CandidateKind::Host => {
