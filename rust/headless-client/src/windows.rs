@@ -105,9 +105,10 @@ fn list_adapters() -> Result<Adapters> {
 
     WIN32_ERROR(res).ok()?;
 
+    let next = buffer.as_ptr() as *const _;
     Ok(Adapters {
         _buffer: buffer,
-        next: buffer.as_ptr() as *const _,
+        next,
     })
 }
 
