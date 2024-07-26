@@ -107,7 +107,7 @@ fn list_adapters() -> Result<Adapters> {
 
     Ok(Adapters {
         _buffer: buffer,
-        next: buffer as *const _,
+        next: buffer.as_ptr() as *const _,
     })
 }
 
