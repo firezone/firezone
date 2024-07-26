@@ -143,7 +143,7 @@ fn to_ip_addr(addr: SOCKADDR_INET, dst: IpAddr) -> Option<IpAddr> {
     }
 }
 
-fn find_best_route_for_luid(luid: &NET_LUID_H, dst: IpAddr) -> Result<Route> {
+fn find_best_route_for_luid(luid: &NET_LUID_LH, dst: IpAddr) -> Result<Route> {
     let addr: SOCKADDR_INET = SocketAddr::from((dst, 0)).into();
     let mut best_route: MaybeUninit<MIB_IPFORWARD_ROW2> = MaybeUninit::zeroed();
     let mut best_src: MaybeUninit<SOCKADDR_INET> = MaybeUninit::zeroed();
