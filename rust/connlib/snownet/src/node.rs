@@ -583,8 +583,8 @@ where
             state: ConnectionState::Connecting {
                 possible_sockets: BTreeSet::default(),
                 buffered: RingBuffer::new(10),
-                relay,
             },
+            relay,
             last_outgoing: now,
             last_incoming: now,
         }
@@ -1315,6 +1315,11 @@ struct Connection<RId> {
 
     state: ConnectionState<RId>,
 
+    /// The relay we have selected for this connection.
+    ///
+    /// `None` if we didn't have any relays available.
+    relay: Option<RId>,
+
     stats: ConnectionStats,
     intent_sent_at: Instant,
     signalling_completed_at: Instant,
@@ -1330,11 +1335,6 @@ enum ConnectionState<RId> {
     Connecting {
         /// Socket addresses from which we might receive data (even before we are connected).
         possible_sockets: BTreeSet<SocketAddr>,
-
-        /// The relay we have selected for this connection.
-        ///
-        /// `None` if we didn't have any relays available.
-        relay: Option<RId>,
 
         /// Packets emitted by wireguard whilst are still running ICE.
         ///
