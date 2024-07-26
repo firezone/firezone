@@ -390,13 +390,19 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::ReconnectPortal => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
             }
-            Transition::MigrateRelays { old, new } => {
-                let relay = state.relays.remove(old).expect("old host to be present");
-                state.network.remove_host(&relay);
+            Transition::RelaysPresence {
+                disconnected,
+                online,
+            } => {
+                let disconnected_relay = state
+                    .relays
+                    .remove(disconnected)
+                    .expect("old host to be present");
+                state.network.remove_host(&disconnected_relay);
 
-                let (id, relay) = new;
-                state.relays.insert(*id, relay.clone());
-                debug_assert!(state.network.add_host(*id, relay));
+                let (id, online_relay) = online;
+                state.relays.insert(*id, online_relay.clone());
+                debug_assert!(state.network.add_host(*id, online_relay));
 
                 // In case we were using the relays, all connections will be cut and require us to make a new one.
                 if state.drop_direct_client_traffic {
@@ -549,10 +555,13 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::DeactivateResource(r) => {
                 state.client.inner().all_resource_ids().contains(r)
             }
-            Transition::MigrateRelays { old, new } => {
-                let (new_id, new_host) = new;
+            Transition::RelaysPresence {
+                disconnected,
+                online,
+            } => {
+                let (new_id, new_host) = online;
 
-                let old_is_present = state.relays.contains_key(old);
+                let old_is_present = state.relays.contains_key(disconnected);
                 let new_is_present = state.relays.contains_key(new_id);
 
                 let is_assigned_ip4 = new_host.ip4.is_some_and(|ip| state.network.contains(ip));

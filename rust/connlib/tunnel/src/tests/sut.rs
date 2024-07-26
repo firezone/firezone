@@ -282,17 +282,23 @@ impl StateMachineTest for TunnelTest {
                     c.sut.set_resources(all_resources);
                 });
             }
-            Transition::MigrateRelays { old, new } => {
-                let old_relay = state.relays.remove(&old).expect("old relay to be present");
-                state.network.remove_host(&old_relay);
+            Transition::RelaysPresence {
+                disconnected,
+                online,
+            } => {
+                let disconnected_relay = state
+                    .relays
+                    .remove(&disconnected)
+                    .expect("old relay to be present");
+                state.network.remove_host(&disconnected_relay);
 
-                let (rid, new_relay) = new;
+                let (rid, new_relay) = online;
                 let new_relay = new_relay.map(SimRelay::new, debug_span!("relay", %rid));
                 debug_assert!(state.network.add_host(rid, &new_relay));
 
                 state.client.exec_mut(|c| {
                     c.sut.update_relays(
-                        BTreeSet::from([old]),
+                        BTreeSet::from([disconnected]),
                         BTreeSet::from_iter(map_explode(iter::once((&rid, &new_relay)), "client")),
                         now,
                     );
@@ -300,7 +306,7 @@ impl StateMachineTest for TunnelTest {
                 for (id, gateway) in &mut state.gateways {
                     gateway.exec_mut(|g| {
                         g.sut.update_relays(
-                            BTreeSet::from([old]),
+                            BTreeSet::from([disconnected]),
                             BTreeSet::from_iter(map_explode(
                                 iter::once((&rid, &new_relay)),
                                 &format!("gateway_{id}"),

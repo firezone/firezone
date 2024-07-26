@@ -70,9 +70,10 @@ pub(crate) enum Transition {
     /// Reconnect to the portal.
     ReconnectPortal,
 
-    MigrateRelays {
-        old: RelayId,
-        new: (RelayId, Host<u64>),
+    /// Simulate deployment of new relays.
+    RelaysPresence {
+        disconnected: RelayId,
+        online: (RelayId, Host<u64>),
     },
 
     /// Idle connlib for a while, forcing connection to auto-close.
@@ -184,8 +185,8 @@ pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {
 pub(crate) fn migrate_relays(
     old: impl Strategy<Value = RelayId>,
 ) -> impl Strategy<Value = Transition> {
-    (old, relay_id(), ref_relay_host()).prop_map(|(old, new, host)| Transition::MigrateRelays {
-        old,
-        new: (new, host),
+    (old, relay_id(), ref_relay_host()).prop_map(|(old, new, host)| Transition::RelaysPresence {
+        disconnected: old,
+        online: (new, host),
     })
 }
