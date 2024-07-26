@@ -7,7 +7,6 @@ description = "Firezone-specific modules shared between binaries."
 
 [dependencies]
 anyhow = "1.0.82"
-clap = { version = "4.5", features = ["derive",  "env"] }
 connlib-shared = { workspace = true }
 futures = "0.3"
 ip-packet = { workspace = true }
