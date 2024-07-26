@@ -178,9 +178,6 @@ fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAdd
     }
 }
 
-#[path = "windows/wintun_install.rs"]
-mod wintun_install;
-
 // The return value is useful on Linux
 #[allow(clippy::unnecessary_wraps)]
 pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
