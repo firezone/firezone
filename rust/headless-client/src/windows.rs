@@ -131,7 +131,8 @@ struct Route {
     addr: IpAddr,
 }
 
-fn to_ip_addr(addr: SOCKADDR_INET, dst: IpAddr) -> Option<IpAddr> {
+// SAFETY: si_family must be always set in the union, which will be the case for a valid SOCKADDR_INET
+unsafe fn to_ip_addr(addr: SOCKADDR_INET, dst: IpAddr) -> Option<IpAddr> {
     match (addr.si_family, dst) {
         (ADDRESS_FAMILY(0), IpAddr::V4(_)) | (ADDRESS_FAMILY(2), _) => {
             Some(Ipv4Addr::from(addr.Ipv4.sin_addr).into())
@@ -168,7 +169,9 @@ fn find_best_route_for_luid(luid: &NET_LUID_LH, dst: IpAddr) -> Result<Route> {
     let best_src = unsafe { best_src.assume_init() };
 
     Ok(Route {
-        addr: to_ip_addr(best_src, dst),
+        // SAFETY: we expect to get a valid address
+        addr: unsafe { to_ip_addr(best_src, dst) }
+            .ok_or(io::Error::other("can't find a valid route"))?,
         metric: best_route.Metric,
     })
 }
