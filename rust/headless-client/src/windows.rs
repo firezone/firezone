@@ -228,7 +228,7 @@ mod test {
 
             let _response = result.unwrap().next().unwrap();
 
-            Poll::Ready(())
+            std::task::Poll::Ready(())
         })
         .await;
     }
