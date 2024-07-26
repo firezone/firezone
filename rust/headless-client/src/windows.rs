@@ -169,6 +169,7 @@ mod test {
     use socket_factory::DatagramOut;
     use std::borrow::Cow;
     use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
+    use std::time::Duration;
 
     #[test]
     fn best_route_ip4_does_not_fail() {
@@ -216,14 +217,17 @@ mod test {
             })
             .unwrap();
 
-        std::future::poll_fn(|cx| {
+        let task = std::future::poll_fn(|cx| {
             let mut buf = [0u8; 1000];
             let result = std::task::ready!(socket.poll_recv_from(&mut buf, cx));
 
             let _response = result.unwrap().next().unwrap();
 
             std::task::Poll::Ready(())
-        })
-        .await;
+        });
+
+        tokio::time::timeout(Duration::from_secs(10), task)
+            .await
+            .unwrap();
     }
 }
