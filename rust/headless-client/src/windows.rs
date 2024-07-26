@@ -5,9 +5,22 @@
 //! We must tell Windows explicitly when our service is stopping.
 
 use anyhow::Result;
-use std::io;
-use std::net::{IpAddr, SocketAddr};
-use std::path::{Path, PathBuf};
+use std::{
+    io,
+    mem::MaybeUninit,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    path::{Path, PathBuf},
+    ptr::null,
+};
+
+use windows::Win32::NetworkManagement::IpHelper::GetAdaptersAddresses;
+use windows::Win32::Networking::WinSock::SOCKADDR_INET;
+use windows::Win32::{
+    NetworkManagement::IpHelper::{
+        GetBestRoute2, GET_ADAPTERS_ADDRESSES_FLAGS, IP_ADAPTER_ADDRESSES_LH, MIB_IPFORWARD_ROW2,
+    },
+    Networking::WinSock::{ADDRESS_FAMILY, AF_UNSPEC},
+};
 
 use firezone_bin_shared::TUNNEL_NAME;
 use socket_factory::{TcpSocket, UdpSocket};
@@ -112,19 +125,6 @@ fn list_adapters() -> Result<Adapters> {
 /// It should **not** be called on a per-packet basis.
 /// Callers should instead cache the result until network interfaces change.
 fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAddr> {
-    use std::mem::MaybeUninit;
-    use std::net::{Ipv4Addr, Ipv6Addr};
-    use std::ptr::null;
-
-    use windows::Win32::NetworkManagement::IpHelper::GetAdaptersAddresses;
-    use windows::Win32::NetworkManagement::IpHelper::GetBestRoute2;
-    use windows::Win32::NetworkManagement::IpHelper::GET_ADAPTERS_ADDRESSES_FLAGS;
-    use windows::Win32::NetworkManagement::IpHelper::IP_ADAPTER_ADDRESSES_LH;
-    use windows::Win32::NetworkManagement::IpHelper::MIB_IPFORWARD_ROW2;
-    use windows::Win32::Networking::WinSock::ADDRESS_FAMILY;
-    use windows::Win32::Networking::WinSock::AF_UNSPEC;
-    use windows::Win32::Networking::WinSock::SOCKADDR_INET;
-
     let luids = list_adapters()
         .ok()?
         .filter(|adapter| {
