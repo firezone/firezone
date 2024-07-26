@@ -111,6 +111,18 @@ fn list_adapters() -> Result<Adapters> {
     })
 }
 
+fn is_adapter_name(adapter: &IP_ADAPTER_ADDRESSES_LH, name: &str) -> bool {
+    if adapter.FriendlyName.is_null() {
+        return false;
+    }
+
+    let Ok(friendly_name) = adapter.FriendlyName.to_string() else {
+        return false;
+    };
+
+    &friendly_name == name
+}
+
 /// Finds the best route (i.e. source interface) for a given destination IP, excluding interfaces where the name matches the given filter.
 ///
 /// To prevent routing loops on Windows, we need to explicitly set a source IP for all packets.
@@ -125,10 +137,7 @@ fn list_adapters() -> Result<Adapters> {
 fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAddr> {
     let luids: Vec<_> = list_adapters()
         .ok()?
-        .filter(|adapter| {
-            !adapter.FriendlyName.is_null()
-                || !matches!(Ok(filter.to_string()), adapter.FriendlyName.to_string())
-        })
+        .filter(|adapter| !is_adapter_name(adapter, filter))
         .map(|adapter| adapter.Luid)
         .collect();
 
