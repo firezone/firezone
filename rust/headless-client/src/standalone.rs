@@ -216,7 +216,7 @@ pub fn run_only_headless_client() -> Result<()> {
                 },
                 () = hangup => {
                     tracing::info!("Caught SIGHUP");
-                    session.reconnect();
+                    session.reset();
                     continue;
                 },
                 result = dns_changed => {
@@ -226,8 +226,8 @@ pub fn run_only_headless_client() -> Result<()> {
                     continue;
                 },
                 () = network_changed => {
-                    tracing::info!("Network change, reconnecting Session");
-                    session.reconnect();
+                    tracing::info!("Network change, resetting Session");
+                    session.reset();
                     continue;
                 },
                 cb = cb_rx.next() => cb.context("cb_rx unexpectedly ran empty")?,
