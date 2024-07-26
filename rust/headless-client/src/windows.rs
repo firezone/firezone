@@ -127,7 +127,7 @@ fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAdd
         .ok()?
         .filter(|adapter| {
             !adapter.FriendlyName.is_null()
-                || adapter.FriendlyName.to_string() != Ok(filter.to_string())
+                || !matches!(adapter.FriendlyName.to_string(), Ok(filter.to_string()))
         })
         .map(|adapter| adapter.Luid)
         .collect();
