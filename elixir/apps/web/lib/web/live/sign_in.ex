@@ -45,15 +45,13 @@ defmodule Web.SignIn do
     ~H"""
     <section>
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
-        <.logo />
+        <.hero_logo text={@account.name} />
 
         <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h1 class="text-xl text-center leading-tight tracking-tight text-neutral-900 sm:text-2xl">
-              <span>
-                Sign in to <%= @account.name %>
-              </span>
-            </h1>
+            <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
+              Sign in with a configured provider
+            </h2>
 
             <.flash flash={@flash} kind={:error} />
             <.flash flash={@flash} kind={:info} />
@@ -77,9 +75,9 @@ defmodule Web.SignIn do
               </:item>
 
               <:item :if={adapter_enabled?(@providers_by_adapter, :userpass)}>
-                <h3 class="text-m leading-tight tracking-tight text-neutral-900 sm:text-xl">
+                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
                   Sign in with username and password
-                </h3>
+                </h2>
 
                 <.providers_group_form
                   adapter="userpass"
@@ -91,9 +89,9 @@ defmodule Web.SignIn do
               </:item>
 
               <:item :if={adapter_enabled?(@providers_by_adapter, :email)}>
-                <h3 class="text-m leading-tight tracking-tight text-neutral-900 sm:text-xl">
+                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
                   Sign in with email
-                </h3>
+                </h2>
 
                 <.providers_group_form
                   adapter="email"
@@ -189,7 +187,7 @@ defmodule Web.SignIn do
         />
       </div>
 
-      <.submit_button class="w-full">
+      <.submit_button class="w-full" style="info" icon="hero-key">
         Sign in
       </.submit_button>
     </.form>
@@ -220,7 +218,7 @@ defmodule Web.SignIn do
         placeholder="Enter your email"
         required
       />
-      <.submit_button class="w-full" style="info">
+      <.submit_button class="w-full" style="info" icon="hero-envelope">
         Request sign in token
       </.submit_button>
     </.form>
