@@ -560,7 +560,7 @@ pub(crate) fn private_key() -> impl Strategy<Value = PrivateKey> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct PrivateKey([u8; 32]);
+pub(crate) struct PrivateKey(pub [u8; 32]);
 
 impl From<PrivateKey> for StaticSecret {
     fn from(key: PrivateKey) -> Self {

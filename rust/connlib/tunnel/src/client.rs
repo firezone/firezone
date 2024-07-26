@@ -272,6 +272,7 @@ impl ClientState {
     pub(crate) fn new(
         private_key: impl Into<StaticSecret>,
         known_hosts: HashMap<String, Vec<IpAddr>>,
+        seed: [u8; 32],
     ) -> Self {
         Self {
             awaiting_connection_details: Default::default(),
@@ -284,7 +285,7 @@ impl ClientState {
             interface_config: Default::default(),
             buffered_packets: Default::default(),
             buffered_dns_queries: Default::default(),
-            node: ClientNode::new(private_key.into()),
+            node: ClientNode::new(private_key.into(), seed),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
@@ -1311,7 +1312,7 @@ impl IpProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand_core::OsRng;
+    use rand::rngs::OsRng;
 
     #[test]
     fn ignores_ip4_igmp_multicast() {
@@ -1484,7 +1485,11 @@ mod tests {
 
     impl ClientState {
         pub fn for_test() -> ClientState {
-            ClientState::new(StaticSecret::random_from_rng(OsRng), HashMap::new())
+            ClientState::new(
+                StaticSecret::random_from_rng(OsRng),
+                HashMap::new(),
+                rand::random(),
+            )
         }
     }
 

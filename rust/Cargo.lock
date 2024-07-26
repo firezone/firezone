@@ -2005,7 +2005,6 @@ dependencies = [
  "proptest",
  "proptest-state-machine",
  "rand 0.8.5",
- "rand_core 0.6.4",
  "rangemap",
  "secrecy",
  "serde",

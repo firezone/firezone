@@ -11,7 +11,8 @@ use core::fmt;
 use ip_packet::{
     ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, MutableIpPacket, Packet as _,
 };
-use rand::random;
+use rand::rngs::StdRng;
+use rand::{random, SeedableRng};
 use secrecy::{ExposeSecret, Secret};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -96,6 +97,7 @@ pub struct Node<T, TId, RId> {
     stats: NodeStats,
 
     marker: PhantomData<T>,
+    _rng: StdRng,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -121,9 +123,10 @@ where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
-    pub fn new(private_key: StaticSecret) -> Self {
+    pub fn new(private_key: StaticSecret, seed: [u8; 32]) -> Self {
         let public_key = &(&private_key).into();
         Self {
+            _rng: StdRng::from_seed(seed), // TODO: Use this seed for private key too. Requires refactoring of how we generate the login-url because that one needs to know the public key.
             private_key,
             public_key: *public_key,
             marker: Default::default(),
