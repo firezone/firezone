@@ -99,7 +99,7 @@ fn resource_header(res: &ResourceDescription) -> Item {
         return copyable(address_description);
     };
 
-    item(Event::Url(url), address_description)
+    item(Event::Url(url), format!("<{address_description}>"))
 }
 
 #[derive(PartialEq)]
@@ -298,6 +298,56 @@ mod tests {
             expected,
             "{}",
             serde_json::to_string_pretty(&actual).unwrap()
+        );
+    }
+
+    #[test]
+    fn dns_resource_with_url() {
+        let s = r#"[
+            {
+                "id": "f716012d-5a0d-4008-86c2-1d37dd3c9915",
+                "type": "dns",
+                "name": "Example",
+                "address": "example.com",
+                "address_description": "https://example.com",
+                "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                "status": "Online"
+            }
+        ]"#;
+        let resources: Vec<_> = serde_json::from_str(s).unwrap();
+        let input = AppState::SignedIn(SignedIn {
+            actor_name: "Jane Doe",
+            resources: &resources,
+        });
+        let actual = input.into_menu();
+        let expected = Menu::default()
+            .disabled("Signed in as Jane Doe")
+            .item(Event::SignOut, SIGN_OUT)
+            .separator()
+            .disabled(RESOURCES)
+            .add_submenu(
+                "Example",
+                Menu::default()
+                    .item(
+                        Event::Url("https://example.com".parse().unwrap()),
+                        "<https://example.com>",
+                    )
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("Example")
+                    .copyable("example.com")
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable(GATEWAY_CONNECTED),
+            )
+            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            serde_json::to_string_pretty(&actual).unwrap(),
         );
     }
 
