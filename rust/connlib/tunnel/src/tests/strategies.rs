@@ -1,16 +1,18 @@
 use super::{
     sim_gateway::{ref_gateway_host, RefGateway},
     sim_net::Host,
+    sim_relay::ref_relay_host,
     stub_portal::StubPortal,
 };
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use connlib_shared::{
     messages::{
         client::{ResourceDescriptionCidr, ResourceDescriptionDns, Site, SiteId},
-        DnsServer, GatewayId,
+        DnsServer, GatewayId, RelayId,
     },
     proptest::{
-        any_ip_network, cidr_resource, dns_resource, domain_label, domain_name, gateway_id, site,
+        any_ip_network, cidr_resource, dns_resource, domain_label, domain_name, gateway_id,
+        relay_id, site,
     },
     DomainName,
 };
@@ -194,6 +196,10 @@ pub(crate) fn gateways_and_portal() -> impl Strategy<
                 (Just(gateways), Just(portal), dns_resource_records)
             },
         )
+}
+
+pub(crate) fn relays() -> impl Strategy<Value = BTreeMap<RelayId, Host<u64>>> {
+    collection::btree_map(relay_id(), ref_relay_host(), 1..=2)
 }
 
 fn any_site(sites: HashSet<Site>) -> impl Strategy<Value = Site> {

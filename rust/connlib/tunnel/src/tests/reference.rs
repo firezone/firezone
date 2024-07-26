@@ -1,5 +1,5 @@
 use super::{
-    composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*, sim_relay::*,
+    composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
 use crate::dns::is_subdomain;
@@ -8,11 +8,9 @@ use connlib_shared::{
         client::{self, ResourceDescription},
         GatewayId, RelayId,
     },
-    proptest::*,
     DomainName, StaticSecret,
 };
 use hickory_proto::rr::RecordType;
-use prop::collection;
 use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;
 use std::{
@@ -62,7 +60,7 @@ impl ReferenceStateMachine for ReferenceState {
         (
             ref_client_host(Just(client_tunnel_ip4), Just(client_tunnel_ip6)),
             gateways_and_portal(),
-            collection::btree_map(relay_id(), ref_relay_host(), 1..=2),
+            relays(),
             global_dns_records(), // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
             any::<bool>(),
         )
@@ -169,9 +167,7 @@ impl ReferenceStateMachine for ReferenceState {
             .with(1, roam_client())
             .with(
                 1,
-                migrate_relays(sample::select(
-                    state.relays.keys().copied().collect::<Vec<_>>(),
-                )),
+                migrate_relays(Just(state.relays.keys().copied().collect())), // Always take down all relays because we can't know which one was sampled for the connection.
             )
             .with(1, Just(Transition::ReconnectPortal))
             .with(1, Just(Transition::Idle))
@@ -394,15 +390,16 @@ impl ReferenceStateMachine for ReferenceState {
                 disconnected,
                 online,
             } => {
-                let disconnected_relay = state
-                    .relays
-                    .remove(disconnected)
-                    .expect("old host to be present");
-                state.network.remove_host(&disconnected_relay);
+                for rid in disconnected {
+                    let disconnected_relay =
+                        state.relays.remove(rid).expect("old host to be present");
+                    state.network.remove_host(&disconnected_relay);
+                }
 
-                let (id, online_relay) = online;
-                state.relays.insert(*id, online_relay.clone());
-                debug_assert!(state.network.add_host(*id, online_relay));
+                for (rid, online_relay) in online {
+                    state.relays.insert(*rid, online_relay.clone());
+                    debug_assert!(state.network.add_host(*rid, online_relay));
+                }
 
                 // In case we were using the relays, all connections will be cut and require us to make a new one.
                 if state.drop_direct_client_traffic {
@@ -559,15 +556,22 @@ impl ReferenceStateMachine for ReferenceState {
                 disconnected,
                 online,
             } => {
-                let (new_id, new_host) = online;
+                let all_old_are_present = disconnected
+                    .iter()
+                    .all(|rid| state.relays.contains_key(rid));
+                let any_new_are_present = online.keys().any(|rid| state.relays.contains_key(rid));
 
-                let old_is_present = state.relays.contains_key(disconnected);
-                let new_is_present = state.relays.contains_key(new_id);
+                let any_new_uses_assigned_ip4 = online
+                    .values()
+                    .any(|h| h.ip4.is_some_and(|ip| state.network.contains(ip)));
+                let any_new_uses_assigned_ip6 = online
+                    .values()
+                    .any(|h| h.ip6.is_some_and(|ip| state.network.contains(ip)));
 
-                let is_assigned_ip4 = new_host.ip4.is_some_and(|ip| state.network.contains(ip));
-                let is_assigned_ip6 = new_host.ip6.is_some_and(|ip| state.network.contains(ip));
-
-                old_is_present && !new_is_present && !is_assigned_ip4 && !is_assigned_ip6
+                all_old_are_present
+                    && !any_new_are_present
+                    && !any_new_uses_assigned_ip4
+                    && !any_new_uses_assigned_ip6
             }
             Transition::Idle => true,
         }

@@ -25,7 +25,6 @@ use hickory_resolver::lookup::Lookup;
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
-use std::iter;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     net::IpAddr,
@@ -286,36 +285,48 @@ impl StateMachineTest for TunnelTest {
                 disconnected,
                 online,
             } => {
-                let disconnected_relay = state
-                    .relays
-                    .remove(&disconnected)
-                    .expect("old relay to be present");
-                state.network.remove_host(&disconnected_relay);
+                for rid in &disconnected {
+                    let disconnected_relay =
+                        state.relays.remove(rid).expect("old relay to be present");
+                    state.network.remove_host(&disconnected_relay);
+                }
 
-                let (rid, new_relay) = online;
-                let new_relay = new_relay.map(SimRelay::new, debug_span!("relay", %rid));
-                debug_assert!(state.network.add_host(rid, &new_relay));
+                let online = online
+                    .into_iter()
+                    .map(|(rid, relay)| (rid, relay.map(SimRelay::new, debug_span!("relay", %rid))))
+                    .collect::<BTreeMap<_, _>>();
 
-                state.client.exec_mut(|c| {
-                    c.sut.update_relays(
-                        BTreeSet::from([disconnected]),
-                        BTreeSet::from_iter(map_explode(iter::once((&rid, &new_relay)), "client")),
-                        now,
-                    );
+                for (rid, relay) in &online {
+                    debug_assert!(state.network.add_host(*rid, relay));
+                }
+
+                state.client.exec_mut({
+                    let disconnected = disconnected.clone();
+                    let online = online.iter();
+
+                    move |c| {
+                        c.sut.update_relays(
+                            disconnected,
+                            BTreeSet::from_iter(map_explode(online, "client")),
+                            now,
+                        );
+                    }
                 });
                 for (id, gateway) in &mut state.gateways {
-                    gateway.exec_mut(|g| {
-                        g.sut.update_relays(
-                            BTreeSet::from([disconnected]),
-                            BTreeSet::from_iter(map_explode(
-                                iter::once((&rid, &new_relay)),
-                                &format!("gateway_{id}"),
-                            )),
-                            now,
-                        )
+                    gateway.exec_mut({
+                        let disconnected = disconnected.clone();
+                        let online = online.iter();
+
+                        move |g| {
+                            g.sut.update_relays(
+                                disconnected,
+                                BTreeSet::from_iter(map_explode(online, &format!("gateway_{id}"))),
+                                now,
+                            )
+                        }
                     });
                 }
-                state.relays.insert(rid, new_relay);
+                state.relays.extend(online);
             }
             Transition::Idle => {
                 const IDLE_DURATION: Duration = Duration::from_secs(5 * 60);

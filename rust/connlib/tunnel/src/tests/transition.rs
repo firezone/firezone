@@ -1,15 +1,17 @@
 use super::{
     sim_net::{any_ip_stack, any_port, Host},
-    sim_relay::ref_relay_host,
+    strategies::relays,
 };
 use connlib_shared::{
     messages::{client::ResourceDescription, DnsServer, RelayId, ResourceId},
-    proptest::relay_id,
     DomainName,
 };
 use hickory_proto::rr::RecordType;
 use proptest::{prelude::*, sample};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+};
 
 /// The possible transitions of the state machine.
 #[derive(Clone, derivative::Derivative)]
@@ -72,8 +74,8 @@ pub(crate) enum Transition {
 
     /// Simulate deployment of new relays.
     RelaysPresence {
-        disconnected: RelayId,
-        online: (RelayId, Host<u64>),
+        disconnected: BTreeSet<RelayId>,
+        online: BTreeMap<RelayId, Host<u64>>,
     },
 
     /// Idle connlib for a while, forcing connection to auto-close.
@@ -183,10 +185,10 @@ pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {
 }
 
 pub(crate) fn migrate_relays(
-    old: impl Strategy<Value = RelayId>,
+    disconnected: impl Strategy<Value = BTreeSet<RelayId>>,
 ) -> impl Strategy<Value = Transition> {
-    (old, relay_id(), ref_relay_host()).prop_map(|(old, new, host)| Transition::RelaysPresence {
-        disconnected: old,
-        online: (new, host),
+    (disconnected, relays()).prop_map(|(disconnected, online)| Transition::RelaysPresence {
+        disconnected,
+        online,
     })
 }
