@@ -100,8 +100,6 @@ impl TunDeviceManager {
             .await
             .context("Failed to delete existing addresses")?;
 
-        self.routes.clear(); // Deleting the IPs clears all routes.
-
         handle
             .link()
             .set(index)
@@ -167,12 +165,6 @@ impl TunDeviceManager {
             .chain(ipv6.into_iter().map(IpNetwork::from))
             .collect();
 
-        if new_routes == self.routes {
-            tracing::debug!("Routes are unchanged");
-
-            return Ok(());
-        }
-
         tracing::info!(?new_routes, "Setting new routes");
 
         let handle = &self.connection.handle;
@@ -188,12 +180,12 @@ impl TunDeviceManager {
             .header
             .index;
 
-        for route in new_routes.difference(&self.routes) {
-            add_route(route, index, handle).await?;
+        for route in self.routes.difference(&new_routes) {
+            remove_route(route, index, handle).await;
         }
 
-        for route in self.routes.difference(&new_routes) {
-            remove_route(route, index, handle).await?;
+        for route in &new_routes {
+            add_route(route, index, handle).await;
         }
 
         self.routes = new_routes;
@@ -245,35 +237,28 @@ fn make_route_v6(idx: u32, handle: &Handle, route: Ipv6Network) -> RouteAddReque
         .destination_prefix(route.network_address(), route.netmask())
 }
 
-async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) -> Result<()> {
+async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
     let res = match route {
         IpNetwork::V4(ipnet) => make_route_v4(idx, handle, *ipnet).execute().await,
         IpNetwork::V6(ipnet) => make_route_v6(idx, handle, *ipnet).execute().await,
     };
 
-    match res {
-        Ok(_) => {}
-        Err(NetlinkError(err)) if err.raw_code() == FILE_ALREADY_EXISTS => {}
-        // TODO: we should be able to surface this error and handle it depending on
-        // if any of the added routes succeeded.
-        Err(err) => Err(err).context("Failed to add route")?,
+    if let Err(err) = res {
+        tracing::debug!(%route, "Failed to add route: {err}");
     }
-    Ok(())
 }
 
-async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) -> Result<()> {
+async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
     let message = match route {
         IpNetwork::V4(ipnet) => make_route_v4(idx, handle, *ipnet).message_mut().clone(),
         IpNetwork::V6(ipnet) => make_route_v6(idx, handle, *ipnet).message_mut().clone(),
     };
 
-    handle
-        .route()
-        .del(message)
-        .execute()
-        .await
-        .context("Failed to delete route")?;
-    Ok(())
+    let res = handle.route().del(message).execute().await;
+
+    if let Err(err) = res {
+        tracing::debug!(%route, "Failed to remove route: {err}");
+    }
 }
 
 #[derive(Debug)]
