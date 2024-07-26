@@ -89,16 +89,18 @@ fn list_adapters() -> Result<Adapters> {
     };
 
     // Incase of a buffer overflow buffer_len will contain the neccesary length
-    if res == ERROR_BUFFER_OVERFLOW {
-        // Safety we just allocated buffer with the len we are passing
-        buffer = vec![0u8; buffer_len];
-        res = GetAdaptersAddresses(
-            AF_UNSPEC.0 as u32,
-            GET_ADAPTERS_ADDRESSES_FLAGS(0),
-            Some(null()),
-            Some(buffer.as_mut_ptr() as *mut _),
-            &mut buffer_len as *mut _,
-        );
+    if res == ERROR_BUFFER_OVERFLOW.0 {
+        buffer = vec![0u8; buffer_len as usize];
+        // SAFETY: we just allocated buffer with the len we are passing
+        res = unsafe {
+            GetAdaptersAddresses(
+                AF_UNSPEC.0 as u32,
+                GET_ADAPTERS_ADDRESSES_FLAGS(0),
+                Some(null()),
+                Some(buffer.as_mut_ptr() as *mut _),
+                &mut buffer_len as *mut _,
+            )
+        };
     }
 
     WIN32_ERROR(res).ok()?;
