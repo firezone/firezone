@@ -38,6 +38,68 @@ fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<Option<IpAddr>> {
     Ok(Some(src))
 }
 
+struct Adapters {
+    _buffer: Vec<u8>,
+    next: *const IP_ADAPTER_ADDRESSES_LH,
+}
+
+impl Iterator for Adapters {
+    type Item = &'static IP_ADAPTER_ADDRESSES_LH;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next.is_null() {
+            return None;
+        }
+
+        // SAFETY: We expect windows to give us a valid linked list where each item fo the list is actually an IP_ADAPTER_ADDRESSES_LH
+        // furthermore, we return None if next is null in the previous line.
+        let adapter = unsafe { self.next.as_ref() };
+
+        self.next = adapter.Next;
+
+        Some(adapter)
+    }
+}
+
+fn list_adapters() -> Result<Adapters> {
+    use windows::Win32::Foundation::ERROR_BUFFER_OVERFLOW;
+    use windows::Win32::Foundation::WIN32_ERROR;
+
+    // 15kB is recommended to almost never fail
+    let mut buffer: Vec<u8> = vec![0u8; 15000];
+    let mut buffer_len = buffer.len() as u32;
+    // Safety we just allocated buffer with the len we are passing
+    unsafe {
+        let mut res = GetAdaptersAddresses(
+            AF_UNSPEC.0 as u32,
+            GET_ADAPTERS_ADDRESSES_FLAGS(0),
+            Some(null()),
+            Some(buffer.as_mut_ptr() as *mut _),
+            &mut buffer_len as *mut _,
+        );
+    }
+
+    // Incase of a buffer overflow buffer_len will contain the neccesary length
+    if res == ERROR_BUFFER_OVERFLOW {
+        // Safety we just allocated buffer with the len we are passing
+        buffer = vec![0u8; buffer_len];
+        res = GetAdaptersAddresses(
+            AF_UNSPEC.0 as u32,
+            GET_ADAPTERS_ADDRESSES_FLAGS(0),
+            Some(null()),
+            Some(buffer.as_mut_ptr() as *mut _),
+            &mut buffer_len as *mut _,
+        );
+    }
+
+    WIN32_ERROR(res).ok()?;
+
+    Ok(Adapters {
+        _buffer: buffer,
+        next: buffer as *const _,
+    })
+}
+
 /// Finds the best route (i.e. source interface) for a given destination IP, excluding interfaces where the name matches the given filter.
 ///
 /// To prevent routing loops on Windows, we need to explicitly set a source IP for all packets.
@@ -62,40 +124,18 @@ fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAdd
     use windows::Win32::Networking::WinSock::ADDRESS_FAMILY;
     use windows::Win32::Networking::WinSock::AF_UNSPEC;
     use windows::Win32::Networking::WinSock::SOCKADDR_INET;
+
+    let luids = list_adapters()
+        .ok()?
+        .filter(|adapter| {
+            !adapter.FriendlyName.is_null()
+                || adapter.FriendlyName.to_string() != Ok(filter.to_string())
+        })
+        .map(|adapter| adapter.Luid)
+        .collect_vec();
+
     // SAFETY: lol
     unsafe {
-        // TODO: iterate until it doesn't overflow
-        let mut addresses: Vec<u8> = vec![0u8; 15000];
-        let mut addresses_len = addresses.len() as u32;
-        let res = GetAdaptersAddresses(
-            AF_UNSPEC.0 as u32,
-            GET_ADAPTERS_ADDRESSES_FLAGS(0),
-            Some(null()),
-            Some(addresses.as_mut_ptr() as *mut _),
-            &mut addresses_len as *mut _,
-        );
-
-        if res != 0 {
-            todo!()
-        }
-
-        let mut next_address = addresses.as_ptr() as *const _;
-        let mut luids = Vec::new();
-        loop {
-            let address: &IP_ADAPTER_ADDRESSES_LH = std::mem::transmute(next_address);
-
-            if address.FriendlyName.is_null()
-                || &address.FriendlyName.to_string().unwrap() != filter
-            {
-                luids.push(address.Luid);
-            }
-
-            if address.Next.is_null() {
-                break;
-            }
-            next_address = address.Next;
-        }
-
         let mut routes: Vec<(MIB_IPFORWARD_ROW2, SOCKADDR_INET)> = Vec::new();
         for luid in &luids {
             let addr: SOCKADDR_INET = SocketAddr::from((dst, 0)).into();
