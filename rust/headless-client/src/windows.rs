@@ -5,7 +5,9 @@
 //! We must tell Windows explicitly when our service is stopping.
 
 use anyhow::Result;
+use itertools::Itertools as _;
 use std::{
+    cmp::Ordering,
     io,
     mem::MaybeUninit,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -131,6 +133,12 @@ struct Route {
     addr: IpAddr,
 }
 
+impl PartialOrd for Route {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.metric.cmp(other.metric))
+    }
+}
+
 // SAFETY: si_family must be always set in the union, which will be the case for a valid SOCKADDR_INET
 unsafe fn to_ip_addr(addr: SOCKADDR_INET, dst: IpAddr) -> Option<IpAddr> {
     match (addr.si_family, dst) {
@@ -188,15 +196,14 @@ fn find_best_route_for_luid(luid: &NET_LUID_LH, dst: IpAddr) -> Result<Route> {
 /// It should **not** be called on a per-packet basis.
 /// Callers should instead cache the result until network interfaces change.
 fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAddr> {
-    let mut routes: Vec<_> = list_adapters()
+    list_adapters()
         .ok()?
         .filter(|adapter| !is_adapter_name(adapter, filter))
         .map(|adapter| adapter.Luid)
         .filter_map(|luid| find_best_route_for_luid(&luid, dst).ok())
-        .collect();
-
-    routes.sort_by(|a, b| a.metric.cmp(&b.metric));
-    Some(routes.first()?.addr)
+        .sorted()
+        .next()
+        .map(|r| r.addr)
 }
 
 // The return value is useful on Linux
