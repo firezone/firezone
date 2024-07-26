@@ -135,7 +135,7 @@ struct Route {
 }
 
 impl Ord for Route {
-    fn partial_cmp(&self, other: &Self) -> Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         self.metric.cmp(&other.metric)
     }
 }
