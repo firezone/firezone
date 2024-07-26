@@ -135,11 +135,11 @@ fn add_route(route: IpNetwork, iface_idx: u32) {
     };
 
     // We expect set_routes to call add_route with the same routes always making this error expected
-    if e.code.0 as u32 == DUPLICATE_ERR {
+    if e.code().0 as u32 == DUPLICATE_ERR {
         return;
     }
 
-    tracing::debug!(%route, "Failed to add route: {e}");
+    tracing::warn!(%route, "Failed to add route: {e}");
 }
 
 // It's okay if this blocks until the route is removed in the OS.
@@ -152,7 +152,7 @@ fn remove_route(route: IpNetwork, iface_idx: u32) {
         return;
     };
 
-    tracing::debug!(%route, "Failed to remove route: {e}")
+    tracing::warn!(%route, "Failed to remove route: {e}")
 }
 
 fn forward_entry(route: IpNetwork, iface_idx: u32) -> MIB_IPFORWARD_ROW2 {
