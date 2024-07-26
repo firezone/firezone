@@ -269,7 +269,7 @@ async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
         return;
     };
 
-    // We expect this to be called often with an already existing route since set_routes always calls for all routes
+    // Our view of the current routes may be stale. Removing a route that no longer exists shouldn't print a warning.
     if matches!(&err, NetlinkError(err) if err.raw_code() == -ENOENT) {
         return;
     }
