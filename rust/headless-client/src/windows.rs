@@ -166,7 +166,7 @@ mod test {
     use super::*;
     use firezone_bin_shared::TunDeviceManager;
     use ip_network::Ipv4Network;
-    use socket_factory::{DatagramIn, DatagramOut};
+    use socket_factory::DatagramOut;
     use std::net::ToSocketAddrs;
     use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 
@@ -184,11 +184,6 @@ mod test {
     #[tokio::test]
     #[ignore = "Needs admin & Internet"]
     async fn no_packet_loops() {
-        // Install wintun so the test can run
-        let wintun_path = connlib_shared::windows::wintun_dll_path().unwrap();
-        std::fs::create_dir_all(wintun_path.parent().unwrap()).unwrap();
-        std::fs::write(&wintun_path, connlib_shared::windows::wintun_bytes()).unwrap();
-
         let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
         let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
 
@@ -198,7 +193,10 @@ mod test {
 
         // Configure `0.0.0.0/0` route.
         device_manager
-            .set_routes(vec![Ipv4Network::new(Ipv4Addr::UNSPECIFIED, 0)], vec![])
+            .set_routes(
+                vec![Ipv4Network::new(Ipv4Addr::UNSPECIFIED, 0).unwrap()],
+                vec![],
+            )
             .await
             .unwrap();
 
@@ -216,8 +214,8 @@ mod test {
         socket
             .send(DatagramOut {
                 src: None,
-                dst: Some(server),
-                packet: &hex_literal::hex_literal!("000100002112A4420123456789abcdef01234567"),
+                dst: server,
+                packet: &hex_literal::hex!("000100002112A4420123456789abcdef01234567"),
             })
             .unwrap();
 
