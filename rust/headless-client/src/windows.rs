@@ -226,7 +226,9 @@ mod test {
             let mut buf = [0u8; 1000];
             let result = std::task::ready!(socket.poll_recv_from(&mut buf, cx));
 
-            let _response = result.uwrap().next().unwrap();
+            let _response = result.unwrap().next().unwrap();
+
+            Poll::Ready(())
         })
         .await;
     }
