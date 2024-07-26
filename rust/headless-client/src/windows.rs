@@ -134,9 +134,15 @@ struct Route {
     addr: IpAddr,
 }
 
+impl Ord for Route {
+    fn partial_cmp(&self, other: &Self) -> Ordering {
+        self.metric.cmp(&other.metric)
+    }
+}
+
 impl PartialOrd for Route {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.metric.cmp(&other.metric))
+        Some(self.cmp(&other))
     }
 }
 
