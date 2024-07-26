@@ -135,28 +135,4 @@ Given the client is signed in, when you ping...
 
 # Network changes
 
-<https://github.com/firezone/firezone/issues/3000>
-
-## Wi-Fi cycle
-
-1. FZ up, Eth down, Wi-Fi up (steady Wi-Fi)
-2. FZ up, Eth down, Wi-Fi disconnecting (temporary network loss)
-3. FZ up, Eth down, Wi-Fi down (steady state, no network)
-4. FZ up, Eth down, Wi-Fi connecting (regaining Wi-Fi)
-
-## Ethernet cycle, no Wi-Fi
-
-5. FZ up, Eth up, Wi-Fi down (steady Eth)
-6. FZ up, Eth disconnecting, Wi-Fi down (temporary network loss)
-7. FZ up, Eth down, Wi-Fi down (steady state, no network)
-8. FZ up, Eth connecting, Wi-Fi down (regaining Eth)
-
-## Ethernet cycle with Wi-Fi
-
-(This trips up Firezone on the Windows dev laptop)
-
-9. FZ up, Eth up, Wi-Fi down (skip, same as 5)
-10. FZ up, Eth disconnecting, Wi-Fi connecting (unplugging Ethernet)
-11. FZ up, Eth down, Wi-Fi up (skip, same as 1)
-12. FZ up, Eth connecting, Wi-Fi up (regaining Ethernet)
-13. FZ up, Eth up, Wi-Fi disconnecting (Letting Wi-Fi lapse)
+Moved to [`network_roaming.md`](network_roaming.md)
