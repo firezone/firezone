@@ -5580,7 +5580,6 @@ dependencies = [
  "boringtun",
  "bytecodec",
  "bytes",
- "firezone-relay",
  "hex",
  "hex-display",
  "ip-packet",
