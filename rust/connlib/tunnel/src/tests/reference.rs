@@ -378,10 +378,7 @@ impl ReferenceStateMachine for ReferenceState {
                     .add_host(state.client.inner().id, &state.client));
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
-                state.client.exec_mut(|client| {
-                    client.connected_cidr_resources.clear();
-                    client.connected_dns_resources.clear();
-                });
+                state.client.exec_mut(|client| client.reset_connections());
             }
             Transition::ReconnectPortal => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
@@ -403,17 +400,11 @@ impl ReferenceStateMachine for ReferenceState {
 
                 // In case we were using the relays, all connections will be cut and require us to make a new one.
                 if state.drop_direct_client_traffic {
-                    state.client.exec_mut(|client| {
-                        client.connected_cidr_resources.clear();
-                        client.connected_dns_resources.clear();
-                    });
+                    state.client.exec_mut(|client| client.reset_connections());
                 }
             }
             Transition::Idle => {
-                state.client.exec_mut(|client| {
-                    client.connected_cidr_resources.clear();
-                    client.connected_dns_resources.clear();
-                });
+                state.client.exec_mut(|client| client.reset_connections());
             }
         };
 

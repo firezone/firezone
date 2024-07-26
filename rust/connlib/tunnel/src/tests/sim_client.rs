@@ -266,6 +266,11 @@ impl RefClient {
         SimClient::new(self.id, client_state)
     }
 
+    pub(crate) fn reset_connections(&mut self) {
+        self.connected_cidr_resources.clear();
+        self.connected_dns_resources.clear();
+    }
+
     pub(crate) fn is_tunnel_ip(&self, ip: IpAddr) -> bool {
         match ip {
             IpAddr::V4(ip4) => self.tunnel_ip4 == ip4,
