@@ -5,7 +5,7 @@
 //! We must tell Windows explicitly when our service is stopping.
 
 use anyhow::Result;
-use itertools::Itertools as _;
+use itertools::Itertools;
 use std::{
     cmp::Ordering,
     io,
@@ -135,7 +135,7 @@ struct Route {
 
 impl PartialOrd for Route {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.metric.cmp(other.metric))
+        Some(self.metric.cmp(&other.metric))
     }
 }
 
