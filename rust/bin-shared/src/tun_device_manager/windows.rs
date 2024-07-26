@@ -144,6 +144,7 @@ fn add_route(route: IpNetwork, iface_idx: u32) {
 
 // It's okay if this blocks until the route is removed in the OS.
 fn remove_route(route: IpNetwork, iface_idx: u32) {
+    const ELEMENT_NOT_FOUND: u32 = 0x80070490;
     let entry = forward_entry(route, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
@@ -151,6 +152,10 @@ fn remove_route(route: IpNetwork, iface_idx: u32) {
     let Err(e) = unsafe { DeleteIpForwardEntry2(&entry) }.ok() else {
         return;
     };
+
+    if e.code().0 as u32 == ELEMENT_NOT_FOUND {
+        return;
+    }
 
     tracing::warn!(%route, "Failed to remove route: {e}")
 }
