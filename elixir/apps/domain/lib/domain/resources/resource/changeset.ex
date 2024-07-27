@@ -13,6 +13,7 @@ defmodule Domain.Resources.Resource.Changeset do
     |> changeset()
     |> validate_required(@required_fields)
     |> put_change(:account_id, account.id)
+    |> update_change(:address, &String.trim/1)
     |> validate_address()
     |> cast_assoc(:connections,
       with: &Connection.Changeset.changeset(account.id, &1, &2, subject),

@@ -981,6 +981,28 @@ defmodule Domain.ResourcesTest do
     #   assert errors_on(changeset) == %{name: ["has already been taken"]}
     # end
 
+    test "trims whitespace from address before validation", %{subject: subject} do
+      attrs = %{"type" => "dns", "address" => " foo  "}
+      assert {:error, changeset} = create_resource(attrs, subject)
+      refute Map.has_key?(errors_on(changeset), :address)
+
+      attrs = %{"type" => "dns", "address" => "\tfoo\t"}
+      assert {:error, changeset} = create_resource(attrs, subject)
+      refute Map.has_key?(errors_on(changeset), :address)
+
+      attrs = %{"type" => "dns", "address" => "\nfoo\n"}
+      assert {:error, changeset} = create_resource(attrs, subject)
+      refute Map.has_key?(errors_on(changeset), :address)
+
+      attrs = %{"type" => "dns", "address" => "\rfoo\r"}
+      assert {:error, changeset} = create_resource(attrs, subject)
+      refute Map.has_key?(errors_on(changeset), :address)
+
+      attrs = %{"type" => "dns", "address" => "\vfoo\v"}
+      assert {:error, changeset} = create_resource(attrs, subject)
+      refute Map.has_key?(errors_on(changeset), :address)
+    end
+
     test "creates a dns resource", %{account: account, subject: subject} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
