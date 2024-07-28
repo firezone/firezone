@@ -171,10 +171,15 @@ impl Io {
         let timeout = tokio::time::Instant::from_std(timeout);
 
         match self.timeout.as_mut() {
-            Some(existing_timeout) if existing_timeout.deadline() != timeout => {
+            Some(existing_timeout) => {
+                debug_assert_ne!(
+                    existing_timeout.deadline(),
+                    timeout,
+                    "Resetting timeout to identical timestamp causes a busy-loop"
+                );
+
                 existing_timeout.as_mut().reset(timeout)
             }
-            Some(_) => {}
             None => self.timeout = Some(Box::pin(tokio::time::sleep_until(timeout))),
         }
     }
