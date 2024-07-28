@@ -26,41 +26,6 @@ impl Device {
         }
     }
 
-    #[cfg(target_family = "unix")]
-    pub(crate) fn poll_read<'b>(
-        &mut self,
-        buf: &'b mut [u8],
-        cx: &mut Context<'_>,
-    ) -> Poll<io::Result<MutableIpPacket<'b>>> {
-        use ip_packet::Packet as _;
-
-        let Some(tun) = self.tun.as_mut() else {
-            self.waker = Some(cx.waker().clone());
-            return Poll::Pending;
-        };
-
-        let n = std::task::ready!(tun.poll_read(&mut buf[20..], cx))?;
-
-        if n == 0 {
-            return Poll::Ready(Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                "device is closed",
-            )));
-        }
-
-        let packet = MutableIpPacket::new(&mut buf[..(n + 20)]).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "received bytes are not an IP packet",
-            )
-        })?;
-
-        tracing::trace!(target: "wire::dev::recv", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
-
-        Poll::Ready(Ok(packet))
-    }
-
-    #[cfg(target_family = "windows")]
     pub(crate) fn poll_read<'b>(
         &mut self,
         buf: &'b mut [u8],
