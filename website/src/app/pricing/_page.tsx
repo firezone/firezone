@@ -1,6 +1,6 @@
 "use client";
 
-import CustomerLogos from "@/components/CustomerLogos";
+import { CustomerLogosColored } from "@/components/CustomerLogos";
 import Toggle from "@/components/Toggle";
 import { HiCheck } from "react-icons/hi2";
 import Link from "next/link";
@@ -268,7 +268,7 @@ export default function _Page() {
         </div>
       </section>
       <section className="py-24 bg-gradient-to-b to-neutral-50 from-white">
-        <CustomerLogos />
+        <CustomerLogosColored />
       </section>
       <section className="bg-neutral-50 py-14">
         <div className="mb-14 mx-auto max-w-screen-lg px-3">

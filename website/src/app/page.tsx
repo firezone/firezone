@@ -4,7 +4,7 @@ import ActionLink from "@/components/ActionLink";
 import BattleCard from "@/components/BattleCard";
 import { RunaCap } from "@/components/Badges";
 import { Metadata } from "next";
-import CustomerLogos from "@/components/CustomerLogos";
+import { CustomerLogosGrayscale } from "@/components/CustomerLogos";
 import {
   HiShieldCheck,
   HiCheck,
@@ -32,6 +32,7 @@ import SpeedChart from "@/components/Animations/SpeedChart";
 import UpgradeDiagram from "@/components/Animations/UpgradeDiagram";
 import ComplianceDiagram from "@/components/Animations/ComplianceDiagram";
 import SimpleArchitecture from "@/components/Animations/SimpleArchitecture";
+import { manrope } from "@/lib/fonts";
 import "@/styles/hero.css";
 
 export const metadata: Metadata = {
@@ -43,104 +44,51 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="hero-background">
-        <div className="pt-24 md:pt-32 xl:pt-48 pb-14 md:pb-24 xl:pb-36 bg-gradient-to-br from-neutral-900/10 to-neutral-900/10 via-primary-700/10">
-          <div className="md:flex md:flex-wrap mx-auto max-w-screen-xl px-8 mb-8 md:mb-16 lg:mb-22 xl:mb-28">
-            <div className="md:w-2/3 px-4">
-              <h1 className="mb-8 inline-block font-medium tracking-tight leading-none text-neutral-200">
-                <SlideIn
-                  direction="right"
-                  delay={0.0}
-                  className="md:text-7xl text-4xl md:block"
-                >
-                  Zero-trust access
-                </SlideIn>
-                <SlideIn
-                  direction="left"
-                  delay={0.25}
-                  className="md:text-4xl text-2xl text-primary-450 underline underline-offset-4 md:block"
-                >
-                  For humans.
-                </SlideIn>
-              </h1>
-              <div className="flex items-center">
-                <SlideIn delay={0.5} direction="top" className="mr-4">
-                  <Image
-                    src="/images/ross-oss.svg"
-                    width={250}
-                    height={100}
-                    alt="Ross OSS"
-                    className="bg-neutral-50 rounded shadow shadow-neutral-300"
-                  />
-                </SlideIn>
-                <SlideIn delay={0.75} direction="top">
-                  <Link href="https://www.ycombinator.com/companies/firezone">
-                    <Image
-                      width={125}
-                      height={125}
-                      src="/images/yc-logo.svg"
-                      alt="YC Logo"
-                    />
-                  </Link>
-                </SlideIn>
-              </div>
-            </div>
-            <div className="md:w-1/3 px-4 my-auto">
-              <h3 className="md:mt-0 my-4 text-xl tracking-tight font-medium text-neutral-200 inline-block">
-                Firezone is a fast, flexible VPN replacement built on
-                WireGuard® that{" "}
-                <span className="text-primary-450 font-semibold inline-block">
-                  conceals
-                </span>{" "}
-                your apps and networks{" "}
-                <span className="text-primary-450 font-semibold inline-block">
-                  without
-                </span>{" "}
-                tedious configuration.
-              </h3>
-              <div className="flex flex-wrap justify-between mt-4">
-                <div className="my-4 mr-4 flex items-center">
-                  <Link
-                    href="https://app.firezone.dev/sign_up"
-                    className="group inline-flex items-center py-0.5 text-neutral-200 text-lg font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
-                  >
-                    Sign up now
-                    <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
-                  </Link>
-                </div>
-                <div className="my-4 flex items-center">
-                  <button
-                    type="button"
-                    className="group shadow-lg shadow-primary-700 text-lg w-48 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
-                  >
-                    <Link href="/contact/sales">Book a demo</Link>
-                    <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center justify-center px-4 md:px-0">
-            <video
-              className="shadow-lg rounded"
-              width="960"
-              height="540"
-              loop
-              autoPlay
-              playsInline
-              muted
+      <section className="bg-neutral-900 bg-hero">
+        <div className="pt-24 xl:pt-32 pb-14 md:pb-24 xl:pb-32">
+          <div className="flex flex-wrap mx-auto md:px-0 px-4 max-w-screen-md">
+            <h1
+              className={
+                manrope.className +
+                " mb-8 md:text-7xl text-4xl text-center shadow-inner font-medium tracking-tight leading-none text-neutral-300"
+              }
             >
-              <source src="/images/overview-screencap.webm" type="video/webm" />
-              Your browser does not support the video tag with WebM-formatted
-              videos.
-            </video>
+              Upgrade your VPN to zero-trust access
+            </h1>
+            <h3
+              className={
+                manrope.className +
+                " md:mt-0 my-4 text-xl text-center text-neutral-200"
+              }
+            >
+              Firezone is a fast, flexible VPN replacement built on WireGuard®
+              that scales with your workforce without tedious configuration.
+            </h3>
+            <div className="md:flex md:gap-x-8 mt-4 mx-auto">
+              <div className="my-4 mr-4 flex items-center">
+                <Link
+                  href="https://app.firezone.dev/sign_up"
+                  className="text-neutral-300 group inline-flex items-center py-0.5 text-lg font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
+                >
+                  Get started for free
+                  <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
+                </Link>
+              </div>
+              <div className="mt-8 md:mt-0 flex items-center">
+                <button
+                  type="button"
+                  className="group shadow-lg shadow-primary-700 text-lg w-48 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
+                >
+                  <Link href="/contact/sales">Book a demo</Link>
+                  <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </section>
-
-      {/* Customer logos */}
-      <section className="py-24 bg-gradient-to-b to-white from-neutral-100 via-primary-100">
-        <CustomerLogos />
+        <div className="max-w-screen-lg mx-auto">
+          <CustomerLogosGrayscale />
+        </div>
       </section>
 
       {/* TODO: ACLs for the rest of us */}
@@ -149,7 +97,7 @@ export default function Page() {
       <section className="bg-white py-8 md:py-16">
         <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
           <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
-            Upgrade to zero-trust access in{" "}
+            Supercharge your workforce in{" "}
             <span className="text-primary-450">minutes</span>.
           </h3>
         </div>
