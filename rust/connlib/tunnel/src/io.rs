@@ -96,7 +96,10 @@ impl Io {
 
         if let Some(timeout) = self.timeout.as_mut() {
             if timeout.poll_unpin(cx).is_ready() {
-                return Poll::Ready(Ok(Input::Timeout(timeout.deadline().into())));
+                let deadline = timeout.deadline().into();
+                self.timeout.as_mut().take(); // Clear the timeout.
+
+                return Poll::Ready(Ok(Input::Timeout(deadline)));
             }
         }
 
