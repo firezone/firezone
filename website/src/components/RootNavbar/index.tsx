@@ -1,4 +1,5 @@
 "use client";
+
 import Image from "next/image";
 import Link from "next/link";
 import ActionLink from "@/components/ActionLink";
@@ -19,9 +20,9 @@ import { HiBars3 } from "react-icons/hi2";
 import { useDrawer } from "@/components/Providers/DrawerProvider";
 import { useScrollPosition } from "@/hooks/useScrollPosition";
 
-const navbarTheme: CustomFlowbiteTheme["navbar"] = {
+const navbarThemeLight: CustomFlowbiteTheme["navbar"] = {
   root: {
-    base: "fixed top-0 left-0 right-0 z-50 items-center bg-white px-2 py-2.5 sm:px-4 transition-shadow",
+    base: "fixed top-0 left-0 right-0 z-50 items-center text-neutral-700 bg-white px-2 py-2.5 sm:px-4 transition-shadow",
     rounded: {
       on: "rounded",
       off: "",
@@ -50,7 +51,7 @@ const navbarTheme: CustomFlowbiteTheme["navbar"] = {
     },
   },
   link: {
-    base: "block py-2 pl-3 pr-4 md:p-0 border-b border-neutral-200 md:border-transparent",
+    base: "block py-2 pl-3 pr-4 md:p-0 border-t border-neutral-200 md:border-t-0 md:border-transparent",
     active: {
       on: "bg-neutral-200 rounded text-white md:bg-transparent text-primary-450 font-semibold",
       off: "text-neutral-700 hover:text-primary-450 hover:bg-neutral-100 transition transform duration-50 md:hover:bg-transparent md:hover:border-b-2 md:hover:border-primary-450",
@@ -66,7 +67,54 @@ const navbarTheme: CustomFlowbiteTheme["navbar"] = {
   },
 };
 
-const dropdownTheme: CustomFlowbiteTheme["dropdown"] = {
+const navbarThemeDark: CustomFlowbiteTheme["navbar"] = {
+  root: {
+    base: "fixed top-0 left-0 right-0 z-50 text-neutral-200 items-center bg-neutral-900 px-2 py-2.5 sm:px-4 transition-shadow",
+    rounded: {
+      on: "rounded",
+      off: "",
+    },
+    bordered: {
+      on: "border",
+      off: "",
+    },
+    inner: {
+      base: "mx-auto flex flex-wrap items-center justify-between",
+      fluid: {
+        on: "",
+        off: "container",
+      },
+    },
+  },
+  brand: {
+    base: "flex items-center",
+  },
+  collapse: {
+    base: "w-full md:block md:w-auto shadow md:shadow-none",
+    list: "mt-4 flex flex-col md:mt-0 md:flex-row md:space-x-8 md:text-md md:font-medium",
+    hidden: {
+      on: "hidden",
+      off: "",
+    },
+  },
+  link: {
+    base: "block py-2 pl-3 pr-4 md:p-0 border-t border-neutral-700 md:border-t-0 md:border-transparent",
+    active: {
+      on: "rounded text-white md:bg-transparent text-primary-450 font-semibold",
+      off: "text-neutral-200 hover:text-primary-450 hover:bg-primary-900 hover:text-primary-450 transition transform duration-50 md:hover:bg-transparent md:hover:border-b-2 md:hover:border-primary-450",
+    },
+    disabled: {
+      on: "text-neutral-400 hover:cursor-not-allowed",
+      off: "",
+    },
+  },
+  toggle: {
+    base: "inline-flex items-center rounded p-2 text-neutral-200 hover:bg-primary-900 hover:text-primary-450 md:hidden",
+    icon: "h-6 w-6 shrink-0",
+  },
+};
+
+const dropdownThemeLight: CustomFlowbiteTheme["dropdown"] = {
   arrowIcon: "ml-2 h-4 w-4",
   content: "py-1 focus:outline-none",
   floating: {
@@ -99,6 +147,41 @@ const dropdownTheme: CustomFlowbiteTheme["dropdown"] = {
   },
   inlineWrapper:
     "flex items-center py-2 pl-3 pr-4 md:p-0 text-neutral-700 hover:text-primary-450 md:border-transparent md:border-b-2 md:hover:border-primary-450 duration-50 transition transform",
+};
+
+const dropdownThemeDark: CustomFlowbiteTheme["dropdown"] = {
+  arrowIcon: "ml-2 h-4 w-4",
+  content: "py-1 focus:outline-none",
+  floating: {
+    animation: "transition-opacity",
+    arrow: {
+      base: "absolute z-10 h-2 w-2 rotate-45",
+      style: {
+        dark: "bg-neutral-900 dark:bg-neutral-700",
+        light: "bg-white",
+        auto: "bg-white",
+      },
+      placement: "-4px",
+    },
+    base: "z-10 w-fit divide-y divide-neutral-100 rounded shadow focus:outline-none",
+    content: "py-1 text-base text-neutral-200",
+    divider: "my-1 h-px bg-neutral-100",
+    header: "block px-4 py-2 text-sm text-neutral-200",
+    hidden: "invisible opacity-0",
+    item: {
+      container: "",
+      base: "flex w-32 cursor-pointer items-center justify-start px-4 py-2 text-md font-medium text-neutral-200 hover:text-primary-450 focus:bg-primary-900 focus:outline-none",
+      icon: "mr-2 h-4 w-4",
+    },
+    style: {
+      dark: "bg-neutral-900 text-white dark:bg-neutral-700",
+      light: "border border-neutral-700 bg-neutral-900 text-neutral-200",
+      auto: "border border-neutral-700 bg-neutral-900 text-neutral-200",
+    },
+    target: "w-fit",
+  },
+  inlineWrapper:
+    "flex items-center py-2 pl-3 pr-4 md:p-0 text-neutral-200 hover:text-primary-450 md:border-transparent md:border-b-2 md:hover:border-primary-450 duration-50 transition transform",
 };
 
 function NavbarLink({
@@ -151,41 +234,61 @@ function SidebarToggle() {
   }
 }
 
-function applyTheme(scrollPosition: number) {
+function applyTheme(
+  theme: CustomFlowbiteTheme["navbar"],
+  scrollPosition: number
+) {
   return {
-    ...navbarTheme,
+    ...theme,
     root: {
-      ...navbarTheme?.root,
-      base: `${navbarTheme?.root?.base} ${scrollPosition > 0 ? "shadow" : "shadow-none"}`,
+      ...theme?.root,
+      base: `${theme?.root?.base} ${scrollPosition > 0 ? "shadow" : "shadow-none"}`,
     },
   };
 }
 
 export default function RootNavbar() {
   const scrollPosition = useScrollPosition();
+  const p = usePathname();
+
+  const light = p.startsWith("/kb") || p.startsWith("/docs");
 
   return (
-    <Navbar theme={applyTheme(scrollPosition)} fluid>
+    <Navbar
+      theme={applyTheme(
+        light ? navbarThemeLight : navbarThemeDark,
+        scrollPosition
+      )}
+      fluid
+    >
       <SidebarToggle />
       <NavbarBrand as={Link} href="/">
         <Image
           width={150}
           height={150}
-          src="/images/logo-main.svg"
+          src={
+            light ? "/images/logo-main-light.svg" : "/images/logo-main-dark.svg"
+          }
           className="lg:hidden w-9 ml-2 flex"
           alt="Firezone Logo"
         />
         <Image
           width={150}
           height={150}
-          src="/images/logo-text-light.svg"
+          src={
+            light ? "/images/logo-text-light.svg" : "/images/logo-text-dark.svg"
+          }
           alt="Firezone Logo"
           className="hidden lg:flex w-32 sm:w-40 ml-2 mr-2 sm:mr-5"
         />
       </NavbarBrand>
       <NavbarToggle barIcon={HiBars3} />
       <NavbarCollapse>
-        <Dropdown theme={dropdownTheme} label="Product" inline>
+        <Dropdown
+          theme={light ? dropdownThemeLight : dropdownThemeDark}
+          label="Product"
+          inline
+        >
           <DropdownItem href="/kb/client-apps">Download</DropdownItem>
           <DropdownItem href="/contact/sales">Book a demo</DropdownItem>
           <DropdownItem href="/kb/use-cases">Use cases</DropdownItem>
@@ -205,20 +308,13 @@ export default function RootNavbar() {
         <div className="md:hidden">
           <NavbarLink href="/contact/sales">Book a demo</NavbarLink>
         </div>
-        <ActionLink
-          href="https://app.firezone.dev/"
-          className="hidden md:inline-flex py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-700 md:border-transparent hover:text-primary-450 hover:bg-neutral-200 md:hover:bg-transparent md:border-b-2 md:hover:border-primary-450 duration-50 transition transform"
-          size="w-5 h-5 ml-1"
-        >
-          Sign in
-        </ActionLink>
       </NavbarCollapse>
       <div className="hidden md:flex space-x-4 items-center">
         <Link
-          className="block py-2 pl-3 pr-4 md:p-0 font-medium text-neutral-700 md:border-transparent hover:text-primary-450 md:border-b-2 hover:border-primary-450 duration-50 transition transform"
-          href="https://app.firezone.dev/sign_up"
+          className="block py-2 pl-3 pr-4 md:p-0 font-medium md:border-transparent hover:text-primary-450 md:border-b-2 hover:border-primary-450 duration-50 transition transform"
+          href="https://app.firezone.dev"
         >
-          Sign up
+          Sign in
         </Link>
         <Button type="cta" href="/contact/sales">
           Book a demo
