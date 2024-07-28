@@ -145,7 +145,7 @@ fn is_adapter_name(adapter: &IP_ADAPTER_ADDRESSES_LH, name: &str) -> bool {
         return false;
     };
 
-    &friendly_name == name
+    friendly_name == name
 }
 
 #[derive(PartialEq, Eq)]
@@ -162,7 +162,7 @@ impl Ord for Route {
 
 impl PartialOrd for Route {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(&other))
+        Some(self.cmp(other))
     }
 }
 
