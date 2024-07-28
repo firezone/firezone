@@ -256,7 +256,16 @@ impl UdpSocket {
 
         let src_ip = match src_ip {
             Some(src_ip) => Some(src_ip),
-            None => self.resolve_source_for(transmit.dst.ip())?,
+            None => match self.resolve_source_for(transmit.dst.ip()) {
+                Ok(src_ip) => src_ip,
+                Err(e) => {
+                    tracing::trace!(
+                        dst = %transmit.dst.ip(),
+                        "No available interface for packet: {e}"
+                    );
+                    return Ok(());
+                }
+            },
         };
 
         let transmit = quinn_udp::Transmit {
