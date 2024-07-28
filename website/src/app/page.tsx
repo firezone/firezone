@@ -62,7 +62,7 @@ export default function Page() {
               }
             >
               Firezone is a fast, flexible VPN replacement built on WireGuard®
-              that scales with your workforce without tedious configuration.
+              that protects your workforce without tedious configuration.
             </h3>
             <div className="md:flex md:gap-x-8 mt-4 mx-auto">
               <div className="my-4 mr-4 flex items-center">
