@@ -72,6 +72,27 @@ impl Iterator for Adapters {
     }
 }
 
+/// Finds the best route (i.e. source interface) for a given destination IP, excluding interfaces where the name matches the given filter.
+///
+/// To prevent routing loops on Windows, we need to explicitly set a source IP for all packets.
+/// Windows uses a computed metric per interface for routing.
+/// We implement the same logic here, with the addition of explicitly filtering out our TUN interface.
+///
+/// # Performance
+///
+/// This function performs multiple syscalls and is thus fairly expensive.
+/// It should **not** be called on a per-packet basis.
+/// Callers should instead cache the result until network interfaces change.
+fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAddr> {
+    list_adapters()
+        .ok()?
+        .filter(|adapter| !is_adapter_name(adapter, filter))
+        .map(|adapter| adapter.Luid)
+        .filter_map(|luid| find_best_route_for_luid(&luid, dst).ok())
+        .min()
+        .map(|r| r.addr)
+}
+
 fn list_adapters() -> Result<Adapters> {
     use windows::Win32::Foundation::ERROR_BUFFER_OVERFLOW;
     use windows::Win32::Foundation::WIN32_ERROR;
@@ -90,7 +111,7 @@ fn list_adapters() -> Result<Adapters> {
         )
     };
 
-    // Incase of a buffer overflow buffer_len will contain the neccesary length
+    // In case of a buffer overflow buffer_len will contain the necessary length
     if res == ERROR_BUFFER_OVERFLOW.0 {
         buffer = vec![0u8; buffer_len as usize];
         // SAFETY: we just allocated buffer with the len we are passing
@@ -146,19 +167,6 @@ impl PartialOrd for Route {
     }
 }
 
-// SAFETY: si_family must be always set in the union, which will be the case for a valid SOCKADDR_INET
-unsafe fn to_ip_addr(addr: SOCKADDR_INET, dst: IpAddr) -> Option<IpAddr> {
-    match (addr.si_family, dst) {
-        (ADDRESS_FAMILY(0), IpAddr::V4(_)) | (ADDRESS_FAMILY(2), _) => {
-            Some(Ipv4Addr::from(addr.Ipv4.sin_addr).into())
-        }
-        (ADDRESS_FAMILY(0), IpAddr::V6(_)) | (ADDRESS_FAMILY(23), _) => {
-            Some(Ipv6Addr::from(addr.Ipv6.sin6_addr).into())
-        }
-        _ => None,
-    }
-}
-
 fn find_best_route_for_luid(luid: &NET_LUID_LH, dst: IpAddr) -> Result<Route> {
     let addr: SOCKADDR_INET = SocketAddr::from((dst, 0)).into();
     let mut best_route: MaybeUninit<MIB_IPFORWARD_ROW2> = MaybeUninit::zeroed();
@@ -191,26 +199,17 @@ fn find_best_route_for_luid(luid: &NET_LUID_LH, dst: IpAddr) -> Result<Route> {
     })
 }
 
-/// Finds the best route (i.e. source interface) for a given destination IP, excluding interfaces where the name matches the given filter.
-///
-/// To prevent routing loops on Windows, we need to explicitly set a source IP for all packets.
-/// Windows uses a computed metric per interface for routing.
-/// We implement the same logic here, with the addition of explicitly filtering out our TUN interface.
-///
-/// # Performance
-///
-/// This function performs multiple syscalls and is thus fairly expensive.
-/// It should **not** be called on a per-packet basis.
-/// Callers should instead cache the result until network interfaces change.
-fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAddr> {
-    list_adapters()
-        .ok()?
-        .filter(|adapter| !is_adapter_name(adapter, filter))
-        .map(|adapter| adapter.Luid)
-        .filter_map(|luid| find_best_route_for_luid(&luid, dst).ok())
-        .sorted()
-        .next()
-        .map(|r| r.addr)
+// SAFETY: si_family must be always set in the union, which will be the case for a valid SOCKADDR_INET
+unsafe fn to_ip_addr(addr: SOCKADDR_INET, dst: IpAddr) -> Option<IpAddr> {
+    match (addr.si_family, dst) {
+        (ADDRESS_FAMILY(0), IpAddr::V4(_)) | (ADDRESS_FAMILY(2), _) => {
+            Some(Ipv4Addr::from(addr.Ipv4.sin_addr).into())
+        }
+        (ADDRESS_FAMILY(0), IpAddr::V6(_)) | (ADDRESS_FAMILY(23), _) => {
+            Some(Ipv6Addr::from(addr.Ipv6.sin6_addr).into())
+        }
+        _ => None,
+    }
 }
 
 // The return value is useful on Linux
