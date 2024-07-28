@@ -5,7 +5,6 @@
 //! We must tell Windows explicitly when our service is stopping.
 
 use anyhow::Result;
-use itertools::Itertools;
 use std::{
     cmp::Ordering,
     io,

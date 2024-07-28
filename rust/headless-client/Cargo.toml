@@ -61,7 +61,6 @@ thiserror = { version = "1.0", default-features = false }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 windows-service = "0.7.0"
 winreg = "0.52.0"
-itertools = { version = "0.13" }
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
 version = "0.57.0"
