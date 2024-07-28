@@ -40,6 +40,14 @@ mod tests;
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const REALM: &str = "firezone";
 
+/// How many times we will at most loop before force-yielding from [`ClientTunnel::poll_next_event`] & [`GatewayTunnel::poll_next_event`].
+///
+/// It is obviously system-dependent, how long it takes for the event loop to exhaust these iterations.
+/// It has been measured that on GitHub's standard Linux runners, 3000 iterations is roughly 1s during an iperf run.
+/// With 5000, we could not reproduce the force-yielding to be needed.
+/// Thus, it is chosen as a safe, upper boundary that is not meant to be hit (and thus doesn't affect performance), yet acts as a safe guard, just in case.
+const MAX_EVENTLOOP_ITERS: u32 = 5000;
+
 pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
 
@@ -93,7 +101,7 @@ impl ClientTunnel {
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {
-        loop {
+        for _ in 0..MAX_EVENTLOOP_ITERS {
             if let Some(e) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(e));
             }
@@ -164,6 +172,9 @@ impl ClientTunnel {
 
             return Poll::Pending;
         }
+
+        cx.waker().wake_by_ref(); // Schedule another wake-up with the runtime to avoid getting suspended forever.
+        Poll::Pending
     }
 }
 
@@ -185,7 +196,7 @@ impl GatewayTunnel {
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<GatewayEvent>> {
-        loop {
+        for _ in 0..MAX_EVENTLOOP_ITERS {
             if let Some(other) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(other));
             }
@@ -246,6 +257,9 @@ impl GatewayTunnel {
 
             return Poll::Pending;
         }
+
+        cx.waker().wake_by_ref(); // Schedule another wake-up with the runtime to avoid getting suspended forever.
+        Poll::Pending
     }
 }
 
