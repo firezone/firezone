@@ -286,6 +286,9 @@ impl UdpSocket {
         let src = match self.src_by_dst_cache.entry(dst) {
             Entry::Occupied(occ) => *occ.get(),
             Entry::Vacant(vac) => {
+                // Caching errors could be a good idea to not incur in multiple calls for the resolver which can be costly
+                // For some cases like hosts ipv4-only stack trying to send ipv6 packets this can happen quite often but doing this is also a risk
+                // that in case that the adapter for some reason is temporarily unavailable it'd prevent the system from recovery.
                 let Some(src) = (self.source_ip_resolver)(dst)? else {
                     return Ok(None);
                 };
