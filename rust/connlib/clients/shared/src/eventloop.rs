@@ -32,7 +32,7 @@ pub struct Eventloop<C: Callbacks> {
 /// Commands that can be sent to the [`Eventloop`].
 pub enum Command {
     Stop,
-    Reconnect,
+    Reset,
     SetDns(Vec<IpAddr>),
     SetTun(Box<dyn Tun>),
 }
@@ -71,7 +71,7 @@ where
                     self.tunnel.set_tun(tun);
                     continue;
                 }
-                Poll::Ready(Some(Command::Reconnect)) => {
+                Poll::Ready(Some(Command::Reset)) => {
                     self.portal.reconnect();
                     if let Err(e) = self.tunnel.reset() {
                         tracing::warn!("Failed to reconnect tunnel: {e}");

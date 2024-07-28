@@ -52,7 +52,7 @@ class Adapter {
   /// Track our last fetched DNS resolvers to know whether to tell connlib they've updated
   private var lastFetchedResolvers: [String] = []
 
-  /// Used to avoid needlessly sending reconnects to connlib
+  /// Used to avoid needlessly sending resets to connlib
   private var primaryInterfaceName: String?
 
   /// Private queue used to ensure consistent ordering among path update and connlib callbacks
@@ -260,7 +260,7 @@ extension Adapter {
       // If our primary interface changes, we can be certain the old socket shouldn't be
       // used anymore.
       if path.availableInterfaces.first?.name != primaryInterfaceName {
-        session.reconnect()
+        session.reset()
         primaryInterfaceName = path.availableInterfaces.first?.name
       }
 

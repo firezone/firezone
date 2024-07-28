@@ -52,7 +52,7 @@ mod ffi {
             callback_handler: CallbackHandler,
         ) -> Result<WrappedSession, String>;
 
-        fn reconnect(&mut self);
+        fn reset(&mut self);
 
         // Set system DNS resolvers
         //
@@ -225,8 +225,8 @@ impl WrappedSession {
         })
     }
 
-    fn reconnect(&mut self) {
-        self.inner.reconnect()
+    fn reset(&mut self) {
+        self.inner.reset()
     }
 
     fn set_dns(&mut self, dns_servers: String) {

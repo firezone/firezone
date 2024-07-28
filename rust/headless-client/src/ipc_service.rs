@@ -72,7 +72,7 @@ impl Default for Cmd {
 pub enum ClientMsg {
     Connect { api_url: String, token: String },
     Disconnect,
-    Reconnect,
+    Reset,
     SetDns(Vec<IpAddr>),
 }
 
@@ -382,11 +382,7 @@ impl<'a> Handler<'a> {
                     tracing::error!("Error - Got Disconnect when we're already not connected");
                 }
             }
-            ClientMsg::Reconnect => self
-                .connlib
-                .as_mut()
-                .context("No connlib session")?
-                .reconnect(),
+            ClientMsg::Reset => self.connlib.as_mut().context("No connlib session")?.reset(),
             ClientMsg::SetDns(v) => self
                 .connlib
                 .as_mut()

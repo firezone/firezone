@@ -33,7 +33,7 @@ class NetworkMonitor(private val tunnelService: TunnelService) : ConnectivityMan
 
             if (lastNetwork != network) {
                 lastNetwork = network
-                ConnlibSession.reconnect(tunnelService.connlibSessionPtr!!)
+                ConnlibSession.reset(tunnelService.connlibSessionPtr!!)
             }
 
             // Release mutex lock
