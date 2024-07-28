@@ -287,6 +287,9 @@ mod test {
             })
             .unwrap();
 
+        // First send seems to always result as would block
+        std::future::poll_fn(|cx| socket.poll_flush(cx)).await().unwrap();
+
         let task = std::future::poll_fn(|cx| {
             let mut buf = [0u8; 1000];
             let result = std::task::ready!(socket.poll_recv_from(&mut buf, cx));
