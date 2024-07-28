@@ -696,6 +696,11 @@ where
                     },
                 );
 
+                // Ensure time-sensitive tasks get done.
+                // str0m needs a `handle_timeout` after it received input to evaluate nominations etc.
+                // Ensure this happens even if are busy with handling packets and timer processing gets delayed.
+                agent.handle_timeout(now);
+
                 return ControlFlow::Break(Ok(()));
             }
         }
