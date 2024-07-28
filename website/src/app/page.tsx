@@ -20,7 +20,6 @@ import {
   LinuxIcon,
   AndroidIcon,
   ChromeIcon,
-  DockerIcon,
 } from "@/components/Icons";
 
 import {
@@ -81,7 +80,6 @@ export default function Page() {
                       height={125}
                       src="/images/yc-logo.svg"
                       alt="YC Logo"
-                      className="bg-neutral-50 rounded shadow shadow-neutral-300"
                     />
                   </Link>
                 </SlideIn>
@@ -746,42 +744,6 @@ export default function Page() {
 
       <section className="border-t border-neutral-200 py-24 bg-white">
         <BattleCard />
-      </section>
-
-      <section className="border-t border-neutral-200 py-24 bg-neutral-900">
-        <div className="flex flex-col px-4 justify-center items-center">
-          <h3 className="mb-4 text-2xl md:text-6xl tracking-tight text-center font-bold text-neutral-50">
-            Ready to get started?
-          </h3>
-          <h4 className="my-4 font-medium text-xl max-w-screen-md tracking-tight text-center text-neutral-200 ">
-            Give your team secure access to company resources in minutes.
-          </h4>
-          <div className="w-full max-w-screen-sm flex flex-wrap justify-between mt-8">
-            <div className="mb-8 mx-auto w-64">
-              <button
-                type="button"
-                className="text-xl w-64 inline-flex justify-center items-center py-3 px-5 font-semibold text-center text-primary-450 rounded border border-primary-450 bg-white hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
-              >
-                <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
-              </button>
-              <p className="mt-3 text-sm text-neutral-400">
-                No credit card required. Cancel anytime.
-              </p>
-            </div>
-            <div className="mx-auto w-64">
-              <button
-                type="button"
-                className="text-xl w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
-              >
-                <Link href="/contact/sales">Book a demo</Link>
-                <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
-              </button>
-              <p className="mt-3 text-sm text-neutral-400">
-                Get a personalized walkthrough of Firezone.
-              </p>
-            </div>
-          </div>
-        </div>
       </section>
     </>
   );
