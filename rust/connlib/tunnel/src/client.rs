@@ -53,7 +53,7 @@ pub(crate) const DNS_SENTINELS_V4: Ipv4Network =
         Err(_) => unreachable!(),
     };
 pub(crate) const DNS_SENTINELS_V6: Ipv6Network = match Ipv6Network::new(
-    Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 100, 100, 111, 0),
+    Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0),
     120,
 ) {
     Ok(n) => n,
