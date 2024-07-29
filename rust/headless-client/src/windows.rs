@@ -54,7 +54,6 @@ impl Iterator for Adapters {
 
     fn next(&mut self) -> Option<Self::Item> {
         // SAFETY: We expect windows to give us a valid linked list where each item of the list is actually an IP_ADAPTER_ADDRESSES_LH.
-        // TODO: pointer alignment?
         let adapter = unsafe { self.next.as_ref()? };
 
         self.next = adapter.Next;
