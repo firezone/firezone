@@ -240,12 +240,12 @@ mod test {
 
     #[test]
     fn best_route_ip4_does_not_fail() {
-        get_best_route_excluding_interface("8.8.8.8".parse().unwrap(), "Firezone");
+        get_best_non_tunnel_route("8.8.8.8".parse().unwrap()).unwrap();
     }
 
     #[test]
     fn best_route_ip6_does_not_fail() {
-        get_best_route_excluding_interface("2404:6800:4006:811::200e".parse().unwrap(), "Firezone");
+        get_best_non_tunnel_route("2404:6800:4006:811::200e".parse().unwrap()).unwrap();
     }
 
     // Starts up a WinTUN device, adds a "full-route" (`0.0.0.0/0`) and checks if we can still send packets to IPs outside of our tunnel.
