@@ -30,7 +30,7 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
     let local = get_best_non_tunnel_route(addr.ip())?;
 
     let socket = socket_factory::tcp(addr)?;
-    socket.bind((local, 0).into())?; // To avoid routing loops, all TCP sockets are bound to "best" source IP.
+    socket.bind((local, 0).into())?; // To avoid routing loops, all TCP sockets are bound to the "best" source IP.
 
     Ok(socket)
 }
@@ -53,7 +53,7 @@ impl Iterator for Adapters {
     type Item = &'static IP_ADAPTER_ADDRESSES_LH;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // SAFETY: We expect windows to give us a valid linked list where each item fo the list is actually an IP_ADAPTER_ADDRESSES_LH.
+        // SAFETY: We expect windows to give us a valid linked list where each item of the list is actually an IP_ADAPTER_ADDRESSES_LH.
         // TODO: pointer alignment?
         let adapter = unsafe { self.next.as_ref()? };
 
