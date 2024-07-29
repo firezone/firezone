@@ -26,7 +26,7 @@ socket-factory = { workspace = true }
 thiserror = { version = "1.0", default-features = false }
 # This actually relies on many other features in Tokio, so this will probably
 # fail to build outside the workspace. <https://github.com/firezone/firezone/pull/4328#discussion_r1540342142>
-tokio = { workspace = true, features = ["macros", "signal", "process"] }
+tokio = { workspace = true, features = ["macros", "signal", "process", "time"] }
 tokio-stream = "0.1.15"
 tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
@@ -39,6 +39,9 @@ tempfile = "3.10.1"
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` testing
+
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+hex-literal = "0.4.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
@@ -59,7 +62,7 @@ tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 windows-service = "0.7.0"
 winreg = "0.52.0"
 
-[target.'cfg(target_os = "windows")'.dependencies.windows]
+[target.'cfg(windows)'.dependencies.windows]
 version = "0.57.0"
 features = [
     # For DNS control and route control

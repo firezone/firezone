@@ -9,6 +9,9 @@ use tracing_subscriber::{
     fmt, prelude::__tracing_subscriber_SubscriberExt, EnvFilter, Layer, Registry,
 };
 
+// wintun automatically append " Tunnel" to this
+pub const TUNNEL_NAME: &str = "Firezone";
+
 /// Bundle ID / App ID that the client uses to distinguish itself from other programs on the system
 ///
 /// e.g. In ProgramData and AppData we use this to name our subdirectories for configs and data,
