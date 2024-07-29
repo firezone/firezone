@@ -89,7 +89,7 @@ fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<IpAddr> {
     Ok(src)
 }
 
-fn list_adapters() -> Result<Adapters> {
+fn list_adapters() -> io::Result<Adapters> {
     use windows::Win32::Foundation::ERROR_BUFFER_OVERFLOW;
     use windows::Win32::Foundation::WIN32_ERROR;
 
