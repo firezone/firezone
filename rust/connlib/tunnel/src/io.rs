@@ -94,15 +94,6 @@ impl Io {
             return Poll::Ready(Ok(Input::DnsResponse(query, response)));
         }
 
-        if let Some(timeout) = self.timeout.as_mut() {
-            if timeout.poll_unpin(cx).is_ready() {
-                let deadline = timeout.deadline().into();
-                self.timeout.as_mut().take(); // Clear the timeout.
-
-                return Poll::Ready(Ok(Input::Timeout(deadline)));
-            }
-        }
-
         if let Poll::Ready(network) = self.sockets.poll_recv_from(ip4_buffer, ip6_bffer, cx)? {
             return Poll::Ready(Ok(Input::Network(network)));
         }
@@ -111,6 +102,15 @@ impl Io {
 
         if let Poll::Ready(packet) = self.device.poll_read(device_buffer, cx)? {
             return Poll::Ready(Ok(Input::Device(packet)));
+        }
+
+        if let Some(timeout) = self.timeout.as_mut() {
+            if timeout.poll_unpin(cx).is_ready() {
+                let deadline = timeout.deadline().into();
+                self.timeout.as_mut().take(); // Clear the timeout.
+
+                return Poll::Ready(Ok(Input::Timeout(deadline)));
+            }
         }
 
         Poll::Pending
