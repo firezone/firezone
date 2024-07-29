@@ -258,7 +258,7 @@ impl UdpSocket {
 
         let src_ip = match src_ip {
             Some(src_ip) => Some(src_ip),
-            None => match self.resolve_source_for(transmit.dst.ip()) {
+            None => match self.resolve_source_for(destination.ip()) {
                 Ok(src_ip) => src_ip,
                 Err(e) => {
                     tracing::trace!(
