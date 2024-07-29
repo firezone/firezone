@@ -1084,7 +1084,6 @@ dependencies = [
  "proptest",
  "rand 0.8.5",
  "rand_core 0.6.4",
- "ring",
  "secrecy",
  "serde",
  "serde_json",
@@ -1907,6 +1906,7 @@ dependencies = [
  "firezone-bin-shared",
  "futures",
  "git-version",
+ "hex-literal",
  "humantime",
  "ip_network",
  "ipconfig",
@@ -2643,6 +2643,12 @@ name = "hex-display"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b53d6a634507c5d9fdee77261ae54a8d1ff7887f5304389025b03c3292a1756"
+
+[[package]]
+name = "hex-literal"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
 
 [[package]]
 name = "hickory-proto"

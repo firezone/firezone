@@ -1,13 +1,15 @@
+use std::collections::HashMap;
 use std::{
     borrow::Cow,
     collections::VecDeque,
     io::{self, IoSliceMut},
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     slice,
     task::{ready, Context, Poll},
 };
 
 use socket2::SockAddr;
+use std::collections::hash_map::Entry;
 use tokio::io::Interest;
 
 pub trait SocketFactory<S>: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
@@ -52,6 +54,10 @@ impl TcpSocket {
     pub async fn connect(self, addr: SocketAddr) -> io::Result<tokio::net::TcpStream> {
         self.inner.connect(addr).await
     }
+
+    pub fn bind(&self, addr: SocketAddr) -> io::Result<()> {
+        self.inner.bind(addr)
+    }
 }
 
 #[cfg(unix)]
@@ -71,6 +77,11 @@ impl std::os::fd::AsFd for TcpSocket {
 pub struct UdpSocket {
     inner: tokio::net::UdpSocket,
     state: quinn_udp::UdpSocketState,
+    source_ip_resolver:
+        Box<dyn Fn(IpAddr) -> std::io::Result<Option<IpAddr>> + Send + Sync + 'static>,
+
+    /// A cache of source IPs by their destination IPs.
+    src_by_dst_cache: HashMap<IpAddr, IpAddr>,
 
     port: u16,
 
@@ -85,8 +96,25 @@ impl UdpSocket {
             state: quinn_udp::UdpSocketState::new(quinn_udp::UdpSockRef::from(&inner))?,
             port,
             inner,
+            source_ip_resolver: Box::new(|_| Ok(None)),
             buffered_datagrams: VecDeque::new(),
+            src_by_dst_cache: Default::default(),
         })
+    }
+
+    /// Configures a new source IP resolver for this UDP socket.
+    ///
+    /// In case [`DatagramOut::src`] is [`None`], this function will be used to set a source IP given the destination IP of the datagram.
+    /// The resulting IPs will be cached.
+    /// To evict this cache, drop the [`UdpSocket`] and make a new one.
+    ///
+    /// Errors during resolution result in the packet being dropped.
+    pub fn with_source_ip_resolver(
+        mut self,
+        resolver: Box<dyn Fn(IpAddr) -> std::io::Result<Option<IpAddr>> + Send + Sync + 'static>,
+    ) -> Self {
+        self.source_ip_resolver = resolver;
+        self
     }
 }
 
@@ -224,18 +252,53 @@ impl UdpSocket {
         }
     }
 
-    pub fn try_send(&self, transmit: &DatagramOut) -> io::Result<()> {
+    pub fn try_send(&mut self, transmit: &DatagramOut) -> io::Result<()> {
+        let destination = transmit.dst;
+        let src_ip = transmit.src.map(|s| s.ip());
+
+        let src_ip = match src_ip {
+            Some(src_ip) => Some(src_ip),
+            None => match self.resolve_source_for(destination.ip()) {
+                Ok(src_ip) => src_ip,
+                Err(e) => {
+                    tracing::trace!(
+                        dst = %transmit.dst.ip(),
+                        "No available interface for packet: {e}"
+                    );
+                    return Ok(());
+                }
+            },
+        };
+
         let transmit = quinn_udp::Transmit {
-            destination: transmit.dst,
+            destination,
             ecn: None,
             contents: &transmit.packet,
             segment_size: None,
-            src_ip: transmit.src.map(|s| s.ip()),
+            src_ip,
         };
 
         self.inner.try_io(Interest::WRITABLE, || {
             self.state.send((&self.inner).into(), &transmit)
         })
+    }
+
+    /// Attempt to resolve the source IP to use for sending to the given destination IP.
+    fn resolve_source_for(&mut self, dst: IpAddr) -> std::io::Result<Option<IpAddr>> {
+        let src = match self.src_by_dst_cache.entry(dst) {
+            Entry::Occupied(occ) => *occ.get(),
+            Entry::Vacant(vac) => {
+                // Caching errors could be a good idea to not incur in multiple calls for the resolver which can be costly
+                // For some cases like hosts ipv4-only stack trying to send ipv6 packets this can happen quite often but doing this is also a risk
+                // that in case that the adapter for some reason is temporarily unavailable it'd prevent the system from recovery.
+                let Some(src) = (self.source_ip_resolver)(dst)? else {
+                    return Ok(None);
+                };
+                *vac.insert(src)
+            }
+        };
+
+        Ok(Some(src))
     }
 }
 

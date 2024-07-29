@@ -27,7 +27,7 @@ netlink-packet-route = { version = "0.19", default-features = false }
 rtnetlink = { workspace = true }
 libc = "0.2"
 
-[target.'cfg(target_os = "windows")'.dependencies]
+[target.'cfg(windows)'.dependencies]
 known-folders = "1.1.0"
 ring = "0.17"
 uuid = { version = "1.10.0", features = ["v4"] }
