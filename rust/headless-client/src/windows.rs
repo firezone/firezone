@@ -47,8 +47,6 @@ fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<Option<IpAddr>> {
     let src = get_best_route_excluding_interface(dst, TUNNEL_NAME)
         .ok_or(io::Error::other("No route to host"))?;
 
-    tracing::debug!(%src, %dst, "Resolved best route outside of tunnel interface");
-
     Ok(Some(src))
 }
 
@@ -90,7 +88,11 @@ fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAdd
         .filter_map(|luid| find_best_route_for_luid(&luid, dst).ok())
         .min()?;
 
-    Some(route.addr)
+    let src = route.addr;
+
+    tracing::debug!(%src, %dst, "Resolved best route outside of tunnel interface");
+
+    Some(src)
 }
 
 fn list_adapters() -> Result<Adapters> {
