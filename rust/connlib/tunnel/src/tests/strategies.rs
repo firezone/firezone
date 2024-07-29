@@ -21,7 +21,6 @@ use proptest::{collection, prelude::*};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    str::FromStr as _,
     time::Duration,
 };
 
@@ -208,11 +207,9 @@ fn cidr_resource_outside_reserved_ranges(
             "tests doesn't support yet CIDR resources overlapping DNS resources",
             |r| {
                 // This works because CIDR resources' host mask is always <8 while IP resource is 21
-                let is_ip4_reserved = IpNetwork::from_str(IPV4_RESOURCES)
-                    .unwrap()
+                let is_ip4_reserved = IpNetwork::V4(IPV4_RESOURCES)
                     .contains(r.address.network_address());
-                let is_ip6_reserved = IpNetwork::from_str(IPV6_RESOURCES)
-                    .unwrap()
+                let is_ip6_reserved = IpNetwork::V6(IPV6_RESOURCES)
                     .contains(r.address.network_address());
 
                 !is_ip4_reserved && !is_ip6_reserved
