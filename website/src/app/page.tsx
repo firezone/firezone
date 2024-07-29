@@ -44,49 +44,58 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-neutral-900 bg-hero">
-        <div className="pt-24 xl:pt-32 pb-14 md:pb-24 xl:pb-32">
-          <div className="flex flex-wrap mx-auto md:px-0 px-4 max-w-screen-md">
-            <h1
-              className={
-                manrope.className +
-                " mb-8 md:text-7xl text-4xl text-center shadow-inner font-medium tracking-tight leading-none text-neutral-300"
-              }
-            >
-              Upgrade your VPN to zero-trust access
-            </h1>
-            <h3
-              className={
-                manrope.className +
-                " md:mt-0 my-4 text-xl text-center text-neutral-200"
-              }
-            >
-              Firezone is a fast, flexible VPN replacement built on WireGuard®
-              that protects your workforce without tedious configuration.
-            </h3>
-            <div className="md:flex md:gap-x-8 mt-4 mx-auto">
-              <div className="my-4 mr-4 flex items-center">
-                <Link
-                  href="https://app.firezone.dev/sign_up"
-                  className="text-neutral-300 group inline-flex items-center py-0.5 text-lg font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
-                >
-                  Get started for free
-                  <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
-                </Link>
-              </div>
-              <div className="mt-8 md:mt-0 flex items-center">
-                <button
-                  type="button"
-                  className="group shadow-lg shadow-primary-700 text-lg w-48 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
-                >
-                  <Link href="/contact/sales">Book a demo</Link>
-                  <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
-                </button>
-              </div>
+      <section className="bg-neutral-900 bg-hero pt-24 xl:pt-32 pb-14">
+        <div className="flex flex-wrap mx-auto md:px-0 px-4 max-w-screen-md">
+          <h1
+            className={
+              manrope.className +
+              " mb-8 md:text-7xl text-4xl text-center shadow-inner font-medium tracking-tight leading-none text-neutral-300"
+            }
+          >
+            Upgrade your VPN to zero-trust access
+          </h1>
+          <h3
+            className={
+              manrope.className +
+              " md:mt-0 my-4 text-xl text-center text-neutral-200"
+            }
+          >
+            Firezone is a fast, flexible VPN replacement built on WireGuard®
+            that protects your workforce without tedious configuration.
+          </h3>
+          <div className="md:flex md:gap-x-12 mt-4 mx-auto">
+            <div className="my-4 mr-4 flex items-center">
+              <Link
+                href="https://app.firezone.dev/sign_up"
+                className="text-neutral-300 group inline-flex items-center py-0.5 text-lg font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
+              >
+                Get started for free
+                <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
+              </Link>
+            </div>
+            <div className="mt-8 md:mt-0 flex items-center">
+              <button
+                type="button"
+                className="group shadow-lg shadow-primary-700 text-lg w-48 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
+              >
+                <Link href="/contact/sales">Book a demo</Link>
+                <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
+              </button>
             </div>
           </div>
         </div>
-        <div className="max-w-screen-lg mx-auto">
+        <div className="mt-12 max-w-screen-md mx-auto">
+          <div className="text-sm mb-4 flex justify-center font-light text-neutral-500">
+            Backed by{" "}
+            <Image
+              src="/images/yc-logo-gray.svg"
+              alt="yc logo gray"
+              width={100}
+              height={40}
+              className="mx-1.5"
+            />{" "}
+            and trusted by hundreds of organizations
+          </div>
           <CustomerLogosGrayscale />
         </div>
       </section>

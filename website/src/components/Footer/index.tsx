@@ -51,7 +51,7 @@ export default function Footer() {
               Ready to get started?
             </h3>
             <h4 className="text-neutral-200 text-md tracking-tight justify-center">
-              Give your organization the security it deserves.
+              Give your organization the protection it deserves.
             </h4>
             <div className="w-full flex flex-wrap justify-between mt-8">
               <div className="mb-8 mx-auto">

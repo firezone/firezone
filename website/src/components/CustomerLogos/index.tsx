@@ -4,51 +4,8 @@ import Marquee from "react-fast-marquee";
 
 export function CustomerLogosGrayscale() {
   return (
-    <Marquee autoFill pauseOnHover direction="right">
-      <Link href="https://bunq.com" className="mx-12 flex items-center">
-        <Image
-          alt="bunq logo"
-          src="/images/cust-logo-bunq-gray.svg"
-          width={100}
-          height={100}
-        />
-      </Link>
-      <Link href="https://corrdyn.com" className="mx-12 flex items-center">
-        <Image
-          alt="corrdyn logo"
-          src="/images/cust-logo-corrdyn-gray.svg"
-          width={100}
-          height={100}
-        />
-      </Link>
-      <Link href="https://double11.co.uk" className="mx-12 flex items-center">
-        <Image
-          alt="double11 logo"
-          src="/images/cust-logo-double11-gray.svg"
-          width={100}
-          height={100}
-        />
-      </Link>
-      <Link href="https://mst.nl" className="mx-12 flex items-center">
-        <Image
-          alt="mst logo"
-          src="/images/cust-logo-mst-gray.svg"
-          width={100}
-          height={100}
-        />
-      </Link>
-      <Link href="https://sebgroup.com" className="mx-12 flex items-center">
-        <Image
-          alt="seb logo"
-          src="/images/cust-logo-seb-gray.svg"
-          width={100}
-          height={100}
-        />
-      </Link>
-      <Link
-        href="https://square1.io"
-        className="mx-12 flex items-center p-4 rounded"
-      >
+    <div className="flex justify-between">
+      <Link href="https://square1.io" className="flex">
         <Image
           alt="square1 logo"
           src="/images/cust-logo-square1-gray.svg"
@@ -56,23 +13,39 @@ export function CustomerLogosGrayscale() {
           height={100}
         />
       </Link>
-      <Link href="https://teracloud.com" className="mx-12 flex items-center">
+      <Link href="https://bunq.com" className="flex">
         <Image
-          alt="teracloud logo"
-          src="/images/cust-logo-teracloud-gray.svg"
+          alt="bunq logo"
+          src="/images/cust-logo-bunq-gray.svg"
           width={100}
           height={100}
         />
       </Link>
-      <Link href="https://wolfram.com" className="mx-12 flex items-center">
+      <Link href="https://wolfram.com" className="flex">
         <Image
           alt="wolfram logo"
           src="/images/cust-logo-wolfram-gray.svg"
-          width={100}
-          height={100}
+          width={75}
+          height={75}
         />
       </Link>
-    </Marquee>
+      <Link href="https://sebgroup.com" className="flex">
+        <Image
+          alt="seb logo"
+          src="/images/cust-logo-seb-gray.svg"
+          width={75}
+          height={75}
+        />
+      </Link>
+      <Link href="https://teracloud.com" className="flex">
+        <Image
+          alt="teracloud logo"
+          src="/images/cust-logo-teracloud-gray.svg"
+          width={125}
+          height={125}
+        />
+      </Link>
+    </div>
   );
 }
 
