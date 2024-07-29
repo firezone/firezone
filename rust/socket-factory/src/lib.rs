@@ -107,6 +107,8 @@ impl UdpSocket {
     /// In case [`DatagramOut::src`] is [`None`], this function will be used to set a source IP given the destination IP of the datagram.
     /// The resulting IPs will be cached.
     /// To evict this cache, drop the [`UdpSocket`] and make a new one.
+    ///
+    /// Errors during resolution result in the packet being dropped.
     pub fn with_source_ip_resolver(
         mut self,
         resolver: Box<dyn Fn(IpAddr) -> std::io::Result<Option<IpAddr>> + Send + Sync + 'static>,

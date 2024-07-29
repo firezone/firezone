@@ -27,8 +27,7 @@ use firezone_bin_shared::TUNNEL_NAME;
 use socket_factory::{TcpSocket, UdpSocket};
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
-    let local =
-        get_best_non_tunnel_route(addr.ip())?.ok_or(io::Error::other("No route to host"))?;
+    let local = get_best_non_tunnel_route(addr.ip())?;
 
     let socket = socket_factory::tcp(addr)?;
     socket.bind((local, 0).into())?; // To avoid routing loops, all TCP sockets are bound to "best" source IP.
@@ -37,17 +36,12 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
 }
 
 pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
+    let source_ip_resolver = |dst| Ok(Some(get_best_non_tunnel_route(dst)?));
+
     let socket =
-        socket_factory::udp(src_addr)?.with_source_ip_resolver(Box::new(get_best_non_tunnel_route));
+        socket_factory::udp(src_addr)?.with_source_ip_resolver(Box::new(source_ip_resolver));
 
     Ok(socket)
-}
-
-fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<Option<IpAddr>> {
-    let src = get_best_route_excluding_interface(dst, TUNNEL_NAME)
-        .ok_or(io::Error::other("No route to host"))?;
-
-    Ok(Some(src))
 }
 
 struct Adapters {
@@ -69,7 +63,7 @@ impl Iterator for Adapters {
     }
 }
 
-/// Finds the best route (i.e. source interface) for a given destination IP, excluding interfaces where the name matches the given filter.
+/// Finds the best route (i.e. source interface) for a given destination IP, excluding our TUN interface.
 ///
 /// To prevent routing loops on Windows, we need to explicitly set a source IP for all packets.
 /// Windows uses a computed metric per interface for routing.
@@ -80,19 +74,19 @@ impl Iterator for Adapters {
 /// This function performs multiple syscalls and is thus fairly expensive.
 /// It should **not** be called on a per-packet basis.
 /// Callers should instead cache the result until network interfaces change.
-fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAddr> {
-    let route = list_adapters()
-        .ok()?
-        .filter(|adapter| !is_adapter_name(adapter, filter))
+fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<IpAddr> {
+    let route = list_adapters()?
+        .filter(|adapter| !is_tun(adapter))
         .map(|adapter| adapter.Luid)
         .filter_map(|luid| find_best_route_for_luid(&luid, dst).ok())
-        .min()?;
+        .min()
+        .ok_or(io::Error::other("No route to host"))?;
 
     let src = route.addr;
 
     tracing::debug!(%src, %dst, "Resolved best route outside of tunnel interface");
 
-    Some(src)
+    Ok(src)
 }
 
 fn list_adapters() -> Result<Adapters> {
@@ -137,7 +131,7 @@ fn list_adapters() -> Result<Adapters> {
     })
 }
 
-fn is_adapter_name(adapter: &IP_ADAPTER_ADDRESSES_LH, name: &str) -> bool {
+fn is_tun(adapter: &IP_ADAPTER_ADDRESSES_LH) -> bool {
     if adapter.FriendlyName.is_null() {
         return false;
     }
@@ -148,7 +142,7 @@ fn is_adapter_name(adapter: &IP_ADAPTER_ADDRESSES_LH, name: &str) -> bool {
         return false;
     };
 
-    friendly_name == name
+    friendly_name == TUNNEL_NAME
 }
 
 #[derive(PartialEq, Eq)]
