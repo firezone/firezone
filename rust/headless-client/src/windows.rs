@@ -83,13 +83,14 @@ impl Iterator for Adapters {
 /// It should **not** be called on a per-packet basis.
 /// Callers should instead cache the result until network interfaces change.
 fn get_best_route_excluding_interface(dst: IpAddr, filter: &str) -> Option<IpAddr> {
-    list_adapters()
+    let route = list_adapters()
         .ok()?
         .filter(|adapter| !is_adapter_name(adapter, filter))
         .map(|adapter| adapter.Luid)
         .filter_map(|luid| find_best_route_for_luid(&luid, dst).ok())
-        .min()
-        .map(|r| r.addr)
+        .min()?;
+
+    Some(route.addr)
 }
 
 fn list_adapters() -> Result<Adapters> {
