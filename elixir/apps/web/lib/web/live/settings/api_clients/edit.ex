@@ -4,23 +4,24 @@ defmodule Web.Settings.ApiClients.Edit do
   alias Domain.Actors
 
   def mount(%{"id" => id}, _session, socket) do
-    unless Domain.Config.global_feature_enabled?(:rest_api),
-      do: raise(Web.LiveErrors.NotFoundError)
+    if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
+      with {:ok, actor} <- Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: []),
+           nil <- actor.deleted_at do
+        changeset = Actors.change_actor(actor)
 
-    with {:ok, actor} <- Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: []),
-         nil <- actor.deleted_at do
-      changeset = Actors.change_actor(actor)
+        socket =
+          assign(socket,
+            actor: actor,
+            form: to_form(changeset),
+            page_title: "Edit #{actor.name}"
+          )
 
-      socket =
-        assign(socket,
-          actor: actor,
-          form: to_form(changeset),
-          page_title: "Edit #{actor.name}"
-        )
-
-      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+        {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+      else
+        _other -> raise Web.LiveErrors.NotFoundError
+      end
     else
-      _other -> raise Web.LiveErrors.NotFoundError
+      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
     end
   end
 

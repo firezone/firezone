@@ -72,6 +72,13 @@ defmodule Web.Mailer do
     |> Email.text_body(render_template(view, template, "text", assigns))
   end
 
+  def render_text_body(%Swoosh.Email{} = email, view, template, assigns) do
+    assigns = assigns ++ [email: email]
+
+    email
+    |> Email.text_body(render_template(view, template, "text", assigns))
+  end
+
   def active? do
     mailer_config = Domain.Config.fetch_env!(:web, Web.Mailer)
     mailer_config[:from_email] && mailer_config[:adapter]

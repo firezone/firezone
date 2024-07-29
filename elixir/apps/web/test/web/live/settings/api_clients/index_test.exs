@@ -27,19 +27,22 @@ defmodule Web.Live.Settings.ApiClients.IndexTest do
                }}}
   end
 
-  test "does not display API clients link when feature disabled", %{
+  test "redirects to beta page when feature not enabled for account", %{
     account: account,
     identity: identity,
     conn: conn
   } do
-    Domain.Config.feature_flag_override(:rest_api, false)
+    features = Map.from_struct(account.features)
+    attrs = %{features: %{features | rest_api: false}}
 
-    {:ok, _lv, html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/sites")
+    {:ok, account} = Domain.Accounts.update_account(account, attrs)
 
-    assert Floki.find(html, "a[href=\"/#{account.slug}/settings/api_clients\"]") == []
+    assert {:error, {:live_redirect, %{to: path, flash: _}}} =
+             conn
+             |> authorize_conn(identity)
+             |> live(~p"/#{account}/settings/api_clients")
+
+    assert path == ~p"/#{account}/settings/api_clients/beta"
   end
 
   test "renders breadcrumbs item", %{
