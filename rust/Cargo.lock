@@ -4685,7 +4685,7 @@ dependencies = [
 [[package]]
 name = "proptest"
 version = "1.5.0"
-source = "git+https://github.com/thomaseizinger/proptest?branch=fix/always-check-acceptable-current-state#b52c68ff423efe4a558b5967c86c17c457d3a84d"
+source = "git+https://github.com/proptest-rs/proptest?branch=master#c012218897b41606a5f8a21718d44d10509cb502"
 dependencies = [
  "bit-set",
  "bit-vec",
@@ -4704,7 +4704,7 @@ dependencies = [
 [[package]]
 name = "proptest-state-machine"
 version = "0.3.0"
-source = "git+https://github.com/thomaseizinger/proptest?branch=fix/always-check-acceptable-current-state#b52c68ff423efe4a558b5967c86c17c457d3a84d"
+source = "git+https://github.com/proptest-rs/proptest?branch=master#c012218897b41606a5f8a21718d44d10509cb502"
 dependencies = [
  "proptest",
 ]

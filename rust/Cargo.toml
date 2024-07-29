@@ -76,8 +76,8 @@ private-intra-doc-links = "allow" # We don't publish any of our docs but want to
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
 str0m = { git = "https://github.com/firezone/str0m", branch = "main" }
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
-proptest = { git = "https://github.com/thomaseizinger/proptest", branch = "fix/always-check-acceptable-current-state" }
-proptest-state-machine = { git = "https://github.com/thomaseizinger/proptest", branch = "fix/always-check-acceptable-current-state" }
+proptest = { git = "https://github.com/proptest-rs/proptest", branch = "master" }
+proptest-state-machine = { git = "https://github.com/proptest-rs/proptest", branch = "master" }
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "deps/bump-otel-0.23" } # Waiting for release.
 
 [profile.release]
