@@ -173,6 +173,7 @@ impl ClientTunnel {
             return Poll::Pending;
         }
 
+        self.role_state.handle_timeout(Instant::now()); // Ensure time advances, even if we are busy handling packets.
         cx.waker().wake_by_ref(); // Schedule another wake-up with the runtime to avoid getting suspended forever.
         Poll::Pending
     }
@@ -258,6 +259,7 @@ impl GatewayTunnel {
             return Poll::Pending;
         }
 
+        self.role_state.handle_timeout(Instant::now(), Utc::now()); // Ensure time advances, even if we are busy handling packets.
         cx.waker().wake_by_ref(); // Schedule another wake-up with the runtime to avoid getting suspended forever.
         Poll::Pending
     }
