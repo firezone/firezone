@@ -14,10 +14,9 @@ struct SignalParams {
     /// we expect to hear broadcasts from
     dest: &'static str,
     path: &'static str,
-    /// Interface, in the sense of a Rust trait.
+    /// "Interface" in DBus terms means like a Rust trait.
     ///
-    /// This tells us what shape the data will take. Currently we don't
-    /// process the data, we just notify when the signal comes in.
+    /// Currently we don't process the data, we just notify when the signal comes in, so this doesn't matter much.
     interface: &'static str,
     /// The name of the signal we care about.
     member: &'static str,
