@@ -9,6 +9,7 @@ use connlib_shared::messages::{
     Offer, RelayId, ResourceId,
 };
 use connlib_shared::{DomainName, Error, Result, StaticSecret};
+use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MutableIpPacket};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{RelaySocket, ServerNode};
@@ -16,6 +17,16 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
 use tun::Tun;
+
+pub const IPV4_PEERS: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11) {
+    Ok(n) => n,
+    Err(_) => unreachable!(),
+};
+pub const IPV6_PEERS: Ipv6Network =
+    match Ipv6Network::new(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 0), 107) {
+        Ok(n) => n,
+        Err(_) => unreachable!(),
+    };
 
 const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -131,10 +142,10 @@ pub struct GatewayState {
 }
 
 impl GatewayState {
-    pub(crate) fn new(private_key: impl Into<StaticSecret>) -> Self {
+    pub(crate) fn new(private_key: impl Into<StaticSecret>, seed: [u8; 32]) -> Self {
         Self {
             peers: Default::default(),
-            node: ServerNode::new(private_key.into()),
+            node: ServerNode::new(private_key.into(), seed),
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
         }
@@ -151,6 +162,10 @@ impl GatewayState {
         now: Instant,
     ) -> Option<snownet::Transmit<'s>> {
         let dst = packet.destination();
+
+        if !is_client(dst) {
+            return None;
+        }
 
         let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
             tracing::warn!(%dst, "Couldn't find connection by IP");
@@ -404,5 +419,22 @@ impl GatewayState {
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);
+    }
+}
+
+fn is_client(dst: IpAddr) -> bool {
+    match dst {
+        IpAddr::V4(v4) => IPV4_PEERS.contains(v4),
+        IpAddr::V6(v6) => IPV6_PEERS.contains(v6),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mldv2_routers_are_not_clients() {
+        assert!(!is_client("ff02::16".parse().unwrap()))
     }
 }

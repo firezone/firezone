@@ -2,7 +2,91 @@ import Image from "next/image";
 import Link from "next/link";
 import Marquee from "react-fast-marquee";
 
-export default function CustomerLogos() {
+export function CustomerLogosGrayscale() {
+  return (
+    <div className="mx-8 grid grid-cols-3 md:grid-cols-7 gap-8">
+      <div className="content-center">
+        <Link href="https://corrdyn.com">
+          <Image
+            alt="corrdyn logo"
+            src="/images/cust-logo-corrdyn-gray.svg"
+            width={125}
+            height={125}
+            className="opacity-75 md:opacity-25 mx-auto"
+          />
+        </Link>
+      </div>
+      <div className="content-center">
+        <Link href="https://square1.io">
+          <Image
+            alt="square1 logo"
+            src="/images/cust-logo-square1-gray.svg"
+            width={100}
+            height={100}
+            className="opacity-75 md:opacity-50 mx-auto"
+          />
+        </Link>
+      </div>
+      <div className="content-center">
+        <Link href="https://bunq.com">
+          <Image
+            alt="bunq logo"
+            src="/images/cust-logo-bunq-gray.svg"
+            width={100}
+            height={100}
+            className="opacity-75 mx-auto"
+          />
+        </Link>
+      </div>
+      <div className="content-center">
+        <Link href="https://wolfram.com">
+          <Image
+            alt="wolfram logo"
+            src="/images/cust-logo-wolfram-gray.svg"
+            width={75}
+            height={75}
+            className="opacity-75 md:opacity-100 mx-auto"
+          />
+        </Link>
+      </div>
+      <div className="content-center">
+        <Link href="https://sebgroup.com">
+          <Image
+            alt="seb logo"
+            src="/images/cust-logo-seb-gray.svg"
+            width={75}
+            height={75}
+            className="opacity-75 mx-auto"
+          />
+        </Link>
+      </div>
+      <div className="content-center">
+        <Link href="https://teracloud.com">
+          <Image
+            alt="teracloud logo"
+            src="/images/cust-logo-teracloud-gray.svg"
+            width={125}
+            height={125}
+            className="opacity-75 md:opacity-50 mx-auto"
+          />
+        </Link>
+      </div>
+      <div className="content-center col-start-2 md:col-auto">
+        <Link href="https://double11.co.uk">
+          <Image
+            alt="double11 logo"
+            src="/images/cust-logo-double11-gray.svg"
+            width={70}
+            height={70}
+            className="opacity-75 md:opacity-25 mx-auto"
+          />
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+export function CustomerLogosColored() {
   return (
     <>
       <div className="flex justify-center items-center p-8 mb-8">

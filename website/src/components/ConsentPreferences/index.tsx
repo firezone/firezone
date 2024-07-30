@@ -1,12 +1,16 @@
 "use client";
 import Link from "next/link";
 
-export default function ConsentPreferences() {
+export default function ConsentPreferences({
+  className,
+}: {
+  className?: string;
+}) {
   return (
     <Link
       id="termly-consent-preferences"
       href="#"
-      className="hover:underline"
+      className={className}
       onClick={() => {
         (window as any).displayPreferenceModal();
         return false;

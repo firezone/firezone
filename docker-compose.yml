@@ -429,7 +429,7 @@ services:
       RUST_LOG: ${RUST_LOG:-debug}
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
-      OTLP_GRPC_ENDPOINT: otlp:4317
+      OTLP_GRPC_ENDPOINT: otel:4317
     build:
       target: dev
       context: rust
@@ -470,7 +470,7 @@ services:
       RUST_LOG: ${RUST_LOG:-debug}
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
-      OTLP_GRPC_ENDPOINT: otlp:4317
+      OTLP_GRPC_ENDPOINT: otel:4317
     build:
       target: dev
       context: rust

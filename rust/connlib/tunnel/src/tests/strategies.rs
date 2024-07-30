@@ -1,16 +1,18 @@
 use super::{
     sim_gateway::{ref_gateway_host, RefGateway},
     sim_net::Host,
+    sim_relay::ref_relay_host,
     stub_portal::StubPortal,
 };
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use connlib_shared::{
     messages::{
         client::{ResourceDescriptionCidr, ResourceDescriptionDns, Site, SiteId},
-        DnsServer, GatewayId,
+        DnsServer, GatewayId, RelayId,
     },
     proptest::{
-        any_ip_network, cidr_resource, dns_resource, domain_label, domain_name, gateway_id, site,
+        any_ip_network, cidr_resource, dns_resource, domain_label, domain_name, gateway_id,
+        relay_id, site,
     },
     DomainName,
 };
@@ -21,7 +23,6 @@ use proptest::{collection, prelude::*};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    str::FromStr as _,
     time::Duration,
 };
 
@@ -196,6 +197,10 @@ pub(crate) fn gateways_and_portal() -> impl Strategy<
         )
 }
 
+pub(crate) fn relays() -> impl Strategy<Value = BTreeMap<RelayId, Host<u64>>> {
+    collection::btree_map(relay_id(), ref_relay_host(), 1..=2)
+}
+
 fn any_site(sites: HashSet<Site>) -> impl Strategy<Value = Site> {
     sample::select(Vec::from_iter(sites))
 }
@@ -208,11 +213,9 @@ fn cidr_resource_outside_reserved_ranges(
             "tests doesn't support yet CIDR resources overlapping DNS resources",
             |r| {
                 // This works because CIDR resources' host mask is always <8 while IP resource is 21
-                let is_ip4_reserved = IpNetwork::from_str(IPV4_RESOURCES)
-                    .unwrap()
+                let is_ip4_reserved = IpNetwork::V4(IPV4_RESOURCES)
                     .contains(r.address.network_address());
-                let is_ip6_reserved = IpNetwork::from_str(IPV6_RESOURCES)
-                    .unwrap()
+                let is_ip6_reserved = IpNetwork::V6(IPV6_RESOURCES)
                     .contains(r.address.network_address());
 
                 !is_ip4_reserved && !is_ip6_reserved

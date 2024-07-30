@@ -79,10 +79,10 @@ impl Client {
         Ok(())
     }
 
-    pub(crate) async fn reconnect(&mut self) -> Result<()> {
-        self.send_msg(&IpcClientMsg::Reconnect)
+    pub(crate) async fn reset(&mut self) -> Result<()> {
+        self.send_msg(&IpcClientMsg::Reset)
             .await
-            .context("Couldn't send Reconnect")?;
+            .context("Couldn't send Reset")?;
         Ok(())
     }
 

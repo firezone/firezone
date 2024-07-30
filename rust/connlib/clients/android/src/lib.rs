@@ -497,13 +497,13 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
 /// at any point before or during operation of this function.
 #[allow(non_snake_case)]
 #[no_mangle]
-pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reconnect(
+pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reset(
     _: JNIEnv,
     _: JClass,
     session_ptr: jlong,
 ) {
     let session = &*(session_ptr as *const SessionWrapper);
-    session.inner.reconnect();
+    session.inner.reset();
 }
 
 /// # Safety
