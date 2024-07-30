@@ -22,7 +22,7 @@ import dev.firezone.android.R
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.StatusEnum
 
-class ResourceDetailsBottomSheet(private val resource: Resource) : BottomSheetDialogFragment() {
+class ResourceDetailsBottomSheet(private val resource: ViewResource) : BottomSheetDialogFragment() {
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,

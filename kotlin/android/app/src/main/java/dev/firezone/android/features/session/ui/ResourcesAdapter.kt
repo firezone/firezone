@@ -13,13 +13,7 @@ import androidx.recyclerview.widget.RecyclerView
 import dev.firezone.android.databinding.ListItemResourceBinding
 import dev.firezone.android.tunnel.model.Resource
 
-internal class ResourcesAdapter() : ListAdapter<Resource, ResourcesAdapter.ViewHolder>(ResourceDiffCallback()) {
-    private var resourcesLiveData: MutableLiveData<List<Resource>>? = null
-
-    fun setResourcesLiveData(liveData: MutableLiveData<List<Resource>>) {
-        resourcesLiveData = liveData
-    }
-
+internal class ResourcesAdapter() : ListAdapter<ViewResource, ResourcesAdapter.ViewHolder>(ResourceDiffCallback()) {
     override fun onCreateViewHolder(
         parent: ViewGroup,
         viewType: Int,
@@ -33,7 +27,7 @@ internal class ResourcesAdapter() : ListAdapter<Resource, ResourcesAdapter.ViewH
         position: Int,
     ) {
         val resource = getItem(position)
-        holder.bind(resource) { newResource -> onSwitchToggled(position, newResource)}
+        holder.bind(resource) { newResource -> onSwitchToggled(newResource)}
         holder.itemView.setOnClickListener {
             // Show bottom sheet
             val fragmentManager = (holder.itemView.context as AppCompatActivity).supportFragmentManager
@@ -43,39 +37,49 @@ internal class ResourcesAdapter() : ListAdapter<Resource, ResourcesAdapter.ViewH
 
     }
 
-    private fun onSwitchToggled(position: Int, resource: Resource) {
-        val updatedList = currentList.toMutableList()
-        updatedList[position] = resource
-        resourcesLiveData?.postValue(updatedList)
+    private fun onSwitchToggled(resource: ViewResource) {
+        Log.d("ResourceAdapter", "New resource value: $resource")
+        val updatedList = currentList.toMutableList().associateBy{ it.id }.toMutableMap()
+        updatedList[resource.id]?.let {
+            updatedList[resource.id] = resource
+        }
+
+        Log.d("ResourceAdapter", "New resources: $updatedList")
+        // Man... this is a round about way to update the list
+        submitList(updatedList.values.toList())
     }
 
     class ViewHolder(private val binding: ListItemResourceBinding) : RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(resource: Resource, onSwitchToggled: (Resource) -> Unit) {
+        fun bind(resource: ViewResource, onSwitchToggled: (ViewResource) -> Unit) {
             binding.resourceNameText.text = resource.name
             binding.addressText.text = resource.address
+            // Without this the item gets reset when out of view, isn't android wonderful?
+            binding.enableSwitch.setOnCheckedChangeListener(null)
             binding.enableSwitch.isChecked = resource.enabled
 
             binding.enableSwitch.setOnCheckedChangeListener {
                 _, isChecked ->
+                    Log.d("ResourceAdapter", "$resource is now $isChecked")
                     resource.enabled = isChecked
 
                     onSwitchToggled(resource)
             }
         }
+
     }
 
-    class ResourceDiffCallback : DiffUtil.ItemCallback<Resource>() {
+    class ResourceDiffCallback : DiffUtil.ItemCallback<ViewResource>() {
         override fun areItemsTheSame(
-            oldItem: Resource,
-            newItem: Resource,
+            oldItem: ViewResource,
+            newItem: ViewResource,
         ): Boolean {
             return oldItem.id == newItem.id
         }
 
         override fun areContentsTheSame(
-            oldItem: Resource,
-            newItem: Resource,
+            oldItem: ViewResource,
+            newItem: ViewResource,
         ): Boolean {
             return oldItem == newItem
         }

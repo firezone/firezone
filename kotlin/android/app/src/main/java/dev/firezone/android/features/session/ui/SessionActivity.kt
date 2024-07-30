@@ -35,7 +35,6 @@ internal class SessionActivity : AppCompatActivity() {
                 serviceBound = true
                 tunnelService?.setServiceStateLiveData(viewModel.serviceStatusLiveData)
                 tunnelService?.setResourcesLiveData(viewModel.resourcesLiveData)
-                resourcesAdapter.setResourcesLiveData(viewModel.resourcesLiveData)
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
@@ -101,8 +100,20 @@ internal class SessionActivity : AppCompatActivity() {
         }
 
         viewModel.resourcesLiveData.observe(this) { resources ->
-            Log.d("SessionActivity", "Updating resource adapter with $resources")
-            resourcesAdapter.submitList(resources)
+            val newResources = resources.map { it.toViewResource() }
+            val currentMap = resourcesAdapter.currentList.associateBy { it.id }
+
+            for (item in newResources) {
+                currentMap[item.id]?.let { currentItem ->
+                    Log.d(TAG,"Modifying state of item $item to $currentItem")
+                    item.enabled = currentItem.enabled
+
+                }
+            }
+
+            Log.d(TAG, "Updating resource adapter with $newResources")
+
+            resourcesAdapter.submitList(newResources)
         }
     }
 

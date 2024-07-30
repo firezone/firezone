@@ -30,10 +30,10 @@
 		app:layout_constraintVertical_bias="0.0"
 		tools:text="Resource Address" />
 
-	<Switch
+	<androidx.appcompat.widget.SwitchCompat
 		android:id="@+id/enable_switch"
-		android:layout_width="97dp"
-		android:layout_height="wrap_content"
+		android:layout_width="101dp"
+		android:layout_height="39dp"
 		android:checked="true"
 		android:minHeight="48dp"
 		android:scaleX="1"
