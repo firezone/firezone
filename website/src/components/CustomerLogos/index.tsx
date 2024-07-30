@@ -5,12 +5,22 @@ import Marquee from "react-fast-marquee";
 export function CustomerLogosGrayscale() {
   return (
     <div className="flex justify-between">
+      <Link href="https://double11.co.uk" className="flex">
+        <Image
+          alt="double11 logo"
+          src="/images/cust-logo-double11-gray.svg"
+          width={100}
+          height={100}
+          className="opacity-25"
+        />
+      </Link>
       <Link href="https://square1.io" className="flex">
         <Image
           alt="square1 logo"
           src="/images/cust-logo-square1-gray.svg"
           width={100}
           height={100}
+          className="opacity-50"
         />
       </Link>
       <Link href="https://bunq.com" className="flex">
@@ -19,6 +29,7 @@ export function CustomerLogosGrayscale() {
           src="/images/cust-logo-bunq-gray.svg"
           width={100}
           height={100}
+          className="opacity-75"
         />
       </Link>
       <Link href="https://wolfram.com" className="flex">
@@ -35,6 +46,7 @@ export function CustomerLogosGrayscale() {
           src="/images/cust-logo-seb-gray.svg"
           width={75}
           height={75}
+          className="opacity-75"
         />
       </Link>
       <Link href="https://teracloud.com" className="flex">
@@ -43,6 +55,16 @@ export function CustomerLogosGrayscale() {
           src="/images/cust-logo-teracloud-gray.svg"
           width={125}
           height={125}
+          className="opacity-50"
+        />
+      </Link>
+      <Link href="https://corrdyn.com" className="flex">
+        <Image
+          alt="corrdyn logo"
+          src="/images/cust-logo-corrdyn-gray.svg"
+          width={125}
+          height={125}
+          className="opacity-25"
         />
       </Link>
     </div>

@@ -57,7 +57,7 @@ export default function Page() {
           <h3
             className={
               manrope.className +
-              " md:mt-0 my-4 text-xl text-center text-neutral-200"
+              " md:mt-0 my-4 text-xl text-center text-neutral-300"
             }
           >
             Firezone is a fast, flexible VPN replacement built on WireGuard®
@@ -84,8 +84,8 @@ export default function Page() {
             </div>
           </div>
         </div>
-        <div className="mt-12 max-w-screen-md mx-auto">
-          <div className="text-sm mb-4 flex justify-center font-light text-neutral-500">
+        <div className="mt-16 max-w-screen-lg mx-auto">
+          <div className="text-sm mb-6 flex justify-center font-base text-neutral-600">
             Backed by{" "}
             <Image
               src="/images/yc-logo-gray.svg"
