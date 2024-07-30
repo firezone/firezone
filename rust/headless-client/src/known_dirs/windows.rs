@@ -1,4 +1,4 @@
-use firezone_bin_shared::{windows::app_local_data_dir, BUNDLE_ID};
+use firezone_bin_shared::{platform::app_local_data_dir, BUNDLE_ID};
 use known_folders::{get_known_folder_path, KnownFolder};
 use std::path::PathBuf;
 

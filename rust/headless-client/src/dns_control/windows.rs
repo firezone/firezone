@@ -14,7 +14,7 @@
 //! <https://superuser.com/a/1752670>
 
 use anyhow::{Context as _, Result};
-use firezone_bin_shared::windows::CREATE_NO_WINDOW;
+use firezone_bin_shared::platform::CREATE_NO_WINDOW;
 use std::{net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
 
 pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {

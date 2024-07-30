@@ -64,6 +64,7 @@
 //!
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
+use crate::platform::DnsControlMethod;
 use anyhow::{anyhow, Context as _, Result};
 use tokio::sync::mpsc;
 use windows::{
@@ -77,7 +78,27 @@ use windows::{
     },
 };
 
-pub use async_dns::DnsNotifier;
+// async needed to match Linux
+#[allow(clippy::unused_async)]
+pub async fn new_dns_notifier(
+    _tokio_handle: tokio::runtime::Handle,
+    method: Option<DnsControlMethod>,
+) -> Result<async_dns::DnsNotifier> {
+    match method {
+        Some(DnsControlMethod::Nrpt) | None => {}
+    }
+    async_dns::DnsNotifier::new()
+}
+
+pub async fn new_network_notifier(
+    _tokio_handle: tokio::runtime::Handle,
+    method: Option<DnsControlMethod>,
+) -> Result<NetworkNotifier> {
+    match method {
+        Some(DnsControlMethod::Nrpt) | None => {}
+    }
+    NetworkNotifier::new().await
+}
 
 /// Notifies when we change Wi-Fi networks, change between Wi-Fi and Ethernet, or gain / lose Internet
 pub struct NetworkNotifier {
@@ -92,7 +113,9 @@ struct WorkerInner {
 }
 
 impl NetworkNotifier {
-    pub fn new() -> Result<Self> {
+    // Async on Linux due to `zbus`
+    #[allow(clippy::unused_async)]
+    pub async fn new() -> Result<Self> {
         let (tx, rx) = mpsc::channel(1);
 
         let (stopper, stopper_rx) = tokio::sync::oneshot::channel();
@@ -131,8 +154,11 @@ impl NetworkNotifier {
         Ok(())
     }
 
-    pub async fn notified(&mut self) {
+    // `Result` needed to match Linux
+    #[allow(clippy::unnecessary_wraps)]
+    pub async fn notified(&mut self) -> Result<()> {
         self.rx.recv().await;
+        Ok(())
     }
 }
 

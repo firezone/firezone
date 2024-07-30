@@ -13,4 +13,4 @@ mod imp;
 #[allow(clippy::unnecessary_wraps)]
 mod imp;
 
-pub use imp::{DnsNotifier, NetworkNotifier};
+pub use imp::{new_dns_notifier, new_network_notifier};
