@@ -180,9 +180,13 @@ impl ClientTunnel {
 }
 
 impl GatewayTunnel {
-    pub fn new(private_key: StaticSecret) -> std::io::Result<Self> {
+    pub fn new(
+        private_key: StaticSecret,
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+    ) -> std::io::Result<Self> {
         Ok(Self {
-            io: Io::new(Arc::new(socket_factory::tcp), Arc::new(socket_factory::udp))?,
+            io: Io::new(tcp_socket_factory, udp_socket_factory)?,
             role_state: GatewayState::new(private_key, rand::random()),
             write_buf: Box::new([0u8; DEFAULT_MTU + 20 + 16]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),

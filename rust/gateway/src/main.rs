@@ -3,7 +3,10 @@ use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_shared::{get_user_agent, keypair, messages::Interface, LoginUrl, StaticSecret};
-use firezone_bin_shared::{setup_global_subscriber, TunDeviceManager};
+use firezone_bin_shared::{
+    linux::{tcp_socket_factory, udp_socket_factory},
+    setup_global_subscriber, TunDeviceManager,
+};
 use firezone_tunnel::{GatewayTunnel, IPV4_PEERS, IPV6_PEERS};
 
 use futures::channel::mpsc;
@@ -98,7 +101,11 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
 }
 
 async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
-    let mut tunnel = GatewayTunnel::new(private_key)?;
+    let mut tunnel = GatewayTunnel::new(
+        private_key,
+        Arc::new(tcp_socket_factory),
+        Arc::new(udp_socket_factory),
+    )?;
     let portal = PhoenixChannel::connect(
         Secret::new(login),
         get_user_agent(None, env!("CARGO_PKG_VERSION")),
@@ -107,7 +114,7 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
         ExponentialBackoffBuilder::default()
             .with_max_elapsed_time(None)
             .build(),
-        Arc::new(socket_factory::tcp),
+        Arc::new(tcp_socket_factory),
     )?;
 
     let (sender, receiver) = mpsc::channel::<Interface>(10);
