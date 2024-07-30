@@ -18,6 +18,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.browser.customtabs.CustomTabsIntent
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import com.google.android.material.button.MaterialButton
 import dev.firezone.android.R
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.StatusEnum
@@ -37,6 +38,8 @@ class ResourceDetailsBottomSheet(private val resource: Resource) : BottomSheetDi
     ) {
         super.onViewCreated(view, savedInstanceState)
 
+        val addToFavoritesBtn: MaterialButton = view.findViewById(R.id.addToFavoritesBtn)
+        val removeFromFavoritesBtn: MaterialButton = view.findViewById(R.id.removeFromFavoritesBtn)
         val resourceNameTextView: TextView = view.findViewById(R.id.tvResourceName)
         val resourceAddressTextView: TextView = view.findViewById(R.id.tvResourceAddress)
         val resourceAddressDescriptionTextView: TextView = view.findViewById(R.id.tvResourceAddressDescription)
@@ -46,6 +49,15 @@ class ResourceDetailsBottomSheet(private val resource: Resource) : BottomSheetDi
         val labelSite: TextView = view.findViewById(R.id.labelSite)
         val siteNameLayout: LinearLayout = view.findViewById(R.id.siteNameLayout)
         val siteStatusLayout: LinearLayout = view.findViewById(R.id.siteStatusLayout)
+
+        addToFavoritesBtn.visibility = View.VISIBLE
+        removeFromFavoritesBtn.visibility = View.GONE
+        addToFavoritesBtn.setOnClickListener {
+            Toast.makeText(requireContext(), "Added to Favorites", Toast.LENGTH_SHORT).show()
+        }
+        removeFromFavoritesBtn.setOnClickListener {
+            Toast.makeText(requireContext(), "Removed from Favorites", Toast.LENGTH_SHORT).show()
+        }
 
         resourceNameTextView.text = resource.name
         val displayAddress = resource.addressDescription ?: resource.address
