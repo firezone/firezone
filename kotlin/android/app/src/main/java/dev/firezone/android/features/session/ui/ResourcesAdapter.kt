@@ -44,7 +44,6 @@ internal class ResourcesAdapter() : ListAdapter<ViewResource, ResourcesAdapter.V
             updatedList[resource.id] = resource
         }
 
-        Log.d("ResourceAdapter", "New resources: $updatedList")
         // Man... this is a round about way to update the list
         submitList(updatedList.values.toList())
     }
@@ -60,7 +59,6 @@ internal class ResourcesAdapter() : ListAdapter<ViewResource, ResourcesAdapter.V
 
             binding.enableSwitch.setOnCheckedChangeListener {
                 _, isChecked ->
-                    Log.d("ResourceAdapter", "$resource is now $isChecked")
                     resource.enabled = isChecked
 
                     onSwitchToggled(resource)
