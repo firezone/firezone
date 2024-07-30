@@ -429,6 +429,7 @@ services:
       RUST_LOG: ${RUST_LOG:-debug}
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
+      OTLP_GRPC_ENDPOINT: otlp:4317
     build:
       target: dev
       context: rust
@@ -469,6 +470,7 @@ services:
       RUST_LOG: ${RUST_LOG:-debug}
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
+      OTLP_GRPC_ENDPOINT: otlp:4317
     build:
       target: dev
       context: rust
@@ -491,6 +493,10 @@ services:
       app:
         ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-172.28.0.201}
 
+  otel:
+    image: otel/opentelemetry-collector:latest
+    networks:
+      app:
 
 # IPv6 is currently causing flakiness with GH actions and on our testbed.
 # Disabling until there's more time to debug.
