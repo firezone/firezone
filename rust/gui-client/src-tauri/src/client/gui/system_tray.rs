@@ -200,8 +200,6 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
     );
 
     menu = menu.disabled(RESOURCES);
-    // No favorites, show every Resource normally, just like before
-    // the favoriting feature was created
     // Always show Resources in the original order
     for res in *resources {
         menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
@@ -256,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn no_resources_no_favorites() {
+    fn no_resources() {
         let resources = vec![];
         let input = AppState::SignedIn(SignedIn {
             actor_name: "Jane Doe",

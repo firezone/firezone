@@ -1084,7 +1084,6 @@ dependencies = [
  "proptest",
  "rand 0.8.5",
  "rand_core 0.6.4",
- "ring",
  "secrecy",
  "serde",
  "serde_json",
@@ -1782,7 +1781,6 @@ name = "firezone-bin-shared"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "clap",
  "connlib-shared",
  "futures",
  "ip-packet",
@@ -1908,6 +1906,7 @@ dependencies = [
  "firezone-bin-shared",
  "futures",
  "git-version",
+ "hex-literal",
  "humantime",
  "ip_network",
  "ipconfig",
@@ -2006,7 +2005,6 @@ dependencies = [
  "proptest",
  "proptest-state-machine",
  "rand 0.8.5",
- "rand_core 0.6.4",
  "rangemap",
  "secrecy",
  "serde",
@@ -2646,6 +2644,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b53d6a634507c5d9fdee77261ae54a8d1ff7887f5304389025b03c3292a1756"
 
 [[package]]
+name = "hex-literal"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
+
+[[package]]
 name = "hickory-proto"
 version = "0.24.0"
 source = "git+https://github.com/hickory-dns/hickory-dns?rev=a3669bd80f3f7b97f0c301c15f1cba6368d97b63#a3669bd80f3f7b97f0c301c15f1cba6368d97b63"
@@ -3062,8 +3066,7 @@ dependencies = [
 [[package]]
 name = "ip_network"
 version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa2f047c0a98b2f299aa5d6d7088443570faae494e9ae1305e48be000c9e0eb1"
+source = "git+https://github.com/JakubOnderka/ip_network?branch=master#f6030b54b5128c0130d21fb2eab9811fe70e064b"
 dependencies = [
  "serde",
 ]
@@ -3376,9 +3379,9 @@ checksum = "9374ef4228402d4b7e403e5838cb880d9ee663314b0a900d5a6aabf0c213552e"
 
 [[package]]
 name = "log"
-version = "0.4.21"
+version = "0.4.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
+checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 
 [[package]]
 name = "loom"
@@ -5582,7 +5585,6 @@ dependencies = [
  "boringtun",
  "bytecodec",
  "bytes",
- "firezone-relay",
  "hex",
  "hex-display",
  "ip-packet",
@@ -7987,9 +7989,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "2.1.3"
+version = "2.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "775a2b471036342aa69bc5a602bc889cb0a06cda00477d0c69566757d5553d39"
+checksum = "b895748a3ebcb69b9d38dcfdf21760859a4b0d0b0015277640c2ef4c69640e6f"
 dependencies = [
  "arbitrary",
  "crc32fast",

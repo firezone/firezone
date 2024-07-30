@@ -1,5 +1,5 @@
 use super::{
-    composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*, sim_relay::*,
+    composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
 use crate::dns::is_subdomain;
@@ -8,11 +8,9 @@ use connlib_shared::{
         client::{self, ResourceDescription},
         GatewayId, RelayId,
     },
-    proptest::*,
     DomainName, StaticSecret,
 };
 use hickory_proto::rr::RecordType;
-use prop::collection;
 use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;
 use std::{
@@ -62,7 +60,7 @@ impl ReferenceStateMachine for ReferenceState {
         (
             ref_client_host(Just(client_tunnel_ip4), Just(client_tunnel_ip6)),
             gateways_and_portal(),
-            collection::btree_map(relay_id(), relay_prototype(), 1..=2),
+            relays(),
             global_dns_records(), // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
             any::<bool>(),
         )
@@ -167,6 +165,10 @@ impl ReferenceStateMachine for ReferenceState {
                 sample::select(resource_ids).prop_map(Transition::DeactivateResource)
             })
             .with(1, roam_client())
+            .with(
+                1,
+                migrate_relays(Just(state.relays.keys().copied().collect())), // Always take down all relays because we can't know which one was sampled for the connection.
+            )
             .with(1, Just(Transition::ReconnectPortal))
             .with(1, Just(Transition::Idle))
             .with_if_not_empty(
@@ -376,19 +378,33 @@ impl ReferenceStateMachine for ReferenceState {
                     .add_host(state.client.inner().id, &state.client));
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
-                state.client.exec_mut(|client| {
-                    client.connected_cidr_resources.clear();
-                    client.connected_dns_resources.clear();
-                });
+                state.client.exec_mut(|client| client.reset_connections());
             }
             Transition::ReconnectPortal => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
             }
+            Transition::RelaysPresence {
+                disconnected,
+                online,
+            } => {
+                for rid in disconnected {
+                    let disconnected_relay =
+                        state.relays.remove(rid).expect("old host to be present");
+                    state.network.remove_host(&disconnected_relay);
+                }
+
+                for (rid, online_relay) in online {
+                    state.relays.insert(*rid, online_relay.clone());
+                    debug_assert!(state.network.add_host(*rid, online_relay));
+                }
+
+                // In case we were using the relays, all connections will be cut and require us to make a new one.
+                if state.drop_direct_client_traffic {
+                    state.client.exec_mut(|client| client.reset_connections());
+                }
+            }
             Transition::Idle => {
-                state.client.exec_mut(|client| {
-                    client.connected_cidr_resources.clear();
-                    client.connected_dns_resources.clear();
-                });
+                state.client.exec_mut(|client| client.reset_connections());
             }
         };
 
@@ -527,6 +543,26 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::DeactivateResource(r) => {
                 state.client.inner().all_resource_ids().contains(r)
             }
+            Transition::RelaysPresence {
+                disconnected,
+                online,
+            } => {
+                let all_old_are_present = disconnected
+                    .iter()
+                    .all(|rid| state.relays.contains_key(rid));
+                let no_new_are_present = online.keys().all(|rid| !state.relays.contains_key(rid));
+
+                let mut additional_routes = RoutingTable::default();
+                for (rid, relay) in online {
+                    if !additional_routes.add_host(*rid, relay) {
+                        return false;
+                    }
+                }
+
+                let route_overlap = state.network.overlaps_with(&additional_routes);
+
+                all_old_are_present && no_new_are_present && !route_overlap
+            }
             Transition::Idle => true,
         }
     }
@@ -560,7 +596,7 @@ pub(crate) fn private_key() -> impl Strategy<Value = PrivateKey> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct PrivateKey([u8; 32]);
+pub(crate) struct PrivateKey(pub [u8; 32]);
 
 impl From<PrivateKey> for StaticSecret {
     fn from(key: PrivateKey) -> Self {

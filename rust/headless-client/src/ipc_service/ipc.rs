@@ -206,7 +206,7 @@ mod tests {
                     .expect("Error while waiting for next IPC client");
                 while let Some(req) = rx.next().await {
                     let req = req.expect("Error while reading from IPC client");
-                    ensure!(req == IpcClientMsg::Reconnect);
+                    ensure!(req == IpcClientMsg::Reset);
                     tx.send(&IpcServerMsg::OnUpdateResources(vec![]))
                         .await
                         .expect("Error while writing to IPC client");
@@ -222,7 +222,7 @@ mod tests {
                     .await
                     .context("Error while connecting to IPC server")?;
 
-                let req = IpcClientMsg::Reconnect;
+                let req = IpcClientMsg::Reset;
                 for _ in 0..10 {
                     tx.send(&req)
                         .await

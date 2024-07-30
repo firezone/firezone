@@ -25,7 +25,6 @@ phoenix-channel = { workspace = true }
 proptest = { version = "1", optional = true }
 rand = { version = "0.8", default-features = false, features = ["std"] }
 rand_core = { version = "0.6.4", default-features = false, features = ["std"] }
-ring = "0.17"
 secrecy = { workspace = true, features = ["serde", "bytes"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
