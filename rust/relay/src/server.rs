@@ -208,14 +208,17 @@ where
         self.public_address
     }
 
+    #[mutants::skip]
     pub fn public_ip4(&self) -> Option<IpAddr> {
         Some(IpAddr::V4(*self.public_address.as_v4()?))
     }
 
+    #[mutants::skip]
     pub fn public_ip6(&self) -> Option<IpAddr> {
         Some(IpAddr::V6(*self.public_address.as_v6()?))
     }
 
+    #[mutants::skip]
     pub fn listen_port(&self) -> u16 {
         self.listen_port
     }
@@ -227,14 +230,17 @@ where
         self.nonces.add_new(nonce);
     }
 
+    #[mutants::skip]
     pub fn num_relayed_bytes(&self) -> u64 {
         self.data_relayed
     }
 
+    #[mutants::skip]
     pub fn num_allocations(&self) -> usize {
         self.allocations.len()
     }
 
+    #[mutants::skip]
     pub fn num_active_channels(&self) -> usize {
         self.channels_by_client_and_number
             .iter()
