@@ -2,7 +2,7 @@ locals {
   # The version of the Erlang cluster state,
   # change this to prevent new nodes from joining the cluster of the old ones,
   # ie. when some internal messages introduced a breaking change.
-  cluster_version = "1"
+  cluster_version = "1_0"
 }
 
 # Generate secrets
