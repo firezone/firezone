@@ -25,5 +25,5 @@ object ConnlibSession {
         fd: Int,
     ): Boolean
 
-    external fun reconnect(connlibSession: Long): Boolean
+    external fun reset(connlibSession: Long): Boolean
 }

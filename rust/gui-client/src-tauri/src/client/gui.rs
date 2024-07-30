@@ -10,7 +10,7 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use connlib_client_shared::callbacks::ResourceDescription;
-use firezone_bin_shared::{DnsNotifier, NetworkNotifier};
+use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
 use firezone_headless_client::IpcServerMsg;
 use secrecy::{ExposeSecret, SecretString};
 use std::{
@@ -817,21 +817,26 @@ async fn run_controller(
         win.show().context("Couldn't show Welcome window")?;
     }
 
-    let mut com_worker = NetworkNotifier::new().context("Failed to listen for network changes")?;
+    let tokio_handle = tokio::runtime::Handle::current();
+    let dns_control_method = Some(Default::default());
 
-    let mut dns_listener = DnsNotifier::new()?;
+    let mut dns_notifier = new_dns_notifier(tokio_handle.clone(), dns_control_method).await?;
+    let mut network_notifier =
+        new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
+    drop(tokio_handle);
 
     loop {
         // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
         // `tokio::select!` with a `poll_*` function
         tokio::select! {
-            () = com_worker.notified() => {
+            result = network_notifier.notified() => {
+                result?;
                 if controller.status.connlib_is_up() {
                     tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
-                    controller.ipc_client.reconnect().await?;
+                    controller.ipc_client.reset().await?;
                 }
             },
-            result = dns_listener.notified() => {
+            result = dns_notifier.notified() => {
                 result?;
                 if controller.status.connlib_is_up() {
                     let resolvers = firezone_headless_client::dns_control::system_resolvers_for_gui()?;
@@ -865,7 +870,7 @@ async fn run_controller(
         // Code down here may not run because the `select` sometimes `continue`s.
     }
 
-    if let Err(error) = com_worker.close() {
+    if let Err(error) = network_notifier.close() {
         tracing::error!(?error, "com_worker");
     }
     if let Err(error) = controller.ipc_client.disconnect_from_ipc().await {

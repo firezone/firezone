@@ -10,7 +10,8 @@ use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
 use connlib_shared::get_user_agent;
 use firezone_bin_shared::{
-    setup_global_subscriber, DnsNotifier, NetworkNotifier, TunDeviceManager,
+    new_dns_notifier, new_network_notifier, setup_global_subscriber, DnsControlMethod,
+    TunDeviceManager,
 };
 use futures::{FutureExt as _, StreamExt as _};
 use phoenix_channel::PhoenixChannel;
@@ -197,8 +198,14 @@ pub fn run_only_headless_client() -> Result<()> {
         let mut tun_device = TunDeviceManager::new()?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
-        let mut dns_notifier = DnsNotifier::new()?;
-        let mut network_notifier = NetworkNotifier::new()?;
+        let tokio_handle = tokio::runtime::Handle::current();
+        let dns_control_method = DnsControlMethod::from_env();
+
+        let mut dns_notifier = new_dns_notifier(tokio_handle.clone(), dns_control_method).await?;
+
+        let mut network_notifier =
+            new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
+        drop(tokio_handle);
 
         let tun = tun_device.make_tun()?;
         session.set_tun(Box::new(tun));
@@ -215,18 +222,21 @@ pub fn run_only_headless_client() -> Result<()> {
                 },
                 () = hangup => {
                     tracing::info!("Caught SIGHUP");
-                    session.reconnect();
+                    session.reset();
                     continue;
                 },
                 result = dns_changed => {
                     result?;
-                    tracing::info!("DNS change, notifying Session");
+                    // If the DNS control method is not `systemd-resolved`
+                    // then we'll use polling here, so no point logging every 5 seconds that we're checking the DNS
+                    tracing::trace!("DNS change, notifying Session");
                     session.set_dns(dns_control::system_resolvers()?);
                     continue;
                 },
-                () = network_changed => {
-                    tracing::info!("Network change, reconnecting Session");
-                    session.reconnect();
+                result = network_changed => {
+                    result?;
+                    tracing::info!("Network change, resetting Session");
+                    session.reset();
                     continue;
                 },
                 cb = cb_rx.next() => cb.context("cb_rx unexpectedly ran empty")?,

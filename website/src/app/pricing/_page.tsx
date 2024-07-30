@@ -1,6 +1,6 @@
 "use client";
 
-import CustomerLogos from "@/components/CustomerLogos";
+import { CustomerLogosColored } from "@/components/CustomerLogos";
 import Toggle from "@/components/Toggle";
 import { HiCheck } from "react-icons/hi2";
 import Link from "next/link";
@@ -240,10 +240,7 @@ export default function _Page() {
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5" />
-                <span className="leading-tight">
-                  <span className="font-semibold text-primary-450">99.99%</span>{" "}
-                  uptime SLA
-                </span>
+                <span className="leading-tight">Uptime SLAs</span>
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5" />
@@ -268,7 +265,7 @@ export default function _Page() {
         </div>
       </section>
       <section className="py-24 bg-gradient-to-b to-neutral-50 from-white">
-        <CustomerLogos />
+        <CustomerLogosColored />
       </section>
       <section className="bg-neutral-50 py-14">
         <div className="mb-14 mx-auto max-w-screen-lg px-3">

@@ -116,7 +116,7 @@ fn resource_header(res: &ResourceDescription) -> Item {
         return copyable(address_description);
     };
 
-    item(Event::Url(url), address_description)
+    item(Event::Url(url), format!("<{address_description}>"))
 }
 
 #[derive(PartialEq)]
@@ -210,6 +210,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
     let has_any_favorites = resources
         .iter()
         .any(|res| favorite_resources.contains(&res.id()));
+
     let mut menu = Menu::default()
         .disabled(format!("Signed in as {actor_name}"))
         .item(Event::SignOut, SIGN_OUT)
@@ -230,10 +231,10 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
             menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
     } else {
-        menu = menu.disabled(RESOURCES);
         // No favorites, show every Resource normally, just like before
         // the favoriting feature was created
         // Always show Resources in the original order
+        menu = menu.disabled(RESOURCES);
         for res in *resources {
             menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
@@ -250,6 +251,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         }
         menu = menu.separator().add_submenu(OTHER_RESOURCES, submenu);
     }
+
     menu.add_bottom_section(DISCONNECT_AND_QUIT)
 }
 
@@ -280,9 +282,9 @@ mod tests {
             {
                 "id": "03000143-e25e-45c7-aafb-144990e57dcd",
                 "type": "dns",
-                "name": "gitlab.mycorp.com",
+                "name": "MyCorp GitLab",
                 "address": "gitlab.mycorp.com",
-                "address_description": "dns resource",
+                "address_description": "https://gitlab.mycorp.com",
                 "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                 "status": "Online"
             },
@@ -303,7 +305,7 @@ mod tests {
     #[test]
     fn no_resources_no_favorites() {
         let resources = vec![];
-        let favorites = HashSet::default();
+        let favorites = Default::default();
         let input = AppState::SignedIn(SignedIn {
             actor_name: "Jane Doe",
             favorite_resources: &favorites,
@@ -351,9 +353,9 @@ mod tests {
     }
 
     #[test]
-    fn some_resources_no_favorites() -> Result<()> {
+    fn some_resources_no_favorites() {
         let resources = resources();
-        let favorites = HashSet::default();
+        let favorites = Default::default();
         let input = AppState::SignedIn(SignedIn {
             actor_name: "Jane Doe",
             favorite_resources: &favorites,
@@ -374,9 +376,9 @@ mod tests {
                     .copyable("172.172.0.0/16")
                     .copyable("172.172.0.0/16")
                     .item(
-                        Event::AddFavorite(ResourceId::from_str(
-                            "73037362-715d-4a83-a749-f18eadd970e6",
-                        )?),
+                        Event::AddFavorite(
+                            ResourceId::from_str("73037362-715d-4a83-a749-f18eadd970e6").unwrap(),
+                        ),
                         ADD_FAVORITE,
                     )
                     .separator()
@@ -385,17 +387,20 @@ mod tests {
                     .copyable(NO_ACTIVITY),
             )
             .add_submenu(
-                "gitlab.mycorp.com",
+                "MyCorp GitLab",
                 Menu::default()
-                    .copyable("dns resource")
+                    .item(
+                        Event::Url("https://gitlab.mycorp.com".parse().unwrap()),
+                        "<https://gitlab.mycorp.com>",
+                    )
                     .separator()
                     .disabled("Resource")
-                    .copyable("gitlab.mycorp.com")
+                    .copyable("MyCorp GitLab")
                     .copyable("gitlab.mycorp.com")
                     .item(
-                        Event::AddFavorite(ResourceId::from_str(
-                            "03000143-e25e-45c7-aafb-144990e57dcd",
-                        )?),
+                        Event::AddFavorite(
+                            ResourceId::from_str("03000143-e25e-45c7-aafb-144990e57dcd").unwrap(),
+                        ),
                         ADD_FAVORITE,
                     )
                     .separator()
@@ -412,9 +417,9 @@ mod tests {
                     .copyable("Internet")
                     .copyable("")
                     .item(
-                        Event::AddFavorite(ResourceId::from_str(
-                            "1106047c-cd5d-4151-b679-96b93da7383b",
-                        )?),
+                        Event::AddFavorite(
+                            ResourceId::from_str("1106047c-cd5d-4151-b679-96b93da7383b").unwrap(),
+                        ),
                         ADD_FAVORITE,
                     )
                     .separator()
@@ -423,15 +428,12 @@ mod tests {
                     .copyable(ALL_GATEWAYS_OFFLINE),
             )
             .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
-
         assert_eq!(
             actual,
             expected,
             "{}",
             serde_json::to_string_pretty(&actual).unwrap(),
         );
-
-        Ok(())
     }
 
     #[test]
@@ -452,12 +454,15 @@ mod tests {
             .separator()
             .disabled(FAVORITE_RESOURCES)
             .add_submenu(
-                "gitlab.mycorp.com",
+                "MyCorp GitLab",
                 Menu::default()
-                    .copyable("dns resource")
+                    .item(
+                        Event::Url("https://gitlab.mycorp.com".parse().unwrap()),
+                        "<https://gitlab.mycorp.com>",
+                    )
                     .separator()
                     .disabled("Resource")
-                    .copyable("gitlab.mycorp.com")
+                    .copyable("MyCorp GitLab")
                     .copyable("gitlab.mycorp.com")
                     .add_item(
                         item(
@@ -565,12 +570,15 @@ mod tests {
                     .copyable(NO_ACTIVITY),
             )
             .add_submenu(
-                "gitlab.mycorp.com",
+                "MyCorp GitLab",
                 Menu::default()
-                    .copyable("dns resource")
+                    .item(
+                        Event::Url("https://gitlab.mycorp.com".parse().unwrap()),
+                        "<https://gitlab.mycorp.com>",
+                    )
                     .separator()
                     .disabled("Resource")
-                    .copyable("gitlab.mycorp.com")
+                    .copyable("MyCorp GitLab")
                     .copyable("gitlab.mycorp.com")
                     .item(
                         Event::AddFavorite(ResourceId::from_str(

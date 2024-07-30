@@ -14,6 +14,9 @@ export default function GUI({ title }: { title: string }) {
     <Entries href={href} arches={arches} title={title}>
       {/*<Entry version="1.1.8" date={new Date("2024-07-17")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem enable={title === "Linux GUI"} pull="5978">
+            Adds network roaming support.
+          </ChangeItem>
           <ChangeItem pull="5923">
             Adds the ability to mark Resources as favorites.
           </ChangeItem>

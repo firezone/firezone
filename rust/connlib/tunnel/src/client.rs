@@ -30,16 +30,35 @@ use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::str::FromStr;
 use std::time::{Duration, Instant};
 
-// Using str here because Ipv4/6Network doesn't support `const` 🙃
-pub(crate) const IPV4_RESOURCES: &str = "100.96.0.0/11";
-pub(crate) const IPV6_RESOURCES: &str = "fd00:2021:1111:8000::/107";
+pub(crate) const IPV4_RESOURCES: Ipv4Network =
+    match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
+        Ok(n) => n,
+        Err(_) => unreachable!(),
+    };
+pub(crate) const IPV6_RESOURCES: Ipv6Network = match Ipv6Network::new(
+    Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0),
+    107,
+) {
+    Ok(n) => n,
+    Err(_) => unreachable!(),
+};
 
 const DNS_PORT: u16 = 53;
-const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
-const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
+
+pub(crate) const DNS_SENTINELS_V4: Ipv4Network =
+    match Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24) {
+        Ok(n) => n,
+        Err(_) => unreachable!(),
+    };
+pub(crate) const DNS_SENTINELS_V6: Ipv6Network = match Ipv6Network::new(
+    Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0),
+    120,
+) {
+    Ok(n) => n,
+    Err(_) => unreachable!(),
+};
 
 // The max time a dns request can be configured to live in resolvconf
 // is 30 seconds. See resolvconf(5) timeout.
@@ -272,6 +291,7 @@ impl ClientState {
     pub(crate) fn new(
         private_key: impl Into<StaticSecret>,
         known_hosts: HashMap<String, Vec<IpAddr>>,
+        seed: [u8; 32],
     ) -> Self {
         Self {
             awaiting_connection_details: Default::default(),
@@ -284,7 +304,7 @@ impl ClientState {
             interface_config: Default::default(),
             buffered_packets: Default::default(),
             buffered_dns_queries: Default::default(),
-            node: ClientNode::new(private_key.into()),
+            node: ClientNode::new(private_key.into(), seed),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
@@ -764,8 +784,8 @@ impl ClientState {
         self.cidr_resources
             .iter()
             .map(|(ip, _)| ip)
-            .chain(iter::once(IpNetwork::from_str(IPV4_RESOURCES).unwrap()))
-            .chain(iter::once(IpNetwork::from_str(IPV6_RESOURCES).unwrap()))
+            .chain(iter::once(IPV4_RESOURCES.into()))
+            .chain(iter::once(IPV6_RESOURCES.into()))
             .chain(self.dns_mapping.left_values().copied().map(Into::into))
     }
 
@@ -1119,13 +1139,10 @@ fn effective_dns_servers(
 }
 
 fn not_sentinel(srv: DnsServer) -> Option<DnsServer> {
-    (!IpNetwork::from_str(DNS_SENTINELS_V4)
-        .unwrap()
-        .contains(srv.ip())
-        && !IpNetwork::from_str(DNS_SENTINELS_V6)
-            .unwrap()
-            .contains(srv.ip()))
-    .then_some(srv)
+    let is_v4_dns = IpNetwork::V4(DNS_SENTINELS_V4).contains(srv.ip());
+    let is_v6_dns = IpNetwork::V6(DNS_SENTINELS_V6).contains(srv.ip());
+
+    (!is_v4_dns && !is_v6_dns).then_some(srv)
 }
 
 fn sentinel_dns_mapping(
@@ -1252,21 +1269,17 @@ pub struct IpProvider {
 impl IpProvider {
     pub fn for_resources() -> Self {
         IpProvider::new(
-            IPV4_RESOURCES.parse().unwrap(),
-            IPV6_RESOURCES.parse().unwrap(),
+            IPV4_RESOURCES,
+            IPV6_RESOURCES,
             vec![
-                DNS_SENTINELS_V4.parse().unwrap(),
-                DNS_SENTINELS_V6.parse().unwrap(),
+                IpNetwork::V4(DNS_SENTINELS_V4),
+                IpNetwork::V6(DNS_SENTINELS_V6),
             ],
         )
     }
 
     pub fn for_stub_dns_servers(exclusions: Vec<IpNetwork>) -> Self {
-        IpProvider::new(
-            DNS_SENTINELS_V4.parse().unwrap(),
-            DNS_SENTINELS_V6.parse().unwrap(),
-            exclusions,
-        )
+        IpProvider::new(DNS_SENTINELS_V4, DNS_SENTINELS_V6, exclusions)
     }
 
     fn new(ipv4: Ipv4Network, ipv6: Ipv6Network, exclusions: Vec<IpNetwork>) -> Self {
@@ -1311,7 +1324,7 @@ impl IpProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand_core::OsRng;
+    use rand::rngs::OsRng;
 
     #[test]
     fn ignores_ip4_igmp_multicast() {
@@ -1484,7 +1497,11 @@ mod tests {
 
     impl ClientState {
         pub fn for_test() -> ClientState {
-            ClientState::new(StaticSecret::random_from_rng(OsRng), HashMap::new())
+            ClientState::new(
+                StaticSecret::random_from_rng(OsRng),
+                HashMap::new(),
+                rand::random(),
+            )
         }
     }
 
@@ -1513,8 +1530,8 @@ mod tests {
 
     fn sentinel_ranges() -> Vec<IpNetwork> {
         vec![
-            IpNetwork::from_str(DNS_SENTINELS_V4).unwrap(),
-            IpNetwork::from_str(DNS_SENTINELS_V6).unwrap(),
+            IpNetwork::V4(DNS_SENTINELS_V4),
+            IpNetwork::V6(DNS_SENTINELS_V6),
         ]
     }
 
@@ -1797,8 +1814,8 @@ mod proptests {
         HashSet::from_iter(
             resource_routes
                 .into_iter()
-                .chain(iter::once(IpNetwork::from_str(IPV4_RESOURCES).unwrap()))
-                .chain(iter::once(IpNetwork::from_str(IPV6_RESOURCES).unwrap())),
+                .chain(iter::once(IPV4_RESOURCES.into()))
+                .chain(iter::once(IPV6_RESOURCES.into())),
         )
     }
 
