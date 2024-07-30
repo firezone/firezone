@@ -41,6 +41,7 @@ pub(crate) struct ReferenceState {
 
 #[derive(Debug, Clone)]
 pub(crate) enum ResourceDst {
+    Internet(IpAddr),
     Cidr(IpAddr),
     Dns(DomainName),
 }
@@ -288,7 +289,9 @@ impl ReferenceStateMachine for ReferenceState {
                     client::ResourceDescription::Cidr(r) => {
                         client.cidr_resources.insert(r.address, r.clone());
                     }
-                    client::ResourceDescription::Internet(_) => todo!("Unsupported"),
+                    client::ResourceDescription::Internet(r) => {
+                        client.internet_resource = Some(r.id)
+                    }
                 });
             }
             Transition::DeactivateResource(id) => {
@@ -333,8 +336,20 @@ impl ReferenceStateMachine for ReferenceState {
                         .exec_mut(|client| client.expected_dns_handshakes.push_back(*query_id));
                 }
             },
-            Transition::SendICMPPacketToNonResourceIp { .. } => {
-                // Packets to non-resources are dropped, no state change required.
+            Transition::SendICMPPacketToNonResourceIp {
+                src,
+                dst,
+                seq,
+                identifier,
+            } => {
+                state.client.exec_mut(|client| {
+                    // If the Internet Resource is active, all packets are expected to be routed.
+                    if client.internet_resource.is_some() {
+                        client.on_icmp_packet_to_internet(*src, *dst, *seq, *identifier, |r| {
+                            state.portal.gateway_for_resource(r).copied()
+                        })
+                    }
+                });
             }
             Transition::SendICMPPacketToCidrResource {
                 src,
@@ -447,10 +462,10 @@ impl ReferenceStateMachine for ReferenceState {
                 ..
             } => {
                 let ref_client = state.client.inner();
-                let Some(resource) = ref_client.cidr_resource_by_ip(*dst) else {
+                let Some(rid) = ref_client.cidr_resource_by_ip(*dst) else {
                     return false;
                 };
-                let Some(gateway) = state.portal.gateway_for_resource(resource.id) else {
+                let Some(gateway) = state.portal.gateway_for_resource(rid) else {
                     return false;
                 };
 

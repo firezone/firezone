@@ -80,6 +80,16 @@ pub struct ResourceDescriptionInternet {
     pub sites: Vec<Site>,
 }
 
+impl ResourceDescriptionInternet {
+    pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionInternet {
+        crate::callbacks::ResourceDescriptionInternet {
+            id: self.id,
+            sites: self.sites,
+            status,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialOrd, Ord)]
 pub struct Site {
     pub id: SiteId,
@@ -193,7 +203,9 @@ impl ResourceDescription {
             ResourceDescription::Cidr(r) => {
                 crate::callbacks::ResourceDescription::Cidr(r.with_status(status))
             }
-            ResourceDescription::Internet(_) => todo!(),
+            ResourceDescription::Internet(r) => {
+                crate::callbacks::ResourceDescription::Internet(r.with_status(status))
+            }
         }
     }
 }

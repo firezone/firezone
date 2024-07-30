@@ -7,7 +7,10 @@ use super::{
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use connlib_shared::{
     messages::{
-        client::{ResourceDescriptionCidr, ResourceDescriptionDns, Site, SiteId},
+        client::{
+            ResourceDescriptionCidr, ResourceDescriptionDns, ResourceDescriptionInternet, Site,
+            SiteId,
+        },
         DnsServer, GatewayId, RelayId,
     },
     proptest::{
@@ -123,19 +126,26 @@ pub(crate) fn gateways_and_portal() -> impl Strategy<
                 prop_oneof![
                     non_wildcard_dns_resource(any_site(sites.clone())),
                     star_wildcard_dns_resource(any_site(sites.clone())),
-                    question_mark_wildcard_dns_resource(any_site(sites)),
+                    question_mark_wildcard_dns_resource(any_site(sites.clone())),
                 ],
                 1..5,
             );
+            let internet_resource = internet_resource(any_site(sites));
 
             let gateways =
                 collection::hash_map(gateway_id(), (ref_gateway_host(), gateway_site), 1..=3);
             let gateway_selector = any::<sample::Selector>();
 
-            (gateways, cidr_resources, dns_resources, gateway_selector)
+            (
+                gateways,
+                cidr_resources,
+                dns_resources,
+                internet_resource,
+                gateway_selector,
+            )
         })
         .prop_flat_map(
-            |(gateways, cidr_resources, dns_resources, gateway_selector)| {
+            |(gateways, cidr_resources, dns_resources, internet_resource, gateway_selector)| {
                 let (gateways, gateways_by_site) = gateways.into_iter().fold(
                     (
                         BTreeMap::<GatewayId, _>::default(),
@@ -190,6 +200,7 @@ pub(crate) fn gateways_and_portal() -> impl Strategy<
                     gateway_selector,
                     cidr_resources,
                     dns_resources,
+                    internet_resource,
                 );
 
                 (Just(gateways), Just(portal), dns_resource_records)
@@ -222,6 +233,12 @@ fn cidr_resource_outside_reserved_ranges(
             },
         )
         .prop_filter("resource must not be in the documentation range because we use those for host addresses and DNS IPs", |r| !r.address.is_documentation())
+}
+
+fn internet_resource(
+    site: impl Strategy<Value = Site>,
+) -> impl Strategy<Value = ResourceDescriptionInternet> {
+    connlib_shared::proptest::internet_resource(site.prop_map(|s| vec![s]))
 }
 
 fn non_wildcard_dns_resource(

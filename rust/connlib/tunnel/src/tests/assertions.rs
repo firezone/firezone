@@ -107,6 +107,9 @@ pub(crate) fn assert_icmp_packets_properties(
                         &mut mapping,
                     )
                 }
+                ResourceDst::Internet(resource_dst) => {
+                    assert_destination_is_cdir_resource(gateway_received_request, resource_dst)
+                }
             }
         }
     }
