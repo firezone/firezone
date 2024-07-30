@@ -27,9 +27,11 @@ pub(crate) struct Host<T> {
 
     // In production, we always rebind to a new port.
     // To mimic this, we track the used ports here to not sample an existing one.
+    #[derivative(Debug = "ignore")]
     pub(crate) old_ports: HashSet<u16>,
 
     default_port: u16,
+    #[derivative(Debug = "ignore")]
     allocated_ports: HashSet<(u16, AddressFamily)>,
 
     // The latency of incoming and outgoing packets.
@@ -41,6 +43,7 @@ pub(crate) struct Host<T> {
     /// Messages that have "arrived" and are waiting to be dispatched.
     ///
     /// We buffer them here because we need also apply our latency on inbound packets.
+    #[derivative(Debug = "ignore")]
     inbox: BufferedTransmits,
 }
 

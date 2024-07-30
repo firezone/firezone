@@ -7,14 +7,17 @@ use std::{
 };
 
 /// Stub implementation of the portal.
-#[derive(Debug, Clone)]
+#[derive(Clone, derivative::Derivative)]
+#[derivative(Debug)]
 pub(crate) struct StubPortal {
     gateways_by_site: HashMap<client::SiteId, HashSet<GatewayId>>,
 
+    #[derivative(Debug = "ignore")]
     sites_by_resource: HashMap<ResourceId, client::SiteId>,
     cidr_resources: HashMap<ResourceId, client::ResourceDescriptionCidr>,
     dns_resources: HashMap<ResourceId, client::ResourceDescriptionDns>,
 
+    #[derivative(Debug = "ignore")]
     gateway_selector: Selector,
 }
 

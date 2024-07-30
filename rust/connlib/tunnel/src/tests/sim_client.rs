@@ -211,7 +211,8 @@ impl SimClient {
 ///
 /// The reference state machine is designed to be as abstract as possible over connlib's functionality.
 /// For example, we try to model connectivity to _resources_ and don't really care, which gateway is being used to route us there.
-#[derive(Debug, Clone)]
+#[derive(Clone, derivative::Derivative)]
+#[derivative(Debug)]
 pub struct RefClient {
     pub(crate) id: ClientId,
     pub(crate) key: PrivateKey,
@@ -225,28 +226,35 @@ pub struct RefClient {
     pub(crate) upstream_dns_resolvers: Vec<DnsServer>,
 
     /// The CIDR resources the client is aware of.
+    #[derivative(Debug = "ignore")]
     pub(crate) cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     /// The DNS resources the client is aware of.
+    #[derivative(Debug = "ignore")]
     pub(crate) dns_resources: BTreeMap<ResourceId, ResourceDescriptionDns>,
 
     /// The client's DNS records.
     ///
     /// The IPs assigned to a domain by connlib are an implementation detail that we don't want to model in these tests.
     /// Instead, we just remember what _kind_ of records we resolved to be able to sample a matching src IP.
+    #[derivative(Debug = "ignore")]
     pub(crate) dns_records: BTreeMap<DomainName, HashSet<RecordType>>,
 
     /// The CIDR resources the client is connected to.
+    #[derivative(Debug = "ignore")]
     pub(crate) connected_cidr_resources: HashSet<ResourceId>,
 
     /// The DNS resources the client is connected to.
+    #[derivative(Debug = "ignore")]
     pub(crate) connected_dns_resources: HashSet<(ResourceId, DomainName)>,
 
     /// The expected ICMP handshakes.
     ///
     /// This is indexed by gateway because our assertions rely on the order of the sent packets.
+    #[derivative(Debug = "ignore")]
     pub(crate) expected_icmp_handshakes:
         HashMap<GatewayId, VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>>,
     /// The expected DNS handshakes.
+    #[derivative(Debug = "ignore")]
     pub(crate) expected_dns_handshakes: VecDeque<QueryId>,
 }
 
