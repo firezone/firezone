@@ -3,6 +3,8 @@ package dev.firezone.android.core.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.data.model.Config
 import kotlinx.coroutines.CoroutineDispatcher
@@ -59,6 +61,7 @@ internal class Repository
                 )
             }.flowOn(coroutineDispatcher)
 
+
         fun getDeviceIdSync(): String? = sharedPreferences.getString(DEVICE_ID_KEY, null)
 
         fun getFavoritesSync(): HashSet<String> = HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())
@@ -91,6 +94,16 @@ internal class Repository
                 .edit()
                 .putString(DEVICE_ID_KEY, value)
                 .apply()
+
+        fun getDisabledResources(): Set<String> {
+            val jsonString = sharedPreferences.getString(DISABLED_RESOURCES_KEY, null) ?: return hashSetOf()
+            val type = object : TypeToken<HashSet<String>>() {}.type
+            return Gson().fromJson(jsonString, type)
+        }
+
+        fun saveDisabledResources(value: Set<String>): Unit =
+                sharedPreferences.edit().putString(DISABLED_RESOURCES_KEY, Gson().toJson(value))
+                    .apply()
 
         fun saveNonce(value: String): Flow<Unit> =
             flow {
@@ -171,5 +184,6 @@ internal class Repository
             private const val NONCE_KEY = "nonce"
             private const val STATE_KEY = "state"
             private const val DEVICE_ID_KEY = "deviceId"
+            private const val DISABLED_RESOURCES_KEY = "disabledResources"
         }
     }

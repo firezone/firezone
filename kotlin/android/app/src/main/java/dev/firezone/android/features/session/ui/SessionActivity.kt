@@ -8,15 +8,18 @@ import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
 import android.view.View
+import android.util.Log
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
 import dagger.hilt.android.AndroidEntryPoint
+import dev.firezone.android.core.data.Repository
 import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
+import javax.inject.Inject
 
 @AndroidEntryPoint
 internal class SessionActivity : AppCompatActivity() {
@@ -24,6 +27,12 @@ internal class SessionActivity : AppCompatActivity() {
     private var tunnelService: TunnelService? = null
     private var serviceBound = false
     private val viewModel: SessionViewModel by viewModels()
+    private var disabledResources: MutableSet<String> = mutableSetOf()
+
+    @Inject
+    internal lateinit var repo: Repository
+
+
 
     private val serviceConnection =
         object : ServiceConnection {
@@ -36,6 +45,7 @@ internal class SessionActivity : AppCompatActivity() {
                 serviceBound = true
                 tunnelService?.setServiceStateLiveData(viewModel.serviceStatusLiveData)
                 tunnelService?.setResourcesLiveData(viewModel.resourcesLiveData)
+                tunnelService?.resourcesUpdated(disabledResources)
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
@@ -43,7 +53,7 @@ internal class SessionActivity : AppCompatActivity() {
             }
         }
 
-    private val resourcesAdapter = ResourcesAdapter()
+    private val resourcesAdapter = ResourcesAdapter(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,6 +63,9 @@ internal class SessionActivity : AppCompatActivity() {
         // Bind to existing TunnelService
         val intent = Intent(this, TunnelService::class.java)
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+
+        disabledResources = repo.getDisabledResources().toMutableSet()
+        tunnelService?.resourcesUpdated(disabledResources)
 
         setupViews()
         setupObservers()
@@ -64,6 +77,19 @@ internal class SessionActivity : AppCompatActivity() {
             unbindService(serviceConnection)
             serviceBound = false
         }
+    }
+
+    fun onViewResourceToggled(resourceToggled: ViewResource) {
+        Log.d(TAG, "Resource toggled $resourceToggled")
+
+        if (!resourceToggled.enabled) {
+            disabledResources.add(resourceToggled.id)
+        } else {
+            disabledResources.remove(resourceToggled.id)
+        }
+
+        repo.saveDisabledResources(disabledResources)
+        tunnelService?.resourcesUpdated(disabledResources)
     }
 
     private fun setupViews() {
@@ -113,7 +139,7 @@ internal class SessionActivity : AppCompatActivity() {
             }
         }
 
-        viewModel.resourcesLiveData.observe(this) { value ->
+        viewModel.resourcesLiveData.observe(this) {
             refreshList()
         }
 
@@ -134,7 +160,21 @@ internal class SessionActivity : AppCompatActivity() {
             } else {
                 View.GONE
             }
-        resourcesAdapter.submitList(viewModel.resourcesList())
+
+        val newResources = viewModel.resourcesList().map { it.toViewResource() }
+
+        for (item in newResources) {
+            // Preventing a bug where a resource stop beings disableable and we can't re-enable it
+            if (!item.disableable) {
+                disabledResources.remove(item.id)
+            }
+
+            if (disabledResources.contains(item.id)) {
+                item.enabled = false
+            }
+        }
+
+        resourcesAdapter.submitList(newResources)
     }
 
     companion object {

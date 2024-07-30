@@ -1,16 +1,20 @@
 /* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.isVisible
+import androidx.lifecycle.MutableLiveData
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.ListUpdateCallback
 import androidx.recyclerview.widget.RecyclerView
 import dev.firezone.android.databinding.ListItemResourceBinding
 import dev.firezone.android.tunnel.model.Resource
 
-internal class ResourcesAdapter() : ListAdapter<Resource, ResourcesAdapter.ViewHolder>(ResourceDiffCallback()) {
+internal class ResourcesAdapter(private val activity: SessionActivity) : ListAdapter<ViewResource, ResourcesAdapter.ViewHolder>(ResourceDiffCallback()) {
     private var favoriteResources: HashSet<String> = HashSet()
 
     override fun onCreateViewHolder(
@@ -26,7 +30,7 @@ internal class ResourcesAdapter() : ListAdapter<Resource, ResourcesAdapter.ViewH
         position: Int,
     ) {
         val resource = getItem(position)
-        holder.bind(resource)
+        holder.bind(resource) { newResource -> onSwitchToggled(newResource)}
         holder.itemView.setOnClickListener {
             // Show bottom sheet
             val isFavorite = favoriteResources.contains(resource.id)
@@ -34,26 +38,44 @@ internal class ResourcesAdapter() : ListAdapter<Resource, ResourcesAdapter.ViewH
             val bottomSheet = ResourceDetailsBottomSheet(resource)
             bottomSheet.show(fragmentManager, "ResourceDetailsBottomSheet")
         }
+
+    }
+
+    private fun onSwitchToggled(resource: ViewResource) {
+        activity.onViewResourceToggled(resource)
     }
 
     class ViewHolder(private val binding: ListItemResourceBinding) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(resource: Resource) {
+
+        fun bind(resource: ViewResource, onSwitchToggled: (ViewResource) -> Unit) {
             binding.resourceNameText.text = resource.name
             binding.addressText.text = resource.address
+            // Without this the item gets reset when out of view, isn't android wonderful?
+            binding.enableSwitch.setOnCheckedChangeListener(null)
+            binding.enableSwitch.isChecked = resource.enabled
+            binding.enableSwitch.isVisible = resource.disableable
+
+            binding.enableSwitch.setOnCheckedChangeListener {
+                _, isChecked ->
+                    resource.enabled = isChecked
+
+                    onSwitchToggled(resource)
+            }
         }
+
     }
 
-    class ResourceDiffCallback : DiffUtil.ItemCallback<Resource>() {
+    class ResourceDiffCallback : DiffUtil.ItemCallback<ViewResource>() {
         override fun areItemsTheSame(
-            oldItem: Resource,
-            newItem: Resource,
+            oldItem: ViewResource,
+            newItem: ViewResource,
         ): Boolean {
             return oldItem.id == newItem.id
         }
 
         override fun areContentsTheSame(
-            oldItem: Resource,
-            newItem: Resource,
+            oldItem: ViewResource,
+            newItem: ViewResource,
         ): Boolean {
             return oldItem == newItem
         }

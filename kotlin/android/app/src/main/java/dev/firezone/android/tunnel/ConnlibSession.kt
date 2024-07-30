@@ -15,6 +15,11 @@ object ConnlibSession {
 
     external fun disconnect(connlibSession: Long): Boolean
 
+    external fun setDisabledResources(
+        connlibSession: Long,
+        disabledResourceList: String,
+    ): Boolean
+
     external fun setDns(
         connlibSession: Long,
         dnsList: String,

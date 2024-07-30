@@ -24,7 +24,7 @@ import dev.firezone.android.R
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.StatusEnum
 
-class ResourceDetailsBottomSheet(private val resource: Resource) : BottomSheetDialogFragment() {
+class ResourceDetailsBottomSheet(private val resource: ViewResource) : BottomSheetDialogFragment() {
     private lateinit var view: View
     private val viewModel: SessionViewModel by activityViewModels()
     private var isFavorite: Boolean = false
