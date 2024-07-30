@@ -51,7 +51,7 @@ export default function KbSidebar() {
               SSO with Universal OIDC
             </SidebarItem>
             <SidebarItem href="/kb/authenticate/oidc/fusion">
-              FusionAuth
+              SSO with FusionAuth
             </SidebarItem>
             <SidebarItem href="/kb/authenticate/directory-sync">
               Directory sync
