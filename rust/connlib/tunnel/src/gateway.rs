@@ -163,6 +163,10 @@ impl GatewayState {
     ) -> Option<snownet::Transmit<'s>> {
         let dst = packet.destination();
 
+        if !is_client(dst) {
+            return None;
+        }
+
         let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
             tracing::warn!(%dst, "Couldn't find connection by IP");
 
@@ -415,5 +419,22 @@ impl GatewayState {
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);
+    }
+}
+
+fn is_client(dst: IpAddr) -> bool {
+    match dst {
+        IpAddr::V4(v4) => IPV4_PEERS.contains(v4),
+        IpAddr::V6(v6) => IPV6_PEERS.contains(v6),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mldv2_routers_are_not_clients() {
+        assert!(!is_client("ff02::16".parse().unwrap()))
     }
 }
