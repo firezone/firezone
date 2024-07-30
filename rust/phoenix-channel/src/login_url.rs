@@ -5,6 +5,9 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use url::Url;
 use uuid::Uuid;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::ffi::OsStringExt;
+
 // From https://man7.org/linux/man-pages/man2/gethostname.2.html
 // SUSv2 guarantees that "Host names are limited to 255 bytes".
 // POSIX.1 guarantees that "Host names (not including the
@@ -169,7 +172,41 @@ fn get_host_name() -> Option<String> {
 /// Returns the hostname, or `None` if it's not valid UTF-8
 #[cfg(target_os = "windows")]
 fn get_host_name() -> Option<String> {
-    hostname::get().ok().and_then(|x| x.into_string().ok())
+    // Vendored from <https://github.com/svartalf/hostname>
+    // MIT license applies
+    let mut size = 0;
+    unsafe {
+        // Don't care much about the result here,
+        // it is guaranteed to return an error,
+        // since we passed the NULL pointer as a buffer
+        let result = windows::Win32::System::SystemInformation::GetComputerNameExW(
+            windows::Win32::System::SystemInformation::ComputerNamePhysicalDnsHostname,
+            windows::core::PWSTR::null(),
+            &mut size,
+        );
+        debug_assert!(result.is_err());
+    };
+
+    let mut buffer = Vec::with_capacity(size as usize);
+
+    let result = unsafe {
+        windows::Win32::System::SystemInformation::GetComputerNameExW(
+            windows::Win32::System::SystemInformation::ComputerNamePhysicalDnsHostname,
+            windows::core::PWSTR::from_raw(buffer.as_mut_ptr()),
+            &mut size,
+        )
+    };
+
+    match result {
+        Ok(_) => {
+            unsafe {
+                buffer.set_len(size as usize);
+            }
+
+            std::ffi::OsString::from_wide(&buffer).into_string().ok()
+        }
+        Err(_e) => None,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

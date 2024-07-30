@@ -87,7 +87,9 @@ pub(crate) async fn clear_logs() -> StdResult<(), String> {
 
 #[tauri::command]
 pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> StdResult<(), String> {
-    show_export_dialog(managed.ctlr_tx.clone()).map_err(|e| e.to_string())
+    show_export_dialog(managed.ctlr_tx.clone())
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[derive(Clone, Default, Serialize)]
@@ -141,7 +143,7 @@ pub(crate) async fn clear_logs_inner() -> Result<()> {
 }
 
 /// Pops up the "Save File" dialog
-fn show_export_dialog(ctlr_tx: CtlrTx) -> Result<()> {
+async fn show_export_dialog(ctlr_tx: CtlrTx) -> Result<()> {
     let now = chrono::Local::now();
     let datetime_string = now.format("%Y_%m_%d-%H-%M");
     let stem = PathBuf::from(format!("firezone_logs_{datetime_string}"));
@@ -150,18 +152,21 @@ fn show_export_dialog(ctlr_tx: CtlrTx) -> Result<()> {
         bail!("zip filename isn't valid Unicode");
     };
 
-    tauri::api::dialog::FileDialogBuilder::new()
+    let file_path = rfd::AsyncFileDialog::new()
         .add_filter("Zip", &["zip"])
         .set_file_name(filename)
-        .save_file(move |file_path| match file_path {
-            None => {}
-            Some(path) => {
-                // blocking_send here because we're in a sync callback within Tauri somewhere
-                ctlr_tx
-                    .blocking_send(ControllerRequest::ExportLogs { path, stem })
-                    .unwrap()
-            }
-        });
+        .save_file()
+        .await;
+    match file_path {
+        None => {}
+        Some(handle) => {
+            let path = handle.path().into();
+            // blocking_send here because we're in a sync callback within Tauri somewhere
+            ctlr_tx
+                .blocking_send(ControllerRequest::ExportLogs { path, stem })
+                .unwrap()
+        }
+    }
     Ok(())
 }
 
