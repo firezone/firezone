@@ -15,7 +15,7 @@ futures = "0.3.29"
 hex = "0.4.3"
 hex-display = "0.3.0"
 http-health-check = { workspace = true }
-mio = "0.8.11"
+mio = { version = "1.0.1", features = ["net"] }
 once_cell = "1.17.1"
 opentelemetry = { version = "0.24.0", features = ["metrics"] }
 opentelemetry-otlp = { version = "0.17.0", features = ["metrics"] }
