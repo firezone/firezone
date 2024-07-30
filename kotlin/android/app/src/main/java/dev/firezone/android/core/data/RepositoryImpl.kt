@@ -63,6 +63,15 @@ internal class RepositoryImpl
                 )
             }.flowOn(coroutineDispatcher)
 
+        override fun getFavorites(): Flow<HashSet<String>> = flow {
+            val set = sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null)
+            emit(HashSet(set))
+        }.flowOn(coroutineDispatcher)
+
+        override fun saveFavorites(value: HashSet<String>): Flow<Unit> = flow {
+            emit(sharedPreferences.edit().putStringSet(FAVORITE_RESOURCES_KEY, value).apply())
+        }.flowOn(coroutineDispatcher)
+
         override fun getDeviceIdSync(): String? = sharedPreferences.getString(DEVICE_ID_KEY, null)
 
         override fun getToken(): Flow<String?> =
@@ -165,6 +174,7 @@ internal class RepositoryImpl
             private const val AUTH_BASE_URL_KEY = "authBaseUrl"
             private const val ACTOR_NAME_KEY = "actorName"
             private const val API_URL_KEY = "apiUrl"
+            private const val FAVORITE_RESOURCES_KEY = "favoriteResources"
             private const val LOG_FILTER_KEY = "logFilter"
             private const val TOKEN_KEY = "token"
             private const val NONCE_KEY = "nonce"
