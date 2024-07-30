@@ -47,18 +47,14 @@ internal class RepositoryImpl
                 emit(getDefaultConfigSync())
             }.flowOn(coroutineDispatcher)
 
-        override fun saveSettings(
-            authBaseUrl: String,
-            apiUrl: String,
-            logFilter: String,
-        ): Flow<Unit> =
+        override fun saveConfig(value: Config): Flow<Unit> =
             flow {
                 emit(
                     sharedPreferences
                         .edit()
-                        .putString(AUTH_BASE_URL_KEY, authBaseUrl)
-                        .putString(API_URL_KEY, apiUrl)
-                        .putString(LOG_FILTER_KEY, logFilter)
+                        .putString(AUTH_BASE_URL_KEY, value.authBaseUrl)
+                        .putString(API_URL_KEY, value.apiUrl)
+                        .putString(LOG_FILTER_KEY, value.logFilter)
                         .apply(),
                 )
             }.flowOn(coroutineDispatcher)

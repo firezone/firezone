@@ -13,11 +13,7 @@ interface Repository {
 
     fun getDefaultConfig(): Flow<Config>
 
-    fun saveSettings(
-        authBaseUrl: String,
-        apiUrl: String,
-        logFilter: String,
-    ): Flow<Unit>
+    fun saveConfig(value: Config): Flow<Unit>
 
     fun saveDeviceIdSync(value: String): Unit
 
