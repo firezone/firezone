@@ -224,6 +224,8 @@ pub struct RefClient {
     /// The upstream DNS resolvers configured in the portal.
     pub(crate) upstream_dns_resolvers: Vec<DnsServer>,
 
+    pub(crate) internet_resource: Option<ResourceId>,
+
     /// The CIDR resources the client is aware of.
     pub(crate) cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     /// The DNS resources the client is aware of.
@@ -234,6 +236,9 @@ pub struct RefClient {
     /// The IPs assigned to a domain by connlib are an implementation detail that we don't want to model in these tests.
     /// Instead, we just remember what _kind_ of records we resolved to be able to sample a matching src IP.
     pub(crate) dns_records: BTreeMap<DomainName, HashSet<RecordType>>,
+
+    /// Whether we are connected to the gateway serving the Internet resource.
+    pub(crate) connected_internet_resources: bool,
 
     /// The CIDR resources the client is connected to.
     pub(crate) connected_cidr_resources: HashSet<ResourceId>,
@@ -283,6 +288,43 @@ impl RefClient {
             IpAddr::V4(_) => self.tunnel_ip4.into(),
             IpAddr::V6(_) => self.tunnel_ip6.into(),
         }
+    }
+
+    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
+    pub(crate) fn on_icmp_packet_to_internet(
+        &mut self,
+        src: IpAddr,
+        dst: IpAddr,
+        seq: u16,
+        identifier: u16,
+        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
+    ) {
+        tracing::Span::current().record("dst", tracing::field::display(dst));
+
+        // Second, if we are not yet connected, check if we have a resource for this IP.
+        let Some(rid) = self.internet_resource else {
+            tracing::debug!("No internet resource");
+            return;
+        };
+        tracing::Span::current().record("resource", tracing::field::display(rid));
+
+        let Some(gateway) = gateway_by_resource(rid) else {
+            tracing::error!("No gateway for resource");
+            return;
+        };
+
+        if self.connected_internet_resources && self.is_tunnel_ip(src) {
+            tracing::debug!("Connected to Internet resource, expecting packet to be routed");
+            self.expected_icmp_handshakes
+                .entry(gateway)
+                .or_default()
+                .push_back((ResourceDst::Internet(dst), seq, identifier));
+            return;
+        }
+
+        // If we have a resource, the first packet will initiate a connection to the gateway.
+        tracing::debug!("Not connected to resource, expecting to trigger connection intent");
+        self.connected_internet_resources = true;
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
@@ -548,7 +590,15 @@ impl RefClient {
             return true;
         }
 
-        self.cidr_resources.iter().any(|(_, r)| r.id == resource_id)
+        if self.cidr_resources.iter().any(|(_, r)| r.id == resource_id) {
+            return true;
+        }
+
+        if self.internet_resource.is_some_and(|r| r == resource_id) {
+            return true;
+        }
+
+        false
     }
 
     pub(crate) fn all_resources(&self) -> Vec<ResourceDescription> {
@@ -655,11 +705,13 @@ fn ref_client(
                 tunnel_ip6,
                 system_dns_resolvers,
                 upstream_dns_resolvers,
+                internet_resource: Default::default(),
                 cidr_resources: IpNetworkTable::new(),
                 dns_resources: Default::default(),
                 dns_records: Default::default(),
                 connected_cidr_resources: Default::default(),
                 connected_dns_resources: Default::default(),
+                connected_internet_resources: Default::default(),
                 expected_icmp_handshakes: Default::default(),
                 expected_dns_handshakes: Default::default(),
             },

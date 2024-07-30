@@ -3,6 +3,7 @@ use itertools::Itertools;
 use proptest::sample::Selector;
 use std::{
     collections::{HashMap, HashSet},
+    iter,
     net::IpAddr,
 };
 
@@ -14,6 +15,7 @@ pub(crate) struct StubPortal {
     sites_by_resource: HashMap<ResourceId, client::SiteId>,
     cidr_resources: HashMap<ResourceId, client::ResourceDescriptionCidr>,
     dns_resources: HashMap<ResourceId, client::ResourceDescriptionDns>,
+    internet_resource: client::ResourceDescriptionInternet,
 
     gateway_selector: Selector,
 }
@@ -24,6 +26,7 @@ impl StubPortal {
         gateway_selector: Selector,
         cidr_resources: HashSet<client::ResourceDescriptionCidr>,
         dns_resources: HashSet<client::ResourceDescriptionDns>,
+        internet_resource: client::ResourceDescriptionInternet,
     ) -> Self {
         let cidr_resources = cidr_resources
             .into_iter()
@@ -54,13 +57,23 @@ impl StubPortal {
                     .id,
             )
         });
+        let internet_site = iter::once((
+            internet_resource.id,
+            internet_resource
+                .sites
+                .iter()
+                .exactly_one()
+                .expect("only single-site resources")
+                .id,
+        ));
 
         Self {
             gateways_by_site,
             gateway_selector,
-            sites_by_resource: HashMap::from_iter(cidr_sites.chain(dns_sites)),
+            sites_by_resource: HashMap::from_iter(cidr_sites.chain(dns_sites).chain(internet_site)),
             cidr_resources,
             dns_resources,
+            internet_resource,
         }
     }
 
@@ -75,6 +88,10 @@ impl StubPortal {
                     .cloned()
                     .map(client::ResourceDescription::Dns),
             )
+            // TODO: Enable once we actually implement the Internet resource
+            // .chain(iter::once(client::ResourceDescription::Internet(
+            //     self.internet_resource.clone(),
+            // )))
             .collect()
     }
 
@@ -119,10 +136,16 @@ impl StubPortal {
                 addresses: resolved_ips.clone(),
             })
         });
+        let internet_resource = Some(gateway::ResourceDescription::Internet(
+            gateway::ResourceDescriptionInternet {
+                id: self.internet_resource.id,
+            },
+        ));
 
         cidr_resource
             .or(dns_resource)
-            .expect("resource to be a known CIDR or DNS resource")
+            .or(internet_resource)
+            .expect("resource to be a known CIDR, DNS or Internet resource")
     }
 
     pub(crate) fn gateway_for_resource(&self, rid: ResourceId) -> Option<&GatewayId> {
@@ -136,7 +159,11 @@ impl StubPortal {
             .get(&rid)
             .and_then(|r| Some(r.sites.first()?.id));
 
-        let sid = cidr_site.or(dns_site)?;
+        let internet_site = (self.internet_resource.id == rid)
+            .then(|| Some(self.internet_resource.sites.first()?.id))
+            .flatten();
+
+        let sid = cidr_site.or(dns_site).or(internet_site)?;
         let gateways = self.gateways_by_site.get(&sid)?;
         let gid = self.gateway_selector.try_select(gateways)?;
 
