@@ -29,12 +29,13 @@ pub(crate) struct ReferenceState {
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
     pub(crate) portal: StubPortal,
 
+    pub(crate) drop_direct_client_traffic: bool,
+
     /// All IP addresses a domain resolves to in our test.
     ///
     /// This is used to e.g. mock DNS resolution on the gateway.
     pub(crate) global_dns_records: BTreeMap<DomainName, HashSet<IpAddr>>,
 
-    pub(crate) drop_direct_client_traffic: bool,
     pub(crate) network: RoutingTable,
 }
 
