@@ -200,8 +200,6 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
     );
 
     menu = menu.disabled(RESOURCES);
-    // No favorites, show every Resource normally, just like before
-    // the favoriting feature was created
     // Always show Resources in the original order
     for res in *resources {
         menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
@@ -256,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn no_resources_no_favorites() {
+    fn no_resources() {
         let resources = vec![];
         let input = AppState::SignedIn(SignedIn {
             actor_name: "Jane Doe",
@@ -279,154 +277,7 @@ mod tests {
     }
 
     #[test]
-    fn no_resources_invalid_favorite() {
-        let resources = vec![];
-        let input = AppState::SignedIn(SignedIn {
-            actor_name: "Jane Doe",
-            resources: &resources,
-        });
-        let actual = input.into_menu();
-        let expected = Menu::default()
-            .disabled("Signed in as Jane Doe")
-            .item(Event::SignOut, SIGN_OUT)
-            .separator()
-            .disabled(RESOURCES)
-            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
-
-        assert_eq!(
-            actual,
-            expected,
-            "{}",
-            serde_json::to_string_pretty(&actual).unwrap()
-        );
-    }
-
-    #[test]
-    fn some_resources_no_favorites() {
-        let resources = resources();
-        let input = AppState::SignedIn(SignedIn {
-            actor_name: "Jane Doe",
-            resources: &resources,
-        });
-        let actual = input.into_menu();
-        let expected = Menu::default()
-            .disabled("Signed in as Jane Doe")
-            .item(Event::SignOut, SIGN_OUT)
-            .separator()
-            .disabled(RESOURCES)
-            .add_submenu(
-                "172.172.0.0/16",
-                Menu::default()
-                    .copyable("cidr resource")
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("172.172.0.0/16")
-                    .copyable("172.172.0.0/16")
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable(NO_ACTIVITY),
-            )
-            .add_submenu(
-                "gitlab.mycorp.com",
-                Menu::default()
-                    .copyable("dns resource")
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("gitlab.mycorp.com")
-                    .copyable("gitlab.mycorp.com")
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable(GATEWAY_CONNECTED),
-            )
-            .add_submenu(
-                "Internet",
-                Menu::default()
-                    .copyable("")
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("Internet")
-                    .copyable("")
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable(ALL_GATEWAYS_OFFLINE),
-            )
-            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
-
-        assert_eq!(
-            actual,
-            expected,
-            "{}",
-            serde_json::to_string_pretty(&actual).unwrap(),
-        );
-    }
-
-    #[test]
-    fn some_resources_one_favorite() {
-        let resources = resources();
-        let input = AppState::SignedIn(SignedIn {
-            actor_name: "Jane Doe",
-            resources: &resources,
-        });
-        let actual = input.into_menu();
-        let expected = Menu::default()
-            .disabled("Signed in as Jane Doe")
-            .item(Event::SignOut, SIGN_OUT)
-            .separator()
-            .disabled(RESOURCES)
-            .add_submenu(
-                "172.172.0.0/16",
-                Menu::default()
-                    .copyable("cidr resource")
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("172.172.0.0/16")
-                    .copyable("172.172.0.0/16")
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable(NO_ACTIVITY),
-            )
-            .add_submenu(
-                "gitlab.mycorp.com",
-                Menu::default()
-                    .copyable("dns resource")
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("gitlab.mycorp.com")
-                    .copyable("gitlab.mycorp.com")
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable(GATEWAY_CONNECTED),
-            )
-            .add_submenu(
-                "Internet",
-                Menu::default()
-                    .copyable("")
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("Internet")
-                    .copyable("")
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable(ALL_GATEWAYS_OFFLINE),
-            )
-            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
-
-        assert_eq!(
-            actual,
-            expected,
-            "{}",
-            serde_json::to_string_pretty(&actual).unwrap()
-        );
-    }
-
-    #[test]
-    fn some_resources_invalid_favorite() {
+    fn some_resources() {
         let resources = resources();
         let input = AppState::SignedIn(SignedIn {
             actor_name: "Jane Doe",
