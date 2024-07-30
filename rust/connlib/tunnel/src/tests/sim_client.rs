@@ -297,18 +297,18 @@ impl RefClient {
         tracing::Span::current().record("dst", tracing::field::display(dst));
 
         // Second, if we are not yet connected, check if we have a resource for this IP.
-        let Some(resource) = self.cidr_resource_by_ip(dst) else {
+        let Some(rid) = self.cidr_resource_by_ip(dst) else {
             tracing::debug!("No resource corresponds to IP");
             return;
         };
-        tracing::Span::current().record("resource", tracing::field::display(resource.id));
+        tracing::Span::current().record("resource", tracing::field::display(rid));
 
-        let Some(gateway) = gateway_by_resource(resource.id) else {
+        let Some(gateway) = gateway_by_resource(rid) else {
             tracing::error!("No gateway for resource");
             return;
         };
 
-        if self.is_connected_to_cidr(resource.id) && self.is_tunnel_ip(src) {
+        if self.is_connected_to_cidr(rid) && self.is_tunnel_ip(src) {
             tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
             self.expected_icmp_handshakes
                 .entry(gateway)
@@ -319,7 +319,7 @@ impl RefClient {
 
         // If we have a resource, the first packet will initiate a connection to the gateway.
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.connected_cidr_resources.insert(resource.id);
+        self.connected_cidr_resources.insert(rid);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
@@ -476,8 +476,8 @@ impl RefClient {
             .collect()
     }
 
-    pub(crate) fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<&ResourceDescriptionCidr> {
-        self.cidr_resources.longest_match(ip).map(|(_, r)| r)
+    pub(crate) fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
+        self.cidr_resources.longest_match(ip).map(|(_, r)| r.id)
     }
 
     pub(crate) fn resolved_ip4_for_non_resources(
@@ -533,7 +533,7 @@ impl RefClient {
             return None;
         }
 
-        self.cidr_resource_by_ip(dns_server).map(|r| r.id)
+        self.cidr_resource_by_ip(dns_server)
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {

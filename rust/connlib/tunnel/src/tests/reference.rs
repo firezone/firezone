@@ -446,10 +446,10 @@ impl ReferenceStateMachine for ReferenceState {
                 ..
             } => {
                 let ref_client = state.client.inner();
-                let Some(resource) = ref_client.cidr_resource_by_ip(*dst) else {
+                let Some(rid) = ref_client.cidr_resource_by_ip(*dst) else {
                     return false;
                 };
-                let Some(gateway) = state.portal.gateway_for_resource(resource.id) else {
+                let Some(gateway) = state.portal.gateway_for_resource(rid) else {
                     return false;
                 };
 
