@@ -84,7 +84,7 @@ export default function Page() {
             </div>
           </div>
         </div>
-        <div className="mt-16 max-w-screen-lg mx-auto">
+        <div className="mt-16 max-w-screen-xl mx-auto">
           <div className="text-sm mb-6 flex justify-center font-base text-neutral-600">
             Backed by{" "}
             <Image
