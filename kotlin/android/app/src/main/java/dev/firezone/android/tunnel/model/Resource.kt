@@ -16,6 +16,7 @@ data class Resource(
     val sites: List<Site>?,
     val name: String,
     val status: StatusEnum,
+    var enabled: Boolean = true,
 ) : Parcelable
 
 enum class TypeEnum {

@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
+import android.util.Log
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.DividerItemDecoration
@@ -34,6 +35,7 @@ internal class SessionActivity : AppCompatActivity() {
                 serviceBound = true
                 tunnelService?.setServiceStateLiveData(viewModel.serviceStatusLiveData)
                 tunnelService?.setResourcesLiveData(viewModel.resourcesLiveData)
+                resourcesAdapter.setResourcesLiveData(viewModel.resourcesLiveData)
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
@@ -99,6 +101,7 @@ internal class SessionActivity : AppCompatActivity() {
         }
 
         viewModel.resourcesLiveData.observe(this) { resources ->
+            Log.d("SessionActivity", "Updating resource adapter with $resources")
             resourcesAdapter.submitList(resources)
         }
     }
