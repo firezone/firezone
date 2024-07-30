@@ -3067,8 +3067,7 @@ dependencies = [
 [[package]]
 name = "ip_network"
 version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa2f047c0a98b2f299aa5d6d7088443570faae494e9ae1305e48be000c9e0eb1"
+source = "git+https://github.com/JakubOnderka/ip_network?branch=master#f6030b54b5128c0130d21fb2eab9811fe70e064b"
 dependencies = [
  "serde",
 ]
