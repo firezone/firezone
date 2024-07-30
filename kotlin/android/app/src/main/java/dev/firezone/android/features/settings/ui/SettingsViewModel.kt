@@ -47,7 +47,7 @@ internal class SettingsViewModel
                 repo.getConfig().collect {
                     actionMutableLiveData.postValue(
                         ViewAction.FillSettings(
-                            it
+                            it,
                         ),
                     )
                 }
@@ -215,7 +215,7 @@ internal class SettingsViewModel
             data object NavigateBack : ViewAction()
 
             data class FillSettings(
-                val config: Config
+                val config: Config,
             ) : ViewAction()
         }
     }
