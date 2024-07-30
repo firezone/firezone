@@ -1,9 +1,15 @@
 import Link from "next/link";
 import { Route } from "next";
 
-export function LinkedInIcon({ url }: { url: URL }) {
+export function LinkedInIcon({
+  url,
+  className,
+}: {
+  url: URL;
+  className?: string;
+}) {
   return (
-    <Link href={url} className="text-neutral-800 hover:text-neutral-900 ">
+    <Link href={url} className={className}>
       <svg
         xmlns="http://www.w3.org/2000/svg"
         className="w-5 h-5 box-border fill-current"
@@ -19,9 +25,15 @@ export function LinkedInIcon({ url }: { url: URL }) {
   );
 }
 
-export function GitHubIcon({ url }: { url: URL }) {
+export function GitHubIcon({
+  url,
+  className,
+}: {
+  url: URL;
+  className?: string;
+}) {
   return (
-    <Link href={url} className="text-neutral-800 hover:text-neutral-900">
+    <Link href={url} className={className}>
       <svg
         xmlns="http://www.w3.org/2000/svg"
         className="w-5 h-5 box-border fill-current"
@@ -37,9 +49,9 @@ export function GitHubIcon({ url }: { url: URL }) {
   );
 }
 
-export function XIcon({ url }: { url: URL }) {
+export function XIcon({ url, className }: { url: URL; className?: string }) {
   return (
-    <Link href={url} className="text-neutral-800 hover:text-neutral-900 ">
+    <Link href={url} className={className}>
       <svg
         className="w-5 h-5 box-border fill-current"
         viewBox="0 0 1200 1227"
@@ -59,14 +71,16 @@ export function AppleIcon({
   size,
   children,
   href,
+  className,
 }: {
   size: number;
   children?: React.ReactNode;
   href: Route<string>;
+  className?: string;
 }) {
   let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
   return (
-    <Link href={href} className="text-neutral-800 hover:text-neutral-900">
+    <Link href={href} className={className}>
       <svg
         xmlns="http://www.w3.org/2000/svg"
         className={c}
@@ -84,14 +98,16 @@ export function WindowsIcon({
   size,
   children,
   href,
+  className,
 }: {
   size: number;
   children?: React.ReactNode;
   href: Route<string>;
+  className?: string;
 }) {
   let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
   return (
-    <Link href={href} className="text-neutral-800 hover:text-neutral-900">
+    <Link href={href} className={className}>
       <svg xmlns="http://www.w3.org/2000/svg" className={c} viewBox="0 0 88 88">
         <path d="M0 12.402l35.687-4.86.016 34.423-35.67.203zm35.67 33.529l.028 34.453L.028 75.48.026 45.7zm4.326-39.025L87.314 0v41.527l-47.318.376zm47.329 39.349l-.011 41.34-47.318-6.678-.066-34.739z" />
       </svg>
@@ -104,14 +120,16 @@ export function LinuxIcon({
   size,
   children,
   href,
+  className,
 }: {
   size: number;
   children?: React.ReactNode;
   href: Route<string>;
+  className?: string;
 }) {
   let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
   return (
-    <Link href={href} className="text-neutral-800 hover:text-neutral-900">
+    <Link href={href} className={className}>
       <svg
         xmlns="http://www.w3.org/2000/svg"
         className={c}
@@ -175,14 +193,16 @@ export function AndroidIcon({
   size,
   children,
   href,
+  className,
 }: {
   size: number;
   children?: React.ReactNode;
   href: Route<string>;
+  className?: string;
 }) {
   let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
   return (
-    <Link href={href} className="text-neutral-800 hover:text-neutral-900">
+    <Link href={href} className={className}>
       <svg
         xmlns="http://www.w3.org/2000/svg"
         className={c}
@@ -215,14 +235,16 @@ export function ChromeIcon({
   size,
   children,
   href,
+  className,
 }: {
   size: number;
   children?: React.ReactNode;
   href: Route<string>;
+  className?: string;
 }) {
   let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
   return (
-    <Link href={href} className="text-neutral-800 hover:text-neutral-900">
+    <Link href={href} className={className}>
       <svg
         xmlns="http://www.w3.org/2000/svg"
         className={c}
@@ -244,14 +266,16 @@ export function DockerIcon({
   size,
   children,
   href,
+  className,
 }: {
   size: number;
   children?: React.ReactNode;
   href: Route<string>;
+  className?: string;
 }) {
   let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
   return (
-    <Link href={href} className="text-neutral-800 hover:text-neutral-900">
+    <Link href={href} className={className}>
       <svg
         xmlns="http://www.w3.org/2000/svg"
         className={c}
