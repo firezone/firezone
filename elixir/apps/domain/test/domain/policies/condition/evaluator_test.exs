@@ -5,7 +5,7 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
   describe "ensure_conforms/2" do
     test "returns ok when there are no conditions" do
       client = %Domain.Clients.Client{}
-      assert ensure_conforms([], client) == :ok
+      assert ensure_conforms([], client) == {:ok, nil}
     end
 
     test "returns ok when all conditions are met" do
@@ -27,7 +27,7 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
         }
       ]
 
-      assert ensure_conforms(conditions, client) == :ok
+      assert ensure_conforms(conditions, client) == {:ok, nil}
     end
 
     test "returns error when all conditions are not met" do
@@ -77,7 +77,7 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
     end
   end
 
-  describe "conforms?/2" do
+  describe "fetch_conformation_expiration/2" do
     test "when client last seen remote ip location region is in or not in the values" do
       condition = %Domain.Policies.Condition{
         property: :remote_ip_location_region,
@@ -88,15 +88,17 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
         last_seen_remote_ip_location_region: "US"
       }
 
-      assert conforms?(%{condition | operator: :is_in}, client) == true
-      assert conforms?(%{condition | operator: :is_not_in}, client) == false
+      assert fetch_conformation_expiration(%{condition | operator: :is_in}, client) == {:ok, nil}
+      assert fetch_conformation_expiration(%{condition | operator: :is_not_in}, client) == :error
 
       client = %Domain.Clients.Client{
         last_seen_remote_ip_location_region: "CA"
       }
 
-      assert conforms?(%{condition | operator: :is_in}, client) == false
-      assert conforms?(%{condition | operator: :is_not_in}, client) == true
+      assert fetch_conformation_expiration(%{condition | operator: :is_in}, client) == :error
+
+      assert fetch_conformation_expiration(%{condition | operator: :is_not_in}, client) ==
+               {:ok, nil}
     end
 
     test "when client last seen remote ip is in or not in the CIDR values" do
@@ -109,15 +111,20 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
         last_seen_remote_ip: %Postgrex.INET{address: {192, 168, 0, 1}}
       }
 
-      assert conforms?(%{condition | operator: :is_in_cidr}, client) == true
-      assert conforms?(%{condition | operator: :is_not_in_cidr}, client) == false
+      assert fetch_conformation_expiration(%{condition | operator: :is_in_cidr}, client) ==
+               {:ok, nil}
+
+      assert fetch_conformation_expiration(%{condition | operator: :is_not_in_cidr}, client) ==
+               :error
 
       client = %Domain.Clients.Client{
         last_seen_remote_ip: %Postgrex.INET{address: {10, 168, 0, 1}}
       }
 
-      assert conforms?(%{condition | operator: :is_in_cidr}, client) == false
-      assert conforms?(%{condition | operator: :is_not_in_cidr}, client) == true
+      assert fetch_conformation_expiration(%{condition | operator: :is_in_cidr}, client) == :error
+
+      assert fetch_conformation_expiration(%{condition | operator: :is_not_in_cidr}, client) ==
+               {:ok, nil}
     end
 
     test "when client last seen remote ip is in or not in the IP values" do
@@ -130,15 +137,20 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
         last_seen_remote_ip: %Postgrex.INET{address: {192, 168, 0, 1}}
       }
 
-      assert conforms?(%{condition | operator: :is_in_cidr}, client) == true
-      assert conforms?(%{condition | operator: :is_not_in_cidr}, client) == false
+      assert fetch_conformation_expiration(%{condition | operator: :is_in_cidr}, client) ==
+               {:ok, nil}
+
+      assert fetch_conformation_expiration(%{condition | operator: :is_not_in_cidr}, client) ==
+               :error
 
       client = %Domain.Clients.Client{
         last_seen_remote_ip: %Postgrex.INET{address: {10, 168, 0, 1}}
       }
 
-      assert conforms?(%{condition | operator: :is_in_cidr}, client) == false
-      assert conforms?(%{condition | operator: :is_not_in_cidr}, client) == true
+      assert fetch_conformation_expiration(%{condition | operator: :is_in_cidr}, client) == :error
+
+      assert fetch_conformation_expiration(%{condition | operator: :is_not_in_cidr}, client) ==
+               {:ok, nil}
     end
 
     test "when client identity provider id is in or not in the values" do
@@ -153,8 +165,8 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
         }
       }
 
-      assert conforms?(%{condition | operator: :is_in}, client) == true
-      assert conforms?(%{condition | operator: :is_not_in}, client) == false
+      assert fetch_conformation_expiration(%{condition | operator: :is_in}, client) == {:ok, nil}
+      assert fetch_conformation_expiration(%{condition | operator: :is_not_in}, client) == :error
 
       client = %Domain.Clients.Client{
         identity: %Domain.Auth.Identity{
@@ -162,12 +174,14 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
         }
       }
 
-      assert conforms?(%{condition | operator: :is_in}, client) == false
-      assert conforms?(%{condition | operator: :is_not_in}, client) == true
+      assert fetch_conformation_expiration(%{condition | operator: :is_in}, client) == :error
+
+      assert fetch_conformation_expiration(%{condition | operator: :is_not_in}, client) ==
+               {:ok, nil}
     end
 
     test "when client current UTC datetime is in the day of the week time ranges" do
-      # this is tested separately in datetime_in_day_of_the_week_time_ranges?/2
+      # this is deeply tested separately in find_day_of_the_week_time_range/2
       condition = %Domain.Policies.Condition{
         property: :current_utc_datetime,
         values: []
@@ -175,26 +189,49 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
 
       client = %Domain.Clients.Client{}
 
-      assert conforms?(%{condition | operator: :is_in_day_of_week_time_ranges}, client) == false
+      assert fetch_conformation_expiration(
+               %{condition | operator: :is_in_day_of_week_time_ranges},
+               client
+             ) == :error
     end
   end
 
-  describe "datetime_in_day_of_the_week_time_ranges?/2" do
+  describe "find_day_of_the_week_time_range/2" do
     test "returns true when datetime is in the day of the week time ranges" do
       # Friday
       datetime = ~U[2021-01-01 10:00:00Z]
 
+      # Exact match
       dow_time_ranges = ["F/10:00:00-10:00:00/UTC"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
 
+      assert DateTime.compare(
+               find_day_of_the_week_time_range(dow_time_ranges, datetime),
+               ~U[2021-01-01 10:00:00Z]
+             ) == :eq
+
+      # Range start match
       dow_time_ranges = ["F/10:00:00-11:00:00/UTC"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
 
+      assert DateTime.compare(
+               find_day_of_the_week_time_range(dow_time_ranges, datetime),
+               ~U[2021-01-01 11:00:00Z]
+             ) == :eq
+
+      # Range end match
       dow_time_ranges = ["F/09:00:00-10:00:00/UTC"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
 
+      assert DateTime.compare(
+               find_day_of_the_week_time_range(dow_time_ranges, datetime),
+               ~U[2021-01-01 10:00:00Z]
+             ) == :eq
+
+      # Entire day match
       dow_time_ranges = ["F/true/UTC"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
+
+      assert DateTime.compare(
+               find_day_of_the_week_time_range(dow_time_ranges, datetime),
+               ~U[2021-01-01 23:59:59Z]
+             ) == :eq
     end
 
     test "returns false when datetime is not in the day of the week time ranges" do
@@ -202,55 +239,76 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
       datetime = ~U[2021-01-01 10:00:00Z]
 
       dow_time_ranges = ["F/09:00:00-09:59:59/UTC"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
+      assert find_day_of_the_week_time_range(dow_time_ranges, datetime) == nil
 
       dow_time_ranges = ["F/10:00:01-11:00:00/UTC"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
+      assert find_day_of_the_week_time_range(dow_time_ranges, datetime) == nil
 
       dow_time_ranges = ["M/09:00:00-11:00:00/UTC"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
+      assert find_day_of_the_week_time_range(dow_time_ranges, datetime) == nil
 
       dow_time_ranges = ["U/true/UTC"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
+      assert find_day_of_the_week_time_range(dow_time_ranges, datetime) == nil
     end
 
     test "handles different timezones" do
-      # Friday in UTC, Thursday in US/Pacific (UTC-8)
+      # 01:00 Friday in UTC, 07:00 Thursday in US/Pacific (UTC-8)
       datetime = ~U[2021-01-01 01:00:00Z]
 
+      # Thursday in US/Pacific ends at 07:59:59 UTC
       dow_time_ranges = ["R/true/US/Pacific"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
 
+      assert DateTime.compare(
+               find_day_of_the_week_time_range(dow_time_ranges, datetime),
+               ~U[2021-01-01 07:59:59Z]
+             ) == :eq
+
+      # Friday in UTC
       dow_time_ranges = ["F/true/UTC"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
 
+      assert DateTime.compare(
+               find_day_of_the_week_time_range(dow_time_ranges, datetime),
+               ~U[2021-01-01 23:59:59Z]
+             ) == :eq
+
+      # 19:00 Thursday in US/Pacific (UTC-8) = 03:00 Friday in UTC
       dow_time_ranges = ["R/15:00:00-19:00:00/US/Pacific"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
 
+      assert DateTime.compare(
+               find_day_of_the_week_time_range(dow_time_ranges, datetime),
+               ~U[2021-01-01 03:00:00Z]
+             ) == :eq
+
+      # given datetime is 07:00 Thursday in US/Pacific (UTC-8), so Friday in UTC should not match
       dow_time_ranges = ["R/00:00:00-02:00:00/US/Pacific"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
+      assert find_day_of_the_week_time_range(dow_time_ranges, datetime) == nil
 
+      # Poland timezone is UTC+1, given datetime in UTC is 02:00 Friday in Poland
       dow_time_ranges = ["F/02:00:00-04:00:00/Poland"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == true
+
+      assert DateTime.compare(
+               find_day_of_the_week_time_range(dow_time_ranges, datetime),
+               ~U[2021-01-01 03:00:00Z]
+             ) == :eq
     end
 
     test "returns false when ranges are invalid" do
       datetime = ~U[2021-01-01 10:00:00Z]
 
       dow_time_ranges = ["F/10:00:00-09:59:59/UTC"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
+      assert find_day_of_the_week_time_range(dow_time_ranges, datetime) == nil
 
       dow_time_ranges = ["F/11:00:00-12:00:00-/US/Pacific"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
+      assert find_day_of_the_week_time_range(dow_time_ranges, datetime) == nil
 
       dow_time_ranges = ["F/false/UTC"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
+      assert find_day_of_the_week_time_range(dow_time_ranges, datetime) == nil
 
       dow_time_ranges = ["F/10-11"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
+      assert find_day_of_the_week_time_range(dow_time_ranges, datetime) == nil
 
       dow_time_ranges = ["F/10-11/"]
-      assert datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) == false
+      assert find_day_of_the_week_time_range(dow_time_ranges, datetime) == nil
     end
   end
 
