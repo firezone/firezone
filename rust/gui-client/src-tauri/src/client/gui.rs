@@ -703,19 +703,21 @@ impl Controller {
             match &self.status {
                 Status::Disconnected => {
                     tracing::error!("We have an auth session but no connlib session");
-                    system_tray::Menu::SignedOut
+                    system_tray::AppState::SignedOut
                 }
-                Status::Connecting { start_instant: _ } => system_tray::Menu::WaitingForConnlib,
-                Status::TunnelReady { resources } => system_tray::Menu::SignedIn {
-                    actor_name: &auth_session.actor_name,
-                    resources,
-                },
+                Status::Connecting { start_instant: _ } => system_tray::AppState::WaitingForConnlib,
+                Status::TunnelReady { resources } => {
+                    system_tray::AppState::SignedIn(system_tray::SignedIn {
+                        actor_name: &auth_session.actor_name,
+                        resources,
+                    })
+                }
             }
         } else if self.auth.ongoing_request().is_ok() {
             // Signing in, waiting on deep link callback
-            system_tray::Menu::WaitingForBrowser
+            system_tray::AppState::WaitingForBrowser
         } else {
-            system_tray::Menu::SignedOut
+            system_tray::AppState::SignedOut
         };
         self.tray.update(menu)?;
         Ok(())

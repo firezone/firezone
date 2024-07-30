@@ -7,12 +7,12 @@
 
 use anyhow::Result;
 use connlib_client_shared::callbacks::{ResourceDescription, Status};
-use serde::{Deserialize, Serialize};
-use tauri::{
-    CustomMenuItem, SystemTray, SystemTrayHandle, SystemTrayMenu, SystemTrayMenuItem,
-    SystemTraySubmenu,
-};
+use tauri::{SystemTray, SystemTrayHandle};
 use url::Url;
+
+mod builder;
+
+pub(crate) use builder::{copyable, item, Event, Item, Menu, Window};
 
 // Figma is the source of truth for the tray icons
 // <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=OGFabKWPx7PRUZmq-0>
@@ -20,11 +20,20 @@ const BUSY_ICON: &[u8] = include_bytes!("../../../icons/tray/Busy.png");
 const SIGNED_IN_ICON: &[u8] = include_bytes!("../../../icons/tray/Signed in.png");
 const SIGNED_OUT_ICON: &[u8] = include_bytes!("../../../icons/tray/Signed out.png");
 const TOOLTIP: &str = "Firezone";
+const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
+
+const NO_ACTIVITY: &str = "[-] No activity";
+const GATEWAY_CONNECTED: &str = "[O] Gateway connected";
+const ALL_GATEWAYS_OFFLINE: &str = "[X] All Gateways offline";
+
+const RESOURCES: &str = "Resources";
+const SIGN_OUT: &str = "Sign out";
+const DISCONNECT_AND_QUIT: &str = "Disconnect and quit Firezone";
 
 pub(crate) fn loading() -> SystemTray {
     SystemTray::new()
         .with_icon(tauri::Icon::Raw(BUSY_ICON.into()))
-        .with_menu(Menu::Loading.build())
+        .with_menu(AppState::Loading.build())
         .with_tooltip(TOOLTIP)
 }
 
@@ -33,15 +42,64 @@ pub(crate) struct Tray {
     last_icon_set: Icon,
 }
 
-pub(crate) enum Menu<'a> {
+pub(crate) enum AppState<'a> {
     Loading,
     SignedOut,
     WaitingForBrowser,
     WaitingForConnlib,
-    SignedIn {
-        actor_name: &'a str,
-        resources: &'a [ResourceDescription],
-    },
+    SignedIn(SignedIn<'a>),
+}
+
+pub(crate) struct SignedIn<'a> {
+    pub(crate) actor_name: &'a str,
+    pub(crate) resources: &'a [ResourceDescription],
+}
+
+impl<'a> SignedIn<'a> {
+    /// Builds the submenu that has the resource address, name, desc,
+    /// sites online, etc.
+    fn resource_submenu(&self, res: &ResourceDescription) -> Menu {
+        let submenu = Menu::default().add_item(resource_header(res));
+
+        let submenu = submenu
+            .separator()
+            .disabled("Resource")
+            .copyable(res.name())
+            .copyable(res.pastable().as_ref());
+
+        if let Some(site) = res.sites().first() {
+            // Emojis may be causing an issue on some Ubuntu desktop environments.
+            let status = match res.status() {
+                Status::Unknown => NO_ACTIVITY,
+                Status::Online => GATEWAY_CONNECTED,
+                Status::Offline => ALL_GATEWAYS_OFFLINE,
+            };
+
+            submenu
+                .separator()
+                .disabled("Site")
+                .copyable(&site.name) // Hope this is okay - The code is simpler if every enabled item sends an `Event` on click
+                .copyable(status)
+        } else {
+            submenu
+        }
+    }
+}
+
+fn resource_header(res: &ResourceDescription) -> Item {
+    let Some(address_description) = res.address_description() else {
+        return copyable(&res.pastable());
+    };
+
+    if address_description.is_empty() {
+        return copyable(&res.pastable());
+    }
+
+    let Ok(url) = Url::parse(address_description) else {
+        return copyable(address_description);
+    };
+
+    item(Event::Url(url), address_description)
 }
 
 #[derive(PartialEq)]
@@ -66,15 +124,17 @@ impl Tray {
         }
     }
 
-    pub(crate) fn update(&mut self, menu: Menu) -> Result<()> {
-        let new_icon = match &menu {
-            Menu::Loading | Menu::WaitingForBrowser | Menu::WaitingForConnlib => Icon::Busy,
-            Menu::SignedOut => Icon::SignedOut,
-            Menu::SignedIn { .. } => Icon::SignedIn,
+    pub(crate) fn update(&mut self, state: AppState) -> Result<()> {
+        let new_icon = match &state {
+            AppState::Loading | AppState::WaitingForBrowser | AppState::WaitingForConnlib => {
+                Icon::Busy
+            }
+            AppState::SignedOut => Icon::SignedOut,
+            AppState::SignedIn { .. } => Icon::SignedIn,
         };
 
         self.handle.set_tooltip(TOOLTIP)?;
-        self.handle.set_menu(menu.build())?;
+        self.handle.set_menu(state.build())?;
         self.set_icon(new_icon)?;
 
         Ok(())
@@ -105,172 +165,176 @@ impl Icon {
     }
 }
 
-impl<'a> Menu<'a> {
-    fn build(self) -> SystemTrayMenu {
+impl<'a> AppState<'a> {
+    fn build(self) -> tauri::SystemTrayMenu {
+        self.into_menu().build()
+    }
+
+    fn into_menu(self) -> Menu {
         match self {
-            Menu::Loading => SystemTrayMenu::new().disabled("Loading..."),
-            Menu::SignedOut => SystemTrayMenu::new()
+            Self::Loading => Menu::default().disabled("Loading..."),
+            Self::SignedOut => Menu::default()
                 .item(Event::SignIn, "Sign In")
                 .add_bottom_section(QUIT_TEXT_SIGNED_OUT),
-            Menu::WaitingForBrowser => signing_in("Waiting for browser..."),
-            Menu::WaitingForConnlib => signing_in("Signing In..."),
-            Menu::SignedIn {
-                actor_name,
-                resources,
-            } => signed_in(actor_name, resources),
+            Self::WaitingForBrowser => signing_in("Waiting for browser..."),
+            Self::WaitingForConnlib => signing_in("Signing In..."),
+            Self::SignedIn(x) => signed_in(&x),
         }
     }
 }
 
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub(crate) enum Event {
-    AdminPortal,
-    CancelSignIn,
-    Copy(String),
-    SignIn,
-    SignOut,
-    ShowWindow(Window),
-    Url(Url),
-    Quit,
-}
+fn signed_in(signed_in: &SignedIn) -> Menu {
+    let SignedIn {
+        actor_name,
+        resources, // Make sure these are presented in the order we receive them
+    } = signed_in;
 
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub(crate) enum Window {
-    About,
-    Settings,
-}
-
-const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
-
-fn get_submenu(res: &ResourceDescription) -> SystemTrayMenu {
-    let submenu = SystemTrayMenu::new();
-
-    let Some(address_description) = res.address_description() else {
-        return submenu.copyable(&res.pastable());
-    };
-
-    if address_description.is_empty() {
-        return submenu.copyable(&res.pastable());
-    }
-
-    let Ok(url) = Url::parse(address_description) else {
-        return submenu.copyable(address_description);
-    };
-
-    submenu.item(Event::Url(url), address_description)
-}
-
-fn signed_in(user_name: &str, resources: &[ResourceDescription]) -> SystemTrayMenu {
-    let mut menu = SystemTrayMenu::new()
-        .disabled(format!("Signed in as {user_name}"))
-        .item(Event::SignOut, "Sign out")
-        .separator()
-        .disabled("Resources");
+    let mut menu = Menu::default()
+        .disabled(format!("Signed in as {actor_name}"))
+        .item(Event::SignOut, SIGN_OUT)
+        .separator();
 
     tracing::info!(
         resource_count = resources.len(),
         "Building signed-in tray menu"
     );
-    for res in resources {
-        let submenu = get_submenu(res);
 
-        let submenu = submenu
-            .separator()
-            .disabled("Resource")
-            .copyable(res.name())
-            .copyable(res.pastable().as_ref());
-
-        let submenu = if let Some(site) = res.sites().first() {
-            // Emojis may be causing an issue on some Ubuntu desktop environments.
-            let status = match res.status() {
-                Status::Unknown => "[-] No activity",
-                Status::Online => "[O] Gateway connected",
-                Status::Offline => "[X] All Gateways offline",
-            };
-
-            submenu
-                .separator()
-                .disabled("Site")
-                .item(None, &site.name)
-                .item(None, status)
-        } else {
-            submenu
-        };
-        menu = menu.add_submenu(SystemTraySubmenu::new(res.name(), submenu));
+    menu = menu.disabled(RESOURCES);
+    // Always show Resources in the original order
+    for res in *resources {
+        menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
     }
 
-    menu.add_bottom_section("Disconnect and quit Firezone")
+    menu.add_bottom_section(DISCONNECT_AND_QUIT)
 }
 
-fn signing_in(waiting_message: &str) -> SystemTrayMenu {
-    SystemTrayMenu::new()
+fn signing_in(waiting_message: &str) -> Menu {
+    Menu::default()
         .disabled(waiting_message)
         .item(Event::CancelSignIn, "Cancel sign-in")
         .add_bottom_section(QUIT_TEXT_SIGNED_OUT)
 }
 
-trait FirezoneMenu {
-    fn add_bottom_section(self, quit_text: &str) -> Self;
-    fn copyable(self, s: &str) -> Self;
-    fn disabled<S: Into<String>>(self, title: S) -> Self;
-    fn item<E: Into<Option<Event>>, S: Into<String>>(self, id: E, title: S) -> Self;
-    fn separator(self) -> Self;
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl FirezoneMenu for SystemTrayMenu {
-    /// Things that always show, like About, Settings, Help, Quit, etc.
-    fn add_bottom_section(self, quit_text: &str) -> Self {
-        self.separator()
-            .item(Event::ShowWindow(Window::About), "About Firezone")
-            .item(Event::AdminPortal, "Admin Portal...")
-            .add_submenu(SystemTraySubmenu::new(
-                "Help",
-                SystemTrayMenu::new()
-                    .item(
-                        Event::Url(utm_url("https://www.firezone.dev/kb")),
-                        "Documentation...",
-                    )
-                    .item(
-                        Event::Url(utm_url("https://www.firezone.dev/support")),
-                        "Support...",
-                    ),
-            ))
-            .item(Event::ShowWindow(Window::Settings), "Settings")
+    fn resources() -> Vec<ResourceDescription> {
+        let s = r#"[
+            {
+                "id": "73037362-715d-4a83-a749-f18eadd970e6",
+                "type": "cidr",
+                "name": "172.172.0.0/16",
+                "address": "172.172.0.0/16",
+                "address_description": "cidr resource",
+                "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                "status": "Unknown"
+            },
+            {
+                "id": "03000143-e25e-45c7-aafb-144990e57dcd",
+                "type": "dns",
+                "name": "gitlab.mycorp.com",
+                "address": "gitlab.mycorp.com",
+                "address_description": "dns resource",
+                "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                "status": "Online"
+            },
+            {
+                "id": "1106047c-cd5d-4151-b679-96b93da7383b",
+                "type": "internet",
+                "name": "internet",
+                "address": "0.0.0.0/0",
+                "address_description": "The whole entire Internet",
+                "sites": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
+                "status": "Offline"
+            }
+        ]"#;
+
+        serde_json::from_str(s).unwrap()
+    }
+
+    #[test]
+    fn no_resources() {
+        let resources = vec![];
+        let input = AppState::SignedIn(SignedIn {
+            actor_name: "Jane Doe",
+            resources: &resources,
+        });
+        let actual = input.into_menu();
+        let expected = Menu::default()
+            .disabled("Signed in as Jane Doe")
+            .item(Event::SignOut, SIGN_OUT)
             .separator()
-            .item(Event::Quit, quit_text)
+            .disabled(RESOURCES)
+            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            serde_json::to_string_pretty(&actual).unwrap()
+        );
     }
 
-    fn copyable(self, s: &str) -> Self {
-        self.item(Event::Copy(s.to_string()), s)
+    #[test]
+    fn some_resources() {
+        let resources = resources();
+        let input = AppState::SignedIn(SignedIn {
+            actor_name: "Jane Doe",
+            resources: &resources,
+        });
+        let actual = input.into_menu();
+        let expected = Menu::default()
+            .disabled("Signed in as Jane Doe")
+            .item(Event::SignOut, SIGN_OUT)
+            .separator()
+            .disabled(RESOURCES)
+            .add_submenu(
+                "172.172.0.0/16",
+                Menu::default()
+                    .copyable("cidr resource")
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("172.172.0.0/16")
+                    .copyable("172.172.0.0/16")
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable(NO_ACTIVITY),
+            )
+            .add_submenu(
+                "gitlab.mycorp.com",
+                Menu::default()
+                    .copyable("dns resource")
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("gitlab.mycorp.com")
+                    .copyable("gitlab.mycorp.com")
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable(GATEWAY_CONNECTED),
+            )
+            .add_submenu(
+                "Internet",
+                Menu::default()
+                    .copyable("")
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("Internet")
+                    .copyable("")
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable(ALL_GATEWAYS_OFFLINE),
+            )
+            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            serde_json::to_string_pretty(&actual).unwrap(),
+        );
     }
-
-    /// A disabled item with no accelerator or event
-    fn disabled<S: Into<String>>(self, title: S) -> Self {
-        self.add_item(item(None, title).disabled())
-    }
-
-    fn item<E: Into<Option<Event>>, S: Into<String>>(self, id: E, title: S) -> Self {
-        self.add_item(item(id, title))
-    }
-
-    fn separator(self) -> Self {
-        self.add_native_item(SystemTrayMenuItem::Separator)
-    }
-}
-
-// I just thought this function call was too verbose
-fn item<E: Into<Option<Event>>, S: Into<String>>(id: E, title: S) -> CustomMenuItem {
-    CustomMenuItem::new(
-        serde_json::to_string(&id.into())
-            .expect("`serde_json` should always be able to serialize tray menu events"),
-        title,
-    )
-}
-
-fn utm_url(base_url: &str) -> Url {
-    Url::parse(&format!(
-        "{base_url}?utm_source={}-client",
-        std::env::consts::OS
-    ))
-    .expect("Hard-coded URL should always be parsable")
 }
