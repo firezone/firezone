@@ -1,3 +1,9 @@
+locals {
+  # The version of the Erlang cluster state,
+  # change this to prevent new nodes from joining the cluster of the old ones,
+  # ie. when some internal messages introduced a breaking change.
+  cluster_version = "1.0"
+}
 
 # Generate secrets
 resource "random_password" "erlang_cluster_cookie" {
@@ -274,7 +280,7 @@ locals {
         cluster_name          = local.cluster.name
         cluster_name_label    = "cluster_name"
         cluster_version_label = "cluster_version"
-        cluster_version       = split(".", local.portal_image_tag)[0]
+        cluster_version       = local.cluster_version
         node_name_label       = "application"
         polling_interval_ms   = 10000
       })
@@ -447,7 +453,7 @@ module "domain" {
 
   application_labels = {
     "cluster_name"    = local.cluster.name
-    "cluster_version" = split(".", local.portal_image_tag)[0]
+    "cluster_version" = local.cluster_version
   }
 }
 
@@ -525,7 +531,7 @@ module "web" {
 
   application_labels = {
     "cluster_name"    = local.cluster.name
-    "cluster_version" = split(".", local.portal_image_tag)[0]
+    "cluster_version" = local.cluster_version
   }
 }
 
@@ -601,7 +607,7 @@ module "api" {
 
   application_labels = {
     "cluster_name"    = local.cluster.name
-    "cluster_version" = split(".", local.portal_image_tag)[0]
+    "cluster_version" = local.cluster_version
   }
 
   application_token_scopes = [
