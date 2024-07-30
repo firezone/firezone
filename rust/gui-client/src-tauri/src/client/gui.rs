@@ -813,7 +813,7 @@ async fn run_controller(
                 result?;
                 if controller.status.connlib_is_up() {
                     tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
-                    controller.ipc_client.reconnect().await?;
+                    controller.ipc_client.reset().await?;
                 }
             },
             result = dns_notifier.notified() => {
