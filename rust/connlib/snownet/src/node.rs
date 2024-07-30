@@ -11,7 +11,9 @@ use core::fmt;
 use ip_packet::{
     ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, MutableIpPacket, Packet as _,
 };
-use rand::random;
+use rand::rngs::StdRng;
+use rand::seq::IteratorRandom;
+use rand::{random, SeedableRng};
 use secrecy::{ExposeSecret, Secret};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -96,6 +98,7 @@ pub struct Node<T, TId, RId> {
     stats: NodeStats,
 
     marker: PhantomData<T>,
+    rng: StdRng,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -121,9 +124,10 @@ where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
-    pub fn new(private_key: StaticSecret) -> Self {
+    pub fn new(private_key: StaticSecret, seed: [u8; 32]) -> Self {
         let public_key = &(&private_key).into();
         Self {
+            rng: StdRng::from_seed(seed), // TODO: Use this seed for private key too. Requires refactoring of how we generate the login-url because that one needs to know the public key.
             private_key,
             public_key: *public_key,
             marker: Default::default(),
@@ -228,9 +232,12 @@ where
             }
         };
 
-        if let Some(agent) = self.connections.agent_mut(cid) {
-            agent.add_remote_candidate(candidate.clone());
-        }
+        let Some(agent) = self.connections.agent_mut(cid) else {
+            tracing::debug!("Unknown connection");
+            return;
+        };
+
+        agent.add_remote_candidate(candidate.clone());
 
         match candidate.kind() {
             CandidateKind::Host => {
@@ -238,21 +245,22 @@ where
                 // They are only useful to circumvent restrictive NATs in which case we are either talking to another relay candidate or a server-reflexive address.
                 return;
             }
-
-            CandidateKind::Relayed => {
-                // Optimisatically try to bind the channel only on the same relay as the remote peer.
-                if let Some(allocation) = self.same_relay_as_peer(&candidate) {
-                    allocation.bind_channel(candidate.addr(), now);
-                    return;
-                }
-            }
-            CandidateKind::ServerReflexive | CandidateKind::PeerReflexive => {}
+            CandidateKind::Relayed
+            | CandidateKind::ServerReflexive
+            | CandidateKind::PeerReflexive => {}
         }
 
-        // In other cases, bind on all relays.
-        for allocation in self.allocations.values_mut() {
-            allocation.bind_channel(candidate.addr(), now);
-        }
+        let Some(rid) = self.connections.relay(cid) else {
+            tracing::debug!("No relay selected for connection");
+            return;
+        };
+
+        let Some(allocation) = self.allocations.get_mut(&rid) else {
+            tracing::debug!(%rid, "Unknown relay");
+            return;
+        };
+
+        allocation.bind_channel(candidate.addr(), now);
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
@@ -268,20 +276,6 @@ where
         if let Some(agent) = self.connections.agent_mut(cid) {
             agent.invalidate_candidate(&candidate);
         }
-    }
-
-    /// Attempts to find the [`Allocation`] on the same relay as the remote's candidate.
-    ///
-    /// To do that, we need to check all candidates of each allocation and compare their IP.
-    /// The same relay might be reachable over IPv4 and IPv6.
-    #[must_use]
-    fn same_relay_as_peer(&mut self, candidate: &Candidate) -> Option<&mut Allocation> {
-        self.allocations.iter_mut().find_map(|(_, allocation)| {
-            allocation
-                .current_candidates()
-                .any(|c| c.addr().ip() == candidate.addr().ip())
-                .then_some(allocation)
-        })
     }
 
     /// Decapsulate an incoming packet.
@@ -546,6 +540,7 @@ where
         mut agent: IceAgent,
         remote: PublicKey,
         key: [u8; 32],
+        relay: Option<RId>,
         intent_sent_at: Instant,
         now: Instant,
     ) -> Connection<RId> {
@@ -576,6 +571,7 @@ where
                 possible_sockets: BTreeSet::default(),
                 buffered: RingBuffer::new(10),
             },
+            relay,
             last_outgoing: now,
             last_incoming: now,
         }
@@ -754,13 +750,14 @@ where
     fn bindings_and_allocations_drain_events(&mut self) {
         let allocation_events = self
             .allocations
-            .values_mut()
-            .flat_map(|allocation| allocation.poll_event());
+            .iter_mut()
+            .flat_map(|(rid, allocation)| Some((*rid, allocation.poll_event()?)));
 
-        for event in allocation_events {
+        for (rid, event) in allocation_events {
             match event {
                 CandidateEvent::New(candidate) => {
                     add_local_candidate_to_all(
+                        rid,
                         candidate,
                         &mut self.connections,
                         &mut self.pending_events,
@@ -775,6 +772,11 @@ where
                 }
             }
         }
+    }
+
+    /// Sample a relay to use for a new connection.
+    fn sample_relay(&mut self) -> Option<RId> {
+        self.allocations.keys().copied().choose(&mut self.rng)
     }
 }
 
@@ -819,6 +821,7 @@ where
             session_key,
             created_at: now,
             intent_sent_at,
+            relay: self.sample_relay(),
             is_failed: false,
         };
         let duration_since_intent = initial_connection.duration_since_intent(now);
@@ -850,12 +853,15 @@ where
             pass: answer.credentials.password,
         });
 
-        self.seed_agent_with_local_candidates(cid, &mut agent);
+        let selected_relay = initial.relay;
+
+        self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
 
         let connection = self.init_connection(
             agent,
             remote,
             *initial.session_key.expose_secret(),
+            selected_relay,
             initial.intent_sent_at,
             now,
         );
@@ -911,12 +917,14 @@ where
             },
         };
 
-        self.seed_agent_with_local_candidates(cid, &mut agent);
+        let selected_relay = self.sample_relay();
+        self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
 
         let connection = self.init_connection(
             agent,
             remote,
             *offer.session_key.expose_secret(),
+            selected_relay,
             now, // Technically, this isn't fully correct because gateways don't send intents so we just use the current time.
             now,
         );
@@ -935,14 +943,25 @@ where
     TId: Eq + Hash + Copy + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
 {
-    fn seed_agent_with_local_candidates(&mut self, connection: TId, agent: &mut IceAgent) {
+    fn seed_agent_with_local_candidates(
+        &mut self,
+        connection: TId,
+        selected_relay: Option<RId>,
+        agent: &mut IceAgent,
+    ) {
         for candidate in self.host_candidates.iter().cloned() {
             add_local_candidate(connection, agent, candidate, &mut self.pending_events);
         }
 
+        let Some(selected_relay) = selected_relay else {
+            tracing::debug!("Skipping seeding of relay candidates: No relay selected");
+            return;
+        };
+
         for candidate in self
             .allocations
-            .values()
+            .iter()
+            .filter_map(|(rid, allocation)| (*rid == selected_relay).then_some(allocation))
             .flat_map(|allocation| allocation.current_candidates())
         {
             add_local_candidate(
@@ -956,7 +975,7 @@ where
 }
 
 struct Connections<TId, RId> {
-    initial: BTreeMap<TId, InitialConnection>,
+    initial: BTreeMap<TId, InitialConnection<RId>>,
     established: BTreeMap<TId, Connection<RId>>,
 }
 
@@ -1010,6 +1029,13 @@ where
         maybe_initial_connection.or(maybe_established_connection)
     }
 
+    fn relay(&mut self, id: TId) -> Option<RId> {
+        let maybe_initial_connection = self.initial.get_mut(&id).and_then(|i| i.relay);
+        let maybe_established_connection = self.established.get_mut(&id).and_then(|c| c.relay);
+
+        maybe_initial_connection.or(maybe_established_connection)
+    }
+
     fn agents_mut(&mut self) -> impl Iterator<Item = (TId, &mut IceAgent)> {
         let initial_agents = self.initial.iter_mut().map(|(id, c)| (*id, &mut c.agent));
         let negotiated_agents = self
@@ -1024,7 +1050,7 @@ where
         self.established.get_mut(id)
     }
 
-    fn iter_initial_mut(&mut self) -> impl Iterator<Item = (TId, &mut InitialConnection)> {
+    fn iter_initial_mut(&mut self) -> impl Iterator<Item = (TId, &mut InitialConnection<RId>)> {
         self.initial.iter_mut().map(|(id, conn)| (*id, conn))
     }
 
@@ -1082,22 +1108,27 @@ enum EncodeError {
 }
 
 fn add_local_candidate_to_all<TId, RId>(
+    rid: RId,
     candidate: Candidate,
     connections: &mut Connections<TId, RId>,
     pending_events: &mut VecDeque<Event<TId>>,
 ) where
     TId: Copy + fmt::Display,
+    RId: Copy + PartialEq,
 {
     let initial_connections = connections
         .initial
         .iter_mut()
-        .map(|(id, c)| (*id, &mut c.agent));
+        .flat_map(|(id, c)| Some((*id, &mut c.agent, c.relay?)));
     let established_connections = connections
         .established
         .iter_mut()
-        .map(|(id, c)| (*id, &mut c.agent));
+        .flat_map(|(id, c)| Some((*id, &mut c.agent, c.relay?)));
 
-    for (cid, agent) in initial_connections.chain(established_connections) {
+    for (cid, agent, _) in initial_connections
+        .chain(established_connections)
+        .filter(|(_, _, selected_relay)| *selected_relay == rid)
+    {
         let _span = info_span!("connection", %cid).entered();
 
         add_local_candidate(cid, agent, candidate.clone(), pending_events);
@@ -1244,9 +1275,14 @@ pub(crate) enum CandidateEvent {
     Invalid(Candidate),
 }
 
-struct InitialConnection {
+struct InitialConnection<RId> {
     agent: IceAgent,
     session_key: Secret<[u8; 32]>,
+
+    /// The fallback relay we sampled for this potential connection.
+    ///
+    /// `None` if we don't have any relays available.
+    relay: Option<RId>,
 
     created_at: Instant,
     intent_sent_at: Instant,
@@ -1254,7 +1290,7 @@ struct InitialConnection {
     is_failed: bool,
 }
 
-impl InitialConnection {
+impl<RId> InitialConnection<RId> {
     #[tracing::instrument(level = "debug", skip_all, fields(%cid))]
     fn handle_timeout<TId>(&mut self, cid: TId, now: Instant)
     where
@@ -1293,6 +1329,11 @@ struct Connection<RId> {
 
     state: ConnectionState<RId>,
 
+    /// The relay we have selected for this connection.
+    ///
+    /// `None` if we didn't have any relays available.
+    relay: Option<RId>,
+
     stats: ConnectionStats,
     intent_sent_at: Instant,
     signalling_completed_at: Instant,
@@ -1308,6 +1349,7 @@ enum ConnectionState<RId> {
     Connecting {
         /// Socket addresses from which we might receive data (even before we are connected).
         possible_sockets: BTreeSet<SocketAddr>,
+
         /// Packets emitted by wireguard whilst are still running ICE.
         ///
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
@@ -1514,6 +1556,7 @@ where
                         ConnectionState::Connecting {
                             possible_sockets,
                             buffered,
+                            ..
                         } => {
                             transmits.extend(buffered.into_iter().flat_map(|packet| {
                                 make_owned_transmit(remote_socket, &packet, allocations, now)

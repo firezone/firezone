@@ -255,7 +255,7 @@ impl RefClient {
     ///
     /// This simulates receiving the `init` message from the portal.
     pub(crate) fn init(self) -> SimClient {
-        let mut client_state = ClientState::new(self.key, self.known_hosts);
+        let mut client_state = ClientState::new(self.key, self.known_hosts, self.key.0); // Cheating a bit here by reusing the key as seed.
         let _ = client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,
@@ -264,6 +264,11 @@ impl RefClient {
         let _ = client_state.update_system_resolvers(self.system_dns_resolvers);
 
         SimClient::new(self.id, client_state)
+    }
+
+    pub(crate) fn reset_connections(&mut self) {
+        self.connected_cidr_resources.clear();
+        self.connected_dns_resources.clear();
     }
 
     pub(crate) fn is_tunnel_ip(&self, ip: IpAddr) -> bool {

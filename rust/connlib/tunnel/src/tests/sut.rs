@@ -281,6 +281,53 @@ impl StateMachineTest for TunnelTest {
                     c.sut.set_resources(all_resources);
                 });
             }
+            Transition::RelaysPresence {
+                disconnected,
+                online,
+            } => {
+                for rid in &disconnected {
+                    let disconnected_relay =
+                        state.relays.remove(rid).expect("old relay to be present");
+                    state.network.remove_host(&disconnected_relay);
+                }
+
+                let online = online
+                    .into_iter()
+                    .map(|(rid, relay)| (rid, relay.map(SimRelay::new, debug_span!("relay", %rid))))
+                    .collect::<BTreeMap<_, _>>();
+
+                for (rid, relay) in &online {
+                    debug_assert!(state.network.add_host(*rid, relay));
+                }
+
+                state.client.exec_mut({
+                    let disconnected = disconnected.clone();
+                    let online = online.iter();
+
+                    move |c| {
+                        c.sut.update_relays(
+                            disconnected,
+                            BTreeSet::from_iter(map_explode(online, "client")),
+                            now,
+                        );
+                    }
+                });
+                for (id, gateway) in &mut state.gateways {
+                    gateway.exec_mut({
+                        let disconnected = disconnected.clone();
+                        let online = online.iter();
+
+                        move |g| {
+                            g.sut.update_relays(
+                                disconnected,
+                                BTreeSet::from_iter(map_explode(online, &format!("gateway_{id}"))),
+                                now,
+                            )
+                        }
+                    });
+                }
+                state.relays.extend(online);
+            }
             Transition::Idle => {
                 const IDLE_DURATION: Duration = Duration::from_secs(5 * 60);
                 let cut_off = state.flux_capacitor.now::<Instant>() + IDLE_DURATION;

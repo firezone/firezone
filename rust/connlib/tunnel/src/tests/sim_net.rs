@@ -236,6 +236,13 @@ impl RoutingTable {
     pub(crate) fn host_by_ip(&self, ip: IpAddr) -> Option<HostId> {
         self.routes.exact_match(ip).copied()
     }
+
+    pub(crate) fn overlaps_with(&self, other: &Self) -> bool {
+        other
+            .routes
+            .iter()
+            .any(|(route, _)| self.routes.exact_match(route).is_some())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]

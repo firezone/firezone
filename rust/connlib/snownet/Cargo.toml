@@ -20,7 +20,6 @@ thiserror = "1"
 tracing = { workspace = true }
 
 [dev-dependencies]
-firezone-relay = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [lints]
