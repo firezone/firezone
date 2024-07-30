@@ -41,7 +41,7 @@ export default function BattleCard() {
                 <th className="text-center px-3 sm:px-6 py-3 bg-primary-200">
                   <span className="flex justify-center items-center">
                     <Image
-                      src="/images/logo-main.svg"
+                      src="/images/logo-main-light.svg"
                       width={50}
                       height={50}
                       alt="Firezone logo"

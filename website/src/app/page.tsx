@@ -85,14 +85,14 @@ export default function Page() {
           </div>
         </div>
         <div className="mt-16 max-w-screen-xl mx-auto">
-          <div className="text-sm mb-6 flex justify-center font-base text-neutral-600">
+          <div className="text-center text-sm mb-6 font-base text-neutral-600">
             Backed by{" "}
             <Image
               src="/images/yc-logo-gray.svg"
               alt="yc logo gray"
               width={100}
               height={40}
-              className="mx-1.5"
+              className="mx-1 md:mx-1.5 inline-flex pb-0.5"
             />{" "}
             and trusted by hundreds of organizations
           </div>
