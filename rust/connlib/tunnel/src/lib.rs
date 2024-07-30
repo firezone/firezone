@@ -52,7 +52,7 @@ pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::{ClientState, Request};
-pub use gateway::GatewayState;
+pub use gateway::{GatewayState, IPV4_PEERS, IPV6_PEERS};
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///

@@ -4,11 +4,10 @@ use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_shared::{get_user_agent, keypair, messages::Interface, LoginUrl, StaticSecret};
 use firezone_bin_shared::{setup_global_subscriber, TunDeviceManager};
-use firezone_tunnel::GatewayTunnel;
+use firezone_tunnel::{GatewayTunnel, IPV4_PEERS, IPV6_PEERS};
 
 use futures::channel::mpsc;
 use futures::{future, StreamExt, TryFutureExt};
-use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
 use std::convert::Infallible;
@@ -25,8 +24,6 @@ mod eventloop;
 mod messages;
 
 const ID_PATH: &str = "/var/lib/firezone/gateway_id";
-const PEERS_IPV4: &str = "100.64.0.0/11";
-const PEERS_IPV6: &str = "fd00:2021:1111::/107";
 
 #[tokio::main]
 async fn main() {
@@ -143,10 +140,7 @@ async fn update_device_task(
         }
 
         if let Err(e) = tun_device
-            .set_routes(
-                vec![PEERS_IPV4.parse::<Ipv4Network>().unwrap()],
-                vec![PEERS_IPV6.parse::<Ipv6Network>().unwrap()],
-            )
+            .set_routes(vec![IPV4_PEERS], vec![IPV6_PEERS])
             .await
         {
             tracing::warn!("Failed to set routes: {e:#}");

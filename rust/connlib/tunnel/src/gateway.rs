@@ -9,6 +9,7 @@ use connlib_shared::messages::{
     Offer, RelayId, ResourceId,
 };
 use connlib_shared::{DomainName, Error, Result, StaticSecret};
+use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MutableIpPacket};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{RelaySocket, ServerNode};
@@ -16,6 +17,16 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
 use tun::Tun;
+
+pub const IPV4_PEERS: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11) {
+    Ok(n) => n,
+    Err(_) => unreachable!(),
+};
+pub const IPV6_PEERS: Ipv6Network =
+    match Ipv6Network::new(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 0), 107) {
+        Ok(n) => n,
+        Err(_) => unreachable!(),
+    };
 
 const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 
