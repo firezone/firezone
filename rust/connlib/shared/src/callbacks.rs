@@ -19,7 +19,7 @@ pub enum Status {
 pub enum ResourceDescription {
     Dns(ResourceDescriptionDns),
     Cidr(ResourceDescriptionCidr),
-    Internet(ResourceDescriptionCidr),
+    Internet(ResourceDescriptionInternet),
 }
 
 impl ResourceDescription {
