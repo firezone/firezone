@@ -28,8 +28,28 @@ responsible for securely routing traffic between Clients and Resources.
 Gateways implement the industry-standard
 [STUN](https://datatracker.ietf.org/doc/html/rfc8489) and
 [TURN](https://www.rfc-editor.org/rfc/rfc8155.html) protocols to perform secure
-NAT holepunching. **No inbound firewall ports need to be opened for Gateways to
-function**.
+NAT holepunching. This allows Firezone to establish direct connections between
+your Users and Resources while keeping your Resources invisible to the public
+internet.
+
+#### Inbound ports
+
+In most cases, **no inbound firewall ports should be opened** for Gateways to
+function properly. If your network has a stateless firewall in place, however,
+you'll need to ensure UDP return traffic can reach the Gateway(s). If you're not
+sure, you should err on the side of caution and leave all inbound ports closed
+unless you experience connectivity issues.
+
+See the table below for firewall recommendations for popular cloud providers.
+
+| Provider | Resource type                                                                                                       | Type      | Inbound ports                                                                                                                                                                                                                                                                        |
+| -------- | ------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| AWS      | [Network ACLs](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-network-acls.html)                              | Stateless | By default, AWS ACLs allow all inbound. If you've modified these, be sure that `UDP 1024-65536` is allowed from source `0.0.0.0/0` so your Clients can connect directly. If you wish to allow **only** Relayed connections, use the source IPs in [relay-ips.json](/relay-ips.json). |
+| AWS      | [Security Groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html)                        | Stateful  | None                                                                                                                                                                                                                                                                                 |
+| Azure    | [Network Security Groups](https://learn.microsoft.com/en-us/azure/virtual-network/network-security-groups-overview) | Stateful  | None                                                                                                                                                                                                                                                                                 |
+| GCP      | [Firewall Rules](https://cloud.google.com/firewall/docs/firewalls)                                                  | Stateful  | None                                                                                                                                                                                                                                                                                 |
+
+#### Outbound ports
 
 If the network in which your Gateway is deployed applies egress filtering,
 you'll need to make sure the following outbound traffic is allowed:
