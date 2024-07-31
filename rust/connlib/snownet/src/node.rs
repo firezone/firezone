@@ -449,7 +449,7 @@ where
         self.allocations
             .retain(|rid, allocation| match allocation.can_be_freed() {
                 Some(e) => {
-                    tracing::info!(%rid, "Disconnecting from relay; {e}");
+                    tracing::error!(%rid, "Disconnecting from relay; {e}");
 
                     false
                 }
@@ -1530,7 +1530,7 @@ where
                     self.state.add_possible_socket(source);
                 }
                 IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                    tracing::info!("Connection failed (ICE timeout)");
+                    tracing::error!("Connection failed (ICE timeout)");
                     self.state = ConnectionState::Failed;
                 }
                 IceAgentEvent::NominatedSend {
