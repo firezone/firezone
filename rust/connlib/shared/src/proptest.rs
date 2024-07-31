@@ -1,5 +1,8 @@
 use crate::messages::{
-    client::{ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns, Site, SiteId},
+    client::{
+        ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
+        ResourceDescriptionInternet, Site, SiteId,
+    },
     ClientId, GatewayId, RelayId, ResourceId,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -70,6 +73,12 @@ pub fn cidr_resource(
                 address_description,
             }
         })
+}
+
+pub fn internet_resource(
+    sites: impl Strategy<Value = Vec<Site>>,
+) -> impl Strategy<Value = ResourceDescriptionInternet> {
+    (resource_id(), sites).prop_map(move |(id, sites)| ResourceDescriptionInternet { id, sites })
 }
 
 pub fn cidr_v4_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
