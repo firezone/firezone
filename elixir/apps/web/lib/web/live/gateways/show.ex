@@ -66,14 +66,14 @@ defmodule Web.Gateways.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>
-              Last Connected
+              Last started
             </:label>
             <:value>
               <.relative_datetime datetime={@gateway.last_seen_at} />
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>Last Remote IP</:label>
+            <:label>Last seen remote IP</:label>
             <:value>
               <.last_seen schema={@gateway} />
             </:value>
@@ -91,7 +91,7 @@ defmodule Web.Gateways.Show do
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>User Agent</:label>
+            <:label>User agent</:label>
             <:value>
               <%= @gateway.last_seen_user_agent %>
             </:value>

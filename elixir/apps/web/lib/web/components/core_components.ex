@@ -847,7 +847,7 @@ defmodule Web.CoreComponents do
         title={
           if @schema.last_seen_at,
             do:
-              "Last connected #{Cldr.DateTime.Relative.to_string!(@schema.last_seen_at, Web.CLDR, relative_to: @relative_to)}",
+              "Last started #{Cldr.DateTime.Relative.to_string!(@schema.last_seen_at, Web.CLDR, relative_to: @relative_to)}",
             else: "Never connected"
         }
       >
