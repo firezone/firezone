@@ -1251,6 +1251,12 @@ defmodule Web.CoreComponents do
     """
   end
 
+  def provider_icon(%{adapter: :temp_account} = assigns) do
+    ~H"""
+    <.icon name="hero-key" {@rest} />
+    """
+  end
+
   def provider_icon(assigns), do: ~H""
 
   def feature_name(%{feature: :idp_sync} = assigns) do
