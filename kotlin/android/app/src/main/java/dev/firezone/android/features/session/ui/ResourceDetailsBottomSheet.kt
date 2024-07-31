@@ -17,6 +17,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.fragment.app.activityViewModels
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.android.material.button.MaterialButton
 import dev.firezone.android.R
@@ -24,6 +25,10 @@ import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.StatusEnum
 
 class ResourceDetailsBottomSheet(private val resource: Resource) : BottomSheetDialogFragment() {
+    private lateinit var view:  View
+    private val viewModel: SessionViewModel by activityViewModels()
+    private var isFavorite: Boolean = false
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -36,6 +41,7 @@ class ResourceDetailsBottomSheet(private val resource: Resource) : BottomSheetDi
         view: View,
         savedInstanceState: Bundle?,
     ) {
+        this.view = view
         super.onViewCreated(view, savedInstanceState)
 
         val addToFavoritesBtn: MaterialButton = view.findViewById(R.id.addToFavoritesBtn)
@@ -50,14 +56,15 @@ class ResourceDetailsBottomSheet(private val resource: Resource) : BottomSheetDi
         val siteNameLayout: LinearLayout = view.findViewById(R.id.siteNameLayout)
         val siteStatusLayout: LinearLayout = view.findViewById(R.id.siteStatusLayout)
 
-        addToFavoritesBtn.visibility = View.VISIBLE
-        removeFromFavoritesBtn.visibility = View.GONE
         addToFavoritesBtn.setOnClickListener {
-            Toast.makeText(requireContext(), "Added to Favorites", Toast.LENGTH_SHORT).show()
+            viewModel.addFavoriteResource(resource.id)
+            refreshButtons()
         }
         removeFromFavoritesBtn.setOnClickListener {
-            Toast.makeText(requireContext(), "Removed from Favorites", Toast.LENGTH_SHORT).show()
+            viewModel.removeFavoriteResource(resource.id)
+            refreshButtons()
         }
+        refreshButtons()
 
         resourceNameTextView.text = resource.name
         val displayAddress = resource.addressDescription ?: resource.address
@@ -121,6 +128,14 @@ class ResourceDetailsBottomSheet(private val resource: Resource) : BottomSheetDi
                 Toast.makeText(requireContext(), "Site name copied to clipboard", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun refreshButtons() {
+        val addToFavoritesBtn: MaterialButton = view.findViewById(R.id.addToFavoritesBtn)
+        val removeFromFavoritesBtn: MaterialButton = view.findViewById(R.id.removeFromFavoritesBtn)
+        val isFavorite = viewModel.getFavoriteResources().contains(resource.id)
+        addToFavoritesBtn.visibility = if (isFavorite) View.GONE else View.VISIBLE
+        removeFromFavoritesBtn.visibility = if (isFavorite) View.VISIBLE else View.GONE
     }
 
     private fun copyToClipboard(text: String) {

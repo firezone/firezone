@@ -18,14 +18,26 @@ internal class SessionViewModel
         private val _serviceStatusLiveData = MutableLiveData<State>()
         private val _resourcesLiveData = MutableLiveData<List<Resource>>(emptyList())
 
+        private val favoriteResources: HashSet<String> = HashSet()
         val serviceStatusLiveData: MutableLiveData<State>
             get() = _serviceStatusLiveData
         val resourcesLiveData: MutableLiveData<List<Resource>>
             get() = _resourcesLiveData
 
-        fun clearToken() = repo.clearToken()
-
         fun clearActorName() = repo.clearActorName()
-
         fun getActorName() = repo.getActorNameSync()
+
+        fun getFavoriteResources() = repo.getFavoritesSync()
+        fun addFavoriteResource(id: String) {
+            val favorites = repo.getFavoritesSync()
+            favorites.add(id)
+            repo.saveFavoritesSync(favorites)
+        }
+        fun removeFavoriteResource(id: String) {
+            val favorites = repo.getFavoritesSync()
+            favorites.remove(id)
+            repo.saveFavoritesSync(favorites)
+        }
+
+        fun clearToken() = repo.clearToken()
     }

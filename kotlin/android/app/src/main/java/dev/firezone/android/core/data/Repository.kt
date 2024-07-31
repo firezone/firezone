@@ -61,16 +61,10 @@ internal class Repository
 
         fun getDeviceIdSync(): String? = sharedPreferences.getString(DEVICE_ID_KEY, null)
 
-        fun getFavorites(): Flow<HashSet<String>> =
-            flow {
-                val set = sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null)
-                emit(HashSet(set))
-            }.flowOn(coroutineDispatcher)
+        fun getFavoritesSync(): HashSet<String> = HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())
+        fun saveFavoritesSync(value: HashSet<String>) =
+            sharedPreferences.edit().putStringSet(FAVORITE_RESOURCES_KEY, value).apply()
 
-        fun saveFavorites(value: HashSet<String>): Flow<Unit> =
-            flow {
-                emit(sharedPreferences.edit().putStringSet(FAVORITE_RESOURCES_KEY, value).apply())
-            }.flowOn(coroutineDispatcher)
 
         fun getToken(): Flow<String?> =
             flow {

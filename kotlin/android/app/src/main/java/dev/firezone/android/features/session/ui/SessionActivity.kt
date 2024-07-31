@@ -88,6 +88,8 @@ internal class SessionActivity : AppCompatActivity() {
         binding.rvResourcesList.addItemDecoration(dividerItemDecoration)
         binding.rvResourcesList.adapter = resourcesAdapter
         binding.rvResourcesList.layoutManager = layoutManager
+
+        resourcesAdapter.setFavoriteResources(viewModel.getFavoriteResources())
     }
 
     private fun setupObservers() {

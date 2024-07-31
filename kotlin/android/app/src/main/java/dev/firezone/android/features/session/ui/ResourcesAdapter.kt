@@ -10,7 +10,9 @@ import androidx.recyclerview.widget.RecyclerView
 import dev.firezone.android.databinding.ListItemResourceBinding
 import dev.firezone.android.tunnel.model.Resource
 
-internal class ResourcesAdapter : ListAdapter<Resource, ResourcesAdapter.ViewHolder>(ResourceDiffCallback()) {
+internal class ResourcesAdapter() : ListAdapter<Resource, ResourcesAdapter.ViewHolder>(ResourceDiffCallback()) {
+    private var favoriteResources: HashSet<String> = HashSet()
+
     override fun onCreateViewHolder(
         parent: ViewGroup,
         viewType: Int,
@@ -27,10 +29,15 @@ internal class ResourcesAdapter : ListAdapter<Resource, ResourcesAdapter.ViewHol
         holder.bind(resource)
         holder.itemView.setOnClickListener {
             // Show bottom sheet
+            val isFavorite = favoriteResources.contains(resource.id)
             val fragmentManager = (holder.itemView.context as AppCompatActivity).supportFragmentManager
             val bottomSheet = ResourceDetailsBottomSheet(resource)
             bottomSheet.show(fragmentManager, "ResourceDetailsBottomSheet")
         }
+    }
+
+    fun setFavoriteResources(value: HashSet<String>) {
+        favoriteResources = value
     }
 
     class ViewHolder(private val binding: ListItemResourceBinding) : RecyclerView.ViewHolder(binding.root) {
