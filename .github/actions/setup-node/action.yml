@@ -10,7 +10,7 @@ runs:
   steps:
     - uses: pnpm/action-setup@v3
       with:
-        version: 8
+        version: 9.3
     - uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
