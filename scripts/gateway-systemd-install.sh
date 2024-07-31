@@ -35,6 +35,9 @@ After=network.target
 Documentation=https://www.firezone.dev/kb
 
 [Service]
+
+# DO NOT EDIT ANY OF THE BELOW BY HAND. USE `systemctl edit firezone-gateway` INSTEAD TO CUSTOMIZE.
+
 Type=simple
 Environment="FIREZONE_NAME=$FIREZONE_NAME"
 Environment="FIREZONE_ID=$FIREZONE_ID"
