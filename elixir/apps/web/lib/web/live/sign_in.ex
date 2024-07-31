@@ -49,10 +49,6 @@ defmodule Web.SignIn do
 
         <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
-              Sign in with a configured provider
-            </h2>
-
             <.flash flash={@flash} kind={:error} />
             <.flash flash={@flash} kind={:info} />
 
@@ -66,6 +62,10 @@ defmodule Web.SignIn do
               </:separator>
 
               <:item :if={adapter_enabled?(@providers_by_adapter, :openid_connect)}>
+                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
+                  Sign in with a configured provider
+                </h2>
+
                 <.providers_group_form
                   adapter="openid_connect"
                   providers={@providers_by_adapter[:openid_connect]}
