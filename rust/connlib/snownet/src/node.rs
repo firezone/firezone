@@ -1530,7 +1530,7 @@ where
                     self.state.add_possible_socket(source);
                 }
                 IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                    tracing::error!("Connection failed (ICE timeout)");
+                    tracing::info!("Connection failed (ICE timeout)");
                     self.state = ConnectionState::Failed;
                 }
                 IceAgentEvent::NominatedSend {
