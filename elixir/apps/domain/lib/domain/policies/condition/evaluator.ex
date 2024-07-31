@@ -52,10 +52,10 @@ defmodule Domain.Policies.Condition.Evaluator do
         %Condition{property: :remote_ip_location_region, operator: :is_not_in, values: values},
         %Clients.Client{} = client
       ) do
-    if client.last_seen_remote_ip_location_region not in values do
-      {:ok, nil}
-    else
+    if client.last_seen_remote_ip_location_region in values do
       :error
+    else
+      {:ok, nil}
     end
   end
 
@@ -83,10 +83,10 @@ defmodule Domain.Policies.Condition.Evaluator do
       {:ok, inet} = Domain.Types.INET.cast(cidr)
       cidr = %{inet | netmask: inet.netmask || Domain.Types.CIDR.max_netmask(inet)}
 
-      if not Domain.Types.CIDR.contains?(cidr, client.last_seen_remote_ip) do
-        {:cont, {:ok, nil}}
-      else
+      if Domain.Types.CIDR.contains?(cidr, client.last_seen_remote_ip) do
         {:halt, :error}
+      else
+        {:cont, {:ok, nil}}
       end
     end)
   end
@@ -110,10 +110,10 @@ defmodule Domain.Policies.Condition.Evaluator do
       ) do
     client = Repo.preload(client, :identity)
 
-    if client.identity.provider_id not in values do
-      {:ok, nil}
-    else
+    if client.identity.provider_id in values do
       :error
+    else
+      {:ok, nil}
     end
   end
 
