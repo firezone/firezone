@@ -210,7 +210,7 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
              ) == :eq
 
       # Range start match
-      dow_time_ranges = ["F/10:00:00-11:00:00/UTC"]
+      dow_time_ranges = ["F/10:00:00-11:00:00,20:00-22:00/UTC"]
 
       assert DateTime.compare(
                find_day_of_the_week_time_range(dow_time_ranges, datetime),
@@ -218,7 +218,7 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
              ) == :eq
 
       # Range end match
-      dow_time_ranges = ["F/09:00:00-10:00:00/UTC"]
+      dow_time_ranges = ["F/09:00:00-10:00:00,11-22/UTC"]
 
       assert DateTime.compare(
                find_day_of_the_week_time_range(dow_time_ranges, datetime),
@@ -231,6 +231,14 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
       assert DateTime.compare(
                find_day_of_the_week_time_range(dow_time_ranges, datetime),
                ~U[2021-01-01 23:59:59Z]
+             ) == :eq
+
+      # Finds greatest expiration time
+      dow_time_ranges = ["F/09:00:00-11:00:00,11-15,14-22/UTC"]
+
+      assert DateTime.compare(
+               find_day_of_the_week_time_range(dow_time_ranges, datetime),
+               ~U[2021-01-01 22:00:00Z]
              ) == :eq
     end
 

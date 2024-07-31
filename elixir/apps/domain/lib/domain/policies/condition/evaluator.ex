@@ -137,14 +137,40 @@ defmodule Domain.Policies.Condition.Evaluator do
     |> case do
       {:ok, dow_time_ranges} ->
         dow_time_ranges
-        # normalize
         |> Enum.find_value(fn {day, time_ranges} ->
+          time_ranges = merge_joint_time_ranges(time_ranges)
           datetime_in_time_ranges?(datetime, day, time_ranges)
         end)
 
       {:error, _reason} ->
         nil
     end
+  end
+
+  # Merge ranges, eg. 4-11,11-22 = 4-22
+  defp merge_joint_time_ranges(time_ranges) do
+    Enum.reduce(time_ranges, [], fn {start_time, end_time, timezone}, acc ->
+      index =
+        Enum.find_index(acc, fn {acc_start_time, acc_end_time, acc_timezone} ->
+          acc_timezone == timezone and
+            (time_in_range?(start_time, acc_start_time, acc_end_time) or
+               time_in_range?(end_time, acc_start_time, acc_end_time))
+        end)
+
+      if index == nil do
+        [{start_time, end_time, timezone}] ++ acc
+      else
+        {{acc_start_time, acc_end_time, _timezone}, acc} = List.pop_at(acc, index)
+        start_time = Enum.min([start_time, acc_start_time], Time)
+        end_time = Enum.max([end_time, acc_end_time], Time)
+        [{start_time, end_time, timezone}] ++ acc
+      end
+    end)
+  end
+
+  defp time_in_range?(time, range_start, range_end) do
+    Time.compare(range_start, time) in [:lt, :eq] and
+      Time.compare(time, range_end) in [:lt, :eq]
   end
 
   defp datetime_in_time_ranges?(datetime, day_of_the_week, time_ranges) do
