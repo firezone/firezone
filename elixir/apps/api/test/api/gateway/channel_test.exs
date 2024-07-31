@@ -270,6 +270,48 @@ defmodule API.Gateway.ChannelTest do
       assert relay_view2.id == relay.id
       assert relay_id == relay.id
     end
+
+    test "correctly broadcasts disconnected relays", %{
+      gateway: gateway,
+      gateway_group: gateway_group
+    } do
+      relay_group = Fixtures.Relays.create_global_group()
+      relay1 = Fixtures.Relays.create_relay(group: relay_group)
+      relay2 = Fixtures.Relays.create_relay(group: relay_group)
+      relay3 = Fixtures.Relays.create_relay(group: relay_group)
+      relay4 = Fixtures.Relays.create_relay(group: relay_group)
+      relay5 = Fixtures.Relays.create_relay(group: relay_group)
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret)
+      :ok = Domain.Relays.connect_relay(relay2, stamp_secret)
+      :ok = Domain.Relays.connect_relay(relay3, stamp_secret)
+      :ok = Domain.Relays.connect_relay(relay4, stamp_secret)
+      :ok = Domain.Relays.connect_relay(relay5, stamp_secret)
+
+      API.Gateway.Socket
+      |> socket("gateway:#{gateway.id}", %{
+        gateway: gateway,
+        gateway_group: gateway_group,
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+      })
+      |> subscribe_and_join(API.Gateway.Channel, "gateway")
+
+      assert_push "init", %{relays: [_relay_view1, _relay_view2, _relay_view3, _relay_view4]}
+
+      Domain.Relays.Presence.untrack(self(), "presences:relays:#{relay1.id}", relay1.id)
+
+      assert_push "relays_presence", %{
+        disconnected_ids: [relay_id],
+        connected: [relay_view1, relay_view2, relay_view3, relay_view4]
+      }
+
+      assert relay_id == relay1.id
+      assert relay_id != relay_view1.id
+      assert relay_id != relay_view2.id
+      assert relay_id != relay_view3.id
+      assert relay_id != relay_view4.id
+    end
   end
 
   describe "handle_info/2 :expire_flow" do
