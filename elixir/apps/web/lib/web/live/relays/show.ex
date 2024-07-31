@@ -162,6 +162,9 @@ defmodule Web.Relays.Show do
     socket =
       cond do
         Map.has_key?(payload.joins, relay.id) ->
+          {:ok, relay} =
+            Relays.fetch_relay_by_id(relay.id, socket.assigns.subject, preload: [:group])
+
           assign(socket, relay: %{relay | online?: true})
 
         Map.has_key?(payload.leaves, relay.id) ->
