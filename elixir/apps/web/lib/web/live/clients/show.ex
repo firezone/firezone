@@ -218,7 +218,7 @@ defmodule Web.Clients.Show do
       cond do
         Map.has_key?(payload.joins, client.id) ->
           {:ok, client} =
-            Clients.fetch_client_by_id(id, socket.assigns.subject,
+            Clients.fetch_client_by_id(client.id, socket.assigns.subject,
               preload: [:actor, last_used_token: [identity: [:provider]]]
             )
 

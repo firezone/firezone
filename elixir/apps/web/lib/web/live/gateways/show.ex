@@ -157,7 +157,7 @@ defmodule Web.Gateways.Show do
       cond do
         Map.has_key?(payload.joins, gateway.id) ->
           {:ok, gateway} =
-            Gateways.fetch_gateway_by_id(id, socket.assigns.subject, preload: [:group])
+            Gateways.fetch_gateway_by_id(gateway.id, socket.assigns.subject, preload: [:group])
 
           assign(socket, gateway: %{gateway | online?: true})
 
