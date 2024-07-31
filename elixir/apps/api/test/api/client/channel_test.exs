@@ -364,6 +364,54 @@ defmodule API.Client.ChannelTest do
       assert relay1_id == relay1.id
     end
 
+    test "does not return the relay that is disconnected as online one", %{
+      client: client,
+      subject: subject
+    } do
+      relay_group = Fixtures.Relays.create_global_group()
+      stamp_secret = Ecto.UUID.generate()
+
+      relay1 = Fixtures.Relays.create_relay(group: relay_group)
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret)
+
+      Fixtures.Relays.update_relay(relay1,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
+        last_seen_remote_ip_location_lat: 37.0,
+        last_seen_remote_ip_location_lon: -120.0
+      )
+
+      API.Client.Socket
+      |> socket("client:#{client.id}", %{
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+        client: client,
+        subject: subject
+      })
+      |> subscribe_and_join(API.Client.Channel, "client")
+
+      assert_push "init", %{relays: [relay_view | _] = relays}
+      relay_view_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
+      assert relay_view_ids == [relay1.id]
+
+      assert %{
+               addr: _,
+               expires_at: _,
+               id: _,
+               password: _,
+               type: _,
+               username: _
+             } = relay_view
+
+      Domain.Relays.Presence.untrack(self(), "presences:relays:#{relay1.id}", relay1.id)
+
+      assert_push "relays_presence", %{
+        disconnected_ids: [relay1_id],
+        connected: []
+      }
+
+      assert relay1_id == relay1.id
+    end
+
     test "subscribes for membership/policy access events", %{
       actor: actor,
       subject: subject
