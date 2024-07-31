@@ -12,7 +12,7 @@ export default function Android() {
       {/*
       <Entry version="1.1.4" date={new Date("2024-07-31")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <<ChangeItem enable={title === "Linux GUI"} pull="6107">
+          <ChangeItem pull="6107">
             Adds the ability to mark Resources as favorites.
           </ChangeItem>
         </ul>
