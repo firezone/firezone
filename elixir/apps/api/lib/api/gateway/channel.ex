@@ -283,7 +283,7 @@ defmodule API.Gateway.Channel do
         :ok = Domain.Relays.unsubscribe_from_relay_presence(relay_id)
 
         relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(14, :day)
-        {:ok, relays} = select_relays(socket)
+        {:ok, relays} = select_relays(socket, [relay_id])
 
         :ok =
           Enum.each(relays, fn relay ->
@@ -461,8 +461,9 @@ defmodule API.Gateway.Channel do
     end
   end
 
-  defp select_relays(socket) do
-    {:ok, relays} = Relays.all_connected_relays_for_account(socket.assigns.gateway.account_id)
+  defp select_relays(socket, except_ids \\ []) do
+    {:ok, relays} =
+      Relays.all_connected_relays_for_account(socket.assigns.gateway.account_id, except_ids)
 
     location = {
       socket.assigns.gateway.last_seen_remote_ip_location_lat,

@@ -327,7 +327,9 @@ defmodule API.Client.Channel do
         attributes: %{
           relay_id: relay_id
         } do
-        {:ok, relays} = select_relays(socket)
+        :ok = Relays.unsubscribe_from_relay_presence(relay_id)
+
+        {:ok, relays} = select_relays(socket, [relay_id])
 
         :ok =
           Enum.each(relays, fn relay ->
@@ -612,8 +614,9 @@ defmodule API.Client.Channel do
     end
   end
 
-  defp select_relays(socket) do
-    {:ok, relays} = Relays.all_connected_relays_for_account(socket.assigns.subject.account)
+  defp select_relays(socket, except_ids \\ []) do
+    {:ok, relays} =
+      Relays.all_connected_relays_for_account(socket.assigns.subject.account, except_ids)
 
     location = {
       socket.assigns.client.last_seen_remote_ip_location_lat,

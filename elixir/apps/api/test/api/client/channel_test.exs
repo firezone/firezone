@@ -309,9 +309,25 @@ defmodule API.Client.ChannelTest do
 
     test "subscribes for relays presence", %{client: client, subject: subject} do
       relay_group = Fixtures.Relays.create_global_group()
-      relay = Fixtures.Relays.create_relay(group: relay_group)
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      relay1 = Fixtures.Relays.create_relay(group: relay_group)
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret)
+
+      Fixtures.Relays.update_relay(relay1,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
+        last_seen_remote_ip_location_lat: 37.0,
+        last_seen_remote_ip_location_lon: -120.0
+      )
+
+      relay2 = Fixtures.Relays.create_relay(group: relay_group)
+      :ok = Domain.Relays.connect_relay(relay2, stamp_secret)
+
+      Fixtures.Relays.update_relay(relay2,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-100, :second),
+        last_seen_remote_ip_location_lat: 38.0,
+        last_seen_remote_ip_location_lon: -121.0
+      )
 
       API.Client.Socket
       |> socket("client:#{client.id}", %{
@@ -322,9 +338,10 @@ defmodule API.Client.ChannelTest do
       })
       |> subscribe_and_join(API.Client.Channel, "client")
 
-      assert_push "init", %{relays: [relay_view1, relay_view2]}
-      assert relay_view1.id == relay.id
-      assert relay_view2.id == relay.id
+      assert_push "init", %{relays: [relay_view | _] = relays}
+      relay_view_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
+      relay_ids = [relay1.id, relay2.id] |> Enum.sort()
+      assert relay_view_ids == relay_ids
 
       assert %{
                addr: _,
@@ -333,18 +350,18 @@ defmodule API.Client.ChannelTest do
                password: _,
                type: _,
                username: _
-             } = relay_view1
+             } = relay_view
 
-      Domain.Relays.Presence.untrack(self(), "presences:relays:#{relay.id}", relay.id)
+      Domain.Relays.Presence.untrack(self(), "presences:relays:#{relay1.id}", relay1.id)
 
       assert_push "relays_presence", %{
-        disconnected_ids: [relay_id],
+        disconnected_ids: [relay1_id],
         connected: [relay_view1, relay_view2]
       }
 
-      assert relay_view1.id == relay.id
-      assert relay_view2.id == relay.id
-      assert relay_id == relay.id
+      assert relay_view1.id == relay2.id
+      assert relay_view2.id == relay2.id
+      assert relay1_id == relay1.id
     end
 
     test "subscribes for membership/policy access events", %{
@@ -775,6 +792,10 @@ defmodule API.Client.ChannelTest do
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
 
+      Fixtures.Relays.update_relay(global_relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
       :ok = Domain.Gateways.connect_gateway(gateway)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
@@ -850,6 +871,10 @@ defmodule API.Client.ChannelTest do
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
 
+      Fixtures.Relays.update_relay(relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
 
@@ -921,13 +946,18 @@ defmodule API.Client.ChannelTest do
 
       global_relay_group = Fixtures.Relays.create_global_group()
 
-      :ok =
+      relay =
         Fixtures.Relays.create_relay(
           group: global_relay_group,
           last_seen_remote_ip_location_lat: 37,
           last_seen_remote_ip_location_lon: -120
         )
-        |> Domain.Relays.connect_relay(Ecto.UUID.generate())
+
+      :ok = Domain.Relays.connect_relay(relay, Ecto.UUID.generate())
+
+      Fixtures.Relays.update_relay(relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
 
       :ok = Domain.Gateways.connect_gateway(gateway)
 
@@ -945,13 +975,18 @@ defmodule API.Client.ChannelTest do
     } do
       global_relay_group = Fixtures.Relays.create_global_group()
 
-      :ok =
+      relay =
         Fixtures.Relays.create_relay(
           group: global_relay_group,
           last_seen_remote_ip_location_lat: 37,
           last_seen_remote_ip_location_lon: -120
         )
-        |> Domain.Relays.connect_relay(Ecto.UUID.generate())
+
+      :ok = Domain.Relays.connect_relay(relay, Ecto.UUID.generate())
+
+      Fixtures.Relays.update_relay(relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
 
       client = %{client | last_seen_version: "1.1.55"}
 
