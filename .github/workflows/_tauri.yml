@@ -114,9 +114,6 @@ jobs:
           path: |
             ${{ matrix.pkg-artifact }}
           if-no-files-found: error
-      - name: Debug build issue 5859
-        shell: bash
-        run: git diff
       - name: Upload Release Assets
         # Only upload the windows build to the drafted release on main builds
         if: ${{ github.ref_name == 'main' }}
