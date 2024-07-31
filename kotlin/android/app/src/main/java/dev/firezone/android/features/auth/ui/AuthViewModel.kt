@@ -28,7 +28,7 @@ internal class AuthViewModel
                 val nonce = generateRandomString(NONCE_LENGTH)
                 repo.saveNonceSync(nonce)
                 repo.saveStateSync(state)
-                val config = repo.getConfigSync()!!
+                val config = repo.getConfigSync()
                 val token = repo.getTokenSync()
 
                 actionMutableLiveData.postValue(

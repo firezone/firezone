@@ -11,7 +11,6 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.core.data.RepositoryImpl
 import kotlinx.coroutines.CoroutineDispatcher
 
 @Module
@@ -28,7 +27,7 @@ class DataModule {
         @IoDispatcher coroutineDispatcher: CoroutineDispatcher,
         sharedPreferences: SharedPreferences,
     ): Repository =
-        RepositoryImpl(
+        Repository(
             context,
             coroutineDispatcher,
             sharedPreferences,
