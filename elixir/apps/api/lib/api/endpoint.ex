@@ -24,9 +24,9 @@ defmodule API.Endpoint do
   # https://hexdocs.pm/phoenix/Phoenix.Logger.html
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
-  socket "/gateway", API.Gateway.Socket, API.Sockets.options()
-  socket "/client", API.Client.Socket, API.Sockets.options()
-  socket "/relay", API.Relay.Socket, API.Sockets.options()
+  socket "/gateway", API.Gateway.Socket, API.Sockets.options(timeout: :timer.seconds(37))
+  socket "/client", API.Client.Socket, API.Sockets.options(timeout: :timer.seconds(307))
+  socket "/relay", API.Relay.Socket, API.Sockets.options(timeout: :timer.seconds(41))
 
   plug :fetch_user_agent
   plug API.Router
