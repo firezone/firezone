@@ -13,7 +13,7 @@ import androidx.recyclerview.widget.RecyclerView
 import dev.firezone.android.databinding.ListItemResourceBinding
 import dev.firezone.android.tunnel.model.Resource
 
-internal class ResourcesAdapter() : ListAdapter<ViewResource, ResourcesAdapter.ViewHolder>(ResourceDiffCallback()) {
+internal class ResourcesAdapter(private val activity: SessionActivity) : ListAdapter<ViewResource, ResourcesAdapter.ViewHolder>(ResourceDiffCallback()) {
     override fun onCreateViewHolder(
         parent: ViewGroup,
         viewType: Int,
@@ -38,14 +38,16 @@ internal class ResourcesAdapter() : ListAdapter<ViewResource, ResourcesAdapter.V
     }
 
     private fun onSwitchToggled(resource: ViewResource) {
-        Log.d("ResourceAdapter", "New resource value: $resource")
         val updatedList = currentList.toMutableList().associateBy{ it.id }.toMutableMap()
         updatedList[resource.id]?.let {
             updatedList[resource.id] = resource
         }
 
+        val newList = updatedList.values.toList()
         // Man... this is a round about way to update the list
-        submitList(updatedList.values.toList())
+        submitList(newList)
+
+        activity.viewResourceUpdate(newList)
     }
 
     class ViewHolder(private val binding: ListItemResourceBinding) : RecyclerView.ViewHolder(binding.root) {

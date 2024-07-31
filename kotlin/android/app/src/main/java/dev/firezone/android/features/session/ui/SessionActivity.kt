@@ -42,7 +42,7 @@ internal class SessionActivity : AppCompatActivity() {
             }
         }
 
-    private val resourcesAdapter = ResourcesAdapter()
+    private val resourcesAdapter = ResourcesAdapter(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,6 +62,13 @@ internal class SessionActivity : AppCompatActivity() {
         if (serviceBound) {
             unbindService(serviceConnection)
             serviceBound = false
+        }
+    }
+
+    fun viewResourceUpdate(resources: List<ViewResource>) {
+        Log.d(TAG, "Updated resources $resources")
+        tunnelService?.let {
+            it.resourcesUpdated(resources)
         }
     }
 

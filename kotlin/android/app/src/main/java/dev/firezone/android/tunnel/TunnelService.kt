@@ -19,10 +19,12 @@ import android.util.Log
 import androidx.lifecycle.MutableLiveData
 import com.google.firebase.crashlytics.ktx.crashlytics
 import com.google.firebase.ktx.Firebase
+import com.google.gson.Gson
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.features.session.ui.ViewResource
 import dev.firezone.android.tunnel.callback.ConnlibCallback
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
@@ -206,8 +208,13 @@ class TunnelService : VpnService() {
     }
 
     // UI updates for resources
-    fun resourcesUpdated(resources: List<Resource>?) {
-        Log.d(TAG, "resourcesUpdated: $resources")
+    fun resourcesUpdated(resources: List<ViewResource>) {
+        val disabledResources = resources.filter { !it.enabled }.map { it.id }
+        Log.d(TAG, "disabled resources: $disabledResources")
+
+        connlibSessionPtr?.let {
+            ConnlibSession.setDisabledResources(it, Gson().toJson(disabledResources))
+        }
     }
 
     // Call this to stop the tunnel and shutdown the service, leaving the token intact.
