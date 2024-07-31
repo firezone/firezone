@@ -66,7 +66,7 @@ internal class SettingsViewModel
 
         fun onSaveSettingsCompleted() {
             viewModelScope.launch {
-                repo.saveConfig(config).collect {
+                repo.saveSettings(config).collect {
                     actionMutableLiveData.postValue(ViewAction.NavigateBack)
                 }
             }
