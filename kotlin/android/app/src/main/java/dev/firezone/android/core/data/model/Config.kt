@@ -2,7 +2,7 @@
 package dev.firezone.android.core.data.model
 
 data class Config(
-    val authBaseUrl: String,
-    val apiUrl: String,
-    val logFilter: String,
+    var authBaseUrl: String,
+    var apiUrl: String,
+    var logFilter: String,
 )
