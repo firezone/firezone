@@ -8,7 +8,7 @@ async-trait = { version = "0.1", optional = true }
 hickory-proto = { workspace = true, optional = true }
 quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" }
 socket2 = { workspace = true }
-tokio = { version = "1.38", features = ["net"] }
+tokio = { version = "1.39", features = ["net"] }
 tracing = "0.1"
 
 [features]

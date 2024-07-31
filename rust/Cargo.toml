@@ -39,7 +39,7 @@ domain = { version = "0.10", features = ["serde"] }
 dns-lookup = "2.0"
 tokio-tungstenite = "0.21"
 rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_socket"] }
-tokio = "1.38"
+tokio = "1.39"
 
 connlib-client-android = { path = "connlib/clients/android" }
 connlib-client-apple = { path = "connlib/clients/apple" }
@@ -77,8 +77,8 @@ boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master"
 str0m = { git = "https://github.com/firezone/str0m", branch = "main" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
-proptest = { git = "https://github.com/thomaseizinger/proptest", branch = "fix/always-check-acceptable-current-state" }
-proptest-state-machine = { git = "https://github.com/thomaseizinger/proptest", branch = "fix/always-check-acceptable-current-state" }
+proptest = { git = "https://github.com/proptest-rs/proptest", branch = "master" }
+proptest-state-machine = { git = "https://github.com/proptest-rs/proptest", branch = "master" }
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "deps/bump-otel-0.23" } # Waiting for release.
 
 [profile.release]

@@ -211,7 +211,8 @@ impl SimClient {
 ///
 /// The reference state machine is designed to be as abstract as possible over connlib's functionality.
 /// For example, we try to model connectivity to _resources_ and don't really care, which gateway is being used to route us there.
-#[derive(Debug, Clone)]
+#[derive(Clone, derivative::Derivative)]
+#[derivative(Debug)]
 pub struct RefClient {
     pub(crate) id: ClientId,
     pub(crate) key: PrivateKey,
@@ -224,29 +225,41 @@ pub struct RefClient {
     /// The upstream DNS resolvers configured in the portal.
     pub(crate) upstream_dns_resolvers: Vec<DnsServer>,
 
+    pub(crate) internet_resource: Option<ResourceId>,
+
     /// The CIDR resources the client is aware of.
+    #[derivative(Debug = "ignore")]
     pub(crate) cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     /// The DNS resources the client is aware of.
+    #[derivative(Debug = "ignore")]
     pub(crate) dns_resources: BTreeMap<ResourceId, ResourceDescriptionDns>,
 
     /// The client's DNS records.
     ///
     /// The IPs assigned to a domain by connlib are an implementation detail that we don't want to model in these tests.
     /// Instead, we just remember what _kind_ of records we resolved to be able to sample a matching src IP.
+    #[derivative(Debug = "ignore")]
     pub(crate) dns_records: BTreeMap<DomainName, HashSet<RecordType>>,
 
+    /// Whether we are connected to the gateway serving the Internet resource.
+    pub(crate) connected_internet_resources: bool,
+
     /// The CIDR resources the client is connected to.
+    #[derivative(Debug = "ignore")]
     pub(crate) connected_cidr_resources: HashSet<ResourceId>,
 
     /// The DNS resources the client is connected to.
+    #[derivative(Debug = "ignore")]
     pub(crate) connected_dns_resources: HashSet<(ResourceId, DomainName)>,
 
     /// The expected ICMP handshakes.
     ///
     /// This is indexed by gateway because our assertions rely on the order of the sent packets.
+    #[derivative(Debug = "ignore")]
     pub(crate) expected_icmp_handshakes:
         HashMap<GatewayId, VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>>,
     /// The expected DNS handshakes.
+    #[derivative(Debug = "ignore")]
     pub(crate) expected_dns_handshakes: VecDeque<QueryId>,
 }
 
@@ -286,6 +299,43 @@ impl RefClient {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
+    pub(crate) fn on_icmp_packet_to_internet(
+        &mut self,
+        src: IpAddr,
+        dst: IpAddr,
+        seq: u16,
+        identifier: u16,
+        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
+    ) {
+        tracing::Span::current().record("dst", tracing::field::display(dst));
+
+        // Second, if we are not yet connected, check if we have a resource for this IP.
+        let Some(rid) = self.internet_resource else {
+            tracing::debug!("No internet resource");
+            return;
+        };
+        tracing::Span::current().record("resource", tracing::field::display(rid));
+
+        let Some(gateway) = gateway_by_resource(rid) else {
+            tracing::error!("No gateway for resource");
+            return;
+        };
+
+        if self.connected_internet_resources && self.is_tunnel_ip(src) {
+            tracing::debug!("Connected to Internet resource, expecting packet to be routed");
+            self.expected_icmp_handshakes
+                .entry(gateway)
+                .or_default()
+                .push_back((ResourceDst::Internet(dst), seq, identifier));
+            return;
+        }
+
+        // If we have a resource, the first packet will initiate a connection to the gateway.
+        tracing::debug!("Not connected to resource, expecting to trigger connection intent");
+        self.connected_internet_resources = true;
+    }
+
+    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
     pub(crate) fn on_icmp_packet_to_cidr(
         &mut self,
         src: IpAddr,
@@ -297,18 +347,18 @@ impl RefClient {
         tracing::Span::current().record("dst", tracing::field::display(dst));
 
         // Second, if we are not yet connected, check if we have a resource for this IP.
-        let Some(resource) = self.cidr_resource_by_ip(dst) else {
+        let Some(rid) = self.cidr_resource_by_ip(dst) else {
             tracing::debug!("No resource corresponds to IP");
             return;
         };
-        tracing::Span::current().record("resource", tracing::field::display(resource.id));
+        tracing::Span::current().record("resource", tracing::field::display(rid));
 
-        let Some(gateway) = gateway_by_resource(resource.id) else {
+        let Some(gateway) = gateway_by_resource(rid) else {
             tracing::error!("No gateway for resource");
             return;
         };
 
-        if self.is_connected_to_cidr(resource.id) && self.is_tunnel_ip(src) {
+        if self.is_connected_to_cidr(rid) && self.is_tunnel_ip(src) {
             tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
             self.expected_icmp_handshakes
                 .entry(gateway)
@@ -319,7 +369,7 @@ impl RefClient {
 
         // If we have a resource, the first packet will initiate a connection to the gateway.
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.connected_cidr_resources.insert(resource.id);
+        self.connected_cidr_resources.insert(rid);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
@@ -476,8 +526,8 @@ impl RefClient {
             .collect()
     }
 
-    pub(crate) fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<&ResourceDescriptionCidr> {
-        self.cidr_resources.longest_match(ip).map(|(_, r)| r)
+    pub(crate) fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
+        self.cidr_resources.longest_match(ip).map(|(_, r)| r.id)
     }
 
     pub(crate) fn resolved_ip4_for_non_resources(
@@ -533,7 +583,7 @@ impl RefClient {
             return None;
         }
 
-        self.cidr_resource_by_ip(dns_server).map(|r| r.id)
+        self.cidr_resource_by_ip(dns_server)
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
@@ -548,7 +598,15 @@ impl RefClient {
             return true;
         }
 
-        self.cidr_resources.iter().any(|(_, r)| r.id == resource_id)
+        if self.cidr_resources.iter().any(|(_, r)| r.id == resource_id) {
+            return true;
+        }
+
+        if self.internet_resource.is_some_and(|r| r == resource_id) {
+            return true;
+        }
+
+        false
     }
 
     pub(crate) fn all_resources(&self) -> Vec<ResourceDescription> {
@@ -655,11 +713,13 @@ fn ref_client(
                 tunnel_ip6,
                 system_dns_resolvers,
                 upstream_dns_resolvers,
+                internet_resource: Default::default(),
                 cidr_resources: IpNetworkTable::new(),
                 dns_resources: Default::default(),
                 dns_records: Default::default(),
                 connected_cidr_resources: Default::default(),
                 connected_dns_resources: Default::default(),
+                connected_internet_resources: Default::default(),
                 expected_icmp_handshakes: Default::default(),
                 expected_dns_handshakes: Default::default(),
             },
