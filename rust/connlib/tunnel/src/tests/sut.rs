@@ -281,17 +281,13 @@ impl StateMachineTest for TunnelTest {
                     c.sut.set_resources(all_resources);
                 });
             }
-            Transition::RelaysPresence {
-                disconnected,
-                online,
-            } => {
-                for rid in &disconnected {
-                    let disconnected_relay =
-                        state.relays.remove(rid).expect("old relay to be present");
-                    state.network.remove_host(&disconnected_relay);
+            Transition::DeployNewRelays(new_relays) => {
+                for relay in state.relays.values() {
+                    state.network.remove_host(relay);
                 }
+                let disconnected = state.relays.keys().copied().collect::<BTreeSet<_>>();
 
-                let online = online
+                let online = new_relays
                     .into_iter()
                     .map(|(rid, relay)| (rid, relay.map(SimRelay::new, debug_span!("relay", %rid))))
                     .collect::<BTreeMap<_, _>>();
@@ -326,7 +322,7 @@ impl StateMachineTest for TunnelTest {
                         }
                     });
                 }
-                state.relays.extend(online);
+                state.relays = online; // Override all relays.
             }
             Transition::Idle => {
                 const IDLE_DURATION: Duration = Duration::from_secs(5 * 60);

@@ -167,10 +167,7 @@ impl ReferenceStateMachine for ReferenceState {
                 sample::select(resource_ids).prop_map(Transition::DeactivateResource)
             })
             .with(1, roam_client())
-            .with(
-                1,
-                migrate_relays(Just(state.relays.keys().copied().collect())), // Always take down all relays because we can't know which one was sampled for the connection.
-            )
+            .with(1, relays().prop_map(Transition::DeployNewRelays))
             .with(1, Just(Transition::ReconnectPortal))
             .with(1, Just(Transition::Idle))
             .with_if_not_empty(
@@ -399,19 +396,16 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::ReconnectPortal => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
             }
-            Transition::RelaysPresence {
-                disconnected,
-                online,
-            } => {
-                for rid in disconnected {
-                    let disconnected_relay =
-                        state.relays.remove(rid).expect("old host to be present");
-                    state.network.remove_host(&disconnected_relay);
+            Transition::DeployNewRelays(new_relays) => {
+                // Always take down all relays because we can't know which one was sampled for the connection.
+                for relay in state.relays.values() {
+                    state.network.remove_host(relay);
                 }
+                state.relays.clear();
 
-                for (rid, online_relay) in online {
-                    state.relays.insert(*rid, online_relay.clone());
-                    debug_assert!(state.network.add_host(*rid, online_relay));
+                for (rid, new_relay) in new_relays {
+                    state.relays.insert(*rid, new_relay.clone());
+                    debug_assert!(state.network.add_host(*rid, new_relay));
                 }
 
                 // In case we were using the relays, all connections will be cut and require us to make a new one.
@@ -559,17 +553,9 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::DeactivateResource(r) => {
                 state.client.inner().all_resource_ids().contains(r)
             }
-            Transition::RelaysPresence {
-                disconnected,
-                online,
-            } => {
-                let all_old_are_present = disconnected
-                    .iter()
-                    .all(|rid| state.relays.contains_key(rid));
-                let no_new_are_present = online.keys().all(|rid| !state.relays.contains_key(rid));
-
+            Transition::DeployNewRelays(new_relays) => {
                 let mut additional_routes = RoutingTable::default();
-                for (rid, relay) in online {
+                for (rid, relay) in new_relays {
                     if !additional_routes.add_host(*rid, relay) {
                         return false;
                     }
@@ -577,7 +563,7 @@ impl ReferenceStateMachine for ReferenceState {
 
                 let route_overlap = state.network.overlaps_with(&additional_routes);
 
-                all_old_are_present && no_new_are_present && !route_overlap
+                !route_overlap
             }
             Transition::Idle => true,
         }
