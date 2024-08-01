@@ -25,6 +25,7 @@ use stun_codec::{
         attributes::{
             ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
         },
+        errors::AllocationMismatch,
         methods::{ALLOCATE, CHANNEL_BIND, REFRESH},
     },
     rfc8656::attributes::AdditionalAddressFamily,
@@ -343,6 +344,13 @@ impl Allocation {
             match message.method() {
                 ALLOCATE => {
                     self.buffered_channel_bindings.clear();
+                    self.invalidate_allocation();
+
+                    // AllocationMismatch during allocate means we already have an allocation.
+                    // Delete it.
+                    if error.code() == AllocationMismatch::CODEPOINT {
+                        self.authenticate_and_queue(make_delete_allocation_request(), None);
+                    }
                 }
                 CHANNEL_BIND => {
                     let Some(channel) = original_request
@@ -469,6 +477,13 @@ impl Allocation {
                     tracing::warn!("Message does not contain lifetime");
                     return true;
                 };
+
+                // If we refreshed with a lifetime of 0, we deleted our previous allocation.
+                // Make a new one.
+                if lifetime.lifetime().is_zero() {
+                    self.authenticate_and_queue(make_allocate_request(), None);
+                    return true;
+                }
 
                 self.allocation_lifetime = Some((now, lifetime.lifetime()));
 
@@ -1000,6 +1015,14 @@ fn make_allocate_request() -> Message<Attribute> {
     ));
 
     message
+}
+
+/// To delete an allocation, we need to refresh it with a lifetime of 0.
+fn make_delete_allocation_request() -> Message<Attribute> {
+    let mut refresh = make_refresh_request();
+    refresh.add_attribute(Lifetime::from_u32(0));
+
+    refresh
 }
 
 fn make_refresh_request() -> Message<Attribute> {
