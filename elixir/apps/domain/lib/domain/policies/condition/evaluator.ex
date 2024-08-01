@@ -147,14 +147,17 @@ defmodule Domain.Policies.Condition.Evaluator do
     end
   end
 
+  @doc false
   # Merge ranges, eg. 4-11,11-22 = 4-22
-  defp merge_joint_time_ranges(time_ranges) do
+  def merge_joint_time_ranges(time_ranges) do
     Enum.reduce(time_ranges, [], fn {start_time, end_time, timezone}, acc ->
       index =
         Enum.find_index(acc, fn {acc_start_time, acc_end_time, acc_timezone} ->
           acc_timezone == timezone and
             (time_in_range?(start_time, acc_start_time, acc_end_time) or
-               time_in_range?(end_time, acc_start_time, acc_end_time))
+               time_in_range?(end_time, acc_start_time, acc_end_time) or
+               time_in_range?(acc_start_time, start_time, end_time) or
+               time_in_range?(acc_end_time, start_time, end_time))
         end)
 
       if index == nil do

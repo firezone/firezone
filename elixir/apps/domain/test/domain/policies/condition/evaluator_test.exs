@@ -320,6 +320,92 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
     end
   end
 
+  describe "merge_joint_time_ranges/1" do
+    test "does nothing on empty time ranges" do
+      time_ranges = []
+      assert merge_joint_time_ranges(time_ranges) == time_ranges
+    end
+
+    test "does nothing on single time range" do
+      time_ranges = [{~T[10:00:00], ~T[11:00:00], "UTC"}]
+      assert merge_joint_time_ranges(time_ranges) == time_ranges
+    end
+
+    test "does not merge overlapping time ranges that do not overlap" do
+      time_ranges = [
+        {~T[10:00:00], ~T[11:00:00], "UTC"},
+        {~T[11:00:01], ~T[12:00:00], "UTC"}
+      ]
+
+      assert merge_joint_time_ranges(time_ranges) == Enum.reverse(time_ranges)
+    end
+
+    test "does not merge overlapping time ranges that have different timezones" do
+      time_ranges = [
+        {~T[10:00:00], ~T[11:00:00], "UTC"},
+        {~T[10:30:00], ~T[12:00:00], "PDT"}
+      ]
+
+      assert merge_joint_time_ranges(time_ranges) == Enum.reverse(time_ranges)
+    end
+
+    test "merges overlapping time ranges" do
+      time_ranges = [
+        {~T[10:00:00], ~T[11:00:00], "UTC"},
+        {~T[10:30:00], ~T[12:00:00], "UTC"}
+      ]
+
+      assert merge_joint_time_ranges(time_ranges) == [
+               {~T[10:00:00], ~T[12:00:00], "UTC"}
+             ]
+
+      time_ranges = [
+        {~T[10:00:00], ~T[11:00:00], "UTC"},
+        {~T[11:00:00], ~T[12:00:00], "UTC"}
+      ]
+
+      assert merge_joint_time_ranges(time_ranges) == [
+               {~T[10:00:00], ~T[12:00:00], "UTC"}
+             ]
+
+      time_ranges = [
+        {~T[10:00:00], ~T[11:00:00], "UTC"},
+        {~T[09:00:00], ~T[10:00:00], "UTC"}
+      ]
+
+      assert merge_joint_time_ranges(time_ranges) == [
+               {~T[09:00:00], ~T[11:00:00], "UTC"}
+             ]
+
+      time_ranges = [
+        {~T[10:00:00], ~T[11:00:00], "UTC"},
+        {~T[10:00:00], ~T[12:00:00], "UTC"}
+      ]
+
+      assert merge_joint_time_ranges(time_ranges) == [
+               {~T[10:00:00], ~T[12:00:00], "UTC"}
+             ]
+
+      time_ranges = [
+        {~T[10:00:00], ~T[11:00:00], "UTC"},
+        {~T[09:00:00], ~T[12:00:00], "UTC"}
+      ]
+
+      assert merge_joint_time_ranges(time_ranges) == [
+               {~T[09:00:00], ~T[12:00:00], "UTC"}
+             ]
+
+      time_ranges = [
+        {~T[09:00:00], ~T[12:00:00], "UTC"},
+        {~T[10:00:00], ~T[11:00:00], "UTC"}
+      ]
+
+      assert merge_joint_time_ranges(time_ranges) == [
+               {~T[09:00:00], ~T[12:00:00], "UTC"}
+             ]
+    end
+  end
+
   describe "parse_days_of_week_time_ranges/1" do
     test "parses list of days of the week time ranges" do
       assert parse_days_of_week_time_ranges(["M/true/UTC"]) ==
