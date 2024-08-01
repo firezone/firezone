@@ -667,7 +667,7 @@ pub(crate) fn ref_client_host(
         any_ip_stack(),
         any_port(),
         ref_client(tunnel_ip4s, tunnel_ip6s),
-        latency(2000), // Clients might have a horrible Internet connection.
+        latency(300), // TODO: Increase with #6062.
     )
     .prop_filter("at least one DNS server needs to be reachable", |host| {
         // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
