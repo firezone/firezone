@@ -13,9 +13,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import dagger.hilt.android.AndroidEntryPoint
+import dev.firezone.android.core.data.Repository
 import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
+import javax.inject.Inject
 
 @AndroidEntryPoint
 internal class SessionActivity : AppCompatActivity() {
@@ -24,6 +26,10 @@ internal class SessionActivity : AppCompatActivity() {
     private var serviceBound = false
     private val viewModel: SessionViewModel by viewModels()
     private var disabledResources: MutableSet<String> = mutableSetOf()
+
+    @Inject
+    internal lateinit var repo: Repository
+
 
 
     private val serviceConnection =
@@ -37,6 +43,7 @@ internal class SessionActivity : AppCompatActivity() {
                 serviceBound = true
                 tunnelService?.setServiceStateLiveData(viewModel.serviceStatusLiveData)
                 tunnelService?.setResourcesLiveData(viewModel.resourcesLiveData)
+                tunnelService?.resourcesUpdated(disabledResources)
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
@@ -54,6 +61,9 @@ internal class SessionActivity : AppCompatActivity() {
         // Bind to existing TunnelService
         val intent = Intent(this, TunnelService::class.java)
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+
+        disabledResources = repo.getDisabledResources().toMutableSet()
+        tunnelService?.resourcesUpdated(disabledResources)
 
         setupViews()
         setupObservers()
@@ -76,6 +86,7 @@ internal class SessionActivity : AppCompatActivity() {
             disabledResources.remove(resourceToggled.id)
         }
 
+        repo.saveDisabledResources(disabledResources)
         tunnelService?.resourcesUpdated(disabledResources)
     }
 
@@ -115,14 +126,12 @@ internal class SessionActivity : AppCompatActivity() {
 
         viewModel.resourcesLiveData.observe(this) { resources ->
             val newResources = resources.map { it.toViewResource() }
-            val currentMap = resourcesAdapter.currentList.associateBy { it.id }
 
             for (item in newResources) {
                 if (disabledResources.contains(item.id)) {
                     item.enabled = false
                 }
             }
-
 
             Log.d(TAG, "Updating resource adapter with $newResources")
 
