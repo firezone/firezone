@@ -172,7 +172,7 @@ fn show_export_dialog(ctlr_tx: CtlrTx) -> Result<()> {
 /// * `path` - Where the zip archive will be written
 /// * `stem` - A directory containing all the log files inside the zip archive, to avoid creating a ["tar bomb"](https://www.linfo.org/tarbomb.html). This comes from the automatically-generated name of the archive, even if the user changes it to e.g. `logs.zip`
 pub(crate) async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
-    tracing::info!("Exporting logs to {path:?}");
+    tracing::info!("Exporting logs to zip...");
     // Use a temp path so that if the export fails we don't end up with half a zip file
     let temp_path = path.with_extension(".zip-partial");
 

@@ -54,7 +54,8 @@ impl TunDeviceManager {
             .arg(format!("address={}", ipv4))
             .arg("mask=255.255.255.255")
             .stdout(Stdio::null())
-            .status()?;
+            .status()
+            .context("Failed to set IPv4 address")?;
 
         Command::new("netsh")
             .creation_flags(CREATE_NO_WINDOW)
@@ -65,7 +66,8 @@ impl TunDeviceManager {
             .arg(format!("interface=\"{TUNNEL_NAME}\""))
             .arg(format!("address={}", ipv6))
             .stdout(Stdio::null())
-            .status()?;
+            .status()
+            .context("Failed to set IPv6 address")?;
 
         Ok(())
     }
@@ -87,11 +89,11 @@ impl TunDeviceManager {
         }
 
         for new_route in new_routes.difference(&self.routes) {
-            add_route(*new_route, iface_idx)?;
+            add_route(*new_route, iface_idx).context("Failed to add route")?;
         }
 
         for old_route in self.routes.difference(&new_routes) {
-            remove_route(*old_route, iface_idx)?;
+            remove_route(*old_route, iface_idx).context("Failed to remove route")?;
         }
 
         self.routes = new_routes;

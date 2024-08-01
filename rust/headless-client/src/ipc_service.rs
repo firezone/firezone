@@ -307,7 +307,7 @@ impl<'a> Handler<'a> {
                     }
 
                     // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
-                    self.dns_controller.flush()?;
+                    self.dns_controller.flush().context("Failed to flush DNS")?;
                 }
                 self.ipc_tx
                     .send(&msg)
@@ -315,12 +315,20 @@ impl<'a> Handler<'a> {
                     .context("Error while sending IPC message")?
             }
             InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                self.tun_device.set_ips(ipv4, ipv6).await?;
-                self.dns_controller.set_dns(&dns).await?;
+                self.tun_device
+                    .set_ips(ipv4, ipv6)
+                    .await
+                    .context("Failed to set IPs")?;
+                self.dns_controller
+                    .set_dns(&dns)
+                    .await
+                    .context("Failed to control DNS")?;
             }
-            InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                self.tun_device.set_routes(ipv4, ipv6).await?
-            }
+            InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => self
+                .tun_device
+                .set_routes(ipv4, ipv6)
+                .await
+                .context("Failed to set routes")?,
         }
         Ok(())
     }
@@ -404,6 +412,7 @@ fn setup_logging(log_dir: Option<PathBuf>) -> Result<connlib_client_shared::file
     tracing::info!(
         arch = std::env::consts::ARCH,
         git_version = crate::GIT_VERSION,
+        os = std::env::consts::OS,
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
         ?directives
     );
