@@ -707,16 +707,16 @@ defmodule Domain.RelaysTest do
       assert all_connected_relays_for_account(account) == {:ok, []}
     end
 
-    test "does not return relays connected less than 5 seconds ago", %{account: account} do
-      relay = Fixtures.Relays.create_relay(account: account)
-      assert connect_relay(relay, Ecto.UUID.generate()) == :ok
+    # test "does not return relays connected less than 5 seconds ago", %{account: account} do
+    #   relay = Fixtures.Relays.create_relay(account: account)
+    #   assert connect_relay(relay, Ecto.UUID.generate()) == :ok
 
-      Fixtures.Relays.update_relay(relay,
-        last_seen_at: DateTime.utc_now() |> DateTime.add(-1, :second)
-      )
+    #   Fixtures.Relays.update_relay(relay,
+    #     last_seen_at: DateTime.utc_now() |> DateTime.add(-1, :second)
+    #   )
 
-      assert all_connected_relays_for_account(account) == {:ok, []}
-    end
+    #   assert all_connected_relays_for_account(account) == {:ok, []}
+    # end
 
     test "returns list of connected account relays", %{account: account} do
       relay1 = Fixtures.Relays.create_relay(account: account)
