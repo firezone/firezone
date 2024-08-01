@@ -17,8 +17,8 @@ import {
 
 export default function Footer() {
   return (
-    <footer className="relative bg-neutral-900 text-neutral-500">
-      <div className="flex flex-col py-20 justify-center items-center text-center">
+    <footer className="relative bg-neutral-900 p-16 text-neutral-500">
+      <div className="flex flex-col justify-center items-center text-center">
         <h3 className="text-neutral-200 mb-4 text-4xl md:text-6xl text-pretty tracking-tight justify-center font-semibold">
           Ready to get started?
         </h3>
@@ -58,7 +58,7 @@ export default function Footer() {
         </div>
       </div>
       <div className="mx-auto w-full max-w-screen-xl p-4 py-6 lg:py-8">
-        <div className="grid md:grid-cols-3 gap-12">
+        <div className="flex justify-between gap-12">
           <div className="flex md:flex-col justify-between">
             <div className="">
               <Link href="/">
@@ -88,7 +88,7 @@ export default function Footer() {
               />
             </Link>
           </div>
-          <div className="text-sm grid grid-cols-2 content-end md:text-right">
+          <div className="text-sm w-1/3 grid grid-cols-2 content-end md:text-right">
             <div>
               <h2 className="mb-6 font-semibold uppercase md:justify-end">
                 Company
