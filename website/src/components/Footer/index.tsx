@@ -41,13 +41,13 @@ export default function Footer() {
           <div className="mx-auto">
             <button
               type="button"
-              className="text-sm w-48 inline-flex justify-center items-center py-2 px-5 font-semibold text-center text-white rounded hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
+              className="group text-sm w-48 inline-flex justify-center items-center py-2 px-5 font-semibold text-center text-white rounded hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
             >
               <Link
                 href="https://app.firezone.dev/sign_up"
                 className="text-neutral-300 group inline-flex items-center py-0.5 text-sm font-semibold border-b-[1px] border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
               >
-                Try Firezone for Free
+                Try Firezone for free
                 <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-5 h-5" />
               </Link>
             </button>
