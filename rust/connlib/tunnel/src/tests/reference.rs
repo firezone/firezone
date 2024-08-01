@@ -173,6 +173,13 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .with(1, Just(Transition::ReconnectPortal))
             .with(1, Just(Transition::Idle))
+            .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resources_id| {
+                sample::subsequence(resources_id.clone(), resources_id.len()).prop_map(
+                    |resources_id| {
+                        Transition::DisableResources(HashSet::from_iter(resources_id.into_iter()))
+                    },
+                )
+            })
             .with_if_not_empty(
                 10,
                 state.client.inner().ipv4_cidr_resource_dsts(),
@@ -303,6 +310,14 @@ impl ReferenceStateMachine for ReferenceState {
                     client.connected_dns_resources.retain(|(r, _)| r != id);
                 });
             }
+            Transition::DisableResources(resources) => state.client.exec_mut(|client| {
+                client.disabled_resources = resources.clone();
+
+                for id in resources {
+                    client.connected_cidr_resources.remove(id);
+                    client.connected_dns_resources.retain(|(r, _)| r != id);
+                }
+            }),
             Transition::SendDnsQuery {
                 domain,
                 r_type,
@@ -438,6 +453,7 @@ impl ReferenceStateMachine for ReferenceState {
 
                 true
             }
+            Transition::DisableResources(_) => true,
             Transition::SendICMPPacketToNonResourceIp {
                 dst,
                 seq,

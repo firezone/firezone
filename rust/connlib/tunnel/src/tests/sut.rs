@@ -169,6 +169,9 @@ impl StateMachineTest for TunnelTest {
             Transition::DeactivateResource(id) => {
                 state.client.exec_mut(|c| c.sut.remove_resource(id))
             }
+            Transition::DisableResources(resources) => state
+                .client
+                .exec_mut(|c| c.sut.set_disabled_resource(resources)),
             Transition::SendICMPPacketToNonResourceIp {
                 src,
                 dst,

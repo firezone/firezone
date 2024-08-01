@@ -190,6 +190,10 @@ impl StubResolver {
         Some(domain.clone())
     }
 
+    fn knows_resource(&self, resource: &ResourceId) -> bool {
+        self.dns_resources.values().contains(resource)
+    }
+
     // TODO: we can save a few allocations here still
     // We don't need to support multiple questions/qname in a single query because
     // nobody does it and since this run with each packet we want to squeeze as much optimization
@@ -229,6 +233,13 @@ impl StubResolver {
         let maybe_resource = self.match_resource(&domain);
 
         let resource_records = match (qtype, maybe_resource) {
+            (_, Some(resource)) if !self.knows_resource(&resource) => {
+                return Some(ResolveStrategy::ForwardQuery(DnsQuery {
+                    name: domain,
+                    record_type: u16::from(qtype).into(),
+                    query: packet,
+                }))
+            }
             (Rtype::A, Some(resource)) => self.get_or_assign_a_records(domain.clone(), resource),
             (Rtype::AAAA, Some(resource)) => {
                 self.get_or_assign_aaaa_records(domain.clone(), resource)

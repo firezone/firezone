@@ -252,6 +252,10 @@ pub struct RefClient {
     #[derivative(Debug = "ignore")]
     pub(crate) connected_dns_resources: HashSet<(ResourceId, DomainName)>,
 
+    /// Temporarily disabled resources by the UI
+    #[derivative(Debug = "ignore")]
+    pub(crate) disabled_resources: HashSet<ResourceId>,
+
     /// The expected ICMP handshakes.
     ///
     /// This is indexed by gateway because our assertions rely on the order of the sent packets.
@@ -369,7 +373,9 @@ impl RefClient {
 
         // If we have a resource, the first packet will initiate a connection to the gateway.
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.connected_cidr_resources.insert(rid);
+        if !self.disabled_resources.contains(&rid) {
+            self.connected_cidr_resources.insert(rid);
+        }
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
@@ -414,7 +420,9 @@ impl RefClient {
         );
 
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.connected_dns_resources.insert((resource, dst));
+        if !self.disabled_resources.contains(&resource) {
+            self.connected_dns_resources.insert((resource, dst));
+        }
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Network> {
@@ -722,6 +730,7 @@ fn ref_client(
                 connected_internet_resources: Default::default(),
                 expected_icmp_handshakes: Default::default(),
                 expected_dns_handshakes: Default::default(),
+                disabled_resources: Default::default(),
             },
         )
 }
