@@ -25,11 +25,13 @@ pub(crate) struct SimRelay {
 
 pub(crate) fn map_explode<'a>(
     relays: impl Iterator<Item = (&'a RelayId, &'a Host<SimRelay>)> + 'a,
-    username: &'a str,
+    username: impl Into<String>,
 ) -> impl Iterator<Item = (RelayId, RelaySocket, String, String, String)> + 'a {
+    let username = username.into();
+
     relays.map(move |(id, r)| {
         let (socket, username, password, realm) = r.inner().explode(
-            username,
+            &username,
             r.inner().sut.auth_secret(),
             r.inner().sut.public_address(),
         );

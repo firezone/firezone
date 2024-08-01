@@ -316,7 +316,7 @@ impl StateMachineTest for TunnelTest {
                         move |g| {
                             g.sut.update_relays(
                                 disconnected,
-                                BTreeSet::from_iter(map_explode(online, &format!("gateway_{id}"))),
+                                BTreeSet::from_iter(map_explode(online, format!("gateway_{id}"))),
                                 now,
                             )
                         }
