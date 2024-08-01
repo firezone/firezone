@@ -44,15 +44,15 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-neutral-900 bg-hero pt-24 xl:pt-32">
+      <section className="bg-neutral-900 bg-hero pt-28 xl:pt-32">
         <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
-          <div className="absolute translate-y-16 justify-self-center self-center blur-[120px] bg-[rgba(94,82,239,0.5)] rounded-full w-[220px] h-[220px]" />
-          <button className="flex w-fit mb-2 gap-2 text-xs items-center p-1.5 text-neutral-500 font-manrope font-500 border-[1px] rounded-full border-neutral-900 hover:text-neutral-200 transition-all ">
+          {/* <div className="absolute translate-y-16 justify-self-center self-center blur-[120px] bg-[rgba(94,82,239,0.5)] rounded-full w-[220px] h-[220px]" /> */}
+          {/* <button className="flex w-fit mb-2 gap-2 text-xs items-center p-1.5 text-neutral-500 font-manrope font-500 border-[1px] rounded-full border-neutral-900 hover:text-neutral-200 transition-all ">
             <img src="/images/play-icon.svg" className="h-5 w-5" />
             <Link href="/blog">
               <p className="pe-4">Read our latest updates</p>
             </Link>
-          </button>
+          </button> */}
           <h1
             className={
               manrope.className +
