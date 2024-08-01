@@ -4,15 +4,14 @@ import Marquee from "react-fast-marquee";
 
 export function CustomerLogosGrayscale() {
   return (
-    <section
-      className="flex w-full h-full max-w-full max-h-full items-center justify-center m-0 p-0 list-none opacity-100 overflow-hidden"
+    <div
       style={{
         maskImage:
           "linear-gradient(to right, rgba(0, 0, 0, 0) 0%, rgb(0, 0, 0) 35%, rgb(0, 0, 0) 65%, rgba(0, 0, 0, 0) 100%)",
       }}
     >
       <div className="mx-8 grid grid-cols-3 md:grid-cols-7 gap-8">
-        <ul className="content-center">
+        <div className="content-center">
           <Link href="https://corrdyn.com">
             <Image
               alt="corrdyn logo"
@@ -22,8 +21,8 @@ export function CustomerLogosGrayscale() {
               className=" mx-auto"
             />
           </Link>
-        </ul>
-        <ul className="content-center">
+        </div>
+        <div className="content-center">
           <Link href="https://square1.io">
             <Image
               alt="square1 logo"
@@ -33,8 +32,8 @@ export function CustomerLogosGrayscale() {
               className=" mx-auto"
             />
           </Link>
-        </ul>
-        <ul className="content-center">
+        </div>
+        <div className="content-center">
           <Link href="https://bunq.com">
             <Image
               alt="bunq logo"
@@ -44,8 +43,8 @@ export function CustomerLogosGrayscale() {
               className=" mx-auto"
             />
           </Link>
-        </ul>
-        <ul className="content-center">
+        </div>
+        <div className="content-center">
           <Link href="https://wolfram.com">
             <Image
               alt="wolfram logo"
@@ -55,8 +54,8 @@ export function CustomerLogosGrayscale() {
               className=" mx-auto"
             />
           </Link>
-        </ul>
-        <ul className="content-center">
+        </div>
+        <div className="content-center">
           <Link href="https://sebgroup.com">
             <Image
               alt="seb logo"
@@ -66,8 +65,8 @@ export function CustomerLogosGrayscale() {
               className=" mx-auto"
             />
           </Link>
-        </ul>
-        <ul className="content-center">
+        </div>
+        <div className="content-center">
           <Link href="https://teracloud.com">
             <Image
               alt="teracloud logo"
@@ -77,8 +76,8 @@ export function CustomerLogosGrayscale() {
               className="  mx-auto"
             />
           </Link>
-        </ul>
-        <ul className="content-center col-start-2 md:col-auto">
+        </div>
+        <div className="content-center col-start-2 md:col-auto">
           <Link href="https://double11.co.uk">
             <Image
               alt="double11 logo"
@@ -88,9 +87,9 @@ export function CustomerLogosGrayscale() {
               className=" mx-auto"
             />
           </Link>
-        </ul>
+        </div>
       </div>
-    </section>
+    </div>
   );
 }
 
