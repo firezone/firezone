@@ -7,6 +7,7 @@ use domain::base::{
     Message, MessageBuilder, ToName,
 };
 use domain::rdata::AllRecordData;
+use hickory_proto::op::Edns;
 use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::error::{ProtoError, ProtoErrorKind};
 use hickory_resolver::proto::op::MessageType;
@@ -305,6 +306,10 @@ pub(crate) fn build_response_from_resolve_result(
     let mut message = original_pkt.unwrap_as_dns();
 
     message.set_message_type(MessageType::Response);
+    message.set_recursion_available(true);
+    let mut edns = Edns::new();
+    edns.set_max_payload(1232);
+    message.set_edns(edns);
 
     let response = match response.map_err(|err| err.kind().clone()) {
         Ok(response) => message.add_answers(response.records().to_vec()),
