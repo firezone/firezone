@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
-import android.util.Log
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.DividerItemDecoration
@@ -17,6 +16,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
+import dev.firezone.android.tunnel.model.Resource
 
 @AndroidEntryPoint
 internal class SessionActivity : AppCompatActivity() {
@@ -24,6 +24,8 @@ internal class SessionActivity : AppCompatActivity() {
     private var tunnelService: TunnelService? = null
     private var serviceBound = false
     private val viewModel: SessionViewModel by viewModels()
+    private var resourceList: List<Resource> = emptyList()
+    private var showFavorites = false
 
     private val serviceConnection =
         object : ServiceConnection {
@@ -95,8 +97,14 @@ internal class SessionActivity : AppCompatActivity() {
             object : TabLayout.OnTabSelectedListener {
                 override fun onTabSelected(tab: TabLayout.Tab) {
                     when (tab.position) {
-                        RESOURCES_TAB_FAVORITES -> Log.d(TAG, "Favorite Resources")
-                        RESOURCES_TAB_OTHER -> Log.d(TAG, "Other Resources")
+                        RESOURCES_TAB_FAVORITES -> {
+                            showFavorites = true
+                            refreshList()
+                        }
+                        RESOURCES_TAB_OTHER -> {
+                            showFavorites = false
+                            refreshList()
+                        }
                         else -> error("Invalid tab position")
                     }
                 }
@@ -118,9 +126,14 @@ internal class SessionActivity : AppCompatActivity() {
             }
         }
 
-        viewModel.resourcesLiveData.observe(this) { resources ->
-            resourcesAdapter.submitList(resources)
+        viewModel.resourcesLiveData.observe(this) { value ->
+            resourceList = value
+            refreshList()
         }
+    }
+
+    private fun refreshList() {
+        resourcesAdapter.submitList(resourceList.filter { viewModel.getFavoriteResources().contains(it.id) == showFavorites })
     }
 
     companion object {

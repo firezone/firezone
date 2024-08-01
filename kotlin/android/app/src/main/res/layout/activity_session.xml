@@ -64,13 +64,13 @@
         <com.google.android.material.tabs.TabItem
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:icon="@drawable/rounded_discover_tune_black_24dp"
+            android:icon="@drawable/baseline_star_24"
             android:text="@string/resources_favorites" />
 
         <com.google.android.material.tabs.TabItem
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
-            android:icon="@drawable/rounded_description_black_24dp"
+            android:icon="@drawable/baseline_star_outline_24"
             android:text="@string/resources_other" />
 
     </com.google.android.material.tabs.TabLayout>
