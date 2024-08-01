@@ -403,14 +403,7 @@ defmodule API.Client.Channel do
                preload: :group
              ),
            {:ok, gateways} <-
-             filter_compatible_gateways(gateways, socket.assigns.gateway_version_requirement),
-           {:ok, [_ | _] = relays} <- select_relays(socket) do
-        :ok =
-          Enum.each(relays, fn relay ->
-            :ok = Relays.unsubscribe_from_relay_presence(relay)
-            :ok = Relays.subscribe_to_relay_presence(relay)
-          end)
-
+             filter_compatible_gateways(gateways, socket.assigns.gateway_version_requirement) do
         location = {
           socket.assigns.client.last_seen_remote_ip_location_lat,
           socket.assigns.client.last_seen_remote_ip_location_lon
@@ -422,7 +415,6 @@ defmodule API.Client.Channel do
         reply =
           {:ok,
            %{
-             relays: Views.Relay.render_many(relays, socket.assigns.subject.expires_at),
              resource_id: resource_id,
              gateway_group_id: gateway.group_id,
              gateway_id: gateway.id,

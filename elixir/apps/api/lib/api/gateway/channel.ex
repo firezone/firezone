@@ -231,15 +231,6 @@ defmodule API.Gateway.Channel do
       :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
       :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
-      relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(14, :day)
-      {:ok, relays} = select_relays(socket)
-
-      :ok =
-        Enum.each(relays, fn relay ->
-          :ok = Domain.Relays.unsubscribe_from_relay_presence(relay)
-          :ok = Domain.Relays.subscribe_to_relay_presence(relay)
-        end)
-
       opentelemetry_headers = :otel_propagator_text_map.inject([])
       ref = encode_ref(socket, channel_pid, socket_ref, resource_id, opentelemetry_headers)
 
@@ -247,7 +238,6 @@ defmodule API.Gateway.Channel do
         ref: ref,
         flow_id: flow_id,
         actor: Views.Actor.render(client.actor),
-        relays: Views.Relay.render_many(relays, relay_credentials_expire_at),
         resource: Views.Resource.render(resource),
         client: Views.Client.render(client, payload, preshared_key),
         expires_at: DateTime.to_unix(authorization_expires_at, :second)
