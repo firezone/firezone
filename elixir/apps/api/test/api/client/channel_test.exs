@@ -364,6 +364,65 @@ defmodule API.Client.ChannelTest do
       assert relay1_id == relay1.id
     end
 
+    test "subscribes for account relays presence if there were no relays online", %{
+      client: client,
+      subject: subject
+    } do
+      relay_group = Fixtures.Relays.create_global_group()
+      stamp_secret = Ecto.UUID.generate()
+
+      relay = Fixtures.Relays.create_relay(group: relay_group)
+
+      Fixtures.Relays.update_relay(relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
+        last_seen_remote_ip_location_lat: 37.0,
+        last_seen_remote_ip_location_lon: -120.0
+      )
+
+      API.Client.Socket
+      |> socket("client:#{client.id}", %{
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+        client: client,
+        subject: subject
+      })
+      |> subscribe_and_join(API.Client.Channel, "client")
+
+      assert_push "init", %{relays: []}
+
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      assert_push "relays_presence", %{
+        disconnected_ids: [],
+        connected: [relay_view, _relay_view]
+      }
+
+      assert %{
+               addr: _,
+               expires_at: _,
+               id: _,
+               password: _,
+               type: _,
+               username: _
+             } = relay_view
+
+      other_relay = Fixtures.Relays.create_relay(group: relay_group)
+
+      Fixtures.Relays.update_relay(other_relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
+        last_seen_remote_ip_location_lat: 37.0,
+        last_seen_remote_ip_location_lon: -120.0
+      )
+
+      :ok = Domain.Relays.connect_relay(other_relay, stamp_secret)
+      other_relay_id = other_relay.id
+
+      refute_push "relays_presence", %{
+        disconnected_ids: [],
+        connected: [%{id: ^other_relay_id} | _]
+      }
+    end
+
     test "does not return the relay that is disconnected as online one", %{
       client: client,
       subject: subject

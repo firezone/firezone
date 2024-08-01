@@ -291,6 +291,65 @@ defmodule API.Gateway.ChannelTest do
       assert relay_view2.id == relay2.id
       assert relay1_id == relay1.id
     end
+
+    test "subscribes for account relays presence if there were no relays online", %{
+      gateway: gateway,
+      gateway_group: gateway_group
+    } do
+      relay_group = Fixtures.Relays.create_global_group()
+      stamp_secret = Ecto.UUID.generate()
+
+      relay = Fixtures.Relays.create_relay(group: relay_group)
+
+      Fixtures.Relays.update_relay(relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
+        last_seen_remote_ip_location_lat: 37.0,
+        last_seen_remote_ip_location_lon: -120.0
+      )
+
+      API.Gateway.Socket
+      |> socket("gateway:#{gateway.id}", %{
+        gateway: gateway,
+        gateway_group: gateway_group,
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+      })
+      |> subscribe_and_join(API.Gateway.Channel, "gateway")
+
+      assert_push "init", %{relays: []}
+
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      assert_push "relays_presence", %{
+        disconnected_ids: [],
+        connected: [relay_view, _relay_view]
+      }
+
+      assert %{
+               addr: _,
+               expires_at: _,
+               id: _,
+               password: _,
+               type: _,
+               username: _
+             } = relay_view
+
+      other_relay = Fixtures.Relays.create_relay(group: relay_group)
+
+      Fixtures.Relays.update_relay(other_relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
+        last_seen_remote_ip_location_lat: 37.0,
+        last_seen_remote_ip_location_lon: -120.0
+      )
+
+      :ok = Domain.Relays.connect_relay(other_relay, stamp_secret)
+      other_relay_id = other_relay.id
+
+      refute_push "relays_presence", %{
+        disconnected_ids: [],
+        connected: [%{id: ^other_relay_id} | _]
+      }
+    end
   end
 
   describe "handle_info/2 :expire_flow" do

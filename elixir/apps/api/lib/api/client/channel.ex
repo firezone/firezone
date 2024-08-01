@@ -89,6 +89,7 @@ defmodule API.Client.Channel do
       # Return all connected relays for the account
       {:ok, relays} = select_relays(socket)
       :ok = Enum.each(relays, &Relays.subscribe_to_relay_presence/1)
+      :ok = maybe_subscribe_for_relays_presence(relays, socket)
 
       :ok =
         push(socket, "init", %{
@@ -330,6 +331,7 @@ defmodule API.Client.Channel do
         :ok = Relays.unsubscribe_from_relay_presence(relay_id)
 
         {:ok, relays} = select_relays(socket, [relay_id])
+        :ok = maybe_subscribe_for_relays_presence(relays, socket)
 
         :ok =
           Enum.each(relays, fn relay ->
@@ -341,6 +343,43 @@ defmodule API.Client.Channel do
           disconnected_ids: [relay_id],
           connected: Views.Relay.render_many(relays, socket.assigns.subject.expires_at)
         })
+
+        {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(
+        %Phoenix.Socket.Broadcast{
+          event: "presence_diff",
+          topic: "presences:" <> _,
+          payload: %{joins: joins}
+        },
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    if Enum.count(joins) > 0 do
+      OpenTelemetry.Tracer.with_span "client.account_relays_presence" do
+        {:ok, relays} = select_relays(socket)
+
+        if length(relays) > 0 do
+          :ok = Relays.unsubscribe_from_relays_presence_in_account(socket.assigns.subject.account)
+
+          :ok =
+            Enum.each(relays, fn relay ->
+              :ok = Relays.unsubscribe_from_relay_presence(relay)
+              :ok = Relays.subscribe_to_relay_presence(relay)
+            end)
+
+          push(socket, "relays_presence", %{
+            disconnected_ids: [],
+            connected: Views.Relay.render_many(relays, socket.assigns.subject.expires_at)
+          })
+        end
 
         {:noreply, socket}
       end
@@ -620,6 +659,14 @@ defmodule API.Client.Channel do
     relays = Relays.load_balance_relays(location, relays)
 
     {:ok, relays}
+  end
+
+  defp maybe_subscribe_for_relays_presence(relays, socket) do
+    if length(relays) > 0 do
+      :ok
+    else
+      Relays.subscribe_to_relays_presence_in_account(socket.assigns.subject.account)
+    end
   end
 
   defp select_gateway_version_requirement(client) do
