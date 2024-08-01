@@ -1,6 +1,7 @@
 use super::{
     reference::{private_key, PrivateKey, ResourceDst},
     sim_net::{any_ip_stack, any_port, host, Host},
+    sim_relay::{map_explode, SimRelay},
     strategies::{latency, system_dns_servers, upstream_dns_servers},
     sut::domain_to_hickory_name,
     IcmpIdentifier, IcmpSeq, QueryId,
@@ -10,7 +11,7 @@ use bimap::BiMap;
 use connlib_shared::{
     messages::{
         client::{ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns},
-        ClientId, DnsServer, GatewayId, Interface, ResourceId,
+        ClientId, DnsServer, GatewayId, Interface, RelayId, ResourceId,
     },
     proptest::{client_id, domain_name},
     DomainName,
@@ -204,6 +205,19 @@ impl SimClient {
         }
 
         unimplemented!("Unhandled packet")
+    }
+
+    pub(crate) fn update_relays<'a>(
+        &mut self,
+        to_remove: impl Iterator<Item = RelayId>,
+        to_add: impl Iterator<Item = (&'a RelayId, &'a Host<SimRelay>)> + 'a,
+        now: Instant,
+    ) {
+        self.sut.update_relays(
+            to_remove.collect(),
+            map_explode(to_add, "client").collect(),
+            now,
+        )
     }
 }
 
