@@ -7,10 +7,12 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
+import android.util.Log
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.tabs.TabLayout
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
@@ -89,6 +91,22 @@ internal class SessionActivity : AppCompatActivity() {
         binding.rvResourcesList.adapter = resourcesAdapter
         binding.rvResourcesList.layoutManager = layoutManager
 
+        binding.tabLayout.addOnTabSelectedListener(
+            object : TabLayout.OnTabSelectedListener {
+                override fun onTabSelected(tab: TabLayout.Tab) {
+                    when (tab.position) {
+                        RESOURCES_TAB_FAVORITES -> Log.d(TAG, "Favorite Resources")
+                        RESOURCES_TAB_OTHER -> Log.d(TAG, "Other Resources")
+                        else -> error("Invalid tab position")
+                    }
+                }
+
+                override fun onTabUnselected(tab: TabLayout.Tab?) {}
+
+                override fun onTabReselected(tab: TabLayout.Tab) {}
+            },
+        )
+
         resourcesAdapter.setFavoriteResources(viewModel.getFavoriteResources())
     }
 
@@ -107,5 +125,7 @@ internal class SessionActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "SessionActivity"
+        private const val RESOURCES_TAB_FAVORITES = 0
+        private const val RESOURCES_TAB_OTHER = 1
     }
 }

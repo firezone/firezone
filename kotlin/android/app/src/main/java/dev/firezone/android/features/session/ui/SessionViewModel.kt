@@ -24,15 +24,20 @@ internal class SessionViewModel
         val resourcesLiveData: MutableLiveData<List<Resource>>
             get() = _resourcesLiveData
 
+        // Actor name
         fun clearActorName() = repo.clearActorName()
+
         fun getActorName() = repo.getActorNameSync()
 
+        // Favorite Resources
         fun getFavoriteResources() = repo.getFavoritesSync()
+
         fun addFavoriteResource(id: String) {
             val favorites = repo.getFavoritesSync()
             favorites.add(id)
             repo.saveFavoritesSync(favorites)
         }
+
         fun removeFavoriteResource(id: String) {
             val favorites = repo.getFavoritesSync()
             favorites.remove(id)
