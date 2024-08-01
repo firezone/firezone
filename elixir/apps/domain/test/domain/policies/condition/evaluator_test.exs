@@ -337,7 +337,15 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
         {~T[11:00:01], ~T[12:00:00], "UTC"}
       ]
 
-      assert merge_joint_time_ranges(time_ranges) == Enum.reverse(time_ranges)
+      assert merge_joint_time_ranges(time_ranges) == time_ranges
+
+      time_ranges = [
+        {~T[09:00:00], ~T[10:00:00], "UTC"},
+        {~T[11:00:00], ~T[12:00:00], "UTC"},
+        {~T[10:00:01], ~T[10:00:02], "UTC"}
+      ]
+
+      assert merge_joint_time_ranges(time_ranges) == time_ranges
     end
 
     test "does not merge overlapping time ranges that have different timezones" do
@@ -346,7 +354,7 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
         {~T[10:30:00], ~T[12:00:00], "PDT"}
       ]
 
-      assert merge_joint_time_ranges(time_ranges) == Enum.reverse(time_ranges)
+      assert merge_joint_time_ranges(time_ranges) == time_ranges
     end
 
     test "merges overlapping time ranges" do
@@ -402,6 +410,30 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
 
       assert merge_joint_time_ranges(time_ranges) == [
                {~T[09:00:00], ~T[12:00:00], "UTC"}
+             ]
+    end
+
+    test "merges multiple overlapping time ranges" do
+      time_ranges = [
+        {~T[09:00:00], ~T[10:00:00], "UTC"},
+        {~T[11:00:00], ~T[12:00:00], "UTC"},
+        {~T[10:00:00], ~T[11:00:00], "UTC"}
+      ]
+
+      assert merge_joint_time_ranges(time_ranges) == [
+               {~T[09:00:00], ~T[12:00:00], "UTC"}
+             ]
+
+      time_ranges = [
+        {~T[09:00:00], ~T[12:00:00], "UTC"},
+        {~T[11:00:00], ~T[12:00:00], "UTC"},
+        {~T[10:00:00], ~T[11:00:00], "UTC"},
+        {~T[09:00:00], ~T[10:00:00], "UTC"},
+        {~T[01:00:00], ~T[10:00:00], "UTC"}
+      ]
+
+      assert merge_joint_time_ranges(time_ranges) == [
+               {~T[01:00:00], ~T[12:00:00], "UTC"}
              ]
     end
   end

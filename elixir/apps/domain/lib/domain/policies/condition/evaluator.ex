@@ -150,25 +150,33 @@ defmodule Domain.Policies.Condition.Evaluator do
   @doc false
   # Merge ranges, eg. 4-11,11-22 = 4-22
   def merge_joint_time_ranges(time_ranges) do
-    Enum.reduce(time_ranges, [], fn {start_time, end_time, timezone}, acc ->
-      index =
-        Enum.find_index(acc, fn {acc_start_time, acc_end_time, acc_timezone} ->
-          acc_timezone == timezone and
-            (time_in_range?(start_time, acc_start_time, acc_end_time) or
-               time_in_range?(end_time, acc_start_time, acc_end_time) or
-               time_in_range?(acc_start_time, start_time, end_time) or
-               time_in_range?(acc_end_time, start_time, end_time))
-        end)
+    merged_time_ranges =
+      Enum.reduce(time_ranges, [], fn {start_time, end_time, timezone}, acc ->
+        index =
+          Enum.find_index(acc, fn {acc_start_time, acc_end_time, acc_timezone} ->
+            acc_timezone == timezone and
+              (time_in_range?(start_time, acc_start_time, acc_end_time) or
+                 time_in_range?(end_time, acc_start_time, acc_end_time) or
+                 time_in_range?(acc_start_time, start_time, end_time) or
+                 time_in_range?(acc_end_time, start_time, end_time))
+          end)
 
-      if index == nil do
-        [{start_time, end_time, timezone}] ++ acc
-      else
-        {{acc_start_time, acc_end_time, _timezone}, acc} = List.pop_at(acc, index)
-        start_time = Enum.min([start_time, acc_start_time], Time)
-        end_time = Enum.max([end_time, acc_end_time], Time)
-        [{start_time, end_time, timezone}] ++ acc
-      end
-    end)
+        if index == nil do
+          [{start_time, end_time, timezone}] ++ acc
+        else
+          {{acc_start_time, acc_end_time, _timezone}, acc} = List.pop_at(acc, index)
+          start_time = Enum.min([start_time, acc_start_time], Time)
+          end_time = Enum.max([end_time, acc_end_time], Time)
+          [{start_time, end_time, timezone}] ++ acc
+        end
+      end)
+      |> Enum.reverse()
+
+    if merged_time_ranges == time_ranges do
+      merged_time_ranges
+    else
+      merge_joint_time_ranges(merged_time_ranges)
+    end
   end
 
   defp time_in_range?(time, range_start, range_end) do
