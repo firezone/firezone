@@ -44,12 +44,19 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-neutral-900 bg-hero pt-24 xl:pt-32 pb-14">
-        <div className="flex flex-wrap mx-auto md:px-0 px-4 max-w-screen-md">
+      <section className="bg-neutral-900 bg-hero pt-28 xl:pt-32">
+        <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
+          {/* <div className="absolute translate-y-16 justify-self-center self-center blur-[120px] bg-[rgba(94,82,239,0.5)] rounded-full w-[220px] h-[220px]" /> */}
+          {/* <button className="flex w-fit mb-2 gap-2 text-xs items-center p-1.5 text-neutral-500 font-manrope font-500 border-[1px] rounded-full border-neutral-900 hover:text-neutral-200 transition-all ">
+            <img src="/images/play-icon.svg" className="h-5 w-5" />
+            <Link href="/blog">
+              <p className="pe-4">Read our latest updates</p>
+            </Link>
+          </button> */}
           <h1
             className={
               manrope.className +
-              " mb-8 md:text-7xl text-4xl text-center shadow-inner font-medium tracking-tight leading-none text-neutral-300"
+              " mb-8 text-5xl sm:text-6xl md:text-7xl text-center drop-shadow-[inset_0_2px_0_0_rgba(255,255,255,100)] font-medium tracking-tight leading-none bg-gradient-to-b from-white from-70% to-slate-200 text-transparent bg-clip-text"
             }
           >
             Upgrade your VPN to zero-trust access
@@ -57,7 +64,7 @@ export default function Page() {
           <h3
             className={
               manrope.className +
-              " md:mt-0 my-4 text-xl text-center text-neutral-300"
+              " md:mt-0 my-4 text-xl text-center text-neutral-400"
             }
           >
             Firezone is a fast, flexible VPN replacement built on WireGuard®
@@ -84,7 +91,7 @@ export default function Page() {
             </div>
           </div>
         </div>
-        <div className="mt-16 max-w-screen-xl mx-auto">
+        <div className="pt-16 pb-8 max-w-screen-xl mx-auto">
           <div className="text-center text-sm mb-6 font-base text-neutral-600">
             Backed by{" "}
             <Image
@@ -103,9 +110,9 @@ export default function Page() {
       {/* TODO: ACLs for the rest of us */}
 
       {/* Feature section 1: Secure access to your most sensitive resources in minutes. */}
-      <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
-          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
+      <section className="bg-white py-20 md:py-16">
+        <div className="sm:mx-auto px-16 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty sm:text-center">
+          <h3 className=" tracking-tight font-bold inline-block">
             Supercharge your workforce in{" "}
             <span className="text-primary-450">minutes</span>.
           </h3>
@@ -180,9 +187,9 @@ export default function Page() {
       </section>
 
       {/* Feature section 2: Achieve compliance in minutes, not weeks. */}
-      <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
-          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
+      <section className="bg-white py-20 md:py-16">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty  sm:text-center">
+          <h3 className=" tracking-tight font-bold inline-block">
             Achieve compliance{" "}
             <span className="text-primary-450">without </span>
             the headache.
@@ -216,9 +223,9 @@ export default function Page() {
       </section>
 
       {/* Feature section 3: Add 2FA to WireGuard. */}
-      <section className="bg-neutral-50 py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
-          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
+      <section className="bg-neutral-50 py-20 md:py-16">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty sm:text-center">
+          <h3 className=" tracking-tight font-bold inline-block">
             Add <span className="text-primary-450">two-factor </span>
             auth to WireGuard.
           </h3>
@@ -255,9 +262,9 @@ export default function Page() {
       </section>
 
       {/* Feature section 4: Say goodbye to bandwidth problems. */}
-      <section className="bg-neutral-900 text-neutral-50 py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
-          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
+      <section className="bg-neutral-900 text-neutral-50 py-20 md:py-16">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty sm:text-center">
+          <h3 className="tracking-tight font-bold inline-block">
             <Strike>Bandwidth problems.</Strike>
           </h3>
         </div>
@@ -286,9 +293,9 @@ export default function Page() {
       </section>
 
       {/* Feature section 5: No more open firewall ports. */}
-      <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
-          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
+      <section className="bg-white py-20 md:py-16">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty sm:text-center">
+          <h3 className="tracking-tight font-bold inline-block">
             Say <span className="text-primary-450">goodbye</span> to firewall
             configuration.
           </h3>
@@ -318,9 +325,9 @@ export default function Page() {
       </section>
 
       {/* Feature section 6: Runs everywhere your business does. */}
-      <section className="bg-neutral-50 py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
-          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
+      <section className="bg-neutral-50 py-20 md:py-16">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty sm:text-center">
+          <h3 className="tracking-tight font-bold inline-block">
             Runs <span className="text-primary-450">everywhere </span>
             your business does.
           </h3>
@@ -451,9 +458,9 @@ export default function Page() {
       </section>
 
       {/* Feature section 7: Open source for transparency and trust. */}
-      <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
-          <h3 className="text-xl sm:text-2xl md:text-6xl tracking-tight font-bold inline-block">
+      <section className="bg-white py-20 md:py-16">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-4xl md:text-6xl text-pretty sm:text-center">
+          <h3 className="tracking-tight font-bold inline-block">
             <span className="text-primary-450">Open source</span> for
             transparency and trust.
           </h3>
@@ -494,7 +501,7 @@ export default function Page() {
       </section>
 
       {/* Use cases */}
-      <section className="border-t border-neutral-200 py-8 md:py-16 bg-neutral-100">
+      <section className="border-t border-neutral-200 py-20 md:py-16 bg-neutral-100">
         <div className="mx-auto max-w-screen-lg">
           <div className="px-4 flex flex-wrap">
             <h3 className="mb-2 text-2xl md:text-4xl tracking-tight font-bold mr-1">
@@ -517,7 +524,7 @@ export default function Page() {
               />
             </h3>
           </div>
-          <div className="px-4 flex flex-wrap mt-8">
+          <div className="px-4 flex flex-wrap mt-4">
             <h3 className="mb-2 text-xl md:text-2xl tracking-tight font-semibold">
               Here are just a few ways customers are using Firezone:
             </h3>
