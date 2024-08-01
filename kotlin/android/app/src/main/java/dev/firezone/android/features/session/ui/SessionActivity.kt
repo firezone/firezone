@@ -115,7 +115,7 @@ internal class SessionActivity : AppCompatActivity() {
             },
         )
 
-        resourcesAdapter.setFavoriteResources(viewModel.getFavoriteResources())
+        resourcesAdapter.setFavoriteResources(viewModel.favoriteResources.value!!)
     }
 
     private fun setupObservers() {
@@ -130,10 +130,14 @@ internal class SessionActivity : AppCompatActivity() {
             resourceList = value
             refreshList()
         }
+
+        viewModel.favoriteResources.observe(this) {
+            refreshList()
+        }
     }
 
     private fun refreshList() {
-        resourcesAdapter.submitList(resourceList.filter { viewModel.getFavoriteResources().contains(it.id) == showFavorites })
+        resourcesAdapter.submitList(resourceList.filter { viewModel.favoriteResources.value?.contains(it.id) == showFavorites })
     }
 
     companion object {

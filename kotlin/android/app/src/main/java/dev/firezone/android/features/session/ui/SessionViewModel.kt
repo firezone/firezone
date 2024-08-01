@@ -1,6 +1,7 @@
 /* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
+import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -15,10 +16,12 @@ internal class SessionViewModel
     constructor() : ViewModel() {
         @Inject
         internal lateinit var repo: Repository
+        private val _favoriteResources = MutableLiveData<HashSet<String>>()
         private val _serviceStatusLiveData = MutableLiveData<State>()
         private val _resourcesLiveData = MutableLiveData<List<Resource>>(emptyList())
 
-        private val favoriteResources: HashSet<String> = HashSet()
+        val favoriteResources: LiveData<HashSet<String>>
+            get() = _favoriteResources
         val serviceStatusLiveData: MutableLiveData<State>
             get() = _serviceStatusLiveData
         val resourcesLiveData: MutableLiveData<List<Resource>>
@@ -29,19 +32,20 @@ internal class SessionViewModel
 
         fun getActorName() = repo.getActorNameSync()
 
-        // Favorite Resources
-        fun getFavoriteResources() = repo.getFavoritesSync()
-
         fun addFavoriteResource(id: String) {
-            val favorites = repo.getFavoritesSync()
-            favorites.add(id)
-            repo.saveFavoritesSync(favorites)
+            val value = favoriteResources.value ?: HashSet()
+            value.add(id)
+            repo.saveFavoritesSync(value)
+            // Update LiveData
+            _favoriteResources.value = value
         }
 
         fun removeFavoriteResource(id: String) {
-            val favorites = repo.getFavoritesSync()
-            favorites.remove(id)
-            repo.saveFavoritesSync(favorites)
+            val value = favoriteResources.value ?: HashSet()
+            value.remove(id)
+            repo.saveFavoritesSync(value)
+            // Update LiveData
+            _favoriteResources.value = value
         }
 
         fun clearToken() = repo.clearToken()
