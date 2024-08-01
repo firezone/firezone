@@ -22,7 +22,7 @@ export default function GUI({ title }: { title: string }) {
           </ChangeItem>
         </ul>
       </Entry>*/}
-      <Entry version="1.1.8" date={new Date("2024-07-17")}>
+      <Entry version="1.1.8" date={new Date("2024-08-01")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem enable={title === "Linux GUI"} pull="5978">
             Adds network roaming support.
