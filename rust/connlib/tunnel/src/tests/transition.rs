@@ -72,6 +72,12 @@ pub(crate) enum Transition {
     /// Simulate deployment of new relays.
     DeployNewRelays(BTreeMap<RelayId, Host<u64>>),
 
+    /// Simulate network partition of our relays.
+    ///
+    /// In our test, we need partition all relays because we don't know which we use for a connection.
+    /// To avoid having to model that, we partition all of them but reconnect them within the same transition.
+    PartitionRelaysFromPortal,
+
     /// Idle connlib for a while, forcing connection to auto-close.
     Idle,
 }

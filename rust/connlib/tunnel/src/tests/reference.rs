@@ -27,6 +27,7 @@ pub(crate) struct ReferenceState {
     pub(crate) client: Host<RefClient>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
+
     pub(crate) portal: StubPortal,
 
     pub(crate) drop_direct_client_traffic: bool,
@@ -168,6 +169,7 @@ impl ReferenceStateMachine for ReferenceState {
             })
             .with(1, roam_client())
             .with(1, relays().prop_map(Transition::DeployNewRelays))
+            .with(1, Just(Transition::PartitionRelaysFromPortal))
             .with(1, Just(Transition::ReconnectPortal))
             .with(1, Just(Transition::Idle))
             .with_if_not_empty(
@@ -416,6 +418,11 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::Idle => {
                 state.client.exec_mut(|client| client.reset_connections());
             }
+            Transition::PartitionRelaysFromPortal => {
+                if state.drop_direct_client_traffic {
+                    state.client.exec_mut(|client| client.reset_connections());
+                }
+            }
         };
 
         state
@@ -566,6 +573,7 @@ impl ReferenceStateMachine for ReferenceState {
                 !route_overlap
             }
             Transition::Idle => true,
+            Transition::PartitionRelaysFromPortal => true,
         }
     }
 }

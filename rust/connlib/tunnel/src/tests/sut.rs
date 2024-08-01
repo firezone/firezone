@@ -298,6 +298,28 @@ impl StateMachineTest for TunnelTest {
                     state.advance(ref_state, &mut buffered_transmits);
                 }
             }
+            Transition::PartitionRelaysFromPortal => {
+                // 1. Disconnect all relays.
+                state.client.exec_mut(|c| {
+                    c.update_relays(state.relays.keys().copied(), iter::empty(), now)
+                });
+                for gateway in state.gateways.values_mut() {
+                    gateway.exec_mut(|g| {
+                        g.update_relays(state.relays.keys().copied(), iter::empty(), now)
+                    });
+                }
+
+                // 2. Advance state to ensure this is reflected.
+                state.advance(ref_state, &mut buffered_transmits);
+
+                // 3. Reconnect all relays.
+                state
+                    .client
+                    .exec_mut(|c| c.update_relays(iter::empty(), state.relays.iter(), now));
+                for gateway in state.gateways.values_mut() {
+                    gateway.exec_mut(|g| g.update_relays(iter::empty(), state.relays.iter(), now));
+                }
+            }
         };
         state.advance(ref_state, &mut buffered_transmits);
 
