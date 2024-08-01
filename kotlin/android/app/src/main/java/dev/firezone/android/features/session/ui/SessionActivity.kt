@@ -128,12 +128,15 @@ internal class SessionActivity : AppCompatActivity() {
             val newResources = resources.map { it.toViewResource() }
 
             for (item in newResources) {
+                // Preventing a bug where a resource stop beings disableable and we can't re-enable it
+                if (!item.disableable) {
+                    disabledResources.remove(item.id)
+                }
+
                 if (disabledResources.contains(item.id)) {
                     item.enabled = false
                 }
             }
-
-            Log.d(TAG, "Updating resource adapter with $newResources")
 
             resourcesAdapter.submitList(newResources)
         }
