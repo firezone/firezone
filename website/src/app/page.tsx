@@ -111,8 +111,12 @@ export default function Page() {
 
       {/* Feature section 1: Secure access to your most sensitive resources in minutes. */}
       <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
-          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
+        <div className="sm:mx-auto text-5xl md:text-6xl px-4 mb-4 md:mb-8 sm:text-center">
+          <h3
+            className={
+              manrope.className + " tracking-tight font-bold inline-block"
+            }
+          >
             Supercharge your workforce in{" "}
             <span className="text-primary-450">minutes</span>.
           </h3>

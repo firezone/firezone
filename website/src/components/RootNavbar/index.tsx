@@ -69,7 +69,7 @@ const navbarThemeLight: CustomFlowbiteTheme["navbar"] = {
 
 const navbarThemeDark: CustomFlowbiteTheme["navbar"] = {
   root: {
-    base: "fixed top-0 left-0 right-0 z-50 text-neutral-200 items-center bg-neutral-900 px-2 py-2.5 sm:px-4 transition-shadow",
+    base: "fixed top-0 left-0 right-0 z-50 text-neutral-200 items-center bg-neutral-900 px-2 py-2.5 sm:px-4 transition-shadow ",
     rounded: {
       on: "rounded",
       off: "",
@@ -90,7 +90,7 @@ const navbarThemeDark: CustomFlowbiteTheme["navbar"] = {
     base: "flex items-center",
   },
   collapse: {
-    base: "w-full md:block md:w-auto shadow md:shadow-none",
+    base: "w-full h-full bg-neutral-900 md:h-fit md:block md:w-auto shadow md:shadow-none",
     list: "mt-4 flex flex-col md:mt-0 md:flex-row md:space-x-8 md:text-md md:font-medium",
     hidden: {
       on: "hidden",
@@ -98,7 +98,7 @@ const navbarThemeDark: CustomFlowbiteTheme["navbar"] = {
     },
   },
   link: {
-    base: "block py-2 pl-3 pr-4 md:p-0 border-t border-neutral-700 md:border-t-0 md:border-transparent",
+    base: "block py-2 pl-3 pr-4 md:p-0 border-t border-transparent md:border-t-0 md:border-transparent",
     active: {
       on: "rounded text-white md:bg-transparent text-primary-450 font-semibold",
       off: "text-neutral-200 hover:text-primary-450 hover:bg-primary-900 hover:text-primary-450 transition transform duration-50 md:hover:bg-transparent md:hover:border-b-2 md:hover:border-primary-450",
@@ -130,7 +130,7 @@ const dropdownThemeLight: CustomFlowbiteTheme["dropdown"] = {
     },
     base: "z-10 w-fit divide-y divide-neutral-100 rounded shadow focus:outline-none",
     content: "py-1 text-base text-neutral-700",
-    divider: "my-1 h-px bg-neutral-100",
+    divider: "my-1 h-px bg-neutral-400",
     header: "block px-4 py-2 text-sm text-neutral-700",
     hidden: "invisible opacity-0",
     item: {
@@ -146,7 +146,7 @@ const dropdownThemeLight: CustomFlowbiteTheme["dropdown"] = {
     target: "w-fit",
   },
   inlineWrapper:
-    "flex items-center py-2 pl-3 pr-4 md:p-0 text-neutral-700 hover:text-primary-450 md:border-transparent md:border-b-2 md:hover:border-primary-450 duration-50 transition transform",
+    "flex items-center py-2 pl-3 pr-4 md:p-0 text-neutral-700 hover:text-primary-450 md:border-transparent md:border-b-1 md:hover:border-primary-450 duration-50 transition transform",
 };
 
 const dropdownThemeDark: CustomFlowbiteTheme["dropdown"] = {
@@ -175,8 +175,8 @@ const dropdownThemeDark: CustomFlowbiteTheme["dropdown"] = {
     },
     style: {
       dark: "bg-neutral-900 text-white dark:bg-neutral-700",
-      light: "border border-neutral-700 bg-neutral-900 text-neutral-200",
-      auto: "border border-neutral-700 bg-neutral-900 text-neutral-200",
+      light: "border border-neutral-900 bg-neutral-900 text-neutral-200",
+      auto: "border border-neutral-900 bg-neutral-900 text-neutral-200",
     },
     target: "w-fit",
   },
@@ -242,7 +242,9 @@ function applyTheme(
     ...theme,
     root: {
       ...theme?.root,
-      base: `${theme?.root?.base} ${scrollPosition > 0 ? "shadow" : "shadow-none"}`,
+      base: `${theme?.root?.base} ${
+        scrollPosition > 0 ? "shadow" : "shadow-none"
+      }`,
     },
   };
 }
