@@ -25,7 +25,7 @@ internal class SessionActivity : AppCompatActivity() {
     private var serviceBound = false
     private val viewModel: SessionViewModel by viewModels()
     private var resourceList: List<Resource> = emptyList()
-    private var showFavorites = false
+    private var showFavorites = true
 
     private val serviceConnection =
         object : ServiceConnection {
@@ -114,8 +114,6 @@ internal class SessionActivity : AppCompatActivity() {
                 override fun onTabReselected(tab: TabLayout.Tab) {}
             },
         )
-
-        resourcesAdapter.setFavoriteResources(viewModel.favoriteResources.value!!)
     }
 
     private fun setupObservers() {
@@ -134,6 +132,7 @@ internal class SessionActivity : AppCompatActivity() {
         viewModel.favoriteResources.observe(this) {
             refreshList()
         }
+        viewModel.favoriteResources.value = viewModel.repo.getFavoritesSync()
     }
 
     private fun refreshList() {

@@ -36,10 +36,6 @@ internal class ResourcesAdapter() : ListAdapter<Resource, ResourcesAdapter.ViewH
         }
     }
 
-    fun setFavoriteResources(value: HashSet<String>) {
-        favoriteResources = value
-    }
-
     class ViewHolder(private val binding: ListItemResourceBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(resource: Resource) {
             binding.resourceNameText.text = resource.name
