@@ -436,6 +436,21 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
                {~T[01:00:00], ~T[12:00:00], "UTC"}
              ]
     end
+
+    test "merges two sets of overlapping time ranges" do
+      time_ranges = [
+        {~T[09:00:00], ~T[12:00:00], "UTC"},
+        {~T[11:00:00], ~T[13:00:00], "UTC"},
+        {~T[10:00:00], ~T[11:00:00], "UTC"},
+        {~T[02:00:00], ~T[05:00:00], "UTC"},
+        {~T[01:00:00], ~T[08:00:00], "UTC"}
+      ]
+
+      assert merge_joint_time_ranges(time_ranges) == [
+               {~T[09:00:00], ~T[13:00:00], "UTC"},
+               {~T[01:00:00], ~T[08:00:00], "UTC"}
+             ]
+    end
   end
 
   describe "parse_days_of_week_time_ranges/1" do
