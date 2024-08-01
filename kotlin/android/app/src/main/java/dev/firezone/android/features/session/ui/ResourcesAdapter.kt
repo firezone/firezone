@@ -38,16 +38,7 @@ internal class ResourcesAdapter(private val activity: SessionActivity) : ListAda
     }
 
     private fun onSwitchToggled(resource: ViewResource) {
-        val updatedList = currentList.toMutableList().associateBy{ it.id }.toMutableMap()
-        updatedList[resource.id]?.let {
-            updatedList[resource.id] = resource
-        }
-
-        val newList = updatedList.values.toList()
-        // Man... this is a round about way to update the list
-        submitList(newList)
-
-        activity.viewResourceUpdate(newList)
+        activity.onViewResourceToggled(resource)
     }
 
     class ViewHolder(private val binding: ListItemResourceBinding) : RecyclerView.ViewHolder(binding.root) {

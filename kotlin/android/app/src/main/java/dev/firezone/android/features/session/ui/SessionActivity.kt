@@ -23,6 +23,8 @@ internal class SessionActivity : AppCompatActivity() {
     private var tunnelService: TunnelService? = null
     private var serviceBound = false
     private val viewModel: SessionViewModel by viewModels()
+    private var disabledResources: MutableSet<String> = mutableSetOf()
+
 
     private val serviceConnection =
         object : ServiceConnection {
@@ -65,11 +67,16 @@ internal class SessionActivity : AppCompatActivity() {
         }
     }
 
-    fun viewResourceUpdate(resources: List<ViewResource>) {
-        Log.d(TAG, "Updated resources $resources")
-        tunnelService?.let {
-            it.resourcesUpdated(resources)
+    fun onViewResourceToggled(resourceToggled: ViewResource) {
+        Log.d(TAG, "Resource toggled $resourceToggled")
+
+        if (!resourceToggled.enabled) {
+            disabledResources.add(resourceToggled.id)
+        } else {
+            disabledResources.remove(resourceToggled.id)
         }
+
+        tunnelService?.resourcesUpdated(disabledResources)
     }
 
     private fun setupViews() {
@@ -111,12 +118,11 @@ internal class SessionActivity : AppCompatActivity() {
             val currentMap = resourcesAdapter.currentList.associateBy { it.id }
 
             for (item in newResources) {
-                currentMap[item.id]?.let { currentItem ->
-                    Log.d(TAG,"Modifying state of item $item to $currentItem")
-                    item.enabled = currentItem.enabled
-
+                if (disabledResources.contains(item.id)) {
+                    item.enabled = false
                 }
             }
+
 
             Log.d(TAG, "Updating resource adapter with $newResources")
 

@@ -208,10 +208,7 @@ class TunnelService : VpnService() {
     }
 
     // UI updates for resources
-    fun resourcesUpdated(resources: List<ViewResource>) {
-        val disabledResources = resources.filter { !it.enabled }.map { it.id }
-        Log.d(TAG, "disabled resources: $disabledResources")
-
+    fun resourcesUpdated(disabledResources: Set<String>) {
         connlibSessionPtr?.let {
             ConnlibSession.setDisabledResources(it, Gson().toJson(disabledResources))
         }

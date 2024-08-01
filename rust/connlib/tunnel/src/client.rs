@@ -449,7 +449,6 @@ impl ClientState {
             return None;
         };
 
-        tracing::error!("deleteme: {resource}");
         // We read this here to prevent problems with the borrow checker
         let is_dns_resource = self.is_dns_resource(&resource);
 
@@ -788,6 +787,10 @@ impl ClientState {
 
     pub fn set_disabled_resource(&mut self, new_disabled_resources: HashSet<ResourceId>) {
         let current_disabled_resources = self.disabled_resources.clone();
+
+        // We set disabled_resources before anything else so that add_resource knows what resources are enabled right now.
+        self.disabled_resources = new_disabled_resources.clone();
+
         for re_enabled_resource in current_disabled_resources.difference(&new_disabled_resources) {
             let Some(resource) = self.resources_by_id.get(re_enabled_resource) else {
                 continue;
@@ -799,8 +802,6 @@ impl ClientState {
         for disabled_resource in &new_disabled_resources {
             self.disable_resource(*disabled_resource);
         }
-
-        self.disabled_resources = new_disabled_resources;
     }
 
     pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
