@@ -5,15 +5,18 @@ defmodule API.Sockets do
   """
   require Logger
 
-  def options do
+  def options(websocket_overrides \\ []) do
     [
-      websocket: [
-        timeout: :timer.seconds(307),
-        transport_log: :debug,
-        check_origin: :conn,
-        connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
-        error_handler: {__MODULE__, :handle_error, []}
-      ],
+      websocket:
+        Keyword.merge(
+          [
+            transport_log: :debug,
+            check_origin: :conn,
+            connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
+            error_handler: {__MODULE__, :handle_error, []}
+          ],
+          websocket_overrides
+        ),
       longpoll: false
     ]
   end
