@@ -12,16 +12,32 @@ export default function GUI({ title }: { title: string }) {
 
   return (
     <Entries href={href} arches={arches} title={title}>
-      {/*<Entry version="1.1.8" date={new Date("2024-07-17")}>
+      {/*<Entry version="1.1.9" date={new Date("2024-07-17")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem enable={title === "Linux GUI"} pull="5978">
-            Adds network roaming support.
+          <ChangeItem enable={title === "Linux GUI"}>
+            This is a maintenance release with no user-facing changes.
           </ChangeItem>
           <ChangeItem enable={title === "Windows"}>
             This is a maintenance release with no user-facing changes.
           </ChangeItem>
         </ul>
       </Entry>*/}
+      <Entry version="1.1.8" date={new Date("2024-08-01")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem enable={title === "Linux GUI"} pull="5978">
+            Adds network roaming support.
+          </ChangeItem>
+          <ChangeItem enable={title === "Windows"} pull="6051">
+            Fixes "Element not found" error when setting routes.
+          </ChangeItem>
+          <ChangeItem pull="6017">
+            Removes keyboard accelerators, which were not working.
+          </ChangeItem>
+          <ChangeItem pull="6071">
+            Puts angle brackets around hyperlinks in the menu.
+          </ChangeItem>
+        </ul>
+      </Entry>
       <Entry version="1.1.7" date={new Date("2024-07-17")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem enable={title === "Linux GUI"} pull="5848">
