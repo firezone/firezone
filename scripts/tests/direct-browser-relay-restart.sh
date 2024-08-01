@@ -15,7 +15,7 @@ echo "# Simulate rolling deployment of relays"
 docker compose start relay-2
 docker compose kill relay-1 --signal SIGTERM
 
-sleep 7
+sleep 1
 
 echo "# Reload page"
 refresh_page $HTTPBIN 10

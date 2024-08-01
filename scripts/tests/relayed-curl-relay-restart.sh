@@ -10,6 +10,6 @@ client_curl_resource "172.20.0.100/get"
 RELAY_1_PUBLIC_IP4_ADDR="172.28.0.102" docker compose up -d relay-1
 RELAY_2_PUBLIC_IP4_ADDR="172.28.0.202" docker compose up -d relay-2
 
-sleep 10
+sleep 1
 
 client_curl_resource "172.20.0.100/get"
