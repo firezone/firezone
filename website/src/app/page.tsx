@@ -44,12 +44,19 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-neutral-900 bg-hero pt-24 xl:pt-32 pb-14">
-        <div className="flex flex-wrap mx-auto md:px-0 px-4 max-w-screen-md">
+      <section className="bg-neutral-900 bg-hero pt-24 xl:pt-32">
+        <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
+          <div className="absolute translate-y-16 justify-self-center self-center blur-[120px] bg-[rgba(94,82,239,0.5)] rounded-full w-[220px] h-[220px]" />
+          <button className="flex w-fit mb-2 gap-2 text-xs items-center p-1.5 text-neutral-500 font-manrope font-500 border-[1px] rounded-full border-neutral-900 hover:text-neutral-200 transition-all ">
+            <img src="/images/play-icon.svg" className="h-5 w-5" />
+            <Link href="/blog">
+              <p className="pe-4">Read our latest updates</p>
+            </Link>
+          </button>
           <h1
             className={
               manrope.className +
-              " mb-8 md:text-7xl text-4xl text-center shadow-inner font-medium tracking-tight leading-none text-neutral-300"
+              " mb-8 text-5xl sm:text-6xl md:text-7xl text-center drop-shadow-[inset_0_2px_0_0_rgba(255,255,255,100)] font-medium tracking-tight leading-none bg-gradient-to-b from-white from-70% to-slate-200 text-transparent bg-clip-text"
             }
           >
             Upgrade your VPN to zero-trust access
@@ -57,7 +64,7 @@ export default function Page() {
           <h3
             className={
               manrope.className +
-              " md:mt-0 my-4 text-xl text-center text-neutral-300"
+              " md:mt-0 my-4 text-xl text-center text-neutral-400"
             }
           >
             Firezone is a fast, flexible VPN replacement built on WireGuard®
@@ -84,7 +91,7 @@ export default function Page() {
             </div>
           </div>
         </div>
-        <div className="mt-16 max-w-screen-xl mx-auto">
+        <div className="pt-16 pb-8 max-w-screen-xl mx-auto">
           <div className="text-center text-sm mb-6 font-base text-neutral-600">
             Backed by{" "}
             <Image
