@@ -136,6 +136,11 @@ defmodule Domain.Fixtures.Relays do
     %{relay | online?: false}
   end
 
+  def update_relay(relay, changes) do
+    Ecto.Changeset.change(relay, changes)
+    |> Repo.update!()
+  end
+
   def delete_relay(relay) do
     relay = Repo.preload(relay, :account)
 

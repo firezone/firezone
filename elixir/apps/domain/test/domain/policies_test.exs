@@ -979,7 +979,7 @@ defmodule Domain.PoliciesTest do
         ]
       }
 
-      assert ensure_client_conforms_policy_conditions(client, policy) == :ok
+      assert ensure_client_conforms_policy_conditions(client, policy) == {:ok, nil}
     end
 
     test "returns error when client conforms to policy conditions", %{} do
