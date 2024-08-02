@@ -10,6 +10,11 @@ pub const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Clone, Copy, Debug)]
 pub enum DnsControlMethod {
+    /// Explicitly disable DNS control.
+    ///
+    /// We don't use an `Option<Method>` because leaving out the CLI arg should
+    /// use NRPT, not disable DNS control.
+    Disabled,
     /// NRPT, the only DNS control method we use on Windows.
     Nrpt,
 }
@@ -17,14 +22,6 @@ pub enum DnsControlMethod {
 impl Default for DnsControlMethod {
     fn default() -> Self {
         Self::Nrpt
-    }
-}
-
-impl DnsControlMethod {
-    /// Needed to match Linux
-    #[allow(clippy::unnecessary_wraps)]
-    pub fn from_env() -> Option<DnsControlMethod> {
-        Some(DnsControlMethod::Nrpt)
     }
 }
 

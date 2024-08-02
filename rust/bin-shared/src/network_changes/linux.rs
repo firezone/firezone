@@ -30,11 +30,13 @@ struct SignalParams {
 /// Should be equivalent to `dbus-monitor --system "type='signal',interface='org.freedesktop.DBus.Properties',path='/org/freedesktop/resolve1',member='PropertiesChanged'"`
 pub async fn new_dns_notifier(
     _tokio_handle: tokio::runtime::Handle,
-    method: Option<DnsControlMethod>,
+    method: DnsControlMethod,
 ) -> Result<Worker> {
     match method {
-        Some(DnsControlMethod::EtcResolvConf) | None => Ok(Worker::new_dns_poller()),
-        Some(DnsControlMethod::Systemd) => {
+        DnsControlMethod::Disabled | DnsControlMethod::EtcResolvConf => {
+            Ok(Worker::new_dns_poller())
+        }
+        DnsControlMethod::Systemd => {
             Worker::new_dbus(SignalParams {
                 dest: "org.freedesktop.resolve1",
                 path: "/org/freedesktop/resolve1",
@@ -51,11 +53,11 @@ pub async fn new_dns_notifier(
 /// Should be similar to `dbus-monitor --system "type='signal',interface='org.freedesktop.NetworkManager',member='StateChanged'"`
 pub async fn new_network_notifier(
     _tokio_handle: tokio::runtime::Handle,
-    method: Option<DnsControlMethod>,
+    method: DnsControlMethod,
 ) -> Result<Worker> {
     match method {
-        Some(DnsControlMethod::EtcResolvConf) | None => Ok(Worker::Null),
-        Some(DnsControlMethod::Systemd) => {
+        DnsControlMethod::Disabled | DnsControlMethod::EtcResolvConf => Ok(Worker::Null),
+        DnsControlMethod::Systemd => {
             Worker::new_dbus(SignalParams {
                 dest: "org.freedesktop.NetworkManager",
                 path: "/org/freedesktop/NetworkManager",

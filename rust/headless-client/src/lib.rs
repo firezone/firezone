@@ -11,6 +11,7 @@
 use anyhow::{Context as _, Result};
 use connlib_client_shared::{Callbacks, Error as ConnlibError};
 use connlib_shared::callbacks;
+use firezone_bin_shared::DnsControlMethod;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::PathBuf,
@@ -68,6 +69,9 @@ const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 /// CLI args common to both the IPC service and the headless Client
 #[derive(clap::Args)]
 struct CliCommon {
+    #[arg(long, env = "FIREZONE_DNS_CONTROL")]
+    dns_control: Option<DnsControlMethod>,
+
     /// File logging directory. Should be a path that's writeable by the current user.
     #[arg(short, long, env = "LOG_DIR")]
     log_dir: Option<PathBuf>,
@@ -76,6 +80,12 @@ struct CliCommon {
     /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
     #[arg(short, long, env = "MAX_PARTITION_TIME")]
     max_partition_time: Option<humantime::Duration>,
+}
+
+impl CliCommon {
+    fn dns_control(&self) -> DnsControlMethod {
+        self.dns_control.unwrap_or_default()
+    }
 }
 
 /// Messages we get from connlib, including ones that aren't sent to IPC clients

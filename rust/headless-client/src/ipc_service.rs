@@ -7,6 +7,7 @@ use crate::{
 use anyhow::{Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
+use firezone_bin_shared::{DnsControlMethod, TunDeviceManager};
 use futures::{
     future::poll_fn,
     task::{Context, Poll},
@@ -21,7 +22,6 @@ use url::Url;
 pub mod ipc;
 use backoff::ExponentialBackoffBuilder;
 use connlib_shared::get_user_agent;
-use firezone_bin_shared::TunDeviceManager;
 use ipc::{Server as IpcServer, ServiceId};
 use phoenix_channel::PhoenixChannel;
 use secrecy::Secret;
@@ -92,12 +92,12 @@ pub fn run_only_ipc_service() -> Result<()> {
     match cli.command {
         Cmd::Install => platform::install_ipc_service(),
         Cmd::Run => platform::run_ipc_service(cli.common),
-        Cmd::RunDebug => run_debug_ipc_service(),
+        Cmd::RunDebug => run_debug_ipc_service(cli),
         Cmd::RunSmokeTest => run_smoke_test(),
     }
 }
 
-fn run_debug_ipc_service() -> Result<()> {
+fn run_debug_ipc_service(cli: Cli) -> Result<()> {
     crate::setup_stdout_logging()?;
     tracing::info!(
         arch = std::env::consts::ARCH,
@@ -108,7 +108,7 @@ fn run_debug_ipc_service() -> Result<()> {
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
-    rt.block_on(ipc_listen(&mut signals))
+    rt.block_on(ipc_listen(cli.common.dns_control(), &mut signals))
 }
 
 #[cfg(not(debug_assertions))]
@@ -124,7 +124,9 @@ fn run_smoke_test() -> Result<()> {
     crate::setup_stdout_logging()?;
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
-    let mut dns_controller = DnsController::default();
+    let mut dns_controller = DnsController {
+        dns_control_method: Default::default(),
+    };
     // Deactivate Firezone DNS control in case the system or IPC service crashed
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
@@ -146,12 +148,15 @@ fn run_smoke_test() -> Result<()> {
 ///
 /// If an IPC client is connected when we catch a terminate signal, we send the
 /// client a hint about that before we exit.
-async fn ipc_listen(signals: &mut signals::Terminate) -> Result<()> {
+async fn ipc_listen(
+    dns_control_method: DnsControlMethod,
+    signals: &mut signals::Terminate,
+) -> Result<()> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
     device_id::get_or_create().context("Failed to read / create device ID")?;
     let mut server = IpcServer::new(ServiceId::Prod).await?;
-    let mut dns_controller = DnsController::default();
+    let mut dns_controller = DnsController { dns_control_method };
     loop {
         let mut handler_fut = pin!(Handler::new(&mut server, &mut dns_controller));
         let Some(handler) = poll_fn(|cx| {
@@ -371,7 +376,10 @@ impl<'a> Handler<'a> {
                     Session::connect(args, portal, tokio::runtime::Handle::try_current()?);
                 let tun = self.tun_device.make_tun()?;
                 new_session.set_tun(Box::new(tun));
-                new_session.set_dns(dns_control::system_resolvers().unwrap_or_default());
+                new_session.set_dns(
+                    dns_control::system_resolvers(self.dns_controller.dns_control_method)
+                        .unwrap_or_default(),
+                );
                 self.connlib = Some(new_session);
             }
             ClientMsg::Disconnect => {
@@ -459,11 +467,12 @@ mod tests {
     fn cli() {
         let exe_name = "firezone-client-ipc";
 
-        let actual = Cli::parse_from([exe_name, "--log-dir", "bogus_log_dir", "run-debug"]);
+        let actual =
+            Cli::try_parse_from([exe_name, "--log-dir", "bogus_log_dir", "run-debug"]).unwrap();
         assert!(matches!(actual.command, Cmd::RunDebug));
         assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
-        let actual = Cli::parse_from([exe_name, "run"]);
+        let actual = Cli::try_parse_from([exe_name, "run"]).unwrap();
         assert!(matches!(actual.command, Cmd::Run));
     }
 }
