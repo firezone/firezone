@@ -25,7 +25,7 @@ export default function Footer() {
         <h4 className="text-neutral-200 text-md tracking-tight">
           Give your organization the protection it deserves.
         </h4>
-        <div className="flex md:flex-row flex-col justify-center md:items-end items-center md:w-fit w-full md:gap-8 gap-4 my-8">
+        <div className="flex sm:flex-row flex-col justify-center sm:items-end items-center sm:w-fit w-full sm:gap-8 gap-4 my-8">
           <div className=" mx-auto px-4 md:px-0 ">
             <button
               type="button"
@@ -41,18 +41,18 @@ export default function Footer() {
           <div className=" mx-auto ">
             <button
               type="button"
-              className="group text-sm md:w-48 w-full inline-flex justify-center items-center py-2 px-0 font-semibold text-center text-white rounded hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
+              className="group text-sm md:w-48 w-full inline-flex justify-center items-center py-0 px-0 font-semibold text-center text-white rounded hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
             >
               <Link
                 href="https://app.firezone.dev/sign_up"
                 className="text-neutral-300 w-full group inline-flex justify-center
-                 items-center py-0.5 text-sm font-semibold border-b-[1px] border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
+                 items-center py-2 text-sm font-semibold border-b-[1px] border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
               >
                 <p>Try Firezone for free</p>
                 <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-5 h-5" />
               </Link>
             </button>
-            <p className="md:mt-3 mt-1 text-xs text-neutral-400">
+            <p className="mt-3 text-xs text-neutral-400">
               No credit card required. Cancel anytime.
             </p>
           </div>
