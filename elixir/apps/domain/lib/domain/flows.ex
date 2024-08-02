@@ -32,7 +32,7 @@ defmodule Domain.Flows do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()),
          {:ok, resource} <-
            Resources.fetch_and_authorize_resource_by_id(resource_id, subject, opts),
-         {:ok, policy} <- fetch_conforming_policy(resource, client) do
+         {:ok, policy, conformation_expires_at} <- fetch_conforming_policy(resource, client) do
       flow =
         Flow.Changeset.create(%{
           token_id: token_id,
@@ -44,7 +44,7 @@ defmodule Domain.Flows do
           client_remote_ip: client_remote_ip,
           client_user_agent: client_user_agent,
           gateway_remote_ip: gateway_remote_ip,
-          expires_at: expires_at
+          expires_at: conformation_expires_at || expires_at
         })
         |> Repo.insert!()
 
@@ -55,8 +55,8 @@ defmodule Domain.Flows do
   defp fetch_conforming_policy(%Resources.Resource{} = resource, client) do
     Enum.reduce_while(resource.authorized_by_policies, {:error, []}, fn policy, {:error, acc} ->
       case Policies.ensure_client_conforms_policy_conditions(client, policy) do
-        :ok ->
-          {:halt, {:ok, policy}}
+        {:ok, expires_at} ->
+          {:halt, {:ok, policy, expires_at}}
 
         {:error, {:forbidden, violated_properties: violated_properties}} ->
           {:cont, {:error, violated_properties ++ acc}}
@@ -66,8 +66,8 @@ defmodule Domain.Flows do
       {:error, violated_properties} ->
         {:error, {:forbidden, violated_properties: violated_properties}}
 
-      {:ok, policy} ->
-        {:ok, policy}
+      {:ok, policy, expires_at} ->
+        {:ok, policy, expires_at}
     end
   end
 

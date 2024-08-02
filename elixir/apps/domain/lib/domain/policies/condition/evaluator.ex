@@ -6,79 +6,118 @@ defmodule Domain.Policies.Condition.Evaluator do
   @days_of_week ~w[M T W R F S U]
 
   def ensure_conforms([], %Clients.Client{}) do
-    :ok
+    {:ok, nil}
   end
 
   def ensure_conforms(conditions, %Clients.Client{} = client) when is_list(conditions) do
     client = Repo.preload(client, :identity)
 
     conditions
-    |> Enum.reduce([], fn condition, violated_properties ->
-      cond do
-        conforms?(condition, client) -> violated_properties
-        condition.property in violated_properties -> violated_properties
-        true -> [condition.property | violated_properties]
+    |> Enum.reduce({[], nil}, fn condition, {violated_properties, min_expires_at} ->
+      if condition.property in violated_properties do
+        {violated_properties, min_expires_at}
+      else
+        case fetch_conformation_expiration(condition, client) do
+          {:ok, expires_at} ->
+            {violated_properties, min_expires_at(expires_at, min_expires_at)}
+
+          :error ->
+            {[condition.property | violated_properties], min_expires_at}
+        end
       end
     end)
     |> case do
-      [] -> :ok
-      violated_properties -> {:error, Enum.reverse(violated_properties)}
+      {[], expires_at} -> {:ok, expires_at}
+      {violated_properties, _expires_at} -> {:error, Enum.reverse(violated_properties)}
     end
   end
 
-  def conforms?(
+  defp min_expires_at(expires_at, nil), do: expires_at
+
+  defp min_expires_at(expires_at, min_expires_at),
+    do: Enum.min([expires_at, min_expires_at], DateTime)
+
+  def fetch_conformation_expiration(
         %Condition{property: :remote_ip_location_region, operator: :is_in, values: values},
         %Clients.Client{} = client
       ) do
-    client.last_seen_remote_ip_location_region in values
+    if client.last_seen_remote_ip_location_region in values do
+      {:ok, nil}
+    else
+      :error
+    end
   end
 
-  def conforms?(
+  def fetch_conformation_expiration(
         %Condition{property: :remote_ip_location_region, operator: :is_not_in, values: values},
         %Clients.Client{} = client
       ) do
-    client.last_seen_remote_ip_location_region not in values
+    if client.last_seen_remote_ip_location_region in values do
+      :error
+    else
+      {:ok, nil}
+    end
   end
 
-  def conforms?(
+  def fetch_conformation_expiration(
         %Condition{property: :remote_ip, operator: :is_in_cidr, values: values},
         %Clients.Client{} = client
       ) do
-    Enum.any?(values, fn cidr ->
+    Enum.reduce_while(values, :error, fn cidr, :error ->
       {:ok, inet} = Domain.Types.INET.cast(cidr)
       cidr = %{inet | netmask: inet.netmask || Domain.Types.CIDR.max_netmask(inet)}
-      Domain.Types.CIDR.contains?(cidr, client.last_seen_remote_ip)
+
+      if Domain.Types.CIDR.contains?(cidr, client.last_seen_remote_ip) do
+        {:halt, {:ok, nil}}
+      else
+        {:cont, :error}
+      end
     end)
   end
 
-  def conforms?(
+  def fetch_conformation_expiration(
         %Condition{property: :remote_ip, operator: :is_not_in_cidr, values: values},
         %Clients.Client{} = client
       ) do
-    Enum.all?(values, fn cidr ->
+    Enum.reduce_while(values, {:ok, nil}, fn cidr, {:ok, nil} ->
       {:ok, inet} = Domain.Types.INET.cast(cidr)
       cidr = %{inet | netmask: inet.netmask || Domain.Types.CIDR.max_netmask(inet)}
-      not Domain.Types.CIDR.contains?(cidr, client.last_seen_remote_ip)
+
+      if Domain.Types.CIDR.contains?(cidr, client.last_seen_remote_ip) do
+        {:halt, :error}
+      else
+        {:cont, {:ok, nil}}
+      end
     end)
   end
 
-  def conforms?(
+  def fetch_conformation_expiration(
         %Condition{property: :provider_id, operator: :is_in, values: values},
         %Clients.Client{} = client
       ) do
     client = Repo.preload(client, :identity)
-    client.identity.provider_id in values
+
+    if client.identity.provider_id in values do
+      {:ok, nil}
+    else
+      :error
+    end
   end
 
-  def conforms?(
+  def fetch_conformation_expiration(
         %Condition{property: :provider_id, operator: :is_not_in, values: values},
         %Clients.Client{} = client
       ) do
     client = Repo.preload(client, :identity)
-    client.identity.provider_id not in values
+
+    if client.identity.provider_id in values do
+      :error
+    else
+      {:ok, nil}
+    end
   end
 
-  def conforms?(
+  def fetch_conformation_expiration(
         %Condition{
           property: :current_utc_datetime,
           operator: :is_in_day_of_week_time_ranges,
@@ -86,33 +125,75 @@ defmodule Domain.Policies.Condition.Evaluator do
         },
         %Clients.Client{}
       ) do
-    datetime_in_day_of_the_week_time_ranges?(DateTime.utc_now(), values)
+    case find_day_of_the_week_time_range(values, DateTime.utc_now()) do
+      nil -> :error
+      expires_at -> {:ok, expires_at}
+    end
   end
 
-  def datetime_in_day_of_the_week_time_ranges?(datetime, dow_time_ranges) do
+  def find_day_of_the_week_time_range(dow_time_ranges, datetime) do
     dow_time_ranges
     |> parse_days_of_week_time_ranges()
     |> case do
       {:ok, dow_time_ranges} ->
-        Enum.any?(dow_time_ranges, fn {day, time_ranges} ->
+        dow_time_ranges
+        |> Enum.find_value(fn {day, time_ranges} ->
+          time_ranges = merge_joint_time_ranges(time_ranges)
           datetime_in_time_ranges?(datetime, day, time_ranges)
         end)
 
       {:error, _reason} ->
-        false
+        nil
     end
   end
 
+  @doc false
+  # Merge ranges, eg. 4-11,11-22 = 4-22
+  def merge_joint_time_ranges(time_ranges) do
+    merged_time_ranges =
+      Enum.reduce(time_ranges, [], fn {start_time, end_time, timezone}, acc ->
+        index =
+          Enum.find_index(acc, fn {acc_start_time, acc_end_time, acc_timezone} ->
+            acc_timezone == timezone and
+              (time_in_range?(start_time, acc_start_time, acc_end_time) or
+                 time_in_range?(end_time, acc_start_time, acc_end_time) or
+                 time_in_range?(acc_start_time, start_time, end_time) or
+                 time_in_range?(acc_end_time, start_time, end_time))
+          end)
+
+        if index == nil do
+          [{start_time, end_time, timezone}] ++ acc
+        else
+          {{acc_start_time, acc_end_time, _timezone}, acc} = List.pop_at(acc, index)
+          start_time = Enum.min([start_time, acc_start_time], Time)
+          end_time = Enum.max([end_time, acc_end_time], Time)
+          [{start_time, end_time, timezone}] ++ acc
+        end
+      end)
+      |> Enum.reverse()
+
+    if merged_time_ranges == time_ranges do
+      merged_time_ranges
+    else
+      merge_joint_time_ranges(merged_time_ranges)
+    end
+  end
+
+  defp time_in_range?(time, range_start, range_end) do
+    Time.compare(range_start, time) in [:lt, :eq] and
+      Time.compare(time, range_end) in [:lt, :eq]
+  end
+
   defp datetime_in_time_ranges?(datetime, day_of_the_week, time_ranges) do
-    Enum.any?(time_ranges, fn {start_time, end_time, timezone} ->
-      {:ok, datetime} = DateTime.shift_zone(datetime, timezone, Tzdata.TimeZoneDatabase)
+    Enum.find_value(time_ranges, fn {start_time, end_time, timezone} ->
+      datetime = DateTime.shift_zone!(datetime, timezone, Tzdata.TimeZoneDatabase)
       date = DateTime.to_date(datetime)
       time = DateTime.to_time(datetime)
 
-      if Enum.at(@days_of_week, Date.day_of_week(date) - 1) == day_of_the_week do
-        Time.compare(start_time, time) != :gt and Time.compare(time, end_time) != :gt
-      else
-        false
+      if Enum.at(@days_of_week, Date.day_of_week(date) - 1) == day_of_the_week and
+           Time.compare(start_time, time) != :gt and Time.compare(time, end_time) != :gt do
+        DateTime.new!(date, end_time, timezone, Tzdata.TimeZoneDatabase)
+        |> DateTime.shift_zone!("UTC", Tzdata.TimeZoneDatabase)
       end
     end)
   end
