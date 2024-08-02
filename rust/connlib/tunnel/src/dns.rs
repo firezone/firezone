@@ -305,6 +305,7 @@ pub(crate) fn build_response_from_resolve_result(
     let mut message = original_pkt.unwrap_as_dns();
 
     message.set_message_type(MessageType::Response);
+    message.set_recursion_available(true);
 
     let response = match response.map_err(|err| err.kind().clone()) {
         Ok(response) => message.add_answers(response.records().to_vec()),

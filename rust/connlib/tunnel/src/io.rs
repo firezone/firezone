@@ -273,6 +273,8 @@ fn create_resolvers(
 
             let mut resolver_opts = ResolverOpts::default();
             resolver_opts.edns0 = true;
+            resolver_opts.cache_size = 0;
+            resolver_opts.attempts = 1;
 
             (
                 sentinel,
