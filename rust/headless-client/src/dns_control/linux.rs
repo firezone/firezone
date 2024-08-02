@@ -1,29 +1,9 @@
+use super::DnsController;
 use anyhow::{bail, Context as _, Result};
 use firezone_bin_shared::{DnsControlMethod, TunDeviceManager};
 use std::{net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;
-
-pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
-    get_system_default_resolvers_systemd_resolved()
-}
-
-/// Controls system-wide DNS.
-///
-/// Always call `deactivate` when Firezone starts.
-///
-/// Only one of these should exist on the entire system at a time.
-pub(crate) struct DnsController {
-    pub dns_control_method: DnsControlMethod,
-}
-
-impl Drop for DnsController {
-    fn drop(&mut self) {
-        if let Err(error) = self.deactivate() {
-            tracing::error!(?error, "Failed to deactivate DNS control");
-        }
-    }
-}
 
 impl DnsController {
     #[allow(clippy::unnecessary_wraps)]

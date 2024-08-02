@@ -8,7 +8,7 @@ use std::path::PathBuf;
 /// Also used for self-elevation
 pub const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
 pub enum DnsControlMethod {
     /// Explicitly disable DNS control.
     ///
