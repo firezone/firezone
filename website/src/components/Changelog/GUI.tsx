@@ -12,20 +12,46 @@ export default function GUI({ title }: { title: string }) {
 
   return (
     <Entries href={href} arches={arches} title={title}>
-      {/*<Entry version="1.1.8" date={new Date("2024-07-17")}>
+      {/*
+      <Entry version="1.1.10" date={new Date("Invalid date")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem enable={title === "Linux GUI"} pull="5978">
-            Adds network roaming support.
+          <ChangeItem enable={title === "Linux GUI"}>
+            This is a maintenance release with no user-facing changes.
           </ChangeItem>
           <ChangeItem enable={title === "Windows"}>
             This is a maintenance release with no user-facing changes.
           </ChangeItem>
         </ul>
-      </Entry>*/}
+      </Entry>
+      */}
+      <Entry version="1.1.9" date={new Date("2024-08-02")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6143">
+            Fixes an issue where DNS queries could time out on some networks.
+          </ChangeItem>
+        </ul>
+      </Entry>
+      <Entry version="1.1.8" date={new Date("2024-08-01")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem enable={title === "Linux GUI"} pull="5978">
+            Adds network roaming support.
+          </ChangeItem>
+          <ChangeItem enable={title === "Windows"} pull="6051">
+            Fixes "Element not found" error when setting routes.
+          </ChangeItem>
+          <ChangeItem pull="6017">
+            Removes keyboard accelerators, which were not working.
+          </ChangeItem>
+          <ChangeItem pull="6071">
+            Puts angle brackets around hyperlinks in the menu.
+          </ChangeItem>
+        </ul>
+      </Entry>
       <Entry version="1.1.7" date={new Date("2024-07-17")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem enable={title === "Linux GUI"} pull="5848">
-            Stops the GUI and prompts you to re-launch it if you update Firezone while the GUI is running.
+            Stops the GUI and prompts you to re-launch it if you update Firezone
+            while the GUI is running.
           </ChangeItem>
           <ChangeItem enable={title === "Windows"} pull="5375">
             Improves sign-in speed and fixes a DNS leak
@@ -35,13 +61,15 @@ export default function GUI({ title }: { title: string }) {
       <Entry version="1.1.6" date={new Date("2024-07-12")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="5795">
-            Unexpected IPC service stops are now reported as "IPC connection closed".
+            Unexpected IPC service stops are now reported as "IPC connection
+            closed".
           </ChangeItem>
           <ChangeItem enable={title === "Windows"} pull="5827">
             Fixes a bug where DNS could stop working when you sign out.
           </ChangeItem>
           <ChangeItem pull="5817">
-            Shows different tray icons when signed out, signing in, and signed in.
+            Shows different tray icons when signed out, signing in, and signed
+            in.
           </ChangeItem>
         </ul>
       </Entry>

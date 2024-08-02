@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Entry from "./Entry";
 import Entries from "./Entries";
+import ChangeItem from "./ChangeItem";
 
 export default function Headless() {
   const href = "/dl/firezone-client-headless-linux/:version/:arch";
@@ -8,6 +9,22 @@ export default function Headless() {
 
   return (
     <Entries href={href} arches={arches} title="Linux headless">
+      {/*
+      <Entry version="1.1.5" date={new Date("Invalid date")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem>
+            This is a maintenance release with no user-facing changes
+          </ChangeItem>
+        </ul>
+      </Entry>
+      */}
+      <Entry version="1.1.4" date={new Date("2024-08-02")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6143">
+            Fixes an issue where DNS queries could time out on some networks.
+          </ChangeItem>
+        </ul>
+      </Entry>
       <Entry version="1.1.3" date={new Date("2024-07-05")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">

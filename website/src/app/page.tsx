@@ -130,7 +130,7 @@ export default function Page() {
           <UpgradeDiagram />
         </div>
 
-        <div className="flex items-stretch mx-auto mt-8 md:mt-16 gap-4 sm:gap-8 max-w-sm md:max-w-screen-lg grid md:grid-cols-3">
+        <div className="items-stretch mx-auto mt-8 md:mt-16 gap-4 sm:gap-8 max-w-sm md:max-w-screen-lg grid md:grid-cols-3">
           <SlideIn
             direction="left"
             delay={0.5}
@@ -187,7 +187,7 @@ export default function Page() {
 
       {/* Feature section 2: Achieve compliance in minutes, not weeks. */}
       <section className="bg-white py-20 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty  text-center">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty text-center">
           <h3 className=" tracking-tight font-bold inline-block">
             Achieve compliance{" "}
             <span className="text-primary-450">without </span>
@@ -335,42 +335,42 @@ export default function Page() {
         <div className="mx-auto px-4 mt-8 max-w-screen-lg grid sm:grid-cols-2 gap-8 lg:gap-16">
           <div className="flex flex-col p-4">
             <div className="mb-12 grid grid-cols-2 gap-4">
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
                 <AppleIcon size={12} href="/kb/client-apps/macos-client">
                   <span className="inline-block pt-4 w-full text-center">
                     macOS
                   </span>
                 </AppleIcon>
               </div>
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
                 <WindowsIcon size={12} href="/kb/client-apps/windows-client">
                   <span className="inline-block pt-4 w-full text-center">
                     Windows
                   </span>
                 </WindowsIcon>
               </div>
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
                 <LinuxIcon size={12} href="/kb/client-apps/linux-client">
                   <span className="inline-block pt-4 w-full text-center">
                     Linux
                   </span>
                 </LinuxIcon>
               </div>
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
                 <AndroidIcon size={12} href="/kb/client-apps/android-client">
                   <span className="inline-block pt-4 w-full text-center">
                     Android
                   </span>
                 </AndroidIcon>
               </div>
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
                 <ChromeIcon size={12} href="/kb/client-apps/android-client">
                   <span className="inline-block pt-4 w-full text-center">
                     ChromeOS
                   </span>
                 </ChromeIcon>
               </div>
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
                 <AppleIcon size={12} href="/kb/client-apps/ios-client">
                   <span className="inline-block pt-4 w-full text-center">
                     iOS

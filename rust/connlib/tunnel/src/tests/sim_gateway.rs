@@ -1,10 +1,14 @@
 use super::{
     reference::{private_key, PrivateKey},
     sim_net::{any_port, dual_ip_stack, host, Host},
+    sim_relay::{map_explode, SimRelay},
     strategies::latency,
 };
 use crate::{tests::sut::hickory_name_to_domain, GatewayState};
-use connlib_shared::DomainName;
+use connlib_shared::{
+    messages::{GatewayId, RelayId},
+    DomainName,
+};
 use ip_packet::IpPacket;
 use proptest::prelude::*;
 use snownet::Transmit;
@@ -16,6 +20,7 @@ use std::{
 
 /// Simulation state for a particular client.
 pub(crate) struct SimGateway {
+    id: GatewayId,
     pub(crate) sut: GatewayState,
 
     pub(crate) received_icmp_requests: VecDeque<IpPacket<'static>>,
@@ -24,8 +29,9 @@ pub(crate) struct SimGateway {
 }
 
 impl SimGateway {
-    pub(crate) fn new(sut: GatewayState) -> Self {
+    pub(crate) fn new(id: GatewayId, sut: GatewayState) -> Self {
         Self {
+            id,
             sut,
             received_icmp_requests: Default::default(),
             buffer: vec![0u8; (1 << 16) - 1],
@@ -86,6 +92,19 @@ impl SimGateway {
 
         panic!("Unhandled packet")
     }
+
+    pub(crate) fn update_relays<'a>(
+        &mut self,
+        to_remove: impl Iterator<Item = RelayId>,
+        to_add: impl Iterator<Item = (&'a RelayId, &'a Host<SimRelay>)> + 'a,
+        now: Instant,
+    ) {
+        self.sut.update_relays(
+            to_remove.collect(),
+            map_explode(to_add, format!("gateway_{}", self.id)).collect(),
+            now,
+        )
+    }
 }
 
 /// Reference state for a particular gateway.
@@ -98,8 +117,8 @@ impl RefGateway {
     /// Initialize the [`GatewayState`].
     ///
     /// This simulates receiving the `init` message from the portal.
-    pub(crate) fn init(self) -> SimGateway {
-        SimGateway::new(GatewayState::new(self.key, self.key.0)) // Cheating a bit here by reusing the key as seed.
+    pub(crate) fn init(self, id: GatewayId) -> SimGateway {
+        SimGateway::new(id, GatewayState::new(self.key, self.key.0)) // Cheating a bit here by reusing the key as seed.
     }
 }
 

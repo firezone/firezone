@@ -30,6 +30,10 @@ defmodule API.Gateway.ChannelTest do
     global_relay_group = Fixtures.Relays.create_global_group()
     global_relay = Fixtures.Relays.create_relay(group: global_relay_group)
 
+    Fixtures.Relays.update_relay(global_relay,
+      last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+    )
+
     %{
       account: account,
       actor: actor,
@@ -233,9 +237,25 @@ defmodule API.Gateway.ChannelTest do
 
     test "subscribes for relays presence", %{gateway: gateway, gateway_group: gateway_group} do
       relay_group = Fixtures.Relays.create_global_group()
-      relay = Fixtures.Relays.create_relay(group: relay_group)
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      relay1 = Fixtures.Relays.create_relay(group: relay_group)
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret)
+
+      Fixtures.Relays.update_relay(relay1,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
+        last_seen_remote_ip_location_lat: 37.0,
+        last_seen_remote_ip_location_lon: -120.0
+      )
+
+      relay2 = Fixtures.Relays.create_relay(group: relay_group)
+      :ok = Domain.Relays.connect_relay(relay2, stamp_secret)
+
+      Fixtures.Relays.update_relay(relay2,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-100, :second),
+        last_seen_remote_ip_location_lat: 38.0,
+        last_seen_remote_ip_location_lon: -121.0
+      )
 
       API.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
@@ -246,9 +266,10 @@ defmodule API.Gateway.ChannelTest do
       })
       |> subscribe_and_join(API.Gateway.Channel, "gateway")
 
-      assert_push "init", %{relays: [relay_view1, relay_view2]}
-      assert relay_view1.id == relay.id
-      assert relay_view2.id == relay.id
+      assert_push "init", %{relays: [relay_view | _] = relays}
+      relay_view_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
+      relay_ids = [relay1.id, relay2.id] |> Enum.sort()
+      assert relay_view_ids == relay_ids
 
       assert %{
                addr: _,
@@ -257,18 +278,77 @@ defmodule API.Gateway.ChannelTest do
                password: _,
                type: _,
                username: _
-             } = relay_view1
+             } = relay_view
 
-      Domain.Relays.Presence.untrack(self(), "presences:relays:#{relay.id}", relay.id)
+      Domain.Relays.Presence.untrack(self(), "presences:relays:#{relay1.id}", relay1.id)
 
       assert_push "relays_presence", %{
-        disconnected_ids: [relay_id],
+        disconnected_ids: [relay1_id],
         connected: [relay_view1, relay_view2]
       }
 
-      assert relay_view1.id == relay.id
-      assert relay_view2.id == relay.id
-      assert relay_id == relay.id
+      assert relay_view1.id == relay2.id
+      assert relay_view2.id == relay2.id
+      assert relay1_id == relay1.id
+    end
+
+    test "subscribes for account relays presence if there were no relays online", %{
+      gateway: gateway,
+      gateway_group: gateway_group
+    } do
+      relay_group = Fixtures.Relays.create_global_group()
+      stamp_secret = Ecto.UUID.generate()
+
+      relay = Fixtures.Relays.create_relay(group: relay_group)
+
+      Fixtures.Relays.update_relay(relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
+        last_seen_remote_ip_location_lat: 37.0,
+        last_seen_remote_ip_location_lon: -120.0
+      )
+
+      API.Gateway.Socket
+      |> socket("gateway:#{gateway.id}", %{
+        gateway: gateway,
+        gateway_group: gateway_group,
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+      })
+      |> subscribe_and_join(API.Gateway.Channel, "gateway")
+
+      assert_push "init", %{relays: []}
+
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      assert_push "relays_presence", %{
+        disconnected_ids: [],
+        connected: [relay_view, _relay_view]
+      }
+
+      assert %{
+               addr: _,
+               expires_at: _,
+               id: _,
+               password: _,
+               type: _,
+               username: _
+             } = relay_view
+
+      other_relay = Fixtures.Relays.create_relay(group: relay_group)
+
+      Fixtures.Relays.update_relay(other_relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
+        last_seen_remote_ip_location_lat: 37.0,
+        last_seen_remote_ip_location_lon: -120.0
+      )
+
+      :ok = Domain.Relays.connect_relay(other_relay, stamp_secret)
+      other_relay_id = other_relay.id
+
+      refute_push "relays_presence", %{
+        disconnected_ids: [],
+        connected: [%{id: ^other_relay_id} | _]
+      }
     end
   end
 
@@ -366,7 +446,7 @@ defmodule API.Gateway.ChannelTest do
   end
 
   describe "handle_info/2 :request_connection" do
-    test "pushes request_connection message with managed relays", %{
+    test "pushes request_connection message", %{
       client: client,
       resource: resource,
       global_relay: relay,
@@ -403,33 +483,6 @@ defmodule API.Gateway.ChannelTest do
       assert payload.flow_id == flow_id
       assert payload.actor == %{id: client.actor_id}
 
-      ipv4_turn_uri = "#{relay.ipv4}:#{relay.port}"
-      ipv6_turn_uri = "[#{relay.ipv6}]:#{relay.port}"
-
-      assert [
-               %{
-                 type: :turn,
-                 expires_at: expires_at_unix,
-                 password: password1,
-                 username: username1,
-                 addr: ^ipv4_turn_uri
-               },
-               %{
-                 type: :turn,
-                 expires_at: expires_at_unix,
-                 password: password2,
-                 username: username2,
-                 addr: ^ipv6_turn_uri
-               }
-             ] = payload.relays
-
-      assert username1 != username2
-      assert password1 != password2
-      assert [username_expires_at_unix, username_salt] = String.split(username1, ":", parts: 2)
-      assert username_expires_at_unix == to_string(expires_at_unix)
-      assert DateTime.from_unix!(expires_at_unix) != DateTime.truncate(expires_at, :second)
-      assert is_binary(username_salt)
-
       assert payload.resource == %{
                address: resource.address,
                id: resource.id,
@@ -457,185 +510,6 @@ defmodule API.Gateway.ChannelTest do
 
       assert DateTime.from_unix!(payload.expires_at) ==
                DateTime.truncate(expires_at, :second)
-    end
-
-    test "pushes request_connection message with self-hosted relays", %{
-      account: account,
-      subject: subject,
-      client: client,
-      relay: relay
-    } do
-      gateway_group = Fixtures.Gateways.create_group(%{account: account})
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
-
-      resource =
-        Fixtures.Resources.create_resource(
-          account: account,
-          connections: [%{gateway_group_id: gateway_group.id}]
-        )
-
-      {:ok, _, socket} =
-        API.Gateway.Socket
-        |> socket("gateway:#{gateway.id}", %{
-          subject: subject,
-          gateway: gateway,
-          gateway_group: gateway_group,
-          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
-          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
-        })
-        |> subscribe_and_join(API.Gateway.Channel, "gateway")
-
-      channel_pid = self()
-      socket_ref = make_ref()
-      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
-      preshared_key = "PSK"
-      client_payload = "RTC_SD"
-      flow_id = Ecto.UUID.generate()
-
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
-
-      stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
-
-      send(
-        socket.channel_pid,
-        {:request_connection, {channel_pid, socket_ref},
-         %{
-           client_id: client.id,
-           resource_id: resource.id,
-           flow_id: flow_id,
-           authorization_expires_at: expires_at,
-           client_payload: client_payload,
-           client_preshared_key: preshared_key
-         }, otel_ctx}
-      )
-
-      assert_push "request_connection", payload
-
-      assert is_binary(payload.ref)
-      assert payload.flow_id == flow_id
-      assert payload.actor == %{id: client.actor_id}
-
-      ipv4_turn_uri = "#{relay.ipv4}:#{relay.port}"
-      ipv6_turn_uri = "[#{relay.ipv6}]:#{relay.port}"
-
-      assert [
-               %{
-                 type: :turn,
-                 expires_at: expires_at_unix,
-                 password: password1,
-                 username: username1,
-                 addr: ^ipv4_turn_uri
-               },
-               %{
-                 type: :turn,
-                 expires_at: expires_at_unix,
-                 password: password2,
-                 username: username2,
-                 addr: ^ipv6_turn_uri
-               }
-             ] = payload.relays
-
-      assert username1 != username2
-      assert password1 != password2
-      assert [username_expires_at_unix, username_salt] = String.split(username1, ":", parts: 2)
-      assert username_expires_at_unix == to_string(expires_at_unix)
-      assert DateTime.from_unix!(expires_at_unix) != DateTime.truncate(expires_at, :second)
-      in_7_days = DateTime.utc_now() |> DateTime.add(7, :day)
-      assert DateTime.from_unix!(expires_at_unix) |> DateTime.compare(in_7_days) == :gt
-      assert is_binary(username_salt)
-
-      assert payload.resource == %{
-               address: resource.address,
-               id: resource.id,
-               name: resource.name,
-               type: :dns,
-               filters: [
-                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
-                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
-                 %{protocol: :udp, port_range_start: 100, port_range_end: 200},
-                 %{protocol: :icmp}
-               ]
-             }
-
-      assert payload.client == %{
-               id: client.id,
-               peer: %{
-                 ipv4: client.ipv4,
-                 ipv6: client.ipv6,
-                 persistent_keepalive: 25,
-                 preshared_key: preshared_key,
-                 public_key: client.public_key
-               },
-               payload: client_payload
-             }
-
-      assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
-    end
-
-    test "pushes request_connection message with at most 2 relays (4 addresses)", %{
-      account: account,
-      subject: subject,
-      client: client,
-      relay: relay
-    } do
-      global_relay_group = Fixtures.Relays.create_global_group()
-
-      for relay <- [
-            relay,
-            Fixtures.Relays.create_relay(account: account),
-            Fixtures.Relays.create_relay(account: account),
-            Fixtures.Relays.create_relay(group: global_relay_group),
-            Fixtures.Relays.create_relay(group: global_relay_group)
-          ] do
-        stamp_secret = Ecto.UUID.generate()
-        :ok = Domain.Relays.connect_relay(relay, stamp_secret)
-      end
-
-      gateway_group = Fixtures.Gateways.create_group(%{account: account})
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
-
-      resource =
-        Fixtures.Resources.create_resource(
-          account: account,
-          connections: [%{gateway_group_id: gateway_group.id}]
-        )
-
-      {:ok, _, socket} =
-        API.Gateway.Socket
-        |> socket("gateway:#{gateway.id}", %{
-          subject: subject,
-          gateway: gateway,
-          gateway_group: gateway_group,
-          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
-          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
-        })
-        |> subscribe_and_join(API.Gateway.Channel, "gateway")
-
-      channel_pid = self()
-      socket_ref = make_ref()
-      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
-      preshared_key = "PSK"
-      client_payload = "RTC_SD"
-      flow_id = Ecto.UUID.generate()
-
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
-
-      send(
-        socket.channel_pid,
-        {:request_connection, {channel_pid, socket_ref},
-         %{
-           client_id: client.id,
-           resource_id: resource.id,
-           flow_id: flow_id,
-           authorization_expires_at: expires_at,
-           client_payload: client_payload,
-           client_preshared_key: preshared_key
-         }, otel_ctx}
-      )
-
-      assert_push "request_connection", payload
-      assert length(payload.relays) == 4
     end
 
     test "subscribes for flow expiration event", %{
