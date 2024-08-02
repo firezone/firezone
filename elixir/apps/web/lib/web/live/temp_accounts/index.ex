@@ -129,7 +129,7 @@ defmodule Web.TempAccounts.Index do
     end
   end
 
-  defp register_temp_account() do
+  defp register_temp_account do
     account_name = random_string(12)
     account_slug = "temp_" <> account_name
     admin_email = "admin_#{account_slug}@firezonedemo.com"
