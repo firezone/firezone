@@ -87,7 +87,7 @@ defmodule Web.TempAccounts.Index do
       <div class="text-center text-neutral-900 text-xl">
         Your temporary account has been created!
       </div>
-      <.flash kind={:error}>
+      <.flash kind={:warning}>
         <p class="flex items-center gap-1.5 text-sm font-semibold leading-6">
           <span class="hero-exclamation-triangle h-4 w-4"></span> Warning!
         </p>
