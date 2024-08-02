@@ -468,8 +468,7 @@ impl RefClient {
             .sorted_by_key(|r| r.address.len())
             .rev()
             .map(|r| r.id)
-            .filter(|id| !self.disabled_resources.contains(id))
-            .next()
+            .find(|id| !self.disabled_resources.contains(id))
     }
 
     fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, HashSet<RecordType>)> + '_ {

@@ -174,9 +174,7 @@ impl ReferenceStateMachine for ReferenceState {
             .with(1, Just(Transition::Idle))
             .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resources_id| {
                 sample::subsequence(resources_id.clone(), resources_id.len()).prop_map(
-                    |resources_id| {
-                        Transition::DisableResources(HashSet::from_iter(resources_id.into_iter()))
-                    },
+                    |resources_id| Transition::DisableResources(HashSet::from_iter(resources_id)),
                 )
             })
             .with_if_not_empty(
