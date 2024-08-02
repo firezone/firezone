@@ -454,6 +454,7 @@ impl RefClient {
             .sorted_by_key(|r| r.address.len())
             .rev()
             .map(|r| r.id)
+            .filter(|id| !self.disabled_resources.contains(id))
             .next()
     }
 
@@ -535,7 +536,10 @@ impl RefClient {
     }
 
     pub(crate) fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
-        self.cidr_resources.longest_match(ip).map(|(_, r)| r.id)
+        self.cidr_resources
+            .longest_match(ip)
+            .map(|(_, r)| r.id)
+            .filter(|id| !self.disabled_resources.contains(id))
     }
 
     pub(crate) fn resolved_ip4_for_non_resources(
