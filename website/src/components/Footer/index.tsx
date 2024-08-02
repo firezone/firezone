@@ -29,11 +29,7 @@ export default function Footer() {
           <div className=" mx-auto px-4 md:px-0 ">
             <button
               type="button"
-<<<<<<< HEAD
               className="md:text-lg text-md inline-flex md:w-48 w-full shadow-lg justify-center items-center py-2 md:py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
-=======
-              className="text-sm inline-flex md:w-48 w-full shadow-lg justify-center items-center py-2 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
->>>>>>> cd08cf296206500c8aff68367d578fec9cdc4035
             >
               <Link href="/contact/sales">Book a demo</Link>
               <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
