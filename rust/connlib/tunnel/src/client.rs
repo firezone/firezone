@@ -82,6 +82,18 @@ impl ClientTunnel {
             });
     }
 
+    pub fn set_disabled_resources(&mut self, new_disabled_resources: HashSet<ResourceId>) {
+        self.role_state
+            .set_disabled_resource(new_disabled_resources);
+
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
+            });
+    }
+
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
         self.io.device_mut().set_tun(tun);
     }
@@ -276,6 +288,9 @@ pub struct ClientState {
     /// Configuration of the TUN device, when it is up.
     interface_config: Option<InterfaceConfig>,
 
+    /// Resources that has been disabled by the UI
+    disabled_resources: HashSet<ResourceId>,
+
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket<'static>>,
 }
@@ -310,6 +325,7 @@ impl ClientState {
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
             stub_resolver: StubResolver::new(known_hosts),
+            disabled_resources: Default::default(),
         }
     }
 
@@ -769,6 +785,25 @@ impl ClientState {
         self.mangled_dns_queries.clear();
     }
 
+    pub fn set_disabled_resource(&mut self, new_disabled_resources: HashSet<ResourceId>) {
+        let current_disabled_resources = self.disabled_resources.clone();
+
+        // We set disabled_resources before anything else so that add_resource knows what resources are enabled right now.
+        self.disabled_resources = new_disabled_resources.clone();
+
+        for re_enabled_resource in current_disabled_resources.difference(&new_disabled_resources) {
+            let Some(resource) = self.resources_by_id.get(re_enabled_resource) else {
+                continue;
+            };
+
+            self.add_resource(resource.clone());
+        }
+
+        for disabled_resource in &new_disabled_resources {
+            self.disable_resource(*disabled_resource);
+        }
+    }
+
     pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
         self.dns_mapping.clone()
     }
@@ -789,6 +824,10 @@ impl ClientState {
             .chain(self.dns_mapping.left_values().copied().map(Into::into))
     }
 
+    fn is_resource_enabled(&self, resource: &ResourceId) -> bool {
+        !self.disabled_resources.contains(resource)
+    }
+
     fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
         let maybe_dns_resource_id = self.stub_resolver.resolve_resource_by_ip(&destination);
 
@@ -797,7 +836,10 @@ impl ClientState {
             .longest_match(destination)
             .map(|(_, res)| res.id);
 
-        maybe_dns_resource_id.or(maybe_cidr_resource_id)
+        // We need to filter disabled resources because we never remove resources from the stub_resolver
+        maybe_dns_resource_id
+            .or(maybe_cidr_resource_id)
+            .filter(|resource| self.is_resource_enabled(resource))
     }
 
     #[must_use]
@@ -955,6 +997,13 @@ impl ClientState {
             }
         }
 
+        self.resources_by_id
+            .insert(new_resource.id(), new_resource.clone());
+
+        if !self.is_resource_enabled(&(new_resource.id())) {
+            return;
+        }
+
         match &new_resource {
             ResourceDescription::Dns(dns) => {
                 self.stub_resolver.add_resource(dns.id, dns.address.clone());
@@ -974,12 +1023,15 @@ impl ClientState {
             }
             ResourceDescription::Internet(_) => {}
         }
-
-        self.resources_by_id.insert(new_resource.id(), new_resource);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
     pub(crate) fn remove_resource(&mut self, id: ResourceId) {
+        self.disable_resource(id);
+        self.resources_by_id.remove(&id);
+    }
+
+    fn disable_resource(&mut self, id: ResourceId) {
         self.awaiting_connection_details.remove(&id);
         self.stub_resolver.remove_resource(id);
         self.cidr_resources.retain(|_, r| {
@@ -990,8 +1042,6 @@ impl ClientState {
 
             true
         });
-
-        self.resources_by_id.remove(&id);
 
         let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, id) else {
             return;
