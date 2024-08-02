@@ -1,6 +1,7 @@
 //! Main connlib library for clients.
 pub use crate::serde_routelist::{V4RouteList, V6RouteList};
 pub use connlib_shared::messages::client::ResourceDescription;
+use connlib_shared::messages::ResourceId;
 pub use connlib_shared::{
     callbacks, keypair, Callbacks, Error, LoginUrl, LoginUrlError, StaticSecret,
 };
@@ -12,7 +13,7 @@ use firezone_tunnel::ClientTunnel;
 use messages::{IngressMessages, ReplyMessages};
 use phoenix_channel::PhoenixChannel;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -92,6 +93,12 @@ impl Session {
     /// The implementation is idempotent; calling it with the same set of servers is safe.
     pub fn set_dns(&self, new_dns: Vec<IpAddr>) {
         let _ = self.channel.send(Command::SetDns(new_dns));
+    }
+
+    pub fn set_disabled_resources(&self, disabled_resources: HashSet<ResourceId>) {
+        let _ = self
+            .channel
+            .send(Command::SetDisabledResources(disabled_resources));
     }
 
     /// Sets a new [`Tun`] device handle.
