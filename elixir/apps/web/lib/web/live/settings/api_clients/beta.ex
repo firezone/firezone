@@ -25,7 +25,7 @@ defmodule Web.Settings.ApiClients.Beta do
       <:title><%= @page_title %></:title>
       <:help>
         API Clients are used to manage Firezone configuration through a REST API. See our
-        <a class={link_style()} href="api.firezone.dev/swaggerui">interactive API docs</a>
+        <a class={link_style()} href={url(API.Endpoint, ~p"/swaggerui")}>interactive API docs</a>
       </:help>
       <:content>
         <.flash kind={:info}>
