@@ -314,8 +314,10 @@ class TunnelService : VpnService() {
 
     private fun buildVpnService(): Int {
         Builder().apply {
-            // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
-            allowBypass()
+            if (tunnelRoutes.all { it.prefix != 0 }) {
+                // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
+                allowBypass()
+            }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 setMetered(false) // Inherit the metered status from the underlying networks.
