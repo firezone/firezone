@@ -12,6 +12,18 @@ export default function GUI({ title }: { title: string }) {
 
   return (
     <Entries href={href} arches={arches} title={title}>
+      {/*
+      <Entry version="1.1.10" date={new Date("Invalid date")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem enable={title === "Linux GUI"}>
+            This is a maintenance release with no user-facing changes.
+          </ChangeItem>
+          <ChangeItem enable={title === "Windows"}>
+            This is a maintenance release with no user-facing changes.
+          </ChangeItem>
+        </ul>
+      </Entry>
+      */}
       <Entry version="1.1.9" date={new Date("2024-08-02")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6143">
