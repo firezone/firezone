@@ -70,20 +70,20 @@ export default function Page() {
             Firezone is a fast, flexible VPN replacement built on WireGuard®
             that protects your workforce without tedious configuration.
           </h3>
-          <div className="md:flex md:gap-x-12 mt-4 mx-auto">
-            <div className="my-4 mr-4 flex items-center">
+          <div className="flex sm:flex-row flex-col-reverse items-center justify-center sm:gap-x-6 md:gap-x-12 mt-4 w-full">
+            <div className="my-4 mr-4">
               <Link
                 href="https://app.firezone.dev/sign_up"
-                className="text-neutral-300 group inline-flex items-center py-0.5 text-lg font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
+                className="text-neutral-300 group inline-flex justify-center items-center py-2 text-lg font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
               >
                 Get started for free
                 <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
               </Link>
             </div>
-            <div className="mt-8 md:mt-0 flex items-center">
+            <div className=" flex items-center w-full sm:w-fit">
               <button
                 type="button"
-                className="group shadow-lg shadow-primary-700 text-lg w-48 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
+                className="group shadow-primary-700 text-lg sm:w-48 w-full inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
               >
                 <Link href="/contact/sales">Book a demo</Link>
                 <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
