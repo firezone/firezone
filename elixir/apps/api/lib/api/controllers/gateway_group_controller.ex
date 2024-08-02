@@ -6,7 +6,7 @@ defmodule API.GatewayGroupController do
 
   action_fallback API.FallbackController
 
-  tags ["Gateway Groups"]
+  tags ["Gateway Groups (Sites)"]
 
   operation :index,
     summary: "List Gateway Groups",

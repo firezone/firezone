@@ -30,6 +30,10 @@ defmodule Domain.Relays.Relay.Query do
     where(queryable, [relays: relays], relays.account_id == ^account_id)
   end
 
+  def by_last_seen_at_greater_than(queryable, value, unit, :ago) do
+    where(queryable, [relays: relays], relays.last_seen_at < ago(^value, ^unit))
+  end
+
   def public(queryable) do
     where(
       queryable,
