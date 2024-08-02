@@ -29,7 +29,7 @@ export default function Footer() {
           <div className=" mx-auto px-4 md:px-0 ">
             <button
               type="button"
-              className="text-sm inline-flex md:w-48 w-full shadow-lg justify-center items-center py-2 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
+              className="md:text-lg text-md inline-flex md:w-48 w-full shadow-lg justify-center items-center py-2 md:py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
             >
               <Link href="/contact/sales">Book a demo</Link>
               <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
@@ -41,12 +41,12 @@ export default function Footer() {
           <div className=" mx-auto ">
             <button
               type="button"
-              className="group text-sm md:w-48 w-full inline-flex justify-center items-center py-0 px-0 font-semibold text-center text-white rounded hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
+              className="group md:text-lg text-md md:w-48 w-full inline-flex justify-center items-center py-0 px-0 font-semibold text-center text-white rounded hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
             >
               <Link
                 href="https://app.firezone.dev/sign_up"
                 className="text-neutral-300 w-full group inline-flex justify-center
-                 items-center py-2 text-sm font-semibold border-b-[1px] border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
+                 items-center py-2 font-semibold border-b-[1px] border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
               >
                 <p>Try Firezone for free</p>
                 <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-5 h-5" />
