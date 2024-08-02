@@ -194,7 +194,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         .item(Event::SignOut, SIGN_OUT)
         .separator();
 
-    tracing::info!(
+    tracing::debug!(
         resource_count = resources.len(),
         "Building signed-in tray menu"
     );
