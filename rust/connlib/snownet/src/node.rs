@@ -508,7 +508,7 @@ where
             tracing::info!(%rid, address = ?allocation.server(), "Removed TURN server");
         }
 
-        // Second, upsert all new relays.
+        // Second, insert new relays.
         for (rid, server, username, password, realm) in to_add {
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
@@ -519,8 +519,8 @@ where
                 continue;
             };
 
-            if let Some(existing) = self.allocations.get_mut(rid) {
-                existing.update_credentials(*server, username, password, realm, now);
+            if self.allocations.contains_key(rid) {
+                tracing::info!(%rid, address = ?server, "Skipping known TURN server");
                 continue;
             }
 

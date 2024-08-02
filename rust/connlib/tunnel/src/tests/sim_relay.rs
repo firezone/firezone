@@ -19,15 +19,19 @@ pub(crate) struct SimRelay {
     pub(crate) sut: firezone_relay::Server<StdRng>,
     pub(crate) allocations: HashSet<(AddressFamily, AllocationPort)>,
     buffer: Vec<u8>,
+
+    created_at: SystemTime,
 }
 
 pub(crate) fn map_explode<'a>(
     relays: impl Iterator<Item = (&'a RelayId, &'a Host<SimRelay>)> + 'a,
-    username: &'a str,
+    username: impl Into<String>,
 ) -> impl Iterator<Item = (RelayId, RelaySocket, String, String, String)> + 'a {
+    let username = username.into();
+
     relays.map(move |(id, r)| {
         let (socket, username, password, realm) = r.inner().explode(
-            username,
+            &username,
             r.inner().sut.auth_secret(),
             r.inner().sut.public_address(),
         );
@@ -49,6 +53,7 @@ impl SimRelay {
             sut,
             allocations: Default::default(),
             buffer: vec![0u8; (1 << 16) - 1],
+            created_at: SystemTime::now(),
         }
     }
 
@@ -183,7 +188,9 @@ impl SimRelay {
     }
 
     fn make_credentials(&self, username: &str, auth_secret: &SecretString) -> (String, String) {
-        let expiry = SystemTime::now() + Duration::from_secs(60);
+        const ONE_HOUR: Duration = Duration::from_secs(60 * 60);
+
+        let expiry = self.created_at + ONE_HOUR;
 
         let secs = expiry
             .duration_since(SystemTime::UNIX_EPOCH)
