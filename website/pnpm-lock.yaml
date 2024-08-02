@@ -133,8 +133,8 @@ importers:
         specifier: ^9.0.0
         version: 9.0.0
       typescript:
-        specifier: 5.5.2
-        version: 5.5.2
+        specifier: 5.5.4
+        version: 5.5.4
 
 packages:
 
@@ -1774,8 +1774,8 @@ packages:
   tslib@2.6.3:
     resolution: {integrity: sha512-xNvxJEOUiWPGhUuUdQgAJPKOOJfGnIyKySOc09XkKsgdUV/3E2zvwZYdejjmRgPCgcym1juLH3226yA7sEFJKQ==}
 
-  typescript@5.5.2:
-    resolution: {integrity: sha512-NcRtPEOsPFFWjobJEtfihkLCZCXZt/os3zf8nTxjVH3RvTSxjrCamJpbExGvYOF+tFHc3pA65qpdwPbzjohhew==}
+  typescript@5.5.4:
+    resolution: {integrity: sha512-Mtq29sKDAEYP7aljRgtPOpTvOfbwRWlS6dPRzwjdE+C0R4brX/GUyhHSecbHMFLNBLcJIPt9nl9yG5TZ1weH+Q==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -3956,7 +3956,7 @@ snapshots:
 
   tslib@2.6.3: {}
 
-  typescript@5.5.2: {}
+  typescript@5.5.4: {}
 
   ua-parser-js@1.0.38: {}
 
