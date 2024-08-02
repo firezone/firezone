@@ -172,6 +172,13 @@ defmodule Domain.FlowsTest do
       actor_group2 = Fixtures.Actors.create_group(account: account)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group2)
 
+      time = Time.utc_now()
+      one_hour_ago = Time.add(time, -1, :hour)
+      one_hour_in_future = Time.add(time, 1, :hour)
+
+      date = Date.utc_today()
+      day_of_week = Enum.at(~w[M T W R F S U], Date.day_of_week(date) - 1)
+
       Fixtures.Policies.create_policy(
         account: account,
         actor_group: actor_group2,
@@ -181,6 +188,13 @@ defmodule Domain.FlowsTest do
             property: :remote_ip_location_region,
             operator: :is_not_in,
             values: [client.last_seen_remote_ip_location_region]
+          },
+          %{
+            property: :current_utc_datetime,
+            operator: :is_in_day_of_week_time_ranges,
+            values: [
+              "#{day_of_week}/#{one_hour_ago}-#{one_hour_in_future}/UTC"
+            ]
           }
         ]
       )
@@ -189,6 +203,7 @@ defmodule Domain.FlowsTest do
                authorize_flow(client, gateway, resource.id, subject)
 
       assert flow.policy_id == policy.id
+      assert DateTime.diff(flow.expires_at, DateTime.new!(date, one_hour_in_future)) < 5
     end
 
     test "creates a flow when all conditions for at least one of the policies are satisfied", %{
@@ -223,8 +238,10 @@ defmodule Domain.FlowsTest do
         ]
       )
 
-      assert {:ok, _fetched_resource, _flow} =
+      assert {:ok, _fetched_resource, flow} =
                authorize_flow(client, gateway, resource.id, subject)
+
+      assert flow.expires_at == subject.expires_at
     end
 
     test "creates a network flow for users", %{

@@ -60,6 +60,16 @@ defmodule Web.Live.Policies.NewTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
+             "policy[conditions][current_utc_datetime][operator]",
+             "policy[conditions][current_utc_datetime][property]",
+             "policy[conditions][current_utc_datetime][timezone]",
+             "policy[conditions][current_utc_datetime][values][F]",
+             "policy[conditions][current_utc_datetime][values][M]",
+             "policy[conditions][current_utc_datetime][values][R]",
+             "policy[conditions][current_utc_datetime][values][S]",
+             "policy[conditions][current_utc_datetime][values][T]",
+             "policy[conditions][current_utc_datetime][values][U]",
+             "policy[conditions][current_utc_datetime][values][W]",
              "policy[conditions][provider_id][operator]",
              "policy[conditions][provider_id][property]",
              "policy[conditions][provider_id][values][]",
@@ -89,6 +99,16 @@ defmodule Web.Live.Policies.NewTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
+             "policy[conditions][current_utc_datetime][operator]",
+             "policy[conditions][current_utc_datetime][property]",
+             "policy[conditions][current_utc_datetime][timezone]",
+             "policy[conditions][current_utc_datetime][values][F]",
+             "policy[conditions][current_utc_datetime][values][M]",
+             "policy[conditions][current_utc_datetime][values][R]",
+             "policy[conditions][current_utc_datetime][values][S]",
+             "policy[conditions][current_utc_datetime][values][T]",
+             "policy[conditions][current_utc_datetime][values][U]",
+             "policy[conditions][current_utc_datetime][values][W]",
              "policy[conditions][provider_id][operator]",
              "policy[conditions][provider_id][property]",
              "policy[conditions][provider_id][values][]",
@@ -129,6 +149,16 @@ defmodule Web.Live.Policies.NewTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
+             "policy[conditions][current_utc_datetime][operator]",
+             "policy[conditions][current_utc_datetime][property]",
+             "policy[conditions][current_utc_datetime][timezone]",
+             "policy[conditions][current_utc_datetime][values][F]",
+             "policy[conditions][current_utc_datetime][values][M]",
+             "policy[conditions][current_utc_datetime][values][R]",
+             "policy[conditions][current_utc_datetime][values][S]",
+             "policy[conditions][current_utc_datetime][values][T]",
+             "policy[conditions][current_utc_datetime][values][U]",
+             "policy[conditions][current_utc_datetime][values][W]",
              "policy[conditions][provider_id][operator]",
              "policy[conditions][provider_id][property]",
              "policy[conditions][provider_id][values][]",
@@ -254,6 +284,20 @@ defmodule Web.Live.Policies.NewTest do
       actor_group_id: group.id,
       resource_id: resource.id,
       conditions: %{
+        current_utc_datetime: %{
+          property: "current_utc_datetime",
+          operator: "is_in_day_of_week_time_ranges",
+          timezone: "US/Pacific",
+          values: %{
+            M: "true",
+            T: "",
+            W: "true",
+            R: "",
+            F: "",
+            S: "10:00:00-15:00:00",
+            U: "23:00:00-23:59:59"
+          }
+        },
         provider_id: %{
           property: "provider_id",
           operator: "is_in",
@@ -285,6 +329,19 @@ defmodule Web.Live.Policies.NewTest do
     assert policy.resource_id == resource.id
 
     assert policy.conditions == [
+             %Domain.Policies.Condition{
+               property: :current_utc_datetime,
+               operator: :is_in_day_of_week_time_ranges,
+               values: [
+                 "M/true/US/Pacific",
+                 "T//US/Pacific",
+                 "W/true/US/Pacific",
+                 "R//US/Pacific",
+                 "F//US/Pacific",
+                 "S/10:00:00-15:00:00/US/Pacific",
+                 "U/23:00:00-23:59:59/US/Pacific"
+               ]
+             },
              %Domain.Policies.Condition{
                property: :provider_id,
                operator: :is_in,
