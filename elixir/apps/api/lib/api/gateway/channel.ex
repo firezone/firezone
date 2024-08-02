@@ -41,6 +41,7 @@ defmodule API.Gateway.Channel do
       relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(14, :day)
       {:ok, relays} = select_relays(socket)
       :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
+      :ok = maybe_subscribe_for_relays_presence(relays, socket)
 
       push(socket, "init", %{
         interface: Views.Interface.render(socket.assigns.gateway),
@@ -231,15 +232,6 @@ defmodule API.Gateway.Channel do
       :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
       :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
-      relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(14, :day)
-      {:ok, relays} = select_relays(socket)
-
-      :ok =
-        Enum.each(relays, fn relay ->
-          :ok = Domain.Relays.unsubscribe_from_relay_presence(relay)
-          :ok = Domain.Relays.subscribe_to_relay_presence(relay)
-        end)
-
       opentelemetry_headers = :otel_propagator_text_map.inject([])
       ref = encode_ref(socket, channel_pid, socket_ref, resource_id, opentelemetry_headers)
 
@@ -247,7 +239,6 @@ defmodule API.Gateway.Channel do
         ref: ref,
         flow_id: flow_id,
         actor: Views.Actor.render(client.actor),
-        relays: Views.Relay.render_many(relays, relay_credentials_expire_at),
         resource: Views.Resource.render(resource),
         client: Views.Client.render(client, payload, preshared_key),
         expires_at: DateTime.to_unix(authorization_expires_at, :second)
@@ -283,7 +274,8 @@ defmodule API.Gateway.Channel do
         :ok = Domain.Relays.unsubscribe_from_relay_presence(relay_id)
 
         relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(14, :day)
-        {:ok, relays} = select_relays(socket)
+        {:ok, relays} = select_relays(socket, [relay_id])
+        :ok = maybe_subscribe_for_relays_presence(relays, socket)
 
         :ok =
           Enum.each(relays, fn relay ->
@@ -295,6 +287,46 @@ defmodule API.Gateway.Channel do
           disconnected_ids: [relay_id],
           connected: Views.Relay.render_many(relays, relay_credentials_expire_at)
         })
+
+        {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(
+        %Phoenix.Socket.Broadcast{
+          event: "presence_diff",
+          topic: "presences:" <> _,
+          payload: %{joins: joins}
+        },
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    if Enum.count(joins) > 0 do
+      OpenTelemetry.Tracer.with_span "gateway.account_relays_presence" do
+        {:ok, relays} = select_relays(socket)
+
+        if length(relays) > 0 do
+          relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(14, :day)
+
+          :ok =
+            Relays.unsubscribe_from_relays_presence_in_account(socket.assigns.gateway.account_id)
+
+          :ok =
+            Enum.each(relays, fn relay ->
+              :ok = Relays.unsubscribe_from_relay_presence(relay)
+              :ok = Relays.subscribe_to_relay_presence(relay)
+            end)
+
+          push(socket, "relays_presence", %{
+            disconnected_ids: [],
+            connected: Views.Relay.render_many(relays, relay_credentials_expire_at)
+          })
+        end
 
         {:noreply, socket}
       end
@@ -461,8 +493,9 @@ defmodule API.Gateway.Channel do
     end
   end
 
-  defp select_relays(socket) do
-    {:ok, relays} = Relays.all_connected_relays_for_account(socket.assigns.gateway.account_id)
+  defp select_relays(socket, except_ids \\ []) do
+    {:ok, relays} =
+      Relays.all_connected_relays_for_account(socket.assigns.gateway.account_id, except_ids)
 
     location = {
       socket.assigns.gateway.last_seen_remote_ip_location_lat,
@@ -474,5 +507,13 @@ defmodule API.Gateway.Channel do
     relays = Relays.load_balance_relays(location, relays)
 
     {:ok, relays}
+  end
+
+  defp maybe_subscribe_for_relays_presence(relays, socket) do
+    if length(relays) > 0 do
+      :ok
+    else
+      Relays.subscribe_to_relays_presence_in_account(socket.assigns.gateway.account_id)
+    end
   end
 end
