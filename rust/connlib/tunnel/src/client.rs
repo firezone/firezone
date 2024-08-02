@@ -288,7 +288,7 @@ pub struct ClientState {
     /// Configuration of the TUN device, when it is up.
     interface_config: Option<InterfaceConfig>,
 
-    /// Resources that has been disabled by the UI
+    /// Resources that have been disabled by the UI
     disabled_resources: HashSet<ResourceId>,
 
     buffered_events: VecDeque<ClientEvent>,

@@ -303,16 +303,14 @@ impl ReferenceStateMachine for ReferenceState {
                     client.cidr_resources.retain(|_, r| &r.id != id);
                     client.dns_resources.remove(id);
 
-                    client.connected_cidr_resources.remove(id);
-                    client.connected_dns_resources.retain(|(r, _)| r != id);
+                    client.disconnect_resource(id)
                 });
             }
             Transition::DisableResources(resources) => state.client.exec_mut(|client| {
                 client.disabled_resources = resources.clone();
 
                 for id in resources {
-                    client.connected_cidr_resources.remove(id);
-                    client.connected_dns_resources.retain(|(r, _)| r != id);
+                    client.disconnect_resource(id)
                 }
             }),
             Transition::SendDnsQuery {

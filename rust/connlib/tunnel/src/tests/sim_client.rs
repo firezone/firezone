@@ -266,7 +266,7 @@ pub struct RefClient {
     #[derivative(Debug = "ignore")]
     pub(crate) connected_dns_resources: HashSet<(ResourceId, DomainName)>,
 
-    /// Temporarily disabled resources by the UI
+    /// Actively disabled resources by the UI
     #[derivative(Debug = "ignore")]
     pub(crate) disabled_resources: HashSet<ResourceId>,
 
@@ -295,6 +295,11 @@ impl RefClient {
         let _ = client_state.update_system_resolvers(self.system_dns_resolvers);
 
         SimClient::new(self.id, client_state)
+    }
+
+    pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
+        self.connected_cidr_resources.remove(resource);
+        self.connected_dns_resources.retain(|(r, _)| r != resource);
     }
 
     pub(crate) fn reset_connections(&mut self) {
@@ -371,6 +376,10 @@ impl RefClient {
         };
         tracing::Span::current().record("resource", tracing::field::display(rid));
 
+        if self.disabled_resources.contains(&rid) {
+            return;
+        }
+
         let Some(gateway) = gateway_by_resource(rid) else {
             tracing::error!("No gateway for resource");
             return;
@@ -387,9 +396,7 @@ impl RefClient {
 
         // If we have a resource, the first packet will initiate a connection to the gateway.
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        if !self.disabled_resources.contains(&rid) {
-            self.connected_cidr_resources.insert(rid);
-        }
+        self.connected_cidr_resources.insert(rid);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
