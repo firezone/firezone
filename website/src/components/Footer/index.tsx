@@ -17,7 +17,7 @@ import {
 
 export default function Footer() {
   return (
-    <footer className="relative bg-neutral-900 p-16 text-neutral-500">
+    <footer className="relative bg-neutral-900 py-16 md:px-16 px-4 text-neutral-500">
       <div className="flex flex-col justify-center items-center text-center">
         <h3 className="text-neutral-200 mb-4 text-4xl md:text-6xl text-pretty tracking-tight justify-center font-semibold">
           Ready to get started?
@@ -25,11 +25,11 @@ export default function Footer() {
         <h4 className="text-neutral-200 text-md tracking-tight">
           Give your organization the protection it deserves.
         </h4>
-        <div className="flex justify-center items-end w-fit gap-4 mt-8">
-          <div className="mx-auto">
+        <div className="flex md:flex-row flex-col justify-center md:items-end items-center md:w-fit w-full md:gap-8 gap-4 my-8">
+          <div className=" mx-auto px-4 md:px-0 ">
             <button
               type="button"
-              className="text-sm w-48 inline-flex shadow-lg justify-center items-center py-2 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
+              className="text-sm inline-flex md:w-48 w-full shadow-lg justify-center items-center py-2 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
             >
               <Link href="/contact/sales">Book a demo</Link>
               <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
@@ -38,27 +38,28 @@ export default function Footer() {
               Get a personalized walkthrough of Firezone.
             </p>
           </div>
-          <div className="mx-auto">
+          <div className=" mx-auto ">
             <button
               type="button"
-              className="group text-sm w-48 inline-flex justify-center items-center py-2 px-5 font-semibold text-center text-white rounded hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
+              className="group text-sm md:w-48 w-full inline-flex justify-center items-center py-2 px-0 font-semibold text-center text-white rounded hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
             >
               <Link
                 href="https://app.firezone.dev/sign_up"
-                className="text-neutral-300 group inline-flex items-center py-0.5 text-sm font-semibold border-b-[1px] border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
+                className="text-neutral-300 w-full group inline-flex justify-center
+                 items-center py-0.5 text-sm font-semibold border-b-[1px] border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
               >
-                Try Firezone for free
+                <p>Try Firezone for free</p>
                 <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-5 h-5" />
               </Link>
             </button>
-            <p className="mt-3 text-xs text-neutral-400">
+            <p className="md:mt-3 mt-1 text-xs text-neutral-400">
               No credit card required. Cancel anytime.
             </p>
           </div>
         </div>
       </div>
       <div className="mx-auto w-full max-w-screen-xl p-4 py-6 lg:py-8">
-        <div className="flex justify-between gap-12">
+        <div className="flex md:flex-row flex-col md:justify-between gap-12">
           <div className="flex md:flex-col justify-between">
             <div className="">
               <Link href="/">
@@ -88,7 +89,7 @@ export default function Footer() {
               />
             </Link>
           </div>
-          <div className="text-sm w-1/3 grid grid-cols-2 content-end md:text-right">
+          <div className="text-sm md:w-1/3 grid grid-cols-2 content-end md:text-right">
             <div>
               <h2 className="mb-6 font-semibold uppercase md:justify-end">
                 Company
