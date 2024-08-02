@@ -26,7 +26,7 @@ impl DnsController {
         match self.dns_control_method {
             DnsControlMethod::Disabled => Ok(()),
             DnsControlMethod::EtcResolvConf => etc_resolv_conf::configure(dns_config).await,
-            DnsControlMethod::Systemd => configure_systemd_resolved(dns_config).await,
+            DnsControlMethod::SystemdResolved => configure_systemd_resolved(dns_config).await,
         }
         .context("Failed to control DNS")
     }
@@ -36,7 +36,7 @@ impl DnsController {
     /// Does nothing if we're using other DNS control methods or none at all
     pub(crate) fn flush(&self) -> Result<()> {
         // Flushing is only implemented for systemd-resolved
-        if matches!(self.dns_control_method, DnsControlMethod::Systemd) {
+        if matches!(self.dns_control_method, DnsControlMethod::SystemdResolved) {
             tracing::debug!("Flushing systemd-resolved DNS cache...");
             Command::new("resolvectl").arg("flush-caches").status()?;
             tracing::debug!("Flushed DNS.");
@@ -82,7 +82,7 @@ pub(crate) fn system_resolvers(dns_control_method: DnsControlMethod) -> Result<V
         DnsControlMethod::Disabled | DnsControlMethod::EtcResolvConf => {
             get_system_default_resolvers_resolv_conf()
         }
-        DnsControlMethod::Systemd => get_system_default_resolvers_systemd_resolved(),
+        DnsControlMethod::SystemdResolved => get_system_default_resolvers_systemd_resolved(),
     }
 }
 

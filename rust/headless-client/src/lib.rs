@@ -67,7 +67,7 @@ pub(crate) const GIT_VERSION: &str = git_version::git_version!(
 const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 
 /// CLI args common to both the IPC service and the headless Client
-#[derive(clap::Args)]
+#[derive(clap::Parser)]
 struct CliCommon {
     #[arg(long, env = "FIREZONE_DNS_CONTROL")]
     dns_control: Option<DnsControlMethod>,
@@ -168,4 +168,56 @@ pub fn setup_stdout_logging() -> Result<()> {
     let subscriber = Registry::default().with(layer);
     set_global_default(subscriber)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    const EXE_NAME: &str = "firezone-client-ipc";
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn dns_control() {
+        let actual = CliCommon::try_parse_from([EXE_NAME]).unwrap();
+        assert!(matches!(
+            actual.dns_control(),
+            DnsControlMethod::SystemdResolved
+        ));
+
+        let actual = CliCommon::try_parse_from([EXE_NAME, "--dns-control", "disabled"]).unwrap();
+        assert!(matches!(actual.dns_control(), DnsControlMethod::Disabled));
+
+        let actual =
+            CliCommon::try_parse_from([EXE_NAME, "--dns-control", "etc-resolv-conf"]).unwrap();
+        assert!(matches!(
+            actual.dns_control(),
+            DnsControlMethod::EtcResolvConf
+        ));
+
+        let actual =
+            CliCommon::try_parse_from([EXE_NAME, "--dns-control", "systemd-resolved"]).unwrap();
+        assert!(matches!(
+            actual.dns_control(),
+            DnsControlMethod::SystemdResolved
+        ));
+
+        assert!(CliCommon::try_parse_from([EXE_NAME, "--dns-control", "invalid"]).is_err());
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn dns_control() {
+        let actual = CliCommon::try_parse_from([EXE_NAME]).unwrap();
+        assert!(matches!(actual.dns_control(), DnsControlMethod::Nrpt));
+
+        let actual = CliCommon::try_parse_from([EXE_NAME, "--dns-control", "disabled"]).unwrap();
+        assert!(matches!(actual.dns_control(), DnsControlMethod::Disabled));
+
+        let actual = CliCommon::try_parse_from([EXE_NAME, "--dns-control", "nrpt"]).unwrap();
+        assert!(matches!(actual.dns_control(), DnsControlMethod::Nrpt));
+
+        assert!(CliCommon::try_parse_from([EXE_NAME, "--dns-control", "invalid"]).is_err());
+    }
 }

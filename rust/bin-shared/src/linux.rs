@@ -19,12 +19,12 @@ pub enum DnsControlMethod {
     /// Cooperate with `systemd-resolved`
     ///
     /// Suitable for most Ubuntu systems, probably
-    Systemd,
+    SystemdResolved,
 }
 
 impl Default for DnsControlMethod {
     fn default() -> Self {
-        Self::Systemd
+        Self::SystemdResolved
     }
 }
 

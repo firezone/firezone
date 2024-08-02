@@ -461,18 +461,18 @@ mod tests {
     use clap::Parser;
     use std::path::PathBuf;
 
+    const EXE_NAME: &str = "firezone-client-ipc";
+
     // Can't remember how Clap works sometimes
     // Also these are examples
     #[test]
     fn cli() {
-        let exe_name = "firezone-client-ipc";
-
         let actual =
-            Cli::try_parse_from([exe_name, "--log-dir", "bogus_log_dir", "run-debug"]).unwrap();
+            Cli::try_parse_from([EXE_NAME, "--log-dir", "bogus_log_dir", "run-debug"]).unwrap();
         assert!(matches!(actual.command, Cmd::RunDebug));
         assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
-        let actual = Cli::try_parse_from([exe_name, "run"]).unwrap();
+        let actual = Cli::try_parse_from([EXE_NAME, "run"]).unwrap();
         assert!(matches!(actual.command, Cmd::Run));
     }
 }

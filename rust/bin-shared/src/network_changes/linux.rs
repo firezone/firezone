@@ -36,7 +36,7 @@ pub async fn new_dns_notifier(
         DnsControlMethod::Disabled | DnsControlMethod::EtcResolvConf => {
             Ok(Worker::new_dns_poller())
         }
-        DnsControlMethod::Systemd => {
+        DnsControlMethod::SystemdResolved => {
             Worker::new_dbus(SignalParams {
                 dest: "org.freedesktop.resolve1",
                 path: "/org/freedesktop/resolve1",
@@ -57,7 +57,7 @@ pub async fn new_network_notifier(
 ) -> Result<Worker> {
     match method {
         DnsControlMethod::Disabled | DnsControlMethod::EtcResolvConf => Ok(Worker::Null),
-        DnsControlMethod::Systemd => {
+        DnsControlMethod::SystemdResolved => {
             Worker::new_dbus(SignalParams {
                 dest: "org.freedesktop.NetworkManager",
                 path: "/org/freedesktop/NetworkManager",
