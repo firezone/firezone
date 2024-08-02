@@ -70,14 +70,16 @@ export default function Page() {
             that protects your workforce without tedious configuration.
           </h3>
           <div className="flex sm:flex-row flex-col-reverse items-center justify-center sm:gap-x-6 md:gap-x-12 mt-4 w-full">
-            <div className="my-4 mr-4">
-              <Link
-                href="https://app.firezone.dev/sign_up"
-                className="text-neutral-300 group inline-flex justify-center items-center py-2 md:text-lg text-md font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
+            <div className="flex items-center my-4 mr-4">
+              <button
+                type="button"
+                className="group text-neutral-300 inline-flex justify-center items-center py-2 md:text-lg text-md font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 duration-50 transform transition"
               >
-                Get started for free
-                <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
-              </Link>
+                <Link href="https://app.firezone.dev/sign_up">
+                  Get started for free
+                </Link>
+                <HiArrowLongRight className="group-hover:text-primary-450 group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-7 h-7" />
+              </button>
             </div>
             <div className=" flex items-center w-full sm:w-fit">
               <button
@@ -85,7 +87,7 @@ export default function Page() {
                 className="group shadow-primary-700 md:text-lg text-md sm:w-48 w-full inline-flex shadow-lg justify-center items-center md:py-3 py-2 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
               >
                 <Link href="/contact/sales">Book a demo</Link>
-                <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
+                <HiArrowLongRight className="group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-7 h-7" />
               </button>
             </div>
           </div>
