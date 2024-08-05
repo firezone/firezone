@@ -22,7 +22,7 @@ defmodule Web.AuthController do
   action_fallback Web.FallbackController
 
   @doc """
-  This is a callback for the UserPass provider which checks login and password to authenticate the user.
+  This is a callback for the UserPass/TempAccount provider which checks login and password to authenticate the user.
   """
   def verify_credentials(
         conn,
@@ -57,6 +57,39 @@ defmodule Web.AuthController do
         |> put_flash(:error, "Invalid username or password.")
         |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
     end
+  end
+
+  def verify_credentials(
+        conn,
+        %{
+          "account_id_or_slug" => account_id_or_slug,
+          "provider_id" => provider_id,
+          "temp_account" => %{
+            "secret" => secret
+          }
+        } = params
+      ) do
+    redirect_params = Web.Auth.take_sign_in_params(params)
+    context_type = Web.Auth.fetch_auth_context_type!(redirect_params)
+    context = Web.Auth.get_auth_context(conn, context_type)
+    nonce = Web.Auth.fetch_token_nonce!(redirect_params)
+
+    with {:ok, provider} <-
+           Domain.Auth.fetch_active_provider_by_id(provider_id, preload: :account),
+         provider_identifier = provider_identifier(provider),
+         {:ok, identity, encoded_fragment} <-
+           Domain.Auth.sign_in(provider, provider_identifier, nonce, secret, context) do
+      Web.Auth.signed_in(conn, provider, identity, context, encoded_fragment, redirect_params)
+    else
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "Invalid password.")
+        |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
+    end
+  end
+
+  defp provider_identifier(provider) do
+    "admin_" <> provider.account.slug <> "@firezonedemo.com"
   end
 
   @doc """

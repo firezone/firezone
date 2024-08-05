@@ -2,7 +2,7 @@ defmodule Web.SignIn do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
   alias Domain.{Auth, Accounts}
 
-  @root_adapters_whitelist [:email, :userpass, :openid_connect]
+  @root_adapters_whitelist [:email, :userpass, :openid_connect, :temp_account]
 
   def mount(%{"account_id_or_slug" => account_id_or_slug} = params, _session, socket) do
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
@@ -82,6 +82,20 @@ defmodule Web.SignIn do
                 <.providers_group_form
                   adapter="userpass"
                   provider={List.first(@providers_by_adapter[:userpass])}
+                  account={@account}
+                  flash={@flash}
+                  params={@params}
+                />
+              </:item>
+
+              <:item :if={adapter_enabled?(@providers_by_adapter, :temp_account)}>
+                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
+                  Sign in with a password
+                </h2>
+
+                <.providers_group_form
+                  adapter="temp_account"
+                  provider={List.first(@providers_by_adapter[:temp_account])}
                   account={@account}
                   flash={@flash}
                   params={@params}
@@ -191,6 +205,54 @@ defmodule Web.SignIn do
         Sign in
       </.submit_button>
     </.form>
+    """
+  end
+
+  def providers_group_form(%{adapter: "temp_account"} = assigns) do
+    provider_identifier = Phoenix.Flash.get(assigns.flash, :userpass_provider_identifier)
+    form = to_form(%{"provider_identifier" => provider_identifier}, as: "temp_account")
+
+    assigns =
+      assigns
+      |> Map.put(:temp_account_form, form)
+      |> Map.put(:enabled?, Domain.Config.global_feature_enabled?(:temp_accounts))
+
+    ~H"""
+    <.form
+      :if={@enabled?}
+      for={@temp_account_form}
+      action={~p"/#{@account}/sign_in/providers/#{@provider.id}/verify_credentials"}
+      class="space-y-4 lg:space-y-6"
+      id="temp_account_form"
+      phx-update="ignore"
+      phx-hook="AttachDisableSubmit"
+      phx-submit={JS.dispatch("form:disable_and_submit", to: "#temp_account_form")}
+    >
+      <div class="bg-white grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+        <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
+
+        <.input
+          field={@temp_account_form[:secret]}
+          type="password"
+          label="Password"
+          placeholder="••••••••"
+          required
+        />
+      </div>
+
+      <.submit_button class="w-full" style="info" icon="hero-key">
+        Sign in
+      </.submit_button>
+    </.form>
+    <div :if={not @enabled?} class="text-center border rounded py-4">
+      <span class="text-xl">
+        Temporary Accounts have been disabled.
+      </span>
+      <p>
+        <a class={link_style()} href={url(~p"/sign_up")}>Click here</a>
+        to create a free starter account.
+      </p>
+    </div>
     """
   end
 

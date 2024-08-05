@@ -66,6 +66,12 @@ defmodule Web.Router do
     live "/", SignUp
   end
 
+  scope "/try", Web do
+    pipe_through :public
+
+    live "/", TempAccounts.Index
+  end
+
   scope "/:account_id_or_slug", Web do
     pipe_through [:public, :account, :redirect_if_user_is_authenticated]
 
@@ -89,7 +95,7 @@ defmodule Web.Router do
     get "/sign_in/client_auth_error", SignInController, :client_auth_error
 
     scope "/sign_in/providers/:provider_id" do
-      # UserPass
+      # UserPass / Temp Account
       post "/verify_credentials", AuthController, :verify_credentials
 
       # Email
