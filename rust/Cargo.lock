@@ -1535,13 +1535,12 @@ dependencies = [
 
 [[package]]
 name = "domain"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cd50aea158e9a57c9c9075ca7a3dfa4c08d9a468b405832383876f9df85379b"
+checksum = "7eefe29e8dd614abbee51a1616654cab123c4c56850ab83f5b7f1e1f9977bf7c"
 dependencies = [
  "bytes",
  "octseq",
- "pin-project-lite",
  "rand 0.8.5",
  "serde",
  "time",
