@@ -64,7 +64,7 @@ internal class SessionActivity : AppCompatActivity() {
         val intent = Intent(this, TunnelService::class.java)
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
 
-        disabledResources = repo.getDisabledResources().toMutableSet()
+        disabledResources = repo.getDisabledResourcesSync().toMutableSet()
         tunnelService?.resourcesUpdated(disabledResources)
 
         setupViews()
@@ -88,7 +88,7 @@ internal class SessionActivity : AppCompatActivity() {
             disabledResources.remove(resourceToggled.id)
         }
 
-        repo.saveDisabledResources(disabledResources)
+        repo.saveDisabledResourcesSync(disabledResources)
         tunnelService?.resourcesUpdated(disabledResources)
     }
 
@@ -165,7 +165,7 @@ internal class SessionActivity : AppCompatActivity() {
 
         for (item in newResources) {
             // Preventing a bug where a resource stop beings disableable and we can't re-enable it
-            if (!item.disableable) {
+            if (!item.canToggle) {
                 disabledResources.remove(item.id)
             }
 

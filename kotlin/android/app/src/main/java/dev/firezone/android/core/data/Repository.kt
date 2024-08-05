@@ -95,13 +95,13 @@ internal class Repository
                 .putString(DEVICE_ID_KEY, value)
                 .apply()
 
-        fun getDisabledResources(): Set<String> {
+        fun getDisabledResourcesSync(): Set<String> {
             val jsonString = sharedPreferences.getString(DISABLED_RESOURCES_KEY, null) ?: return hashSetOf()
             val type = object : TypeToken<HashSet<String>>() {}.type
             return Gson().fromJson(jsonString, type)
         }
 
-        fun saveDisabledResources(value: Set<String>): Unit =
+        fun saveDisabledResourcesSync(value: Set<String>): Unit =
                 sharedPreferences.edit().putString(DISABLED_RESOURCES_KEY, Gson().toJson(value))
                     .apply()
 
