@@ -45,10 +45,10 @@ impl DnsController {
     /// The `mut` in `&mut self` is not needed by Rust's rules, but
     /// it would be bad if this was called from 2 threads at once.
     ///
-    /// Must be async to match the Linux signature
+    /// Must be async and an owned `Vec` to match the Linux signature
     #[allow(clippy::unused_async)]
-    pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
-        activate(dns_config).context("Failed to activate DNS control")?;
+    pub(crate) async fn set_dns(&mut self, dns_config: Vec<IpAddr>) -> Result<()> {
+        activate(&dns_config).context("Failed to activate DNS control")?;
         Ok(())
     }
 
