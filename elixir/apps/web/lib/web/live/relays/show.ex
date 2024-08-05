@@ -83,14 +83,14 @@ defmodule Web.Relays.Show do
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>
-                Last Connected
+                Last started
               </:label>
               <:value>
                 <.relative_datetime datetime={@relay.last_seen_at} />
               </:value>
             </.vertical_table_row>
             <.vertical_table_row>
-              <:label>Remote IP</:label>
+              <:label>Last seen remote IP</:label>
               <:value>
                 <.last_seen schema={@relay} />
               </:value>
@@ -102,7 +102,7 @@ defmodule Web.Relays.Show do
               </:value>
             </.vertical_table_row>
             <.vertical_table_row>
-              <:label>User Agent</:label>
+              <:label>User agent</:label>
               <:value>
                 <%= @relay.last_seen_user_agent %>
               </:value>
@@ -162,6 +162,9 @@ defmodule Web.Relays.Show do
     socket =
       cond do
         Map.has_key?(payload.joins, relay.id) ->
+          {:ok, relay} =
+            Relays.fetch_relay_by_id(relay.id, socket.assigns.subject, preload: [:group])
+
           assign(socket, relay: %{relay | online?: true})
 
         Map.has_key?(payload.leaves, relay.id) ->

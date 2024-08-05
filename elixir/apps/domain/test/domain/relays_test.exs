@@ -707,6 +707,17 @@ defmodule Domain.RelaysTest do
       assert all_connected_relays_for_account(account) == {:ok, []}
     end
 
+    # test "does not return relays connected less than 5 seconds ago", %{account: account} do
+    #   relay = Fixtures.Relays.create_relay(account: account)
+    #   assert connect_relay(relay, Ecto.UUID.generate()) == :ok
+
+    #   Fixtures.Relays.update_relay(relay,
+    #     last_seen_at: DateTime.utc_now() |> DateTime.add(-1, :second)
+    #   )
+
+    #   assert all_connected_relays_for_account(account) == {:ok, []}
+    # end
+
     test "returns list of connected account relays", %{account: account} do
       relay1 = Fixtures.Relays.create_relay(account: account)
       relay2 = Fixtures.Relays.create_relay(account: account)
@@ -714,6 +725,14 @@ defmodule Domain.RelaysTest do
 
       assert connect_relay(relay1, stamp_secret) == :ok
       assert connect_relay(relay2, stamp_secret) == :ok
+
+      Fixtures.Relays.update_relay(relay1,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-6, :second)
+      )
+
+      Fixtures.Relays.update_relay(relay2,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-600, :second)
+      )
 
       assert {:ok, connected_relays} = all_connected_relays_for_account(account)
 
@@ -727,6 +746,10 @@ defmodule Domain.RelaysTest do
       stamp_secret = Ecto.UUID.generate()
 
       assert connect_relay(relay, stamp_secret) == :ok
+
+      Fixtures.Relays.update_relay(relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
 
       assert {:ok, [connected_relay]} = all_connected_relays_for_account(account)
 

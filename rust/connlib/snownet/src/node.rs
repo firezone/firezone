@@ -508,7 +508,7 @@ where
             tracing::info!(%rid, address = ?allocation.server(), "Removed TURN server");
         }
 
-        // Second, upsert all new relays.
+        // Second, insert new relays.
         for (rid, server, username, password, realm) in to_add {
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
@@ -519,8 +519,8 @@ where
                 continue;
             };
 
-            if let Some(existing) = self.allocations.get_mut(rid) {
-                existing.update_credentials(*server, username, password, realm, now);
+            if self.allocations.contains_key(rid) {
+                tracing::info!(%rid, address = ?server, "Skipping known TURN server");
                 continue;
             }
 
@@ -800,10 +800,8 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        let mut agent = IceAgent::new();
+        let mut agent = new_agent();
         agent.set_controlling(true);
-        agent.set_max_candidate_pairs(300);
-        agent.set_timing_advance(Duration::ZERO);
 
         let session_key = Secret::new(random());
         let ice_creds = agent.local_credentials();
@@ -902,13 +900,12 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        let mut agent = IceAgent::new();
+        let mut agent = new_agent();
         agent.set_controlling(false);
         agent.set_remote_credentials(IceCreds {
             ufrag: offer.credentials.username,
             pass: offer.credentials.password,
         });
-        agent.set_timing_advance(Duration::ZERO);
 
         let answer = Answer {
             credentials: Credentials {
@@ -1814,4 +1811,14 @@ where
     };
 
     Some(transmit)
+}
+
+fn new_agent() -> IceAgent {
+    let mut agent = IceAgent::new();
+    agent.set_max_candidate_pairs(300);
+    agent.set_timing_advance(Duration::ZERO);
+    agent.set_max_stun_retransmits(8);
+    agent.set_max_stun_rto(Duration::from_millis(1500));
+
+    agent
 }
