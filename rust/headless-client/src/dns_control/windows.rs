@@ -48,7 +48,12 @@ impl DnsController {
     /// Must be async and an owned `Vec` to match the Linux signature
     #[allow(clippy::unused_async)]
     pub(crate) async fn set_dns(&mut self, dns_config: Vec<IpAddr>) -> Result<()> {
-        activate(&dns_config).context("Failed to activate DNS control")?;
+        match self.dns_control_method {
+            DnsControlMethod::Disabled => {}
+            DnsControlMethod::Nrpt => {
+                activate(&dns_config).context("Failed to activate DNS control")?
+            }
+        }
         Ok(())
     }
 
