@@ -1,4 +1,7 @@
-use super::sim_net::{any_ip_stack, any_port, Host};
+use super::{
+    sim_dns::RefDns,
+    sim_net::{any_ip_stack, any_port, Host},
+};
 use connlib_shared::{
     messages::{client::ResourceDescription, DnsServer, RelayId, ResourceId},
     DomainName,
@@ -57,9 +60,9 @@ pub(crate) enum Transition {
     },
 
     /// The system's DNS servers changed.
-    UpdateSystemDnsServers { servers: Vec<IpAddr> },
+    UpdateSystemDnsServers(Vec<IpAddr>),
     /// The upstream DNS servers changed.
-    UpdateUpstreamDnsServers { servers: Vec<DnsServer> },
+    UpdateUpstreamDnsServers(Vec<DnsServer>),
 
     /// Roam the client to a new pair of sockets.
     RoamClient {
@@ -183,5 +186,29 @@ pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {
         ip4: ip_stack.as_v4().copied(),
         ip6: ip_stack.as_v6().copied(),
         port,
+    })
+}
+
+pub(crate) fn update_system_dns_servers(
+    dns_servers: Vec<Host<RefDns>>,
+) -> impl Strategy<Value = Transition> {
+    let max = dns_servers.len();
+
+    sample::subsequence(dns_servers, ..=max).prop_map(|seq| {
+        Transition::UpdateSystemDnsServers(
+            seq.into_iter().map(|h| h.single_socket().ip()).collect(),
+        )
+    })
+}
+
+pub(crate) fn update_upstream_dns_servers(
+    dns_servers: Vec<Host<RefDns>>,
+) -> impl Strategy<Value = Transition> {
+    let max = dns_servers.len();
+
+    sample::subsequence(dns_servers, ..=max).prop_map(|seq| {
+        Transition::UpdateUpstreamDnsServers(
+            seq.into_iter().map(|h| h.single_socket().into()).collect(),
+        )
     })
 }

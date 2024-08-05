@@ -2025,6 +2025,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "tun",
+ "uuid",
 ]
 
 [[package]]

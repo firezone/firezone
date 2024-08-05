@@ -33,6 +33,7 @@ thiserror = { version = "1.0", default-features = false }
 tokio = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
+uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
 
 [dev-dependencies]
 derivative = "2.2.0"

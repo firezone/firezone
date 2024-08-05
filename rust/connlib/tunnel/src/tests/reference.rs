@@ -1,5 +1,5 @@
 use super::{
-    composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
+    composite_strategy::CompositeStrategy, sim_client::*, sim_dns::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
 use crate::dns::is_subdomain;
@@ -27,6 +27,7 @@ pub(crate) struct ReferenceState {
     pub(crate) client: Host<RefClient>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
+    pub(crate) dns_servers: BTreeMap<DnsServerId, Host<RefDns>>,
 
     pub(crate) portal: StubPortal,
 
@@ -58,13 +59,14 @@ impl ReferenceStateMachine for ReferenceState {
 
     fn init_state() -> BoxedStrategy<Self::State> {
         stub_portal()
-            .prop_flat_map(move |portal| {
+            .prop_flat_map(|portal| {
                 let gateways = portal.gateways();
                 let dns_resource_records = portal.dns_resource_records();
                 let client = portal.client();
                 let relays = relays();
                 let global_dns_records = global_dns_records(); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
                 let drop_direct_client_traffic = any::<bool>();
+                let dns_servers = dns_servers();
 
                 (
                     client,
@@ -74,6 +76,7 @@ impl ReferenceStateMachine for ReferenceState {
                     relays,
                     global_dns_records,
                     drop_direct_client_traffic,
+                    dns_servers,
                 )
             })
             .prop_filter_map(
@@ -86,6 +89,7 @@ impl ReferenceStateMachine for ReferenceState {
                     relays,
                     mut global_dns,
                     drop_direct_client_traffic,
+                    dns_servers,
                 )| {
                     let mut routing_table = RoutingTable::default();
 
@@ -104,6 +108,12 @@ impl ReferenceStateMachine for ReferenceState {
                         };
                     }
 
+                    for (id, dns_server) in &dns_servers {
+                        if !routing_table.add_host(*id, dns_server) {
+                            return None;
+                        };
+                    }
+
                     // Merge all DNS records into `global_dns`.
                     global_dns.extend(records);
 
@@ -111,6 +121,7 @@ impl ReferenceStateMachine for ReferenceState {
                         c,
                         gateways,
                         relays,
+                        dns_servers,
                         portal,
                         global_dns,
                         drop_direct_client_traffic,
@@ -120,7 +131,7 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .prop_filter(
                 "private keys must be unique",
-                |(c, gateways, _, _, _, _, _)| {
+                |(c, gateways, _, _, _, _, _, _)| {
                     let different_keys = gateways
                         .iter()
                         .map(|(_, g)| g.inner().key)
@@ -135,6 +146,7 @@ impl ReferenceStateMachine for ReferenceState {
                     client,
                     gateways,
                     relays,
+                    dns_servers,
                     portal,
                     global_dns_records,
                     drop_direct_client_traffic,
@@ -144,6 +156,7 @@ impl ReferenceStateMachine for ReferenceState {
                         client,
                         gateways,
                         relays,
+                        dns_servers,
                         portal,
                         global_dns_records,
                         network,
@@ -162,13 +175,11 @@ impl ReferenceStateMachine for ReferenceState {
         CompositeStrategy::default()
             .with(
                 1,
-                system_dns_servers()
-                    .prop_map(|servers| Transition::UpdateSystemDnsServers { servers }),
+                update_system_dns_servers(state.dns_servers.values().cloned().collect()),
             )
             .with(
                 1,
-                upstream_dns_servers()
-                    .prop_map(|servers| Transition::UpdateUpstreamDnsServers { servers }),
+                update_upstream_dns_servers(state.dns_servers.values().cloned().collect()),
             )
             .with_if_not_empty(
                 5,
@@ -396,12 +407,12 @@ impl ReferenceStateMachine for ReferenceState {
                     state.portal.gateway_for_resource(r).copied()
                 })
             }),
-            Transition::UpdateSystemDnsServers { servers } => {
+            Transition::UpdateSystemDnsServers(servers) => {
                 state
                     .client
                     .exec_mut(|client| client.system_dns_resolvers.clone_from(servers));
             }
-            Transition::UpdateUpstreamDnsServers { servers } => {
+            Transition::UpdateUpstreamDnsServers(servers) => {
                 state
                     .client
                     .exec_mut(|client| client.upstream_dns_resolvers.clone_from(servers));
@@ -518,29 +529,23 @@ impl ReferenceStateMachine for ReferenceState {
                     })
                     && state.gateways.contains_key(gateway)
             }
-            Transition::UpdateSystemDnsServers { servers } => {
-                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
-
-                if state.client.ip4.is_none() && servers.iter().all(|s| s.is_ipv4()) {
-                    return false;
-                }
-                if state.client.ip6.is_none() && servers.iter().all(|s| s.is_ipv6()) {
-                    return false;
+            Transition::UpdateSystemDnsServers(servers) => {
+                if servers.is_empty() {
+                    return true; // Clearing is allowed.
                 }
 
-                true
+                servers
+                    .iter()
+                    .any(|dns_server| state.client.sending_socket_for(*dns_server).is_some())
             }
-            Transition::UpdateUpstreamDnsServers { servers } => {
-                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
-
-                if state.client.ip4.is_none() && servers.iter().all(|s| s.ip().is_ipv4()) {
-                    return false;
-                }
-                if state.client.ip6.is_none() && servers.iter().all(|s| s.ip().is_ipv6()) {
-                    return false;
+            Transition::UpdateUpstreamDnsServers(servers) => {
+                if servers.is_empty() {
+                    return true; // Clearing is allowed.
                 }
 
-                true
+                servers
+                    .iter()
+                    .any(|dns_server| state.client.sending_socket_for(dns_server.ip()).is_some())
             }
             Transition::SendDnsQuery {
                 domain, dns_server, ..

@@ -67,6 +67,8 @@ impl SimGateway {
     ) -> Option<Transmit<'static>> {
         let packet = packet.to_owned();
 
+        // TODO: Instead of handling these things inline, here, should we dispatch them via `RoutingTable`?
+
         if packet.as_icmp().is_some() {
             self.received_icmp_requests.push_back(packet.clone());
 

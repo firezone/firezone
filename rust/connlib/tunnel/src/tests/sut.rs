@@ -1,6 +1,7 @@
 use super::buffered_transmits::BufferedTransmits;
 use super::reference::ReferenceState;
 use super::sim_client::SimClient;
+use super::sim_dns::{DnsServerId, SimDns};
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
@@ -47,6 +48,7 @@ pub(crate) struct TunnelTest {
     client: Host<SimClient>,
     gateways: BTreeMap<GatewayId, Host<SimGateway>>,
     relays: BTreeMap<RelayId, Host<SimRelay>>,
+    dns_servers: BTreeMap<DnsServerId, Host<SimDns>>,
 
     drop_direct_client_traffic: bool,
     network: RoutingTable,
@@ -101,6 +103,16 @@ impl StateMachineTest for TunnelTest {
             })
             .collect::<BTreeMap<_, _>>();
 
+        let dns_servers = ref_state
+            .dns_servers
+            .iter()
+            .map(|(did, dns_server)| {
+                let dns_server = dns_server.map(|_, _, _| SimDns {}, debug_span!("dns", %did));
+
+                (*did, dns_server)
+            })
+            .collect::<BTreeMap<_, _>>();
+
         // Configure client and gateway with the relays.
         client.exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
         for gateway in gateways.values_mut() {
@@ -116,6 +128,7 @@ impl StateMachineTest for TunnelTest {
             gateways,
             logger,
             relays,
+            dns_servers,
         };
 
         let mut buffered_transmits = BufferedTransmits::default();
@@ -221,12 +234,12 @@ impl StateMachineTest for TunnelTest {
 
                 buffered_transmits.push_from(transmit, &state.client, now);
             }
-            Transition::UpdateSystemDnsServers { servers } => {
+            Transition::UpdateSystemDnsServers(servers) => {
                 state
                     .client
                     .exec_mut(|c| c.sut.update_system_resolvers(servers));
             }
-            Transition::UpdateUpstreamDnsServers { servers } => {
+            Transition::UpdateUpstreamDnsServers(servers) => {
                 state.client.exec_mut(|c| {
                     c.sut.update_interface_config(Interface {
                         ipv4: c.sut.tunnel_ip4().unwrap(),
@@ -514,7 +527,7 @@ impl TunnelTest {
 
         for (_, relay) in self.relays.iter_mut() {
             while let Some(transmit) = relay.poll_transmit(now) {
-                let Some(reply) = relay.exec_mut(|g| g.receive(transmit, now)) else {
+                let Some(reply) = relay.exec_mut(|r| r.receive(transmit, now)) else {
                     continue;
                 };
 
@@ -522,6 +535,18 @@ impl TunnelTest {
             }
 
             relay.exec_mut(|r| r.sut.handle_timeout(now))
+        }
+
+        for (_, dns_server) in self.dns_servers.iter_mut() {
+            while let Some(transmit) = dns_server.poll_transmit(now) {
+                let Some(reply) =
+                    dns_server.exec_mut(|d| d.receive(global_dns_records, transmit, now))
+                else {
+                    continue;
+                };
+
+                buffered_transmits.push_from(reply, dns_server, now);
+            }
         }
     }
 
@@ -590,6 +615,12 @@ impl TunnelTest {
             }
             HostId::Stale => {
                 tracing::debug!(%dst, "Dropping packet because host roamed away or is offline");
+            }
+            HostId::DnsServer(id) => {
+                self.dns_servers
+                    .get_mut(&id)
+                    .expect("unknown DNS server")
+                    .receive(transmit, now);
             }
         }
     }

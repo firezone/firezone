@@ -2,7 +2,7 @@ use super::{
     reference::{private_key, PrivateKey, ResourceDst},
     sim_net::{any_ip_stack, any_port, host, Host},
     sim_relay::{map_explode, SimRelay},
-    strategies::{latency, system_dns_servers, upstream_dns_servers},
+    strategies::latency,
     sut::domain_to_hickory_name,
     IcmpIdentifier, IcmpSeq, QueryId,
 };
@@ -286,13 +286,16 @@ impl RefClient {
     ///
     /// This simulates receiving the `init` message from the portal.
     pub(crate) fn init(self) -> SimClient {
+        assert!(self.upstream_dns_resolvers.is_empty());
+        assert!(self.system_dns_resolvers.is_empty());
+
         let mut client_state = ClientState::new(self.key, self.known_hosts, self.key.0); // Cheating a bit here by reusing the key as seed.
         let _ = client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,
-            upstream_dns: self.upstream_dns_resolvers,
+            upstream_dns: vec![],
         });
-        let _ = client_state.update_system_resolvers(self.system_dns_resolvers);
+        let _ = client_state.update_system_resolvers(vec![]);
 
         SimClient::new(self.id, client_state)
     }
@@ -525,7 +528,7 @@ impl RefClient {
             return self
                 .upstream_dns_resolvers
                 .iter()
-                .map(|s| s.address())
+                .map(DnsServer::address)
                 .collect();
         }
 
@@ -687,32 +690,6 @@ pub(crate) fn ref_client_host(
         ref_client(tunnel_ip4s, tunnel_ip6s),
         latency(300), // TODO: Increase with #6062.
     )
-    .prop_filter("at least one DNS server needs to be reachable", |host| {
-        // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
-
-        let upstream_dns_resolvers = &host.inner().upstream_dns_resolvers;
-        let system_dns = &host.inner().system_dns_resolvers;
-
-        if !upstream_dns_resolvers.is_empty() {
-            if host.ip4.is_none() && upstream_dns_resolvers.iter().all(|s| s.ip().is_ipv4()) {
-                return false;
-            }
-            if host.ip6.is_none() && upstream_dns_resolvers.iter().all(|s| s.ip().is_ipv6()) {
-                return false;
-            }
-
-            return true;
-        }
-
-        if host.ip4.is_none() && system_dns.iter().all(|s| s.is_ipv4()) {
-            return false;
-        }
-        if host.ip6.is_none() && system_dns.iter().all(|s| s.is_ipv6()) {
-            return false;
-        }
-
-        true
-    })
 }
 
 fn ref_client(
@@ -725,26 +702,16 @@ fn ref_client(
         client_id(),
         private_key(),
         known_hosts(),
-        system_dns_servers(),
-        upstream_dns_servers(),
     )
         .prop_map(
-            move |(
-                tunnel_ip4,
-                tunnel_ip6,
-                id,
-                key,
-                known_hosts,
-                system_dns_resolvers,
-                upstream_dns_resolvers,
-            )| RefClient {
+            move |(tunnel_ip4, tunnel_ip6, id, key, known_hosts)| RefClient {
                 id,
                 key,
                 known_hosts,
                 tunnel_ip4,
                 tunnel_ip6,
-                system_dns_resolvers,
-                upstream_dns_resolvers,
+                system_dns_resolvers: Default::default(),
+                upstream_dns_resolvers: Default::default(),
                 internet_resource: Default::default(),
                 cidr_resources: IpNetworkTable::new(),
                 dns_resources: Default::default(),
