@@ -57,14 +57,11 @@ impl ReferenceStateMachine for ReferenceState {
     type Transition = Transition;
 
     fn init_state() -> BoxedStrategy<Self::State> {
-        let client_tunnel_ip4 = tunnel_ip4s().next().unwrap();
-        let client_tunnel_ip6 = tunnel_ip6s().next().unwrap();
-
         stub_portal()
             .prop_flat_map(move |portal| {
                 let gateways = portal.gateways();
                 let dns_resource_records = portal.dns_resource_records();
-                let client = ref_client_host(Just(client_tunnel_ip4), Just(client_tunnel_ip6));
+                let client = portal.client();
                 let relays = relays();
                 let global_dns_records = global_dns_records(); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
                 let drop_direct_client_traffic = any::<bool>();

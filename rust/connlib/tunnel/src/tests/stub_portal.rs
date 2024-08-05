@@ -1,4 +1,5 @@
 use super::{
+    sim_client::{ref_client_host, RefClient},
     sim_gateway::{ref_gateway_host, RefGateway},
     sim_net::Host,
     strategies::{resolved_ips, subdomain_records},
@@ -8,6 +9,7 @@ use connlib_shared::{
     proptest::{domain_label, domain_name},
     DomainName,
 };
+use ip_network::{Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use proptest::{
     sample::Selector,
@@ -16,7 +18,7 @@ use proptest::{
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     iter,
-    net::IpAddr,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
 /// Stub implementation of the portal.
@@ -194,6 +196,13 @@ impl StubPortal {
             .prop_map(BTreeMap::from_iter)
     }
 
+    pub(crate) fn client(&self) -> impl Strategy<Value = Host<RefClient>> {
+        let client_tunnel_ip4 = tunnel_ip4s().next().unwrap();
+        let client_tunnel_ip6 = tunnel_ip6s().next().unwrap();
+
+        ref_client_host(Just(client_tunnel_ip4), Just(client_tunnel_ip6))
+    }
+
     pub(crate) fn dns_resource_records(
         &self,
     ) -> impl Strategy<Value = HashMap<DomainName, HashSet<IpAddr>>> {
@@ -231,4 +240,31 @@ impl StubPortal {
                 map
             })
     }
+}
+
+const IPV4_TUNNEL: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11) {
+    Ok(n) => n,
+    Err(_) => unreachable!(),
+};
+const IPV6_TUNNEL: Ipv6Network =
+    match Ipv6Network::new(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 0), 107) {
+        Ok(n) => n,
+        Err(_) => unreachable!(),
+    };
+
+/// An [`Iterator`] over the possible IPv4 addresses of a tunnel interface.
+///
+/// We use the CG-NAT range for IPv4.
+/// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L7>.
+fn tunnel_ip4s() -> impl Iterator<Item = Ipv4Addr> {
+    IPV4_TUNNEL.hosts()
+}
+
+/// An [`Iterator`] over the possible IPv6 addresses of a tunnel interface.
+///
+/// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L8>.
+fn tunnel_ip6s() -> impl Iterator<Item = Ipv6Addr> {
+    IPV6_TUNNEL
+        .subnets_with_prefix(128)
+        .map(|n| n.network_address())
 }

@@ -72,26 +72,6 @@ pub(crate) fn packet_source_v6(client: Ipv6Addr) -> impl Strategy<Value = Ipv6Ad
     ]
 }
 
-/// An [`Iterator`] over the possible IPv4 addresses of a tunnel interface.
-///
-/// We use the CG-NAT range for IPv4.
-/// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L7>.
-pub(crate) fn tunnel_ip4s() -> impl Iterator<Item = Ipv4Addr> {
-    Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11)
-        .unwrap()
-        .hosts()
-}
-
-/// An [`Iterator`] over the possible IPv6 addresses of a tunnel interface.
-///
-/// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L8>.
-pub(crate) fn tunnel_ip6s() -> impl Iterator<Item = Ipv6Addr> {
-    Ipv6Network::new(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 0), 107)
-        .unwrap()
-        .subnets_with_prefix(128)
-        .map(|n| n.network_address())
-}
-
 pub(crate) fn latency(max: u64) -> impl Strategy<Value = Duration> {
     (10..max).prop_map(Duration::from_millis)
 }
