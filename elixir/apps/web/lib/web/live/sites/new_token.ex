@@ -310,7 +310,7 @@ defmodule Web.Sites.NewToken do
       "--sysctl net.ipv6.conf.all.forwarding=1",
       "--sysctl net.ipv6.conf.default.forwarding=1",
       "--device=\"/dev/net/tun:/dev/net/tun\"",
-      Enum.map(env ++ [{"FIREZONE_ENABLE_MASQUERADE", "1"}], fn {key, value} ->
+      Enum.map(env, fn {key, value} ->
         "--env #{key}=\"#{value}\""
       end),
       "--env FIREZONE_NAME=$(hostname)",
