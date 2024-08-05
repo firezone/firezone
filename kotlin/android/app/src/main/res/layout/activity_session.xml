@@ -71,7 +71,7 @@
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:icon="@drawable/baseline_star_outline_24"
-            android:text="@string/resources_other" />
+            android:text="@string/resources_all" />
 
     </com.google.android.material.tabs.TabLayout>
 

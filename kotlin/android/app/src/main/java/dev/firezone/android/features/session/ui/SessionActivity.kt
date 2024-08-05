@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
+import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.DividerItemDecoration
@@ -25,7 +26,7 @@ internal class SessionActivity : AppCompatActivity() {
     private var serviceBound = false
     private val viewModel: SessionViewModel by viewModels()
     private var resourceList: List<Resource> = emptyList()
-    private var showFavorites = true
+    private var showOnlyFavorites = true
 
     private val serviceConnection =
         object : ServiceConnection {
@@ -98,11 +99,11 @@ internal class SessionActivity : AppCompatActivity() {
                 override fun onTabSelected(tab: TabLayout.Tab) {
                     when (tab.position) {
                         RESOURCES_TAB_FAVORITES -> {
-                            showFavorites = true
+                            showOnlyFavorites = true
                             refreshList()
                         }
-                        RESOURCES_TAB_OTHER -> {
-                            showFavorites = false
+                        RESOURCES_TAB_ALL -> {
+                            showOnlyFavorites = false
                             refreshList()
                         }
                         else -> error("Invalid tab position")
@@ -136,12 +137,24 @@ internal class SessionActivity : AppCompatActivity() {
     }
 
     private fun refreshList() {
-        resourcesAdapter.submitList(resourceList.filter { viewModel.favoriteResources.value?.contains(it.id) == showFavorites })
+        if (viewModel.favoriteResources.value!!.isEmpty()) {
+            showOnlyFavorites = false
+            binding.tabLayout.selectTab(binding.tabLayout.getTabAt(RESOURCES_TAB_ALL), true)
+            binding.tabLayout.visibility = View.GONE
+            resourcesAdapter.submitList(resourceList)
+        } else if (showOnlyFavorites) {
+            val list = resourceList.filter { viewModel.favoriteResources.value!!.contains(it.id) }
+            binding.tabLayout.visibility = View.VISIBLE
+            resourcesAdapter.submitList(list)
+        } else {
+            binding.tabLayout.visibility = View.VISIBLE
+            resourcesAdapter.submitList(resourceList)
+        }
     }
 
     companion object {
         private const val TAG = "SessionActivity"
         private const val RESOURCES_TAB_FAVORITES = 0
-        private const val RESOURCES_TAB_OTHER = 1
+        private const val RESOURCES_TAB_ALL = 1
     }
 }
