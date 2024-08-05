@@ -266,7 +266,7 @@ pub struct ClientState {
     sites_status: HashMap<SiteId, Status>,
 
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
-    cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    active_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     /// All resources indexed by their ID.
     resources_by_id: HashMap<ResourceId, ResourceDescription>,
 
@@ -311,7 +311,7 @@ impl ClientState {
         Self {
             awaiting_connection_details: Default::default(),
             resources_gateways: Default::default(),
-            cidr_resources: IpNetworkTable::new(),
+            active_cidr_resources: IpNetworkTable::new(),
             resources_by_id: Default::default(),
             peers: Default::default(),
             dns_mapping: Default::default(),
@@ -649,7 +649,7 @@ impl ClientState {
 
                     // In case the DNS server is a CIDR resource, it needs to go through the tunnel.
                     if self.is_upstream_set_by_the_portal()
-                        && self.cidr_resources.longest_match(ip).is_some()
+                        && self.active_cidr_resources.longest_match(ip).is_some()
                     {
                         return Err((packet, ip));
                     }
@@ -816,7 +816,7 @@ impl ClientState {
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
-        self.cidr_resources
+        self.active_cidr_resources
             .iter()
             .map(|(ip, _)| ip)
             .chain(iter::once(IPV4_RESOURCES.into()))
@@ -832,7 +832,7 @@ impl ClientState {
         let maybe_dns_resource_id = self.stub_resolver.resolve_resource_by_ip(&destination);
 
         let maybe_cidr_resource_id = self
-            .cidr_resources
+            .active_cidr_resources
             .longest_match(destination)
             .map(|(_, res)| res.id);
 
@@ -1009,7 +1009,9 @@ impl ClientState {
                 self.stub_resolver.add_resource(dns.id, dns.address.clone());
             }
             ResourceDescription::Cidr(cidr) => {
-                let existing = self.cidr_resources.insert(cidr.address, cidr.clone());
+                let existing = self
+                    .active_cidr_resources
+                    .insert(cidr.address, cidr.clone());
 
                 match existing {
                     Some(existing) if existing.id != cidr.id => {
@@ -1034,7 +1036,7 @@ impl ClientState {
     fn disable_resource(&mut self, id: ResourceId) {
         self.awaiting_connection_details.remove(&id);
         self.stub_resolver.remove_resource(id);
-        self.cidr_resources.retain(|_, r| {
+        self.active_cidr_resources.retain(|_, r| {
             if r.id == id {
                 tracing::info!(address = %r.address, name = %r.name, "Deactivating CIDR resource");
                 return false;
