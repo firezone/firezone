@@ -106,7 +106,7 @@ internal class SessionActivity : AppCompatActivity() {
                             showOnlyFavorites = false
                             refreshList()
                         }
-                        else -> error("Invalid tab position")
+                        else -> throw IllegalArgumentException("Invalid tab position: $tab.position")
                     }
                 }
 
