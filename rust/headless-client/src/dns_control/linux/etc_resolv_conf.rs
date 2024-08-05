@@ -88,7 +88,7 @@ fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Result<()> 
         .write(|f| f.write_all(text.as_bytes()))
         .context("Failed to back up `resolv.conf`")?;
 
-    let mut new_resolv_conf = parsed.clone();
+    let mut new_resolv_conf = parsed;
 
     new_resolv_conf.nameservers = dns_config.iter().map(|addr| (*addr).into()).collect();
 
