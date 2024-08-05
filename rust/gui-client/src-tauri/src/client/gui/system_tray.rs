@@ -229,7 +229,7 @@ mod tests {
                 "address_description": "cidr resource",
                 "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                 "status": "Unknown",
-                "disableable": false
+                "can_toggle": false
             },
             {
                 "id": "03000143-e25e-45c7-aafb-144990e57dcd",
@@ -239,7 +239,7 @@ mod tests {
                 "address_description": "dns resource",
                 "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                 "status": "Online",
-                "disableable": false
+                "can_toggle": false
             },
             {
                 "id": "1106047c-cd5d-4151-b679-96b93da7383b",
@@ -249,7 +249,7 @@ mod tests {
                 "address_description": "The whole entire Internet",
                 "sites": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
                 "status": "Offline",
-                "disableable": false
+                "can_toggle": false
             }
         ]"#;
 
@@ -290,7 +290,7 @@ mod tests {
                 "address_description": "https://example.com",
                 "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                 "status": "Online",
-                "disableable": false
+                "can_toggle": false
             }
         ]"#;
         let resources: Vec<_> = serde_json::from_str(s).unwrap();
