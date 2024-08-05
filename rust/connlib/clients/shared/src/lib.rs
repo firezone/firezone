@@ -5,19 +5,19 @@ pub use connlib_shared::{
     callbacks, keypair, Callbacks, Error, LoginUrl, LoginUrlError, StaticSecret,
 };
 pub use eventloop::Eventloop;
-pub use firezone_tunnel::Tun;
 pub use tracing_appender::non_blocking::WorkerGuard;
 
 use eventloop::Command;
 use firezone_tunnel::ClientTunnel;
 use messages::{IngressMessages, ReplyMessages};
 use phoenix_channel::PhoenixChannel;
-use socket_factory::SocketFactory;
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::task::JoinHandle;
+use tun::Tun;
 
 mod eventloop;
 pub mod file_logger;
@@ -36,8 +36,8 @@ pub struct Session {
 
 /// Arguments for `connect`, since Clippy said 8 args is too many
 pub struct ConnectArgs<CB> {
-    pub tcp_socket_factory: Arc<dyn SocketFactory<tokio::net::TcpSocket>>,
-    pub udp_socket_factory: Arc<dyn SocketFactory<tokio::net::UdpSocket>>,
+    pub tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+    pub udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     pub private_key: StaticSecret,
     pub callbacks: CB,
 }
@@ -60,19 +60,19 @@ impl Session {
         Self { channel: tx }
     }
 
-    /// Attempts to reconnect a [`Session`].
+    /// Reset a [`Session`].
     ///
-    /// Reconnecting a session will:
+    /// Resetting a session will:
     ///
     /// - Close and re-open a connection to the portal.
-    /// - Refresh all allocations
-    /// - Rebind local UDP sockets
+    /// - Delete all allocations.
+    /// - Rebind local UDP sockets.
     ///
     /// # Implementation note
     ///
     /// The reason we rebind the UDP sockets are:
     ///
-    /// 1. On MacOS, as socket bound to the unspecified IP cannot send to interfaces attached after the socket has been created.
+    /// 1. On MacOS, a socket bound to the unspecified IP cannot send to interfaces attached after the socket has been created.
     /// 2. Switching between networks changes the 3-tuple of the client.
     ///    The TURN protocol identifies a client's allocation based on the 3-tuple.
     ///    Consequently, an allocation is invalid after switching networks and we clear the state.
@@ -80,8 +80,8 @@ impl Session {
     ///    However, if the user would now change _back_ to the previous network,
     ///    the TURN server would recognise the old allocation but the client already lost all its state associated with it.
     ///    To avoid race-conditions like this, we rebind the sockets to a new port.
-    pub fn reconnect(&self) {
-        let _ = self.channel.send(Command::Reconnect);
+    pub fn reset(&self) {
+        let _ = self.channel.send(Command::Reset);
     }
 
     /// Sets a new set of upstream DNS servers for this [`Session`].
@@ -95,7 +95,7 @@ impl Session {
     }
 
     /// Sets a new [`Tun`] device handle.
-    pub fn set_tun(&self, new_tun: Tun) {
+    pub fn set_tun(&self, new_tun: Box<dyn Tun>) {
         let _ = self.channel.send(Command::SetTun(new_tun));
     }
 
@@ -175,70 +175,5 @@ where
                 callbacks.on_disconnect(&Error::Cancelled);
             }
         },
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[derive(Clone, Default)]
-    struct Callbacks {}
-    impl connlib_shared::Callbacks for Callbacks {}
-
-    #[cfg(target_os = "linux")]
-    #[tokio::test]
-    #[ignore = "Performs system-wide I/O, needs sudo"]
-    async fn device_linux() {
-        device_common().await;
-    }
-
-    #[cfg(target_os = "windows")]
-    #[tokio::test]
-    #[ignore = "Performs system-wide I/O, needs sudo"]
-    async fn device_windows() {
-        // Install wintun so the test can run
-        let wintun_path = connlib_shared::windows::wintun_dll_path().unwrap();
-        tokio::fs::create_dir_all(wintun_path.parent().unwrap())
-            .await
-            .unwrap();
-        tokio::fs::write(&wintun_path, connlib_shared::windows::wintun_bytes())
-            .await
-            .unwrap();
-
-        device_common().await;
-    }
-
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
-    async fn device_common() {
-        use firezone_tunnel::Tun;
-        use std::{collections::HashMap, sync::Arc};
-
-        let (private_key, _public_key) = connlib_shared::keypair();
-        let mut tunnel = firezone_tunnel::ClientTunnel::new(
-            private_key,
-            Arc::new(socket_factory::tcp),
-            Arc::new(socket_factory::udp),
-            HashMap::new(),
-        )
-        .unwrap();
-        let upstream_dns = vec![([192, 168, 1, 1], 53).into()];
-        let interface = connlib_shared::messages::Interface {
-            ipv4: [100, 71, 96, 96].into(),
-            ipv6: [0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0019, 0x6538].into(),
-            upstream_dns,
-        };
-        tunnel.set_tun(Tun::new().unwrap());
-        tunnel.set_new_interface_config(interface).unwrap();
-
-        let tunnel = tokio::spawn(async move {
-            std::future::poll_fn(|cx| tunnel.poll_next_event(cx))
-                .await
-                .unwrap()
-        });
-
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-
-        if tunnel.is_finished() {
-            tunnel.await.unwrap();
-        }
     }
 }

@@ -230,11 +230,13 @@ defmodule Domain.Relays do
     end)
   end
 
-  def all_connected_relays_for_account(%Accounts.Account{} = account) do
-    all_connected_relays_for_account(account.id)
+  def all_connected_relays_for_account(account_id_or_account, except_ids \\ [])
+
+  def all_connected_relays_for_account(%Accounts.Account{} = account, except_ids) do
+    all_connected_relays_for_account(account.id, except_ids)
   end
 
-  def all_connected_relays_for_account(account_id) do
+  def all_connected_relays_for_account(account_id, except_ids) do
     connected_global_relays =
       global_groups_presence_topic()
       |> Presence.list()
@@ -244,12 +246,13 @@ defmodule Domain.Relays do
       |> Presence.list()
 
     connected_relays = Map.merge(connected_global_relays, connected_account_relays)
-    connected_relay_ids = Map.keys(connected_relays)
+    connected_relay_ids = Map.keys(connected_relays) -- except_ids
 
     relays =
       Relay.Query.not_deleted()
       |> Relay.Query.by_ids(connected_relay_ids)
       |> Relay.Query.global_or_by_account_id(account_id)
+      # |> Relay.Query.by_last_seen_at_greater_than(5, "second", :ago)
       |> Relay.Query.prefer_global()
       |> Repo.all()
       |> Enum.map(fn relay ->
@@ -393,14 +396,14 @@ defmodule Domain.Relays do
     PubSub.unsubscribe(presence_topic(relay_or_id))
   end
 
-  def subscribe_to_relays_presence_in_account(%Accounts.Account{} = account) do
+  def subscribe_to_relays_presence_in_account(account_or_id) do
     PubSub.subscribe(global_groups_presence_topic())
-    PubSub.subscribe(account_presence_topic(account))
+    PubSub.subscribe(account_presence_topic(account_or_id))
   end
 
-  def unsubscribe_from_relays_presence_in_account(%Accounts.Account{} = account) do
+  def unsubscribe_from_relays_presence_in_account(account_or_id) do
     PubSub.unsubscribe(global_groups_presence_topic())
-    PubSub.unsubscribe(account_presence_topic(account))
+    PubSub.unsubscribe(account_presence_topic(account_or_id))
   end
 
   def subscribe_to_relays_presence_in_group(group_or_id) do

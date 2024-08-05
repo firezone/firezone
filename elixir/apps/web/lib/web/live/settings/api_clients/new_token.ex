@@ -16,7 +16,7 @@ defmodule Web.Settings.ApiClients.NewToken do
           actor: actor,
           encoded_token: nil,
           form: to_form(changeset),
-          page_title: "Create API Token"
+          page_title: "New API Token"
         )
 
       {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -42,14 +42,14 @@ defmodule Web.Settings.ApiClients.NewToken do
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <div :if={is_nil(@encoded_token)}>
-            <h2 class="mb-4 text-xl text-neutral-900">Create Token</h2>
+            <h2 class="mb-4 text-xl text-neutral-900">API Token details</h2>
             <.flash kind={:error} flash={@flash} />
             <.form for={@form} phx-change={:change} phx-submit={:submit}>
               <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
                 <.api_token_form form={@form} />
               </div>
               <.submit_button>
-                Create
+                Create API Token
               </.submit_button>
             </.form>
           </div>

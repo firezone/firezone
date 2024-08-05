@@ -13,13 +13,13 @@ defmodule Domain.Resources.Resource.Changeset do
     |> changeset()
     |> validate_required(@required_fields)
     |> put_change(:account_id, account.id)
+    |> update_change(:address, &String.trim/1)
     |> validate_address()
     |> cast_assoc(:connections,
       with: &Connection.Changeset.changeset(account.id, &1, &2, subject),
       required: true
     )
-    |> put_change(:created_by, :identity)
-    |> put_change(:created_by_identity_id, subject.identity.id)
+    |> put_created_by(subject)
   end
 
   def create(%Accounts.Account{} = account, attrs) do

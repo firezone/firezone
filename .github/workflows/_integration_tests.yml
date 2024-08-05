@@ -145,10 +145,17 @@ jobs:
           # Start one-by-one to avoid variability in service startup order
           docker compose up -d dns.httpbin httpbin download.httpbin
           docker compose up -d api web domain --no-build
+          docker compose up -d otel --no-build
           docker compose up -d relay-1 --no-build
           docker compose up -d relay-2 --no-build
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
+
+          # Wait a few seconds for the services to fully start. GH runners are
+          # slow, so this gives the Client enough time to initialize its tun interface,
+          # for example.
+          # Intended to mitigate <https://github.com/firezone/firezone/issues/5830>
+          sleep 3
 
       - run: ./scripts/tests/${{ matrix.test.name }}.sh
 

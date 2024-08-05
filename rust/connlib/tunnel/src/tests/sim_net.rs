@@ -1,15 +1,19 @@
+use crate::tests::buffered_transmits::BufferedTransmits;
+use crate::tests::strategies::documentation_ip6s;
 use connlib_shared::messages::{ClientId, GatewayId, RelayId};
 use firezone_relay::{AddressFamily, IpStack};
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_network::{IpNetwork, Ipv4Network};
 use ip_network_table::IpNetworkTable;
 use itertools::Itertools as _;
 use prop::sample;
 use proptest::prelude::*;
+use snownet::Transmit;
 use std::{
     collections::HashSet,
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     num::NonZeroU16,
+    time::{Duration, Instant},
 };
 use tracing::Span;
 
@@ -23,17 +27,28 @@ pub(crate) struct Host<T> {
 
     // In production, we always rebind to a new port.
     // To mimic this, we track the used ports here to not sample an existing one.
+    #[derivative(Debug = "ignore")]
     pub(crate) old_ports: HashSet<u16>,
 
     default_port: u16,
+    #[derivative(Debug = "ignore")]
     allocated_ports: HashSet<(u16, AddressFamily)>,
+
+    // The latency of incoming and outgoing packets.
+    latency: Duration,
 
     #[derivative(Debug = "ignore")]
     span: Span,
+
+    /// Messages that have "arrived" and are waiting to be dispatched.
+    ///
+    /// We buffer them here because we need also apply our latency on inbound packets.
+    #[derivative(Debug = "ignore")]
+    inbox: BufferedTransmits,
 }
 
 impl<T> Host<T> {
-    pub(crate) fn new(inner: T) -> Self {
+    pub(crate) fn new(inner: T, latency: Duration) -> Self {
         Self {
             inner,
             ip4: None,
@@ -42,6 +57,8 @@ impl<T> Host<T> {
             default_port: 0,
             allocated_ports: HashSet::default(),
             old_ports: HashSet::default(),
+            latency,
+            inbox: BufferedTransmits::default(),
         }
     }
 
@@ -97,6 +114,25 @@ impl<T> Host<T> {
             self.allocate_port(port, AddressFamily::V6);
         }
     }
+
+    pub(crate) fn is_sender(&self, src: IpAddr) -> bool {
+        match src {
+            IpAddr::V4(src) => self.ip4.is_some_and(|v4| v4 == src),
+            IpAddr::V6(src) => self.ip6.is_some_and(|v6| v6 == src),
+        }
+    }
+
+    pub(crate) fn latency(&self) -> Duration {
+        self.latency
+    }
+
+    pub(crate) fn receive(&mut self, transmit: Transmit<'static>, now: Instant) {
+        self.inbox.push(transmit, self.latency, now);
+    }
+
+    pub(crate) fn poll_transmit(&mut self, now: Instant) -> Option<Transmit<'static>> {
+        self.inbox.pop(now)
+    }
 }
 
 impl<T> Host<T>
@@ -116,6 +152,8 @@ where
             default_port: self.default_port,
             allocated_ports: self.allocated_ports.clone(),
             old_ports: self.old_ports.clone(),
+            latency: self.latency,
+            inbox: self.inbox.clone(),
         }
     }
 }
@@ -201,6 +239,13 @@ impl RoutingTable {
     pub(crate) fn host_by_ip(&self, ip: IpAddr) -> Option<HostId> {
         self.routes.exact_match(ip).copied()
     }
+
+    pub(crate) fn overlaps_with(&self, other: &Self) -> bool {
+        other
+            .routes
+            .iter()
+            .any(|(route, _)| self.routes.exact_match(route).is_some())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
@@ -233,12 +278,13 @@ pub(crate) fn host<T>(
     socket_ips: impl Strategy<Value = IpStack>,
     default_port: impl Strategy<Value = u16>,
     state: impl Strategy<Value = T>,
+    latency: impl Strategy<Value = Duration>,
 ) -> impl Strategy<Value = Host<T>>
 where
     T: fmt::Debug,
 {
-    (state, socket_ips, default_port).prop_map(move |(state, ip_stack, port)| {
-        let mut host = Host::new(state);
+    (state, socket_ips, default_port, latency).prop_map(move |(state, ip_stack, port, latency)| {
+        let mut host = Host::new(state, latency);
         host.update_interface(ip_stack.as_v4().copied(), ip_stack.as_v6().copied(), port);
 
         host
@@ -276,14 +322,9 @@ pub(crate) fn host_ip4s() -> impl Strategy<Value = Ipv4Addr> {
 
 /// A [`Strategy`] of [`Ipv6Addr`]s used for routing packets between hosts within our test.
 ///
-/// This uses the `2001:DB8::/32` address space reserved for documentation and examples in [RFC3849](https://datatracker.ietf.org/doc/html/rfc3849).
+/// This uses a subnet of the `2001:DB8::/32` address space reserved for documentation and examples in [RFC3849](https://datatracker.ietf.org/doc/html/rfc3849).
 pub(crate) fn host_ip6s() -> impl Strategy<Value = Ipv6Addr> {
-    let ips = Ipv6Network::new(Ipv6Addr::new(0x2001, 0xDB80, 0, 0, 0, 0, 0, 0), 32)
-        .unwrap()
-        .subnets_with_prefix(128)
-        .map(|n| n.network_address())
-        .take(100)
-        .collect_vec();
+    const HOST_SUBNET: u16 = 0x1010;
 
-    sample::select(ips)
+    documentation_ip6s(HOST_SUBNET, 100)
 }

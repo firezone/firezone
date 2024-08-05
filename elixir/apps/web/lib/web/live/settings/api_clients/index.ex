@@ -3,28 +3,29 @@ defmodule Web.Settings.ApiClients.Index do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    unless Domain.Config.global_feature_enabled?(:rest_api),
-      do: raise(Web.LiveErrors.NotFoundError)
+    if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
+      socket =
+        socket
+        |> assign(page_title: "API Clients")
+        |> assign_live_table("actors",
+          query_module: Actors.Actor.Query,
+          sortable_fields: [
+            {:actors, :name},
+            {:actors, :status}
+          ],
+          enforce_filters: [
+            {:type, "api_client"}
+          ],
+          hide_filters: [
+            :provider_id
+          ],
+          callback: &handle_api_clients_update!/2
+        )
 
-    socket =
-      socket
-      |> assign(page_title: "API Clients")
-      |> assign_live_table("actors",
-        query_module: Actors.Actor.Query,
-        sortable_fields: [
-          {:actors, :name},
-          {:actors, :status}
-        ],
-        enforce_filters: [
-          {:type, "api_client"}
-        ],
-        hide_filters: [
-          :provider_id
-        ],
-        callback: &handle_api_clients_update!/2
-      )
-
-    {:ok, socket}
+      {:ok, socket}
+    else
+      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
+    end
   end
 
   def handle_params(params, uri, socket) do
@@ -54,9 +55,11 @@ defmodule Web.Settings.ApiClients.Index do
     <.section>
       <:title><%= @page_title %></:title>
       <:help>
-        API Clients are used to manage Firezone configuration through a REST API. See the
-        <a class={link_style()} href="https://firezone.dev/kb/reference/rest-api">REST API docs</a>
-        for more info.
+        API Clients are used to manage Firezone configuration through a REST API. See our
+        <.link navigate={url(API.Endpoint, ~p"/swaggerui")} class={link_style()}>
+          OpenAPI-powered docs
+        </.link>
+        for more information.
       </:help>
 
       <:action>

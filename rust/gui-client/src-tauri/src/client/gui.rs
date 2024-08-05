@@ -4,12 +4,13 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::client::{
-    self, about, deep_link, ipc, logging, network_changes,
+    self, about, deep_link, ipc, logging,
     settings::{self, AdvancedSettings},
     Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use connlib_client_shared::callbacks::ResourceDescription;
+use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
 use firezone_headless_client::{known_dirs, CommonMsg, IpcClientMsg, IpcServerMsg};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
@@ -185,7 +186,7 @@ pub(crate) fn run(
                 }
 
                 assert_eq!(
-                    connlib_shared::BUNDLE_ID,
+                    firezone_bin_shared::BUNDLE_ID,
                     app.handle().config().tauri.bundle.identifier,
                     "BUNDLE_ID should match bundle ID in tauri.conf.json"
                 );
@@ -755,19 +756,21 @@ impl Controller {
             match &self.status {
                 Status::Disconnected => {
                     tracing::error!("We have an auth session but no connlib session");
-                    system_tray::Menu::SignedOut
+                    system_tray::AppState::SignedOut
                 }
-                Status::Connecting { start_instant: _ } => system_tray::Menu::WaitingForConnlib,
-                Status::TunnelReady { resources } => system_tray::Menu::SignedIn {
-                    actor_name: &auth_session.actor_name,
-                    resources,
-                },
+                Status::Connecting { start_instant: _ } => system_tray::AppState::WaitingForConnlib,
+                Status::TunnelReady { resources } => {
+                    system_tray::AppState::SignedIn(system_tray::SignedIn {
+                        actor_name: &auth_session.actor_name,
+                        resources,
+                    })
+                }
             }
         } else if self.auth.ongoing_request().is_ok() {
             // Signing in, waiting on deep link callback
-            system_tray::Menu::WaitingForBrowser
+            system_tray::AppState::WaitingForBrowser
         } else {
-            system_tray::Menu::SignedOut
+            system_tray::AppState::SignedOut
         };
         self.tray.update(menu)?;
         Ok(())
@@ -823,7 +826,7 @@ async fn run_controller(
     let mut controller = Controller {
         advanced_settings,
         app: app.clone(),
-        auth: client::auth::Auth::new(),
+        auth: client::auth::Auth::new()?,
         clear_logs_callback: None,
         ctlr_tx,
         ipc_client,
@@ -851,32 +854,29 @@ async fn run_controller(
         win.show().context("Couldn't show Welcome window")?;
     }
 
-    let mut have_internet =
-        network_changes::check_internet().context("Failed initial check for internet")?;
-    tracing::info!(?have_internet);
+    let tokio_handle = tokio::runtime::Handle::current();
+    let dns_control_method = Some(Default::default());
 
-    let mut com_worker =
-        network_changes::Worker::new().context("Failed to listen for network changes")?;
-
-    let mut dns_listener = network_changes::DnsListener::new()?;
+    let mut dns_notifier = new_dns_notifier(tokio_handle.clone(), dns_control_method).await?;
+    let mut network_notifier =
+        new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
+    drop(tokio_handle);
 
     loop {
         // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
         // `tokio::select!` with a `poll_*` function
         tokio::select! {
-            () = com_worker.notified() => {
-                let new_have_internet = network_changes::check_internet().context("Failed to check for internet")?;
-                if new_have_internet != have_internet {
-                    have_internet = new_have_internet;
-                    if controller.status.connlib_is_up() {
-                        tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
-                        controller.ipc_client.reconnect().await?;
-                    }
+            result = network_notifier.notified() => {
+                result?;
+                if controller.status.connlib_is_up() {
+                    tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
+                    controller.ipc_client.reset().await?;
                 }
             },
-            resolvers = dns_listener.notified() => {
-                let resolvers = resolvers?;
+            result = dns_notifier.notified() => {
+                result?;
                 if controller.status.connlib_is_up() {
+                    let resolvers = firezone_headless_client::dns_control::system_resolvers_for_gui()?;
                     tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
                     controller.ipc_client.set_dns(resolvers).await?;
                 }
@@ -912,7 +912,7 @@ async fn run_controller(
         // Code down here may not run because the `select` sometimes `continue`s.
     }
 
-    if let Err(error) = com_worker.close() {
+    if let Err(error) = network_notifier.close() {
         tracing::error!(?error, "com_worker");
     }
     if let Err(error) = controller.ipc_client.disconnect_from_ipc().await {

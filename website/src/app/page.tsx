@@ -4,7 +4,7 @@ import ActionLink from "@/components/ActionLink";
 import BattleCard from "@/components/BattleCard";
 import { RunaCap } from "@/components/Badges";
 import { Metadata } from "next";
-import CustomerLogos from "@/components/CustomerLogos";
+import { CustomerLogosGrayscale } from "@/components/CustomerLogos";
 import {
   HiShieldCheck,
   HiCheck,
@@ -20,7 +20,6 @@ import {
   LinuxIcon,
   AndroidIcon,
   ChromeIcon,
-  DockerIcon,
 } from "@/components/Icons";
 
 import {
@@ -33,6 +32,8 @@ import SpeedChart from "@/components/Animations/SpeedChart";
 import UpgradeDiagram from "@/components/Animations/UpgradeDiagram";
 import ComplianceDiagram from "@/components/Animations/ComplianceDiagram";
 import SimpleArchitecture from "@/components/Animations/SimpleArchitecture";
+import { manrope } from "@/lib/fonts";
+import "@/styles/hero.css";
 
 export const metadata: Metadata = {
   title: "Firezone: Zero trust access that scales",
@@ -43,110 +44,76 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-neutral-900 pt-32 md:pt-48 pb-14 md:pb-22">
-        <div className="md:flex md:flex-wrap mx-auto max-w-screen-xl px-8 mb-8 md:mb-16">
-          <div className="md:w-2/3 px-4">
-            <h1 className="mb-8 md:text-7xl text-4xl inline-block font-semibold tracking-tight leading-none text-neutral-200">
-              <SlideIn
-                direction="right"
-                delay={0.0}
-                className="md:inline-block"
-              >
-                Secure, remote access.
-              </SlideIn>
-              <SlideIn
-                direction="left"
-                delay={0.25}
-                className="text-primary-450 underline md:inline-block"
-              >
-                That scales.
-              </SlideIn>
-            </h1>
-            <div className="flex items-center">
-              <SlideIn delay={0.5} direction="top" className="mr-4">
-                <Image
-                  src="/images/ross-oss.svg"
-                  width={250}
-                  height={100}
-                  alt="Ross OSS"
-                  className="bg-neutral-50 rounded shadow shadow-neutral-300"
-                />
-              </SlideIn>
-              <SlideIn delay={0.75} direction="top">
-                <Link href="https://www.ycombinator.com/companies/firezone">
-                  <Image
-                    width={125}
-                    height={125}
-                    src="/images/yc-logo.svg"
-                    alt="YC Logo"
-                    className="bg-neutral-50 rounded shadow shadow-neutral-300"
-                  />
-                </Link>
-              </SlideIn>
-            </div>
-          </div>
-          <div className="md:w-1/3 px-4 my-auto">
-            <h3 className="md:mt-0 my-4 text-xl tracking-tight font-medium text-neutral-200 inline-block">
-              Firezone is a fast, flexible VPN replacement built on WireGuard®
-              that{" "}
-              <span className="text-primary-450 font-semibold inline-block">
-                simplifies
-              </span>{" "}
-              access management for a{" "}
-              <span className="text-primary-450 font-semibold">fraction</span>{" "}
-              of the cost.
-            </h3>
-            <div className="flex flex-wrap justify-between mt-4">
-              <div className="my-4 mr-4 flex items-center">
-                <Link
-                  href="https://app.firezone.dev/sign_up"
-                  className="group inline-flex items-center py-0.5 text-neutral-200 text-lg font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
-                >
-                  Sign up now
-                  <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
-                </Link>
-              </div>
-              <div className="my-4 flex items-center">
-                <button
-                  type="button"
-                  className="group shadow-lg shadow-primary-700 text-lg w-48 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
-                >
-                  <Link href="/contact/sales">Book a demo</Link>
-                  <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center justify-center px-4 md:px-0">
-          <video
-            className="shadow-lg rounded"
-            width="960"
-            height="540"
-            loop
-            autoPlay
-            playsInline
-            muted
+      <section className="bg-neutral-900 bg-hero pt-28 xl:pt-32">
+        <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
+          {/* <div className="absolute translate-y-16 justify-self-center self-center blur-[120px] bg-[rgba(94,82,239,0.5)] rounded-full w-[220px] h-[220px]" /> */}
+          {/* <button className="flex w-fit mb-2 gap-2 text-xs items-center p-1.5 text-neutral-500 font-manrope font-500 border-[1px] rounded-full border-neutral-900 hover:text-neutral-200 transition-all ">
+            <img src="/images/play-icon.svg" className="h-5 w-5" />
+            <Link href="/blog">
+              <p className="pe-4">Read our latest updates</p>
+            </Link>
+          </button> */}
+          <h1
+            className={
+              manrope.className +
+              " mb-8 text-5xl sm:text-6xl md:text-7xl text-center drop-shadow-[inset_0_2px_0_0_rgba(255,255,255,100)] font-medium tracking-tight leading-none bg-gradient-to-b from-white from-70% to-slate-200 text-transparent bg-clip-text"
+            }
           >
-            <source src="/images/overview-screencap.webm" type="video/webm" />
-            Your browser does not support the video tag with WebM-formatted
-            videos.
-          </video>
+            Upgrade your VPN to zero-trust access
+          </h1>
+          <h3
+            className={
+              manrope.className +
+              " md:mt-0 my-4 text-xl text-center text-neutral-400"
+            }
+          >
+            Firezone is a fast, flexible VPN replacement built on WireGuard®
+            that protects your workforce without tedious configuration.
+          </h3>
+          <div className="md:flex md:gap-x-12 mt-4 mx-auto">
+            <div className="my-4 mr-4 flex items-center">
+              <Link
+                href="https://app.firezone.dev/sign_up"
+                className="text-neutral-300 group inline-flex items-center py-0.5 text-lg font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
+              >
+                Get started for free
+                <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
+              </Link>
+            </div>
+            <div className="mt-8 md:mt-0 flex items-center">
+              <button
+                type="button"
+                className="group shadow-lg shadow-primary-700 text-lg w-48 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
+              >
+                <Link href="/contact/sales">Book a demo</Link>
+                <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
+              </button>
+            </div>
+          </div>
         </div>
-      </section>
-
-      {/* Customer logos */}
-      <section className="py-24 bg-gradient-to-b to-white from-neutral-100 via-primary-100">
-        <CustomerLogos />
+        <div className="pt-16 pb-8 max-w-screen-xl mx-auto">
+          <div className="text-center text-sm mb-6 font-base text-neutral-600">
+            Backed by{" "}
+            <Image
+              src="/images/yc-logo-gray.svg"
+              alt="yc logo gray"
+              width={100}
+              height={40}
+              className="mx-1 md:mx-1.5 inline-flex pb-0.5"
+            />{" "}
+            and trusted by hundreds of organizations
+          </div>
+          <CustomerLogosGrayscale />
+        </div>
       </section>
 
       {/* TODO: ACLs for the rest of us */}
 
       {/* Feature section 1: Secure access to your most sensitive resources in minutes. */}
-      <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
-          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
-            Upgrade to zero-trust access in{" "}
+      <section className="bg-white py-20 md:py-16">
+        <div className="sm:mx-auto px-16 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty sm:text-center">
+          <h3 className=" tracking-tight font-bold inline-block">
+            Supercharge your workforce in{" "}
             <span className="text-primary-450">minutes</span>.
           </h3>
         </div>
@@ -220,9 +187,9 @@ export default function Page() {
       </section>
 
       {/* Feature section 2: Achieve compliance in minutes, not weeks. */}
-      <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
-          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
+      <section className="bg-white py-20 md:py-16">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty  sm:text-center">
+          <h3 className=" tracking-tight font-bold inline-block">
             Achieve compliance{" "}
             <span className="text-primary-450">without </span>
             the headache.
@@ -256,9 +223,9 @@ export default function Page() {
       </section>
 
       {/* Feature section 3: Add 2FA to WireGuard. */}
-      <section className="bg-neutral-50 py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
-          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
+      <section className="bg-neutral-50 py-20 md:py-16">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty sm:text-center">
+          <h3 className=" tracking-tight font-bold inline-block">
             Add <span className="text-primary-450">two-factor </span>
             auth to WireGuard.
           </h3>
@@ -295,9 +262,9 @@ export default function Page() {
       </section>
 
       {/* Feature section 4: Say goodbye to bandwidth problems. */}
-      <section className="bg-neutral-900 text-neutral-50 py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
-          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
+      <section className="bg-neutral-900 text-neutral-50 py-20 md:py-16">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty sm:text-center">
+          <h3 className="tracking-tight font-bold inline-block">
             <Strike>Bandwidth problems.</Strike>
           </h3>
         </div>
@@ -326,9 +293,9 @@ export default function Page() {
       </section>
 
       {/* Feature section 5: No more open firewall ports. */}
-      <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
-          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
+      <section className="bg-white py-20 md:py-16">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty sm:text-center">
+          <h3 className="tracking-tight font-bold inline-block">
             Say <span className="text-primary-450">goodbye</span> to firewall
             configuration.
           </h3>
@@ -358,9 +325,9 @@ export default function Page() {
       </section>
 
       {/* Feature section 6: Runs everywhere your business does. */}
-      <section className="bg-neutral-50 py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
-          <h3 className="text-2xl md:text-6xl tracking-tight font-bold inline-block">
+      <section className="bg-neutral-50 py-20 md:py-16">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty sm:text-center">
+          <h3 className="tracking-tight font-bold inline-block">
             Runs <span className="text-primary-450">everywhere </span>
             your business does.
           </h3>
@@ -370,42 +337,42 @@ export default function Page() {
           <div className="flex flex-col p-4">
             <div className="mb-12 grid grid-cols-2 gap-4">
               <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
-                <AppleIcon size={12} href="/kb/user-guides/macos-client">
+                <AppleIcon size={12} href="/kb/client-apps/macos-client">
                   <span className="inline-block pt-4 w-full text-center">
                     macOS
                   </span>
                 </AppleIcon>
               </div>
               <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
-                <WindowsIcon size={12} href="/kb/user-guides/windows-client">
+                <WindowsIcon size={12} href="/kb/client-apps/windows-client">
                   <span className="inline-block pt-4 w-full text-center">
                     Windows
                   </span>
                 </WindowsIcon>
               </div>
               <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
-                <LinuxIcon size={12} href="/kb/user-guides/linux-client">
+                <LinuxIcon size={12} href="/kb/client-apps/linux-client">
                   <span className="inline-block pt-4 w-full text-center">
                     Linux
                   </span>
                 </LinuxIcon>
               </div>
               <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
-                <AndroidIcon size={12} href="/kb/user-guides/android-client">
+                <AndroidIcon size={12} href="/kb/client-apps/android-client">
                   <span className="inline-block pt-4 w-full text-center">
                     Android
                   </span>
                 </AndroidIcon>
               </div>
               <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
-                <ChromeIcon size={12} href="/kb/user-guides/android-client">
+                <ChromeIcon size={12} href="/kb/client-apps/android-client">
                   <span className="inline-block pt-4 w-full text-center">
                     ChromeOS
                   </span>
                 </ChromeIcon>
               </div>
               <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
-                <AppleIcon size={12} href="/kb/user-guides/ios-client">
+                <AppleIcon size={12} href="/kb/client-apps/ios-client">
                   <span className="inline-block pt-4 w-full text-center">
                     iOS
                   </span>
@@ -421,7 +388,7 @@ export default function Page() {
               <p className="mt-4">
                 <ActionLink
                   className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
-                  href="/kb/user-guides"
+                  href="/kb/client-apps"
                 >
                   Download Client apps
                 </ActionLink>
@@ -491,9 +458,9 @@ export default function Page() {
       </section>
 
       {/* Feature section 7: Open source for transparency and trust. */}
-      <section className="bg-white py-8 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-center">
-          <h3 className="text-xl sm:text-2xl md:text-6xl tracking-tight font-bold inline-block">
+      <section className="bg-white py-20 md:py-16">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-4xl md:text-6xl text-pretty sm:text-center">
+          <h3 className="tracking-tight font-bold inline-block">
             <span className="text-primary-450">Open source</span> for
             transparency and trust.
           </h3>
@@ -534,7 +501,7 @@ export default function Page() {
       </section>
 
       {/* Use cases */}
-      <section className="border-t border-neutral-200 py-8 md:py-16 bg-neutral-100">
+      <section className="border-t border-neutral-200 py-20 md:py-16 bg-neutral-100">
         <div className="mx-auto max-w-screen-lg">
           <div className="px-4 flex flex-wrap">
             <h3 className="mb-2 text-2xl md:text-4xl tracking-tight font-bold mr-1">
@@ -557,7 +524,7 @@ export default function Page() {
               />
             </h3>
           </div>
-          <div className="px-4 flex flex-wrap mt-8">
+          <div className="px-4 flex flex-wrap mt-4">
             <h3 className="mb-2 text-xl md:text-2xl tracking-tight font-semibold">
               Here are just a few ways customers are using Firezone:
             </h3>
@@ -709,7 +676,7 @@ export default function Page() {
                   <li className="flex space-x-2.5">
                     <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
                     <span className="leading-tight text-lg text-neutral-900 ">
-                      Authenticate with Magic link or OIDC
+                      Authenticate with Email OTP or OIDC
                     </span>
                   </li>
                   <li className="flex space-x-2.5">
@@ -741,42 +708,6 @@ export default function Page() {
 
       <section className="border-t border-neutral-200 py-24 bg-white">
         <BattleCard />
-      </section>
-
-      <section className="border-t border-neutral-200 py-24 bg-neutral-900">
-        <div className="flex flex-col px-4 justify-center items-center">
-          <h3 className="mb-4 text-2xl md:text-6xl tracking-tight text-center font-bold text-neutral-50">
-            Ready to get started?
-          </h3>
-          <h4 className="my-4 font-medium text-xl max-w-screen-md tracking-tight text-center text-neutral-200 ">
-            Give your team secure access to company resources in minutes.
-          </h4>
-          <div className="w-full max-w-screen-sm flex flex-wrap justify-between mt-8">
-            <div className="mb-8 mx-auto w-64">
-              <button
-                type="button"
-                className="text-xl w-64 inline-flex justify-center items-center py-3 px-5 font-semibold text-center text-primary-450 rounded border border-primary-450 bg-white hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
-              >
-                <Link href="https://app.firezone.dev/sign_up">Sign up now</Link>
-              </button>
-              <p className="mt-3 text-sm text-neutral-400">
-                No credit card required. Cancel anytime.
-              </p>
-            </div>
-            <div className="mx-auto w-64">
-              <button
-                type="button"
-                className="text-xl w-64 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
-              >
-                <Link href="/contact/sales">Book a demo</Link>
-                <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
-              </button>
-              <p className="mt-3 text-sm text-neutral-400">
-                Get a personalized walkthrough of Firezone.
-              </p>
-            </div>
-          </div>
-        </div>
       </section>
     </>
   );

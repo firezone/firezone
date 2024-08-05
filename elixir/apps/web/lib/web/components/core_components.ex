@@ -14,6 +14,19 @@ defmodule Web.CoreComponents do
   alias Phoenix.LiveView.JS
   alias Domain.Actors
 
+  attr :text, :string, default: "Welcome to Firezone."
+
+  def hero_logo(assigns) do
+    ~H"""
+    <div class="mb-6">
+      <img src={~p"/images/logo.svg"} class="mx-auto pr-10 h-32" alt="Firezone Logo" />
+      <p class="text-center mt-4 text-3xl">
+        <%= @text %>
+      </p>
+    </div>
+    """
+  end
+
   def logo(assigns) do
     ~H"""
     <a href={~p"/"} class="flex items-center mb-6 text-2xl">
@@ -272,10 +285,10 @@ defmodule Web.CoreComponents do
       id={@id}
       class={[
         "p-4 text-sm flash-#{@kind}",
-        @kind == :success && "text-green-800 bg-green-50",
-        @kind == :info && "text-blue-800 bg-blue-50",
-        @kind == :warning && "text-yellow-800 bg-yellow-50",
-        @kind == :error && "text-red-800 bg-red-50",
+        @kind == :success && "text-green-800 bg-green-100",
+        @kind == :info && "text-blue-800 bg-blue-100",
+        @kind == :warning && "text-yellow-800 bg-yellow-100",
+        @kind == :error && "text-red-800 bg-red-100",
         @style != "wide" && "mb-4 rounded"
       ]}
       role="alert"
@@ -360,13 +373,13 @@ defmodule Web.CoreComponents do
     ~H"""
     <p
       class={[
-        "w-full flex gap-3 text-sm leading-6",
+        "flex items-center gap-2 text-sm leading-6",
         "text-rose-600",
-        (@inline && "ml-3") || "mt-3"
+        (@inline && "ml-2") || "mt-2 w-full"
       ]}
       {@rest}
     >
-      <.icon name="hero-exclamation-circle-mini" class="mt-0.5 h-5 w-5 flex-none" />
+      <.icon name="hero-exclamation-circle-mini" class="h-4 w-4 flex-none" />
       <%= render_slot(@inner_block) %>
     </p>
     """
@@ -834,7 +847,7 @@ defmodule Web.CoreComponents do
         title={
           if @schema.last_seen_at,
             do:
-              "Last connected #{Cldr.DateTime.Relative.to_string!(@schema.last_seen_at, Web.CLDR, relative_to: @relative_to)}",
+              "Last started #{Cldr.DateTime.Relative.to_string!(@schema.last_seen_at, Web.CLDR, relative_to: @relative_to)}",
             else: "Never connected"
         }
       >
@@ -1233,6 +1246,12 @@ defmodule Web.CoreComponents do
   end
 
   def provider_icon(%{adapter: :userpass} = assigns) do
+    ~H"""
+    <.icon name="hero-key" {@rest} />
+    """
+  end
+
+  def provider_icon(%{adapter: :temp_account} = assigns) do
     ~H"""
     <.icon name="hero-key" {@rest} />
     """

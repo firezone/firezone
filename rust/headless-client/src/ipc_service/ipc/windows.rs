@@ -1,6 +1,6 @@
 use super::{Error, ServiceId};
 use anyhow::{bail, Context as _, Result};
-use connlib_shared::BUNDLE_ID;
+use firezone_bin_shared::BUNDLE_ID;
 use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Duration};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
@@ -49,7 +49,6 @@ impl Server {
     /// This is async on Linux
     #[allow(clippy::unused_async)]
     pub(crate) async fn new(id: ServiceId) -> Result<Self> {
-        crate::platform::setup_before_connlib()?;
         let pipe_path = ipc_path(id);
         Ok(Self { pipe_path })
     }

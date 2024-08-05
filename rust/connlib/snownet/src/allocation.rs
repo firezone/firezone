@@ -25,6 +25,7 @@ use stun_codec::{
         attributes::{
             ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
         },
+        errors::AllocationMismatch,
         methods::{ALLOCATE, CHANNEL_BIND, REFRESH},
     },
     rfc8656::attributes::AdditionalAddressFamily,
@@ -93,7 +94,7 @@ struct Credentials {
 }
 
 /// Describes the socket address(es) we know about the relay.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RelaySocket {
     /// The relay is only reachable via IPv4.
     V4(SocketAddrV4),
@@ -229,37 +230,6 @@ impl Allocation {
         .flatten()
     }
 
-    /// Update the credentials of this [`Allocation`].
-    ///
-    /// This will implicitly trigger a [`refresh`](Allocation::refresh) to ensure these credentials are valid.
-    pub fn update_credentials(
-        &mut self,
-        socket: RelaySocket,
-        username: Username,
-        password: &str,
-        realm: Realm,
-        now: Instant,
-    ) {
-        self.credentials = Some(Credentials {
-            username,
-            realm,
-            password: password.to_owned(),
-            nonce: None,
-        });
-
-        // If the server is the same, just `refresh` the allocation.
-        if self.server == socket {
-            self.refresh(now);
-
-            return;
-        }
-        self.server = socket;
-
-        // Server isn't the same, let's pick a new socket.
-        self.active_socket = None;
-        self.send_binding_requests();
-    }
-
     /// Refresh this allocation.
     ///
     /// In case refreshing the allocation fails, we will attempt to make a new one.
@@ -374,6 +344,13 @@ impl Allocation {
             match message.method() {
                 ALLOCATE => {
                     self.buffered_channel_bindings.clear();
+                    self.invalidate_allocation();
+
+                    // AllocationMismatch during allocate means we already have an allocation.
+                    // Delete it.
+                    if error.code() == AllocationMismatch::CODEPOINT {
+                        self.authenticate_and_queue(make_delete_allocation_request(), None);
+                    }
                 }
                 CHANNEL_BIND => {
                     let Some(channel) = original_request
@@ -500,6 +477,13 @@ impl Allocation {
                     tracing::warn!("Message does not contain lifetime");
                     return true;
                 };
+
+                // If we refreshed with a lifetime of 0, we deleted our previous allocation.
+                // Make a new one.
+                if lifetime.lifetime().is_zero() {
+                    self.authenticate_and_queue(make_allocate_request(), None);
+                    return true;
+                }
 
                 self.allocation_lifetime = Some((now, lifetime.lifetime()));
 
@@ -1031,6 +1015,14 @@ fn make_allocate_request() -> Message<Attribute> {
     ));
 
     message
+}
+
+/// To delete an allocation, we need to refresh it with a lifetime of 0.
+fn make_delete_allocation_request() -> Message<Attribute> {
+    let mut refresh = make_refresh_request();
+    refresh.add_attribute(Lifetime::from_u32(0));
+
+    refresh
 }
 
 fn make_refresh_request() -> Message<Attribute> {
@@ -2242,53 +2234,10 @@ mod tests {
     }
 
     #[test]
-    fn new_address_is_used_for_new_messages() {
-        let now = Instant::now();
-        let mut allocation = Allocation::for_test_ip4(now)
-            .with_binding_response(PEER1)
-            .with_allocate_response(&[RELAY_ADDR_IP4]);
-        let _drained_messages = iter::from_fn(|| allocation.poll_transmit()).collect::<Vec<_>>();
-
-        let existing_credentials = allocation.credentials.clone().unwrap();
-
-        allocation.update_credentials(
-            RelaySocket::V6(RELAY_V6),
-            existing_credentials.username,
-            &existing_credentials.password,
-            existing_credentials.realm,
-            now,
-        );
-
-        assert_eq!(allocation.poll_transmit().unwrap().dst, RELAY_V6.into())
-    }
-
-    #[test]
     fn allocation_is_not_freed_on_startup() {
         let allocation = Allocation::for_test_ip4(Instant::now());
 
         assert_eq!(allocation.can_be_freed(), None);
-    }
-
-    #[test]
-    fn new_address_sends_binding_requests() {
-        let now = Instant::now();
-        let mut allocation = Allocation::for_test_ip4(now)
-            .with_binding_response(PEER1)
-            .with_allocate_response(&[RELAY_ADDR_IP4]);
-        let _drained_messages = iter::from_fn(|| allocation.poll_transmit()).collect::<Vec<_>>();
-
-        let existing_credentials = allocation.credentials.clone().unwrap();
-
-        allocation.update_credentials(
-            RelaySocket::V6(RELAY_V6),
-            existing_credentials.username,
-            &existing_credentials.password,
-            existing_credentials.realm,
-            now,
-        );
-
-        let message = allocation.next_message().unwrap();
-        assert_eq!(message.method(), BINDING)
     }
 
     #[test]
@@ -2596,13 +2545,7 @@ mod tests {
         }
 
         fn refresh_with_same_credentials(&mut self) {
-            self.update_credentials(
-                self.server,
-                Username::new("foobar".to_owned()).unwrap(),
-                "baz",
-                Realm::new("firezone".to_owned()).unwrap(),
-                Instant::now(),
-            );
+            self.refresh(Instant::now());
         }
     }
 }

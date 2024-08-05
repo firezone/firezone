@@ -1,7 +1,7 @@
 [package]
 name = "firezone-headless-client"
 # mark:next-headless-version
-version = "1.1.4"
+version = "1.1.5"
 edition = "2021"
 authors = ["Firezone, Inc."]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -20,19 +20,19 @@ humantime = "2.1"
 ip_network = { version = "0.4", default-features = false }
 phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
-serde = { version = "1.0.203", features = ["derive"] }
+serde = { version = "1.0.204", features = ["derive"] }
 serde_json = "1.0.117"
 socket-factory = { workspace = true }
 thiserror = { version = "1.0", default-features = false }
 # This actually relies on many other features in Tokio, so this will probably
 # fail to build outside the workspace. <https://github.com/firezone/firezone/pull/4328#discussion_r1540342142>
-tokio = { workspace = true, features = ["macros", "signal", "process"] }
+tokio = { workspace = true, features = ["macros", "signal", "process", "time"] }
 tokio-stream = "0.1.15"
 tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
-url = { version = "2.3.1", default-features = false }
-uuid = { version = "1.7", default-features = false, features = ["std", "v4", "serde"] }
+url = { version = "2.5.2", default-features = false }
+uuid = { version = "1.10", default-features = false, features = ["std", "v4", "serde"] }
 
 [dev-dependencies]
 tempfile = "3.10.1"
@@ -40,13 +40,16 @@ tempfile = "3.10.1"
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` testing
 
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+hex-literal = "0.4.1"
+
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
 libc = "0.2.150"
 nix = { version = "0.28.0", features = ["fs", "user", "socket"] }
 resolv-conf = "0.7.0"
 rtnetlink = { workspace = true }
-sd-notify = "0.4.1" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
+sd-notify = "0.4.2" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 
 [target.'cfg(target_os = "macos")'.dependencies]
 dirs = "5.0.1"
@@ -54,13 +57,12 @@ dirs = "5.0.1"
 [target.'cfg(target_os = "windows")'.dependencies]
 ipconfig = "0.3.2"
 known-folders = "1.1.0"
-ring = "0.17"
 thiserror = { version = "1.0", default-features = false }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 windows-service = "0.7.0"
 winreg = "0.52.0"
 
-[target.'cfg(target_os = "windows")'.dependencies.windows]
+[target.'cfg(windows)'.dependencies.windows]
 version = "0.57.0"
 features = [
     # For DNS control and route control

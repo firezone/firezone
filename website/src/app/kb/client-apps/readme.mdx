@@ -1,0 +1,63 @@
+import {
+  AndroidIcon,
+  AppleIcon,
+  WindowsIcon,
+  LinuxIcon,
+} from "@/components/Icons";
+
+# Install Clients
+
+Visit the appropriate page below for download instructions and more for your
+platform.
+
+### Desktop Clients
+
+<div className="py-12 flex grid grid-cols-3 text-center">
+  <AppleIcon
+    className="text-neutral-800 hover:text-neutral-900"
+    size={10}
+    href="/kb/client-apps/macos-client"
+  >
+    <p>macOS</p>
+  </AppleIcon>
+  <WindowsIcon
+    className="text-neutral-800 hover:text-neutral-900"
+    size={10}
+    href="/kb/client-apps/windows-client"
+  >
+    <p>Windows</p>
+  </WindowsIcon>
+  <LinuxIcon
+    className="text-neutral-800 hover:text-neutral-900"
+    size={10}
+    href="/kb/client-apps/linux-gui-client"
+  >
+    <p>Linux GUI</p>
+  </LinuxIcon>
+</div>
+
+### Mobile & Headless Clients
+
+<div className="py-12 flex grid grid-cols-3 text-center">
+  <AndroidIcon
+    className="text-neutral-800 hover:text-neutral-900"
+    size={10}
+    href="/kb/client-apps/android-client"
+  >
+    <p>Android & ChromeOS</p>
+  </AndroidIcon>
+  <AppleIcon
+    className="text-neutral-800 hover:text-neutral-900"
+    size={10}
+    href="/kb/client-apps/ios-client"
+  >
+    <p>iOS</p>
+  </AppleIcon>
+  <LinuxIcon
+    className="text-neutral-800 hover:text-neutral-900"
+    size={10}
+    href="/kb/client-apps/linux-client"
+  >
+    <p>Linux Headless</p>
+  </LinuxIcon>
+</div>

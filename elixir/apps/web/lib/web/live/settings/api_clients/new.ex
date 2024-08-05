@@ -4,18 +4,19 @@ defmodule Web.Settings.ApiClients.New do
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
-    unless Domain.Config.global_feature_enabled?(:rest_api),
-      do: raise(Web.LiveErrors.NotFoundError)
+    if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
+      changeset = Actors.new_actor(%{type: :api_client})
 
-    changeset = Actors.new_actor(%{type: :api_client})
+      socket =
+        assign(socket,
+          form: to_form(changeset),
+          page_title: "New API Client"
+        )
 
-    socket =
-      assign(socket,
-        form: to_form(changeset),
-        page_title: "New API Client"
-      )
-
-    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+    else
+      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
+    end
   end
 
   def render(assigns) do
@@ -30,7 +31,7 @@ defmodule Web.Settings.ApiClients.New do
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <h2 class="mb-4 text-xl text-neutral-900">
-            Create API Client
+            API Client details
           </h2>
           <.flash kind={:error} flash={@flash} />
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
@@ -38,7 +39,7 @@ defmodule Web.Settings.ApiClients.New do
               <.api_client_form form={@form} type={:api_client} subject={@subject} />
             </div>
             <.submit_button>
-              Create
+              Next: Add a token
             </.submit_button>
           </.form>
         </div>

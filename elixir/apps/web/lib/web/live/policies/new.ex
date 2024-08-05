@@ -34,12 +34,10 @@ defmodule Web.Policies.New do
       <.breadcrumb path={~p"/#{@account}/policies/new"}>Add Policy</.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title>
-        Add Policy
-      </:title>
+      <:title><%= @page_title %></:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl text-neutral-900">Details</h2>
+          <h2 class="mb-4 text-xl text-neutral-900">Policy details</h2>
           <div
             :if={@actor_groups == []}
             class={[
@@ -107,9 +105,11 @@ defmodule Web.Policies.New do
               />
             </div>
 
-            <.submit_button phx-disable-with="Creating Policy..." class="w-full">
-              Create Policy
-            </.submit_button>
+            <div class="flex justify-end">
+              <.submit_button phx-disable-with="Creating Policy..." class="w-full">
+                Create Policy
+              </.submit_button>
+            </div>
           </.form>
         </div>
       </:content>
@@ -141,12 +141,29 @@ defmodule Web.Policies.New do
         Map.delete(params, "conditions")
       end
 
-    with {:ok, policy} <- Policies.create_policy(params, socket.assigns.subject) do
-      if site_id = socket.assigns.params["site_id"] do
-        {:noreply,
-         push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{site_id}?#resources")}
-      else
-        {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies/#{policy}")}
+    with {:ok, _policy} <- Policies.create_policy(params, socket.assigns.subject) do
+      cond do
+        site_id = socket.assigns.params["site_id"] ->
+          # Created from Add Resource from Site
+          {:noreply,
+           push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{site_id}?#resources")}
+
+        resource_id = socket.assigns.resource_id ->
+          # Created from Add Resource from Resources
+          {:noreply,
+           push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources/#{resource_id}")}
+
+        actor_group_id = socket.assigns.actor_group_id ->
+          # Created from Add Policy from Actor Group
+          {:noreply,
+           push_navigate(socket, to: ~p"/#{socket.assigns.account}/groups/#{actor_group_id}")}
+
+        true ->
+          # Created from Add Policy from Policies
+          {:noreply,
+           socket
+           |> put_flash(:info, "Policy created successfully.")
+           |> push_navigate(to: ~p"/#{socket.assigns.account}/policies")}
       end
     else
       {:error, %Ecto.Changeset{} = changeset} ->

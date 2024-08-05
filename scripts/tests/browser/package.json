@@ -6,12 +6,12 @@
     "refresh": "npx ts-node src/refresh.ts"
   },
   "dependencies": {
-    "puppeteer": "^22.12.1",
+    "puppeteer": "^22.13.1",
     "ts-command-line-args": "^2.5.1"
   },
   "devDependencies": {
-    "@types/node": "^20.14.9",
+    "@types/node": "^20.14.12",
     "ts-node": "^10.9.2",
-    "typescript": "^5.5.2"
+    "typescript": "^5.5.4"
   }
 }

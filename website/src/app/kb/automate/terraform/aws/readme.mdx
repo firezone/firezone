@@ -38,8 +38,9 @@ load balance for each other.
    deployed in this example and any associated Resources.
 1. A Firezone Gateway token. This can be obtained by viewing your Site in the
    admin portal, clicking the `Deploy Gateway` button, and navigating to the
-   instructions for the `AWS` tab. Gateway tokens support multi-use, so only a
-   single token is needed to provision the Firezone Gateways in this guide.
+   instructions for the `Terraform` tab. Gateway tokens support multi-use, so
+   only a single token is needed to provision the Firezone Gateways in this
+   guide.
 
 ## Sizing
 
@@ -73,6 +74,13 @@ for some general guidelines depending on your expected traffic.
 1. Run `terraform apply` to deploy the Firezone Gateway(s) into your AWS
    project.
 
+<Alert color="warning">
+  If your AWS VPC has restrictive Network ACLs in place, you will need to allow
+  UDP inbound traffic on ports `1024-65535` to allow connectivity from Firezone
+  Clients and Relays. See our [firewall
+  recommendations](/kb/deploy/gateways#inbound-ports) for more information.
+</Alert>
+
 You can see the IP addresses assigned to the NAT Gateway in the Terraform
 output. These are the IP addresses that your Firezone Gateway(s) will share to
 egress traffic.
@@ -85,10 +93,10 @@ egress traffic.
 />
 
 <Alert color="info">
-  It can take a few minutes for the Firezone Gateway(s) to provision and connect
-  to the portal. If you suspect the Gateway(s) are not connecting, follow the
-  instructions in the [troubleshooting guide](/kb/administer/troubleshooting) to
-  diagnose the issue.
+  It can sometimes take **up to 30 minutes** for all of the resources in this
+  example to provision and connect to the portal. If you suspect the Gateway(s)
+  are not connecting, follow the instructions in the [troubleshooting
+  guide](/kb/administer/troubleshooting) to diagnose the issue.
 </Alert>
 
 After a few minutes, you should see the Firezone Gateway(s) appear in the

@@ -83,14 +83,14 @@ defmodule Web.Relays.Show do
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>
-                Last Connected
+                Last started
               </:label>
               <:value>
                 <.relative_datetime datetime={@relay.last_seen_at} />
               </:value>
             </.vertical_table_row>
             <.vertical_table_row>
-              <:label>Remote IP</:label>
+              <:label>Last seen remote IP</:label>
               <:value>
                 <.last_seen schema={@relay} />
               </:value>
@@ -102,7 +102,7 @@ defmodule Web.Relays.Show do
               </:value>
             </.vertical_table_row>
             <.vertical_table_row>
-              <:label>User Agent</:label>
+              <:label>User agent</:label>
               <:value>
                 <%= @relay.last_seen_user_agent %>
               </:value>
@@ -114,9 +114,37 @@ defmodule Web.Relays.Show do
 
     <.danger_zone :if={is_nil(@relay.deleted_at)}>
       <:action :if={@relay.account_id}>
-        <.delete_button phx-click="delete" data-confirm="Are you sure you want to delete this relay?">
+        <.button_with_confirmation
+          id="delete_relay"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
+        >
+          <:dialog_title>Delete Relay</:dialog_title>
+          <:dialog_content>
+            <p>
+              Are you sure you want to delete this relay?
+            </p>
+            <p class="mt-4 text-sm">
+              Deleting the relay does not remove it's access token so it can be re-created again,
+              revoke the token on the
+              <.link
+                navigate={~p"/#{@account}/relay_groups/#{@relay.group}"}
+                class={["font-medium", link_style()]}
+              >
+                instance group
+              </.link>
+              page if you want to prevent the gateway from connecting to the portal.
+            </p>
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Relay
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete Relay
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """
@@ -134,6 +162,9 @@ defmodule Web.Relays.Show do
     socket =
       cond do
         Map.has_key?(payload.joins, relay.id) ->
+          {:ok, relay} =
+            Relays.fetch_relay_by_id(relay.id, socket.assigns.subject, preload: [:group])
+
           assign(socket, relay: %{relay | online?: true})
 
         Map.has_key?(payload.leaves, relay.id) ->

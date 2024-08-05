@@ -9,7 +9,10 @@ use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
 use connlib_shared::get_user_agent;
-use firezone_bin_shared::{setup_global_subscriber, TunDeviceManager};
+use firezone_bin_shared::{
+    new_dns_notifier, new_network_notifier, setup_global_subscriber, DnsControlMethod,
+    TunDeviceManager,
+};
 use futures::{FutureExt as _, StreamExt as _};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
@@ -165,7 +168,6 @@ pub fn run_only_headless_client() -> Result<()> {
 
     // The name matches that in `ipc_service.rs`
     let mut last_connlib_start_instant = Some(Instant::now());
-    platform::setup_before_connlib()?;
     let args = ConnectArgs {
         udp_socket_factory: Arc::new(crate::udp_socket_factory),
         tcp_socket_factory: Arc::new(crate::tcp_socket_factory),
@@ -184,7 +186,6 @@ pub fn run_only_headless_client() -> Result<()> {
         Arc::new(crate::tcp_socket_factory),
     )?;
     let session = Session::connect(args, portal, rt.handle().clone());
-    platform::notify_service_controller()?;
 
     let result = rt.block_on(async {
         let mut terminate = signals::Terminate::new()?;
@@ -198,19 +199,45 @@ pub fn run_only_headless_client() -> Result<()> {
         let mut tun_device = TunDeviceManager::new()?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
-        session.set_tun(tun_device.make_tun()?);
-        // TODO: DNS should be added dynamically
+        let tokio_handle = tokio::runtime::Handle::current();
+        let dns_control_method = DnsControlMethod::from_env();
+
+        let mut dns_notifier = new_dns_notifier(tokio_handle.clone(), dns_control_method).await?;
+
+        let mut network_notifier =
+            new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
+        drop(tokio_handle);
+
+        let tun = tun_device.make_tun()?;
+        session.set_tun(Box::new(tun));
         session.set_dns(dns_control::system_resolvers().unwrap_or_default());
 
-        loop {
+        let result = loop {
+            let mut dns_changed = pin!(dns_notifier.notified().fuse());
+            let mut network_changed = pin!(network_notifier.notified().fuse());
+
             let cb = futures::select! {
                 () = terminate => {
                     tracing::info!("Caught SIGINT / SIGTERM / Ctrl+C");
-                    return Ok(());
+                    break Ok(());
                 },
                 () = hangup => {
                     tracing::info!("Caught SIGHUP");
-                    session.reconnect();
+                    session.reset();
+                    continue;
+                },
+                result = dns_changed => {
+                    result?;
+                    // If the DNS control method is not `systemd-resolved`
+                    // then we'll use polling here, so no point logging every 5 seconds that we're checking the DNS
+                    tracing::trace!("DNS change, notifying Session");
+                    session.set_dns(dns_control::system_resolvers()?);
+                    continue;
+                },
+                result = network_changed => {
+                    result?;
+                    tracing::info!("Network change, resetting Session");
+                    session.reset();
                     continue;
                 },
                 cb = cb_rx.next() => cb.context("cb_rx unexpectedly ran empty")?,
@@ -220,27 +247,38 @@ pub fn run_only_headless_client() -> Result<()> {
                 ConnlibMsg::Common(CommonMsg::OnDisconnect {
                     error_msg,
                     is_authentication_error: _,
-                }) => return Err(anyhow!(error_msg).context("Firezone disconnected")),
+                }) => break Err(anyhow!(error_msg).context("Firezone disconnected")),
                 ConnlibMsg::Common(CommonMsg::OnUpdateResources(_)) => {
-                    // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
+                    // On every Resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                     dns_controller.flush()?;
                 }
                 ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                     tun_device.set_ips(ipv4, ipv6).await?;
                     dns_controller.set_dns(&dns).await?;
-                }
-                ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                    tun_device.set_routes(ipv4, ipv6).await?;
+
+                    // `on_set_interface_config` is guaranteed to be called when the tunnel is completely ready
+                    // <https://github.com/firezone/firezone/pull/6026#discussion_r1692297438>
                     if let Some(instant) = last_connlib_start_instant.take() {
+                        // `OnUpdateResources` appears to be the latest callback that happens during startup
                         tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
+                        platform::notify_service_controller()?;
                     }
                     if cli.exit {
                         tracing::info!("Exiting due to `--exit` CLI flag");
                         break Ok(());
                     }
                 }
+                ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 } => {
+                    tun_device.set_routes(ipv4, ipv6).await?;
+                }
             }
+        };
+
+        if let Err(error) = network_notifier.close() {
+            tracing::error!(?error, "network listener");
         }
+
+        result
     });
 
     session.disconnect();

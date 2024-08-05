@@ -13,7 +13,7 @@ public enum AdapterError: Error {
   case invalidState
 
   /// connlib failed to start
-  case connlibConnectError(Error)
+  case connlibConnectError(String)
 }
 
 /// Enum representing internal state of the  adapter
@@ -52,7 +52,7 @@ class Adapter {
   /// Track our last fetched DNS resolvers to know whether to tell connlib they've updated
   private var lastFetchedResolvers: [String] = []
 
-  /// Used to avoid needlessly sending reconnects to connlib
+  /// Used to avoid needlessly sending resets to connlib
   private var primaryInterfaceName: String?
 
   /// Private queue used to ensure consistent ordering among path update and connlib callbacks
@@ -106,14 +106,10 @@ class Adapter {
   }
 
   /// Start the tunnel.
-  /// - Parameters:
-  ///   - completionHandler: completion handler.
-  public func start(completionHandler: @escaping (AdapterError?) -> Void) throws {
+  public func start() throws {
     Log.tunnel.log("Adapter.start")
     guard case .tunnelStopped = self.state else {
-      Log.tunnel.error("\(#function): Invalid Adapter state")
-      completionHandler(.invalidState)
-      return
+      throw AdapterError.invalidState
     }
 
     callbackHandler.delegate = self
@@ -136,21 +132,18 @@ class Adapter {
           logFilter,
           callbackHandler
         )
-      // Update our internal state
-      self.state = .tunnelStarted(session: session)
 
       // Start listening for network change events. The first few will be our
       // tunnel interface coming up, but that's ok -- it will trigger a `set_dns`
       // connlib.
       beginPathMonitoring()
 
-      // Tell the system the tunnel is up, moving the tunnelManager status to
-      // `connected`.
-      completionHandler(nil)
+      // Update state in case everything succeeded
+      self.state = .tunnelStarted(session: session)
     } catch let error {
-      Log.tunnel.error("\(#function): Adapter.start: Error: \(error)")
-      state = .tunnelStopped
-      throw AdapterError.connlibConnectError(error)
+      let msg = error as! RustString
+      // `toString` needed to deep copy the string and avoid a possible dangling pointer
+      throw AdapterError.connlibConnectError(msg.toString())
     }
   }
 
@@ -267,7 +260,7 @@ extension Adapter {
       // If our primary interface changes, we can be certain the old socket shouldn't be
       // used anymore.
       if path.availableInterfaces.first?.name != primaryInterfaceName {
-        session.reconnect()
+        session.reset()
         primaryInterfaceName = path.availableInterfaces.first?.name
       }
 

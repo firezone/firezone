@@ -132,23 +132,23 @@ defmodule Web.Clients.Show do
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>Last Connected</:label>
+            <:label>Last started</:label>
             <:value>
               <.relative_datetime datetime={@client.last_seen_at} />
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>Last Remote IP</:label>
+            <:label>Last seen remote IP</:label>
             <:value>
               <.last_seen schema={@client} />
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>Client Version</:label>
+            <:label>Client version</:label>
             <:value><%= @client.last_seen_version %></:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>User Agent</:label>
+            <:label>User agent</:label>
             <:value><%= @client.last_seen_user_agent %></:value>
           </.vertical_table_row>
         </.vertical_table>
@@ -156,9 +156,9 @@ defmodule Web.Clients.Show do
     </.section>
 
     <.section>
-      <:title>Authorized Activity</:title>
+      <:title>Authorized Sessions</:title>
       <:help>
-        Authorized attempts by actors to access the resource governed by this policy.
+        Authorized sessions opened by this Client to access a Resource.
       </:help>
       <:content>
         <.live_table
@@ -217,6 +217,11 @@ defmodule Web.Clients.Show do
     socket =
       cond do
         Map.has_key?(payload.joins, client.id) ->
+          {:ok, client} =
+            Clients.fetch_client_by_id(client.id, socket.assigns.subject,
+              preload: [:actor, last_used_token: [identity: [:provider]]]
+            )
+
           assign(socket, client: %{client | online?: true})
 
         Map.has_key?(payload.leaves, client.id) ->

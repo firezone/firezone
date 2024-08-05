@@ -27,19 +27,38 @@ use core::fmt;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, RelaySocket};
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::str::FromStr;
 use std::time::{Duration, Instant};
 
-// Using str here because Ipv4/6Network doesn't support `const` 🙃
-pub(crate) const IPV4_RESOURCES: &str = "100.96.0.0/11";
-pub(crate) const IPV6_RESOURCES: &str = "fd00:2021:1111:8000::/107";
+pub(crate) const IPV4_RESOURCES: Ipv4Network =
+    match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
+        Ok(n) => n,
+        Err(_) => unreachable!(),
+    };
+pub(crate) const IPV6_RESOURCES: Ipv6Network = match Ipv6Network::new(
+    Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0),
+    107,
+) {
+    Ok(n) => n,
+    Err(_) => unreachable!(),
+};
 
 const DNS_PORT: u16 = 53;
-const DNS_SENTINELS_V4: &str = "100.100.111.0/24";
-const DNS_SENTINELS_V6: &str = "fd00:2021:1111:8000:100:100:111:0/120";
+
+pub(crate) const DNS_SENTINELS_V4: Ipv4Network =
+    match Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24) {
+        Ok(n) => n,
+        Err(_) => unreachable!(),
+    };
+pub(crate) const DNS_SENTINELS_V6: Ipv6Network = match Ipv6Network::new(
+    Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0),
+    120,
+) {
+    Ok(n) => n,
+    Err(_) => unreachable!(),
+};
 
 // The max time a dns request can be configured to live in resolvconf
 // is 30 seconds. See resolvconf(5) timeout.
@@ -63,11 +82,23 @@ impl ClientTunnel {
             });
     }
 
-    pub fn set_tun(&mut self, tun: Tun) {
+    pub fn set_disabled_resources(&mut self, new_disabled_resources: HashSet<ResourceId>) {
+        self.role_state
+            .set_disabled_resource(new_disabled_resources);
+
+        self.role_state
+            .buffered_events
+            .push_back(ClientEvent::TunRoutesUpdated {
+                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
+            });
+    }
+
+    pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
         self.io.device_mut().set_tun(tun);
     }
 
-    pub fn update_relays(&mut self, to_remove: HashSet<RelayId>, to_add: Vec<Relay>) {
+    pub fn update_relays(&mut self, to_remove: BTreeSet<RelayId>, to_add: Vec<Relay>) {
         self.role_state
             .update_relays(to_remove, turn(&to_add), Instant::now())
     }
@@ -235,7 +266,7 @@ pub struct ClientState {
     sites_status: HashMap<SiteId, Status>,
 
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
-    cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    active_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     /// All resources indexed by their ID.
     resources_by_id: HashMap<ResourceId, ResourceDescription>,
 
@@ -257,6 +288,9 @@ pub struct ClientState {
     /// Configuration of the TUN device, when it is up.
     interface_config: Option<InterfaceConfig>,
 
+    /// Resources that have been disabled by the UI
+    disabled_resources: HashSet<ResourceId>,
+
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket<'static>>,
 }
@@ -272,11 +306,12 @@ impl ClientState {
     pub(crate) fn new(
         private_key: impl Into<StaticSecret>,
         known_hosts: HashMap<String, Vec<IpAddr>>,
+        seed: [u8; 32],
     ) -> Self {
         Self {
             awaiting_connection_details: Default::default(),
             resources_gateways: Default::default(),
-            cidr_resources: IpNetworkTable::new(),
+            active_cidr_resources: IpNetworkTable::new(),
             resources_by_id: Default::default(),
             peers: Default::default(),
             dns_mapping: Default::default(),
@@ -284,12 +319,13 @@ impl ClientState {
             interface_config: Default::default(),
             buffered_packets: Default::default(),
             buffered_dns_queries: Default::default(),
-            node: ClientNode::new(private_key.into()),
+            node: ClientNode::new(private_key.into(), seed),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
             stub_resolver: StubResolver::new(known_hosts),
+            disabled_resources: Default::default(),
         }
     }
 
@@ -384,6 +420,13 @@ impl ClientState {
         })
     }
 
+    fn is_dns_resource(&self, resource: &ResourceId) -> bool {
+        matches!(
+            self.resources_by_id.get(resource),
+            Some(ResourceDescription::Dns(_))
+        )
+    }
+
     pub(crate) fn encapsulate<'s>(
         &'s mut self,
         packet: MutableIpPacket<'_>,
@@ -406,6 +449,9 @@ impl ClientState {
             return None;
         };
 
+        // We read this here to prevent problems with the borrow checker
+        let is_dns_resource = self.is_dns_resource(&resource);
+
         let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
         else {
             self.on_not_connected_resource(resource, &dst, now);
@@ -419,7 +465,9 @@ impl ClientState {
             now,
         );
 
-        if peer.allowed_ips.longest_match(dst).is_none() {
+        // Allowed IPs will track the IPs that we have sent to the gateway along with a list of ResourceIds
+        // for DNS resource we will send the IP one at a time.
+        if is_dns_resource && peer.allowed_ips.exact_match(dst).is_none() {
             let gateway_id = peer.id();
             self.send_proxy_ips(&dst, resource, gateway_id);
             return None;
@@ -571,6 +619,14 @@ impl ClientState {
         })));
     }
 
+    fn is_upstream_set_by_the_portal(&self) -> bool {
+        let Some(interface) = &self.interface_config else {
+            return false;
+        };
+
+        !interface.upstream_dns.is_empty()
+    }
+
     /// Attempt to handle the given packet as a DNS packet.
     ///
     /// Returns `Ok` if the packet is in fact a DNS query with an optional response to send back.
@@ -587,13 +643,14 @@ impl ClientState {
             Some(dns::ResolveStrategy::ForwardQuery(query)) => {
                 // There's an edge case here, where the resolver's ip has been resolved before as
                 // a dns resource... we will ignore that weird case for now.
-                // Assuming a single upstream dns until #3123 lands
                 if let Some(upstream_dns) = self.dns_mapping.get_by_left(&query.query.destination())
                 {
                     let ip = upstream_dns.ip();
 
                     // In case the DNS server is a CIDR resource, it needs to go through the tunnel.
-                    if self.cidr_resources.longest_match(ip).is_some() {
+                    if self.is_upstream_set_by_the_portal()
+                        && self.active_cidr_resources.longest_match(ip).is_some()
+                    {
                         return Err((packet, ip));
                     }
                 }
@@ -728,6 +785,25 @@ impl ClientState {
         self.mangled_dns_queries.clear();
     }
 
+    pub fn set_disabled_resource(&mut self, new_disabled_resources: HashSet<ResourceId>) {
+        let current_disabled_resources = self.disabled_resources.clone();
+
+        // We set disabled_resources before anything else so that add_resource knows what resources are enabled right now.
+        self.disabled_resources = new_disabled_resources.clone();
+
+        for re_enabled_resource in current_disabled_resources.difference(&new_disabled_resources) {
+            let Some(resource) = self.resources_by_id.get(re_enabled_resource) else {
+                continue;
+            };
+
+            self.add_resource(resource.clone());
+        }
+
+        for disabled_resource in &new_disabled_resources {
+            self.disable_resource(*disabled_resource);
+        }
+    }
+
     pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
         self.dns_mapping.clone()
     }
@@ -740,23 +816,30 @@ impl ClientState {
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
-        self.cidr_resources
+        self.active_cidr_resources
             .iter()
             .map(|(ip, _)| ip)
-            .chain(iter::once(IpNetwork::from_str(IPV4_RESOURCES).unwrap()))
-            .chain(iter::once(IpNetwork::from_str(IPV6_RESOURCES).unwrap()))
+            .chain(iter::once(IPV4_RESOURCES.into()))
+            .chain(iter::once(IPV6_RESOURCES.into()))
             .chain(self.dns_mapping.left_values().copied().map(Into::into))
+    }
+
+    fn is_resource_enabled(&self, resource: &ResourceId) -> bool {
+        !self.disabled_resources.contains(resource) && self.resources_by_id.contains_key(resource)
     }
 
     fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
         let maybe_dns_resource_id = self.stub_resolver.resolve_resource_by_ip(&destination);
 
         let maybe_cidr_resource_id = self
-            .cidr_resources
+            .active_cidr_resources
             .longest_match(destination)
             .map(|(_, res)| res.id);
 
-        maybe_dns_resource_id.or(maybe_cidr_resource_id)
+        // We need to filter disabled resources because we never remove resources from the stub_resolver
+        maybe_dns_resource_id
+            .or(maybe_cidr_resource_id)
+            .filter(|resource| self.is_resource_enabled(resource))
     }
 
     #[must_use]
@@ -799,8 +882,8 @@ impl ClientState {
 
     fn drain_node_events(&mut self) {
         let mut resources_changed = false; // Track this separately to batch together `ResourcesChanged` events.
-        let mut added_ice_candidates = HashMap::<GatewayId, HashSet<String>>::default();
-        let mut removed_ice_candidates = HashMap::<GatewayId, HashSet<String>>::default();
+        let mut added_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
+        let mut removed_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -840,7 +923,7 @@ impl ClientState {
                 });
         }
 
-        for (conn_id, candidates) in added_ice_candidates.drain() {
+        for (conn_id, candidates) in added_ice_candidates.into_iter() {
             self.buffered_events
                 .push_back(ClientEvent::AddedIceCandidates {
                     conn_id,
@@ -848,7 +931,7 @@ impl ClientState {
                 })
         }
 
-        for (conn_id, candidates) in removed_ice_candidates.drain() {
+        for (conn_id, candidates) in removed_ice_candidates.into_iter() {
             self.buffered_events
                 .push_back(ClientEvent::RemovedIceCandidates {
                     conn_id,
@@ -914,12 +997,21 @@ impl ClientState {
             }
         }
 
+        self.resources_by_id
+            .insert(new_resource.id(), new_resource.clone());
+
+        if !self.is_resource_enabled(&(new_resource.id())) {
+            return;
+        }
+
         match &new_resource {
             ResourceDescription::Dns(dns) => {
                 self.stub_resolver.add_resource(dns.id, dns.address.clone());
             }
             ResourceDescription::Cidr(cidr) => {
-                let existing = self.cidr_resources.insert(cidr.address, cidr.clone());
+                let existing = self
+                    .active_cidr_resources
+                    .insert(cidr.address, cidr.clone());
 
                 match existing {
                     Some(existing) if existing.id != cidr.id => {
@@ -933,15 +1025,18 @@ impl ClientState {
             }
             ResourceDescription::Internet(_) => {}
         }
-
-        self.resources_by_id.insert(new_resource.id(), new_resource);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
     pub(crate) fn remove_resource(&mut self, id: ResourceId) {
+        self.disable_resource(id);
+        self.resources_by_id.remove(&id);
+    }
+
+    fn disable_resource(&mut self, id: ResourceId) {
         self.awaiting_connection_details.remove(&id);
         self.stub_resolver.remove_resource(id);
-        self.cidr_resources.retain(|_, r| {
+        self.active_cidr_resources.retain(|_, r| {
             if r.id == id {
                 tracing::info!(address = %r.address, name = %r.name, "Deactivating CIDR resource");
                 return false;
@@ -949,8 +1044,6 @@ impl ClientState {
 
             true
         });
-
-        self.resources_by_id.remove(&id);
 
         let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, id) else {
             return;
@@ -979,6 +1072,8 @@ impl ClientState {
             self.update_site_status_by_gateway(&gateway_id, Status::Unknown);
             // TODO: should we have a Node::remove_connection?
         }
+
+        self.resources_gateways.remove(&id);
     }
 
     fn update_dns_mapping(&mut self) -> bool {
@@ -1030,8 +1125,8 @@ impl ClientState {
 
     pub fn update_relays(
         &mut self,
-        to_remove: HashSet<RelayId>,
-        to_add: HashSet<(RelayId, RelaySocket, String, String, String)>,
+        to_remove: BTreeSet<RelayId>,
+        to_add: BTreeSet<(RelayId, RelaySocket, String, String, String)>,
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);
@@ -1096,13 +1191,10 @@ fn effective_dns_servers(
 }
 
 fn not_sentinel(srv: DnsServer) -> Option<DnsServer> {
-    (!IpNetwork::from_str(DNS_SENTINELS_V4)
-        .unwrap()
-        .contains(srv.ip())
-        && !IpNetwork::from_str(DNS_SENTINELS_V6)
-            .unwrap()
-            .contains(srv.ip()))
-    .then_some(srv)
+    let is_v4_dns = IpNetwork::V4(DNS_SENTINELS_V4).contains(srv.ip());
+    let is_v6_dns = IpNetwork::V6(DNS_SENTINELS_V6).contains(srv.ip());
+
+    (!is_v4_dns && !is_v6_dns).then_some(srv)
 }
 
 fn sentinel_dns_mapping(
@@ -1229,21 +1321,17 @@ pub struct IpProvider {
 impl IpProvider {
     pub fn for_resources() -> Self {
         IpProvider::new(
-            IPV4_RESOURCES.parse().unwrap(),
-            IPV6_RESOURCES.parse().unwrap(),
+            IPV4_RESOURCES,
+            IPV6_RESOURCES,
             vec![
-                DNS_SENTINELS_V4.parse().unwrap(),
-                DNS_SENTINELS_V6.parse().unwrap(),
+                IpNetwork::V4(DNS_SENTINELS_V4),
+                IpNetwork::V6(DNS_SENTINELS_V6),
             ],
         )
     }
 
     pub fn for_stub_dns_servers(exclusions: Vec<IpNetwork>) -> Self {
-        IpProvider::new(
-            DNS_SENTINELS_V4.parse().unwrap(),
-            DNS_SENTINELS_V6.parse().unwrap(),
-            exclusions,
-        )
+        IpProvider::new(DNS_SENTINELS_V4, DNS_SENTINELS_V6, exclusions)
     }
 
     fn new(ipv4: Ipv4Network, ipv6: Ipv6Network, exclusions: Vec<IpNetwork>) -> Self {
@@ -1288,7 +1376,7 @@ impl IpProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand_core::OsRng;
+    use rand::rngs::OsRng;
 
     #[test]
     fn ignores_ip4_igmp_multicast() {
@@ -1461,7 +1549,11 @@ mod tests {
 
     impl ClientState {
         pub fn for_test() -> ClientState {
-            ClientState::new(StaticSecret::random_from_rng(OsRng), HashMap::new())
+            ClientState::new(
+                StaticSecret::random_from_rng(OsRng),
+                HashMap::new(),
+                rand::random(),
+            )
         }
     }
 
@@ -1490,8 +1582,8 @@ mod tests {
 
     fn sentinel_ranges() -> Vec<IpNetwork> {
         vec![
-            IpNetwork::from_str(DNS_SENTINELS_V4).unwrap(),
-            IpNetwork::from_str(DNS_SENTINELS_V6).unwrap(),
+            IpNetwork::V4(DNS_SENTINELS_V4),
+            IpNetwork::V6(DNS_SENTINELS_V6),
         ]
     }
 
@@ -1774,8 +1866,8 @@ mod proptests {
         HashSet::from_iter(
             resource_routes
                 .into_iter()
-                .chain(iter::once(IpNetwork::from_str(IPV4_RESOURCES).unwrap()))
-                .chain(iter::once(IpNetwork::from_str(IPV6_RESOURCES).unwrap())),
+                .chain(iter::once(IPV4_RESOURCES.into()))
+                .chain(iter::once(IPV6_RESOURCES.into())),
         )
     }
 

@@ -89,14 +89,10 @@ defmodule Web.SignUp do
     ~H"""
     <section>
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
-        <.logo />
+        <.hero_logo />
 
         <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h1 class="text-center text-xl leading-tight tracking-tight text-neutral-900 sm:text-2xl">
-              Welcome to Firezone
-            </h1>
-
             <.flash flash={@flash} kind={:error} />
             <.flash flash={@flash} kind={:info} />
 
@@ -180,7 +176,7 @@ defmodule Web.SignUp do
           id="resend-email"
           as={:email}
           class="inline"
-          action={~p"/#{@account}/sign_in/providers/#{@provider}/request_magic_link"}
+          action={~p"/#{@account}/sign_in/providers/#{@provider}/request_email_otp"}
           method="post"
         >
           <.input
@@ -200,9 +196,9 @@ defmodule Web.SignUp do
 
   def sign_up_form(assigns) do
     ~H"""
-    <h3 class="text-center text-m leading-tight tracking-tight text-neutral-900 sm:text-xl">
-      Sign Up Now
-    </h3>
+    <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
+      Sign up for a new account
+    </h2>
     <.form for={@form} class="space-y-4 lg:space-y-6" phx-submit="submit" phx-change="validate">
       <div class="bg-white grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
         <.input

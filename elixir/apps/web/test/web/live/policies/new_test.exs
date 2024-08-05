@@ -240,11 +240,11 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
            |> form_validation_errors() == %{
-             "policy[base]" => ["Policy with Group and Resource already exists"]
+             "policy[base]" => ["Policy for the selected Group and Resource already exists"]
            }
   end
 
-  test "creates a new policy on valid attrs and redirects to policy page", %{
+  test "creates a new policy on valid attrs and redirects to policies page", %{
     account: account,
     identity: identity,
     conn: conn
@@ -266,9 +266,10 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
 
-    assert policy = Repo.get_by(Domain.Policies.Policy, attrs)
+    assert Repo.get_by(Domain.Policies.Policy, attrs)
 
-    assert assert_redirect(lv, ~p"/#{account}/policies/#{policy}")
+    flash = assert_redirect(lv, ~p"/#{account}/policies")
+    assert flash["info"] == "Policy created successfully."
   end
 
   test "creates a new policy with conditions", %{
@@ -358,7 +359,7 @@ defmodule Web.Live.Policies.NewTest do
              }
            ]
 
-    assert assert_redirect(lv, ~p"/#{account}/policies/#{policy}")
+    assert assert_redirect(lv, ~p"/#{account}/resources/#{resource}")
   end
 
   test "creates a new policy on valid attrs and pre-set resource_id", %{
@@ -384,7 +385,7 @@ defmodule Web.Live.Policies.NewTest do
     policy = Repo.get_by(Domain.Policies.Policy, attrs)
     assert policy.resource_id == resource.id
 
-    assert assert_redirect(lv, ~p"/#{account}/policies/#{policy}")
+    assert assert_redirect(lv, ~p"/#{account}/resources/#{resource}")
   end
 
   test "removes conditions in the backend when policy_conditions is false", %{
@@ -425,7 +426,35 @@ defmodule Web.Live.Policies.NewTest do
     assert policy.resource_id == resource.id
     assert policy.conditions == []
 
-    assert assert_redirect(lv, ~p"/#{account}/policies/#{policy}")
+    assert_redirect(lv, ~p"/#{account}/resources/#{resource}")
+  end
+
+  test "redirects back to actor group when a new policy is created with pre-set actor_group_id",
+       %{
+         account: account,
+         identity: identity,
+         conn: conn
+       } do
+    group = Fixtures.Actors.create_group(account: account)
+    resource = Fixtures.Resources.create_resource(account: account)
+
+    Fixtures.Gateways.create_group(account: account)
+
+    attrs = %{actor_group_id: group.id}
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/policies/new?actor_group_id=#{group}")
+
+    assert lv
+           |> form("form", policy: attrs)
+           |> render_submit()
+
+    policy = Repo.get_by(Domain.Policies.Policy, attrs)
+    assert policy.resource_id == resource.id
+
+    assert assert_redirect(lv, ~p"/#{account}/groups/#{group}")
   end
 
   test "redirects back to site when a new policy is created with pre-set site_id", %{

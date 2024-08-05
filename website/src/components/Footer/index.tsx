@@ -4,7 +4,7 @@ import Link from "next/link";
 import ActionLink from "@/components/ActionLink";
 import Image from "next/image";
 import ConsentPreferences from "@/components/ConsentPreferences";
-
+import { HiArrowLongRight } from "react-icons/hi2";
 import {
   LinkedInIcon,
   GitHubIcon,
@@ -17,69 +17,135 @@ import {
 
 export default function Footer() {
   return (
-    <footer className="relative bg-white border-t">
+    <footer className="relative bg-neutral-900 p-16 text-neutral-500">
+      <div className="flex flex-col justify-center items-center text-center">
+        <h3 className="text-neutral-200 mb-4 text-4xl md:text-6xl text-pretty tracking-tight justify-center font-semibold">
+          Ready to get started?
+        </h3>
+        <h4 className="text-neutral-200 text-md tracking-tight">
+          Give your organization the protection it deserves.
+        </h4>
+        <div className="flex justify-center items-end w-fit gap-4 mt-8">
+          <div className="mx-auto">
+            <button
+              type="button"
+              className="text-sm w-48 inline-flex shadow-lg justify-center items-center py-2 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
+            >
+              <Link href="/contact/sales">Book a demo</Link>
+              <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
+            </button>
+            <p className="mt-3 text-xs text-neutral-400">
+              Get a personalized walkthrough of Firezone.
+            </p>
+          </div>
+          <div className="mx-auto">
+            <button
+              type="button"
+              className="group text-sm w-48 inline-flex justify-center items-center py-2 px-5 font-semibold text-center text-white rounded hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
+            >
+              <Link
+                href="https://app.firezone.dev/sign_up"
+                className="text-neutral-300 group inline-flex items-center py-0.5 text-sm font-semibold border-b-[1px] border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
+              >
+                Try Firezone for free
+                <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-5 h-5" />
+              </Link>
+            </button>
+            <p className="mt-3 text-xs text-neutral-400">
+              No credit card required. Cancel anytime.
+            </p>
+          </div>
+        </div>
+      </div>
       <div className="mx-auto w-full max-w-screen-xl p-4 py-6 lg:py-8">
-        <div className="md:flex md:justify-between">
-          <div className="flex justify-between md:w-1/2 w-full mb-6 md:mb-0">
-            <div>
+        <div className="flex justify-between gap-12">
+          <div className="flex md:flex-col justify-between">
+            <div className="">
               <Link href="/">
                 <Image
                   width={150}
                   height={150}
-                  src="/images/logo-text.svg"
+                  src="/images/logo-text-dark.svg"
                   alt="Firezone Logo"
+                  className="mb-4"
                 />
               </Link>
-            </div>
-            <div>
               <Link href="https://www.ycombinator.com/companies/firezone">
                 <Image
-                  width={150}
-                  height={150}
+                  width={125}
+                  height={125}
                   src="/images/yc-logo.svg"
                   alt="YC Logo"
                 />
               </Link>
             </div>
+            <Link href="https://trust.firezone.dev">
+              <Image
+                alt="SOC2 badge"
+                width={75}
+                height={75}
+                src="/images/soc2.svg"
+              />
+            </Link>
           </div>
-          <div className="grid grid-cols-2 gap-8 sm:gap-6 sm:grid-cols-3">
+          <div className="text-sm w-1/3 grid grid-cols-2 content-end md:text-right">
             <div>
-              <h2 className="mb-6 text-sm font-semibold text-neutral-900 uppercase ">
+              <h2 className="mb-6 font-semibold uppercase md:justify-end">
                 Company
               </h2>
-              <ul className="text-neutral-900  font-medium">
+              <ul className="font-medium">
                 <li className="mb-4">
-                  <Link href="/" className="hover:underline">
+                  <Link
+                    href="/"
+                    className="text-neutral-200 hover:underline hover:text-neutral-50"
+                  >
                     Home
                   </Link>
                 </li>
                 <li className="mb-4">
-                  <Link href="/about" className="hover:underline">
+                  <Link
+                    href="/about"
+                    className="text-neutral-200 hover:underline hover:text-neutral-50"
+                  >
                     About
                   </Link>
                 </li>
                 <li className="mb-4">
-                  <Link href="/pricing" className="hover:underline">
+                  <Link
+                    href="/pricing"
+                    className="text-neutral-200 hover:underline hover:text-neutral-50"
+                  >
                     Pricing
                   </Link>
                 </li>
                 <li className="mb-4">
                   <Link
                     href="https://github.com/orgs/firezone/projects/9"
-                    className="hover:underline hover:text-neutral-900"
+                    className="text-neutral-200 hover:underline hover:text-neutral-50"
                   >
                     Roadmap
                   </Link>
                 </li>
                 <li className="mb-4">
-                  <Link href="/blog" className="hover:underline">
+                  <Link
+                    href="/blog"
+                    className="text-neutral-200 hover:underline hover:text-neutral-50"
+                  >
                     Blog
                   </Link>
                 </li>
-                <li>
+                <li className="mb-4">
+                  <Link
+                    href="/product/newsletter"
+                    className="text-neutral-200 hover:underline hover:text-neutral-50"
+                  >
+                    Newsletter
+                  </Link>
+                </li>
+                <li className="mb-4">
                   <Link
                     href="https://www.ycombinator.com/companies/firezone"
-                    className="hover:underline"
+                    className="text-neutral-200 hover:underline hover:text-neutral-50"
                   >
                     Jobs
                   </Link>
@@ -87,14 +153,14 @@ export default function Footer() {
               </ul>
             </div>
             <div>
-              <h2 className="mb-6 text-sm font-semibold text-neutral-900 uppercase ">
+              <h2 className="mb-6 text-sm font-semibold uppercase md:justify-end">
                 Resources
               </h2>
-              <ul className="text-neutral-900  font-medium">
+              <ul className=" font-medium">
                 <li className="mb-4">
                   <Link
                     href="/kb"
-                    className="hover:underline hover:text-neutral-900"
+                    className="text-neutral-200 hover:underline hover:text-neutral-50"
                   >
                     Docs
                   </Link>
@@ -102,7 +168,7 @@ export default function Footer() {
                 <li className="mb-4">
                   <Link
                     href="/support"
-                    className="hover:underline hover:text-neutral-900"
+                    className="text-neutral-200 hover:underline hover:text-neutral-50"
                   >
                     Support
                   </Link>
@@ -110,7 +176,7 @@ export default function Footer() {
                 <li className="mb-4">
                   <Link
                     href="/changelog"
-                    className="hover:underline hover:text-neutral-900"
+                    className="text-neutral-200 hover:underline hover:text-neutral-50"
                   >
                     Changelog
                   </Link>
@@ -118,7 +184,7 @@ export default function Footer() {
                 <li className="mb-4">
                   <Link
                     href="https://trust.firezone.dev/"
-                    className="hover:underline hover:text-neutral-900"
+                    className="text-neutral-200 hover:underline hover:text-neutral-50"
                   >
                     Trust Center
                   </Link>
@@ -126,30 +192,15 @@ export default function Footer() {
                 <li className="mb-4">
                   <Link
                     href="/contact/sales"
-                    className="hover:underline hover:text-neutral-900"
+                    className="text-neutral-200 hover:underline hover:text-neutral-50"
                   >
                     Sales
                   </Link>
                 </li>
-                <li>
-                  <Link
-                    href="/product/newsletter"
-                    className="hover:underline hover:text-neutral-900"
-                  >
-                    Newsletter
-                  </Link>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h2 className="mb-6 text-sm font-semibold text-neutral-900 uppercase ">
-                Community
-              </h2>
-              <ul className="text-neutral-900  font-medium">
                 <li className="mb-4">
                   <Link
                     href="https://discourse.firez.one"
-                    className="hover:underline hover:text-neutral-900"
+                    className="text-neutral-200 hover:underline hover:text-neutral-50"
                   >
                     Forums
                   </Link>
@@ -157,33 +208,9 @@ export default function Footer() {
                 <li className="mb-4">
                   <Link
                     href="https://discord.gg/DY8gxpSgep"
-                    className="hover:underline hover:text-neutral-900"
+                    className="text-neutral-200 hover:underline hover:text-neutral-50"
                   >
                     Discord
-                  </Link>
-                </li>
-                <li className="mb-4">
-                  <Link
-                    href="https://github.com/firezone"
-                    className="hover:underline hover:text-neutral-900"
-                  >
-                    GitHub
-                  </Link>
-                </li>
-                <li className="mb-4">
-                  <Link
-                    href="https://x.com/firezonehq"
-                    className="hover:underline hover:text-neutral-900"
-                  >
-                    X
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    href="https://www.linkedin.com/company/firezonehq"
-                    className="hover:underline hover:text-neutral-900"
-                  >
-                    LinkedIn
                   </Link>
                 </li>
               </ul>
@@ -199,54 +226,86 @@ export default function Footer() {
             <ActionLink
               href="https://probe.sh"
               size="ml-1 -mr-1 w-5 h-5"
-              className="text-sm text-neutral-800 hover:underline"
+              className="text-neutral-200 text-sm hover:underline hover:text-neutral-50"
             >
               Test your WireGuard connection
             </ActionLink>
           </div>
         </div>
-        <hr className="my-2 border-neutral-200 sm:mx-auto lg:mb-8 lg:mt-4" />
+        <hr className="my-2 border-neutral-500 sm:mx-auto md:my-4" />
         <div className="flex grid sm:grid-cols-3">
-          <div className="text-xs text-neutral-900">
+          <div className="text-xs">
             © 2024{" "}
-            <Link href="/" className="hover:underline">
+            <Link
+              href="/"
+              className="text-neutral-200 hover:underline hover:text-neutral-50"
+            >
               Firezone, Inc.
             </Link>{" "}
             <br />
-            <Link href="/privacy-policy" className="hover:underline">
+            <Link
+              href="/privacy-policy"
+              className="text-neutral-200 hover:underline hover:text-neutral-50"
+            >
               privacy
             </Link>
             {" | "}
-            <Link href="/terms" className="hover:underline">
+            <Link
+              href="/terms"
+              className="text-neutral-200 hover:underline hover:text-neutral-50"
+            >
               terms
             </Link>
             {" | "}
-            <ConsentPreferences />
+            <ConsentPreferences className="text-neutral-200 hover:underline hover:text-neutral-50" />
             {" | "}
             <Link
               href="https://app.termly.io/notify/1aa082a3-aba1-4169-b69b-c1d1b42b7a48"
-              className="hover:underline"
+              className="text-neutral-200 hover:underline hover:text-neutral-50"
             >
               do not sell or share my personal information
             </Link>
           </div>
           <div className="flex p-2 items-center justify-center space-x-5">
-            <AppleIcon size={5} href="/kb/user-guides/macos-client" />
-            <WindowsIcon size={5} href="/kb/user-guides/windows-client" />
-            <LinuxIcon size={5} href="/kb/user-guides/linux-gui-client" />
-            <AndroidIcon size={5} href="/kb/user-guides/android-client" />
+            <AppleIcon
+              className="text-neutral-200 hover:text-neutral-50"
+              size={5}
+              href="/kb/client-apps/macos-client"
+            />
+            <WindowsIcon
+              className="text-neutral-200 hover:text-neutral-50"
+              size={5}
+              href="/kb/client-apps/windows-client"
+            />
+            <LinuxIcon
+              className="text-neutral-200 hover:text-neutral-50"
+              size={5}
+              href="/kb/client-apps/linux-gui-client"
+            />
+            <AndroidIcon
+              className="text-neutral-200 hover:text-neutral-50"
+              size={5}
+              href="/kb/client-apps/android-client"
+            />
           </div>
           <div className="flex p-2 items-center justify-center sm:justify-end space-x-5">
             <Link
               target="_blank"
               href={new URL("https://firezone.statuspage.io")}
-              className="hover:underline text-xs"
+              className="text-neutral-200 hover:underline hover:text-neutral-50 text-xs"
             >
               Platform status
             </Link>
-            <XIcon url={new URL("https://x.com/firezonehq")} />
-            <GitHubIcon url={new URL("https://github.com/firezone")} />
+            <XIcon
+              className="text-neutral-200 hover:text-neutral-50"
+              url={new URL("https://x.com/firezonehq")}
+            />
+            <GitHubIcon
+              className="text-neutral-200 hover:text-neutral-50"
+              url={new URL("https://github.com/firezone")}
+            />
             <LinkedInIcon
+              className="text-neutral-200 hover:text-neutral-50"
               url={new URL("https://linkedin.com/company/firezonehq")}
             />
           </div>

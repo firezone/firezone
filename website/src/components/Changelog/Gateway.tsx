@@ -8,6 +8,21 @@ export default function Gateway() {
 
   return (
     <Entries href={href} arches={arches} title="Gateway">
+      <Entry version="1.1.3" date={new Date("2024-08-02")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            Fixes{" "}
+            <Link
+              className="text-accent-500 underline hover:no-underline"
+              href="https://github.com/firezone/firezone/pull/6117"
+            >
+              an issue
+            </Link>{" "}
+            where Gateways could become unresponsive after new versions of the
+            Firezone infrastructure was deployed.
+          </li>
+        </ul>
+      </Entry>
       <Entry version="1.1.2" date={new Date("2024-06-29")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">Reduces log noise for the default log level.</li>

@@ -1,28 +1,11 @@
 use anyhow::{bail, Context as _, Result};
-use firezone_bin_shared::TunDeviceManager;
+use firezone_bin_shared::{DnsControlMethod, TunDeviceManager};
 use std::{net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;
 
-const FIREZONE_DNS_CONTROL: &str = "FIREZONE_DNS_CONTROL";
-
 pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
     get_system_default_resolvers_systemd_resolved()
-}
-
-#[derive(Clone, Debug)]
-enum DnsControlMethod {
-    /// Back up `/etc/resolv.conf` and replace it with our own
-    ///
-    /// Only suitable for the Alpine CI containers and maybe something like an
-    /// embedded system
-    EtcResolvConf,
-    /// Cooperate with NetworkManager (TODO)
-    NetworkManager,
-    /// Cooperate with `systemd-resolved`
-    ///
-    /// Suitable for most Ubuntu systems, probably
-    Systemd,
 }
 
 /// Controls system-wide DNS.
@@ -36,10 +19,9 @@ pub(crate) struct DnsController {
 
 impl Default for DnsController {
     fn default() -> Self {
-        // We'll remove `get_dns_control_from_env` in #5068
-        let dns_control_method = get_dns_control_from_env();
+        // We'll remove `get_from_env` in #5068
+        let dns_control_method = DnsControlMethod::from_env();
         tracing::info!(?dns_control_method);
-
         Self { dns_control_method }
     }
 }
@@ -73,7 +55,6 @@ impl DnsController {
         match self.dns_control_method {
             None => Ok(()),
             Some(DnsControlMethod::EtcResolvConf) => etc_resolv_conf::configure(dns_config).await,
-            Some(DnsControlMethod::NetworkManager) => configure_network_manager(dns_config),
             Some(DnsControlMethod::Systemd) => configure_systemd_resolved(dns_config).await,
         }
         .context("Failed to control DNS")
@@ -91,20 +72,6 @@ impl DnsController {
         }
         Ok(())
     }
-}
-
-/// Reads FIREZONE_DNS_CONTROL. Returns None if invalid or not set
-fn get_dns_control_from_env() -> Option<DnsControlMethod> {
-    match std::env::var(FIREZONE_DNS_CONTROL).as_deref() {
-        Ok("etc-resolv-conf") => Some(DnsControlMethod::EtcResolvConf),
-        Ok("network-manager") => Some(DnsControlMethod::NetworkManager),
-        Ok("systemd-resolved") => Some(DnsControlMethod::Systemd),
-        _ => None,
-    }
-}
-
-fn configure_network_manager(_dns_config: &[IpAddr]) -> Result<()> {
-    anyhow::bail!("DNS control with NetworkManager is not implemented yet",)
 }
 
 /// Sets the system-wide resolvers by configuring `systemd-resolved`
@@ -140,10 +107,9 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
 }
 
 pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
-    match crate::dns_control::platform::get_dns_control_from_env() {
+    match DnsControlMethod::from_env() {
         None => get_system_default_resolvers_resolv_conf(),
         Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf(),
-        Some(DnsControlMethod::NetworkManager) => get_system_default_resolvers_network_manager(),
         Some(DnsControlMethod::Systemd) => get_system_default_resolvers_systemd_resolved(),
     }
 }
@@ -163,12 +129,6 @@ fn get_system_default_resolvers_resolv_conf() -> Result<Vec<IpAddr>> {
         .map(|addr| addr.into())
         .collect();
     Ok(nameservers)
-}
-
-#[allow(clippy::unnecessary_wraps)]
-fn get_system_default_resolvers_network_manager() -> Result<Vec<IpAddr>> {
-    tracing::error!("get_system_default_resolvers_network_manager not implemented yet");
-    Ok(vec![])
 }
 
 /// Returns the DNS servers listed in `resolvectl dns`

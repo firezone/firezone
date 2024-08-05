@@ -3,10 +3,11 @@
 // However, this consideration has made it idiomatic for Java FFI in the Rust
 // ecosystem, so it's used here for consistency.
 
+use crate::tun::Tun;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
     callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
-    LoginUrlError, Session, Tun, V4RouteList, V6RouteList,
+    LoginUrlError, Session, V4RouteList, V6RouteList,
 };
 use connlib_shared::get_user_agent;
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -18,7 +19,7 @@ use jni::{
 };
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
-use socket_factory::SocketFactory;
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
@@ -32,6 +33,7 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
 mod make_writer;
+mod tun;
 
 /// The Android client doesn't use platform APIs to detect network connectivity changes,
 /// so we rely on connlib to do so. We have valid use cases for headless Android clients
@@ -495,13 +497,13 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
 /// at any point before or during operation of this function.
 #[allow(non_snake_case)]
 #[no_mangle]
-pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reconnect(
+pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reset(
     _: JNIEnv,
     _: JClass,
     session_ptr: jlong,
 ) {
     let session = &*(session_ptr as *const SessionWrapper);
-    session.inner.reconnect();
+    session.inner.reset();
 }
 
 /// # Safety
@@ -527,12 +529,10 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
         }
     };
 
-    session.inner.set_tun(tun);
+    session.inner.set_tun(Box::new(tun));
 }
 
-fn protected_tcp_socket_factory(
-    callbacks: CallbackHandler,
-) -> impl SocketFactory<tokio::net::TcpSocket> {
+fn protected_tcp_socket_factory(callbacks: CallbackHandler) -> impl SocketFactory<TcpSocket> {
     move |addr| {
         let socket = socket_factory::tcp(addr)?;
         callbacks.protect(socket.as_raw_fd())?;
@@ -540,9 +540,7 @@ fn protected_tcp_socket_factory(
     }
 }
 
-fn protected_udp_socket_factory(
-    callbacks: CallbackHandler,
-) -> impl SocketFactory<tokio::net::UdpSocket> {
+fn protected_udp_socket_factory(callbacks: CallbackHandler) -> impl SocketFactory<UdpSocket> {
     move |addr| {
         let socket = socket_factory::udp(addr)?;
         callbacks.protect(socket.as_raw_fd())?;

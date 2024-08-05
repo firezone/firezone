@@ -75,8 +75,33 @@ locals {
 
 # Fetch most recent COS image
 data "google_compute_image" "coreos" {
-  family  = "cos-109-lts"
+  family  = "cos-113-lts"
   project = "cos-cloud"
+}
+
+# Reserve instances for the application
+# If you don't reserve them deployment takes much longer and there is no guarantee that instances will be created at all,
+# Google Cloud Platform does not guarantee that instances will be available when you need them.
+resource "google_compute_reservation" "reservation" {
+  # for_each = toset(var.compute_instance_availability_zones)
+
+  project = var.project_id
+
+  # name = "${local.application_name}-${each.key}-${var.compute_instance_type}"
+  name = "${local.application_name}-${element(var.compute_instance_availability_zones, length(var.compute_instance_availability_zones) - 1)}-${var.compute_instance_type}"
+  # zone = each.key
+  zone = element(var.compute_instance_availability_zones, length(var.compute_instance_availability_zones) - 1)
+
+  specific_reservation_required = true
+
+  specific_reservation {
+    count = var.scaling_horizontal_replicas
+    # count = ceil(var.scaling_horizontal_replicas / length(var.compute_instance_availability_zones))
+
+    instance_properties {
+      machine_type = var.compute_instance_type
+    }
+  }
 }
 
 # Deploy app
@@ -108,10 +133,23 @@ resource "google_compute_instance_template" "application" {
     provisioning_model  = "STANDARD"
   }
 
+  reservation_affinity {
+    type = "SPECIFIC_RESERVATION"
+
+    specific_reservation {
+      key = "compute.googleapis.com/reservation-name"
+      # *Regional* instance group can consume only one reservation, which is zonal by default,
+      # so we are always locked to one zone per region until Google Cloud Platform will fix that.
+      # values = [for r in google_compute_reservation.reservation : r.name]
+      values = [google_compute_reservation.reservation.name]
+    }
+  }
+
   disk {
     source_image = data.google_compute_image.coreos.self_link
     auto_delete  = true
     boot         = true
+    disk_type    = var.compute_boot_disk_type
   }
 
   network_interface {
@@ -186,6 +224,7 @@ resource "google_compute_instance_template" "application" {
     google_project_iam_member.metrics,
     google_project_iam_member.service_management,
     google_project_iam_member.cloudtrace,
+    google_compute_reservation.reservation,
   ]
 
   lifecycle {
@@ -291,10 +330,13 @@ resource "google_compute_region_instance_group_manager" "application" {
 
   update_policy {
     type           = "PROACTIVE"
-    minimal_action = "RESTART"
+    minimal_action = "REPLACE"
 
+    # With reservations we need to take one instance down before provisioning a new one,
+    # otherwise we will get an error that there are no available instances for the targeted
+    # reservation.
     max_unavailable_fixed = 1
-    max_surge_fixed       = max(1, var.scaling_horizontal_replicas - 1)
+    max_surge_fixed       = max(max(1, var.scaling_horizontal_replicas - 1), length(var.compute_instance_availability_zones))
   }
 
   timeouts {

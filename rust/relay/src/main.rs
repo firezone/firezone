@@ -7,8 +7,6 @@ use firezone_relay::{
     PeerSocket, Server, Sleep,
 };
 use futures::{future, FutureExt};
-use opentelemetry::KeyValue;
-use opentelemetry_otlp::WithExportConfig;
 use phoenix_channel::{Event, LoginUrl, PhoenixChannel};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -175,6 +173,10 @@ async fn main() -> Result<()> {
 ///
 /// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
 fn setup_tracing(args: &Args) -> Result<()> {
+    use opentelemetry::{global, trace::TracerProvider as _, KeyValue};
+    use opentelemetry_otlp::WithExportConfig;
+    use opentelemetry_sdk::{runtime::Tokio, trace::Config, Resource};
+
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
     let temp_logger_guard = tracing_core::dispatcher::set_default(
@@ -182,7 +184,9 @@ fn setup_tracing(args: &Args) -> Result<()> {
     );
 
     let dispatch: Dispatch = match args.otlp_grpc_endpoint.clone() {
-        None => tracing_subscriber::registry().with(log_layer(args)).into(),
+        None => tracing_subscriber::registry()
+            .with(log_layer(args).with_filter(env_filter()))
+            .into(),
         Some(endpoint) => {
             let grpc_endpoint = format!("http://{endpoint}");
 
@@ -192,14 +196,16 @@ fn setup_tracing(args: &Args) -> Result<()> {
                 .tonic()
                 .with_endpoint(grpc_endpoint.clone());
 
-            let tracer = opentelemetry_otlp::new_pipeline()
+            let tracer_provider = opentelemetry_otlp::new_pipeline()
                 .tracing()
                 .with_exporter(exporter)
-                .with_trace_config(opentelemetry_sdk::trace::Config::default().with_resource(
-                    opentelemetry_sdk::Resource::new(vec![KeyValue::new("service.name", "relay")]),
-                ))
-                .install_batch(opentelemetry_sdk::runtime::Tokio)
+                .with_trace_config(
+                    Config::default()
+                        .with_resource(Resource::new(vec![KeyValue::new("service.name", "relay")])),
+                )
+                .install_batch(Tokio)
                 .context("Failed to create OTLP trace pipeline")?;
+            global::set_tracer_provider(tracer_provider.clone());
 
             tracing::trace!(target: "relay", "Successfully initialized trace provider on tokio runtime");
 
@@ -207,19 +213,20 @@ fn setup_tracing(args: &Args) -> Result<()> {
                 .tonic()
                 .with_endpoint(grpc_endpoint);
 
-            opentelemetry_otlp::new_pipeline()
-                .metrics(opentelemetry_sdk::runtime::Tokio)
+            let meter_provider = opentelemetry_otlp::new_pipeline()
+                .metrics(Tokio)
                 .with_exporter(exporter)
                 .build()
                 .context("Failed to create OTLP metrics pipeline")?;
+            global::set_meter_provider(meter_provider);
 
-            tracing::trace!(target: "relay", "Successfully initialized metric controller on tokio runtime");
+            tracing::trace!(target: "relay", "Successfully initialized metric provider on tokio runtime");
 
             tracing_subscriber::registry()
-                .with(log_layer(args))
+                .with(log_layer(args).with_filter(env_filter()))
                 .with(
                     tracing_opentelemetry::layer()
-                        .with_tracer(tracer)
+                        .with_tracer(tracer_provider.tracer("relay"))
                         .with_filter(env_filter()),
                 )
                 .into()
@@ -246,7 +253,7 @@ fn log_layer<T>(args: &Args) -> Box<dyn Layer<T> + Send + Sync>
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
-    let log_layer = match (args.log_format, args.google_cloud_project_id.clone()) {
+    match (args.log_format, args.google_cloud_project_id.clone()) {
         (LogFormat::Human, _) => tracing_subscriber::fmt::layer().boxed(),
         (LogFormat::Json, _) => tracing_subscriber::fmt::layer().json().boxed(),
         (LogFormat::GoogleCloud, None) => {
@@ -257,9 +264,7 @@ where
         (LogFormat::GoogleCloud, Some(project_id)) => tracing_stackdriver::layer()
             .with_cloud_trace(CloudTraceConfiguration { project_id })
             .boxed(),
-    };
-
-    log_layer.with_filter(env_filter()).boxed()
+    }
 }
 
 fn env_filter() -> EnvFilter {

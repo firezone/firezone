@@ -56,8 +56,8 @@ jobs:
         timeout-minutes: 5
       - uses: taiki-e/install-action@cargo-udeps
       - run: |
-          rustup install --no-self-update nightly-2024-03-26 --profile minimal # The exact nightly version doesn't matter, just pin a random one.
-          cargo +nightly-2024-03-26 udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
+          rustup install --no-self-update nightly-2024-06-01 --profile minimal # The exact nightly version doesn't matter, just pin a random one.
+          cargo +nightly-2024-06-01 udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
         name: Check for unused dependencies
       - run: cargo fmt -- --check
       - run: cargo doc --all-features --no-deps --document-private-items ${{ steps.setup-rust.outputs.packages }}
@@ -94,6 +94,7 @@ jobs:
           # Needed to create tunnel interfaces in unit tests
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
           PROPTEST_VERBOSE: 0 # Otherwise the output is very long.
+          CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
         name: "cargo test"
         shell: bash
 

@@ -1,14 +1,17 @@
-use super::sim_net::{dual_ip_stack, host, Host};
+use super::{
+    sim_net::{dual_ip_stack, host, Host},
+    strategies::latency,
+};
 use connlib_shared::messages::RelayId;
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
 use proptest::prelude::*;
-use rand::rngs::StdRng;
+use rand::{rngs::StdRng, SeedableRng as _};
 use secrecy::SecretString;
 use snownet::{RelaySocket, Transmit};
 use std::{
     borrow::Cow,
     collections::HashSet,
-    net::{SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant, SystemTime},
 };
 
@@ -16,15 +19,19 @@ pub(crate) struct SimRelay {
     pub(crate) sut: firezone_relay::Server<StdRng>,
     pub(crate) allocations: HashSet<(AddressFamily, AllocationPort)>,
     buffer: Vec<u8>,
+
+    created_at: SystemTime,
 }
 
 pub(crate) fn map_explode<'a>(
     relays: impl Iterator<Item = (&'a RelayId, &'a Host<SimRelay>)> + 'a,
-    username: &'a str,
+    username: impl Into<String>,
 ) -> impl Iterator<Item = (RelayId, RelaySocket, String, String, String)> + 'a {
+    let username = username.into();
+
     relays.map(move |(id, r)| {
         let (socket, username, password, realm) = r.inner().explode(
-            username,
+            &username,
             r.inner().sut.auth_secret(),
             r.inner().sut.public_address(),
         );
@@ -34,11 +41,19 @@ pub(crate) fn map_explode<'a>(
 }
 
 impl SimRelay {
-    pub(crate) fn new(sut: firezone_relay::Server<StdRng>) -> Self {
+    pub(crate) fn new(seed: u64, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) -> Self {
+        let sut = firezone_relay::Server::new(
+            IpStack::from((ip4, ip6)),
+            rand::rngs::StdRng::seed_from_u64(seed),
+            3478,
+            49152..=65535,
+        );
+
         Self {
             sut,
             allocations: Default::default(),
             buffer: vec![0u8; (1 << 16) - 1],
+            created_at: SystemTime::now(),
         }
     }
 
@@ -75,13 +90,15 @@ impl SimRelay {
         }
     }
 
-    pub(crate) fn handle_packet(
+    pub(crate) fn receive(
         &mut self,
-        payload: &[u8],
-        sender: SocketAddr,
-        dst: SocketAddr,
+        transmit: Transmit,
         now: Instant,
     ) -> Option<Transmit<'static>> {
+        let dst = transmit.dst;
+        let payload = &transmit.payload;
+        let sender = transmit.src.unwrap();
+
         if self
             .matching_listen_socket(dst, self.sut.public_address())
             .is_some_and(|s| s == dst)
@@ -171,7 +188,9 @@ impl SimRelay {
     }
 
     fn make_credentials(&self, username: &str, auth_secret: &SecretString) -> (String, String) {
-        let expiry = SystemTime::now() + Duration::from_secs(60);
+        const ONE_HOUR: Duration = Duration::from_secs(60 * 60);
+
+        let expiry = self.created_at + ONE_HOUR;
 
         let secs = expiry
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -184,10 +203,11 @@ impl SimRelay {
     }
 }
 
-pub(crate) fn relay_prototype() -> impl Strategy<Value = Host<u64>> {
+pub(crate) fn ref_relay_host() -> impl Strategy<Value = Host<u64>> {
     host(
         dual_ip_stack(), // For this test, our relays always run in dual-stack mode to ensure connectivity!
         Just(3478),
         any::<u64>(),
+        latency(50), // We assume our relays have a good Internet connection.
     )
 }

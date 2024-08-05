@@ -283,7 +283,7 @@ defmodule Web.Live.Groups.ShowTest do
       |> live(~p"/#{account}/groups/#{group}")
 
     lv
-    |> element("button", "Delete Group")
+    |> element("button[type=submit]", "Delete Group")
     |> render_click()
 
     assert_redirected(lv, ~p"/#{account}/groups")

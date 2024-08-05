@@ -28,6 +28,24 @@ defmodule Web.Live.Settings.ApiClient.NewTest do
                }}}
   end
 
+  test "redirects to beta page when feature not enabled for account", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    features = Map.from_struct(account.features)
+    attrs = %{features: %{features | rest_api: false}}
+
+    {:ok, account} = Domain.Accounts.update_account(account, attrs)
+
+    assert {:error, {:live_redirect, %{to: path, flash: _}}} =
+             conn
+             |> authorize_conn(identity)
+             |> live(~p"/#{account}/settings/api_clients/new")
+
+    assert path == ~p"/#{account}/settings/api_clients/beta"
+  end
+
   test "renders breadcrumbs item", %{
     account: account,
     identity: identity,

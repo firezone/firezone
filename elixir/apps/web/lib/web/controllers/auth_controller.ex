@@ -22,7 +22,7 @@ defmodule Web.AuthController do
   action_fallback Web.FallbackController
 
   @doc """
-  This is a callback for the UserPass provider which checks login and password to authenticate the user.
+  This is a callback for the UserPass/TempAccount provider which checks login and password to authenticate the user.
   """
   def verify_credentials(
         conn,
@@ -59,10 +59,43 @@ defmodule Web.AuthController do
     end
   end
 
+  def verify_credentials(
+        conn,
+        %{
+          "account_id_or_slug" => account_id_or_slug,
+          "provider_id" => provider_id,
+          "temp_account" => %{
+            "secret" => secret
+          }
+        } = params
+      ) do
+    redirect_params = Web.Auth.take_sign_in_params(params)
+    context_type = Web.Auth.fetch_auth_context_type!(redirect_params)
+    context = Web.Auth.get_auth_context(conn, context_type)
+    nonce = Web.Auth.fetch_token_nonce!(redirect_params)
+
+    with {:ok, provider} <-
+           Domain.Auth.fetch_active_provider_by_id(provider_id, preload: :account),
+         provider_identifier = provider_identifier(provider),
+         {:ok, identity, encoded_fragment} <-
+           Domain.Auth.sign_in(provider, provider_identifier, nonce, secret, context) do
+      Web.Auth.signed_in(conn, provider, identity, context, encoded_fragment, redirect_params)
+    else
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "Invalid password.")
+        |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
+    end
+  end
+
+  defp provider_identifier(provider) do
+    "admin_" <> provider.account.slug <> "@firezonedemo.com"
+  end
+
   @doc """
   This is a callback for the Email provider which sends login link.
   """
-  def request_magic_link(
+  def request_email_otp(
         conn,
         %{
           "account_id_or_slug" => account_id_or_slug,
@@ -76,7 +109,7 @@ defmodule Web.AuthController do
 
     with true <- String.contains?(provider_identifier, "@"),
          {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id) do
-      conn = maybe_send_magic_link_email(conn, provider, provider_identifier, redirect_params)
+      conn = maybe_send_email_otp(conn, provider, provider_identifier, redirect_params)
 
       signed_provider_identifier =
         Plug.Crypto.sign(
@@ -110,7 +143,7 @@ defmodule Web.AuthController do
     end
   end
 
-  defp maybe_send_magic_link_email(conn, provider, provider_identifier, redirect_params) do
+  defp maybe_send_email_otp(conn, provider, provider_identifier, redirect_params) do
     context_type = Web.Auth.fetch_auth_context_type!(redirect_params)
     context = Web.Auth.get_auth_context(conn, context_type)
 
@@ -125,7 +158,7 @@ defmodule Web.AuthController do
                  ),
                {:ok, identity} <-
                  Domain.Auth.Adapters.Email.request_sign_in_token(identity, context),
-               {:ok, fragment} <- send_magic_link_email(conn, identity, redirect_params) do
+               {:ok, fragment} <- send_email_otp(conn, identity, redirect_params) do
             fragment
           else
             _ ->
@@ -144,7 +177,7 @@ defmodule Web.AuthController do
     put_auth_state(conn, provider.id, {fragment, provider_identifier, redirect_params})
   end
 
-  defp send_magic_link_email(conn, identity, redirect_params) do
+  defp send_email_otp(conn, identity, redirect_params) do
     # Nonce is the short part that is sent to the user in the email
     nonce = identity.provider_virtual_state.nonce
 

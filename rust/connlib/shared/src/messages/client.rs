@@ -1,6 +1,6 @@
 //! Client related messages that are needed within connlib
 
-use std::{collections::HashSet, str::FromStr};
+use std::{collections::HashSet, fmt, str::FromStr};
 
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
@@ -80,6 +80,16 @@ pub struct ResourceDescriptionInternet {
     pub sites: Vec<Site>,
 }
 
+impl ResourceDescriptionInternet {
+    pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionInternet {
+        crate::callbacks::ResourceDescriptionInternet {
+            id: self.id,
+            sites: self.sites,
+            status,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialOrd, Ord)]
 pub struct Site {
     pub id: SiteId,
@@ -98,7 +108,7 @@ impl PartialEq for Site {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SiteId(Uuid);
 
 impl FromStr for SiteId {
@@ -113,6 +123,22 @@ impl SiteId {
     #[cfg(feature = "proptest")]
     pub fn from_u128(v: u128) -> Self {
         Self(Uuid::from_u128(v))
+    }
+}
+
+impl fmt::Display for SiteId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if cfg!(feature = "proptest") {
+            write!(f, "{:X}", self.0.as_u128())
+        } else {
+            write!(f, "{}", self.0)
+        }
+    }
+}
+
+impl fmt::Debug for SiteId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
     }
 }
 
@@ -177,7 +203,9 @@ impl ResourceDescription {
             ResourceDescription::Cidr(r) => {
                 crate::callbacks::ResourceDescription::Cidr(r.with_status(status))
             }
-            ResourceDescription::Internet(_) => todo!(),
+            ResourceDescription::Internet(r) => {
+                crate::callbacks::ResourceDescription::Internet(r.with_status(status))
+            }
         }
     }
 }

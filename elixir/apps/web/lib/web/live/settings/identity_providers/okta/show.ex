@@ -38,7 +38,7 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
 
     <.section>
       <:title>
-        Identity Provider <code><%= @provider.name %></code>
+        Identity Provider: <code><%= @provider.name %></code>
         <span :if={not is_nil(@provider.disabled_at)} class="text-primary-600">(disabled)</span>
         <span :if={not is_nil(@provider.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
@@ -50,26 +50,47 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
         </.edit_button>
       </:action>
       <:action :if={is_nil(@provider.deleted_at)}>
-        <.button
+        <.button_with_confirmation
           :if={is_nil(@provider.disabled_at)}
-          phx-click="disable"
+          id="disable"
           style="warning"
           icon="hero-lock-closed"
-          data-confirm="Are you sure want to disable this provider? Users will no longer be able to sign in with this provider and directory sync will be paused."
+          on_confirm="disable"
         >
+          <:dialog_title>Disable the Provider</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to disable this Provider?
+            This will <strong>immediately</strong>
+            sign out all Actors who were signed in using this Provider and directory sync will be paused.
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Disable
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Disable
-        </.button>
-
+        </.button_with_confirmation>
         <%= if @provider.adapter_state["status"] != "pending_access_token" do %>
-          <.button
+          <.button_with_confirmation
             :if={not is_nil(@provider.disabled_at)}
-            phx-click="enable"
+            id="enable"
             style="warning"
             icon="hero-lock-open"
-            data-confirm="Are you sure want to enable this provider?"
+            on_confirm="enable"
           >
+            <:dialog_title>Enable the Provider</:dialog_title>
+            <:dialog_content>
+              Are you sure you want to enable this provider?
+            </:dialog_content>
+            <:dialog_confirm_button>
+              Enable
+            </:dialog_confirm_button>
+            <:dialog_cancel_button>
+              Cancel
+            </:dialog_cancel_button>
             Enable
-          </.button>
+          </.button_with_confirmation>
         <% end %>
       </:action>
       <:action :if={is_nil(@provider.deleted_at)}>
@@ -82,12 +103,16 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
         </.button>
       </:action>
       <:help>
-        Directory sync is enabled for this provider. Users and groups will be synced every 10
-        minutes on average, but could take longer for very large organizations.
-        <.website_link path="/kb/authenticate/directory-sync">
-          Read more
-        </.website_link>
-        about directory sync.
+        <p>
+          Directory sync is enabled for this provider. Users and groups will be synced every few
+          minutes on average, but could take longer for very large organizations.
+        </p>
+        <p>
+          <.website_link path="/kb/authenticate/directory-sync">
+            Read more
+          </.website_link>
+          about directory sync.
+        </p>
       </:help>
       <:content>
         <.header>
@@ -173,12 +198,25 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
 
     <.danger_zone :if={is_nil(@provider.deleted_at)}>
       <:action>
-        <.delete_button
-          data-confirm="Are you sure want to delete this provider along with all related data?"
-          phx-click="delete"
+        <.button_with_confirmation
+          id="delete_identity_provider"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
         >
+          <:dialog_title>Delete Identity Provider</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to delete this provider? This will remove <strong>all</strong>
+            Actors and Groups associated with this provider.
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Identity Provider
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete Identity Provider
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """

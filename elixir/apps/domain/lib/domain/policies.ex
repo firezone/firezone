@@ -167,8 +167,8 @@ defmodule Domain.Policies do
 
   def ensure_client_conforms_policy_conditions(%Clients.Client{} = client, %Policy{} = policy) do
     case Condition.Evaluator.ensure_conforms(policy.conditions, client) do
-      :ok ->
-        :ok
+      {:ok, expires_at} ->
+        {:ok, expires_at}
 
       {:error, violated_properties} ->
         {:error, {:forbidden, violated_properties: violated_properties}}

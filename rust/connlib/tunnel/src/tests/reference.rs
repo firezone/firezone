@@ -1,22 +1,22 @@
 use super::{
-    composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*, sim_relay::*,
+    composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
-use chrono::{DateTime, Utc};
+use crate::dns::is_subdomain;
 use connlib_shared::{
-    messages::{client, GatewayId, RelayId},
-    proptest::*,
+    messages::{
+        client::{self, ResourceDescription},
+        GatewayId, RelayId,
+    },
     DomainName, StaticSecret,
 };
 use hickory_proto::rr::RecordType;
-use prop::collection;
 use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     fmt, iter,
     net::IpAddr,
-    time::Instant,
 };
 
 /// The reference state machine of the tunnel.
@@ -24,12 +24,13 @@ use std::{
 /// This is the "expected" part of our test.
 #[derive(Clone, Debug)]
 pub(crate) struct ReferenceState {
-    pub(crate) now: Instant,
-    pub(crate) utc_now: DateTime<Utc>,
     pub(crate) client: Host<RefClient>,
-    pub(crate) gateways: HashMap<GatewayId, Host<RefGateway>>,
-    pub(crate) relays: HashMap<RelayId, Host<u64>>,
+    pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
+    pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
+
     pub(crate) portal: StubPortal,
+
+    pub(crate) drop_direct_client_traffic: bool,
 
     /// All IP addresses a domain resolves to in our test.
     ///
@@ -41,6 +42,7 @@ pub(crate) struct ReferenceState {
 
 #[derive(Debug, Clone)]
 pub(crate) enum ResourceDst {
+    Internet(IpAddr),
     Cidr(IpAddr),
     Dns(DomainName),
 }
@@ -61,14 +63,19 @@ impl ReferenceStateMachine for ReferenceState {
         (
             ref_client_host(Just(client_tunnel_ip4), Just(client_tunnel_ip6)),
             gateways_and_portal(),
-            collection::hash_map(relay_id(), relay_prototype(), 1..=2),
+            relays(),
             global_dns_records(), // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
-            Just(Instant::now()),
-            Just(Utc::now()),
+            any::<bool>(),
         )
             .prop_filter_map(
                 "network IPs must be unique",
-                |(c, (gateways, portal), relays, global_dns, now, utc_now)| {
+                |(
+                    c,
+                    (gateways, portal, records),
+                    relays,
+                    mut global_dns,
+                    drop_direct_client_traffic,
+                )| {
                     let mut routing_table = RoutingTable::default();
 
                     if !routing_table.add_host(c.inner().id, &c) {
@@ -86,21 +93,23 @@ impl ReferenceStateMachine for ReferenceState {
                         };
                     }
 
+                    // Merge all DNS records into `global_dns`.
+                    global_dns.extend(records);
+
                     Some((
                         c,
                         gateways,
                         relays,
                         portal,
                         global_dns,
-                        now,
-                        utc_now,
+                        drop_direct_client_traffic,
                         routing_table,
                     ))
                 },
             )
             .prop_filter(
                 "private keys must be unique",
-                |(c, gateways, _, _, _, _, _, _)| {
+                |(c, gateways, _, _, _, _, _)| {
                     let different_keys = gateways
                         .iter()
                         .map(|(_, g)| g.inner().key)
@@ -111,16 +120,23 @@ impl ReferenceStateMachine for ReferenceState {
                 },
             )
             .prop_map(
-                |(client, gateways, relays, portal, global_dns_records, now, utc_now, network)| {
+                |(
+                    client,
+                    gateways,
+                    relays,
+                    portal,
+                    global_dns_records,
+                    drop_direct_client_traffic,
+                    network,
+                )| {
                     Self {
-                        now,
-                        utc_now,
                         client,
                         gateways,
                         relays,
                         portal,
                         global_dns_records,
                         network,
+                        drop_direct_client_traffic,
                     }
                 },
             )
@@ -143,19 +159,24 @@ impl ReferenceStateMachine for ReferenceState {
                 upstream_dns_servers()
                     .prop_map(|servers| Transition::UpdateUpstreamDnsServers { servers }),
             )
-            .with(
-                1,
-                add_cidr_resource(sample::select(state.portal.all_sites()).prop_map(|s| vec![s])),
+            .with_if_not_empty(
+                5,
+                state.all_resources_not_known_to_client(),
+                |resource_ids| sample::select(resource_ids).prop_map(Transition::ActivateResource),
             )
+            .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resource_ids| {
+                sample::select(resource_ids).prop_map(Transition::DeactivateResource)
+            })
             .with(1, roam_client())
-            .with(
-                1,
-                prop_oneof![
-                    non_wildcard_dns_resource(sample::select(state.portal.all_sites())),
-                    star_wildcard_dns_resource(sample::select(state.portal.all_sites())),
-                    question_mark_wildcard_dns_resource(sample::select(state.portal.all_sites())),
-                ],
-            )
+            .with(1, relays().prop_map(Transition::DeployNewRelays))
+            .with(1, Just(Transition::PartitionRelaysFromPortal))
+            .with(1, Just(Transition::ReconnectPortal))
+            .with(1, Just(Transition::Idle))
+            .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resources_id| {
+                sample::subsequence(resources_id.clone(), resources_id.len()).prop_map(
+                    |resources_id| Transition::DisableResources(HashSet::from_iter(resources_id)),
+                )
+            })
             .with_if_not_empty(
                 10,
                 state.client.inner().ipv4_cidr_resource_dsts(),
@@ -199,7 +220,7 @@ impl ReferenceStateMachine for ReferenceState {
                 },
             )
             .with_if_not_empty(
-                10,
+                5,
                 (
                     state.all_domains(state.client.inner()),
                     state.client.inner().v4_dns_servers(),
@@ -210,7 +231,7 @@ impl ReferenceStateMachine for ReferenceState {
                 },
             )
             .with_if_not_empty(
-                10,
+                5,
                 (
                     state.all_domains(state.client.inner()),
                     state.client.inner().v6_dns_servers(),
@@ -246,9 +267,6 @@ impl ReferenceStateMachine for ReferenceState {
                     )
                 },
             )
-            .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resources| {
-                sample::select(resources).prop_map(Transition::RemoveResource)
-            })
             .boxed()
     }
 
@@ -257,40 +275,44 @@ impl ReferenceStateMachine for ReferenceState {
     /// Here is where we implement the "expected" logic.
     fn apply(mut state: Self::State, transition: &Self::Transition) -> Self::State {
         match transition {
-            Transition::AddCidrResource { resource } => {
-                state.client.exec_mut(|client| {
-                    client
-                        .cidr_resources
-                        .insert(resource.address, resource.clone());
-                });
-                state
-                    .portal
-                    .add_resource(client::ResourceDescription::Cidr(resource.clone()));
-            }
-            Transition::RemoveResource(id) => {
-                state
-                    .client
-                    .exec_mut(|client| client.cidr_resources.retain(|_, r| &r.id != id));
-                state
-                    .client
-                    .exec_mut(|client| client.connected_cidr_resources.remove(id));
-                state
-                    .client
-                    .exec_mut(|client| client.dns_resources.remove(id));
-                state.portal.remove_resource(*id);
-            }
-            Transition::AddDnsResource { resource, records } => {
-                state.client.exec_mut(|client| {
-                    client.dns_resources.insert(resource.id, resource.clone());
-                });
-                state
-                    .portal
-                    .add_resource(client::ResourceDescription::Dns(resource.clone()));
+            Transition::ActivateResource(resource) => {
+                state.client.exec_mut(|client| match resource {
+                    client::ResourceDescription::Dns(r) => {
+                        client.dns_resources.insert(r.id, r.clone());
 
-                // For the client, there is no difference between a DNS resource and a truly global DNS name.
-                // We store all records in the same map to follow the same model.
-                state.global_dns_records.extend(records.clone());
+                        // TODO: PRODUCTION CODE CANNOT DO THIS.
+                        // Remove all prior DNS records.
+                        client.dns_records.retain(|domain, _| {
+                            if is_subdomain(domain, &r.address) {
+                                return false;
+                            }
+
+                            true
+                        });
+                    }
+                    client::ResourceDescription::Cidr(r) => {
+                        client.cidr_resources.insert(r.address, r.clone());
+                    }
+                    client::ResourceDescription::Internet(r) => {
+                        client.internet_resource = Some(r.id)
+                    }
+                });
             }
+            Transition::DeactivateResource(id) => {
+                state.client.exec_mut(|client| {
+                    client.cidr_resources.retain(|_, r| &r.id != id);
+                    client.dns_resources.remove(id);
+
+                    client.disconnect_resource(id)
+                });
+            }
+            Transition::DisableResources(resources) => state.client.exec_mut(|client| {
+                client.disabled_resources = resources.clone();
+
+                for id in resources {
+                    client.disconnect_resource(id)
+                }
+            }),
             Transition::SendDnsQuery {
                 domain,
                 r_type,
@@ -304,6 +326,7 @@ impl ReferenceStateMachine for ReferenceState {
             {
                 Some(resource)
                     if !state.client.inner().is_connected_to_cidr(resource)
+                        && !state.client.inner().upstream_dns_resolvers.is_empty()
                         && !state.client.inner().is_known_host(&domain.to_string()) =>
                 {
                     state
@@ -323,8 +346,20 @@ impl ReferenceStateMachine for ReferenceState {
                         .exec_mut(|client| client.expected_dns_handshakes.push_back(*query_id));
                 }
             },
-            Transition::SendICMPPacketToNonResourceIp { .. } => {
-                // Packets to non-resources are dropped, no state change required.
+            Transition::SendICMPPacketToNonResourceIp {
+                src,
+                dst,
+                seq,
+                identifier,
+            } => {
+                state.client.exec_mut(|client| {
+                    // If the Internet Resource is active, all packets are expected to be routed.
+                    if client.internet_resource.is_some() {
+                        client.on_icmp_packet_to_internet(*src, *dst, *seq, *identifier, |r| {
+                            state.portal.gateway_for_resource(r).copied()
+                        })
+                    }
+                });
             }
             Transition::SendICMPPacketToCidrResource {
                 src,
@@ -334,7 +369,9 @@ impl ReferenceStateMachine for ReferenceState {
                 ..
             } => {
                 state.client.exec_mut(|client| {
-                    client.on_icmp_packet_to_cidr(*src, *dst, *seq, *identifier)
+                    client.on_icmp_packet_to_cidr(*src, *dst, *seq, *identifier, |r| {
+                        state.portal.gateway_for_resource(r).copied()
+                    })
                 });
             }
             Transition::SendICMPPacketToDnsResource {
@@ -344,7 +381,9 @@ impl ReferenceStateMachine for ReferenceState {
                 identifier,
                 ..
             } => state.client.exec_mut(|client| {
-                client.on_icmp_packet_to_dns(*src, dst.clone(), *seq, *identifier)
+                client.on_icmp_packet_to_dns(*src, dst.clone(), *seq, *identifier, |r| {
+                    state.portal.gateway_for_resource(r).copied()
+                })
             }),
             Transition::UpdateSystemDnsServers { servers } => {
                 state
@@ -365,12 +404,35 @@ impl ReferenceStateMachine for ReferenceState {
                     .add_host(state.client.inner().id, &state.client));
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
-                state
-                    .client
-                    .exec_mut(|client| client.connected_cidr_resources.clear());
-                state
-                    .client
-                    .exec_mut(|client| client.connected_dns_resources.clear());
+                state.client.exec_mut(|client| client.reset_connections());
+            }
+            Transition::ReconnectPortal => {
+                // Reconnecting to the portal should have no noticeable impact on the data plane.
+            }
+            Transition::DeployNewRelays(new_relays) => {
+                // Always take down all relays because we can't know which one was sampled for the connection.
+                for relay in state.relays.values() {
+                    state.network.remove_host(relay);
+                }
+                state.relays.clear();
+
+                for (rid, new_relay) in new_relays {
+                    state.relays.insert(*rid, new_relay.clone());
+                    debug_assert!(state.network.add_host(*rid, new_relay));
+                }
+
+                // In case we were using the relays, all connections will be cut and require us to make a new one.
+                if state.drop_direct_client_traffic {
+                    state.client.exec_mut(|client| client.reset_connections());
+                }
+            }
+            Transition::Idle => {
+                state.client.exec_mut(|client| client.reset_connections());
+            }
+            Transition::PartitionRelaysFromPortal => {
+                if state.drop_direct_client_traffic {
+                    state.client.exec_mut(|client| client.reset_connections());
+                }
             }
         };
 
@@ -380,91 +442,15 @@ impl ReferenceStateMachine for ReferenceState {
     /// Any additional checks on whether a particular [`Transition`] can be applied to a certain state.
     fn preconditions(state: &Self::State, transition: &Self::Transition) -> bool {
         match transition {
-            Transition::AddCidrResource { resource } => {
-                // Resource IDs must be unique.
-                if state
-                    .client
-                    .inner()
-                    .all_resource_ids()
-                    .contains(&resource.id)
-                {
-                    return false;
-                }
-                let Some(gid) = state.portal.gateway_for_resource(resource.id) else {
-                    return false;
-                };
-                let Some(gateway) = state.gateways.get(gid) else {
-                    return false;
-                };
-
-                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
-                if resource.address.is_ipv6() && gateway.ip6.is_none() {
-                    return false;
-                }
-
-                if resource.address.is_ipv4() && gateway.ip4.is_none() {
-                    return false;
-                }
-
-                // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
-                for dns_resolved_ip in state.global_dns_records.values().flat_map(|ip| ip.iter()) {
-                    // If the CIDR resource overlaps with an IP that a DNS record resolved to, we have problems ...
-                    if resource.address.contains(*dns_resolved_ip) {
-                        return false;
-                    }
-                }
-
-                true
-            }
-            Transition::AddDnsResource { records, resource } => {
-                // TODO: Should we allow adding a DNS resource if we don't have an DNS resolvers?
-
-                // TODO: For these tests, we assign the resolved IP of a DNS resource as part of this transition.
-                // Connlib cannot know, when a DNS record expires, thus we currently don't allow to add DNS resources where the same domain resolves to different IPs
-
-                for (name, resolved_ips) in records {
-                    if state.global_dns_records.contains_key(name) {
-                        return false;
-                    }
-
-                    // TODO: PRODUCTION CODE DOES NOT HANDLE THIS.
-                    let any_real_ip_overlaps_with_cidr_resource =
-                        resolved_ips.iter().any(|resolved_ip| {
-                            state
-                                .client
-                                .inner()
-                                .cidr_resource_by_ip(*resolved_ip)
-                                .is_some()
-                        });
-
-                    if any_real_ip_overlaps_with_cidr_resource {
-                        return false;
-                    }
-                }
-
-                // Resource IDs must be unique.
-                if state
-                    .client
-                    .inner()
-                    .all_resource_ids()
-                    .contains(&resource.id)
-                {
-                    return false;
-                }
-
-                // Resource addresses must be unique.
-                if state
-                    .client
-                    .inner()
-                    .dns_resources
-                    .values()
-                    .any(|r| r.address == resource.address)
-                {
+            Transition::ActivateResource(resource) => {
+                // Don't add resource we already have.
+                if state.client.inner().has_resource(resource.id()) {
                     return false;
                 }
 
                 true
             }
+            Transition::DisableResources(_) => true,
             Transition::SendICMPPacketToNonResourceIp {
                 dst,
                 seq,
@@ -489,11 +475,15 @@ impl ReferenceStateMachine for ReferenceState {
                 ..
             } => {
                 let ref_client = state.client.inner();
+                let Some(rid) = ref_client.cidr_resource_by_ip(*dst) else {
+                    return false;
+                };
+                let Some(gateway) = state.portal.gateway_for_resource(rid) else {
+                    return false;
+                };
 
                 ref_client.is_valid_icmp_packet(seq, identifier)
-                    && ref_client
-                        .gateway_by_cidr_resource_ip(*dst)
-                        .is_some_and(|g| state.gateways.contains_key(&g))
+                    && state.gateways.contains_key(gateway)
             }
             Transition::SendICMPPacketToDnsResource {
                 seq,
@@ -503,15 +493,19 @@ impl ReferenceStateMachine for ReferenceState {
                 ..
             } => {
                 let ref_client = state.client.inner();
+                let Some(resource) = ref_client.dns_resource_by_domain(dst) else {
+                    return false;
+                };
+                let Some(gateway) = state.portal.gateway_for_resource(resource) else {
+                    return false;
+                };
 
                 ref_client.is_valid_icmp_packet(seq, identifier)
                     && ref_client.dns_records.get(dst).is_some_and(|r| match src {
                         IpAddr::V4(_) => r.contains(&RecordType::A),
                         IpAddr::V6(_) => r.contains(&RecordType::AAAA),
                     })
-                    && ref_client
-                        .gateway_by_domain_name(dst)
-                        .is_some_and(|g| state.gateways.contains_key(&g))
+                    && state.gateways.contains_key(gateway)
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 // TODO: PRODUCTION CODE DOES NOT HANDLE THIS!
@@ -540,14 +534,31 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::SendDnsQuery {
                 domain, dns_server, ..
             } => {
-                state.global_dns_records.contains_key(domain)
-                    && state
-                        .client
-                        .inner()
-                        .expected_dns_servers()
-                        .contains(dns_server)
+                let is_known_domain = state.global_dns_records.contains_key(domain);
+                let has_dns_server = state
+                    .client
+                    .inner()
+                    .expected_dns_servers()
+                    .contains(dns_server);
+                let gateway_is_present_in_case_dns_server_is_cidr_resource = match state
+                    .client
+                    .inner()
+                    .dns_query_via_cidr_resource(dns_server.ip(), domain)
+                {
+                    Some(r) => {
+                        let Some(gateway) = state.portal.gateway_for_resource(r) else {
+                            return false;
+                        };
+
+                        state.gateways.contains_key(gateway)
+                    }
+                    None => true,
+                };
+
+                is_known_domain
+                    && has_dns_server
+                    && gateway_is_present_in_case_dns_server_is_cidr_resource
             }
-            Transition::RemoveResource(id) => state.client.inner().all_resource_ids().contains(id),
             Transition::RoamClient { ip4, ip6, port } => {
                 // In production, we always rebind to a new port so we never roam to our old existing IP / port combination.
 
@@ -557,6 +568,24 @@ impl ReferenceStateMachine for ReferenceState {
 
                 !is_assigned_ip4 && !is_assigned_ip6 && !is_previous_port
             }
+            Transition::ReconnectPortal => true,
+            Transition::DeactivateResource(r) => {
+                state.client.inner().all_resource_ids().contains(r)
+            }
+            Transition::DeployNewRelays(new_relays) => {
+                let mut additional_routes = RoutingTable::default();
+                for (rid, relay) in new_relays {
+                    if !additional_routes.add_host(*rid, relay) {
+                        return false;
+                    }
+                }
+
+                let route_overlap = state.network.overlaps_with(&additional_routes);
+
+                !route_overlap
+            }
+            Transition::Idle => true,
+            Transition::PartitionRelaysFromPortal => true,
         }
     }
 }
@@ -575,6 +604,13 @@ impl ReferenceState {
             )
             .collect()
     }
+
+    fn all_resources_not_known_to_client(&self) -> Vec<ResourceDescription> {
+        let mut all_resources = self.portal.all_resources();
+        all_resources.retain(|r| !self.client.inner().has_resource(r.id()));
+
+        all_resources
+    }
 }
 
 pub(crate) fn private_key() -> impl Strategy<Value = PrivateKey> {
@@ -582,7 +618,7 @@ pub(crate) fn private_key() -> impl Strategy<Value = PrivateKey> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct PrivateKey([u8; 32]);
+pub(crate) struct PrivateKey(pub [u8; 32]);
 
 impl From<PrivateKey> for StaticSecret {
     fn from(key: PrivateKey) -> Self {

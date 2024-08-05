@@ -2,7 +2,7 @@ defmodule Web.SignIn do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
   alias Domain.{Auth, Accounts}
 
-  @root_adapters_whitelist [:email, :userpass, :openid_connect]
+  @root_adapters_whitelist [:email, :userpass, :openid_connect, :temp_account]
 
   def mount(%{"account_id_or_slug" => account_id_or_slug} = params, _session, socket) do
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
@@ -45,16 +45,10 @@ defmodule Web.SignIn do
     ~H"""
     <section>
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
-        <.logo />
+        <.hero_logo text={@account.name} />
 
         <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
           <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <h1 class="text-xl text-center leading-tight tracking-tight text-neutral-900 sm:text-2xl">
-              <span>
-                Sign in to <%= @account.name %>
-              </span>
-            </h1>
-
             <.flash flash={@flash} kind={:error} />
             <.flash flash={@flash} kind={:info} />
 
@@ -68,6 +62,10 @@ defmodule Web.SignIn do
               </:separator>
 
               <:item :if={adapter_enabled?(@providers_by_adapter, :openid_connect)}>
+                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
+                  Sign in with a configured provider
+                </h2>
+
                 <.providers_group_form
                   adapter="openid_connect"
                   providers={@providers_by_adapter[:openid_connect]}
@@ -77,9 +75,9 @@ defmodule Web.SignIn do
               </:item>
 
               <:item :if={adapter_enabled?(@providers_by_adapter, :userpass)}>
-                <h3 class="text-m leading-tight tracking-tight text-neutral-900 sm:text-xl">
+                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
                   Sign in with username and password
-                </h3>
+                </h2>
 
                 <.providers_group_form
                   adapter="userpass"
@@ -90,10 +88,24 @@ defmodule Web.SignIn do
                 />
               </:item>
 
+              <:item :if={adapter_enabled?(@providers_by_adapter, :temp_account)}>
+                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
+                  Sign in with a password
+                </h2>
+
+                <.providers_group_form
+                  adapter="temp_account"
+                  provider={List.first(@providers_by_adapter[:temp_account])}
+                  account={@account}
+                  flash={@flash}
+                  params={@params}
+                />
+              </:item>
+
               <:item :if={adapter_enabled?(@providers_by_adapter, :email)}>
-                <h3 class="text-m leading-tight tracking-tight text-neutral-900 sm:text-xl">
+                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
                   Sign in with email
-                </h3>
+                </h2>
 
                 <.providers_group_form
                   adapter="email"
@@ -109,7 +121,7 @@ defmodule Web.SignIn do
         <div :if={Web.Auth.fetch_auth_context_type!(@params) == :browser} class="mx-auto p-6 sm:p-8">
           <p class="py-2">
             Meant to sign in from a client instead?
-            <.website_link path="/kb/user-guides">Read the docs.</.website_link>
+            <.website_link path="/kb/client-apps">Read the docs.</.website_link>
           </p>
           <p class="py-2">
             Looking for a different account?
@@ -189,10 +201,58 @@ defmodule Web.SignIn do
         />
       </div>
 
-      <.submit_button class="w-full">
+      <.submit_button class="w-full" style="info" icon="hero-key">
         Sign in
       </.submit_button>
     </.form>
+    """
+  end
+
+  def providers_group_form(%{adapter: "temp_account"} = assigns) do
+    provider_identifier = Phoenix.Flash.get(assigns.flash, :userpass_provider_identifier)
+    form = to_form(%{"provider_identifier" => provider_identifier}, as: "temp_account")
+
+    assigns =
+      assigns
+      |> Map.put(:temp_account_form, form)
+      |> Map.put(:enabled?, Domain.Config.global_feature_enabled?(:temp_accounts))
+
+    ~H"""
+    <.form
+      :if={@enabled?}
+      for={@temp_account_form}
+      action={~p"/#{@account}/sign_in/providers/#{@provider.id}/verify_credentials"}
+      class="space-y-4 lg:space-y-6"
+      id="temp_account_form"
+      phx-update="ignore"
+      phx-hook="AttachDisableSubmit"
+      phx-submit={JS.dispatch("form:disable_and_submit", to: "#temp_account_form")}
+    >
+      <div class="bg-white grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+        <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
+
+        <.input
+          field={@temp_account_form[:secret]}
+          type="password"
+          label="Password"
+          placeholder="••••••••"
+          required
+        />
+      </div>
+
+      <.submit_button class="w-full" style="info" icon="hero-key">
+        Sign in
+      </.submit_button>
+    </.form>
+    <div :if={not @enabled?} class="text-center border rounded py-4">
+      <span class="text-xl">
+        Temporary Accounts have been disabled.
+      </span>
+      <p>
+        <a class={link_style()} href={url(~p"/sign_up")}>Click here</a>
+        to create a free starter account.
+      </p>
+    </div>
     """
   end
 
@@ -204,7 +264,7 @@ defmodule Web.SignIn do
     ~H"""
     <.form
       for={@email_form}
-      action={~p"/#{@account}/sign_in/providers/#{@provider.id}/request_magic_link"}
+      action={~p"/#{@account}/sign_in/providers/#{@provider.id}/request_email_otp"}
       class="space-y-4 lg:space-y-6"
       id="email_form"
       phx-update="ignore"
@@ -220,7 +280,7 @@ defmodule Web.SignIn do
         placeholder="Enter your email"
         required
       />
-      <.submit_button class="w-full" style="info">
+      <.submit_button class="w-full" style="info" icon="hero-envelope">
         Request sign in token
       </.submit_button>
     </.form>

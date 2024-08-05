@@ -1,11 +1,12 @@
 "use client";
 
-import CustomerLogos from "@/components/CustomerLogos";
+import { CustomerLogosColored } from "@/components/CustomerLogos";
 import Toggle from "@/components/Toggle";
 import { HiCheck } from "react-icons/hi2";
 import Link from "next/link";
 import PlanTable from "./plan_table";
 import { useState } from "react";
+import { Accordion } from "flowbite-react";
 
 export default function _Page() {
   let [annual, setAnnual] = useState(true);
@@ -239,9 +240,12 @@ export default function _Page() {
               </li>
               <li className="flex space-x-2.5">
                 <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <span className="leading-tight">Uptime SLAs</span>
+              </li>
+              <li className="flex space-x-2.5">
+                <HiCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">
-                  <span className="font-semibold text-primary-450">99.99%</span>{" "}
-                  uptime SLA
+                  40-hour pentest &amp; SOC 2 reports
                 </span>
               </li>
               <li className="flex space-x-2.5">
@@ -256,20 +260,12 @@ export default function _Page() {
                 <HiCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">Annual invoicing</span>
               </li>
-              <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5" />
-                <span className="leading-tight">
-                  Pentested &{" "}
-                  <span className="font-semibold text-primary-450">SOC 2</span>{" "}
-                  compliant
-                </span>
-              </li>
             </ul>
           </div>
         </div>
       </section>
       <section className="py-24 bg-gradient-to-b to-neutral-50 from-white">
-        <CustomerLogos />
+        <CustomerLogosColored />
       </section>
       <section className="bg-neutral-50 py-14">
         <div className="mb-14 mx-auto max-w-screen-lg px-3">
@@ -285,168 +281,187 @@ export default function _Page() {
             FAQ
           </h2>
 
-          <div className="px-4 w-full mb-14">
-            <ol className="list-decimal">
-              <li>
+          <Accordion>
+            <Accordion.Panel>
+              <Accordion.Title>
+                How long does it take to set up Firezone?
+              </Accordion.Title>
+              <Accordion.Content>
+                A simple deployment takes{" "}
                 <Link
-                  href="#how-long"
+                  href="/kb/quickstart"
                   className="hover:underline text-accent-500"
                 >
-                  How long does it take to set up Firezone?
+                  less than 10 minutes{" "}
                 </Link>
-              </li>
-              <li>
+                and can be accomplished with by installing the{" "}
                 <Link
-                  href="#rip-replace"
+                  href="/kb/client-apps"
                   className="hover:underline text-accent-500"
                 >
-                  Do I need to rip and replace my current VPN to use Firezone?
-                </Link>
-              </li>
-              <li>
-                <Link href="#data" className="hover:underline text-accent-500">
-                  What happens to my data with Firezone enabled?
-                </Link>
-              </li>
-              <li>
+                  Firezone Client
+                </Link>{" "}
+                and{" "}
                 <Link
-                  href="#change-plan"
+                  href="/kb/deploy/gateways"
                   className="hover:underline text-accent-500"
                 >
-                  How do I cancel or change my plan?
+                  deploying one or more Gateways
                 </Link>
-              </li>
-              <li>
+                .{" "}
+                <Link href="/kb" className="hover:underline text-accent-500">
+                  Visit our docs
+                </Link>{" "}
+                for more information and step by step instructions.
+              </Accordion.Content>
+            </Accordion.Panel>
+            <Accordion.Panel>
+              <Accordion.Title>Is there a self-hosted plan?</Accordion.Title>
+              <Accordion.Content>
+                All of the source code for the entire Firezone product is
+                available at our{" "}
                 <Link
-                  href="#when-billed"
+                  href="https://www.github.com/firezone/firezone"
                   className="hover:underline text-accent-500"
                 >
-                  When will I be billed?
+                  GitHub repository
                 </Link>
-              </li>
-              <li>
+                , and you're free to self-host Firezone for your organization
+                without restriction. However, we don't offer documentation or
+                support for self-hosting Firezone at this time.
+              </Accordion.Content>
+            </Accordion.Panel>
+            <Accordion.Panel>
+              <Accordion.Title>
+                Do I need to rip and replace my current VPN to use Firezone?
+              </Accordion.Title>
+              <Accordion.Content>
+                No. As long they're set up to access different resources, you
+                can run Firezone alongside your existing remote access
+                solutions, and switch over whenever you’re ready. There’s no
+                need for any downtime or unnecessary disruptions.
+              </Accordion.Content>
+            </Accordion.Panel>
+            <Accordion.Panel>
+              <Accordion.Title>
+                Can I try Firezone before I buy it?
+              </Accordion.Title>
+              <Accordion.Content>
+                Yes. The Starter plan is free to use without limitation. No
+                credit card is required to get started. The Enterprise plan
+                includes a free pilot period to evaluate whether Firezone is a
+                good fit for your organization.{" "}
                 <Link
-                  href="#payment-methods"
+                  href="/contact/sales"
                   className="hover:underline text-accent-500"
                 >
-                  What payment methods are available?
-                </Link>
-              </li>
-              <li>
+                  Contact sales
+                </Link>{" "}
+                to request a demo.
+              </Accordion.Content>
+            </Accordion.Panel>
+            <Accordion.Panel>
+              <Accordion.Title>
+                My seat counts have changed. Can I adjust my plan?
+              </Accordion.Title>
+              <Accordion.Content>
+                <p>Yes.</p>
+                <p className="mt-2">
+                  For the <strong>Team</strong> plan, you can add or remove
+                  seats at any time. When adding seats, you'll be charged a
+                  prorated amount for the remainder of the billing cycle. When
+                  removing seats, the change will take effect at the end of the
+                  billing cycle.
+                </p>
+                <p className="mt-2">
+                  For the <strong>Enterprise</strong> plan, we will periodically
+                  check your active seat count and will contact you to true up
+                  your account once a quarter if there is a substantial change.
+                  Enterprise plans{" "}
+                  <strong>
+                    will never become automatically locked or disabled due to an
+                    increase in usage
+                  </strong>
+                  .
+                </p>
+              </Accordion.Content>
+            </Accordion.Panel>
+            <Accordion.Panel>
+              <Accordion.Title>
+                What happens to my data with Firezone enabled?
+              </Accordion.Title>
+              <Accordion.Content>
+                Network traffic is always end-to-end encrypted, and by default,
+                routes directly to Gateways running on your infrastructure. In
+                rare circumstances, encrypted traffic can pass through our
+                global relay network if a direct connection cannot be
+                established. Firezone can never decrypt the contents of your
+                traffic.
+              </Accordion.Content>
+            </Accordion.Panel>
+            <Accordion.Panel>
+              <Accordion.Title>
+                How do I cancel or change my plan?
+              </Accordion.Title>
+              <Accordion.Content>
+                For Starter and Team plans, you can downgrade by going to your
+                Account settings in your Firezone admin portal. For Enterprise
+                plans, contact your account manager for subscription updates. If
+                you'd like to completely delete your account,{" "}
                 <Link
-                  href="#special-pricing"
+                  href="mailto:support@firezone.dev"
                   className="hover:underline text-accent-500"
                 >
-                  Do you offer special pricing for nonprofits and educational
-                  institutions?
+                  contact support
                 </Link>
-              </li>
-              <li>
+                .
+              </Accordion.Content>
+            </Accordion.Panel>
+            <Accordion.Panel>
+              <Accordion.Title>When will I be billed?</Accordion.Title>
+              <Accordion.Content>
+                The Team plan is billed monthly on the same day you start
+                service until canceled. Enterprise plans are billed annually.
+              </Accordion.Content>
+            </Accordion.Panel>
+            <Accordion.Panel>
+              <Accordion.Title>
+                What payment methods are available?
+              </Accordion.Title>
+              <Accordion.Content>
+                The Starter plan is free and does not require a credit card to
+                get started. Team and Enterprise plans can be paid via credit
+                card, ACH, or wire transfer.
+              </Accordion.Content>
+            </Accordion.Panel>
+            <Accordion.Panel>
+              <Accordion.Title>
+                Do you offer special pricing for nonprofits and educational
+                institutions?
+              </Accordion.Title>
+              <Accordion.Content>
+                Yes. Not-for-profit organizations and educational institutions
+                are eligible for a 50% discount.{" "}
                 <Link
-                  href="#special-pricing"
+                  href="/contact/sales"
                   className="hover:underline text-accent-500"
                 >
-                  Other than using Firezone, is there anything I can do to
-                  improve my cybersecurity?
-                </Link>
-              </li>
-            </ol>
-          </div>
-
-          <a id="how-long" className="pt-8"></a>
-          <blockquote className="font-semibold text-md p-2 my-2 border-s-4 border-neutral-300">
-            <p>How long does it take to set up Firezone?</p>
-          </blockquote>
-          <p className="mb-8">
-            Firezone can be set up in{" "}
-            <Link
-              href="/kb/quickstart"
-              className="hover:underline text-accent-500"
-            >
-              less than 10 minutes
-            </Link>
-            , and Gateways can be added by running a simple Docker command.{" "}
-            <Link href="/kb" className="hover:underline text-accent-500">
-              Visit our docs
-            </Link>{" "}
-            for more information and step by step instructions.
-          </p>
-
-          <a id="rip-replace" className="pt-8"></a>
-          <blockquote className="font-semibold text-md p-2 my-2 border-s-4 border-neutral-300">
-            <p>Do I need to rip and replace my current VPN with Firezone?</p>
-          </blockquote>
-          <p className="mb-8">
-            No. As long they're set up to access different resources, you can
-            run Firezone alongside your existing remote access solutions, and
-            switch over whenever you’re ready. There’s no need for any downtime
-            or unnecessary disruptions.
-          </p>
-
-          <a id="data" className="pt-8"></a>
-          <blockquote className="font-semibold text-md p-2 my-2 border-s-4 border-neutral-300">
-            <p>What happens to my data with Firezone enabled?</p>
-          </blockquote>
-          <p className="mb-8">
-            Network traffic is always end-to-end encrypted, and by default,
-            routes directly to Gateways running on your infrastructure. In rare
-            circumstances, encrypted traffic can pass through our global relay
-            network if a direct connection cannot be established. Firezone can
-            never decrypt the contents of your traffic.
-          </p>
-
-          <a id="change-plan" className="pt-8"></a>
-          <blockquote className="font-semibold text-md p-2 my-2 border-s-4 border-neutral-300">
-            <p>How do I cancel or change my plan?</p>
-          </blockquote>
-          <p className="mb-8">
-            Please{" "}
-            <Link
-              href="mailto:support@firezone.dev"
-              className="hover:underline text-accent-500"
-            >
-              contact support
-            </Link>{" "}
-            if you would like to change your plan or terminate your account.
-          </p>
-
-          <a id="when-billed" className="pt-8"></a>
-          <blockquote className="font-semibold text-md p-2 my-2 border-s-4 border-neutral-300">
-            <p>When will I be billed?</p>
-          </blockquote>
-          <p className="mb-8">
-            The Team plan is billed monthly on the same day you start service
-            until canceled. Enterprise plans are billed annually.
-          </p>
-
-          <a id="payment-methods" className="pt-8"></a>
-          <blockquote className="font-semibold text-md p-2 my-2 border-s-4 border-neutral-300">
-            <p>What payment methods are available?</p>
-          </blockquote>
-          <p className="mb-8">
-            The Starter plan is free and does not require a credit card to get
-            started. Team and Enterprise plans can be paid via credit card, ACH,
-            or wire transfer.
-          </p>
-
-          <a id="special-pricing" className="pt-8"></a>
-          <blockquote className="font-semibold text-md p-2 my-2 border-s-4 border-neutral-300">
-            <p>
-              Do you offer special pricing for nonprofits and educational
-              institutions?
-            </p>
-          </blockquote>
-          <p className="mb-8">
-            Yes. Not-for-profit organizations and educational institutions are
-            eligible for a 50% discount.{" "}
-            <Link
-              href="/contact/sales"
-              className="hover:underline text-accent-500"
-            >
-              Contact sales
-            </Link>{" "}
-            to request the discount.
-          </p>
+                  Contact sales
+                </Link>{" "}
+                to request the discount.
+              </Accordion.Content>
+            </Accordion.Panel>
+            <Accordion.Panel>
+              <Accordion.Title>
+                What payment methods are available?
+              </Accordion.Title>
+              <Accordion.Content>
+                The Starter plan is free and does not require a credit card to
+                get started. Team and Enterprise plans can be paid via credit
+                card, ACH, or wire transfer.
+              </Accordion.Content>
+            </Accordion.Panel>
+          </Accordion>
         </div>
       </section>
 

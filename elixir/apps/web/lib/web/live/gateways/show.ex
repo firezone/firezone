@@ -66,14 +66,14 @@ defmodule Web.Gateways.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>
-              Last Connected
+              Last started
             </:label>
             <:value>
               <.relative_datetime datetime={@gateway.last_seen_at} />
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>Last Remote IP</:label>
+            <:label>Last seen remote IP</:label>
             <:value>
               <.last_seen schema={@gateway} />
             </:value>
@@ -91,7 +91,7 @@ defmodule Web.Gateways.Show do
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>User Agent</:label>
+            <:label>User agent</:label>
             <:value>
               <%= @gateway.last_seen_user_agent %>
             </:value>
@@ -108,12 +108,37 @@ defmodule Web.Gateways.Show do
 
     <.danger_zone :if={is_nil(@gateway.deleted_at)}>
       <:action>
-        <.delete_button
-          phx-click="delete"
-          data-confirm="Are you sure you want to delete this gateway?"
+        <.button_with_confirmation
+          id="delete_gateway"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
         >
+          <:dialog_title>Delete Gateway</:dialog_title>
+          <:dialog_content>
+            <p>
+              Are you sure you want to delete this Gateway?
+            </p>
+            <p class="mt-4 text-sm">
+              Deleting the gateway does not remove it's access token so it can be re-created again,
+              revoke the token on the
+              <.link
+                navigate={~p"/#{@account}/sites/#{@gateway.group}"}
+                class={["font-medium", link_style()]}
+              >
+                site
+              </.link>
+              page if you want to prevent the gateway from connecting to the portal.
+            </p>
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Gateway
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Delete Gateway
-        </.delete_button>
+        </.button_with_confirmation>
       </:action>
     </.danger_zone>
     """
@@ -131,6 +156,9 @@ defmodule Web.Gateways.Show do
     socket =
       cond do
         Map.has_key?(payload.joins, gateway.id) ->
+          {:ok, gateway} =
+            Gateways.fetch_gateway_by_id(gateway.id, socket.assigns.subject, preload: [:group])
+
           assign(socket, gateway: %{gateway | online?: true})
 
         Map.has_key?(payload.leaves, gateway.id) ->

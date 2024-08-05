@@ -2,7 +2,98 @@ import Image from "next/image";
 import Link from "next/link";
 import Marquee from "react-fast-marquee";
 
-export default function CustomerLogos() {
+export function CustomerLogosGrayscale() {
+  return (
+    <div
+      style={{
+        maskImage:
+          "linear-gradient(to right, rgba(0, 0, 0, 0) 0%, rgb(0, 0, 0) 35%, rgb(0, 0, 0) 65%, rgba(0, 0, 0, 0) 100%)",
+      }}
+    >
+      <div className="mx-8 grid grid-cols-3 md:grid-cols-7 gap-8">
+        <div className="content-center">
+          <Link href="https://corrdyn.com">
+            <Image
+              alt="corrdyn logo"
+              src="/images/logos/cust-logo-corrdyn-gray.svg"
+              width={125}
+              height={125}
+              className=" mx-auto"
+            />
+          </Link>
+        </div>
+        <div className="content-center">
+          <Link href="https://square1.io">
+            <Image
+              alt="square1 logo"
+              src="/images/logos/cust-logo-square1-gray.svg"
+              width={100}
+              height={100}
+              className=" mx-auto"
+            />
+          </Link>
+        </div>
+        <div className="content-center">
+          <Link href="https://bunq.com">
+            <Image
+              alt="bunq logo"
+              src="/images/logos/cust-logo-bunq-gray.svg"
+              width={100}
+              height={100}
+              className=" mx-auto"
+            />
+          </Link>
+        </div>
+        <div className="content-center">
+          <Link href="https://wolfram.com">
+            <Image
+              alt="wolfram logo"
+              src="/images/logos/cust-logo-wolfram-gray.svg"
+              width={75}
+              height={75}
+              className=" mx-auto"
+            />
+          </Link>
+        </div>
+        <div className="content-center">
+          <Link href="https://sebgroup.com">
+            <Image
+              alt="seb logo"
+              src="/images/logos/cust-logo-seb-gray.svg"
+              width={75}
+              height={75}
+              className=" mx-auto"
+            />
+          </Link>
+        </div>
+        <div className="content-center">
+          <Link href="https://teracloud.com">
+            <Image
+              alt="teracloud logo"
+              src="/images/logos/cust-logo-teracloud-gray.svg"
+              width={125}
+              height={125}
+              className="  mx-auto"
+            />
+          </Link>
+        </div>
+        <div className="content-center col-start-2 md:col-auto">
+          <Link href="https://double11.co.uk">
+            <Image
+              alt="double11 logo"
+              src="/images/logos/cust-logo-double11-gray.svg"
+              width={70}
+              height={70}
+              className=" mx-auto"
+            />
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function CustomerLogosColored() {
   return (
     <>
       <div className="flex justify-center items-center p-8 mb-8">
@@ -15,7 +106,7 @@ export default function CustomerLogos() {
         <Link href="https://bunq.com" className="mx-12 flex items-center">
           <Image
             alt="bunq logo"
-            src="/images/cust-logo-bunq.svg"
+            src="/images/logos/cust-logo-bunq.svg"
             width={150}
             height={150}
           />
@@ -26,7 +117,7 @@ export default function CustomerLogos() {
         >
           <Image
             alt="caktus logo"
-            src="/images/cust-logo-caktus.png"
+            src="/images/logos/cust-logo-caktus.png"
             width={150}
             height={150}
           />
@@ -34,7 +125,7 @@ export default function CustomerLogos() {
         <Link href="https://corrdyn.com" className="mx-12 flex items-center">
           <Image
             alt="corrdyn logo"
-            src="/images/cust-logo-corrdyn.svg"
+            src="/images/logos/cust-logo-corrdyn.svg"
             width={150}
             height={150}
           />
@@ -42,7 +133,7 @@ export default function CustomerLogos() {
         <Link href="https://double11.co.uk" className="mx-12 flex items-center">
           <Image
             alt="double11 logo"
-            src="/images/cust-logo-double11.svg"
+            src="/images/logos/cust-logo-double11.svg"
             width={150}
             height={150}
           />
@@ -50,7 +141,7 @@ export default function CustomerLogos() {
         <Link href="https://ipap.com" className="mx-12 flex items-center">
           <Image
             alt="ipap logo"
-            src="/images/cust-logo-ipap.png"
+            src="/images/logos/cust-logo-ipap.png"
             width={150}
             height={150}
           />
@@ -58,7 +149,7 @@ export default function CustomerLogos() {
         <Link href="https://mst.nl" className="mx-12 flex items-center">
           <Image
             alt="mst logo"
-            src="/images/cust-logo-mst.svg"
+            src="/images/logos/cust-logo-mst.svg"
             width={150}
             height={150}
           />
@@ -66,7 +157,7 @@ export default function CustomerLogos() {
         <Link href="https://nomobo.tv" className="mx-12 flex items-center">
           <Image
             alt="nomobo logo"
-            src="/images/cust-logo-nomobo.webp"
+            src="/images/logos/cust-logo-nomobo.webp"
             width={150}
             height={150}
           />
@@ -74,7 +165,7 @@ export default function CustomerLogos() {
         <Link href="https://sebgroup.com" className="mx-12 flex items-center">
           <Image
             alt="seb logo"
-            src="/images/cust-logo-seb.svg"
+            src="/images/logos/cust-logo-seb.svg"
             width={150}
             height={150}
           />
@@ -82,7 +173,7 @@ export default function CustomerLogos() {
         <Link href="https://semicat.com" className="mx-12 flex items-center">
           <Image
             alt="semicat logo"
-            src="/images/cust-logo-semicat.png"
+            src="/images/logos/cust-logo-semicat.png"
             width={150}
             height={150}
           />
@@ -93,7 +184,7 @@ export default function CustomerLogos() {
         >
           <Image
             alt="square1 logo"
-            src="/images/cust-logo-square1.svg"
+            src="/images/logos/cust-logo-square1.svg"
             width={150}
             height={150}
           />
@@ -101,7 +192,7 @@ export default function CustomerLogos() {
         <Link href="https://teracloud.com" className="mx-12 flex items-center">
           <Image
             alt="teracloud logo"
-            src="/images/cust-logo-teracloud.svg"
+            src="/images/logos/cust-logo-teracloud.svg"
             width={150}
             height={150}
           />
@@ -109,7 +200,7 @@ export default function CustomerLogos() {
         <Link href="https://wolfram.com" className="mx-12 flex items-center">
           <Image
             alt="wolfram logo"
-            src="/images/cust-logo-wolfram.svg"
+            src="/images/logos/cust-logo-wolfram.svg"
             width={150}
             height={150}
           />

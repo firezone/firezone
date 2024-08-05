@@ -72,7 +72,7 @@ defmodule Domain.Auth.Adapter do
     A callback invoked during sign-in, should verify the secret and return the identity
     if it's valid, or an error otherwise.
 
-    Used by secret-based providers, eg.: UserPass, Email.
+    Used by secret-based providers, eg.: UserPass, Email, TempAccount.
     """
     @callback verify_secret(%Identity{}, %Context{}, secret :: term()) ::
                 {:ok, %Identity{}, expires_at :: %DateTime{} | nil}

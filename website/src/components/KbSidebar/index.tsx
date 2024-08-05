@@ -51,7 +51,7 @@ export default function KbSidebar() {
               SSO with Universal OIDC
             </SidebarItem>
             <SidebarItem href="/kb/authenticate/oidc/fusion">
-              FusionAuth
+              SSO with FusionAuth
             </SidebarItem>
             <SidebarItem href="/kb/authenticate/directory-sync">
               Directory sync
@@ -93,20 +93,20 @@ export default function KbSidebar() {
               Uninstall Firezone
             </SidebarItem>
           </SidebarCollapse>
-          <SidebarCollapse prefix="/kb/user-guides" label="End-user guides">
-            <SidebarItem href="/kb/user-guides">Install Clients</SidebarItem>
-            <SidebarItem href="/kb/user-guides/macos-client">macOS</SidebarItem>
-            <SidebarItem href="/kb/user-guides/ios-client">iOS</SidebarItem>
-            <SidebarItem href="/kb/user-guides/windows-client">
+          <SidebarCollapse prefix="/kb/client-apps" label="Client apps">
+            <SidebarItem href="/kb/client-apps">Overview</SidebarItem>
+            <SidebarItem href="/kb/client-apps/macos-client">macOS</SidebarItem>
+            <SidebarItem href="/kb/client-apps/ios-client">iOS</SidebarItem>
+            <SidebarItem href="/kb/client-apps/windows-client">
               Windows
             </SidebarItem>
-            <SidebarItem href="/kb/user-guides/android-client">
+            <SidebarItem href="/kb/client-apps/android-client">
               Android & ChromeOS
             </SidebarItem>
-            <SidebarItem href="/kb/user-guides/linux-client">
+            <SidebarItem href="/kb/client-apps/linux-client">
               Linux Headless
             </SidebarItem>
-            <SidebarItem href="/kb/user-guides/linux-gui-client">
+            <SidebarItem href="/kb/client-apps/linux-gui-client">
               Linux GUI
             </SidebarItem>
           </SidebarCollapse>

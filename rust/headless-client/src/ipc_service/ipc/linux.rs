@@ -1,5 +1,6 @@
 use super::{Error, ServiceId};
 use anyhow::{anyhow, Context as _, Result};
+use firezone_bin_shared::BUNDLE_ID;
 use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
 use tokio::net::{UnixListener, UnixStream};
 
@@ -59,6 +60,9 @@ impl Server {
             .with_context(|| format!("Couldn't bind UDS `{}`", sock_path.display()))?;
         let perms = std::fs::Permissions::from_mode(0o660);
         tokio::fs::set_permissions(&sock_path, perms).await?;
+
+        // TODO: Change this to `notify_service_controller` and put it in
+        // the same place in the IPC service's main loop as in the Headless Client.
         sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
         Ok(Self { listener })
     }
@@ -88,9 +92,7 @@ impl Server {
 /// Test sockets live in e.g. `/run/user/1000/dev.firezone.client/data/`
 fn ipc_path(id: ServiceId) -> PathBuf {
     match id {
-        ServiceId::Prod => PathBuf::from("/run")
-            .join(connlib_shared::BUNDLE_ID)
-            .join("ipc.sock"),
+        ServiceId::Prod => PathBuf::from("/run").join(BUNDLE_ID).join("ipc.sock"),
         ServiceId::Test(id) => crate::known_dirs::runtime()
             .expect("`known_dirs::runtime()` should always work")
             .join(format!("ipc_test_{id}.sock")),

@@ -33,14 +33,6 @@
 
 ---
 
-**Note**: The `main` branch tracks Firezone 1.x. See the
-[`legacy` branch](https://github.com/firezone/firezone/tree/legacy) if you're
-looking for Firezone 0.7.
-
-[Read the 1.0 announcement for more](https://www.firezone.dev/blog/firezone-1-0).
-
----
-
 ## Overview
 
 [Firezone](https://www.firezone.dev/?utm_source=readme) is an open source

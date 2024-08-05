@@ -11,19 +11,18 @@ use core::fmt;
 use ip_packet::{
     ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, MutableIpPacket, Packet as _,
 };
-use rand::random;
+use rand::rngs::StdRng;
+use rand::seq::IteratorRandom;
+use rand::{random, SeedableRng};
 use secrecy::{ExposeSecret, Secret};
 use std::borrow::Cow;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
-use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    net::SocketAddr,
-    sync::Arc,
-};
+use std::{collections::VecDeque, net::SocketAddr, sync::Arc};
 use str0m::ice::{IceAgent, IceAgentEvent, IceCreds, StunMessage, StunPacket};
 use str0m::net::Protocol;
 use str0m::{Candidate, CandidateKind, IceConnectionState};
@@ -80,6 +79,8 @@ pub enum Client {}
 /// We favor these generic parameters over having our own IDs to avoid mapping back and forth in upper layers.
 pub struct Node<T, TId, RId> {
     private_key: StaticSecret,
+    public_key: PublicKey,
+
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
     host_candidates: HashSet<Candidate>,
@@ -87,7 +88,7 @@ pub struct Node<T, TId, RId> {
 
     next_rate_limiter_reset: Option<Instant>,
 
-    allocations: HashMap<RId, Allocation>,
+    allocations: BTreeMap<RId, Allocation>,
 
     connections: Connections<TId, RId>,
     pending_events: VecDeque<Event<TId>>,
@@ -97,6 +98,7 @@ pub struct Node<T, TId, RId> {
     stats: NodeStats,
 
     marker: PhantomData<T>,
+    rng: StdRng,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -119,22 +121,24 @@ pub enum Error {
 
 impl<T, TId, RId> Node<T, TId, RId>
 where
-    TId: Eq + Hash + Copy + fmt::Display,
-    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
+    TId: Eq + Hash + Copy + Ord + fmt::Display,
+    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
-    pub fn new(private_key: StaticSecret) -> Self {
+    pub fn new(private_key: StaticSecret, seed: [u8; 32]) -> Self {
         let public_key = &(&private_key).into();
         Self {
+            rng: StdRng::from_seed(seed), // TODO: Use this seed for private key too. Requires refactoring of how we generate the login-url because that one needs to know the public key.
             private_key,
+            public_key: *public_key,
             marker: Default::default(),
             index: IndexLfsr::default(),
             rate_limiter: Arc::new(RateLimiter::new(public_key, HANDSHAKE_RATE_LIMIT)),
-            host_candidates: HashSet::default(),
+            host_candidates: Default::default(),
             buffered_transmits: VecDeque::default(),
             next_rate_limiter_reset: None,
             pending_events: VecDeque::default(),
             buffer: Box::new([0u8; MAX_UDP_SIZE]),
-            allocations: HashMap::default(),
+            allocations: Default::default(),
             connections: Default::default(),
             stats: Default::default(),
         }
@@ -175,7 +179,7 @@ where
     }
 
     pub fn public_key(&self) -> PublicKey {
-        (&self.private_key).into()
+        self.public_key
     }
 
     pub fn connection_id(&self, key: PublicKey) -> Option<TId> {
@@ -228,9 +232,12 @@ where
             }
         };
 
-        if let Some(agent) = self.connections.agent_mut(cid) {
-            agent.add_remote_candidate(candidate.clone());
-        }
+        let Some(agent) = self.connections.agent_mut(cid) else {
+            tracing::debug!("Unknown connection");
+            return;
+        };
+
+        agent.add_remote_candidate(candidate.clone());
 
         match candidate.kind() {
             CandidateKind::Host => {
@@ -238,21 +245,22 @@ where
                 // They are only useful to circumvent restrictive NATs in which case we are either talking to another relay candidate or a server-reflexive address.
                 return;
             }
-
-            CandidateKind::Relayed => {
-                // Optimisatically try to bind the channel only on the same relay as the remote peer.
-                if let Some(allocation) = self.same_relay_as_peer(&candidate) {
-                    allocation.bind_channel(candidate.addr(), now);
-                    return;
-                }
-            }
-            CandidateKind::ServerReflexive | CandidateKind::PeerReflexive => {}
+            CandidateKind::Relayed
+            | CandidateKind::ServerReflexive
+            | CandidateKind::PeerReflexive => {}
         }
 
-        // In other cases, bind on all relays.
-        for allocation in self.allocations.values_mut() {
-            allocation.bind_channel(candidate.addr(), now);
-        }
+        let Some(rid) = self.connections.relay(cid) else {
+            tracing::debug!("No relay selected for connection");
+            return;
+        };
+
+        let Some(allocation) = self.allocations.get_mut(&rid) else {
+            tracing::debug!(%rid, "Unknown relay");
+            return;
+        };
+
+        allocation.bind_channel(candidate.addr(), now);
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
@@ -268,20 +276,6 @@ where
         if let Some(agent) = self.connections.agent_mut(cid) {
             agent.invalidate_candidate(&candidate);
         }
-    }
-
-    /// Attempts to find the [`Allocation`] on the same relay as the remote's candidate.
-    ///
-    /// To do that, we need to check all candidates of each allocation and compare their IP.
-    /// The same relay might be reachable over IPv4 and IPv6.
-    #[must_use]
-    fn same_relay_as_peer(&mut self, candidate: &Candidate) -> Option<&mut Allocation> {
-        self.allocations.iter_mut().find_map(|(_, allocation)| {
-            allocation
-                .current_candidates()
-                .any(|c| c.addr().ip() == candidate.addr().ip())
-                .then_some(allocation)
-        })
     }
 
     /// Decapsulate an incoming packet.
@@ -455,7 +449,7 @@ where
         self.allocations
             .retain(|rid, allocation| match allocation.can_be_freed() {
                 Some(e) => {
-                    tracing::info!(%rid, "Disconnecting from relay; {e}");
+                    tracing::error!(%rid, "Disconnecting from relay; {e}");
 
                     false
                 }
@@ -488,8 +482,8 @@ where
 
     pub fn update_relays(
         &mut self,
-        to_remove: HashSet<RId>,
-        to_add: &HashSet<(RId, RelaySocket, String, String, String)>,
+        to_remove: BTreeSet<RId>,
+        to_add: &BTreeSet<(RId, RelaySocket, String, String, String)>,
         now: Instant,
     ) {
         // First, invalidate all candidates from relays that we should stop using.
@@ -514,7 +508,7 @@ where
             tracing::info!(%rid, address = ?allocation.server(), "Removed TURN server");
         }
 
-        // Second, upsert all new relays.
+        // Second, insert new relays.
         for (rid, server, username, password, realm) in to_add {
             let Ok(username) = Username::new(username.to_owned()) else {
                 tracing::debug!(%username, "Invalid TURN username");
@@ -525,8 +519,8 @@ where
                 continue;
             };
 
-            if let Some(existing) = self.allocations.get_mut(rid) {
-                existing.update_credentials(*server, username, password, realm, now);
+            if self.allocations.contains_key(rid) {
+                tracing::info!(%rid, address = ?server, "Skipping known TURN server");
                 continue;
             }
 
@@ -546,6 +540,7 @@ where
         mut agent: IceAgent,
         remote: PublicKey,
         key: [u8; 32],
+        relay: Option<RId>,
         intent_sent_at: Instant,
         now: Instant,
     ) -> Connection<RId> {
@@ -573,9 +568,10 @@ where
             signalling_completed_at: now,
             remote_pub_key: remote,
             state: ConnectionState::Connecting {
-                possible_sockets: HashSet::default(),
+                possible_sockets: BTreeSet::default(),
                 buffered: RingBuffer::new(10),
             },
+            relay,
             last_outgoing: now,
             last_incoming: now,
         }
@@ -606,7 +602,7 @@ where
     /// Tries to handle the packet using one of our [`Allocation`]s.
     ///
     /// This function is in the hot-path of packet processing and thus must be as efficient as possible.
-    /// Even look-ups in [`HashMap`]s and linear searches across small lists are expensive at this point.
+    /// Even look-ups in [`BTreeMap`]s and linear searches across small lists are expensive at this point.
     /// Thus, we use the first byte of the message as a heuristic for whether we should attempt to handle it here.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2> for details on de-multiplexing.
@@ -754,13 +750,14 @@ where
     fn bindings_and_allocations_drain_events(&mut self) {
         let allocation_events = self
             .allocations
-            .values_mut()
-            .flat_map(|allocation| allocation.poll_event());
+            .iter_mut()
+            .flat_map(|(rid, allocation)| Some((*rid, allocation.poll_event()?)));
 
-        for event in allocation_events {
+        for (rid, event) in allocation_events {
             match event {
                 CandidateEvent::New(candidate) => {
                     add_local_candidate_to_all(
+                        rid,
                         candidate,
                         &mut self.connections,
                         &mut self.pending_events,
@@ -776,12 +773,17 @@ where
             }
         }
     }
+
+    /// Sample a relay to use for a new connection.
+    fn sample_relay(&mut self) -> Option<RId> {
+        self.allocations.keys().copied().choose(&mut self.rng)
+    }
 }
 
 impl<TId, RId> Node<Client, TId, RId>
 where
-    TId: Eq + Hash + Copy + fmt::Display,
-    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
+    TId: Eq + Hash + Copy + Ord + fmt::Display,
+    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
     /// Create a new connection indexed by the given ID.
     ///
@@ -798,10 +800,8 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        let mut agent = IceAgent::new();
+        let mut agent = new_agent();
         agent.set_controlling(true);
-        agent.set_max_candidate_pairs(300);
-        agent.set_timing_advance(Duration::ZERO);
 
         let session_key = Secret::new(random());
         let ice_creds = agent.local_credentials();
@@ -819,6 +819,7 @@ where
             session_key,
             created_at: now,
             intent_sent_at,
+            relay: self.sample_relay(),
             is_failed: false,
         };
         let duration_since_intent = initial_connection.duration_since_intent(now);
@@ -850,12 +851,15 @@ where
             pass: answer.credentials.password,
         });
 
-        self.seed_agent_with_local_candidates(cid, &mut agent);
+        let selected_relay = initial.relay;
+
+        self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
 
         let connection = self.init_connection(
             agent,
             remote,
             *initial.session_key.expose_secret(),
+            selected_relay,
             initial.intent_sent_at,
             now,
         );
@@ -871,8 +875,8 @@ where
 
 impl<TId, RId> Node<Server, TId, RId>
 where
-    TId: Eq + Hash + Copy + fmt::Display,
-    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
+    TId: Eq + Hash + Copy + Ord + fmt::Display,
+    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
     /// Accept a new connection indexed by the given ID.
     ///
@@ -896,13 +900,12 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        let mut agent = IceAgent::new();
+        let mut agent = new_agent();
         agent.set_controlling(false);
         agent.set_remote_credentials(IceCreds {
             ufrag: offer.credentials.username,
             pass: offer.credentials.password,
         });
-        agent.set_timing_advance(Duration::ZERO);
 
         let answer = Answer {
             credentials: Credentials {
@@ -911,12 +914,14 @@ where
             },
         };
 
-        self.seed_agent_with_local_candidates(cid, &mut agent);
+        let selected_relay = self.sample_relay();
+        self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
 
         let connection = self.init_connection(
             agent,
             remote,
             *offer.session_key.expose_secret(),
+            selected_relay,
             now, // Technically, this isn't fully correct because gateways don't send intents so we just use the current time.
             now,
         );
@@ -935,14 +940,25 @@ where
     TId: Eq + Hash + Copy + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
 {
-    fn seed_agent_with_local_candidates(&mut self, connection: TId, agent: &mut IceAgent) {
+    fn seed_agent_with_local_candidates(
+        &mut self,
+        connection: TId,
+        selected_relay: Option<RId>,
+        agent: &mut IceAgent,
+    ) {
         for candidate in self.host_candidates.iter().cloned() {
             add_local_candidate(connection, agent, candidate, &mut self.pending_events);
         }
 
+        let Some(selected_relay) = selected_relay else {
+            tracing::debug!("Skipping seeding of relay candidates: No relay selected");
+            return;
+        };
+
         for candidate in self
             .allocations
-            .values()
+            .iter()
+            .filter_map(|(rid, allocation)| (*rid == selected_relay).then_some(allocation))
             .flat_map(|allocation| allocation.current_candidates())
         {
             add_local_candidate(
@@ -956,8 +972,8 @@ where
 }
 
 struct Connections<TId, RId> {
-    initial: HashMap<TId, InitialConnection>,
-    established: HashMap<TId, Connection<RId>>,
+    initial: BTreeMap<TId, InitialConnection<RId>>,
+    established: BTreeMap<TId, Connection<RId>>,
 }
 
 impl<TId, RId> Default for Connections<TId, RId> {
@@ -971,8 +987,8 @@ impl<TId, RId> Default for Connections<TId, RId> {
 
 impl<TId, RId> Connections<TId, RId>
 where
-    TId: Eq + Hash + Copy + fmt::Display,
-    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
+    TId: Eq + Hash + Copy + Ord + fmt::Display,
+    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
     fn gc(&mut self, events: &mut VecDeque<Event<TId>>) {
         self.initial.retain(|id, conn| {
@@ -1010,6 +1026,13 @@ where
         maybe_initial_connection.or(maybe_established_connection)
     }
 
+    fn relay(&mut self, id: TId) -> Option<RId> {
+        let maybe_initial_connection = self.initial.get_mut(&id).and_then(|i| i.relay);
+        let maybe_established_connection = self.established.get_mut(&id).and_then(|c| c.relay);
+
+        maybe_initial_connection.or(maybe_established_connection)
+    }
+
     fn agents_mut(&mut self) -> impl Iterator<Item = (TId, &mut IceAgent)> {
         let initial_agents = self.initial.iter_mut().map(|(id, c)| (*id, &mut c.agent));
         let negotiated_agents = self
@@ -1024,7 +1047,7 @@ where
         self.established.get_mut(id)
     }
 
-    fn iter_initial_mut(&mut self) -> impl Iterator<Item = (TId, &mut InitialConnection)> {
+    fn iter_initial_mut(&mut self) -> impl Iterator<Item = (TId, &mut InitialConnection<RId>)> {
         self.initial.iter_mut().map(|(id, conn)| (*id, conn))
     }
 
@@ -1059,11 +1082,11 @@ fn encode_as_channel_data<RId>(
     relay: RId,
     dest: SocketAddr,
     contents: &[u8],
-    allocations: &mut HashMap<RId, Allocation>,
+    allocations: &mut BTreeMap<RId, Allocation>,
     now: Instant,
 ) -> Result<Transmit<'static>, EncodeError>
 where
-    RId: Copy + Eq + Hash + PartialEq + fmt::Debug,
+    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug,
 {
     let allocation = allocations
         .get_mut(&relay)
@@ -1082,22 +1105,27 @@ enum EncodeError {
 }
 
 fn add_local_candidate_to_all<TId, RId>(
+    rid: RId,
     candidate: Candidate,
     connections: &mut Connections<TId, RId>,
     pending_events: &mut VecDeque<Event<TId>>,
 ) where
     TId: Copy + fmt::Display,
+    RId: Copy + PartialEq,
 {
     let initial_connections = connections
         .initial
         .iter_mut()
-        .map(|(id, c)| (*id, &mut c.agent));
+        .flat_map(|(id, c)| Some((*id, &mut c.agent, c.relay?)));
     let established_connections = connections
         .established
         .iter_mut()
-        .map(|(id, c)| (*id, &mut c.agent));
+        .flat_map(|(id, c)| Some((*id, &mut c.agent, c.relay?)));
 
-    for (cid, agent) in initial_connections.chain(established_connections) {
+    for (cid, agent, _) in initial_connections
+        .chain(established_connections)
+        .filter(|(_, _, selected_relay)| *selected_relay == rid)
+    {
         let _span = info_span!("connection", %cid).entered();
 
         add_local_candidate(cid, agent, candidate.clone(), pending_events);
@@ -1203,7 +1231,7 @@ pub enum Event<TId> {
     ConnectionClosed(TId),
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Transmit<'a> {
     /// The local interface from which this packet should be sent.
     ///
@@ -1244,9 +1272,14 @@ pub(crate) enum CandidateEvent {
     Invalid(Candidate),
 }
 
-struct InitialConnection {
+struct InitialConnection<RId> {
     agent: IceAgent,
     session_key: Secret<[u8; 32]>,
+
+    /// The fallback relay we sampled for this potential connection.
+    ///
+    /// `None` if we don't have any relays available.
+    relay: Option<RId>,
 
     created_at: Instant,
     intent_sent_at: Instant,
@@ -1254,7 +1287,7 @@ struct InitialConnection {
     is_failed: bool,
 }
 
-impl InitialConnection {
+impl<RId> InitialConnection<RId> {
     #[tracing::instrument(level = "debug", skip_all, fields(%cid))]
     fn handle_timeout<TId>(&mut self, cid: TId, now: Instant)
     where
@@ -1293,6 +1326,11 @@ struct Connection<RId> {
 
     state: ConnectionState<RId>,
 
+    /// The relay we have selected for this connection.
+    ///
+    /// `None` if we didn't have any relays available.
+    relay: Option<RId>,
+
     stats: ConnectionStats,
     intent_sent_at: Instant,
     signalling_completed_at: Instant,
@@ -1307,7 +1345,8 @@ enum ConnectionState<RId> {
     /// We are still running ICE to figure out, which socket to use to send data.
     Connecting {
         /// Socket addresses from which we might receive data (even before we are connected).
-        possible_sockets: HashSet<SocketAddr>,
+        possible_sockets: BTreeSet<SocketAddr>,
+
         /// Packets emitted by wireguard whilst are still running ICE.
         ///
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
@@ -1319,7 +1358,7 @@ enum ConnectionState<RId> {
         /// Our nominated socket.
         peer_socket: PeerSocket<RId>,
         /// Other addresses that we might see traffic from (e.g. STUN messages during roaming).
-        possible_sockets: HashSet<SocketAddr>,
+        possible_sockets: BTreeSet<SocketAddr>,
     },
     /// The connection failed in an unrecoverable way and will be GC'd.
     Failed,
@@ -1358,7 +1397,7 @@ enum PeerSocket<RId> {
 
 impl<RId> Connection<RId>
 where
-    RId: PartialEq + Eq + Hash + fmt::Debug + Copy,
+    RId: PartialEq + Eq + Hash + fmt::Debug + Copy + Ord,
 {
     /// Checks if we want to accept a packet from a certain address.
     ///
@@ -1425,11 +1464,11 @@ where
         &mut self,
         cid: TId,
         now: Instant,
-        allocations: &mut HashMap<RId, Allocation>,
+        allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit<'static>>,
     ) where
-        TId: fmt::Display + Copy,
-        RId: Copy + fmt::Display,
+        TId: Copy + Ord + fmt::Display,
+        RId: Copy + Ord + fmt::Display,
     {
         self.agent.handle_timeout(now);
 
@@ -1514,6 +1553,7 @@ where
                         ConnectionState::Connecting {
                             possible_sockets,
                             buffered,
+                            ..
                         } => {
                             transmits.extend(buffered.into_iter().flat_map(|packet| {
                                 make_owned_transmit(remote_socket, &packet, allocations, now)
@@ -1618,7 +1658,7 @@ where
         &mut self,
         packet: &[u8],
         buffer: &'b mut [u8],
-        allocations: &mut HashMap<RId, Allocation>,
+        allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, MutableIpPacket<'b>> {
@@ -1702,7 +1742,7 @@ where
 
     fn force_handshake(
         &mut self,
-        allocations: &mut HashMap<RId, Allocation>,
+        allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
     ) where
@@ -1750,11 +1790,11 @@ where
 fn make_owned_transmit<RId>(
     socket: PeerSocket<RId>,
     message: &[u8],
-    allocations: &mut HashMap<RId, Allocation>,
+    allocations: &mut BTreeMap<RId, Allocation>,
     now: Instant,
 ) -> Option<Transmit<'static>>
 where
-    RId: Copy + Eq + Hash + PartialEq + fmt::Debug,
+    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug,
 {
     let transmit = match socket {
         PeerSocket::Direct {
@@ -1771,4 +1811,14 @@ where
     };
 
     Some(transmit)
+}
+
+fn new_agent() -> IceAgent {
+    let mut agent = IceAgent::new();
+    agent.set_max_candidate_pairs(300);
+    agent.set_timing_advance(Duration::ZERO);
+    agent.set_max_stun_retransmits(8);
+    agent.set_max_stun_rto(Duration::from_millis(1500));
+
+    agent
 }
