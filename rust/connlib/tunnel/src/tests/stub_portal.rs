@@ -1,8 +1,20 @@
-use connlib_shared::messages::{client, gateway, GatewayId, ResourceId};
+use super::{
+    sim_gateway::{ref_gateway_host, RefGateway},
+    sim_net::Host,
+    strategies::{resolved_ips, subdomain_records},
+};
+use connlib_shared::{
+    messages::{client, gateway, GatewayId, ResourceId},
+    proptest::{domain_label, domain_name},
+    DomainName,
+};
 use itertools::Itertools;
-use proptest::sample::Selector;
+use proptest::{
+    sample::Selector,
+    strategy::{Just, Strategy},
+};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     iter,
     net::IpAddr,
 };
@@ -171,5 +183,52 @@ impl StubPortal {
         let gid = self.gateway_selector.try_select(gateways)?;
 
         Some(gid)
+    }
+
+    pub(crate) fn gateways(&self) -> impl Strategy<Value = BTreeMap<GatewayId, Host<RefGateway>>> {
+        self.gateways_by_site
+            .values()
+            .flatten()
+            .map(|gid| (Just(*gid), ref_gateway_host())) // Map each ID to a strategy that samples a gateway.
+            .collect::<Vec<_>>() // A `Vec<Strategy>` implements `Strategy<Value = Vec<_>>`
+            .prop_map(BTreeMap::from_iter)
+    }
+
+    pub(crate) fn dns_resource_records(
+        &self,
+    ) -> impl Strategy<Value = HashMap<DomainName, HashSet<IpAddr>>> {
+        self.dns_resources
+            .values()
+            .map(|resource| {
+                let address = resource.address.clone();
+
+                match address.chars().next().unwrap() {
+                    '*' => subdomain_records(
+                        address.trim_start_matches("*.").to_owned(),
+                        domain_name(1..3),
+                    )
+                    .boxed(),
+                    '?' => subdomain_records(
+                        address.trim_start_matches("?.").to_owned(),
+                        domain_label(),
+                    )
+                    .boxed(),
+                    _ => resolved_ips()
+                        .prop_map(move |resolved_ips| {
+                            HashMap::from([(address.parse().unwrap(), resolved_ips)])
+                        })
+                        .boxed(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .prop_map(|records| {
+                let mut map = HashMap::default();
+
+                for record in records {
+                    map.extend(record)
+                }
+
+                map
+            })
     }
 }

@@ -1,9 +1,4 @@
-use super::{
-    sim_gateway::{ref_gateway_host, RefGateway},
-    sim_net::Host,
-    sim_relay::ref_relay_host,
-    stub_portal::StubPortal,
-};
+use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use connlib_shared::{
     messages::{
@@ -14,8 +9,7 @@ use connlib_shared::{
         DnsServer, GatewayId, RelayId,
     },
     proptest::{
-        any_ip_network, cidr_resource, dns_resource, domain_label, domain_name, gateway_id,
-        relay_id, site,
+        any_ip_network, cidr_resource, dns_resource, domain_name, gateway_id, relay_id, site,
     },
     DomainName,
 };
@@ -102,19 +96,11 @@ pub(crate) fn latency(max: u64) -> impl Strategy<Value = Duration> {
     (10..max).prop_map(Duration::from_millis)
 }
 
-/// A [`Strategy`] for sampling a set of gateways and a corresponding [`StubPortal`] that has a set of [`Site`]s configured with those gateways.
+/// A [`Strategy`] for sampling a [`StubPortal`] that is configured with various [`Site`]s and gateways within those sites.
 ///
 /// Similar as in production, the portal holds a list of DNS and CIDR resources (those are also sampled from the given sites).
 /// Via this site mapping, these resources are implicitly assigned to a gateway.
-///
-/// Lastly, we also sample a set of DNS records for the DNS resources that we created.
-pub(crate) fn gateways_and_portal() -> impl Strategy<
-    Value = (
-        BTreeMap<GatewayId, Host<RefGateway>>,
-        StubPortal,
-        HashMap<DomainName, HashSet<IpAddr>>,
-    ),
-> {
+pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
     collection::hash_set(site(), 1..=3)
         .prop_flat_map(|sites| {
             let gateway_site = any_site(sites.clone()).prop_map(|s| s.id);
@@ -132,78 +118,44 @@ pub(crate) fn gateways_and_portal() -> impl Strategy<
             );
             let internet_resource = internet_resource(any_site(sites));
 
-            let gateways =
-                collection::hash_map(gateway_id(), (ref_gateway_host(), gateway_site), 1..=3);
+            // Gateways are unique across sites.
+            // Generate a map with `GatewayId`s as keys and then flip it into a map of site -> set(gateways).
+            let gateways_by_site = collection::hash_map(gateway_id(), gateway_site, 1..=3)
+                .prop_map(|gateway_site| {
+                    let mut gateways_by_site = HashMap::<SiteId, HashSet<GatewayId>>::default();
+
+                    for (gid, sid) in gateway_site {
+                        gateways_by_site.entry(sid).or_default().insert(gid);
+                    }
+
+                    gateways_by_site
+                });
+
             let gateway_selector = any::<sample::Selector>();
 
             (
-                gateways,
+                gateways_by_site,
                 cidr_resources,
                 dns_resources,
                 internet_resource,
                 gateway_selector,
             )
         })
-        .prop_flat_map(
-            |(gateways, cidr_resources, dns_resources, internet_resource, gateway_selector)| {
-                let (gateways, gateways_by_site) = gateways.into_iter().fold(
-                    (
-                        BTreeMap::<GatewayId, _>::default(),
-                        HashMap::<SiteId, HashSet<GatewayId>>::default(),
-                    ),
-                    |(mut gateways, mut sites), (gid, (gateway, site))| {
-                        sites.entry(site).or_default().insert(gid);
-                        gateways.insert(gid, gateway);
-
-                        (gateways, sites)
-                    },
-                );
-
-                // For each DNS resource, we need to generate a set of DNS records.
-                let dns_resource_records = dns_resources
-                    .clone()
-                    .into_iter()
-                    .map(|resource| {
-                        let address = resource.address;
-
-                        match address.chars().next().unwrap() {
-                            '*' => subdomain_records(
-                                address.trim_start_matches("*.").to_owned(),
-                                domain_name(1..3),
-                            )
-                            .boxed(),
-                            '?' => subdomain_records(
-                                address.trim_start_matches("?.").to_owned(),
-                                domain_label(),
-                            )
-                            .boxed(),
-                            _ => resolved_ips()
-                                .prop_map(move |resolved_ips| {
-                                    HashMap::from([(address.parse().unwrap(), resolved_ips)])
-                                })
-                                .boxed(),
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .prop_map(|records| {
-                        let mut map = HashMap::default();
-
-                        for record in records {
-                            map.extend(record)
-                        }
-
-                        map
-                    });
-
-                let portal = StubPortal::new(
+        .prop_map(
+            |(
+                gateways_by_site,
+                cidr_resources,
+                dns_resources,
+                internet_resource,
+                gateway_selector,
+            )| {
+                StubPortal::new(
                     gateways_by_site,
                     gateway_selector,
                     cidr_resources,
                     dns_resources,
                     internet_resource,
-                );
-
-                (Just(gateways), Just(portal), dns_resource_records)
+                )
             },
         )
 }
@@ -265,7 +217,7 @@ fn question_mark_wildcard_dns_resource(
     })
 }
 
-fn resolved_ips() -> impl Strategy<Value = HashSet<IpAddr>> {
+pub(crate) fn resolved_ips() -> impl Strategy<Value = HashSet<IpAddr>> {
     collection::hash_set(
         prop_oneof![
             dns_resource_ip4s().prop_map_into(),
@@ -276,7 +228,7 @@ fn resolved_ips() -> impl Strategy<Value = HashSet<IpAddr>> {
 }
 
 /// A strategy for generating a set of DNS records all nested under the provided base domain.
-fn subdomain_records(
+pub(crate) fn subdomain_records(
     base: String,
     subdomains: impl Strategy<Value = String>,
 ) -> impl Strategy<Value = HashMap<DomainName, HashSet<IpAddr>>> {
