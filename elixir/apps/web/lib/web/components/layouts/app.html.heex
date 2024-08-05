@@ -125,4 +125,5 @@
   </.flash>
 
   <%= @inner_content %>
+  <.bottom_banner :if={String.starts_with?(@account.slug, "temp_")} />
 </main>
