@@ -137,7 +137,7 @@ fn revert_at_paths(paths: &ResolvPaths) -> Result<()> {
 }
 
 fn ensure_regular_file(path: &Path) -> Result<()> {
-    let file_type = fs::metadata(path)?.file_type();
+    let file_type = fs::symlink_metadata(path)?.file_type();
     if !file_type.is_file() {
         bail!("File `{path:?}` is not a regular file, cannot use it to control DNS");
     }
