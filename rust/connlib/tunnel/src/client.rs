@@ -825,7 +825,7 @@ impl ClientState {
     }
 
     fn is_resource_enabled(&self, resource: &ResourceId) -> bool {
-        !self.disabled_resources.contains(resource)
+        !self.disabled_resources.contains(resource) && self.resources_by_id.contains_key(resource)
     }
 
     fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
