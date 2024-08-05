@@ -15,11 +15,11 @@ export default function GUI({ title }: { title: string }) {
       {/*
       <Entry version="1.1.10" date={new Date("Invalid date")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem enable={title === "Linux GUI"}>
-            This is a maintenance release with no user-facing changes.
+          <ChangeItem enable={title === "Linux GUI"} pull="6163">
+            Supports using `etc-resolv-conf` DNS control method, or disabling DNS control
           </ChangeItem>
-          <ChangeItem enable={title === "Windows"}>
-            This is a maintenance release with no user-facing changes.
+          <ChangeItem enable={title === "Windows"} pull="6163">
+            Supports disabling DNS control
           </ChangeItem>
         </ul>
       </Entry>

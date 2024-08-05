@@ -160,11 +160,30 @@ Global:
 Link 2 (enp0s6): 10.0.2.3 fec0::3
 ```
 
+```bash
+cat /etc/resolv.conf
+```
+
+Normal `resolv.conf` if `systemd-resolved` is installed, whether or not Firezone
+is running:
+
+```text
+# This file is managed by man:systemd-resolved(8). Do not edit.
+...
+```
+
+Firezone `resolv.conf` if you set `FIREZONE_DNS_CONTROL=etc-resolv-conf`:
+
+```text
+# BEGIN Firezone DNS configuration
+...
+```
+
 ### Revert Firezone DNS control
 
-The Firezone GUI Client for Linux uses `systemd-resolved` to control DNS, which
-will automatically revert DNS to the system defaults when you quit the Firezone
-GUI, which destroys the `tun-firezone` virtual network interface.
+By default, the Firezone GUI Client for Linux controls DNS using
+`systemd-resolved`, which will automatically revert DNS to the system defaults
+when Firezone is disconnected.
 
 If the network interface stays up and DNS does not revert, you can try
 restarting the tunnel service. Quit the Firezone GUI, then run:
