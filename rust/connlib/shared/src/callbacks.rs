@@ -88,6 +88,7 @@ pub struct ResourceDescriptionDns {
     pub sites: Vec<Site>,
 
     pub status: Status,
+    pub can_toggle: bool,
 }
 
 /// Description of a resource that maps to a CIDR.
@@ -106,6 +107,7 @@ pub struct ResourceDescriptionCidr {
     pub sites: Vec<Site>,
 
     pub status: Status,
+    pub can_toggle: bool,
 }
 
 /// Description of an Internet resource
@@ -114,6 +116,7 @@ pub struct ResourceDescriptionInternet {
     pub id: ResourceId,
     pub sites: Vec<Site>,
     pub status: Status,
+    pub can_toggle: bool,
 }
 
 /// Traits that will be used by connlib to callback the client upper layers.
