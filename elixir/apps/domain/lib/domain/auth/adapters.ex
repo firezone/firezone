@@ -9,7 +9,8 @@ defmodule Domain.Auth.Adapters do
     microsoft_entra: Domain.Auth.Adapters.MicrosoftEntra,
     okta: Domain.Auth.Adapters.Okta,
     jumpcloud: Domain.Auth.Adapters.JumpCloud,
-    userpass: Domain.Auth.Adapters.UserPass
+    userpass: Domain.Auth.Adapters.UserPass,
+    temp_account: Domain.Auth.Adapters.TempAccount
   }
 
   @adapter_names Map.keys(@adapters)
@@ -29,7 +30,7 @@ defmodule Domain.Auth.Adapters do
 
   def list_user_provisioned_adapters! do
     enabled_adapters = Domain.Config.compile_config!(:auth_provider_adapters)
-    enabled_idp_adapters = enabled_adapters -- ~w[email userpass]a
+    enabled_idp_adapters = enabled_adapters -- ~w[email userpass temp_account]a
     Map.take(@adapters, enabled_idp_adapters)
   end
 
