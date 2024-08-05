@@ -325,7 +325,7 @@ impl<'a> Handler<'a> {
             }
             InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                 self.tun_device.set_ips(ipv4, ipv6).await?;
-                self.dns_controller.set_dns(&dns).await?;
+                self.dns_controller.set_dns(dns).await?;
             }
             InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                 self.tun_device.set_routes(ipv4, ipv6).await?

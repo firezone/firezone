@@ -1,8 +1,9 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use std::{
+    fs,
     io::{self, Write},
     net::IpAddr,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 pub(crate) const ETC_RESOLV_CONF: &str = "/etc/resolv.conf";
@@ -34,8 +35,8 @@ impl Default for ResolvPaths {
 /// This is async because it's called in a Tokio context and it's nice to use their
 /// `fs` module
 #[cfg_attr(test, mutants::skip)] // Would modify system-wide `/etc/resolv.conf`
-pub(crate) async fn configure(dns_config: &[IpAddr]) -> Result<()> {
-    configure_at_paths(dns_config, &ResolvPaths::default()).await
+pub(crate) fn configure(dns_config: &[IpAddr]) -> Result<()> {
+    configure_at_paths(dns_config, &ResolvPaths::default())
 }
 
 /// Revert changes Firezone made to `/etc/resolv.conf`
@@ -46,25 +47,22 @@ pub(crate) fn revert() -> Result<()> {
     revert_at_paths(&ResolvPaths::default())
 }
 
-async fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Result<()> {
+fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Result<()> {
     if dns_config.is_empty() {
         tracing::warn!("`dns_config` is empty, leaving `/etc/resolv.conf` unchanged");
         return Ok(());
     }
 
-    let text = tokio::fs::read_to_string(&paths.resolv)
-        .await
-        .context("Failed to read `resolv.conf`")?;
+    // There is a TOCTOU here, if the user somehow enables `systemd-resolved` while Firezone is booting up.
+    ensure_regular_file(&paths.resolv)?;
+
+    let text = fs::read_to_string(&paths.resolv).context("Failed to read `resolv.conf`")?;
     let text = if text.starts_with(MAGIC_HEADER) {
         tracing::info!("The last run of Firezone crashed before reverting `/etc/resolv.conf`. Reverting it now before re-writing it.");
         let resolv_path = &paths.resolv;
         let paths = paths.clone();
-        tokio::task::spawn_blocking(move || revert_at_paths(&paths))
-            .await
-            .context("`spawn_blocking` failed while trying to run `revert_at_paths`")?
-            .context("Failed to revert `'resolv.conf`")?;
-        tokio::fs::read_to_string(resolv_path)
-            .await
+        revert_at_paths(&paths).context("Failed to revert `'resolv.conf`")?;
+        fs::read_to_string(resolv_path)
             .context("Failed to re-read `resolv.conf` after reverting it")?
     } else {
         // The last run of Firezone reverted resolv.conf successfully,
@@ -86,13 +84,9 @@ async fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Resul
         &paths.backup,
         atomicwrites::OverwriteBehavior::AllowOverwrite,
     );
-    tokio::task::spawn_blocking(move || {
-        backup_file
-            .write(|f| f.write_all(text.as_bytes()))
-            .context("Failed to back up `resolv.conf`")
-    })
-    .await
-    .context("Failed to run sync file operation in a blocking task")??;
+    backup_file
+        .write(|f| f.write_all(text.as_bytes()))
+        .context("Failed to back up `resolv.conf`")?;
 
     let mut new_resolv_conf = parsed.clone();
 
@@ -119,15 +113,15 @@ async fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Resul
         new_resolv_conf,
     );
 
-    tokio::fs::write(&paths.resolv, new_text)
-        .await
-        .context("Failed to rewrite `resolv.conf`")?;
+    fs::write(&paths.resolv, new_text).context("Failed to rewrite `resolv.conf`")?;
 
     Ok(())
 }
 
+// Must be sync so we can call it from `Drop` impls
 fn revert_at_paths(paths: &ResolvPaths) -> Result<()> {
-    match std::fs::copy(&paths.backup, &paths.resolv) {
+    ensure_regular_file(&paths.resolv)?;
+    match fs::copy(&paths.backup, &paths.resolv) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
             tracing::debug!("Didn't revert `/etc/resolv.conf`, no backup file found");
             return Ok(());
@@ -139,6 +133,14 @@ fn revert_at_paths(paths: &ResolvPaths) -> Result<()> {
     // we may want it. Filesystems are not atomic by default, and have weak ordering,
     // so we don't want to end up in a state where the backup is deleted and the revert was rolled back.
     tracing::info!("Reverted `/etc/resolv.conf`l");
+    Ok(())
+}
+
+fn ensure_regular_file(path: &Path) -> Result<()> {
+    let file_type = fs::metadata(path)?.file_type();
+    if !file_type.is_file() {
+        bail!("File `{path:?}` is not a regular file, cannot use it to control DNS");
+    }
     Ok(())
 }
 
@@ -302,7 +304,7 @@ nameserver 100.100.111.2
 
         write_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
 
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths).await?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths)?;
 
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 1])])?;
         check_resolv_conf(&paths.backup, &[GOOGLE_DNS.into()])?;
@@ -324,7 +326,7 @@ nameserver 100.100.111.2
 
         write_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
 
-        configure_at_paths(&[], &paths).await?;
+        configure_at_paths(&[], &paths)?;
 
         check_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
         // No backup since we didn't touch the original file
@@ -339,11 +341,11 @@ nameserver 100.100.111.2
         let (_temp_dir, paths) = create_temp_paths();
 
         write_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths).await?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths)?;
         revert_at_paths(&paths)?;
 
         write_resolv_conf(&paths.resolv, &[CLOUDFLARE_DNS.into()])?;
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 2])], &paths).await?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 2])], &paths)?;
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 2])])?;
         check_resolv_conf(&paths.backup, &[CLOUDFLARE_DNS.into()])?;
         revert_at_paths(&paths)?;
@@ -366,7 +368,7 @@ nameserver 100.100.111.2
         write_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
 
         // First run
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths).await?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths)?;
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 1])])
             .context("First run, resolv.conf should have sentinel")?;
         check_resolv_conf(&paths.backup, &[GOOGLE_DNS.into()])
@@ -375,7 +377,7 @@ nameserver 100.100.111.2
         // Crash happens
 
         // Second run
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 2])], &paths).await?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 2])], &paths)?;
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 2])])
             .context("Second run, resolv.conf should have new sentinel")?;
         check_resolv_conf(&paths.backup, &[GOOGLE_DNS.into()])
@@ -399,7 +401,7 @@ nameserver 100.100.111.2
         write_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
 
         // First run
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths).await?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths)?;
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 1])])
             .context("First run, resolv.conf should have sentinel")?;
         check_resolv_conf(&paths.backup, &[GOOGLE_DNS.into()])
@@ -410,7 +412,7 @@ nameserver 100.100.111.2
         write_resolv_conf(&paths.resolv, &[CLOUDFLARE_DNS.into()])?;
 
         // Second run
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 2])], &paths).await?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 2])], &paths)?;
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 2])])
             .context("Second run, resolv.conf should have new sentinel")?;
         check_resolv_conf(&paths.backup, &[CLOUDFLARE_DNS.into()])
@@ -435,11 +437,11 @@ nameserver 100.100.111.2
         write_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
 
         // Configure twice
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths).await?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths)?;
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 1])])?;
         check_resolv_conf(&paths.backup, &[GOOGLE_DNS.into()])?;
 
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths).await?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths)?;
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 1])])?;
         check_resolv_conf(&paths.backup, &[GOOGLE_DNS.into()])?;
 

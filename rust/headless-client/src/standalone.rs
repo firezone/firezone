@@ -256,7 +256,7 @@ pub fn run_only_headless_client() -> Result<()> {
                 ),
                 InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                     tun_device.set_ips(ipv4, ipv6).await?;
-                    dns_controller.set_dns(&dns).await?;
+                    dns_controller.set_dns(dns).await?;
                     // `on_set_interface_config` is guaranteed to be called when the tunnel is completely ready
                     // <https://github.com/firezone/firezone/pull/6026#discussion_r1692297438>
                     if let Some(instant) = last_connlib_start_instant.take() {

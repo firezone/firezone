@@ -22,11 +22,15 @@ impl DnsController {
     /// it would be bad if this was called from 2 threads at once.
     ///
     /// Cancel safety: Try not to cancel this.
-    pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
+    pub(crate) async fn set_dns(&mut self, dns_config: Vec<IpAddr>) -> Result<()> {
         match self.dns_control_method {
             DnsControlMethod::Disabled => Ok(()),
-            DnsControlMethod::EtcResolvConf => etc_resolv_conf::configure(dns_config).await,
-            DnsControlMethod::SystemdResolved => configure_systemd_resolved(dns_config).await,
+            DnsControlMethod::EtcResolvConf => {
+                tokio::task::spawn_blocking(move || etc_resolv_conf::configure(&dns_config))
+                    .await
+                    .context("Failed to `spawn_blocking` DNS control task")?
+            }
+            DnsControlMethod::SystemdResolved => configure_systemd_resolved(&dns_config).await,
         }
         .context("Failed to control DNS")
     }
