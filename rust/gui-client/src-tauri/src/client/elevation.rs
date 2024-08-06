@@ -48,7 +48,7 @@ mod imp {
 mod imp {
     use crate::client::gui::Error;
     use anyhow::{Context as _, Result};
-    use std::ffi::c_void;
+    use std::{ffi::c_void, mem::size_of};
     use windows::Win32::{
         Foundation::{CloseHandle, HANDLE},
         Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY},
