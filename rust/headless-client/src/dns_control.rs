@@ -1,3 +1,14 @@
+//! Platform-specific code to control the system's DNS resolution
+//!
+//! On Linux, we use `systemd-resolved` by default. We can also control
+//! `/etc/resolv.conf` or explicitly not control DNS.
+//!
+//! On Windows, we use NRPT by default. We can also explicitly not control DNS.
+
+use anyhow::Result;
+use firezone_bin_shared::DnsControlMethod;
+use std::net::IpAddr;
+
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
@@ -8,8 +19,33 @@ mod windows;
 #[cfg(target_os = "windows")]
 use windows as platform;
 
-pub(crate) use platform::{system_resolvers, DnsController};
+use platform::system_resolvers;
+
+/// Controls system-wide DNS.
+///
+/// Always call `deactivate` when Firezone starts.
+///
+/// Only one of these should exist on the entire system at a time.
+pub(crate) struct DnsController {
+    pub dns_control_method: DnsControlMethod,
+}
+
+impl Drop for DnsController {
+    fn drop(&mut self) {
+        if let Err(error) = self.deactivate() {
+            tracing::error!(?error, "Failed to deactivate DNS control");
+        }
+    }
+}
+
+impl DnsController {
+    pub(crate) fn system_resolvers(&self) -> Vec<IpAddr> {
+        system_resolvers(self.dns_control_method).unwrap_or_default()
+    }
+}
 
 // TODO: Move DNS and network change listening to the IPC service, so this won't
 // need to be public.
-pub use platform::system_resolvers_for_gui;
+pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
+    system_resolvers(DnsControlMethod::default())
+}

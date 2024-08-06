@@ -82,21 +82,15 @@ use windows::{
 #[allow(clippy::unused_async)]
 pub async fn new_dns_notifier(
     _tokio_handle: tokio::runtime::Handle,
-    method: Option<DnsControlMethod>,
+    _method: DnsControlMethod,
 ) -> Result<async_dns::DnsNotifier> {
-    match method {
-        Some(DnsControlMethod::Nrpt) | None => {}
-    }
     async_dns::DnsNotifier::new()
 }
 
 pub async fn new_network_notifier(
     _tokio_handle: tokio::runtime::Handle,
-    method: Option<DnsControlMethod>,
+    _method: DnsControlMethod,
 ) -> Result<NetworkNotifier> {
-    match method {
-        Some(DnsControlMethod::Nrpt) | None => {}
-    }
     NetworkNotifier::new().await
 }
 

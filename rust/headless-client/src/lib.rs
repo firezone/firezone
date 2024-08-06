@@ -11,6 +11,7 @@
 use anyhow::{Context as _, Result};
 use connlib_client_shared::{Callbacks, Error as ConnlibError};
 use connlib_shared::callbacks;
+use firezone_bin_shared::DnsControlMethod;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::PathBuf,
@@ -66,8 +67,16 @@ pub(crate) const GIT_VERSION: &str = git_version::git_version!(
 const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 
 /// CLI args common to both the IPC service and the headless Client
-#[derive(clap::Args)]
+#[derive(clap::Parser)]
 struct CliCommon {
+    #[cfg(target_os = "linux")]
+    #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "systemd-resolved")]
+    dns_control: DnsControlMethod,
+
+    #[cfg(target_os = "windows")]
+    #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "nrpt")]
+    dns_control: DnsControlMethod,
+
     /// File logging directory. Should be a path that's writeable by the current user.
     #[arg(short, long, env = "LOG_DIR")]
     log_dir: Option<PathBuf>,
@@ -163,10 +172,55 @@ pub fn setup_stdout_logging() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
+
+    const EXE_NAME: &str = "firezone-client-ipc";
 
     // Make sure it's okay to store a bunch of these to mitigate #5880
     #[test]
     fn callback_msg_size() {
         assert_eq!(std::mem::size_of::<InternalServerMsg>(), 56)
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn dns_control() {
+        let actual = CliCommon::parse_from([EXE_NAME]);
+        assert!(matches!(
+            actual.dns_control,
+            DnsControlMethod::SystemdResolved
+        ));
+
+        let actual = CliCommon::parse_from([EXE_NAME, "--dns-control", "disabled"]);
+        assert!(matches!(actual.dns_control, DnsControlMethod::Disabled));
+
+        let actual = CliCommon::parse_from([EXE_NAME, "--dns-control", "etc-resolv-conf"]);
+        assert!(matches!(
+            actual.dns_control,
+            DnsControlMethod::EtcResolvConf
+        ));
+
+        let actual = CliCommon::parse_from([EXE_NAME, "--dns-control", "systemd-resolved"]);
+        assert!(matches!(
+            actual.dns_control,
+            DnsControlMethod::SystemdResolved
+        ));
+
+        assert!(CliCommon::try_parse_from([EXE_NAME, "--dns-control", "invalid"]).is_err());
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn dns_control() {
+        let actual = CliCommon::parse_from([EXE_NAME]);
+        assert!(matches!(actual.dns_control, DnsControlMethod::Nrpt));
+
+        let actual = CliCommon::parse_from([EXE_NAME, "--dns-control", "disabled"]);
+        assert!(matches!(actual.dns_control, DnsControlMethod::Disabled));
+
+        let actual = CliCommon::parse_from([EXE_NAME, "--dns-control", "nrpt"]);
+        assert!(matches!(actual.dns_control, DnsControlMethod::Nrpt));
+
+        assert!(CliCommon::try_parse_from([EXE_NAME, "--dns-control", "invalid"]).is_err());
     }
 }

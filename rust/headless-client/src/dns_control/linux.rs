@@ -1,44 +1,15 @@
+use super::DnsController;
 use anyhow::{bail, Context as _, Result};
 use firezone_bin_shared::{DnsControlMethod, TunDeviceManager};
 use std::{net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;
 
-pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
-    get_system_default_resolvers_systemd_resolved()
-}
-
-/// Controls system-wide DNS.
-///
-/// Always call `deactivate` when Firezone starts.
-///
-/// Only one of these should exist on the entire system at a time.
-pub(crate) struct DnsController {
-    dns_control_method: Option<DnsControlMethod>,
-}
-
-impl Default for DnsController {
-    fn default() -> Self {
-        // We'll remove `get_from_env` in #5068
-        let dns_control_method = DnsControlMethod::from_env();
-        tracing::info!(?dns_control_method);
-        Self { dns_control_method }
-    }
-}
-
-impl Drop for DnsController {
-    fn drop(&mut self) {
-        if let Err(error) = self.deactivate() {
-            tracing::error!(?error, "Failed to deactivate DNS control");
-        }
-    }
-}
-
 impl DnsController {
     #[allow(clippy::unnecessary_wraps)]
     pub(crate) fn deactivate(&mut self) -> Result<()> {
         tracing::debug!("Deactivating DNS control...");
-        if let Some(DnsControlMethod::EtcResolvConf) = self.dns_control_method {
+        if let DnsControlMethod::EtcResolvConf = self.dns_control_method {
             // TODO: Check that nobody else modified the file while we were running.
             etc_resolv_conf::revert()?;
         }
@@ -51,11 +22,15 @@ impl DnsController {
     /// it would be bad if this was called from 2 threads at once.
     ///
     /// Cancel safety: Try not to cancel this.
-    pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
+    pub(crate) async fn set_dns(&mut self, dns_config: Vec<IpAddr>) -> Result<()> {
         match self.dns_control_method {
-            None => Ok(()),
-            Some(DnsControlMethod::EtcResolvConf) => etc_resolv_conf::configure(dns_config).await,
-            Some(DnsControlMethod::Systemd) => configure_systemd_resolved(dns_config).await,
+            DnsControlMethod::Disabled => Ok(()),
+            DnsControlMethod::EtcResolvConf => {
+                tokio::task::spawn_blocking(move || etc_resolv_conf::configure(&dns_config))
+                    .await
+                    .context("Failed to `spawn_blocking` DNS control task")?
+            }
+            DnsControlMethod::SystemdResolved => configure_systemd_resolved(&dns_config).await,
         }
         .context("Failed to control DNS")
     }
@@ -65,7 +40,7 @@ impl DnsController {
     /// Does nothing if we're using other DNS control methods or none at all
     pub(crate) fn flush(&self) -> Result<()> {
         // Flushing is only implemented for systemd-resolved
-        if matches!(self.dns_control_method, Some(DnsControlMethod::Systemd)) {
+        if matches!(self.dns_control_method, DnsControlMethod::SystemdResolved) {
             tracing::debug!("Flushing systemd-resolved DNS cache...");
             Command::new("resolvectl").arg("flush-caches").status()?;
             tracing::debug!("Flushed DNS.");
@@ -106,11 +81,12 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
-    match DnsControlMethod::from_env() {
-        None => get_system_default_resolvers_resolv_conf(),
-        Some(DnsControlMethod::EtcResolvConf) => get_system_default_resolvers_resolv_conf(),
-        Some(DnsControlMethod::Systemd) => get_system_default_resolvers_systemd_resolved(),
+pub(crate) fn system_resolvers(dns_control_method: DnsControlMethod) -> Result<Vec<IpAddr>> {
+    match dns_control_method {
+        DnsControlMethod::Disabled | DnsControlMethod::EtcResolvConf => {
+            get_system_default_resolvers_resolv_conf()
+        }
+        DnsControlMethod::SystemdResolved => get_system_default_resolvers_systemd_resolved(),
     }
 }
 

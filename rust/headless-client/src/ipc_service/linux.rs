@@ -14,7 +14,7 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
-    rt.block_on(super::ipc_listen(&mut signals))
+    rt.block_on(super::ipc_listen(cli.dns_control, &mut signals))
 }
 
 pub(crate) fn install_ipc_service() -> Result<()> {

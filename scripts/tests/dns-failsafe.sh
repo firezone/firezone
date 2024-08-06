@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 
 # If we set the DNS control to `systemd-resolved` but that's not available,
-# we should still boot up and allow IP / CIDR resources to work
+# the Client should bail out with an error message and non-zero exit code.
+
+set -euox pipefail
 
 source "./scripts/tests/lib.sh"
 
