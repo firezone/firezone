@@ -532,6 +532,8 @@ impl Controller {
                 tracing::debug!(
                     "Applied new settings. Log level will take effect immediately for the GUI and later for the IPC service."
                 );
+                // Refresh the menu in case the favorites were reset.
+                self.refresh_system_tray_menu()?;
             }
             Req::ClearLogs => logging::clear_logs_inner()
                 .await
@@ -574,6 +576,10 @@ impl Controller {
                         .context("Couldn't hide Welcome window")?;
                 }
             }
+            Req::SystemTrayMenu(TrayMenuEvent::AddFavorite(resource_id)) => {
+                self.advanced_settings.favorite_resources.insert(resource_id);
+                self.refresh_favorite_resources().await?;
+            },
             Req::SystemTrayMenu(TrayMenuEvent::AdminPortal) => tauri::api::shell::open(
                 &self.app.shell_scope(),
                 &self.advanced_settings.auth_base_url,
@@ -598,6 +604,10 @@ impl Controller {
                     }
                     Status::TunnelReady{..} => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
                 }
+            }
+            Req::SystemTrayMenu(TrayMenuEvent::RemoveFavorite(resource_id)) => {
+                self.advanced_settings.favorite_resources.remove(&resource_id);
+                self.refresh_favorite_resources().await?;
             }
             Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
                 self.show_window(window)?;
@@ -695,6 +705,13 @@ impl Controller {
         }
     }
 
+    /// Saves the current settings (including favorites) to disk and refreshes the tray menu
+    async fn refresh_favorite_resources(&mut self) -> Result<()> {
+        settings::save(&self.advanced_settings).await?;
+        self.refresh_system_tray_menu()?;
+        Ok(())
+    }
+
     /// Builds a new system tray menu and applies it to the app
     fn refresh_system_tray_menu(&mut self) -> Result<()> {
         // TODO: Refactor `Controller` and the auth module so that "Are we logged in?"
@@ -709,6 +726,7 @@ impl Controller {
                 Status::TunnelReady { resources } => {
                     system_tray::AppState::SignedIn(system_tray::SignedIn {
                         actor_name: &auth_session.actor_name,
+                        favorite_resources: &self.advanced_settings.favorite_resources,
                         resources,
                     })
                 }

@@ -18,6 +18,7 @@ atomicwrites = "0.4.3"
 chrono = { workspace = true }
 clap = { version = "4.5", features = ["derive",  "env"] }
 connlib-client-shared = { workspace = true }
+connlib-shared = { workspace = true }
 crash-handler = "0.6.2"
 firezone-bin-shared = { workspace = true }
 firezone-headless-client = { path = "../../headless-client" }

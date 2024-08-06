@@ -15,6 +15,9 @@ export default function GUI({ title }: { title: string }) {
       {/*
       <Entry version="1.1.10" date={new Date("Invalid date")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="5923">
+            Adds the ability to mark Resources as favorites.
+          </ChangeItem>
           <ChangeItem enable={title === "Linux GUI"} pull="6163">
             Supports using `etc-resolv-conf` DNS control method, or disabling DNS control
           </ChangeItem>
