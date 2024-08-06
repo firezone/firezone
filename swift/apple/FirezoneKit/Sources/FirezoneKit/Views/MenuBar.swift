@@ -433,6 +433,7 @@ public final class MenuBar: NSObject, ObservableObject {
     let siteSectionItem = NSMenuItem()
     let siteNameItem = NSMenuItem()
     let siteStatusItem = NSMenuItem()
+    let toggleFavoriteItem = NSMenuItem()
 
 
     // AddressDescription first -- will be most common action
@@ -483,6 +484,9 @@ public final class MenuBar: NSObject, ObservableObject {
     resourceAddressItem.isEnabled = true
     resourceAddressItem.target = self
     subMenu.addItem(resourceAddressItem)
+
+    toggleFavoriteItem.title = "Toggle favorite"
+    subMenu.addItem(toggleFavoriteItem)
 
     // Site details
     if let site = resource.sites.first {
