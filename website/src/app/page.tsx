@@ -113,7 +113,7 @@ export default function Page() {
 
       {/* Feature section 1: Secure access to your most sensitive resources in minutes. */}
       <section className="bg-white md:px-16 px-4 py-20 md:py-16">
-        <ElevatorPitch/>
+        <ElevatorPitch />
         {/* <div className="flex flex-col max-w-[600px]">
           <div className="sm:mx-auto mb-4 text-4xl md:text-6xl text-pretty text-left ">
             <h3 className=" tracking-tight font-bold inline-block">
