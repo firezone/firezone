@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { HiCheck, HiXMark } from "react-icons/hi2";
+import { HiArrowLongRight, HiCheck, HiXMark } from "react-icons/hi2";
 import { manrope } from "@/lib/fonts";
 
 export default function BattleCard2() {
@@ -9,7 +9,7 @@ export default function BattleCard2() {
       <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide ">
         Features
       </h6>
-      <h3 className="text-4xl md:text-5xl tracking-tight font-bold inline-block text-center my-2">
+      <h3 className=" text-3xl md:text-4xl lg:text-5xl tracking-tight font-bold inline-block text-center my-2">
         Why choose
         <span className="text-primary-450"> Firezone?</span>
       </h3>
@@ -68,8 +68,12 @@ export default function BattleCard2() {
               <HiCheck className="text-2xl text-green-600" />
             </li>
             <li className="py-3 px-6 ">
-              <button className="bg-accent-500 text-nowrap rounded-xl text-white px-8 py-4">
-                Book a Demo
+              <button
+                type="button"
+                className="bg-accent-500 text-nowrap rounded-lg group lg:text-lg text-md inline-flex justify-center items-center lg:py-3 py-2 px-5 font-semibold text-center text-white hover:ring-1 hover:ring-accent-500 duration-50 transform transition"
+              >
+                <Link href="/contact/sales">Book a demo</Link>
+                <HiArrowLongRight className="group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-7 h-7" />
               </button>
             </li>
           </ul>

@@ -12,7 +12,7 @@ import {
 import { HiLightningBolt, HiGlobe } from "react-icons/hi";
 
 export default function ElevatorPitch() {
-  const [selectedOption, setSelectedOption] = useState(0);
+  const [selectedOption, setSelectedOption] = useState(5);
 
   const data = [
     {
@@ -49,7 +49,7 @@ export default function ElevatorPitch() {
   const OptionButton = ({ title, desc, icon, index }: OptionButtonProps) => {
     return (
       <button
-        className={`flex flex-col lg:flex-row lg:w-full rounded-xl items-start lg:items-center p-5 gap-4 border-[1px] justify-center lg:justify-start transition duration-200 ease-in-out ${
+        className={`flex flex-col lg:flex-row lg:w-full pointer-events-none rounded-xl items-start lg:items-center p-5 gap-4 border-[1px] justify-center lg:justify-start transition duration-200 ease-in-out ${
           manrope.className
         } ${
           selectedOption == index
