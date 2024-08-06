@@ -1,14 +1,16 @@
 use super::{
     sim_net::{host, Host},
     strategies::latency,
-    sut::hickory_name_to_domain,
 };
 use connlib_shared::DomainName;
-use firezone_relay::IpStack;
-use hickory_proto::{
-    op::Message,
-    rr::{RData, Record, RecordType},
+use domain::{
+    base::{
+        iana::{Class, Rcode},
+        Message, MessageBuilder, Record, Rtype, ToName as _, Ttl,
+    },
+    rdata::AllRecordData,
 };
+use firezone_relay::IpStack;
 use proptest::{
     arbitrary::any,
     strategy::{Just, Strategy},
@@ -52,38 +54,40 @@ impl SimDns {
         transmit: Transmit,
         _now: Instant,
     ) -> Option<Transmit<'static>> {
-        let mut query = Message::from_vec(&transmit.payload).ok()?;
+        let query = Message::from_octets(&transmit.payload).ok()?;
 
-        let mut response = Message::new();
-        response.set_id(query.id());
-        response.set_message_type(hickory_proto::op::MessageType::Response);
+        let response = MessageBuilder::new_vec();
+        let mut answers = response.start_answer(&query, Rcode::NOERROR).unwrap();
 
-        for query in query.take_queries() {
-            response.add_query(query.clone());
+        for query in query.question() {
+            let query = query.unwrap();
+            let name = query.qname().to_vec();
 
             let records = global_dns_records
-                .get(&hickory_name_to_domain(query.name().clone()))
-                .cloned()
+                .get(&name)
                 .into_iter()
                 .flatten()
                 .filter(|ip| {
                     #[allow(clippy::wildcard_enum_match_arm)]
-                    match query.query_type() {
-                        RecordType::A => ip.is_ipv4(),
-                        RecordType::AAAA => ip.is_ipv6(),
+                    match query.qtype() {
+                        Rtype::A => ip.is_ipv4(),
+                        Rtype::AAAA => ip.is_ipv6(),
                         _ => todo!(),
                     }
                 })
+                .copied()
                 .map(|ip| match ip {
-                    IpAddr::V4(v4) => RData::A(v4.into()),
-                    IpAddr::V6(v6) => RData::AAAA(v6.into()),
+                    IpAddr::V4(v4) => AllRecordData::<Vec<_>, DomainName>::A(v4.into()),
+                    IpAddr::V6(v6) => AllRecordData::<Vec<_>, DomainName>::Aaaa(v6.into()),
                 })
-                .map(|rdata| Record::from_rdata(query.name().clone(), 86400_u32, rdata));
+                .map(|rdata| Record::new(name.clone(), Class::IN, Ttl::from_days(1), rdata));
 
-            response.add_answers(records);
+            for record in records {
+                answers.push(record).unwrap();
+            }
         }
 
-        let payload = response.to_vec().unwrap();
+        let payload = answers.finish();
 
         Some(Transmit {
             src: Some(transmit.dst),

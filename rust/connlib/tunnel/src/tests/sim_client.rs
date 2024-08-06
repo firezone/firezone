@@ -3,10 +3,9 @@ use super::{
     sim_net::{any_ip_stack, any_port, host, Host},
     sim_relay::{map_explode, SimRelay},
     strategies::latency,
-    sut::domain_to_hickory_name,
     IcmpIdentifier, IcmpSeq, QueryId,
 };
-use crate::{tests::sut::hickory_name_to_domain, ClientState};
+use crate::ClientState;
 use bimap::BiMap;
 use connlib_shared::{
     messages::{
@@ -16,10 +15,9 @@ use connlib_shared::{
     proptest::{client_id, domain_name},
     DomainName,
 };
-use hickory_proto::{
-    op::MessageType,
-    rr::{rdata, RData, RecordType},
-    serialize::binary::BinDecodable as _,
+use domain::{
+    base::{Message, Rtype, ToName},
+    rdata::AllRecordData,
 };
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
@@ -80,7 +78,7 @@ impl SimClient {
     pub(crate) fn send_dns_query_for(
         &mut self,
         domain: DomainName,
-        r_type: RecordType,
+        r_type: Rtype,
         query_id: u16,
         dns_server: SocketAddr,
         now: Instant,
@@ -92,15 +90,13 @@ impl SimClient {
 
         tracing::debug!(%dns_server, %domain, "Sending DNS query");
 
-        let name = domain_to_hickory_name(domain);
-
         let src = self
             .sut
             .tunnel_ip_for(dns_server)
             .expect("tunnel should be initialised");
 
         let packet = ip_packet::make::dns_query(
-            name,
+            domain,
             r_type,
             SocketAddr::new(src, 9999), // An application would pick a random source port that is free.
             SocketAddr::new(dns_server, 53),
@@ -130,14 +126,13 @@ impl SimClient {
             let packet = packet.to_owned().into_immutable();
 
             if let Some(udp) = packet.as_udp() {
-                if let Ok(message) = hickory_proto::op::Message::from_bytes(udp.payload()) {
-                    debug_assert_eq!(
-                        message.message_type(),
-                        MessageType::Query,
+                if let Ok(message) = Message::from_slice(udp.payload()) {
+                    debug_assert!(
+                        !message.header().qr(),
                         "every DNS message sent from the client should be a DNS query"
                     );
 
-                    self.sent_dns_queries.insert(message.id(), packet);
+                    self.sent_dns_queries.insert(message.header().id(), packet);
                 }
             }
         }
@@ -175,18 +170,24 @@ impl SimClient {
 
         if let Some(udp) = packet.as_udp() {
             if udp.get_source() == 53 {
-                let mut message = hickory_proto::op::Message::from_bytes(udp.payload())
+                let message = Message::from_slice(udp.payload())
                     .expect("ip packets on port 53 to be DNS packets");
 
                 self.received_dns_responses
-                    .insert(message.id(), packet.to_owned());
+                    .insert(message.header().id(), packet.to_owned());
 
-                for record in message.take_answers().into_iter() {
-                    let domain = hickory_name_to_domain(record.name().clone());
+                for record in message.answer().unwrap() {
+                    let record = record.unwrap();
+                    let domain = record.owner().to_name();
 
-                    let ip = match record.data() {
-                        Some(RData::A(rdata::A(ip4))) => IpAddr::from(*ip4),
-                        Some(RData::AAAA(rdata::AAAA(ip6))) => IpAddr::from(*ip6),
+                    #[allow(clippy::wildcard_enum_match_arm)]
+                    let ip = match record
+                        .into_any_record::<AllRecordData<_, _>>()
+                        .unwrap()
+                        .data()
+                    {
+                        AllRecordData::A(a) => IpAddr::from(a.addr()),
+                        AllRecordData::Aaaa(aaaa) => IpAddr::from(aaaa.addr()),
                         unhandled => {
                             panic!("Unexpected record data: {unhandled:?}")
                         }
@@ -253,7 +254,7 @@ pub struct RefClient {
     /// The IPs assigned to a domain by connlib are an implementation detail that we don't want to model in these tests.
     /// Instead, we just remember what _kind_ of records we resolved to be able to sample a matching src IP.
     #[derivative(Debug = "ignore")]
-    pub(crate) dns_records: BTreeMap<DomainName, HashSet<RecordType>>,
+    pub(crate) dns_records: BTreeMap<DomainName, HashSet<Rtype>>,
 
     /// Whether we are connected to the gateway serving the Internet resource.
     pub(crate) connected_internet_resources: bool,
@@ -481,7 +482,7 @@ impl RefClient {
             .find(|id| !self.disabled_resources.contains(id))
     }
 
-    fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, HashSet<RecordType>)> + '_ {
+    fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, HashSet<Rtype>)> + '_ {
         self.dns_records
             .iter()
             .filter(|(domain, _)| self.dns_resource_by_domain(domain).is_some())
@@ -502,7 +503,7 @@ impl RefClient {
             .filter_map(|(domain, records)| {
                 records
                     .iter()
-                    .any(|r| matches!(r, RecordType::A))
+                    .any(|r| matches!(r, &Rtype::A))
                     .then_some(domain)
             })
             .collect()
@@ -513,7 +514,7 @@ impl RefClient {
             .filter_map(|(domain, records)| {
                 records
                     .iter()
-                    .any(|r| matches!(r, RecordType::AAAA))
+                    .any(|r| matches!(r, &Rtype::AAAA))
                     .then_some(domain)
             })
             .collect()

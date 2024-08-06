@@ -24,7 +24,6 @@ use std::iter;
 use std::{
     collections::{BTreeMap, HashSet},
     net::IpAddr,
-    str::FromStr as _,
     time::{Duration, Instant},
 };
 use tracing::debug_span;
@@ -822,23 +821,4 @@ fn on_gateway_event(
         }),
         GatewayEvent::RefreshDns { .. } => todo!(),
     }
-}
-
-pub(crate) fn hickory_name_to_domain(mut name: hickory_proto::rr::Name) -> DomainName {
-    name.set_fqdn(false); // Hack to work around hickory always parsing as FQ
-    let name = name.to_string();
-
-    let domain = DomainName::from_chars(name.chars()).unwrap();
-    debug_assert_eq!(name, domain.to_string());
-
-    domain
-}
-
-pub(crate) fn domain_to_hickory_name(domain: DomainName) -> hickory_proto::rr::Name {
-    let domain = domain.to_string();
-
-    let name = hickory_proto::rr::Name::from_str(&domain).unwrap();
-    debug_assert_eq!(name.to_string(), domain);
-
-    name
 }

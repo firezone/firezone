@@ -6,7 +6,7 @@ use connlib_shared::{
     messages::{client::ResourceDescription, DnsServer, RelayId, ResourceId},
     DomainName,
 };
-use hickory_proto::rr::RecordType;
+use domain::base::Rtype;
 use proptest::{prelude::*, sample};
 use std::{
     collections::{BTreeMap, HashSet},
@@ -53,7 +53,7 @@ pub(crate) enum Transition {
     SendDnsQuery {
         domain: DomainName,
         /// The type of DNS query we should send.
-        r_type: RecordType,
+        r_type: Rtype,
         /// The DNS query ID.
         query_id: u16,
         dns_server: SocketAddr,
@@ -168,7 +168,7 @@ where
     (
         domain,
         dns_server.prop_map_into(),
-        prop_oneof![Just(RecordType::A), Just(RecordType::AAAA)],
+        prop_oneof![Just(Rtype::A), Just(Rtype::AAAA)],
         any::<u16>(),
     )
         .prop_map(

@@ -10,7 +10,7 @@ use connlib_shared::{
     },
     DomainName, StaticSecret,
 };
-use hickory_proto::rr::RecordType;
+use domain::base::Rtype;
 use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;
 use std::{
@@ -524,8 +524,8 @@ impl ReferenceStateMachine for ReferenceState {
 
                 ref_client.is_valid_icmp_packet(seq, identifier)
                     && ref_client.dns_records.get(dst).is_some_and(|r| match src {
-                        IpAddr::V4(_) => r.contains(&RecordType::A),
-                        IpAddr::V6(_) => r.contains(&RecordType::AAAA),
+                        IpAddr::V4(_) => r.contains(&Rtype::A),
+                        IpAddr::V6(_) => r.contains(&Rtype::AAAA),
                     })
                     && state.gateways.contains_key(gateway)
             }

@@ -15,8 +15,6 @@ futures =  { version = "0.3", default-features = false, features = ["std", "asyn
 futures-bounded = { workspace = true }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
 hex = "0.4.3"
-hickory-proto = { workspace = true }
-hickory-resolver = { workspace = true, features = ["tokio-runtime"] }
 ip-packet = { workspace = true }
 ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
@@ -27,7 +25,7 @@ rangemap = "1.5.1"
 secrecy = { workspace = true }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 snownet = { workspace = true }
-socket-factory = { workspace = true, features = ["hickory"] }
+socket-factory = { workspace = true }
 socket2 = { workspace = true }
 thiserror = { version = "1.0", default-features = false }
 tokio = { workspace = true }
@@ -38,7 +36,6 @@ uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
 [dev-dependencies]
 derivative = "2.2.0"
 firezone-relay = { workspace = true, features = ["proptest"] }
-hickory-proto = { workspace = true }
 ip-packet = { workspace = true, features = ["proptest"] }
 proptest-state-machine = "0.3"
 rand = "0.8"
