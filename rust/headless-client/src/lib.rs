@@ -181,7 +181,7 @@ mod tests {
     fn callback_msg_size() {
         assert_eq!(std::mem::size_of::<InternalServerMsg>(), 56)
     }
-  
+
     #[test]
     #[cfg(target_os = "linux")]
     fn dns_control() {
