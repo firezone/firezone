@@ -38,7 +38,7 @@ SystemCallFilter=@aio @basic-io @file-system @io-event @ipc @network-io @signal 
 UMask=077
 
 Environment="LOG_DIR=/var/log/dev.firezone.client"
-EnvironmentFile="/etc/default/firezone-client-ipc"
+EnvironmentFile=-/etc/default/firezone-client-ipc
 
 ExecStart=firezone-client-ipc run
 Type=notify
