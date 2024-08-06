@@ -5,7 +5,11 @@ import Image from "next/image";
 import { ReactNode, useState } from "react";
 import { manrope } from "@/lib/fonts";
 import type { CustomFlowbiteTheme } from "flowbite-react";
-import { HiMiniShieldCheck } from "react-icons/hi2";
+import {
+  HiMiniShieldCheck,
+  HiMiniPresentationChartLine,
+} from "react-icons/hi2";
+import { HiLightningBolt, HiGlobe } from "react-icons/hi";
 
 export default function ElevatorPitch() {
   const [selectedOption, setSelectedOption] = useState(0);
@@ -14,29 +18,31 @@ export default function ElevatorPitch() {
     {
       title: "Built on WireGuard®",
       desc: "Control access to VPCs, subnets, hosts by IP or DNS, and public SaaS apps.",
-      icon: <HiMiniShieldCheck className="min-w-8 h-8 text-primary-400" />,
+      icon: <HiLightningBolt className="min-w-8 h-8 text-primary-400" />,
     },
     {
       title: "Scales with your business.",
       desc: "Deploy two or more gateways for automatic load balancing and failover.",
-      icon: <HiMiniShieldCheck className="min-w-8 h-8 text-primary-400" />,
+      icon: (
+        <HiMiniPresentationChartLine className="min-w-8 h-8 text-primary-400" />
+      ),
     },
     {
-      title: "Fully protected.",
-      desc: "Zero attack surface thanks to Firezone's holepunching tech which establishes tunnels on-the-fly at the time of access.",
+      title: "Zero attack surface.",
+      desc: "Firezone's holepunching tech establishes tunnels on-the-fly at the time of access.",
       icon: <HiMiniShieldCheck className="min-w-8 h-8 text-primary-400" />,
     },
     {
       title: "Open source for full transparency.",
       desc: "Our entire product is open-source, allowing anyone to audit the codebase.",
-      icon: <HiMiniShieldCheck className="min-w-8 h-8 text-primary-400" />,
+      icon: <HiGlobe className="min-w-8 h-8 text-primary-400" />,
     },
   ];
 
   interface OptionButtonProps {
     title: string;
     desc: string;
-    icon?: ReactNode;
+    icon: ReactNode;
     index: number;
   }
 
@@ -64,7 +70,7 @@ export default function ElevatorPitch() {
   };
 
   return (
-    <div className="flex flex-col max-w-[600px]">
+    <div className="flex flex-col max-w-[580px]">
       <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-4">
         Stay Connected
       </h6>

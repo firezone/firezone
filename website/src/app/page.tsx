@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import ActionLink from "@/components/ActionLink";
-import BattleCard from "@/components/BattleCard";
+import BattleCard2 from "@/components/BattleCard2";
 import { RunaCap } from "@/components/Badges";
 import { Metadata } from "next";
 import { CustomerLogosGrayscale } from "@/components/CustomerLogos";
@@ -113,10 +113,13 @@ export default function Page() {
 
       {/* Feature section 1: Secure access to your most sensitive resources in minutes. */}
       <section className="bg-white md:px-16 px-4 py-20 md:py-16">
-        <div className="flex w-full justify-between items-center mt-8 md:mt-16 max-w-screen-2xl">
+        <div className="flex w-full md:flex-row flex-col justify-center gap-24 items-center my-16 md:mt-16 max-w-screen-2xl">
           <ElevatorPitch />
-          <div className="w-[40%] h-[600px] bg-slate-200" />
+          <div className="w-full md:w-[40%] h-[600px] bg-gradient-to-b from-[#FFF0E3] to-[#ECE4FF] rounded-lg" />
         </div>
+        <section className="border-t border-neutral-200 py-24 bg-white">
+          <BattleCard2 />
+        </section>
 
         <div className="flex justify-center items-center px-4 mx-auto mt-8 md:mt-16 max-w-screen-lg">
           <UpgradeDiagram />
@@ -695,10 +698,6 @@ export default function Page() {
             </ActionLink>
           </div>
         </div>
-      </section>
-
-      <section className="border-t border-neutral-200 py-24 bg-white">
-        <BattleCard />
       </section>
     </>
   );
