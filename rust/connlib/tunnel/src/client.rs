@@ -139,17 +139,12 @@ impl ClientTunnel {
     pub fn set_new_dns(&mut self, new_dns: Vec<IpAddr>) {
         // We store the sentinel dns both in the config and in the system's resolvers
         // but when we calculate the dns mapping, those are ignored.
-        let _ = self.role_state.update_system_resolvers(new_dns);
+        self.role_state.update_system_resolvers(new_dns);
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_new_interface_config(
-        &mut self,
-        config: InterfaceConfig,
-    ) -> connlib_shared::Result<()> {
-        let _ = self.role_state.update_interface_config(config);
-
-        Ok(())
+    pub fn set_new_interface_config(&mut self, config: InterfaceConfig) {
+        self.role_state.update_interface_config(config);
     }
 
     pub fn cleanup_connection(&mut self, id: ResourceId) {
@@ -826,15 +821,13 @@ impl ClientState {
             .filter(|resource| self.is_resource_enabled(resource))
     }
 
-    #[must_use]
-    pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> bool {
+    pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
         self.system_resolvers = new_dns;
 
         self.update_dns_mapping()
     }
 
-    #[must_use]
-    pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) -> bool {
+    pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) {
         self.interface_config = Some(config);
 
         self.update_dns_mapping()
@@ -1059,9 +1052,11 @@ impl ClientState {
         self.resources_gateways.remove(&id);
     }
 
-    fn update_dns_mapping(&mut self) -> bool {
+    fn update_dns_mapping(&mut self) {
         let Some(config) = &self.interface_config else {
-            return false;
+            tracing::debug!("Unable to update DNS servesr without interface configuration");
+
+            return;
         };
 
         let effective_dns_servers =
@@ -1070,7 +1065,9 @@ impl ClientState {
         if HashSet::<&DnsServer>::from_iter(effective_dns_servers.iter())
             == HashSet::from_iter(self.dns_mapping.right_values())
         {
-            return false;
+            tracing::debug!("Effective DNS servers are unchanged");
+
+            return;
         }
 
         let dns_mapping = sentinel_dns_mapping(
@@ -1102,8 +1099,6 @@ impl ClientState {
                 ip4: self.routes().filter_map(utils::ipv4).collect(),
                 ip6: self.routes().filter_map(utils::ipv6).collect(),
             });
-
-        true
     }
 
     pub fn update_relays(
@@ -1376,9 +1371,8 @@ mod tests {
         let mut client_state = ClientState::for_test();
         client_state.interface_config = Some(interface_config_without_dns());
 
-        let dns_changed = client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
+        client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
 
-        assert!(dns_changed);
         dns_mapping_is_exactly(client_state.dns_mapping(), vec![dns("1.1.1.1:53")]);
     }
 
@@ -1387,10 +1381,9 @@ mod tests {
         let mut client_state = ClientState::for_test();
         client_state.interface_config = Some(interface_config_without_dns());
 
-        let _ = client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
-        let dns_changed = client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
+        client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
+        client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
 
-        assert!(!dns_changed);
         dns_mapping_is_exactly(client_state.dns_mapping(), vec![dns("1.1.1.1:53")]);
     }
 
@@ -1399,10 +1392,9 @@ mod tests {
         let mut client_state = ClientState::for_test();
         client_state.interface_config = Some(interface_config_without_dns());
 
-        let _ = client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
-        let dns_changed = client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
+        client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
+        client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
 
-        assert!(dns_changed);
         dns_mapping_is_exactly(client_state.dns_mapping(), vec![dns("1.0.0.1:53")]);
     }
 
@@ -1411,14 +1403,13 @@ mod tests {
         let mut client_state = ClientState::for_test();
         client_state.interface_config = Some(interface_config_without_dns());
 
-        let _ = client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
-        let dns_changed = client_state.update_system_resolvers(vec![
+        client_state.update_system_resolvers(vec![ip("1.1.1.1")]);
+        client_state.update_system_resolvers(vec![
             ip("1.1.1.1"),
             ip("100.100.111.1"),
             ip("fd00:2021:1111:8000:100:100:111:0"),
         ]);
 
-        assert!(!dns_changed);
         dns_mapping_is_exactly(client_state.dns_mapping(), vec![dns("1.1.1.1:53")]);
     }
 
@@ -1427,11 +1418,9 @@ mod tests {
         let mut client_state = ClientState::for_test();
         client_state.interface_config = Some(interface_config_with_dns());
 
-        let dns_changed = client_state.update_dns_mapping();
-        assert!(dns_changed);
+        client_state.update_dns_mapping();
 
-        let dns_changed = client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
-        assert!(!dns_changed);
+        client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
 
         dns_mapping_is_exactly(client_state.dns_mapping(), dns_list());
     }
@@ -1440,16 +1429,12 @@ mod tests {
     fn upstream_dns_change_updates() {
         let mut client_state = ClientState::for_test();
 
-        let dns_changed = client_state.update_interface_config(interface_config_with_dns());
+        client_state.update_interface_config(interface_config_with_dns());
 
-        assert!(dns_changed);
-
-        let dns_changed = client_state.update_interface_config(InterfaceConfig {
+        client_state.update_interface_config(InterfaceConfig {
             upstream_dns: vec![dns("8.8.8.8:53")],
             ..interface_config_without_dns()
         });
-
-        assert!(dns_changed);
 
         dns_mapping_is_exactly(client_state.dns_mapping(), vec![dns("8.8.8.8:53")]);
     }
@@ -1459,13 +1444,10 @@ mod tests {
         let mut client_state = ClientState::for_test();
         client_state.interface_config = Some(interface_config_with_dns());
 
-        let dns_changed = client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
+        client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
 
-        assert!(dns_changed);
+        client_state.update_interface_config(interface_config_with_dns());
 
-        let dns_changed = client_state.update_interface_config(interface_config_with_dns());
-
-        assert!(!dns_changed);
         dns_mapping_is_exactly(client_state.dns_mapping(), dns_list());
     }
 
@@ -1474,28 +1456,26 @@ mod tests {
         let mut client_state = ClientState::for_test();
         let mut config = interface_config_with_dns();
 
-        let _ = client_state.update_interface_config(config.clone());
+        client_state.update_interface_config(config.clone());
 
         config.upstream_dns.push(dns("100.100.111.1:53"));
         config
             .upstream_dns
             .push(dns("[fd00:2021:1111:8000:100:100:111:0]:53"));
 
-        let dns_changed = client_state.update_interface_config(config);
+        client_state.update_interface_config(config);
 
-        assert!(!dns_changed);
         dns_mapping_is_exactly(client_state.dns_mapping(), dns_list())
     }
 
     #[test]
     fn system_dns_takes_over_when_upstream_are_unset() {
         let mut client_state = ClientState::for_test();
-        let _ = client_state.update_interface_config(interface_config_with_dns());
+        client_state.update_interface_config(interface_config_with_dns());
 
-        let _ = client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
-        let dns_changed = client_state.update_interface_config(interface_config_without_dns());
+        client_state.update_system_resolvers(vec![ip("1.0.0.1")]);
+        client_state.update_interface_config(interface_config_without_dns());
 
-        assert!(dns_changed);
         dns_mapping_is_exactly(client_state.dns_mapping(), vec![dns("1.0.0.1:53")]);
     }
 

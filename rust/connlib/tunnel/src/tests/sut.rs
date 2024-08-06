@@ -265,7 +265,7 @@ impl StateMachineTest for TunnelTest {
 
                 // Simulate receiving `init`.
                 state.client.exec_mut(|c| {
-                    let _ = c.sut.update_interface_config(Interface {
+                    c.sut.update_interface_config(Interface {
                         ipv4,
                         ipv6,
                         upstream_dns,

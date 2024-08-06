@@ -291,12 +291,12 @@ impl RefClient {
         assert!(self.system_dns_resolvers.is_empty());
 
         let mut client_state = ClientState::new(self.key, self.known_hosts, self.key.0); // Cheating a bit here by reusing the key as seed.
-        let _ = client_state.update_interface_config(Interface {
+        client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,
             upstream_dns: vec![],
         });
-        let _ = client_state.update_system_resolvers(vec![]);
+        client_state.update_system_resolvers(vec![]);
 
         SimClient::new(self.id, client_state)
     }
