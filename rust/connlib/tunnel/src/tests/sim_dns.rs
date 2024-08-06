@@ -59,35 +59,35 @@ impl SimDns {
         let response = MessageBuilder::new_vec();
         let mut answers = response.start_answer(&query, Rcode::NOERROR).unwrap();
 
-        for query in query.question() {
-            let query = query.unwrap();
-            let name = query.qname().to_vec();
+        let query = query.sole_question().unwrap();
+        let name = query.qname().to_vec();
 
-            let records = global_dns_records
-                .get(&name)
-                .into_iter()
-                .flatten()
-                .filter(|ip| {
-                    #[allow(clippy::wildcard_enum_match_arm)]
-                    match query.qtype() {
-                        Rtype::A => ip.is_ipv4(),
-                        Rtype::AAAA => ip.is_ipv6(),
-                        _ => todo!(),
-                    }
-                })
-                .copied()
-                .map(|ip| match ip {
-                    IpAddr::V4(v4) => AllRecordData::<Vec<_>, DomainName>::A(v4.into()),
-                    IpAddr::V6(v6) => AllRecordData::<Vec<_>, DomainName>::Aaaa(v6.into()),
-                })
-                .map(|rdata| Record::new(name.clone(), Class::IN, Ttl::from_days(1), rdata));
+        let records = global_dns_records
+            .get(&name)
+            .into_iter()
+            .flatten()
+            .filter(|ip| {
+                #[allow(clippy::wildcard_enum_match_arm)]
+                match query.qtype() {
+                    Rtype::A => ip.is_ipv4(),
+                    Rtype::AAAA => ip.is_ipv6(),
+                    _ => todo!(),
+                }
+            })
+            .copied()
+            .map(|ip| match ip {
+                IpAddr::V4(v4) => AllRecordData::<Vec<_>, DomainName>::A(v4.into()),
+                IpAddr::V6(v6) => AllRecordData::<Vec<_>, DomainName>::Aaaa(v6.into()),
+            })
+            .map(|rdata| Record::new(name.clone(), Class::IN, Ttl::from_days(1), rdata));
 
-            for record in records {
-                answers.push(record).unwrap();
-            }
+        for record in records {
+            answers.push(record).unwrap();
         }
 
         let payload = answers.finish();
+
+        tracing::debug!(%name, "Responding to DNS query");
 
         Some(Transmit {
             src: Some(transmit.dst),
