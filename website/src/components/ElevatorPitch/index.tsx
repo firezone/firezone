@@ -16,8 +16,8 @@ export default function ElevatorPitch() {
 
   const data = [
     {
-      title: "Built on WireGuard®",
-      desc: "Control access to VPCs, subnets, hosts by IP or DNS, and public SaaS apps.",
+      title: "Fast and secure.",
+      desc: "Built on WireGuard® to be 3-4 times faster than OpenVPN.",
       icon: <HiLightningBolt className="min-w-8 h-8 text-primary-400" />,
     },
     {
