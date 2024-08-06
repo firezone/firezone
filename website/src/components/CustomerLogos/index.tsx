@@ -10,7 +10,7 @@ export function CustomerLogosGrayscale() {
           "linear-gradient(to right, rgba(0, 0, 0, 0) 0%, rgb(0, 0, 0) 35%, rgb(0, 0, 0) 65%, rgba(0, 0, 0, 0) 100%)",
       }}
     >
-      <div className="mx-8 grid grid-cols-3 md:grid-cols-7 gap-8">
+      <div className="mx-8 grid grid-cols-3 md:grid-cols-7 gap-4">
         <div className="content-center">
           <Link href="https://corrdyn.com">
             <Image
@@ -77,7 +77,7 @@ export function CustomerLogosGrayscale() {
             />
           </Link>
         </div>
-        <div className="content-center col-start-2 md:col-auto">
+        <div className="content-center col-start-2 md:col-auto hidden md:block">
           <Link href="https://double11.co.uk">
             <Image
               alt="double11 logo"

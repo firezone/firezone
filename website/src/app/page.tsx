@@ -63,30 +63,31 @@ export default function Page() {
           </h1>
           <h3
             className={
-              manrope.className +
-              " md:mt-0 my-4 text-xl text-center text-neutral-400"
+              manrope.className + "my-4 text-xl text-center text-neutral-400"
             }
           >
             Firezone is a fast, flexible VPN replacement built on WireGuard®
             that protects your workforce without tedious configuration.
           </h3>
-          <div className="md:flex md:gap-x-12 mt-4 mx-auto">
-            <div className="my-4 mr-4 flex items-center">
-              <Link
-                href="https://app.firezone.dev/sign_up"
-                className="text-neutral-300 group inline-flex items-center py-0.5 text-lg font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
-              >
-                Get started for free
-                <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
-              </Link>
-            </div>
-            <div className="mt-8 md:mt-0 flex items-center">
+          <div className="flex sm:flex-row flex-col-reverse items-center justify-center sm:gap-x-6 md:gap-x-12 mt-4 w-full">
+            <div className="flex items-center my-4 mr-4">
               <button
                 type="button"
-                className="group shadow-lg shadow-primary-700 text-lg w-48 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
+                className="group text-neutral-300 inline-flex justify-center items-center py-2 md:text-lg text-md font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 duration-50 transform transition"
+              >
+                <Link href="https://app.firezone.dev/sign_up">
+                  Get started for free
+                </Link>
+                <HiArrowLongRight className="group-hover:text-primary-450 group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-7 h-7" />
+              </button>
+            </div>
+            <div className=" flex items-center w-full sm:w-fit">
+              <button
+                type="button"
+                className="group shadow-primary-700 md:text-lg text-md sm:w-48 w-full inline-flex shadow-lg justify-center items-center md:py-3 py-2 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
               >
                 <Link href="/contact/sales">Book a demo</Link>
-                <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-7 h-7" />
+                <HiArrowLongRight className="group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-7 h-7" />
               </button>
             </div>
           </div>
@@ -111,7 +112,7 @@ export default function Page() {
 
       {/* Feature section 1: Secure access to your most sensitive resources in minutes. */}
       <section className="bg-white py-20 md:py-16">
-        <div className="sm:mx-auto px-16 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty sm:text-center">
+        <div className="sm:mx-auto md:px-16 px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty text-center">
           <h3 className=" tracking-tight font-bold inline-block">
             Supercharge your workforce in{" "}
             <span className="text-primary-450">minutes</span>.
@@ -119,7 +120,7 @@ export default function Page() {
         </div>
 
         <div className="mx-auto px-4 max-w-screen-md">
-          <p className="text-md md:text-xl sm:text-center tracking-tight">
+          <p className="text-md md:text-xl text-center tracking-tight text-pretty">
             Replace your obsolete VPN with a modern zero trust upgrade. Firezone
             supports the workflows and access patterns you're already familiar
             with, so you can get started in minutes and incrementally adopt more
@@ -131,7 +132,7 @@ export default function Page() {
           <UpgradeDiagram />
         </div>
 
-        <div className="flex items-stretch mx-auto mt-8 md:mt-16 gap-4 sm:gap-8 max-w-sm md:max-w-screen-lg grid md:grid-cols-3">
+        <div className="items-stretch mx-auto mt-8 md:mt-16 gap-4 sm:gap-8 max-w-sm md:max-w-screen-lg grid md:grid-cols-3">
           <SlideIn
             direction="left"
             delay={0.5}
@@ -150,7 +151,7 @@ export default function Page() {
             direction="left"
             delay={0.75}
             duration={1}
-            className="flex flex-col p-4 justify-center"
+            className="flex flex-col p-4"
           >
             <h4 className="mb-2 md:mb-4 text-md sm:text-lg md:text-xl font-semibold tracking-tight text-primary-450 uppercase">
               Secure
@@ -164,7 +165,7 @@ export default function Page() {
             direction="left"
             delay={1}
             duration={1}
-            className="flex flex-col p-4 justify-center"
+            className="flex flex-col p-4"
           >
             <h4 className="mb-2 md:mb-4 text-md sm:text-lg md:text-xl font-semibold tracking-tight text-primary-450 uppercase">
               Granular
@@ -176,10 +177,11 @@ export default function Page() {
           </SlideIn>
         </div>
 
-        <div className="flex justify-center mt-8 md:mt-16">
+        <div className="flex justify-center mt-8">
           <ActionLink
-            className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+            className="text-md md:text-xl tracking-tight font-medium"
             href="/kb/deploy/resources"
+            color="accent-500"
           >
             Protect your resources
           </ActionLink>
@@ -188,7 +190,7 @@ export default function Page() {
 
       {/* Feature section 2: Achieve compliance in minutes, not weeks. */}
       <section className="bg-white py-20 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty  sm:text-center">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty text-center">
           <h3 className=" tracking-tight font-bold inline-block">
             Achieve compliance{" "}
             <span className="text-primary-450">without </span>
@@ -197,7 +199,7 @@ export default function Page() {
         </div>
 
         <div className="mx-auto px-4 max-w-screen-md">
-          <p className="text-md md:text-xl sm:text-center tracking-tight">
+          <p className="text-md md:text-xl text-center tracking-tight text-pretty">
             Connections are always end-to-end encrypted with keys that rotate
             daily, and are directly established between your Users and Gateways,
             so we can never see your data. Firezone's advanced Policy Engine
@@ -214,8 +216,9 @@ export default function Page() {
 
         <div className="flex justify-center mt-8 md:mt-16">
           <ActionLink
-            className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+            className=" text-md md:text-xl tracking-tight font-medium text-accent-500"
             href="/kb/architecture"
+            color="accent-500"
           >
             Read about Firezone's architecture
           </ActionLink>
@@ -224,7 +227,7 @@ export default function Page() {
 
       {/* Feature section 3: Add 2FA to WireGuard. */}
       <section className="bg-neutral-50 py-20 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty sm:text-center">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty text-center">
           <h3 className=" tracking-tight font-bold inline-block">
             Add <span className="text-primary-450">two-factor </span>
             auth to WireGuard.
@@ -232,7 +235,7 @@ export default function Page() {
         </div>
 
         <div className="mx-auto px-4 max-w-screen-md">
-          <p className="text-md md:text-xl sm:text-center tracking-tight">
+          <p className="text-md md:text-xl text-center tracking-tight text-pretty">
             Looking for 2FA for WireGuard? Look no further. Firezone integrates
             with any OIDC-compatible identity provider to consistently enforce
             multi-factor authentication across your workforce.
@@ -253,8 +256,9 @@ export default function Page() {
 
         <div className="flex justify-center mt-8 md:mt-16">
           <ActionLink
-            className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+            className=" text-md md:text-xl tracking-tight font-medium"
             href="/kb/authenticate"
+            color="accent-500"
           >
             Connect your identity provider
           </ActionLink>
@@ -263,14 +267,14 @@ export default function Page() {
 
       {/* Feature section 4: Say goodbye to bandwidth problems. */}
       <section className="bg-neutral-900 text-neutral-50 py-20 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty sm:text-center">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty text-center">
           <h3 className="tracking-tight font-bold inline-block">
             <Strike>Bandwidth problems.</Strike>
           </h3>
         </div>
 
         <div className="mx-auto mt-8 px-4 max-w-screen-md">
-          <p className="text-md md:text-xl sm:text-center tracking-tight">
+          <p className="text-md md:text-xl text-center tracking-tight text-pretty">
             Eliminate throughput bottlenecks that plague other VPNs. Firezone's
             load-balancing architecture scales horizontally to handle an
             unlimited number of connections to even the most bandwidth-intensive
@@ -284,8 +288,10 @@ export default function Page() {
 
         <div className="flex justify-center mt-4 md:mt-16">
           <ActionLink
-            className="underline hover:no-underline text-md md:text-xl tracking-tight font-semibold text-primary-450"
+            className=" text-md md:text-xl tracking-tight font-semibold "
             href="/kb/use-cases/scale-vpc-access"
+            color="primary-450"
+            transitionColor="white"
           >
             Scale access to your VPCs
           </ActionLink>
@@ -294,7 +300,7 @@ export default function Page() {
 
       {/* Feature section 5: No more open firewall ports. */}
       <section className="bg-white py-20 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty sm:text-center">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty text-center">
           <h3 className="tracking-tight font-bold inline-block">
             Say <span className="text-primary-450">goodbye</span> to firewall
             configuration.
@@ -302,7 +308,7 @@ export default function Page() {
         </div>
 
         <div className="mx-auto px-4 max-w-screen-md">
-          <p className="text-md md:text-xl sm:text-center tracking-tight">
+          <p className="text-md md:text-xl text-center tracking-tight text-pretty">
             Firezone securely punches through firewalls with ease, so keep those
             ports closed. Connections pick the shortest path and your attack
             surface is minimized, keeping your most sensitive resources
@@ -316,8 +322,9 @@ export default function Page() {
 
         <div className="flex justify-center mt-8">
           <ActionLink
-            className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+            className="text-md md:text-xl tracking-tight font-medium"
             href="/kb/deploy"
+            color="accent-500"
           >
             Make your resources invisible
           </ActionLink>
@@ -326,7 +333,7 @@ export default function Page() {
 
       {/* Feature section 6: Runs everywhere your business does. */}
       <section className="bg-neutral-50 py-20 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty sm:text-center">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty text-center">
           <h3 className="tracking-tight font-bold inline-block">
             Runs <span className="text-primary-450">everywhere </span>
             your business does.
@@ -336,42 +343,42 @@ export default function Page() {
         <div className="mx-auto px-4 mt-8 max-w-screen-lg grid sm:grid-cols-2 gap-8 lg:gap-16">
           <div className="flex flex-col p-4">
             <div className="mb-12 grid grid-cols-2 gap-4">
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
                 <AppleIcon size={12} href="/kb/client-apps/macos-client">
                   <span className="inline-block pt-4 w-full text-center">
                     macOS
                   </span>
                 </AppleIcon>
               </div>
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
                 <WindowsIcon size={12} href="/kb/client-apps/windows-client">
                   <span className="inline-block pt-4 w-full text-center">
                     Windows
                   </span>
                 </WindowsIcon>
               </div>
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
                 <LinuxIcon size={12} href="/kb/client-apps/linux-client">
                   <span className="inline-block pt-4 w-full text-center">
                     Linux
                   </span>
                 </LinuxIcon>
               </div>
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
                 <AndroidIcon size={12} href="/kb/client-apps/android-client">
                   <span className="inline-block pt-4 w-full text-center">
                     Android
                   </span>
                 </AndroidIcon>
               </div>
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
                 <ChromeIcon size={12} href="/kb/client-apps/android-client">
                   <span className="inline-block pt-4 w-full text-center">
                     ChromeOS
                   </span>
                 </ChromeIcon>
               </div>
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border border-2 border-neutral-200">
+              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
                 <AppleIcon size={12} href="/kb/client-apps/ios-client">
                   <span className="inline-block pt-4 w-full text-center">
                     iOS
@@ -387,8 +394,9 @@ export default function Page() {
               </p>
               <p className="mt-4">
                 <ActionLink
-                  className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+                  className="text-md md:text-xl tracking-tight font-medium text-accent-500"
                   href="/kb/client-apps"
+                  color="accent-500"
                 >
                   Download Client apps
                 </ActionLink>
@@ -446,8 +454,9 @@ export default function Page() {
               </p>
               <p className="mt-4">
                 <ActionLink
-                  className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+                  className="text-md md:text-xl tracking-tight font-medium text-accent-500"
                   href="/kb/deploy/gateways"
+                  color="accent-500"
                 >
                   Deploy your first Gateway
                 </ActionLink>
@@ -459,7 +468,7 @@ export default function Page() {
 
       {/* Feature section 7: Open source for transparency and trust. */}
       <section className="bg-white py-20 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 sm:text-4xl md:text-6xl text-pretty sm:text-center">
+        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-4xl md:text-6xl text-pretty text-center">
           <h3 className="tracking-tight font-bold inline-block">
             <span className="text-primary-450">Open source</span> for
             transparency and trust.
@@ -467,7 +476,7 @@ export default function Page() {
         </div>
 
         <div className="mx-auto px-4 max-w-screen-md">
-          <p className="text-md md:text-xl sm:text-center tracking-tight">
+          <p className="text-md md:text-xl text-center tracking-tight text-pretty">
             How can you trust a zero-trust solution if you can't see its source?
             We build Firezone in the open so anyone can make sure it does
             exactly what we claim it does, and nothing more.
@@ -490,8 +499,9 @@ export default function Page() {
             </div>
             <div className="mx-auto w-64 mb-8 inline-flex justify-center">
               <ActionLink
-                className="flex underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+                className="flex text-md md:text-xl tracking-tight font-medium text-accent-500"
                 href="https://www.github.com/firezone/firezone"
+                color="accent-500"
               >
                 Leave us a star
               </ActionLink>
@@ -697,8 +707,9 @@ export default function Page() {
           </div>
           <div className="flex justify-center mt-8 md:mt-16">
             <ActionLink
-              className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+              className="text-md md:text-xl tracking-tight font-medium text-accent-500"
               href="/kb/use-cases"
+              color="accent-500"
             >
               See more use cases
             </ActionLink>
