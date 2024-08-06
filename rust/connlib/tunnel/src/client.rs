@@ -21,8 +21,10 @@ use itertools::Itertools;
 use crate::peer::GatewayOnClient;
 use crate::utils::{self, earliest, turn};
 use crate::{ClientEvent, ClientTunnel, Tun};
+use domain::base::Message;
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::{ClientNode, RelaySocket};
+use snownet::{ClientNode, RelaySocket, Transmit};
+use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
@@ -264,6 +266,11 @@ pub struct ClientState {
     ///
     /// The [`Instant`] tracks when the DNS query expires.
     mangled_dns_queries: HashMap<u16, Instant>,
+    /// DNS queries that were forwarded to an upstream server.
+    ///
+    /// - The [`SocketAddr`] is the original source IP.
+    /// - The [`Instant`] tracks when the DNS query expires.
+    forwarded_dns_queries: HashMap<u16, (SocketAddr, Instant)>,
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
 
@@ -275,6 +282,7 @@ pub struct ClientState {
 
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket<'static>>,
+    buffered_transmits: VecDeque<Transmit<'static>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -305,8 +313,10 @@ impl ClientState {
             sites_status: Default::default(),
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
+            forwarded_dns_queries: Default::default(),
             stub_resolver: StubResolver::new(known_hosts),
             disabled_resources: Default::default(),
+            buffered_transmits: Default::default(),
         }
     }
 
@@ -413,7 +423,7 @@ impl ClientState {
         packet: MutableIpPacket<'_>,
         now: Instant,
     ) -> Option<snownet::Transmit<'s>> {
-        let (packet, dst) = match self.handle_dns(packet) {
+        let (packet, dst) = match self.try_handle_dns_query(packet, now) {
             Ok(response) => {
                 self.buffered_packets.push_back(response?.to_owned());
                 return None;
@@ -473,6 +483,10 @@ impl ClientState {
         now: Instant,
         buffer: &'b mut [u8],
     ) -> Option<IpPacket<'b>> {
+        if let Some(response) = self.try_handle_forwarded_dns_response(from, packet) {
+            return Some(response);
+        };
+
         let (gid, packet) = self.node.decapsulate(
             local,
             from,
@@ -608,35 +622,42 @@ impl ClientState {
         !interface.upstream_dns.is_empty()
     }
 
-    /// Attempt to handle the given packet as a DNS packet.
+    /// Attempt to handle the given packet as a DNS query packet.
     ///
     /// Returns `Ok` if the packet is in fact a DNS query with an optional response to send back.
     /// Returns `Err` if the packet is not a DNS query.
-    fn handle_dns<'a>(
+    fn try_handle_dns_query<'a>(
         &mut self,
         packet: MutableIpPacket<'a>,
+        now: Instant,
     ) -> Result<Option<IpPacket<'a>>, (MutableIpPacket<'a>, IpAddr)> {
         match self
             .stub_resolver
             .handle(&self.dns_mapping, packet.as_immutable())
         {
             Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
-            Some(dns::ResolveStrategy::ForwardQuery(query)) => {
-                // There's an edge case here, where the resolver's ip has been resolved before as
-                // a dns resource... we will ignore that weird case for now.
-                if let Some(upstream_dns) = self.dns_mapping.get_by_left(&query.query.destination())
-                {
-                    let ip = upstream_dns.ip();
+            Some(dns::ResolveStrategy::ForwardQuery {
+                upstream: server,
+                query_id: id,
+                payload,
+                original_src,
+            }) => {
+                let ip = server.ip();
 
-                    // In case the DNS server is a CIDR resource, it needs to go through the tunnel.
-                    if self.is_upstream_set_by_the_portal()
-                        && self.active_cidr_resources.longest_match(ip).is_some()
-                    {
-                        return Err((packet, ip));
-                    }
+                // In case the DNS server is a CIDR resource, it needs to go through the tunnel.
+                if self.is_upstream_set_by_the_portal()
+                    && self.active_cidr_resources.longest_match(ip).is_some()
+                {
+                    return Err((packet, ip));
                 }
 
-                todo!("Queue a `Transmit` here");
+                self.forwarded_dns_queries
+                    .insert(id, (original_src, now + IDS_EXPIRE));
+                self.buffered_transmits.push_back(Transmit {
+                    src: None,
+                    dst: server,
+                    payload: Cow::Owned(payload),
+                });
 
                 Ok(None)
             }
@@ -645,6 +666,28 @@ impl ClientState {
                 Err((packet, dest))
             }
         }
+    }
+
+    fn try_handle_forwarded_dns_response<'a>(
+        &mut self,
+        from: SocketAddr,
+        packet: &[u8],
+    ) -> Option<IpPacket<'a>> {
+        // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
+        let saddr = *self.dns_mapping.get_by_right(&DnsServer::from(from))?;
+        let sport = DNS_PORT;
+
+        let message = Message::from_slice(packet).ok()?;
+        let query_id = message.header().id();
+
+        let (destination, _) = self.forwarded_dns_queries.remove(&query_id)?;
+        let daddr = destination.ip();
+        let dport = destination.port();
+
+        Some(
+            ip_packet::make::udp_packet(saddr, daddr, sport, dport, packet.to_vec())
+                .into_immutable(),
+        )
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
@@ -813,6 +856,7 @@ impl ClientState {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
+        self.forwarded_dns_queries.retain(|_, (_, exp)| now < *exp);
 
         self.drain_node_events();
     }
@@ -900,7 +944,9 @@ impl ClientState {
     }
 
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {
-        self.node.poll_transmit()
+        self.buffered_transmits
+            .pop_front()
+            .or(self.node.poll_transmit())
     }
 
     /// Sets a new set of resources.

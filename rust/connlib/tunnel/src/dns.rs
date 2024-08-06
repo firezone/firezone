@@ -7,13 +7,11 @@ use domain::base::{
     Message, MessageBuilder, ToName,
 };
 use domain::rdata::AllRecordData;
-use hickory_resolver::proto::rr::RecordType;
-use ip_packet::udp::UdpPacket;
 use ip_packet::IpPacket;
 use ip_packet::Packet as _;
 use itertools::Itertools;
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 const DNS_TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
@@ -31,22 +29,18 @@ pub struct StubResolver {
     known_hosts: KnownHosts,
 }
 
-#[derive(Debug)]
-pub struct DnsQuery<'a> {
-    pub name: DomainName,
-    pub record_type: RecordType,
-    // We could be much more efficient with this field,
-    // we only need the header to create the response.
-    pub query: ip_packet::IpPacket<'a>,
-}
-
 /// Tells the Client how to reply to a single DNS query
 #[derive(Debug)]
-pub(crate) enum ResolveStrategy<'a> {
+pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
     LocalResponse(IpPacket<'static>),
-    /// The query is for a non-Resource, forward it to an upstream or system resolver
-    ForwardQuery(DnsQuery<'a>),
+    /// The query is for a non-Resource, forward it to an upstream or system resolver.
+    ForwardQuery {
+        upstream: SocketAddr,
+        original_src: SocketAddr,
+        query_id: u16,
+        payload: Vec<u8>,
+    },
 }
 
 struct KnownHosts {
@@ -201,14 +195,21 @@ impl StubResolver {
     /// Returns:
     /// - `None` if the packet is not a valid DNS query destined for one of our sentinel resolvers
     /// - Otherwise, a strategy for responding to the query
-    pub(crate) fn handle<'a>(
+    pub(crate) fn handle(
         &mut self,
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
-        packet: IpPacket<'a>,
-    ) -> Option<ResolveStrategy<'a>> {
-        dns_mapping.get_by_left(&packet.destination())?;
+        packet: IpPacket,
+    ) -> Option<ResolveStrategy> {
+        let upstream = dns_mapping.get_by_left(&packet.destination())?.address();
         let datagram = packet.as_udp()?;
-        let message = as_dns(&datagram)?;
+
+        // We only support DNS on port 53.
+        if datagram.get_destination() != DNS_PORT {
+            return None;
+        }
+
+        let message = Message::from_octets(datagram.payload()).ok()?;
+
         if message.header().qr() {
             return None;
         }
@@ -237,11 +238,12 @@ impl StubResolver {
 
         let resource_records = match (qtype, maybe_resource) {
             (_, Some(resource)) if !self.knows_resource(&resource) => {
-                return Some(ResolveStrategy::ForwardQuery(DnsQuery {
-                    name: domain,
-                    record_type: u16::from(qtype).into(),
-                    query: packet,
-                }))
+                return Some(ResolveStrategy::ForwardQuery {
+                    upstream,
+                    query_id: message.header().id(),
+                    payload: message.into_octets().to_vec(),
+                    original_src: SocketAddr::new(packet.source(), datagram.get_source()),
+                })
             }
             (Rtype::A, Some(resource)) => self.get_or_assign_a_records(domain.clone(), resource),
             (Rtype::AAAA, Some(resource)) => {
@@ -253,11 +255,12 @@ impl StubResolver {
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
             }
             _ => {
-                return Some(ResolveStrategy::ForwardQuery(DnsQuery {
-                    name: domain,
-                    record_type: u16::from(qtype).into(),
-                    query: packet,
-                }))
+                return Some(ResolveStrategy::ForwardQuery {
+                    upstream,
+                    query_id: message.header().id(),
+                    payload: message.into_octets().to_vec(),
+                    original_src: SocketAddr::new(packet.source(), datagram.get_source()),
+                })
             }
         };
 
@@ -272,16 +275,6 @@ impl StubResolver {
         .into_immutable();
 
         Some(ResolveStrategy::LocalResponse(packet))
-    }
-}
-
-impl Clone for DnsQuery<'static> {
-    fn clone(&self) -> Self {
-        Self {
-            name: self.name.clone(),
-            record_type: self.record_type,
-            query: self.query.clone(),
-        }
     }
 }
 
@@ -300,12 +293,12 @@ fn to_aaaa_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u
 }
 
 fn build_dns_with_answer(
-    message: &Message<[u8]>,
+    message: Message<&[u8]>,
     qname: DomainName,
     records: Vec<AllRecordData<Vec<u8>, DomainName>>,
 ) -> Option<Vec<u8>> {
     let mut answer_builder = MessageBuilder::new_vec()
-        .start_answer(message, Rcode::NOERROR)
+        .start_answer(&message, Rcode::NOERROR)
         .ok()?;
     answer_builder.header_mut().set_ra(true);
 
@@ -316,12 +309,6 @@ fn build_dns_with_answer(
     }
 
     Some(answer_builder.finish())
-}
-
-pub fn as_dns<'a>(pkt: &'a UdpPacket<'a>) -> Option<&'a Message<[u8]>> {
-    (pkt.get_destination() == DNS_PORT)
-        .then(|| Message::from_slice(pkt.payload()).ok())
-        .flatten()
 }
 
 pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
