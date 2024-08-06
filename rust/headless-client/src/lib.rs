@@ -69,7 +69,12 @@ const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 /// CLI args common to both the IPC service and the headless Client
 #[derive(clap::Parser)]
 struct CliCommon {
+    #[cfg(target_os = "linux")]
     #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "systemd-resolved")]
+    dns_control: DnsControlMethod,
+
+    #[cfg(target_os = "windows")]
+    #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "nrpt")]
     dns_control: DnsControlMethod,
 
     /// File logging directory. Should be a path that's writeable by the current user.
