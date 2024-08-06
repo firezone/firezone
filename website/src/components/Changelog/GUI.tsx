@@ -15,11 +15,8 @@ export default function GUI({ title }: { title: string }) {
       {/*
       <Entry version="1.1.10" date={new Date("Invalid date")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem enable={title === "Linux GUI"}>
-            This is a maintenance release with no user-facing changes.
-          </ChangeItem>
-          <ChangeItem enable={title === "Windows"}>
-            This is a maintenance release with no user-facing changes.
+          <ChangeItem pull="6184">
+            Mitigates a bug where the IPC service can panic if an internal channel fills up
           </ChangeItem>
         </ul>
       </Entry>

@@ -12,8 +12,8 @@ export default function Headless() {
       {/*
       <Entry version="1.1.5" date={new Date("Invalid date")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem>
-            This is a maintenance release with no user-facing changes
+          <ChangeItem pull="6184">
+            Mitigates a bug where the Client can panic if an internal channel fills up
           </ChangeItem>
         </ul>
       </Entry>

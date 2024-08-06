@@ -159,3 +159,14 @@ pub fn setup_stdout_logging() -> Result<()> {
     set_global_default(subscriber)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Make sure it's okay to store a bunch of these to mitigate #5880
+    #[test]
+    fn callback_msg_size() {
+        assert_eq!(std::mem::size_of::<InternalServerMsg>(), 56)
+    }
+}
