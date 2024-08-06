@@ -6,7 +6,7 @@ use connlib_shared::{
 use hickory_proto::rr::RecordType;
 use proptest::{prelude::*, sample};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
 
@@ -19,6 +19,8 @@ pub(crate) enum Transition {
     ActivateResource(ResourceDescription),
     /// Deactivate a resource on the client.
     DeactivateResource(ResourceId),
+    /// Client-side disable resource
+    DisableResources(HashSet<ResourceId>),
     /// Send an ICMP packet to non-resource IP.
     SendICMPPacketToNonResourceIp {
         src: IpAddr,
