@@ -61,4 +61,19 @@ services:
       start_period: 1m
     devices:
       - /dev/net/tun:/dev/net/tun
+    init: true
+# If you want to access services within the same compose file, they must share a network.
+#    networks:
+#      fz-net:
+#
+#   # Heads-up for Linux users.
+#   # Due to limitations of `systemd-resolved` on Linux, a "two-label" domain is necessary if you want to define this as a DNS resource.
+#   # i.e. just using `yourservice` won't work.
+#   yourservice.docker:
+#     image: "..."
+#     networks:
+#       fz-net:
+#
+# networks:
+#   fz-net:
 ```
