@@ -21,6 +21,9 @@ export default function GUI({ title }: { title: string }) {
           <ChangeItem enable={title === "Windows"} pull="6163">
             Supports disabling DNS control
           </ChangeItem>
+          <ChangeItem pull="6184">
+            Mitigates a bug where the IPC service can panic if an internal channel fills up
+          </ChangeItem>
         </ul>
       </Entry>
       */}

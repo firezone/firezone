@@ -15,6 +15,9 @@ export default function Headless() {
           <ChangeItem pull="6163">
             Uses `systemd-resolved` DNS control by default on Linux
           </ChangeItem>
+          <ChangeItem pull="6184">
+            Mitigates a bug where the Client can panic if an internal channel fills up
+          </ChangeItem>
         </ul>
       </Entry>
       */}

@@ -215,7 +215,7 @@ impl<'a> Handler<'a> {
             .next_client_split()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
-        let (cb_tx, cb_rx) = mpsc::channel(10);
+        let (cb_tx, cb_rx) = mpsc::channel(1_000);
         let tun_device = TunDeviceManager::new()?;
 
         Ok(Self {

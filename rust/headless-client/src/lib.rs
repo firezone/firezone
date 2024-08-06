@@ -176,6 +176,12 @@ mod tests {
 
     const EXE_NAME: &str = "firezone-client-ipc";
 
+    // Make sure it's okay to store a bunch of these to mitigate #5880
+    #[test]
+    fn callback_msg_size() {
+        assert_eq!(std::mem::size_of::<InternalServerMsg>(), 56)
+    }
+  
     #[test]
     #[cfg(target_os = "linux")]
     fn dns_control() {
