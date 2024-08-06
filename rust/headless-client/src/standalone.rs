@@ -1,8 +1,8 @@
 //! AKA "Headless"
 
 use crate::{
-    default_token_path, device_id, dns_control, platform, signals, CallbackHandler, CliCommon,
-    DnsController, InternalServerMsg, IpcServerMsg, TOKEN_ENV_KEY,
+    default_token_path, device_id, platform, signals, CallbackHandler, CliCommon, DnsController,
+    InternalServerMsg, IpcServerMsg, TOKEN_ENV_KEY,
 };
 use anyhow::{anyhow, Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
@@ -10,8 +10,7 @@ use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
 use connlib_shared::get_user_agent;
 use firezone_bin_shared::{
-    new_dns_notifier, new_network_notifier, setup_global_subscriber, DnsControlMethod,
-    TunDeviceManager,
+    new_dns_notifier, new_network_notifier, setup_global_subscriber, TunDeviceManager,
 };
 use futures::{FutureExt as _, StreamExt as _};
 use phoenix_channel::PhoenixChannel;
@@ -162,7 +161,7 @@ pub fn run_only_headless_client() -> Result<()> {
         return Ok(());
     }
 
-    let (cb_tx, cb_rx) = mpsc::channel(10);
+    let (cb_tx, cb_rx) = mpsc::channel(1_000);
     let callbacks = CallbackHandler { cb_tx };
 
     // The name matches that in `ipc_service.rs`
@@ -191,7 +190,8 @@ pub fn run_only_headless_client() -> Result<()> {
         let mut hangup = signals::Hangup::new()?;
         let mut terminate = pin!(terminate.recv().fuse());
         let mut hangup = pin!(hangup.recv().fuse());
-        let mut dns_controller = DnsController::default();
+        let dns_control_method = cli.common.dns_control;
+        let mut dns_controller = DnsController { dns_control_method };
         // Deactivate Firezone DNS control in case the system or IPC service crashed
         // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
         dns_controller.deactivate()?;
@@ -199,7 +199,6 @@ pub fn run_only_headless_client() -> Result<()> {
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
         let tokio_handle = tokio::runtime::Handle::current();
-        let dns_control_method = DnsControlMethod::from_env();
 
         let mut dns_notifier = new_dns_notifier(tokio_handle.clone(), dns_control_method).await?;
 
@@ -209,7 +208,7 @@ pub fn run_only_headless_client() -> Result<()> {
 
         let tun = tun_device.make_tun()?;
         session.set_tun(Box::new(tun));
-        session.set_dns(dns_control::system_resolvers().unwrap_or_default());
+        session.set_dns(dns_controller.system_resolvers());
 
         let result = loop {
             let mut dns_changed = pin!(dns_notifier.notified().fuse());
@@ -230,7 +229,7 @@ pub fn run_only_headless_client() -> Result<()> {
                     // If the DNS control method is not `systemd-resolved`
                     // then we'll use polling here, so no point logging every 5 seconds that we're checking the DNS
                     tracing::trace!("DNS change, notifying Session");
-                    session.set_dns(dns_control::system_resolvers()?);
+                    session.set_dns(dns_controller.system_resolvers());
                     continue;
                 },
                 result = network_changed => {
@@ -257,7 +256,7 @@ pub fn run_only_headless_client() -> Result<()> {
                 ),
                 InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                     tun_device.set_ips(ipv4, ipv6).await?;
-                    dns_controller.set_dns(&dns).await?;
+                    dns_controller.set_dns(dns).await?;
                     // `on_set_interface_config` is guaranteed to be called when the tunnel is completely ready
                     // <https://github.com/firezone/firezone/pull/6026#discussion_r1692297438>
                     if let Some(instant) = last_connlib_start_instant.take() {
@@ -353,14 +352,15 @@ mod tests {
     fn cli() {
         let exe_name = "firezone-headless-client";
 
-        let actual = Cli::parse_from([exe_name, "--api-url", "wss://api.firez.one"]);
+        let actual = Cli::try_parse_from([exe_name, "--api-url", "wss://api.firez.one"]).unwrap();
         assert_eq!(
             actual.api_url,
             Url::parse("wss://api.firez.one").expect("Hard-coded URL should always be parsable")
         );
         assert!(!actual.check);
 
-        let actual = Cli::parse_from([exe_name, "--check", "--log-dir", "bogus_log_dir"]);
+        let actual =
+            Cli::try_parse_from([exe_name, "--check", "--log-dir", "bogus_log_dir"]).unwrap();
         assert!(actual.check);
         assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
     }

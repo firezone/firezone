@@ -1,7 +1,7 @@
-import Link from "next/link";
+import ChangeItem from "./ChangeItem";
 import Entry from "./Entry";
 import Entries from "./Entries";
-import ChangeItem from "./ChangeItem";
+import Link from "next/link";
 
 export default function Headless() {
   const href = "/dl/firezone-client-headless-linux/:version/:arch";
@@ -12,8 +12,11 @@ export default function Headless() {
       {/*
       <Entry version="1.1.5" date={new Date("Invalid date")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem>
-            This is a maintenance release with no user-facing changes
+          <ChangeItem pull="6163">
+            Uses `systemd-resolved` DNS control by default on Linux
+          </ChangeItem>
+          <ChangeItem pull="6184">
+            Mitigates a bug where the Client can panic if an internal channel fills up
           </ChangeItem>
         </ul>
       </Entry>
