@@ -47,6 +47,9 @@ pub(crate) fn run() -> Result<()> {
 
     match cli.command {
         None => {
+            if cli.no_deep_links {
+                return run_gui(cli);
+            }
             match elevation::is_normal_user() {
                 // Our elevation is correct (not elevated), just run the GUI
                 Ok(true) => run_gui(cli),
@@ -174,7 +177,7 @@ struct Cli {
     /// If true, show a fake update notification that opens the Firezone release page when clicked
     #[arg(long, hide = true)]
     test_update_notification: bool,
-    /// Disable deep link registration and handling, for headless CI environments
+    /// For headless CI, disable deep links and allow the GUI to run as admin
     #[arg(long, hide = true)]
     no_deep_links: bool,
 }
