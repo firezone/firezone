@@ -13,33 +13,14 @@
 //!
 //! <https://superuser.com/a/1752670>
 
+use super::DnsController;
 use anyhow::{Context as _, Result};
-use firezone_bin_shared::platform::CREATE_NO_WINDOW;
+use firezone_bin_shared::{platform::CREATE_NO_WINDOW, DnsControlMethod};
 use std::{net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
-
-pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
-    system_resolvers()
-}
-
-/// Controls system-wide DNS.
-///
-/// Always call `deactivate` when Firezone starts.
-///
-/// Only one of these should exist on the entire system at a time.
-#[derive(Default)]
-pub(crate) struct DnsController {}
 
 // Unique magic number that we can use to delete our well-known NRPT rule.
 // Copied from the deep link schema
 const FZ_MAGIC: &str = "firezone-fd0020211111";
-
-impl Drop for DnsController {
-    fn drop(&mut self) {
-        if let Err(error) = self.deactivate() {
-            tracing::error!(?error, "Failed to deactivate DNS control");
-        }
-    }
-}
 
 impl DnsController {
     /// Deactivate any control Firezone has over the computer's DNS
@@ -64,10 +45,15 @@ impl DnsController {
     /// The `mut` in `&mut self` is not needed by Rust's rules, but
     /// it would be bad if this was called from 2 threads at once.
     ///
-    /// Must be async to match the Linux signature
+    /// Must be async and an owned `Vec` to match the Linux signature
     #[allow(clippy::unused_async)]
-    pub(crate) async fn set_dns(&mut self, dns_config: &[IpAddr]) -> Result<()> {
-        activate(dns_config).context("Failed to activate DNS control")?;
+    pub(crate) async fn set_dns(&mut self, dns_config: Vec<IpAddr>) -> Result<()> {
+        match self.dns_control_method {
+            DnsControlMethod::Disabled => {}
+            DnsControlMethod::Nrpt => {
+                activate(&dns_config).context("Failed to activate DNS control")?
+            }
+        }
         Ok(())
     }
 
@@ -85,7 +71,7 @@ impl DnsController {
     }
 }
 
-pub(crate) fn system_resolvers() -> Result<Vec<IpAddr>> {
+pub(crate) fn system_resolvers(_method: DnsControlMethod) -> Result<Vec<IpAddr>> {
     let resolvers = ipconfig::get_adapters()?
         .iter()
         .flat_map(|adapter| adapter.dns_servers())

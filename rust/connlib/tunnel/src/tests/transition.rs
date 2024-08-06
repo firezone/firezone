@@ -1,7 +1,4 @@
-use super::{
-    sim_net::{any_ip_stack, any_port, Host},
-    strategies::relays,
-};
+use super::sim_net::{any_ip_stack, any_port, Host};
 use connlib_shared::{
     messages::{client::ResourceDescription, DnsServer, RelayId, ResourceId},
     DomainName,
@@ -9,7 +6,7 @@ use connlib_shared::{
 use hickory_proto::rr::RecordType;
 use proptest::{prelude::*, sample};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
 
@@ -22,6 +19,8 @@ pub(crate) enum Transition {
     ActivateResource(ResourceDescription),
     /// Deactivate a resource on the client.
     DeactivateResource(ResourceId),
+    /// Client-side disable resource
+    DisableResources(HashSet<ResourceId>),
     /// Send an ICMP packet to non-resource IP.
     SendICMPPacketToNonResourceIp {
         src: IpAddr,
@@ -73,10 +72,13 @@ pub(crate) enum Transition {
     ReconnectPortal,
 
     /// Simulate deployment of new relays.
-    RelaysPresence {
-        disconnected: BTreeSet<RelayId>,
-        online: BTreeMap<RelayId, Host<u64>>,
-    },
+    DeployNewRelays(BTreeMap<RelayId, Host<u64>>),
+
+    /// Simulate network partition of our relays.
+    ///
+    /// In our test, we need partition all relays because we don't know which we use for a connection.
+    /// To avoid having to model that, we partition all of them but reconnect them within the same transition.
+    PartitionRelaysFromPortal,
 
     /// Idle connlib for a while, forcing connection to auto-close.
     Idle,
@@ -181,14 +183,5 @@ pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {
         ip4: ip_stack.as_v4().copied(),
         ip6: ip_stack.as_v6().copied(),
         port,
-    })
-}
-
-pub(crate) fn migrate_relays(
-    disconnected: impl Strategy<Value = BTreeSet<RelayId>>,
-) -> impl Strategy<Value = Transition> {
-    (disconnected, relays()).prop_map(|(disconnected, online)| Transition::RelaysPresence {
-        disconnected,
-        online,
     })
 }

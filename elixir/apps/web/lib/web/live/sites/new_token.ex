@@ -32,10 +32,17 @@ defmodule Web.Sites.NewToken do
   end
 
   def handle_params(params, uri, socket) do
+    selected_tab =
+      if String.starts_with?(socket.assigns.account.slug, "temp_") do
+        "docker-compose-instructions"
+      else
+        "systemd-instructions"
+      end
+
     {:noreply,
      assign(socket,
        uri: uri,
-       selected_tab: Map.get(params, "method", "systemd-instructions")
+       selected_tab: Map.get(params, "method", selected_tab)
      )}
   end
 
@@ -72,6 +79,36 @@ defmodule Web.Sites.NewToken do
           </div>
 
           <.tabs :if={@env} id="deployment-instructions">
+            <:tab
+              :if={String.starts_with?(@account.slug, "temp_")}
+              id="docker-compose-instructions"
+              icon="docker"
+              label="Docker Compose"
+              phx_click="tab_selected"
+              selected={@selected_tab == "docker-compose-instructions"}
+            >
+              <p class="p-6">
+                Copy-paste the code block below to a file titled
+                <code class="bg-black text-white px-2">docker-compose.yml</code>
+                <br /> Then run <code class="bg-black text-white px-2">docker compose up -d</code>
+              </p>
+
+              <.code_block
+                id="code-sample-docker1"
+                class="w-full text-xs whitespace-pre-line"
+                phx-no-format
+                phx-update="ignore"
+              ><%= docker_compose(@env) %></.code_block>
+
+              <p class="p-6 pt-0">
+                <strong>Important:</strong>
+                If you need IPv6 support, you must <.link
+                  href="https://docs.docker.com/config/daemon/ipv6"
+                  class={link_style()}
+                  target="_blank"
+                >enable IPv6 in the Docker daemon</.link>.
+              </p>
+            </:tab>
             <:tab
               id="systemd-instructions"
               icon="hero-command-line"
@@ -318,6 +355,69 @@ defmodule Web.Sites.NewToken do
     """
     RUST_LOG=str0m=warn,info
     #{Enum.map_join(env, "\n", fn {key, value} -> "#{key}=#{value}" end)}
+    """
+  end
+
+  defp docker_compose(env) do
+    env = Enum.into(env, %{})
+
+    """
+    services:
+      firezone-gateway:
+        image: "ghcr.io/firezone/gateway:1"
+        init: true
+        environment:
+          # Use a unique ID for each Gateway in your Firezone account. If left blank,
+          # the Gateway will generate a random ID saved in /var/lib/firezone
+          # - FIREZONE_ID=<id>
+
+          # REQUIRED. The token shown when deploying a Gateway in the admin portal.
+          - FIREZONE_TOKEN=#{env["FIREZONE_TOKEN"]}
+
+          # REQUIRED. Firezone URL
+          - FIREZONE_API_URL=#{env["FIREZONE_API_URL"]}
+
+          # Configure log output. Other options are "trace", "debug", "info", "warn", "error", and "off".
+          # See https://docs.rs/env_logger/latest/env_logger/ for more information.
+          - RUST_LOG=str0m=warn,info
+
+          # Enable or disable masquerading. Default enabled. Disabling this can prevent
+          # the Gateway from reaching other hosts in your subnet or the internet.
+          - FIREZONE_ENABLE_MASQUERADE=1
+
+          # Human-friendly name to use for this Gateway in the admin portal.
+          # $(hostname) is used by default if not set.
+          # - FIREZONE_NAME=<name-of-gateway>
+        volumes:
+          # Persist the FIREZONE_ID. Can be omitted if FIREZONE_ID is set above.
+          - /var/lib/firezone:/var/lib/firezone
+        cap_add:
+          - NET_ADMIN
+        sysctls:
+          # Enable IP forwarding
+          - net.ipv4.ip_forward=1
+          - net.ipv4.conf.all.src_valid_mark=1
+          - net.ipv6.conf.all.disable_ipv6=0
+          - net.ipv6.conf.all.forwarding=1
+          - net.ipv6.conf.default.forwarding=1
+        healthcheck:
+          test: ["CMD", "ip", "link", "|", "grep", "tun-firezone"]
+          interval: 5s
+          timeout: 10s
+          retries: 3
+          start_period: 1m
+        devices:
+          - /dev/net/tun:/dev/net/tun
+        networks:
+          fz-net:
+
+      httpbin:
+        image: "kong/httpbin"
+        networks:
+          fz-net:
+
+    networks:
+      fz-net:
     """
   end
 

@@ -8,7 +8,6 @@ use super::stub_portal::StubPortal;
 use crate::dns::is_subdomain;
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
-use crate::tests::sim_relay::map_explode;
 use crate::tests::transition::Transition;
 use crate::utils::earliest;
 use crate::{dns::DnsQuery, ClientEvent, GatewayEvent, Request};
@@ -25,8 +24,9 @@ use hickory_resolver::lookup::Lookup;
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
+use std::iter;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, HashSet},
     net::IpAddr,
     str::FromStr as _,
     sync::Arc,
@@ -81,13 +81,13 @@ impl StateMachineTest for TunnelTest {
         let mut gateways = ref_state
             .gateways
             .iter()
-            .map(|(id, gateway)| {
+            .map(|(gid, gateway)| {
                 let gateway = gateway.map(
-                    |ref_gateway, _, _| ref_gateway.init(),
-                    debug_span!("gateway", gid = %id),
+                    |ref_gateway, _, _| ref_gateway.init(*gid),
+                    debug_span!("gateway", %gid),
                 );
 
-                (*id, gateway)
+                (*gid, gateway)
             })
             .collect::<BTreeMap<_, _>>();
 
@@ -102,21 +102,10 @@ impl StateMachineTest for TunnelTest {
             .collect::<BTreeMap<_, _>>();
 
         // Configure client and gateway with the relays.
-        client.exec_mut(|c| {
-            c.sut.update_relays(
-                BTreeSet::default(),
-                BTreeSet::from_iter(map_explode(relays.iter(), "client")),
-                flux_capacitor.now(),
-            )
-        });
-        for (id, gateway) in &mut gateways {
-            gateway.exec_mut(|g| {
-                g.sut.update_relays(
-                    BTreeSet::default(),
-                    BTreeSet::from_iter(map_explode(relays.iter(), &format!("gateway_{id}"))),
-                    flux_capacitor.now(),
-                )
-            });
+        client.exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
+        for gateway in gateways.values_mut() {
+            gateway
+                .exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
         }
 
         let mut this = Self {
@@ -169,6 +158,9 @@ impl StateMachineTest for TunnelTest {
             Transition::DeactivateResource(id) => {
                 state.client.exec_mut(|c| c.sut.remove_resource(id))
             }
+            Transition::DisableResources(resources) => state
+                .client
+                .exec_mut(|c| c.sut.set_disabled_resource(resources)),
             Transition::SendICMPPacketToNonResourceIp {
                 src,
                 dst,
@@ -254,11 +246,7 @@ impl StateMachineTest for TunnelTest {
                     c.sut.reset();
 
                     // In prod, we reconnect to the portal and receive a new `init` message.
-                    c.sut.update_relays(
-                        BTreeSet::default(),
-                        BTreeSet::from_iter(map_explode(state.relays.iter(), "client")),
-                        now,
-                    );
+                    c.update_relays(iter::empty(), state.relays.iter(), now);
                     c.sut
                         .set_resources(ref_state.client.inner().all_resources());
                 });
@@ -267,7 +255,6 @@ impl StateMachineTest for TunnelTest {
                 let ipv4 = state.client.inner().sut.tunnel_ip4().unwrap();
                 let ipv6 = state.client.inner().sut.tunnel_ip6().unwrap();
                 let upstream_dns = ref_state.client.inner().upstream_dns_resolvers.clone();
-                let relays = BTreeSet::from_iter(map_explode(state.relays.iter(), "client"));
                 let all_resources = ref_state.client.inner().all_resources();
 
                 // Simulate receiving `init`.
@@ -277,21 +264,16 @@ impl StateMachineTest for TunnelTest {
                         ipv6,
                         upstream_dns,
                     });
-                    c.sut.update_relays(BTreeSet::default(), relays, now);
+                    c.update_relays(iter::empty(), state.relays.iter(), now);
                     c.sut.set_resources(all_resources);
                 });
             }
-            Transition::RelaysPresence {
-                disconnected,
-                online,
-            } => {
-                for rid in &disconnected {
-                    let disconnected_relay =
-                        state.relays.remove(rid).expect("old relay to be present");
-                    state.network.remove_host(&disconnected_relay);
+            Transition::DeployNewRelays(new_relays) => {
+                for relay in state.relays.values() {
+                    state.network.remove_host(relay);
                 }
 
-                let online = online
+                let online = new_relays
                     .into_iter()
                     .map(|(rid, relay)| (rid, relay.map(SimRelay::new, debug_span!("relay", %rid))))
                     .collect::<BTreeMap<_, _>>();
@@ -300,33 +282,15 @@ impl StateMachineTest for TunnelTest {
                     debug_assert!(state.network.add_host(*rid, relay));
                 }
 
-                state.client.exec_mut({
-                    let disconnected = disconnected.clone();
-                    let online = online.iter();
-
-                    move |c| {
-                        c.sut.update_relays(
-                            disconnected,
-                            BTreeSet::from_iter(map_explode(online, "client")),
-                            now,
-                        );
-                    }
+                state.client.exec_mut(|c| {
+                    c.update_relays(state.relays.keys().copied(), online.iter(), now);
                 });
-                for (id, gateway) in &mut state.gateways {
-                    gateway.exec_mut({
-                        let disconnected = disconnected.clone();
-                        let online = online.iter();
-
-                        move |g| {
-                            g.sut.update_relays(
-                                disconnected,
-                                BTreeSet::from_iter(map_explode(online, &format!("gateway_{id}"))),
-                                now,
-                            )
-                        }
+                for gateway in state.gateways.values_mut() {
+                    gateway.exec_mut(|g| {
+                        g.update_relays(state.relays.keys().copied(), online.iter(), now)
                     });
                 }
-                state.relays.extend(online);
+                state.relays = online; // Override all relays.
             }
             Transition::Idle => {
                 const IDLE_DURATION: Duration = Duration::from_secs(5 * 60);
@@ -335,6 +299,28 @@ impl StateMachineTest for TunnelTest {
                 while state.flux_capacitor.now::<Instant>() <= cut_off {
                     state.flux_capacitor.tick(Duration::from_secs(5));
                     state.advance(ref_state, &mut buffered_transmits);
+                }
+            }
+            Transition::PartitionRelaysFromPortal => {
+                // 1. Disconnect all relays.
+                state.client.exec_mut(|c| {
+                    c.update_relays(state.relays.keys().copied(), iter::empty(), now)
+                });
+                for gateway in state.gateways.values_mut() {
+                    gateway.exec_mut(|g| {
+                        g.update_relays(state.relays.keys().copied(), iter::empty(), now)
+                    });
+                }
+
+                // 2. Advance state to ensure this is reflected.
+                state.advance(ref_state, &mut buffered_transmits);
+
+                // 3. Reconnect all relays.
+                state
+                    .client
+                    .exec_mut(|c| c.update_relays(iter::empty(), state.relays.iter(), now));
+                for gateway in state.gateways.values_mut() {
+                    gateway.exec_mut(|g| g.update_relays(iter::empty(), state.relays.iter(), now));
                 }
             }
         };

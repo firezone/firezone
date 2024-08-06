@@ -27,6 +27,7 @@ pub(crate) struct ReferenceState {
     pub(crate) client: Host<RefClient>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
+
     pub(crate) portal: StubPortal,
 
     pub(crate) drop_direct_client_traffic: bool,
@@ -167,12 +168,15 @@ impl ReferenceStateMachine for ReferenceState {
                 sample::select(resource_ids).prop_map(Transition::DeactivateResource)
             })
             .with(1, roam_client())
-            .with(
-                1,
-                migrate_relays(Just(state.relays.keys().copied().collect())), // Always take down all relays because we can't know which one was sampled for the connection.
-            )
+            .with(1, relays().prop_map(Transition::DeployNewRelays))
+            .with(1, Just(Transition::PartitionRelaysFromPortal))
             .with(1, Just(Transition::ReconnectPortal))
             .with(1, Just(Transition::Idle))
+            .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resources_id| {
+                sample::subsequence(resources_id.clone(), resources_id.len()).prop_map(
+                    |resources_id| Transition::DisableResources(HashSet::from_iter(resources_id)),
+                )
+            })
             .with_if_not_empty(
                 10,
                 state.client.inner().ipv4_cidr_resource_dsts(),
@@ -299,10 +303,16 @@ impl ReferenceStateMachine for ReferenceState {
                     client.cidr_resources.retain(|_, r| &r.id != id);
                     client.dns_resources.remove(id);
 
-                    client.connected_cidr_resources.remove(id);
-                    client.connected_dns_resources.retain(|(r, _)| r != id);
+                    client.disconnect_resource(id)
                 });
             }
+            Transition::DisableResources(resources) => state.client.exec_mut(|client| {
+                client.disabled_resources = resources.clone();
+
+                for id in resources {
+                    client.disconnect_resource(id)
+                }
+            }),
             Transition::SendDnsQuery {
                 domain,
                 r_type,
@@ -399,19 +409,16 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::ReconnectPortal => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
             }
-            Transition::RelaysPresence {
-                disconnected,
-                online,
-            } => {
-                for rid in disconnected {
-                    let disconnected_relay =
-                        state.relays.remove(rid).expect("old host to be present");
-                    state.network.remove_host(&disconnected_relay);
+            Transition::DeployNewRelays(new_relays) => {
+                // Always take down all relays because we can't know which one was sampled for the connection.
+                for relay in state.relays.values() {
+                    state.network.remove_host(relay);
                 }
+                state.relays.clear();
 
-                for (rid, online_relay) in online {
-                    state.relays.insert(*rid, online_relay.clone());
-                    debug_assert!(state.network.add_host(*rid, online_relay));
+                for (rid, new_relay) in new_relays {
+                    state.relays.insert(*rid, new_relay.clone());
+                    debug_assert!(state.network.add_host(*rid, new_relay));
                 }
 
                 // In case we were using the relays, all connections will be cut and require us to make a new one.
@@ -421,6 +428,11 @@ impl ReferenceStateMachine for ReferenceState {
             }
             Transition::Idle => {
                 state.client.exec_mut(|client| client.reset_connections());
+            }
+            Transition::PartitionRelaysFromPortal => {
+                if state.drop_direct_client_traffic {
+                    state.client.exec_mut(|client| client.reset_connections());
+                }
             }
         };
 
@@ -438,6 +450,7 @@ impl ReferenceStateMachine for ReferenceState {
 
                 true
             }
+            Transition::DisableResources(_) => true,
             Transition::SendICMPPacketToNonResourceIp {
                 dst,
                 seq,
@@ -559,17 +572,9 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::DeactivateResource(r) => {
                 state.client.inner().all_resource_ids().contains(r)
             }
-            Transition::RelaysPresence {
-                disconnected,
-                online,
-            } => {
-                let all_old_are_present = disconnected
-                    .iter()
-                    .all(|rid| state.relays.contains_key(rid));
-                let no_new_are_present = online.keys().all(|rid| !state.relays.contains_key(rid));
-
+            Transition::DeployNewRelays(new_relays) => {
                 let mut additional_routes = RoutingTable::default();
-                for (rid, relay) in online {
+                for (rid, relay) in new_relays {
                     if !additional_routes.add_host(*rid, relay) {
                         return false;
                     }
@@ -577,9 +582,10 @@ impl ReferenceStateMachine for ReferenceState {
 
                 let route_overlap = state.network.overlaps_with(&additional_routes);
 
-                all_old_are_present && no_new_are_present && !route_overlap
+                !route_overlap
             }
             Transition::Idle => true,
+            Transition::PartitionRelaysFromPortal => true,
         }
     }
 }

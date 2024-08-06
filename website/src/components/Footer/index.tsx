@@ -17,26 +17,69 @@ import {
 
 export default function Footer() {
   return (
-    <footer className="pt-12 relative bg-neutral-900 text-neutral-500">
+    <footer className="relative bg-neutral-900 py-16 md:px-16 px-4 text-neutral-500">
+      <div className="flex flex-col justify-center items-center text-center">
+        <h3 className="text-neutral-200 mb-4 text-4xl md:text-6xl text-pretty tracking-tight justify-center font-semibold">
+          Ready to get started?
+        </h3>
+        <h4 className="text-neutral-200 text-md tracking-tight">
+          Give your organization the protection it deserves.
+        </h4>
+        <div className="flex sm:flex-row flex-col justify-center sm:items-end items-center sm:w-fit w-full sm:gap-8 gap-4 my-8">
+          <div className=" mx-auto px-4 md:px-0 ">
+            <button
+              type="button"
+              className="group md:text-lg text-md inline-flex md:w-48 w-full shadow-lg justify-center items-center py-2 md:py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
+            >
+              <Link href="/contact/sales">Book a demo</Link>
+              <HiArrowLongRight className="group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-6 h-6" />
+            </button>
+            <p className="mt-3 text-xs text-neutral-400">
+              Get a personalized walkthrough of Firezone.
+            </p>
+          </div>
+          <div className=" mx-auto ">
+            <button
+              type="button"
+              className="group md:text-lg text-md md:w-48 w-full inline-flex justify-center items-center py-0 px-0 font-semibold text-center text-white rounded duration-50 transform transition"
+            >
+              <Link
+                href="https://app.firezone.dev/sign_up"
+                className="text-neutral-300 w-full group inline-flex justify-center
+                 items-center py-2 font-semibold border-b-[1px] border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
+              >
+                <p>Try Firezone for free</p>
+                <HiArrowLongRight className="group-hover:text-primary-450 group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-6 h-6" />
+              </Link>
+            </button>
+            <p className="mt-3 text-xs text-neutral-400">
+              No credit card required. Cancel anytime.
+            </p>
+          </div>
+        </div>
+      </div>
       <div className="mx-auto w-full max-w-screen-xl p-4 py-6 lg:py-8">
-        <div className="grid md:grid-cols-3 gap-12">
+        <div className="flex md:flex-row flex-col md:justify-between gap-12">
           <div className="flex md:flex-col justify-between">
-            <Link href="/">
-              <Image
-                width={150}
-                height={150}
-                src="/images/logo-text-dark.svg"
-                alt="Firezone Logo"
-              />
-            </Link>
-            <Link href="https://www.ycombinator.com/companies/firezone">
-              <Image
-                width={125}
-                height={125}
-                src="/images/yc-logo.svg"
-                alt="YC Logo"
-              />
-            </Link>
+            <div className="">
+              <Link href="/">
+                <Image
+                  width={150}
+                  height={150}
+                  src="/images/logo-text-dark.svg"
+                  alt="Firezone Logo"
+                  className="mb-4"
+                />
+              </Link>
+              <Link href="https://www.ycombinator.com/companies/firezone">
+                <Image
+                  width={125}
+                  height={125}
+                  src="/images/yc-logo.svg"
+                  alt="YC Logo"
+                />
+              </Link>
+            </div>
             <Link href="https://trust.firezone.dev">
               <Image
                 alt="SOC2 badge"
@@ -46,42 +89,7 @@ export default function Footer() {
               />
             </Link>
           </div>
-          <div className="flex flex-col justify-center text-center">
-            <h3 className="text-neutral-200 mb-4 text-3xl md:text-4xl tracking-tight justify-center font-semibold">
-              Ready to get started?
-            </h3>
-            <h4 className="text-neutral-200 text-md tracking-tight justify-center">
-              Give your organization the protection it deserves.
-            </h4>
-            <div className="w-full flex flex-wrap justify-between mt-8">
-              <div className="mb-8 mx-auto">
-                <button
-                  type="button"
-                  className="text-md w-48 inline-flex justify-center items-center py-3 px-5 font-semibold text-center text-primary-450 rounded border border-primary-450 bg-neutral-100 hover:ring-2 hover:ring-primary-400 duration-50 transform transition"
-                >
-                  <Link href="https://app.firezone.dev/sign_up">
-                    Sign up now
-                  </Link>
-                </button>
-                <p className="mt-3 text-xs text-neutral-400">
-                  No credit card required. Cancel anytime.
-                </p>
-              </div>
-              <div className="mx-auto">
-                <button
-                  type="button"
-                  className="text-md w-48 inline-flex shadow-lg justify-center items-center py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
-                >
-                  <Link href="/contact/sales">Book a demo</Link>
-                  <HiArrowLongRight className="ml-2 -mr-1 w-6 h-6" />
-                </button>
-                <p className="mt-3 text-xs text-neutral-400">
-                  Get a personalized walkthrough of Firezone.
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="text-sm grid grid-cols-2 content-end md:text-right">
+          <div className="text-sm md:w-1/3 grid grid-cols-2 content-end md:text-right">
             <div>
               <h2 className="mb-6 font-semibold uppercase md:justify-end">
                 Company
