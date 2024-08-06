@@ -162,7 +162,7 @@ pub fn run_only_headless_client() -> Result<()> {
         return Ok(());
     }
 
-    let (cb_tx, cb_rx) = mpsc::channel(10);
+    let (cb_tx, cb_rx) = mpsc::channel(1_000);
     let callbacks = CallbackHandler { cb_tx };
 
     // The name matches that in `ipc_service.rs`
