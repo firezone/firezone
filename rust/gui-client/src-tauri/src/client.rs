@@ -69,10 +69,7 @@ pub(crate) fn run() -> Result<()> {
             Ok(())
         }
         Some(Cmd::SmokeTest) => {
-            if !elevation::is_normal_user()? {
-                anyhow::bail!("`smoke-test` must run as a normal user");
-            }
-
+            // Can't check elevation here because the Windows CI is always elevated
             let settings = settings::load_advanced_settings().unwrap_or_default();
             // Don't fix the log filter for smoke tests
             let logging::Handles {
