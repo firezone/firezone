@@ -75,10 +75,14 @@ mod imp {
 
     impl ProcessToken {
         fn our_process() -> Result<Self> {
-            let mut inner = HANDLE::default();
-            // SAFETY: TODO
+            // SAFETY: Calling C APIs is unsafe
+            // `GetCurrentProcess` returns a pseudo-handle which does not need to be closed.
+            // Docs say nothing about thread safety. <https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocess>
             let our_proc = unsafe { GetCurrentProcess() };
-            // SAFETY: TODO
+            let mut inner = HANDLE::default();
+            // SAFETY: We just created `inner`, and moving a `HANDLE` is safe.
+            // We assume that if `OpenProcessToken` fails, we don't need to close the `HANDLE`.
+            // Docs say nothing about threads or safety: <https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-openprocesstoken>
             unsafe { OpenProcessToken(our_proc, TOKEN_QUERY, &mut inner) }
                 .context("`OpenProcessToken` failed")?;
             Ok(Self { inner })
@@ -88,8 +92,10 @@ mod imp {
             let mut elevation = TOKEN_ELEVATION::default();
             let token_elevation_sz = u32::try_from(size_of::<TOKEN_ELEVATION>())
                 .expect("`TOKEN_ELEVATION` size should fit into a u32");
-            let mut return_size = token_elevation_sz;
-            // SAFETY: TODO
+            let mut return_size = 0;
+            // SAFETY: Docs say nothing about threads or safety <https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation>
+            // The type of `elevation` varies based on the 2nd parameter, but we hard-coded that.
+            // It should be fine.
             unsafe {
                 GetTokenInformation(
                     self.inner,
@@ -105,7 +111,7 @@ mod imp {
 
     impl Drop for ProcessToken {
         fn drop(&mut self) {
-            // SAFETY: TODO
+            // SAFETY: We got `inner` from `OpenProcessToken` and didn't mutate it after that.
             unsafe { CloseHandle(self.inner) }.expect("`CloseHandle` should always succeed");
             self.inner = HANDLE::default();
         }
