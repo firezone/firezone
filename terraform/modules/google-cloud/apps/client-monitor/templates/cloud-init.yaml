@@ -42,7 +42,6 @@ write_files:
       UMask=077
 
       Environment="FIREZONE_API_URL=${firezone_api_url}"
-      Environment="FIREZONE_DNS_CONTROL=systemd-resolved"
       Environment="FIREZONE_ID=${firezone_client_id}"
       Environment="RUST_LOG=${firezone_client_log_level}"
       Environment="LOG_DIR=/var/log/firezone"
