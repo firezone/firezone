@@ -7,10 +7,12 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
+import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.tabs.TabLayout
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
@@ -88,6 +90,19 @@ internal class SessionActivity : AppCompatActivity() {
         binding.rvResourcesList.addItemDecoration(dividerItemDecoration)
         binding.rvResourcesList.adapter = resourcesAdapter
         binding.rvResourcesList.layoutManager = layoutManager
+
+        binding.tabLayout.addOnTabSelectedListener(
+            object : TabLayout.OnTabSelectedListener {
+                override fun onTabSelected(tab: TabLayout.Tab) {
+                    viewModel.tabSelected(tab.position)
+                    refreshList()
+                }
+
+                override fun onTabUnselected(tab: TabLayout.Tab?) {}
+
+                override fun onTabReselected(tab: TabLayout.Tab) {}
+            },
+        )
     }
 
     private fun setupObservers() {
@@ -98,9 +113,28 @@ internal class SessionActivity : AppCompatActivity() {
             }
         }
 
-        viewModel.resourcesLiveData.observe(this) { resources ->
-            resourcesAdapter.submitList(resources)
+        viewModel.resourcesLiveData.observe(this) { value ->
+            refreshList()
         }
+
+        viewModel.favoriteResourcesLiveData.observe(this) {
+            refreshList()
+        }
+        viewModel.tabSelected(binding.tabLayout.selectedTabPosition)
+        viewModel.favoriteResourcesLiveData.value = viewModel.repo.getFavoritesSync()
+    }
+
+    private fun refreshList() {
+        if (viewModel.forceAllResourcesTab()) {
+            binding.tabLayout.selectTab(binding.tabLayout.getTabAt(SessionViewModel.RESOURCES_TAB_ALL), true)
+        }
+        binding.tabLayout.visibility =
+            if (viewModel.showFavoritesTab()) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+        resourcesAdapter.submitList(viewModel.resourcesList())
     }
 
     companion object {

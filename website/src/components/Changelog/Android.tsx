@@ -1,6 +1,7 @@
-import Link from "next/link";
+import ChangeItem from "./ChangeItem";
 import Entries from "./Entries";
 import Entry from "./Entry";
+import Link from "next/link";
 
 export default function Android() {
   return (
@@ -8,6 +9,15 @@ export default function Android() {
       href="https://play.google.com/store/apps/details?id=dev.firezone.android"
       title="Android"
     >
+      {/*
+      <Entry version="1.1.5" date={new Date("2024-07-31")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6107">
+            Adds the ability to mark Resources as favorites.
+          </ChangeItem>
+        </ul>
+      </Entry>
+	  */}
       <Entry version="1.1.4" date={new Date("2024-08-02")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">

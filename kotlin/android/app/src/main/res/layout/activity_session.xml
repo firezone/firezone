@@ -51,6 +51,30 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/llContainer" />
 
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabLayout"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toBottomOf="@+id/tvResourcesList"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="1.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:tabInlineLabel="true">
+
+        <com.google.android.material.tabs.TabItem
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:icon="@drawable/baseline_star_24"
+            android:text="@string/resources_favorites" />
+
+        <com.google.android.material.tabs.TabItem
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:icon="@drawable/all_resources"
+            android:text="@string/resources_all" />
+
+    </com.google.android.material.tabs.TabLayout>
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvResourcesList"
         android:layout_width="match_parent"
@@ -58,7 +82,7 @@
         android:layout_marginTop="@dimen/spacing_2x"
         android:layout_marginBottom="@dimen/spacing_2x"
         app:layout_constraintBottom_toTopOf="@id/btSignOut"
-        app:layout_constraintTop_toBottomOf="@id/tvResourcesList"
+        app:layout_constraintTop_toBottomOf="@id/tabLayout"
         tools:layout_editor_absoluteX="16dp" />
 
     <com.google.android.material.button.MaterialButton
