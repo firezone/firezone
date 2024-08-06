@@ -7,9 +7,6 @@ use domain::base::{
     Message, MessageBuilder, ToName,
 };
 use domain::rdata::AllRecordData;
-use hickory_resolver::lookup::Lookup;
-use hickory_resolver::proto::error::{ProtoError, ProtoErrorKind};
-use hickory_resolver::proto::op::MessageType;
 use hickory_resolver::proto::rr::RecordType;
 use ip_packet::udp::UdpPacket;
 use ip_packet::IpPacket;
@@ -278,25 +275,6 @@ impl StubResolver {
     }
 }
 
-impl<'a> DnsQuery<'a> {
-    pub(crate) fn into_owned(self) -> DnsQuery<'static> {
-        let Self {
-            name,
-            record_type,
-            query,
-        } = self;
-        let buf = query.packet().to_vec();
-        let query = ip_packet::IpPacket::owned(buf)
-            .expect("We are constructing the ip packet from an ip packet");
-
-        DnsQuery {
-            name,
-            record_type,
-            query,
-        }
-    }
-}
-
 impl Clone for DnsQuery<'static> {
     fn clone(&self) -> Self {
         Self {
@@ -319,50 +297,6 @@ fn to_aaaa_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u
         .map(domain::rdata::Aaaa::new)
         .map(AllRecordData::Aaaa)
         .collect_vec()
-}
-
-pub(crate) fn build_response_from_resolve_result(
-    original_pkt: IpPacket<'_>,
-    response: hickory_resolver::error::ResolveResult<Lookup>,
-) -> Result<IpPacket, hickory_resolver::error::ResolveError> {
-    let datagram = original_pkt.unwrap_as_udp();
-    let mut message = original_pkt.unwrap_as_dns();
-
-    message.set_message_type(MessageType::Response);
-    message.set_recursion_available(true);
-
-    let response = match response.map_err(|err| err.kind().clone()) {
-        Ok(response) => message.add_answers(response.records().to_vec()),
-        Err(hickory_resolver::error::ResolveErrorKind::Proto(ProtoError { kind, .. }))
-            if matches!(*kind, ProtoErrorKind::NoRecordsFound { .. }) =>
-        {
-            let ProtoErrorKind::NoRecordsFound {
-                soa, response_code, ..
-            } = *kind
-            else {
-                panic!("Impossible - We matched on `ProtoErrorKind::NoRecordsFound` but then could not destructure that same variant");
-            };
-            if let Some(soa) = soa {
-                message.add_name_server(soa.into_record_of_rdata());
-            }
-
-            message.set_response_code(response_code)
-        }
-        Err(e) => {
-            return Err(e.into());
-        }
-    };
-
-    let packet = ip_packet::make::udp_packet(
-        original_pkt.destination(),
-        original_pkt.source(),
-        datagram.get_destination(),
-        datagram.get_source(),
-        response.to_vec()?,
-    )
-    .into_immutable();
-
-    Ok(packet)
 }
 
 fn build_dns_with_answer(

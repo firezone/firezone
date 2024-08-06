@@ -11,17 +11,12 @@ use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
 use crate::utils::earliest;
-use crate::{dns::DnsQuery, ClientEvent, GatewayEvent, Request};
+use crate::{ClientEvent, GatewayEvent, Request};
 use connlib_shared::messages::client::ResourceDescription;
 use connlib_shared::{
     messages::{ClientId, GatewayId, Interface, RelayId},
     DomainName,
 };
-use hickory_proto::{
-    op::Query,
-    rr::{RData, Record, RecordType},
-};
-use hickory_resolver::lookup::Lookup;
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
@@ -30,7 +25,6 @@ use std::{
     collections::{BTreeMap, HashSet},
     net::IpAddr,
     str::FromStr as _,
-    sync::Arc,
     time::{Duration, Instant},
 };
 use tracing::debug_span;
@@ -467,10 +461,6 @@ impl TunnelTest {
                 );
                 continue;
             }
-            if let Some(query) = self.client.exec_mut(|client| client.sut.poll_dns_queries()) {
-                self.on_forwarded_dns_query(query, ref_state);
-                continue;
-            }
             self.client.exec_mut(|sim| {
                 while let Some(packet) = sim.sut.poll_packets() {
                     sim.on_received_packet(packet)
@@ -810,41 +800,6 @@ impl TunnelTest {
             }
             ClientEvent::TunRoutesUpdated { .. } => {}
         }
-    }
-
-    // TODO: Should we vary the following things via proptests?
-    // - Forwarded DNS query timing out?
-    // - hickory error?
-    // - TTL?
-    fn on_forwarded_dns_query(&mut self, query: DnsQuery<'static>, ref_state: &ReferenceState) {
-        let all_ips = &ref_state
-            .global_dns_records
-            .get(&query.name)
-            .expect("Forwarded DNS query to be for known domain");
-
-        let name = domain_to_hickory_name(query.name.clone());
-        let requested_type = query.record_type;
-
-        let record_data = all_ips
-            .iter()
-            .filter_map(|ip| match (requested_type, ip) {
-                (RecordType::A, IpAddr::V4(v4)) => Some(RData::A((*v4).into())),
-                (RecordType::AAAA, IpAddr::V6(v6)) => Some(RData::AAAA((*v6).into())),
-                (RecordType::A, IpAddr::V6(_)) | (RecordType::AAAA, IpAddr::V4(_)) => None,
-                _ => unreachable!(),
-            })
-            .map(|rdata| Record::from_rdata(name.clone(), 86400_u32, rdata))
-            .collect::<Arc<_>>();
-
-        self.client.exec_mut(|c| {
-            c.sut.on_dns_result(
-                query,
-                Ok(Ok(Ok(Lookup::new_with_max_ttl(
-                    Query::query(name, requested_type),
-                    record_data,
-                )))),
-            )
-        })
     }
 }
 

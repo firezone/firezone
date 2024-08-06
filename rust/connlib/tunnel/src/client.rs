@@ -1,7 +1,6 @@
+use crate::dns;
 use crate::dns::StubResolver;
-use crate::io::DnsQueryError;
 use crate::peer_store::PeerStore;
-use crate::{dns, dns::DnsQuery};
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_shared::callbacks::Status;
@@ -18,12 +17,10 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use itertools::Itertools;
-use tracing::Level;
 
 use crate::peer::GatewayOnClient;
 use crate::utils::{self, earliest, turn};
 use crate::{ClientEvent, ClientTunnel, Tun};
-use core::fmt;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, RelaySocket};
 use std::collections::hash_map::Entry;
@@ -140,14 +137,7 @@ impl ClientTunnel {
     pub fn set_new_dns(&mut self, new_dns: Vec<IpAddr>) {
         // We store the sentinel dns both in the config and in the system's resolvers
         // but when we calculate the dns mapping, those are ignored.
-        let dns_changed = self.role_state.update_system_resolvers(new_dns);
-
-        if !dns_changed {
-            return;
-        }
-
-        self.io
-            .set_upstream_dns_servers(self.role_state.dns_mapping());
+        let _ = self.role_state.update_system_resolvers(new_dns);
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -155,12 +145,7 @@ impl ClientTunnel {
         &mut self,
         config: InterfaceConfig,
     ) -> connlib_shared::Result<()> {
-        let dns_changed = self.role_state.update_interface_config(config);
-
-        if dns_changed {
-            self.io
-                .set_upstream_dns_servers(self.role_state.dns_mapping());
-        }
+        let _ = self.role_state.update_interface_config(config);
 
         Ok(())
     }
@@ -273,9 +258,6 @@ pub struct ClientState {
     /// The DNS resolvers configured on the system outside of connlib.
     system_resolvers: Vec<IpAddr>,
 
-    /// DNS queries that we need to forward to the system resolver.
-    buffered_dns_queries: VecDeque<DnsQuery<'static>>,
-
     /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
     dns_mapping: BiMap<IpAddr, DnsServer>,
     /// DNS queries that had their destination IP mangled because the servers is a CIDR resource.
@@ -318,7 +300,6 @@ impl ClientState {
             buffered_events: Default::default(),
             interface_config: Default::default(),
             buffered_packets: Default::default(),
-            buffered_dns_queries: Default::default(),
             node: ClientNode::new(private_key.into(), seed),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
@@ -655,7 +636,7 @@ impl ClientState {
                     }
                 }
 
-                self.buffered_dns_queries.push_back(query.into_owned());
+                todo!("Queue a `Transmit` here");
 
                 Ok(None)
             }
@@ -664,48 +645,6 @@ impl ClientState {
                 Err((packet, dest))
             }
         }
-    }
-
-    #[tracing::instrument(level = "debug", skip_all, fields(name = %query.name, server = %query.query.destination()))] // On debug level, we can log potentially sensitive information such as domain names.
-    pub(crate) fn on_dns_result(
-        &mut self,
-        query: DnsQuery<'static>,
-        response: Result<
-            Result<
-                Result<hickory_resolver::lookup::Lookup, hickory_resolver::error::ResolveError>,
-                futures_bounded::Timeout,
-            >,
-            DnsQueryError,
-        >,
-    ) {
-        let query = query.query;
-        let make_error_reply = {
-            let query = query.clone();
-
-            |e: &dyn fmt::Display| {
-                // To avoid sensitive data getting into the logs, only log the error if debug logging is enabled.
-                // We always want to see a warning.
-                if tracing::enabled!(Level::DEBUG) {
-                    tracing::warn!("DNS query failed: {e}");
-                } else {
-                    tracing::warn!("DNS query failed");
-                };
-
-                ip_packet::make::dns_err_response(query, hickory_proto::op::ResponseCode::ServFail)
-                    .into_immutable()
-            }
-        };
-
-        let dns_reply = match response {
-            Ok(Ok(response)) => match dns::build_response_from_resolve_result(query, response) {
-                Ok(dns_reply) => dns_reply,
-                Err(e) => make_error_reply(&e),
-            },
-            Ok(Err(timeout)) => make_error_reply(&timeout),
-            Err(e) => make_error_reply(&e),
-        };
-
-        self.buffered_packets.push_back(dns_reply);
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
@@ -860,10 +799,6 @@ impl ClientState {
 
     pub fn poll_packets(&mut self) -> Option<IpPacket<'static>> {
         self.buffered_packets.pop_front()
-    }
-
-    pub fn poll_dns_queries(&mut self) -> Option<DnsQuery<'static>> {
-        self.buffered_dns_queries.pop_front()
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
