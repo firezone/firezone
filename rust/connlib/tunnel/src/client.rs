@@ -265,6 +265,8 @@ pub struct ClientState {
     ///
     /// - The [`SocketAddr`] is the original source IP.
     /// - The [`Instant`] tracks when the DNS query expires.
+    ///
+    /// We store an explicit expiry to avoid a memory leak in case of a non-responding DNS server.
     forwarded_dns_queries: HashMap<u16, (SocketAddr, Instant)>,
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
