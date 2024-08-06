@@ -307,7 +307,7 @@ impl ReferenceStateMachine for ReferenceState {
                 });
             }
             Transition::DisableResources(resources) => state.client.exec_mut(|client| {
-                client.disabled_resources = resources.clone();
+                client.disabled_resources.clone_from(resources);
 
                 for id in resources {
                     client.disconnect_resource(id)
