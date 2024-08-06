@@ -115,10 +115,10 @@ export default function Page() {
       <section className="bg-white px-4 sm:px-8 md:px-16 py-20 md:py-16">
         <div className="flex w-full lg:flex-row flex-col justify-center gap-6 lg:gap-16 xl:gap-36 items-center my-8 md:my-16">
           <ElevatorPitch />
-          <div className="w-full max-w-[600px] overflow-hidden flex justify-center items-center rounded-xl h-[600px] lg:w-[40%] bg-gradient-to-b from-[#FFF5ED] to-[#F2EEFE]">
+          <div className="w-full h-auto lg:max-w-[600px] overflow-hidden flex justify-center items-center rounded-xl lg:h-[600px] lg:w-[40%] bg-gradient-to-b from-[#FFF5ED] to-[#F2EEFE]">
             <img
               src="/images/simple-demonstration.png"
-              className="max-w-[600px] lg:max-h-[400px] lg:w-full h-auto object-fit lg:object-cover rounded-lg"
+              className="max-w-[600px] w-full lg:max-h-[400px] lg:object-cover rounded-lg"
             />
           </div>
         </div>
