@@ -388,12 +388,9 @@ fn build_dns_with_answer(
     qname: DomainName,
     records: Vec<AllRecordData<Vec<u8>, DomainName>>,
 ) -> Option<Vec<u8>> {
-    let msg_buf = Vec::with_capacity(message.as_slice().len() * 2);
-    let msg_builder = MessageBuilder::from_target(msg_buf).expect(
-        "Developer error: we should be always be able to create a MessageBuilder from a Vec",
-    );
-
-    let mut answer_builder = msg_builder.start_answer(message, Rcode::NOERROR).ok()?;
+    let mut answer_builder = MessageBuilder::new_vec()
+        .start_answer(message, Rcode::NOERROR)
+        .ok()?;
     answer_builder.header_mut().set_ra(true);
 
     for record in records {
