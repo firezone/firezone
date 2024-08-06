@@ -149,7 +149,7 @@ export default function Page() {
             direction="left"
             delay={0.75}
             duration={1}
-            className="flex flex-col p-4 justify-center"
+            className="flex flex-col p-4"
           >
             <h4 className="mb-2 md:mb-4 text-md sm:text-lg md:text-xl font-semibold tracking-tight text-primary-450 uppercase">
               Secure
@@ -163,7 +163,7 @@ export default function Page() {
             direction="left"
             delay={1}
             duration={1}
-            className="flex flex-col p-4 justify-center"
+            className="flex flex-col p-4"
           >
             <h4 className="mb-2 md:mb-4 text-md sm:text-lg md:text-xl font-semibold tracking-tight text-primary-450 uppercase">
               Granular
@@ -175,10 +175,11 @@ export default function Page() {
           </SlideIn>
         </div>
 
-        <div className="flex justify-center mt-8 md:mt-16">
+        <div className="flex justify-center mt-8">
           <ActionLink
-            className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+            className="text-md md:text-xl tracking-tight font-medium"
             href="/kb/deploy/resources"
+            color="accent-500"
           >
             Protect your resources
           </ActionLink>
@@ -213,8 +214,9 @@ export default function Page() {
 
         <div className="flex justify-center mt-8 md:mt-16">
           <ActionLink
-            className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+            className=" text-md md:text-xl tracking-tight font-medium text-accent-500"
             href="/kb/architecture"
+            color="accent-500"
           >
             Read about Firezone's architecture
           </ActionLink>
@@ -252,8 +254,9 @@ export default function Page() {
 
         <div className="flex justify-center mt-8 md:mt-16">
           <ActionLink
-            className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+            className=" text-md md:text-xl tracking-tight font-medium"
             href="/kb/authenticate"
+            color="accent-500"
           >
             Connect your identity provider
           </ActionLink>
@@ -283,8 +286,10 @@ export default function Page() {
 
         <div className="flex justify-center mt-4 md:mt-16">
           <ActionLink
-            className="underline hover:no-underline text-md md:text-xl tracking-tight font-semibold text-primary-450"
+            className=" text-md md:text-xl tracking-tight font-semibold "
             href="/kb/use-cases/scale-vpc-access"
+            color="primary-450"
+            transitionColor="white"
           >
             Scale access to your VPCs
           </ActionLink>
@@ -315,8 +320,9 @@ export default function Page() {
 
         <div className="flex justify-center mt-8">
           <ActionLink
-            className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+            className="text-md md:text-xl tracking-tight font-medium"
             href="/kb/deploy"
+            color="accent-500"
           >
             Make your resources invisible
           </ActionLink>
@@ -386,8 +392,9 @@ export default function Page() {
               </p>
               <p className="mt-4">
                 <ActionLink
-                  className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+                  className="text-md md:text-xl tracking-tight font-medium text-accent-500"
                   href="/kb/client-apps"
+                  color="accent-500"
                 >
                   Download Client apps
                 </ActionLink>
@@ -445,8 +452,9 @@ export default function Page() {
               </p>
               <p className="mt-4">
                 <ActionLink
-                  className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+                  className="text-md md:text-xl tracking-tight font-medium text-accent-500"
                   href="/kb/deploy/gateways"
+                  color="accent-500"
                 >
                   Deploy your first Gateway
                 </ActionLink>
@@ -489,8 +497,9 @@ export default function Page() {
             </div>
             <div className="mx-auto w-64 mb-8 inline-flex justify-center">
               <ActionLink
-                className="flex underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+                className="flex text-md md:text-xl tracking-tight font-medium text-accent-500"
                 href="https://www.github.com/firezone/firezone"
+                color="accent-500"
               >
                 Leave us a star
               </ActionLink>
@@ -696,8 +705,9 @@ export default function Page() {
           </div>
           <div className="flex justify-center mt-8 md:mt-16">
             <ActionLink
-              className="underline hover:no-underline text-md md:text-xl tracking-tight font-medium text-accent-500"
+              className="text-md md:text-xl tracking-tight font-medium text-accent-500"
               href="/kb/use-cases"
+              color="accent-500"
             >
               See more use cases
             </ActionLink>
