@@ -6,7 +6,6 @@ use anyhow::{bail, Result};
 ///
 /// Linux uses the CLI args from here, Windows does not
 pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
-    let dns_control = cli.dns_control();
     let _handle = super::setup_logging(cli.log_dir)?;
     if !nix::unistd::getuid().is_root() {
         anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
@@ -15,7 +14,7 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
-    rt.block_on(super::ipc_listen(dns_control, &mut signals))
+    rt.block_on(super::ipc_listen(cli.dns_control, &mut signals))
 }
 
 pub(crate) fn install_ipc_service() -> Result<()> {

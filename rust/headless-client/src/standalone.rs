@@ -190,7 +190,7 @@ pub fn run_only_headless_client() -> Result<()> {
         let mut hangup = signals::Hangup::new()?;
         let mut terminate = pin!(terminate.recv().fuse());
         let mut hangup = pin!(hangup.recv().fuse());
-        let dns_control_method = cli.common.dns_control();
+        let dns_control_method = cli.common.dns_control;
         let mut dns_controller = DnsController { dns_control_method };
         // Deactivate Firezone DNS control in case the system or IPC service crashed
         // and we need to recover. <https://github.com/firezone/firezone/issues/4899>

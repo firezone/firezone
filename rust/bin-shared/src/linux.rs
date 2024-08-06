@@ -39,17 +39,3 @@ pub fn udp_socket_factory(socket_addr: &SocketAddr) -> io::Result<UdpSocket> {
     setsockopt(&socket, sockopt::Mark, &FIREZONE_MARK)?;
     Ok(socket)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use clap::ValueEnum;
-
-    #[test]
-    fn cli() {
-        assert!(matches!(
-            DnsControlMethod::from_str("etc-resolv-conf", false),
-            Ok(DnsControlMethod::EtcResolvConf)
-        ));
-    }
-}

@@ -69,8 +69,8 @@ const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 /// CLI args common to both the IPC service and the headless Client
 #[derive(clap::Parser)]
 struct CliCommon {
-    #[arg(long, env = "FIREZONE_DNS_CONTROL")]
-    dns_control: Option<DnsControlMethod>,
+    #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "systemd-resolved")]
+    dns_control: DnsControlMethod,
 
     /// File logging directory. Should be a path that's writeable by the current user.
     #[arg(short, long, env = "LOG_DIR")]
@@ -80,12 +80,6 @@ struct CliCommon {
     /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
     #[arg(short, long, env = "MAX_PARTITION_TIME")]
     max_partition_time: Option<humantime::Duration>,
-}
-
-impl CliCommon {
-    fn dns_control(&self) -> DnsControlMethod {
-        self.dns_control.unwrap_or_default()
-    }
 }
 
 /// Messages we get from connlib, including ones that aren't sent to IPC clients
@@ -180,26 +174,24 @@ mod tests {
     #[test]
     #[cfg(target_os = "linux")]
     fn dns_control() {
-        let actual = CliCommon::try_parse_from([EXE_NAME]).unwrap();
+        let actual = CliCommon::parse_from([EXE_NAME]);
         assert!(matches!(
-            actual.dns_control(),
+            actual.dns_control,
             DnsControlMethod::SystemdResolved
         ));
 
-        let actual = CliCommon::try_parse_from([EXE_NAME, "--dns-control", "disabled"]).unwrap();
-        assert!(matches!(actual.dns_control(), DnsControlMethod::Disabled));
+        let actual = CliCommon::parse_from([EXE_NAME, "--dns-control", "disabled"]);
+        assert!(matches!(actual.dns_control, DnsControlMethod::Disabled));
 
-        let actual =
-            CliCommon::try_parse_from([EXE_NAME, "--dns-control", "etc-resolv-conf"]).unwrap();
+        let actual = CliCommon::parse_from([EXE_NAME, "--dns-control", "etc-resolv-conf"]);
         assert!(matches!(
-            actual.dns_control(),
+            actual.dns_control,
             DnsControlMethod::EtcResolvConf
         ));
 
-        let actual =
-            CliCommon::try_parse_from([EXE_NAME, "--dns-control", "systemd-resolved"]).unwrap();
+        let actual = CliCommon::parse_from([EXE_NAME, "--dns-control", "systemd-resolved"]);
         assert!(matches!(
-            actual.dns_control(),
+            actual.dns_control,
             DnsControlMethod::SystemdResolved
         ));
 
@@ -209,14 +201,14 @@ mod tests {
     #[test]
     #[cfg(target_os = "windows")]
     fn dns_control() {
-        let actual = CliCommon::try_parse_from([EXE_NAME]).unwrap();
-        assert!(matches!(actual.dns_control(), DnsControlMethod::Nrpt));
+        let actual = CliCommon::parse_from([EXE_NAME]);
+        assert!(matches!(actual.dns_control, DnsControlMethod::Nrpt));
 
-        let actual = CliCommon::try_parse_from([EXE_NAME, "--dns-control", "disabled"]).unwrap();
-        assert!(matches!(actual.dns_control(), DnsControlMethod::Disabled));
+        let actual = CliCommon::parse_from([EXE_NAME, "--dns-control", "disabled"]);
+        assert!(matches!(actual.dns_control, DnsControlMethod::Disabled));
 
-        let actual = CliCommon::try_parse_from([EXE_NAME, "--dns-control", "nrpt"]).unwrap();
-        assert!(matches!(actual.dns_control(), DnsControlMethod::Nrpt));
+        let actual = CliCommon::parse_from([EXE_NAME, "--dns-control", "nrpt"]);
+        assert!(matches!(actual.dns_control, DnsControlMethod::Nrpt));
 
         assert!(CliCommon::try_parse_from([EXE_NAME, "--dns-control", "invalid"]).is_err());
     }

@@ -108,7 +108,7 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
-    rt.block_on(ipc_listen(cli.common.dns_control(), &mut signals))
+    rt.block_on(ipc_listen(cli.common.dns_control, &mut signals))
 }
 
 #[cfg(not(debug_assertions))]
