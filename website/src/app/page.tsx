@@ -112,10 +112,15 @@ export default function Page() {
       {/* TODO: ACLs for the rest of us */}
 
       {/* Feature section 1: Secure access to your most sensitive resources in minutes. */}
-      <section className="bg-white md:px-16 px-4 py-20 md:py-16">
-        <div className="flex w-full md:flex-row flex-col justify-center gap-24 items-center my-16 md:mt-16 max-w-screen-2xl">
+      <section className="bg-white px-4 sm:px-8 md:px-16 py-20 md:py-16">
+        <div className="flex w-full lg:flex-row flex-col justify-center gap-6 lg:gap-16 xl:gap-36 items-center my-8 md:my-16">
           <ElevatorPitch />
-          <div className="w-full md:w-[40%] h-[600px] bg-gradient-to-b from-[#FFF0E3] to-[#ECE4FF] rounded-lg" />
+          <div className="w-full flex justify-center items-center rounded-xl h-[600px] lg:w-[40%] bg-gradient-to-b from-[#FFF5ED] to-[#F2EEFE]">
+            <img
+              src="/images/simple-demonstration.png"
+              className="max-w-[800px] lg:max-h-[400px] w-full lg:h-auto object-cover rounded-lg"
+            />
+          </div>
         </div>
         <section className="border-t border-neutral-200 py-24 bg-white">
           <BattleCard2 />

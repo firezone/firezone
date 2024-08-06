@@ -49,12 +49,12 @@ export default function ElevatorPitch() {
   const OptionButton = ({ title, desc, icon, index }: OptionButtonProps) => {
     return (
       <button
-        className={`w-full flex rounded-xl items-center p-5 gap-4 ring-1 transition duration-200 ease-in-out ${
+        className={`flex flex-col lg:flex-row lg:w-full rounded-xl items-start lg:items-center p-5 gap-4 border-[1px] justify-center lg:justify-start transition duration-200 ease-in-out ${
           manrope.className
         } ${
           selectedOption == index
-            ? "bg-primary-50 ring-primary-450"
-            : "bg-transparent ring-transparent hover:bg-primary-50 hover:ring-primary-200"
+            ? "bg-primary-50 border-primary-450"
+            : "bg-transparent border-transparent hover:bg-primary-50 hover:border-primary-200"
         }`}
         onClick={() => setSelectedOption(index)}
       >
@@ -70,12 +70,12 @@ export default function ElevatorPitch() {
   };
 
   return (
-    <div className="flex flex-col max-w-[580px]">
-      <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-4">
+    <div className="flex flex-col w-full lg:w-[480px] xl:w-[580px]">
+      <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2 lg:mb-4">
         Stay Connected
       </h6>
-      <div className="sm:mx-auto mb-4 text-4xl md:text-5xl text-pretty text-left ">
-        <h3 className=" tracking-tight font-bold inline-block">
+      <div className="mb-2 lg:mb-4 text-3xl md:text-4xl lg:text-5xl ">
+        <h3 className=" text-pretty text-left tracking-tight font-bold inline-block">
           Supercharge your workforce
           <span className="text-primary-450"> in minutes.</span>
         </h3>
@@ -87,7 +87,7 @@ export default function ElevatorPitch() {
           Protect your workforce without the tedious configuration.
         </p>
       </div>
-      <div className="mt-8 space-y-2">
+      <div className="lg:flex grid  grid-cols-1 sm:grid-cols-2 lg:flex-col mt-8 space-y-2">
         {data.map((item, index) => (
           <OptionButton
             key={index}

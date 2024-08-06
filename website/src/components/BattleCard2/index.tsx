@@ -22,7 +22,10 @@ export default function BattleCard2() {
 
       <div className="max-w-screen-lg w-full px-0 sm:px-4">
         <div className="flex w-full items-end justify-start lg:justify-center overflow-x-auto flex-shrink-0">
-          <ul role="list" className={`min-w-[300px] ${manrope.className}`}>
+          <ul
+            role="list"
+            className={`text-sm md:text-md min-w-[180px] md:min-w-[300px] ${manrope.className}`}
+          >
             <li className="px-6 py-4 bg-neutral-100">
               Automatic NAT64 and NAT46
             </li>
@@ -31,7 +34,9 @@ export default function BattleCard2() {
               Built on WireGuard®
             </li>
             <li className="px-6 py-4 w-full">IPv6 support</li>
-            <li className="px-6 py-4 w-full bg-neutral-100">Mesh Networking</li>
+            <li className="px-6 py-4 w-full bg-neutral-100">
+              DNS-based routing
+            </li>
             <li className="h-20" />
           </ul>
           <ul
@@ -85,7 +90,7 @@ export default function BattleCard2() {
               <HiXMark className="text-2xl text-red-600" />
             </li>
             <li className="h-14 flex justify-center items-center w-full ">
-              <HiCheck className="text-2xl text-green-600" />
+              Partial
             </li>
             <li className="h-14 flex justify-center items-center w-full bg-neutral-100">
               <HiCheck className="text-2xl text-green-600" />
@@ -94,7 +99,7 @@ export default function BattleCard2() {
               <HiCheck className="text-2xl text-green-600" />
             </li>
             <li className="h-14 flex justify-center items-center w-full ">
-              <HiCheck className="text-2xl text-green-600" />
+              Partial
             </li>
             <li className="h-20" />
           </ul>
@@ -115,13 +120,13 @@ export default function BattleCard2() {
               <HiXMark className="text-2xl text-red-600" />
             </li>
             <li className="h-14 flex justify-center items-center w-full ">
-              <HiCheck className="text-2xl text-green-600" />
+              <HiXMark className="text-2xl text-red-600" />
             </li>
             <li className="h-14 flex justify-center items-center w-full bg-neutral-100">
-              <HiCheck className="text-2xl text-green-600" />
+              <HiXMark className="text-2xl text-red-600" />
             </li>
             <li className="h-14 flex justify-center items-center w-full">
-              <HiCheck className="text-2xl text-green-600" />
+              <HiXMark className="text-2xl text-red-600" />
             </li>
             <li className="h-14 flex justify-center items-center w-full ">
               <HiCheck className="text-2xl text-green-600" />
