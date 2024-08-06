@@ -266,6 +266,10 @@ pub struct RefClient {
     #[derivative(Debug = "ignore")]
     pub(crate) connected_dns_resources: HashSet<(ResourceId, DomainName)>,
 
+    /// Actively disabled resources by the UI
+    #[derivative(Debug = "ignore")]
+    pub(crate) disabled_resources: HashSet<ResourceId>,
+
     /// The expected ICMP handshakes.
     ///
     /// This is indexed by gateway because our assertions rely on the order of the sent packets.
@@ -291,6 +295,11 @@ impl RefClient {
         let _ = client_state.update_system_resolvers(self.system_dns_resolvers);
 
         SimClient::new(self.id, client_state)
+    }
+
+    pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
+        self.connected_cidr_resources.remove(resource);
+        self.connected_dns_resources.retain(|(r, _)| r != resource);
     }
 
     pub(crate) fn reset_connections(&mut self) {
@@ -367,6 +376,10 @@ impl RefClient {
         };
         tracing::Span::current().record("resource", tracing::field::display(rid));
 
+        if self.disabled_resources.contains(&rid) {
+            return;
+        }
+
         let Some(gateway) = gateway_by_resource(rid) else {
             tracing::error!("No gateway for resource");
             return;
@@ -428,7 +441,9 @@ impl RefClient {
         );
 
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.connected_dns_resources.insert((resource, dst));
+        if !self.disabled_resources.contains(&resource) {
+            self.connected_dns_resources.insert((resource, dst));
+        }
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Network> {
@@ -460,7 +475,7 @@ impl RefClient {
             .sorted_by_key(|r| r.address.len())
             .rev()
             .map(|r| r.id)
-            .next()
+            .find(|id| !self.disabled_resources.contains(id))
     }
 
     fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, HashSet<RecordType>)> + '_ {
@@ -541,7 +556,10 @@ impl RefClient {
     }
 
     pub(crate) fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
-        self.cidr_resources.longest_match(ip).map(|(_, r)| r.id)
+        self.cidr_resources
+            .longest_match(ip)
+            .map(|(_, r)| r.id)
+            .filter(|id| !self.disabled_resources.contains(id))
     }
 
     pub(crate) fn resolved_ip4_for_non_resources(
@@ -736,6 +754,7 @@ fn ref_client(
                 connected_internet_resources: Default::default(),
                 expected_icmp_handshakes: Default::default(),
                 expected_dns_handshakes: Default::default(),
+                disabled_resources: Default::default(),
             },
         )
 }

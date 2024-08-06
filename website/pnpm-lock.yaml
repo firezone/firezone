@@ -45,8 +45,8 @@ importers:
         specifier: ^1.2.1
         version: 1.2.1
       asciinema-player:
-        specifier: ^3.7.1
-        version: 3.7.1
+        specifier: ^3.8.0
+        version: 3.8.0
       autoprefixer:
         specifier: 10.4.19
         version: 10.4.19(postcss@8.4.39)
@@ -55,7 +55,7 @@ importers:
         version: 4.4.0
       flowbite-react:
         specifier: ^0.10.1
-        version: 0.10.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.4)
+        version: 0.10.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.7)
       framer-motion:
         specifier: ^11.2.4
         version: 11.2.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -123,12 +123,12 @@ importers:
         specifier: ^11.0.0
         version: 11.0.0
       tailwindcss:
-        specifier: 3.4.4
-        version: 3.4.4
+        specifier: 3.4.7
+        version: 3.4.7
     devDependencies:
       flowbite-typography:
         specifier: ^1.0.3
-        version: 1.0.3(tailwindcss@3.4.4)
+        version: 1.0.3(tailwindcss@3.4.7)
       hastscript:
         specifier: ^9.0.0
         version: 9.0.0
@@ -583,8 +583,8 @@ packages:
   arg@5.0.2:
     resolution: {integrity: sha512-PYjyFOLKQ9y57JvQ6QLo8dAgNqswh8M1RMJYdQduT6xbWSgK36P/Z/v+p888pM69jMMfS8Xd8F6I1kQ/I9HUGg==}
 
-  asciinema-player@3.7.1:
-    resolution: {integrity: sha512-zDJteGjBzNQhHEnD0aG7GqV3E53sOyKb1WCxKNRm2PquU70Lq3s4xxb91wyDS0hBJ3J/TB8aY3y8gjGPN+T23A==}
+  asciinema-player@3.8.0:
+    resolution: {integrity: sha512-yFoAcjFK9WJ0D+aagkT0YXOWRbyXoOe/TQHq07oQP6prItXQkWn46fdvUb6zqJu2AywmY8VjBEwZ6ciL8IbezQ==}
 
   astring@1.8.6:
     resolution: {integrity: sha512-ISvCdHdlTDlH5IpxQJIex7BWBywFWgjJSVdwst+/iQCoEYnyOaQ95+X1JGshuBjGp6nxKUy1jMgE3zPqN7fQdg==}
@@ -1718,8 +1718,8 @@ packages:
   tailwind-merge@2.3.0:
     resolution: {integrity: sha512-vkYrLpIP+lgR0tQCG6AP7zZXCTLc1Lnv/CCRT3BqJ9CZ3ui2++GPaGb1x/ILsINIMSYqqvrpqjUFsMNLlW99EA==}
 
-  tailwindcss@3.4.4:
-    resolution: {integrity: sha512-ZoyXOdJjISB7/BcLTR6SEsLgKtDStYyYZVLsUtWChO4Ps20CBad7lfJKVDiejocV4ME1hLmyY0WJE3hSDcmQ2A==}
+  tailwindcss@3.4.7:
+    resolution: {integrity: sha512-rxWZbe87YJb4OcSopb7up2Ba4U82BoiSGUdoDr3Ydrg9ckxFS/YWsvhN323GMcddgU65QRy7JndC7ahhInhvlQ==}
     engines: {node: '>=14.0.0'}
     hasBin: true
 
@@ -2396,7 +2396,7 @@ snapshots:
 
   arg@5.0.2: {}
 
-  asciinema-player@3.7.1:
+  asciinema-player@3.8.0:
     dependencies:
       '@babel/runtime': 7.24.7
       solid-js: 1.8.17
@@ -2626,7 +2626,7 @@ snapshots:
     dependencies:
       to-regex-range: 5.0.1
 
-  flowbite-react@0.10.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.4):
+  flowbite-react@0.10.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.7):
     dependencies:
       '@floating-ui/core': 1.6.2
       '@floating-ui/react': 0.26.17(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -2637,14 +2637,14 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
       react-icons: 5.2.1(react@18.3.1)
       tailwind-merge: 2.3.0
-      tailwindcss: 3.4.4
+      tailwindcss: 3.4.7
 
-  flowbite-typography@1.0.3(tailwindcss@3.4.4):
+  flowbite-typography@1.0.3(tailwindcss@3.4.7):
     dependencies:
       lodash.castarray: 4.4.0
       lodash.isplainobject: 4.0.6
       lodash.merge: 4.6.2
-      tailwindcss: 3.4.4
+      tailwindcss: 3.4.7
 
   flowbite@2.3.0:
     dependencies:
@@ -3889,7 +3889,7 @@ snapshots:
     dependencies:
       '@babel/runtime': 7.24.7
 
-  tailwindcss@3.4.4:
+  tailwindcss@3.4.7:
     dependencies:
       '@alloc/quick-lru': 5.2.0
       arg: 5.0.2
