@@ -1,8 +1,6 @@
 use crate::{
-    device_id,
-    dns_control::{self, DnsController},
-    known_dirs, signals, CallbackHandler, CliCommon, InternalServerMsg, IpcServerMsg,
-    TOKEN_ENV_KEY,
+    device_id, dns_control::DnsController, known_dirs, signals, CallbackHandler, CliCommon,
+    InternalServerMsg, IpcServerMsg, TOKEN_ENV_KEY,
 };
 use anyhow::{Context as _, Result};
 use clap::Parser;
@@ -376,10 +374,7 @@ impl<'a> Handler<'a> {
                     Session::connect(args, portal, tokio::runtime::Handle::try_current()?);
                 let tun = self.tun_device.make_tun()?;
                 new_session.set_tun(Box::new(tun));
-                new_session.set_dns(
-                    dns_control::system_resolvers(self.dns_controller.dns_control_method)
-                        .unwrap_or_default(),
-                );
+                new_session.set_dns(self.dns_controller.system_resolvers());
                 self.connlib = Some(new_session);
             }
             ClientMsg::Disconnect => {

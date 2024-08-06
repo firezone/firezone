@@ -19,7 +19,7 @@ mod windows;
 #[cfg(target_os = "windows")]
 use windows as platform;
 
-pub(crate) use platform::system_resolvers;
+use platform::system_resolvers;
 
 /// Controls system-wide DNS.
 ///
@@ -35,6 +35,12 @@ impl Drop for DnsController {
         if let Err(error) = self.deactivate() {
             tracing::error!(?error, "Failed to deactivate DNS control");
         }
+    }
+}
+
+impl DnsController {
+    pub(crate) fn system_resolvers(&self) -> Vec<IpAddr> {
+        system_resolvers(self.dns_control_method).unwrap_or_default()
     }
 }
 

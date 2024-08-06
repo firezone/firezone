@@ -1,8 +1,8 @@
 //! AKA "Headless"
 
 use crate::{
-    default_token_path, device_id, dns_control, platform, signals, CallbackHandler, CliCommon,
-    DnsController, InternalServerMsg, IpcServerMsg, TOKEN_ENV_KEY,
+    default_token_path, device_id, platform, signals, CallbackHandler, CliCommon, DnsController,
+    InternalServerMsg, IpcServerMsg, TOKEN_ENV_KEY,
 };
 use anyhow::{anyhow, Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
@@ -208,7 +208,7 @@ pub fn run_only_headless_client() -> Result<()> {
 
         let tun = tun_device.make_tun()?;
         session.set_tun(Box::new(tun));
-        session.set_dns(dns_control::system_resolvers(dns_control_method).unwrap_or_default());
+        session.set_dns(dns_controller.system_resolvers());
 
         let result = loop {
             let mut dns_changed = pin!(dns_notifier.notified().fuse());
@@ -229,7 +229,7 @@ pub fn run_only_headless_client() -> Result<()> {
                     // If the DNS control method is not `systemd-resolved`
                     // then we'll use polling here, so no point logging every 5 seconds that we're checking the DNS
                     tracing::trace!("DNS change, notifying Session");
-                    session.set_dns(dns_control::system_resolvers(dns_control_method)?);
+                    session.set_dns(dns_controller.system_resolvers());
                     continue;
                 },
                 result = network_changed => {
