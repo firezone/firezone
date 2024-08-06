@@ -11,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
     result::Result as StdResult,
 };
-use tokio::task::spawn_blocking;
+use tokio::{sync::oneshot, task::spawn_blocking};
 use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
 use tracing_subscriber::{fmt, layer::SubscriberExt, reload, EnvFilter, Layer, Registry};
@@ -75,18 +75,22 @@ pub(crate) fn setup(directives: &str) -> Result<Handles> {
 }
 
 #[tauri::command]
-pub(crate) async fn clear_logs() -> StdResult<(), String> {
-    if let Err(error) = clear_logs_inner().await {
-        // Log the error ourselves since Tauri will only log it to the JS console
-        tracing::error!(?error, "Error while clearing logs");
-        Err(error.to_string())
-    } else {
-        Ok(())
+pub(crate) async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<(), String> {
+    let (cb_tx, cb_rx) = oneshot::channel();
+    managed
+        .ctlr_tx
+        .send(ControllerRequest::ClearLogs(cb_tx))
+        .await
+        .map_err(|e| e.to_string())?;
+    match cb_rx.await {
+        Err(_recv_error) => Err("Failed to await response from `Controller`".to_string()),
+        Ok(Err(clear_logs_err)) => Err(clear_logs_err),
+        Ok(Ok(())) => Ok(()),
     }
 }
 
 #[tauri::command]
-pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> StdResult<(), String> {
+pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> Result<(), String> {
     show_export_dialog(managed.ctlr_tx.clone()).map_err(|e| e.to_string())
 }
 
@@ -96,48 +100,15 @@ pub(crate) struct FileCount {
     files: u64,
 }
 
+impl FileCount {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.files == 0
+    }
+}
+
 #[tauri::command]
 pub(crate) async fn count_logs() -> StdResult<FileCount, String> {
     count_logs_inner().await.map_err(|e| e.to_string())
-}
-
-/// Delete all files in the logs directory.
-///
-/// This includes the current log file, so we won't write any more logs to disk
-/// until the file rolls over or the app restarts.
-///
-/// If we get an error while removing a file, we still try to remove all other
-/// files, then we return the most recent error.
-pub(crate) async fn clear_logs_inner() -> Result<()> {
-    let mut result = Ok(());
-
-    for log_path in log_paths()?.into_iter().map(|x| x.src) {
-        let mut dir = match tokio::fs::read_dir(log_path).await {
-            Ok(x) => x,
-            Err(error) => {
-                if matches!(error.kind(), NotFound) {
-                    // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not delete the non-existent files
-                    return Ok(());
-                }
-                // But any other error like permissions errors, should bubble.
-                return Err(error.into());
-            }
-        };
-        while let Some(entry) = dir.next_entry().await? {
-            let path = entry.path();
-            if let Err(error) = tokio::fs::remove_file(&path).await {
-                tracing::error!(
-                    ?error,
-                    path = path.display().to_string(),
-                    "Error while removing log file"
-                );
-                // We'll return the most recent error, it loses some information but it's better than nothing.
-                result = Err(error);
-            }
-        }
-    }
-
-    Ok(result?)
 }
 
 /// Pops up the "Save File" dialog
@@ -180,7 +151,7 @@ pub(crate) async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
     spawn_blocking(move || {
         let f = fs::File::create(&temp_path).context("Failed to create zip file")?;
         let mut zip = zip::ZipWriter::new(f);
-        for log_path in log_paths().context("Can't compute log paths")? {
+        for log_path in log_paths_export().context("Can't compute log paths")? {
             add_dir_to_zip(&mut zip, &log_path.src, &stem.join(log_path.dst))?;
         }
         zip.finish().context("Failed to finish zip file")?;
@@ -234,7 +205,7 @@ fn add_dir_to_zip(
 pub(crate) async fn count_logs_inner() -> Result<FileCount> {
     // I spent about 5 minutes on this and couldn't get it to work with `Stream`
     let mut total_count = FileCount::default();
-    for log_path in log_paths()? {
+    for log_path in log_paths_export()? {
         let count = count_one_dir(&log_path.src).await?;
         total_count.files += count.files;
         total_count.bytes += count.bytes;
@@ -242,7 +213,7 @@ pub(crate) async fn count_logs_inner() -> Result<FileCount> {
     Ok(total_count)
 }
 
-async fn count_one_dir(path: &Path) -> Result<FileCount> {
+pub(crate) async fn count_one_dir(path: &Path) -> Result<FileCount> {
     let mut dir = tokio::fs::read_dir(path).await?;
     let mut file_count = FileCount::default();
 
@@ -255,15 +226,18 @@ async fn count_one_dir(path: &Path) -> Result<FileCount> {
     Ok(file_count)
 }
 
-fn log_paths() -> Result<Vec<LogPath>> {
+/// Paths that the GUI should check to count or export logs
+///
+/// The GUI has read access to log files on both OSes, so this includes
+/// the IPC service's logs dir
+fn log_paths_export() -> Result<Vec<LogPath>> {
     Ok(vec![
         LogPath {
-            src: firezone_headless_client::known_dirs::ipc_service_logs()
-                .context("Can't compute IPC service logs dir")?,
+            src: known_dirs::ipc_service_logs().context("Can't compute IPC service logs dir")?,
             dst: PathBuf::from("connlib"),
         },
         LogPath {
-            src: known_dirs::logs().context("Can't compute app log dir")?,
+            src: known_dirs::logs().context("Can't compute GUI log dir")?,
             dst: PathBuf::from("app"),
         },
     ])

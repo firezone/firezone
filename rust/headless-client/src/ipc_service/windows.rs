@@ -1,4 +1,3 @@
-use crate::CliCommon;
 use anyhow::{bail, Context as _, Result};
 use connlib_client_shared::file_logger;
 use futures::future::{self, Either};
@@ -48,9 +47,7 @@ pub(crate) fn install_ipc_service() -> Result<()> {
 }
 
 /// Cross-platform entry point for systemd / Windows services
-///
-/// Linux uses the CLI args from here, Windows does not
-pub(crate) fn run_ipc_service(_cli: CliCommon) -> Result<()> {
+pub(crate) fn run_ipc_service() -> Result<()> {
     windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_run).context("windows_service::service_dispatcher failed. This isn't running in an interactive terminal, right?")
 }
 
@@ -60,7 +57,9 @@ windows_service::define_windows_service!(ffi_service_run, service_run);
 fn service_run(arguments: Vec<OsString>) {
     // `arguments` doesn't seem to work right when running as a Windows service
     // (even though it's meant for that) so just use the default log dir.
-    let handle = super::setup_logging(None).expect("Should be able to set up logging");
+    let log_dir = crate::known_dirs::ipc_service_logs()
+        .expect("Should be able to compute IPC service logs dir");
+    let handle = super::setup_logging(&log_dir).expect("Should be able to set up logging");
     if let Err(error) = fallible_service_run(arguments, handle) {
         tracing::error!(?error, "`fallible_windows_service_run` returned an error");
     }
@@ -173,10 +172,7 @@ fn fallible_service_run(
 ///
 /// Logging must already be set up before calling this.
 async fn service_run_async(mut shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
-    // Useless - Windows will never send us Ctrl+C when running as a service
-    // This just keeps the signatures simpler
-    let mut signals = crate::signals::Terminate::new()?;
-    let listen_fut = pin!(super::ipc_listen(&mut signals));
+    let listen_fut = pin!(super::ipc_listen());
     match future::select(listen_fut, pin!(shutdown_rx.recv())).await {
         Either::Left((Err(error), _)) => Err(error).context("`ipc_listen` threw an error"),
         Either::Left((Ok(()), _)) => {

@@ -11,7 +11,7 @@ use crate::client::{
 use anyhow::{anyhow, bail, Context, Result};
 use connlib_client_shared::callbacks::ResourceDescription;
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
-use firezone_headless_client::IpcServerMsg;
+use firezone_headless_client::{known_dirs, CommonMsg, IpcClientMsg, IpcServerMsg};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     path::PathBuf,
@@ -20,7 +20,10 @@ use std::{
 };
 use system_tray::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTrayEvent};
-use tokio::sync::{mpsc, oneshot};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
+};
 use tracing::instrument;
 use url::Url;
 
@@ -153,15 +156,12 @@ pub(crate) fn run(
                     }
                 });
 
-                if let Some(client::Cmd::SmokeTest) = &cli.command {
+                let smoke_test_task = if matches!(cli.command, Some(client::Cmd::SmokeTest)) {
                     let ctlr_tx = ctlr_tx.clone();
-                    tokio::spawn(async move {
-                        if let Err(error) = smoke_test(ctlr_tx).await {
-                            tracing::error!(?error, "Error during smoke test, crashing on purpose so a dev can see our stacktraces");
-                            unsafe { sadness_generator::raise_segfault() }
-                        }
-                    });
-                }
+                    tokio::spawn(smoke_test(ctlr_tx))
+                } else {
+                    tokio::spawn(futures::future::pending())
+                };
 
                 tracing::debug!(cli.no_deep_links);
                 if !cli.no_deep_links {
@@ -202,6 +202,7 @@ pub(crate) fn run(
                             ctlr_rx,
                             advanced_settings,
                             reloader,
+                            smoke_test_task,
                         )
                         .await
                     });
@@ -220,7 +221,9 @@ pub(crate) fn run(
                         }
                         Ok(Err(error)) => {
                             tracing::error!(?error, "run_controller returned an error");
-                            errors::show_error_dialog(&error).unwrap();
+                            if ! matches!(cli.command, Some(client::Cmd::SmokeTest)) {
+                                errors::show_error_dialog(&error).unwrap();
+                            }
                             1
                         }
                         Ok(Ok(_)) => 0,
@@ -302,8 +305,9 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         })
         .await
         .context("Failed to send ExportLogs request")?;
+    let (cb_tx, _) = oneshot::channel();
     ctlr_tx
-        .send(ControllerRequest::ClearLogs)
+        .send(ControllerRequest::ClearLogs(cb_tx))
         .await
         .context("Failed to send ClearLogs request")?;
 
@@ -343,8 +347,37 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         .context("Failed to remove zip file")?;
     tracing::info!(?path, ?zip_len, "Exported log zip looks okay");
 
-    // Check that settings file and at least one log file were written
+    // Check that settings file was written
     anyhow::ensure!(tokio::fs::try_exists(settings::advanced_settings_path()?).await?);
+
+    // Check that logs were written
+    assert!(
+        !logging::count_one_dir(&known_dirs::ipc_service_logs().unwrap())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(!logging::count_one_dir(&known_dirs::logs().unwrap())
+        .await
+        .unwrap()
+        .is_empty());
+
+    // Clear logs
+    let (cb_tx, cb_rx) = oneshot::channel();
+    ctlr_tx.send(ControllerRequest::ClearLogs(cb_tx)).await?;
+    cb_rx.await.unwrap().unwrap();
+
+    // Check that logs were cleared
+    assert!(
+        logging::count_one_dir(&known_dirs::ipc_service_logs().unwrap())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(logging::count_one_dir(&known_dirs::logs().unwrap())
+        .await
+        .unwrap()
+        .is_empty());
 
     tracing::info!("Quitting on purpose because of `smoke-test` subcommand");
     ctlr_tx
@@ -420,8 +453,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 pub(crate) enum ControllerRequest {
     /// The GUI wants us to use these settings in-memory, they've already been saved to disk
     ApplySettings(AdvancedSettings),
-    /// Only used for smoke tests
-    ClearLogs,
+    ClearLogs(oneshot::Sender<Result<(), String>>),
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {
         path: PathBuf,
@@ -473,6 +505,7 @@ struct Controller {
     app: tauri::AppHandle,
     // Sign-in state with the portal / deep links
     auth: client::auth::Auth,
+    clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
     log_filter_reloader: logging::Reloader,
@@ -533,9 +566,16 @@ impl Controller {
                     "Applied new settings. Log level will take effect immediately for the GUI and later for the IPC service."
                 );
             }
-            Req::ClearLogs => logging::clear_logs_inner()
-                .await
-                .context("Failed to clear logs")?,
+            Req::ClearLogs(cb) => {
+                if self.clear_logs_callback.is_some() {
+                    Err(anyhow!("Another `ClearLogs` operation is in-flight"))?
+                }
+                // Clear GUI logs
+                firezone_headless_client::clear_logs_dir(&known_dirs::logs().context("Can't compute GUI log dir")?).await?;
+                // Command IPC service to clear its logs
+                self.ipc_client.send_msg(&IpcClientMsg::ClearLogs).await?;
+                self.clear_logs_callback = Some(cb);
+            }
             Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
                 .await
                 .context("Failed to export logs to zip")?,
@@ -619,6 +659,8 @@ impl Controller {
                 tauri::api::shell::open(&self.app.shell_scope(), url, None)
                     .context("Couldn't open URL from system tray")?
             }
+            // TODO: Use `std::ops::ControlFlow` to break out of the main loop,
+            // instead of handling `Quit` as a special case
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => Err(anyhow!(
                 "Impossible error: `Quit` should be handled before this"
             ))?,
@@ -642,10 +684,10 @@ impl Controller {
 
     async fn handle_ipc(&mut self, msg: IpcServerMsg) -> Result<(), Error> {
         match msg {
-            IpcServerMsg::OnDisconnect {
+            IpcServerMsg::Common(CommonMsg::OnDisconnect {
                 error_msg,
                 is_authentication_error,
-            } => {
+            }) => {
                 self.sign_out().await?;
                 if is_authentication_error {
                     tracing::info!(?error_msg, "Auth error");
@@ -664,7 +706,7 @@ impl Controller {
                 }
                 Ok(())
             }
-            IpcServerMsg::OnUpdateResources(resources) => {
+            IpcServerMsg::Common(CommonMsg::OnUpdateResources(resources)) => {
                 if self.auth.session().is_none() {
                     // This could happen if the user cancels the sign-in
                     // before it completes. This is because the state machine
@@ -685,6 +727,17 @@ impl Controller {
                 if let Err(error) = self.refresh_system_tray_menu() {
                     tracing::error!(?error, "Failed to refresh Resource list");
                 }
+                Ok(())
+            }
+            IpcServerMsg::ClearLogsResult(result) => {
+                let Some(sender) = self.clear_logs_callback.take() else {
+                    Err(anyhow!(
+                        "Got `ClearLogsResult` but we don't have an in-flight `ClearLogs` request"
+                    ))?
+                };
+                sender
+                    .send(result)
+                    .map_err(|_| anyhow!("Failed to send `ClearLogsResult` back to JavaScript"))?;
                 Ok(())
             }
             IpcServerMsg::TerminatingGracefully => {
@@ -765,6 +818,7 @@ async fn run_controller(
     mut rx: mpsc::Receiver<ControllerRequest>,
     advanced_settings: AdvancedSettings,
     log_filter_reloader: logging::Reloader,
+    mut smoke_test_task: JoinHandle<Result<()>>,
 ) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");
     let ipc_client = ipc::Client::new(ctlr_tx.clone()).await?;
@@ -773,6 +827,7 @@ async fn run_controller(
         advanced_settings,
         app: app.clone(),
         auth: client::auth::Auth::new()?,
+        clear_logs_callback: None,
         ctlr_tx,
         ipc_client,
         log_filter_reloader,
@@ -848,6 +903,11 @@ async fn run_controller(
                     req => controller.handle_request(req).await?,
                 }
             },
+            result = &mut smoke_test_task => match result {
+                Ok(Ok(())) => break,
+                Ok(Err(e)) => Err(e).context("Join error")?,
+                Err(e) => Err(e).context("Smoke test error")?,
+            }
         }
         // Code down here may not run because the `select` sometimes `continue`s.
     }

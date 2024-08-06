@@ -1,10 +1,9 @@
 use crate::{
     device_id,
     dns_control::{self, DnsController},
-    known_dirs, signals, CallbackHandler, CliCommon, InternalServerMsg, IpcServerMsg,
-    TOKEN_ENV_KEY,
+    known_dirs, signals, CallbackHandler, CommonMsg, ConnlibMsg, IpcServerMsg, TOKEN_ENV_KEY,
 };
-use anyhow::{Context as _, Result};
+use anyhow::{bail, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
 use futures::{
@@ -12,7 +11,7 @@ use futures::{
     task::{Context, Poll},
     Future as _, SinkExt as _, Stream as _,
 };
-use std::{net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
+use std::{io, net::IpAddr, ops::ControlFlow, path::Path, pin::pin, sync::Arc, time::Duration};
 use tokio::{sync::mpsc, time::Instant};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
@@ -47,9 +46,6 @@ const SERVICE_RUST_LOG: &str = "str0m=warn,info";
 struct Cli {
     #[command(subcommand)]
     command: Cmd,
-
-    #[command(flatten)]
-    common: CliCommon,
 }
 
 #[derive(clap::Subcommand)]
@@ -70,6 +66,7 @@ impl Default for Cmd {
 
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
+    ClearLogs,
     Connect { api_url: String, token: String },
     Disconnect,
     Reset,
@@ -91,7 +88,7 @@ pub fn run_only_ipc_service() -> Result<()> {
     let cli = Cli::try_parse()?;
     match cli.command {
         Cmd::Install => platform::install_ipc_service(),
-        Cmd::Run => platform::run_ipc_service(cli.common),
+        Cmd::Run => platform::run_ipc_service(),
         Cmd::RunDebug => run_debug_ipc_service(),
         Cmd::RunSmokeTest => run_smoke_test(),
     }
@@ -105,10 +102,7 @@ fn run_debug_ipc_service() -> Result<()> {
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
     );
     let rt = tokio::runtime::Runtime::new()?;
-    let _guard = rt.enter();
-    let mut signals = signals::Terminate::new()?;
-
-    rt.block_on(ipc_listen(&mut signals))
+    rt.block_on(ipc_listen())
 }
 
 #[cfg(not(debug_assertions))]
@@ -121,23 +115,24 @@ fn run_smoke_test() -> Result<()> {
 /// This makes the timing neater in case the GUI starts up slowly.
 #[cfg(debug_assertions)]
 fn run_smoke_test() -> Result<()> {
-    crate::setup_stdout_logging()?;
+    // Log to the prod dir so that exporting and clearing logs can be tested
+    let log_dir =
+        crate::known_dirs::ipc_service_logs().expect("Couldn't compute IPC service logs dir");
+    let _handle = setup_logging(&log_dir).expect("Couldn't set up logging");
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
     let mut dns_controller = DnsController::default();
-    // Deactivate Firezone DNS control in case the system or IPC service crashed
-    // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
-    dns_controller.deactivate()?;
     let mut signals = signals::Terminate::new()?;
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
         device_id::get_or_create().context("Failed to read / create device ID")?;
         let mut server = IpcServer::new(ServiceId::Prod).await?;
-        let _ = Handler::new(&mut server, &mut dns_controller)
-            .await?
-            .run(&mut signals)
-            .await;
+        if let ControlFlow::Break(()) =
+            handle_one_client(&mut server, &mut dns_controller, &mut signals).await?
+        {
+            bail!("Caught SIGINT / SIGTERM / Ctrl+C during smoke test");
+        }
         Ok::<_, anyhow::Error>(())
     })
 }
@@ -146,40 +141,55 @@ fn run_smoke_test() -> Result<()> {
 ///
 /// If an IPC client is connected when we catch a terminate signal, we send the
 /// client a hint about that before we exit.
-async fn ipc_listen(signals: &mut signals::Terminate) -> Result<()> {
+async fn ipc_listen() -> Result<()> {
+    let mut signals = signals::Terminate::new()?;
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
     device_id::get_or_create().context("Failed to read / create device ID")?;
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     let mut dns_controller = DnsController::default();
     loop {
-        let mut handler_fut = pin!(Handler::new(&mut server, &mut dns_controller));
-        let Some(handler) = poll_fn(|cx| {
-            if let Poll::Ready(()) = signals.poll_recv(cx) {
-                Poll::Ready(None)
-            } else if let Poll::Ready(handler) = handler_fut.as_mut().poll(cx) {
-                Poll::Ready(Some(handler))
-            } else {
-                Poll::Pending
-            }
-        })
-        .await
-        else {
-            tracing::info!("Caught SIGINT / SIGTERM / Ctrl+C while waiting on the next client.");
-            break;
-        };
-        let mut handler = handler?;
-        if let HandlerOk::ServiceTerminating = handler.run(signals).await {
-            break;
+        match handle_one_client(&mut server, &mut dns_controller, &mut signals).await? {
+            ControlFlow::Break(()) => break,
+            ControlFlow::Continue(()) => continue,
         }
     }
     Ok(())
 }
 
+/// Handle IPC for one IPC client. If we get Ctrl+C or similar, ask the
+/// client to shut down gracefully.
+async fn handle_one_client(
+    server: &mut IpcServer,
+    dns_controller: &mut DnsController,
+    signals: &mut signals::Terminate,
+) -> Result<ControlFlow<(), ()>> {
+    let mut handler_fut = pin!(Handler::new(server, dns_controller));
+    let Some(handler) = poll_fn(|cx| {
+        if let Poll::Ready(()) = signals.poll_recv(cx) {
+            Poll::Ready(None)
+        } else if let Poll::Ready(handler) = handler_fut.as_mut().poll(cx) {
+            Poll::Ready(Some(handler))
+        } else {
+            Poll::Pending
+        }
+    })
+    .await
+    else {
+        tracing::info!("Caught SIGINT / SIGTERM / Ctrl+C while waiting on the next client.");
+        return Ok(ControlFlow::Break(()));
+    };
+    let mut handler = handler?;
+    if let HandlerOk::ServiceTerminating = handler.run(signals).await {
+        return Ok(ControlFlow::Break(()));
+    }
+    Ok(ControlFlow::Continue(()))
+}
+
 /// Handles one IPC client
 struct Handler<'a> {
     callback_handler: CallbackHandler,
-    cb_rx: mpsc::Receiver<InternalServerMsg>,
+    cb_rx: mpsc::Receiver<ConnlibMsg>,
     connlib: Option<connlib_client_shared::Session>,
     dns_controller: &'a mut DnsController,
     ipc_rx: ipc::ServerRead,
@@ -189,7 +199,7 @@ struct Handler<'a> {
 }
 
 enum Event {
-    Callback(InternalServerMsg),
+    Callback(ConnlibMsg),
     CallbackChannelClosed,
     Ipc(ClientMsg),
     IpcDisconnected,
@@ -247,7 +257,7 @@ impl<'a> Handler<'a> {
                     break HandlerOk::Err;
                 }
                 Event::Ipc(msg) => {
-                    if let Err(error) = self.handle_ipc_msg(msg) {
+                    if let Err(error) = self.handle_ipc_msg(msg).await {
                         tracing::error!(?error, "Error while handling IPC message from client");
                         continue;
                     }
@@ -301,11 +311,11 @@ impl<'a> Handler<'a> {
         Poll::Pending
     }
 
-    async fn handle_connlib_cb(&mut self, msg: InternalServerMsg) -> Result<()> {
+    async fn handle_connlib_cb(&mut self, msg: ConnlibMsg) -> Result<()> {
         match msg {
-            InternalServerMsg::Ipc(msg) => {
+            ConnlibMsg::Common(msg) => {
                 // The first `OnUpdateResources` marks when connlib is fully initialized
-                if let IpcServerMsg::OnUpdateResources(_) = &msg {
+                if let CommonMsg::OnUpdateResources(_) = &msg {
                     if let Some(instant) = self.last_connlib_start_instant.take() {
                         tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
                     }
@@ -314,23 +324,30 @@ impl<'a> Handler<'a> {
                     self.dns_controller.flush()?;
                 }
                 self.ipc_tx
-                    .send(&msg)
+                    .send(&IpcServerMsg::Common(msg))
                     .await
                     .context("Error while sending IPC message")?
             }
-            InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
+            ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                 self.tun_device.set_ips(ipv4, ipv6).await?;
                 self.dns_controller.set_dns(&dns).await?;
             }
-            InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
+            ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                 self.tun_device.set_routes(ipv4, ipv6).await?
             }
         }
         Ok(())
     }
 
-    fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
+    async fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
         match msg {
+            ClientMsg::ClearLogs => {
+                clear_logs_dir(
+                    &crate::known_dirs::ipc_service_logs()
+                        .context("Couldn't compute IPC service logs dir")?,
+                )
+                .await?
+            }
             ClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);
                 // There isn't an airtight way to implement a "disconnect and reconnect"
@@ -393,19 +410,53 @@ impl<'a> Handler<'a> {
     }
 }
 
+/// Clears log files for the given directory
+///
+/// This includes the current log file, so we won't write any more logs to
+/// disk until the process restarts.
+/// <https://github.com/firezone/firezone/issues/4764>
+///
+/// If we get an error while removing a file, we still try to remove all other
+/// files, then we return the most recent error.
+///
+/// The IPC service and GUI share this. The GUI uses it to clear the GUI's own
+/// logs, and the GUI commands the IPC service to clear the IPC service's own
+/// logs.
+pub async fn clear_logs_dir(log_dir: &Path) -> Result<()> {
+    let mut dir = match tokio::fs::read_dir(log_dir).await {
+        Ok(x) => x,
+        Err(error) => {
+            if matches!(error.kind(), io::ErrorKind::NotFound) {
+                // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not delete the non-existent files
+                return Ok(());
+            }
+            // But any other error like permissions errors, should bubble.
+            return Err(error.into());
+        }
+    };
+    let mut result = Ok(());
+    while let Some(entry) = dir.next_entry().await? {
+        let path = entry.path();
+        if let Err(error) = tokio::fs::remove_file(&path).await {
+            tracing::error!(
+                ?error,
+                path = path.display().to_string(),
+                "Error while removing log file"
+            );
+            // We'll return the most recent error, it loses some information but it's better than nothing.
+            result = Err(error);
+        }
+    }
+    Ok(result?)
+}
+
 /// Starts logging for the production IPC service
 ///
 /// Returns: A `Handle` that must be kept alive. Dropping it stops logging
 /// and flushes the log file.
-fn setup_logging(log_dir: Option<PathBuf>) -> Result<connlib_client_shared::file_logger::Handle> {
-    // If `log_dir` is Some, use that. Else call `ipc_service_logs`
-    let log_dir = log_dir.map_or_else(
-        || known_dirs::ipc_service_logs().context("Should be able to compute IPC service logs dir"),
-        Ok,
-    )?;
-    std::fs::create_dir_all(&log_dir)
-        .context("We should have permissions to create our log dir")?;
-    let (layer, handle) = file_logger::layer(&log_dir);
+fn setup_logging(log_dir: &Path) -> Result<connlib_client_shared::file_logger::Handle> {
+    std::fs::create_dir_all(log_dir).context("We should have permissions to create our log dir")?;
+    let (layer, handle) = file_logger::layer(log_dir);
     let directives = get_log_filter().context("Couldn't read log filter")?;
     let filter = EnvFilter::new(&directives);
     let subscriber = Registry::default().with(layer.with_filter(filter));
@@ -451,7 +502,6 @@ pub(crate) fn get_log_filter() -> Result<String> {
 mod tests {
     use super::{Cli, Cmd};
     use clap::Parser;
-    use std::path::PathBuf;
 
     // Can't remember how Clap works sometimes
     // Also these are examples
@@ -459,9 +509,8 @@ mod tests {
     fn cli() {
         let exe_name = "firezone-client-ipc";
 
-        let actual = Cli::parse_from([exe_name, "--log-dir", "bogus_log_dir", "run-debug"]);
+        let actual = Cli::parse_from([exe_name, "run-debug"]);
         assert!(matches!(actual.command, Cmd::RunDebug));
-        assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
         let actual = Cli::parse_from([exe_name, "run"]);
         assert!(matches!(actual.command, Cmd::Run));
