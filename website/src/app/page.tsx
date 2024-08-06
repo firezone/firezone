@@ -113,53 +113,10 @@ export default function Page() {
 
       {/* Feature section 1: Secure access to your most sensitive resources in minutes. */}
       <section className="bg-white md:px-16 px-4 py-20 md:py-16">
-        <ElevatorPitch />
-        {/* <div className="flex flex-col max-w-[600px]">
-          <div className="sm:mx-auto mb-4 text-4xl md:text-6xl text-pretty text-left ">
-            <h3 className=" tracking-tight font-bold inline-block">
-              Supercharge your workforce in{" "}
-              <span className="text-primary-450">minutes</span>.
-            </h3>
-          </div>
-
-          <div className="max-w-screen-md">
-            <p className="text-md md:text-xl text-left tracking-tight text-pretty text-neutral-700">
-              Firezone supports the workflows and access patterns you're already
-              familiar with, so you can get started in minutes.
-            </p>
-          </div>
-          <div className="mt-16">
-            <button
-              className={`border-b-[1px] border-neutral-200 py-5 ${manrope.className}`}
-            >
-              <p className="text-neutral-900 font-semibold text-xl text-left mb-1.5">
-                Flexible access control.
-              </p>
-              <p className="text-neutral-700">
-                Control access to VPCs, subnets, hosts by IP or DNS, and even
-                public SaaS apps.
-              </p>
-            </button>
-            <button
-              className={`border-b-[1px] border-neutral-200 py-5 ${manrope.className}`}
-            >
-              <p className="text-neutral-900 font-semibold text-xl text-left mb-1.5">
-                Syncs automatically.
-              </p>
-              <p className="text-neutral-700">
-                Built on WireGuard® to be 3-4 times faster than OpenVPN.
-              </p>
-            </button>
-            <button className={` py-5 ${manrope.className}`}>
-              <p className="text-neutral-900 font-semibold text-xl text-left mb-1.5">
-                Port-level rules.
-              </p>
-              <p className="text-neutral-700">
-                Built on WireGuard® to be 3-4 times faster than OpenVPN.
-              </p>
-            </button>
-          </div>
-        </div> */}
+        <div className="flex w-full justify-between items-center mt-8 md:mt-16 max-w-screen-2xl">
+          <ElevatorPitch />
+          <div className="w-[40%] h-[600px] bg-slate-200" />
+        </div>
 
         <div className="flex justify-center items-center px-4 mx-auto mt-8 md:mt-16 max-w-screen-lg">
           <UpgradeDiagram />

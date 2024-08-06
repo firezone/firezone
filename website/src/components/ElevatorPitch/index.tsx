@@ -2,77 +2,95 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { manrope } from "@/lib/fonts";
 import type { CustomFlowbiteTheme } from "flowbite-react";
 import { HiMiniShieldCheck } from "react-icons/hi2";
 
-interface OptionButtonProps {
-  title: string;
-  desc: string;
-  icon?: ReactNode;
-}
-
-const OptionButton = ({ title, desc, icon }: OptionButtonProps) => {
-  return (
-    <button
-      className={`flex border-b-[1px] border-neutral-200 py-5 gap-4 ${manrope.className}`}
-    >
-      {icon}
-      <div>
-        <p className="text-neutral-900 font-semibold text-lg text-left mb-1.5">
-          {title}
-        </p>
-        <p className="text-slate-700 text-left text-md">{desc}</p>
-      </div>
-    </button>
-  );
-};
-
 export default function ElevatorPitch() {
+  const [selectedOption, setSelectedOption] = useState(0);
+
+  const data = [
+    {
+      title: "Built on WireGuard®",
+      desc: "Control access to VPCs, subnets, hosts by IP or DNS, and public SaaS apps.",
+      icon: <HiMiniShieldCheck className="min-w-8 h-8 text-primary-400" />,
+    },
+    {
+      title: "Scales with your business.",
+      desc: "Deploy two or more gateways for automatic load balancing and failover.",
+      icon: <HiMiniShieldCheck className="min-w-8 h-8 text-primary-400" />,
+    },
+    {
+      title: "Fully protected.",
+      desc: "Zero attack surface thanks to Firezone's holepunching tech which establishes tunnels on-the-fly at the time of access.",
+      icon: <HiMiniShieldCheck className="min-w-8 h-8 text-primary-400" />,
+    },
+    {
+      title: "Open source for full transparency.",
+      desc: "Our entire product is open-source, allowing anyone to audit the codebase.",
+      icon: <HiMiniShieldCheck className="min-w-8 h-8 text-primary-400" />,
+    },
+  ];
+
+  interface OptionButtonProps {
+    title: string;
+    desc: string;
+    icon?: ReactNode;
+    index: number;
+  }
+
+  const OptionButton = ({ title, desc, icon, index }: OptionButtonProps) => {
+    return (
+      <button
+        className={`w-full flex rounded-xl items-center p-5 gap-4 ring-1 transition duration-200 ease-in-out ${
+          manrope.className
+        } ${
+          selectedOption == index
+            ? "bg-primary-50 ring-primary-450"
+            : "bg-transparent ring-transparent hover:bg-primary-50 hover:ring-primary-200"
+        }`}
+        onClick={() => setSelectedOption(index)}
+      >
+        {icon}
+        <div>
+          <p className="text-neutral-900 font-semibold text-md text-left mb-1.5">
+            {title}
+          </p>
+          <p className="text-slate-700 text-left text-sm">{desc}</p>
+        </div>
+      </button>
+    );
+  };
+
   return (
     <div className="flex flex-col max-w-[600px]">
-      <h6 className="uppercase text-md font-semibold text-primary-450 tracking-wide mb-4">
+      <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-4">
         Stay Connected
       </h6>
-      <div className="sm:mx-auto mb-4 text-4xl md:text-6xl text-pretty text-left ">
+      <div className="sm:mx-auto mb-4 text-4xl md:text-5xl text-pretty text-left ">
         <h3 className=" tracking-tight font-bold inline-block">
-          Supercharge your workforce in{" "}
-          <span className="text-primary-450">minutes</span>.
+          Supercharge your workforce
+          <span className="text-primary-450"> in minutes.</span>
         </h3>
       </div>
       <div className="max-w-screen-md">
         <p
-          className={`text-lg text-left text-pretty text-slate-700 ${manrope.className}`}
+          className={`text-md text-left text-pretty text-slate-700 ${manrope.className}`}
         >
           Protect your workforce without the tedious configuration.
         </p>
       </div>
-      <div className="mt-16">
-        <OptionButton
-          title="Built on WireGuard®"
-          desc="Control access to VPCs, subnets, hosts by IP or DNS, and even public
-            SaaS apps."
-          icon={<HiMiniShieldCheck size={32} className="text-primary-400" />}
-        />
-        <OptionButton
-          title="Scales with your business."
-          desc="Control access to VPCs, subnets, hosts by IP or DNS, and even public
-            SaaS apps."
-          icon={<HiMiniShieldCheck size={32} className="text-primary-400" />}
-        />
-        <OptionButton
-          title="Zero attack surface."
-          desc="Control access to VPCs, subnets, hosts by IP or DNS, and even public
-            SaaS apps."
-          icon={<HiMiniShieldCheck size={32} className="text-primary-400" />}
-        />
-        <OptionButton
-          title="Open source for full transparency."
-          desc="Control access to VPCs, subnets, hosts by IP or DNS, and even public
-            SaaS apps."
-          icon={<HiMiniShieldCheck size={32} className="text-primary-400" />}
-        />
+      <div className="mt-8 space-y-2">
+        {data.map((item, index) => (
+          <OptionButton
+            key={index}
+            title={item.title}
+            desc={item.desc}
+            icon={item.icon}
+            index={index}
+          />
+        ))}
       </div>
     </div>
   );
