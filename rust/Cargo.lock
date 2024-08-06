@@ -1987,7 +1987,6 @@ dependencies = [
  "domain",
  "firezone-relay",
  "futures",
- "futures-bounded",
  "futures-util",
  "hex",
  "ip-packet",
@@ -2108,9 +2107,9 @@ dependencies = [
 
 [[package]]
 name = "futures-bounded"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1e2774cc104e198ef3d3e1ff4ab40f86fa3245d6cb6a3a46174f21463cee173"
+checksum = "91f328e7fb845fc832912fb6a34f40cf6d1888c92f974d1893a54e97b5ff542e"
 dependencies = [
  "futures-timer",
  "futures-util",
@@ -5547,7 +5546,6 @@ dependencies = [
 name = "socket-factory"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "quinn-udp",
  "socket2",
  "tokio",
