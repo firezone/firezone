@@ -17,7 +17,6 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
-import dev.firezone.android.tunnel.model.Resource
 
 @AndroidEntryPoint
 internal class SessionActivity : AppCompatActivity() {
@@ -25,8 +24,6 @@ internal class SessionActivity : AppCompatActivity() {
     private var tunnelService: TunnelService? = null
     private var serviceBound = false
     private val viewModel: SessionViewModel by viewModels()
-    private var resourceList: List<Resource> = emptyList()
-    private var showOnlyFavorites = true
 
     private val serviceConnection =
         object : ServiceConnection {
@@ -97,17 +94,8 @@ internal class SessionActivity : AppCompatActivity() {
         binding.tabLayout.addOnTabSelectedListener(
             object : TabLayout.OnTabSelectedListener {
                 override fun onTabSelected(tab: TabLayout.Tab) {
-                    when (tab.position) {
-                        RESOURCES_TAB_FAVORITES -> {
-                            showOnlyFavorites = true
-                            refreshList()
-                        }
-                        RESOURCES_TAB_ALL -> {
-                            showOnlyFavorites = false
-                            refreshList()
-                        }
-                        else -> throw IllegalArgumentException("Invalid tab position: $tab.position")
-                    }
+                    viewModel.tabSelected(tab.position)
+                    refreshList()
                 }
 
                 override fun onTabUnselected(tab: TabLayout.Tab?) {}
@@ -126,35 +114,30 @@ internal class SessionActivity : AppCompatActivity() {
         }
 
         viewModel.resourcesLiveData.observe(this) { value ->
-            resourceList = value
             refreshList()
         }
 
         viewModel.favoriteResourcesLiveData.observe(this) {
             refreshList()
         }
+        viewModel.tabSelected(binding.tabLayout.selectedTabPosition)
         viewModel.favoriteResourcesLiveData.value = viewModel.repo.getFavoritesSync()
     }
 
     private fun refreshList() {
-        if (viewModel.favoriteResourcesLiveData.value!!.isEmpty()) {
-            showOnlyFavorites = false
-            binding.tabLayout.selectTab(binding.tabLayout.getTabAt(RESOURCES_TAB_ALL), true)
-            binding.tabLayout.visibility = View.GONE
-            resourcesAdapter.submitList(resourceList)
-        } else if (showOnlyFavorites) {
-            val list = resourceList.filter { viewModel.favoriteResourcesLiveData.value!!.contains(it.id) }
-            binding.tabLayout.visibility = View.VISIBLE
-            resourcesAdapter.submitList(list)
-        } else {
-            binding.tabLayout.visibility = View.VISIBLE
-            resourcesAdapter.submitList(resourceList)
+        if (viewModel.forceAllResourcesTab()) {
+            binding.tabLayout.selectTab(binding.tabLayout.getTabAt(SessionViewModel.RESOURCES_TAB_ALL), true)
         }
+        binding.tabLayout.visibility =
+            if (viewModel.showFavoritesTab()) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+        resourcesAdapter.submitList(viewModel.resourcesList())
     }
 
     companion object {
         private const val TAG = "SessionActivity"
-        private const val RESOURCES_TAB_FAVORITES = 0
-        private const val RESOURCES_TAB_ALL = 1
     }
 }
