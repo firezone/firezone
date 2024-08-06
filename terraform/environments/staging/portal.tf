@@ -362,6 +362,10 @@ locals {
     {
       name  = "FEATURE_REST_API_ENABLED"
       value = true
+    },
+    {
+      name  = "FEATURE_TEMP_ACCOUNTS"
+      value = true
     }
   ]
 }

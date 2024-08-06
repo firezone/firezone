@@ -13,7 +13,7 @@ use connlib_shared::{
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap, HashSet},
     net::IpAddr,
     task::{Context, Poll},
 };
@@ -35,6 +35,7 @@ pub enum Command {
     Reset,
     SetDns(Vec<IpAddr>),
     SetTun(Box<dyn Tun>),
+    SetDisabledResources(HashSet<ResourceId>),
 }
 
 impl<C: Callbacks> Eventloop<C> {
@@ -65,6 +66,10 @@ where
                 Poll::Ready(Some(Command::SetDns(dns))) => {
                     self.tunnel.set_new_dns(dns);
 
+                    continue;
+                }
+                Poll::Ready(Some(Command::SetDisabledResources(resources))) => {
+                    self.tunnel.set_disabled_resources(resources);
                     continue;
                 }
                 Poll::Ready(Some(Command::SetTun(tun))) => {
