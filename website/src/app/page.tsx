@@ -28,6 +28,7 @@ import {
   Strike,
   FadeIn,
 } from "@/components/Animations";
+import ElevatorPitch from "@/components/ElevatorPitch";
 import SpeedChart from "@/components/Animations/SpeedChart";
 import UpgradeDiagram from "@/components/Animations/UpgradeDiagram";
 import ComplianceDiagram from "@/components/Animations/ComplianceDiagram";
@@ -112,7 +113,8 @@ export default function Page() {
 
       {/* Feature section 1: Secure access to your most sensitive resources in minutes. */}
       <section className="bg-white md:px-16 px-4 py-20 md:py-16">
-        <div className="flex flex-col max-w-[600px]">
+        <ElevatorPitch/>
+        {/* <div className="flex flex-col max-w-[600px]">
           <div className="sm:mx-auto mb-4 text-4xl md:text-6xl text-pretty text-left ">
             <h3 className=" tracking-tight font-bold inline-block">
               Supercharge your workforce in{" "}
@@ -157,7 +159,7 @@ export default function Page() {
               </p>
             </button>
           </div>
-        </div>
+        </div> */}
 
         <div className="flex justify-center items-center px-4 mx-auto mt-8 md:mt-16 max-w-screen-lg">
           <UpgradeDiagram />
