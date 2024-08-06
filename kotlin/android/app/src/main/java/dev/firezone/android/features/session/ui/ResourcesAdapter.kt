@@ -26,7 +26,7 @@ internal class ResourcesAdapter(private val activity: SessionActivity) : ListAda
         position: Int,
     ) {
         val resource = getItem(position)
-        holder.bind(resource) { newResource -> onSwitchToggled(newResource)}
+        holder.bind(resource) { newResource -> onSwitchToggled(newResource) }
         holder.itemView.setOnClickListener {
             // Show bottom sheet
             val isFavorite = favoriteResources.contains(resource.id)
@@ -34,7 +34,6 @@ internal class ResourcesAdapter(private val activity: SessionActivity) : ListAda
             val bottomSheet = ResourceDetailsBottomSheet(resource)
             bottomSheet.show(fragmentManager, "ResourceDetailsBottomSheet")
         }
-
     }
 
     private fun onSwitchToggled(resource: ViewResource) {
@@ -42,8 +41,10 @@ internal class ResourcesAdapter(private val activity: SessionActivity) : ListAda
     }
 
     class ViewHolder(private val binding: ListItemResourceBinding) : RecyclerView.ViewHolder(binding.root) {
-
-        fun bind(resource: ViewResource, onSwitchToggled: (ViewResource) -> Unit) {
+        fun bind(
+            resource: ViewResource,
+            onSwitchToggled: (ViewResource) -> Unit,
+        ) {
             binding.resourceNameText.text = resource.name
             binding.addressText.text = resource.address
             // Without this the item gets reset when out of view, isn't android wonderful?
@@ -52,13 +53,12 @@ internal class ResourcesAdapter(private val activity: SessionActivity) : ListAda
             binding.enableSwitch.isVisible = resource.canToggle
 
             binding.enableSwitch.setOnCheckedChangeListener {
-                _, isChecked ->
-                    resource.enabled = isChecked
+                    _, isChecked ->
+                resource.enabled = isChecked
 
-                    onSwitchToggled(resource)
+                onSwitchToggled(resource)
             }
         }
-
     }
 
     class ResourceDiffCallback : DiffUtil.ItemCallback<ViewResource>() {

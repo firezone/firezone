@@ -32,8 +32,6 @@ internal class SessionActivity : AppCompatActivity() {
     @Inject
     internal lateinit var repo: Repository
 
-
-
     private val serviceConnection =
         object : ServiceConnection {
             override fun onServiceConnected(

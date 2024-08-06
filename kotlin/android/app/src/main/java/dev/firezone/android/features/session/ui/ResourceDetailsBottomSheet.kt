@@ -21,7 +21,6 @@ import androidx.fragment.app.activityViewModels
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.android.material.button.MaterialButton
 import dev.firezone.android.R
-import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.StatusEnum
 
 class ResourceDetailsBottomSheet(private val resource: ViewResource) : BottomSheetDialogFragment() {

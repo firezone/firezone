@@ -61,7 +61,6 @@ internal class Repository
                 )
             }.flowOn(coroutineDispatcher)
 
-
         fun getDeviceIdSync(): String? = sharedPreferences.getString(DEVICE_ID_KEY, null)
 
         fun getFavoritesSync(): HashSet<String> = HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())
@@ -102,8 +101,8 @@ internal class Repository
         }
 
         fun saveDisabledResourcesSync(value: Set<String>): Unit =
-                sharedPreferences.edit().putString(DISABLED_RESOURCES_KEY, Gson().toJson(value))
-                    .apply()
+            sharedPreferences.edit().putString(DISABLED_RESOURCES_KEY, Gson().toJson(value))
+                .apply()
 
         fun saveNonce(value: String): Flow<Unit> =
             flow {

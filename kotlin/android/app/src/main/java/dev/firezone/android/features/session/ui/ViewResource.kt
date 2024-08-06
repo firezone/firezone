@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
 import dev.firezone.android.tunnel.model.Resource
@@ -13,7 +14,7 @@ data class ViewResource(
     val status: StatusEnum,
     var enabled: Boolean = true,
     var canToggle: Boolean = true,
-    )
+)
 
 fun Resource.toViewResource(): ViewResource {
     return ViewResource(
@@ -24,6 +25,6 @@ fun Resource.toViewResource(): ViewResource {
         name = this.name,
         status = this.status,
         enabled = true,
-        canToggle = this.canToggle
+        canToggle = this.canToggle,
     )
 }
