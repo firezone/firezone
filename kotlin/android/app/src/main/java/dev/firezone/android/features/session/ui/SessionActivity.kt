@@ -130,20 +130,20 @@ internal class SessionActivity : AppCompatActivity() {
             refreshList()
         }
 
-        viewModel.favoriteResources.observe(this) {
+        viewModel.favoriteResourcesLiveData.observe(this) {
             refreshList()
         }
-        viewModel.favoriteResources.value = viewModel.repo.getFavoritesSync()
+        viewModel.favoriteResourcesLiveData.value = viewModel.repo.getFavoritesSync()
     }
 
     private fun refreshList() {
-        if (viewModel.favoriteResources.value!!.isEmpty()) {
+        if (viewModel.favoriteResourcesLiveData.value!!.isEmpty()) {
             showOnlyFavorites = false
             binding.tabLayout.selectTab(binding.tabLayout.getTabAt(RESOURCES_TAB_ALL), true)
             binding.tabLayout.visibility = View.GONE
             resourcesAdapter.submitList(resourceList)
         } else if (showOnlyFavorites) {
-            val list = resourceList.filter { viewModel.favoriteResources.value!!.contains(it.id) }
+            val list = resourceList.filter { viewModel.favoriteResourcesLiveData.value!!.contains(it.id) }
             binding.tabLayout.visibility = View.VISIBLE
             resourcesAdapter.submitList(list)
         } else {

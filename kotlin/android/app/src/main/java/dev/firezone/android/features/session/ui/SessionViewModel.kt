@@ -15,10 +15,12 @@ internal class SessionViewModel
     constructor() : ViewModel() {
         @Inject
         internal lateinit var repo: Repository
-        val favoriteResources = MutableLiveData<HashSet<String>>()
+        private val _favoriteResourcesLiveData = MutableLiveData<HashSet<String>>(HashSet())
         private val _serviceStatusLiveData = MutableLiveData<State>()
         private val _resourcesLiveData = MutableLiveData<List<Resource>>(emptyList())
 
+        val favoriteResourcesLiveData: MutableLiveData<HashSet<String>>
+            get() = _favoriteResourcesLiveData
         val serviceStatusLiveData: MutableLiveData<State>
             get() = _serviceStatusLiveData
         val resourcesLiveData: MutableLiveData<List<Resource>>
@@ -30,19 +32,19 @@ internal class SessionViewModel
         fun getActorName() = repo.getActorNameSync()
 
         fun addFavoriteResource(id: String) {
-            val value = favoriteResources.value ?: HashSet()
+            val value = _favoriteResourcesLiveData.value!!
             value.add(id)
             repo.saveFavoritesSync(value)
             // Update LiveData
-            favoriteResources.value = value
+            _favoriteResourcesLiveData.value = value
         }
 
         fun removeFavoriteResource(id: String) {
-            val value = favoriteResources.value ?: HashSet()
+            val value = _favoriteResourcesLiveData.value!!
             value.remove(id)
             repo.saveFavoritesSync(value)
             // Update LiveData
-            favoriteResources.value = value
+            _favoriteResourcesLiveData.value = value
         }
 
         fun clearToken() = repo.clearToken()
