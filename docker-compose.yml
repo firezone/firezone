@@ -60,8 +60,10 @@ services:
       - 8080:8080/tcp
     environment:
       # Web Server
-      EXTERNAL_URL: http://localhost:8080/
+      WEB_EXTERNAL_URL: http://localhost:8080/
+      API_EXTERNAL_URL: http://localhost:8081/
       PHOENIX_HTTP_WEB_PORT: "8080"
+      PHOENIX_HTTP_API_PORT: "8081"
       PHOENIX_SECURE_COOKIES: "false"
       # Erlang
       ERLANG_DISTRIBUTION_PORT: 9000
@@ -129,7 +131,9 @@ services:
       - 8081:8081/tcp
     environment:
       # Web Server
-      EXTERNAL_URL: http://localhost:8081/
+      WEB_EXTERNAL_URL: http://localhost:8080/
+      API_EXTERNAL_URL: http://localhost:8081/
+      PHOENIX_HTTP_WEB_PORT: "8080"
       PHOENIX_HTTP_API_PORT: "8081"
       PHOENIX_SECURE_COOKIES: "false"
       # Erlang
@@ -262,7 +266,8 @@ services:
     hostname: elixir
     environment:
       # Web Server
-      EXTERNAL_URL: http://localhost:8081/
+      WEB_EXTERNAL_URL: http://localhost:8080/
+      API_EXTERNAL_URL: http://localhost:8081/
       # Erlang
       ERLANG_DISTRIBUTION_PORT: 9000
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"

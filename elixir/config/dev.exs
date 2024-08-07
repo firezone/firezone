@@ -50,6 +50,9 @@ config :web, Web.Endpoint,
   reloadable_apps: [:domain, :web],
   server: true
 
+config :web,
+  api_external_url: "http://localhost:13001"
+
 root_path =
   __ENV__.file
   |> Path.dirname()

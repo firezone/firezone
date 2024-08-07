@@ -6,9 +6,12 @@ defmodule Web.Settings.ApiClients.Beta do
       {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients")}
     else
       socket =
-        socket
-        |> assign(:page_title, "API Clients")
-        |> assign(:requested, false)
+        assign(
+          socket,
+          page_title: "API Clients",
+          requested: false,
+          api_url: Domain.Config.get_env(:web, :api_external_url)
+        )
 
       {:ok, socket}
     end
@@ -25,7 +28,10 @@ defmodule Web.Settings.ApiClients.Beta do
       <:title><%= @page_title %></:title>
       <:help>
         API Clients are used to manage Firezone configuration through a REST API. See our
-        <a class={link_style()} href="https://api.firezone.dev/swaggerui">interactive API docs</a>
+        <.link navigate={"#{@api_url}/swaggerui"} class={link_style()} target="_blank">
+          OpenAPI-powered docs
+        </.link>
+        for more information.
       </:help>
       <:content>
         <.flash kind={:info}>
