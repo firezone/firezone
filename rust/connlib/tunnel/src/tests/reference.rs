@@ -57,21 +57,32 @@ impl ReferenceStateMachine for ReferenceState {
     type Transition = Transition;
 
     fn init_state() -> BoxedStrategy<Self::State> {
-        let client_tunnel_ip4 = tunnel_ip4s().next().unwrap();
-        let client_tunnel_ip6 = tunnel_ip6s().next().unwrap();
+        stub_portal()
+            .prop_flat_map(move |portal| {
+                let gateways = portal.gateways();
+                let dns_resource_records = portal.dns_resource_records();
+                let client = portal.client();
+                let relays = relays();
+                let global_dns_records = global_dns_records(); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
+                let drop_direct_client_traffic = any::<bool>();
 
-        (
-            ref_client_host(Just(client_tunnel_ip4), Just(client_tunnel_ip6)),
-            gateways_and_portal(),
-            relays(),
-            global_dns_records(), // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
-            any::<bool>(),
-        )
+                (
+                    client,
+                    gateways,
+                    Just(portal),
+                    dns_resource_records,
+                    relays,
+                    global_dns_records,
+                    drop_direct_client_traffic,
+                )
+            })
             .prop_filter_map(
                 "network IPs must be unique",
                 |(
                     c,
-                    (gateways, portal, records),
+                    gateways,
+                    portal,
+                    records,
                     relays,
                     mut global_dns,
                     drop_direct_client_traffic,
