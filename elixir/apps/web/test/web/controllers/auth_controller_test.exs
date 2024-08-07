@@ -470,6 +470,12 @@ defmodule Web.AuthControllerTest do
                "signed_provider_identifier",
                signed_provider_identifier
              ) == {:ok, "foo@bar"}
+
+      assert {nonce, "foo@bar", %{}} =
+               conn.cookies["fz_auth_state_#{provider.id}"]
+               |> :erlang.binary_to_term()
+
+      assert String.length(nonce) == 259
     end
   end
 

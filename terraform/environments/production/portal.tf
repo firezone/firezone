@@ -404,7 +404,7 @@ locals {
     },
     {
       name  = "FEATURE_REST_API_ENABLED"
-      value = false
+      value = true
     },
     {
       name  = "FEATURE_TEMP_ACCOUNTS"
