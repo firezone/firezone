@@ -193,7 +193,7 @@ defmodule Domain.Repo.Changeset do
 
   def validate_email(%Ecto.Changeset{} = changeset, field) do
     changeset
-    |> validate_format(field, ~r/^[^\s]+@[^\s]+$/, message: "is an invalid email address")
+    |> validate_format(field, ~r/^[^\s]+@[^\s]+\.[^\s]+$/, message: "is an invalid email address")
     |> validate_length(field, max: 160)
   end
 
