@@ -7,7 +7,7 @@ ARG PACKAGE
 
 # This image is used to prepare Cargo Chef which is used to cache dependencies
 # Keep the Rust version synced with `rust-toolchain.toml`
-FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION} as chef
+FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION} AS chef
 
 ARG CARGO_CHEF_VERSION
 RUN set -xe \
@@ -25,14 +25,14 @@ WORKDIR /build
 
 # Create a cache recipe for dependencies, which allows
 # to leverage Docker layer caching in a later build stage
-FROM chef as planner
+FROM chef AS planner
 
 COPY . .
 
 RUN cargo chef prepare --recipe-path recipe.json
 
 # Build dependencies and application application
-FROM chef as builder
+FROM chef AS builder
 
 COPY --from=planner /build/recipe.json .
 
@@ -60,40 +60,41 @@ ENV REFRESHED_AT=2023-10-23 \
 WORKDIR /bin
 
 # Gateway specific runtime base image
-FROM runtime_base as runtime_firezone-gateway
+FROM runtime_base AS runtime_firezone-gateway
 ## iptables are needed only by gateway for masquerading
 RUN apk add --no-cache iptables ip6tables
 COPY ./docker-init-gateway.sh ./docker-init.sh
 
 # Relay specific runtime base image
-FROM runtime_base as runtime_firezone-relay
+FROM runtime_base AS runtime_firezone-relay
 ## curl is needed by the entrypoint script for the relay
 RUN set -xe \
   && apk add --no-cache curl
 COPY ./docker-init-relay.sh ./docker-init.sh
 
 # Headless-client specific runtime base image
-FROM runtime_base as runtime_firezone-headless-client
+FROM runtime_base AS runtime_firezone-headless-client
 COPY ./docker-init.sh ./docker-init.sh
 
 # HTTP test server specific runtime base image
-FROM runtime_base as runtime_http-test-server
+FROM runtime_base AS runtime_http-test-server
 COPY ./docker-init.sh ./docker-init.sh
 
 # snownet-tests specific runtime base image
-FROM runtime_base as runtime_snownet-tests
+FROM runtime_base AS runtime_snownet-tests
 COPY ./docker-init.sh ./docker-init.sh
 
 # Funnel package specific base image back into `runtime`
-FROM runtime_${PACKAGE} as runtime
+FROM runtime_${PACKAGE} AS runtime
 
+ARG PACKAGE
 ENTRYPOINT ["docker-init.sh"]
 ENV PACKAGE=${PACKAGE}
 
 CMD $PACKAGE
 
 # used as a base for dev and test
-FROM runtime as test
+FROM runtime AS test
 
 RUN set -xe \
   && apk add --no-cache iperf3 bind-tools iproute2 jq procps
