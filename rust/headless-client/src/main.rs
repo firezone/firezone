@@ -6,8 +6,9 @@ use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
 use connlib_shared::get_user_agent;
 use firezone_bin_shared::{
-    new_dns_notifier, new_network_notifier, setup_global_subscriber, TunDeviceManager,
-    TOKEN_ENV_KEY,
+    new_dns_notifier, new_network_notifier,
+    platform::{tcp_socket_factory, udp_socket_factory},
+    setup_global_subscriber, TunDeviceManager, TOKEN_ENV_KEY,
 };
 use firezone_headless_client::{
     device_id, signals, CallbackHandler, CliCommon, DnsController, InternalServerMsg, IpcServerMsg,
@@ -31,7 +32,7 @@ mod platform;
 #[path = "windows.rs"]
 mod platform;
 
-use platform::{default_token_path, tcp_socket_factory, udp_socket_factory};
+use platform::default_token_path;
 
 /// Command-line args for the headless Client
 #[derive(clap::Parser)]

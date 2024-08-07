@@ -21,7 +21,6 @@ phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
 serde = { version = "1.0.204", features = ["derive"] }
 serde_json = "1.0.117"
-socket-factory = { workspace = true }
 thiserror = { version = "1.0", default-features = false }
 # This actually relies on many other features in Tokio, so this will probably
 # fail to build outside the workspace. <https://github.com/firezone/firezone/pull/4328#discussion_r1540342142>
@@ -38,9 +37,6 @@ tempfile = "3.10.1"
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` testing
-
-[target.'cfg(target_os = "windows")'.dev-dependencies]
-hex-literal = "0.4.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"

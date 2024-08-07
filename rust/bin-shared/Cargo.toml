@@ -13,6 +13,7 @@ futures = "0.3"
 git-version = "0.3.9"
 ip-packet = { workspace = true }
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
+socket-factory = { workspace = true }
 tokio = { workspace = true, features = ["rt", "sync"] }
 tracing = { workspace = true }
 tracing-log = "0.2"
@@ -29,11 +30,11 @@ netlink-packet-core = { version = "0.7", default-features = false }
 netlink-packet-route = { version = "0.19", default-features = false }
 nix = { version = "0.28.0", features = ["socket"] }
 rtnetlink = { workspace = true }
-socket-factory = { workspace = true }
 zbus = "4.4" # Can't use `zbus`'s `tokio` feature here, or it will break toast popups all the way over in `gui-client`.
 
 [target.'cfg(windows)'.dependencies]
 known-folders = "1.1.0"
+hex-literal = "0.4.1"
 ring = "0.17"
 uuid = { version = "1.10.0", features = ["v4"] }
 windows-core = "0.57.0"
