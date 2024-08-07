@@ -191,6 +191,23 @@ locals {
   }
 
   shared_application_environment_variables = [
+    # Apps
+    {
+      name  = "WEB_EXTERNAL_URL"
+      value = "https://app.${local.tld}"
+    },
+    {
+      name  = "API_EXTERNAL_URL"
+      value = "https://api.${local.tld}"
+    },
+    {
+      name  = "PHOENIX_HTTP_WEB_PORT"
+      value = "8080"
+    },
+    {
+      name  = "PHOENIX_HTTP_API_PORT"
+      value = "8080"
+    },
     # Database
     {
       name  = "DATABASE_HOST"
@@ -499,14 +516,6 @@ module "web" {
   application_environment_variables = concat([
     # Web Server
     {
-      name  = "EXTERNAL_URL"
-      value = "https://app.${local.tld}"
-    },
-    {
-      name  = "PHOENIX_HTTP_WEB_PORT"
-      value = "8080"
-    },
-    {
       name  = "API_URL_OVERRIDE"
       value = "wss://api.${local.tld}"
     },
@@ -577,14 +586,6 @@ module "api" {
 
   application_environment_variables = concat([
     # Web Server
-    {
-      name  = "EXTERNAL_URL"
-      value = "https://api.${local.tld}"
-    },
-    {
-      name  = "PHOENIX_HTTP_API_PORT"
-      value = "8080"
-    },
     {
       name  = "BACKGROUND_JOBS_ENABLED"
       value = "false"
