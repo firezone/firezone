@@ -11,4 +11,4 @@ REM Compile CSS
 call pnpm tailwindcss -i src\input.css -o src\output.css
 
 REM Compile Rust and bundle
-call tauri build
+call tauri build %*

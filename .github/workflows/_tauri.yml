@@ -1,7 +1,23 @@
 name: Tauri
 on:
   workflow_call:
+    inputs:
+      profile:
+        description: "The profile for the application to build."
+        required: true
+        type: choice
+        options:
+        - debug
+        - release
   workflow_dispatch:
+    inputs:
+      profile:
+        description: "The profile for the application to build."
+        required: true
+        type: choice
+        options:
+        - debug
+        - release
 
 permissions:
   # For saving to release
@@ -76,23 +92,23 @@ jobs:
       - name: Install pnpm deps
         run: pnpm install
       - name: Install AzureSignTool
-        if: ${{ runner.os == 'Windows' }}
+        if: ${{ runner.os == 'Windows' && inputs.profile == 'release' }}
         shell: bash
         # AzureSignTool >= 5 needs .NET 8. windows-2019 runner only has .NET 7.
         run: dotnet tool install --global AzureSignTool --version 4.0.1
-      - name: Build release exe and MSI / deb
+      - name: Build ${{ inputs.profile }} exe and MSI / deb
         # Signs the exe before bundling it into the MSI
-        run: pnpm build
+        run: pnpm build -- --${{ inputs.profile }}
       # We need to sign the exe inside the MSI. Currently
       # we do this in a "beforeBundleCommand" hook in tauri.windows.conf.json.
       # But this will soon be natively supported in Tauri.
       # TODO: Use Tauri's native MSI signing with support for EV certs
       # See https://github.com/tauri-apps/tauri/pull/8718
       - name: Sign the MSI
-        if: ${{ runner.os == 'Windows' }}
+        if: ${{ runner.os == 'Windows' && inputs.profile == 'release' }}
         shell: bash
         # mark:next-gui-version
-        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_1.1.10_x64_en-US.msi
+        run: ../../scripts/build/sign.sh ../target/${{ inputs.profile }}/bundle/msi/Firezone_1.1.10_x64_en-US.msi
       - name: Rename artifacts and compute SHA256
         shell: bash
         run: ${{ matrix.rename-script }}

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -euxo pipefail
 
 # Dir where all the bundles are built
 BUNDLES_DIR=../target/release/bundle/deb
@@ -18,7 +18,7 @@ pnpm tailwindcss -i src/input.css -o src/output.css
 rm -rf "$BUNDLES_DIR"
 
 # Compile Rust and bundle
-pnpm tauri build
+pnpm tauri build "$@"
 
 # Delete the deb that Tauri built. We're going to modify and rebuild it.
 rm "$BUNDLES_DIR"/*.deb

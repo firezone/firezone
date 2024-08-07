@@ -47,6 +47,11 @@ stat ../target/release/bundle/deb/*.deb
 # The exe can run without being installed
 stat ../target/release/Firezone.exe
 stat ../target/release/bundle/msi/Firezone_0.0.0_x64_en-US.msi
+
+# Builds a debug exe
+pnpm build -- --debug
+
+# All arguments after -- are forwarded to `tauri build`.
 ```
 
 ## Running

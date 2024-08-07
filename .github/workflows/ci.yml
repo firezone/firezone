@@ -71,6 +71,8 @@ jobs:
     needs: update-release-draft
     uses: ./.github/workflows/_tauri.yml
     secrets: inherit
+    with:
+      profile: ${{ inputs.profile || 'debug' }}
 
   build-artifacts:
     needs: update-release-draft
