@@ -941,7 +941,7 @@ impl ClientState {
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {
         self.buffered_transmits
             .pop_front()
-            .or(self.node.poll_transmit())
+            .or_else(|| self.node.poll_transmit())
     }
 
     /// Sets a new set of resources.
