@@ -3,6 +3,8 @@ ARG RUST_VERSION="1.80"
 ARG ALPINE_VERSION="3.20"
 ARG CARGO_CHEF_VERSION="0.1.67"
 
+ARG PACKAGE
+
 # This image is used to prepare Cargo Chef which is used to cache dependencies
 # Keep the Rust version synced with `rust-toolchain.toml`
 FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION} as chef
@@ -34,14 +36,12 @@ FROM chef as builder
 
 COPY --from=planner /build/recipe.json .
 
-ARG PACKAGE
 RUN set -xe \
   && cargo chef cook --recipe-path recipe.json --bin ${PACKAGE}
 
 COPY . .
 
 ARG TARGET
-ARG PACKAGE
 RUN cargo build -p ${PACKAGE} $([ -n "${TARGET}" ] && "--target ${TARGET}")
 
 # Image which is used to run the application binary
@@ -82,7 +82,6 @@ COPY ./docker-init.sh ./docker-init.sh
 # consolidate all package specific layers into one
 FROM runtime_${PACKAGE} as runtime
 
-ARG PACKAGE
 ENTRYPOINT ["docker-init.sh"]
 ENV PACKAGE=${PACKAGE}
 
