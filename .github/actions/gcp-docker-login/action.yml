@@ -27,3 +27,11 @@ runs:
         registry: "us-east1-docker.pkg.dev"
         username: oauth2accesstoken
         password: ${{ steps.auth.outputs.access_token }}
+
+    # DockerHub has stupid rate limits (see https://www.docker.com/increase-rate-limits/)
+    # Use Google's public mirror instead: https://cloud.google.com/artifact-registry/docs/pull-cached-dockerhub-images
+    - name: Setup registry mirror
+      shell: bash
+      run: |
+        sudo cat /etc/docker/daemon.json
+        sudo echo '{ "registry-mirrors": ["https://mirror.gcr.io"] }' > /etc/docker/daemon.json
