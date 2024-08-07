@@ -44,7 +44,7 @@ COPY . .
 ARG TARGET
 RUN cargo build -p ${PACKAGE} $([ -n "${TARGET}" ] && "--target ${TARGET}")
 
-# Image which is used to run the application binary
+# Base image which is used to run the application binary
 FROM alpine:${ALPINE_VERSION} AS runtime_base
 
 # Important!  Update this no-op ENV variable when this Dockerfile
@@ -59,27 +59,32 @@ ENV REFRESHED_AT=2023-10-23 \
 
 WORKDIR /bin
 
+# Gateway specific runtime base image
 FROM runtime_base as runtime_firezone-gateway
 ## iptables are needed only by gateway for masquerading
 RUN apk add --no-cache iptables ip6tables
 COPY ./docker-init-gateway.sh ./docker-init.sh
 
+# Relay specific runtime base image
 FROM runtime_base as runtime_firezone-relay
 ## curl is needed by the entrypoint script for the relay
 RUN set -xe \
   && apk add --no-cache curl
 COPY ./docker-init-relay.sh ./docker-init.sh
 
+# Headless-client specific runtime base image
 FROM runtime_base as runtime_firezone-headless-client
 COPY ./docker-init.sh ./docker-init.sh
 
+# HTTP test server specific runtime base image
 FROM runtime_base as runtime_http-test-server
 COPY ./docker-init.sh ./docker-init.sh
 
+# snownet-tests specific runtime base image
 FROM runtime_base as runtime_snownet-tests
 COPY ./docker-init.sh ./docker-init.sh
 
-# consolidate all package specific layers into one
+# Funnel package specific base image back into `runtime`
 FROM runtime_${PACKAGE} as runtime
 
 ENTRYPOINT ["docker-init.sh"]
