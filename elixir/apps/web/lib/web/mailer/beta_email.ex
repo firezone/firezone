@@ -12,12 +12,14 @@ defmodule Web.Mailer.BetaEmail do
     default_email()
     |> subject("REST API Beta Request - #{account.slug}")
     |> to("support@firezone.dev")
-    |> reply_to(
-      Kernel.get_in(subject, [:identity, :provider_identifier]) || "notifications@firezone.dev"
-    )
+    |> reply_to(identity_to_reply_to(subject.identity))
     |> render_text_body(__MODULE__, :rest_api_request,
       account: account,
       subject: subject
     )
   end
+
+  defp identity_to_reply_to(nil), do: "notifications@firezone.dev"
+
+  defp identity_to_reply_to(%Domain.Auth.Identity{} = identity), do: identity.provider_identifier
 end
