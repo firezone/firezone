@@ -10,7 +10,9 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import dev.firezone.android.databinding.ListItemResourceBinding
 
-internal class ResourcesAdapter(private val activity: SessionActivity) : ListAdapter<ViewResource, ResourcesAdapter.ViewHolder>(ResourceDiffCallback()) {
+internal class ResourcesAdapter(private val activity: SessionActivity) : ListAdapter<ViewResource, ResourcesAdapter.ViewHolder>(
+    ResourceDiffCallback(),
+) {
     private var favoriteResources: HashSet<String> = HashSet()
 
     override fun onCreateViewHolder(
