@@ -16,7 +16,7 @@ data class ViewResource(
     var canToggle: Boolean = true,
 )
 
-fun Resource.toViewResource(): ViewResource {
+fun Resource.toViewResource(enabled: Boolean): ViewResource {
     return ViewResource(
         id = this.id,
         address = this.address,
@@ -24,7 +24,7 @@ fun Resource.toViewResource(): ViewResource {
         sites = this.sites,
         name = this.name,
         status = this.status,
-        enabled = true,
+        enabled = enabled,
         canToggle = this.canToggle,
     )
 }

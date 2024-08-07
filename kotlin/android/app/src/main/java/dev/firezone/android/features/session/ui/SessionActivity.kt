@@ -15,11 +15,9 @@ import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.core.data.Repository
 import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
-import javax.inject.Inject
 
 @AndroidEntryPoint
 internal class SessionActivity : AppCompatActivity() {
@@ -27,10 +25,6 @@ internal class SessionActivity : AppCompatActivity() {
     private var tunnelService: TunnelService? = null
     private var serviceBound = false
     private val viewModel: SessionViewModel by viewModels()
-    private var disabledResources: MutableSet<String> = mutableSetOf()
-
-    @Inject
-    internal lateinit var repo: Repository
 
     private val serviceConnection =
         object : ServiceConnection {
@@ -43,7 +37,6 @@ internal class SessionActivity : AppCompatActivity() {
                 serviceBound = true
                 tunnelService?.setServiceStateLiveData(viewModel.serviceStatusLiveData)
                 tunnelService?.setResourcesLiveData(viewModel.resourcesLiveData)
-                tunnelService?.resourcesUpdated(disabledResources)
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
@@ -62,9 +55,6 @@ internal class SessionActivity : AppCompatActivity() {
         val intent = Intent(this, TunnelService::class.java)
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
 
-        disabledResources = repo.getDisabledResourcesSync().toMutableSet()
-        tunnelService?.resourcesUpdated(disabledResources)
-
         setupViews()
         setupObservers()
     }
@@ -79,15 +69,7 @@ internal class SessionActivity : AppCompatActivity() {
 
     fun onViewResourceToggled(resourceToggled: ViewResource) {
         Log.d(TAG, "Resource toggled $resourceToggled")
-
-        if (!resourceToggled.enabled) {
-            disabledResources.add(resourceToggled.id)
-        } else {
-            disabledResources.remove(resourceToggled.id)
-        }
-
-        repo.saveDisabledResourcesSync(disabledResources)
-        tunnelService?.resourcesUpdated(disabledResources)
+        tunnelService?.resourceToggled(resourceToggled)
     }
 
     private fun setupViews() {
@@ -159,20 +141,7 @@ internal class SessionActivity : AppCompatActivity() {
                 View.GONE
             }
 
-        val newResources = viewModel.resourcesList().map { it.toViewResource() }
-
-        for (item in newResources) {
-            // Preventing a bug where a resource stop beings disableable and we can't re-enable it
-            if (!item.canToggle) {
-                disabledResources.remove(item.id)
-            }
-
-            if (disabledResources.contains(item.id)) {
-                item.enabled = false
-            }
-        }
-
-        resourcesAdapter.submitList(newResources)
+        resourcesAdapter.submitList(viewModel.resourcesList())
     }
 
     companion object {
