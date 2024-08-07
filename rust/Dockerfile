@@ -82,6 +82,8 @@ COPY ./docker-init.sh ./docker-init.sh
 
 # snownet-tests specific runtime base image
 FROM runtime_base AS runtime_snownet-tests
+RUN set -xe \
+  && apk add --no-cache curl
 COPY ./docker-init.sh ./docker-init.sh
 
 # Funnel package specific base image back into `runtime`
