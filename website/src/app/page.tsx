@@ -36,6 +36,7 @@ import SimpleArchitecture from "@/components/Animations/SimpleArchitecture";
 import { manrope } from "@/lib/fonts";
 import "@/styles/hero.css";
 import FeatureCards from "@/components/FeatureCards";
+import SingleFeature from "@/components/SingleFeature";
 
 export const metadata: Metadata = {
   title: "Firezone: Zero trust access that scales",
@@ -120,6 +121,25 @@ export default function Page() {
         </section>
         <section className="relative py-24 bg-white">
           <FeatureCards />
+        </section>
+        <section className="relative py-24 bg-white">
+          <SingleFeature
+            title="Achieve compliance"
+            boldedTitle=" without the headache."
+            desc="Clients are available for every major platform and stay connected even
+          when switching WiFi networks."
+            link="/kb/architecture"
+            buttonDesc="Read about Firezone's architecture"
+          >
+            <div className="relative flex flex-col -space-y-4 items-center">
+              <div className="absolute z-10 bg-primary-200 rounded-full w-[400px] h-[400px]" />
+              <img src="/images/ComplianceHeader.svg" className="z-30" />
+              <img
+                src="/images/ComplianceBody.svg"
+                className="z-20 max-w-[80%]"
+              />
+            </div>
+          </SingleFeature>
         </section>
       </section>
 
