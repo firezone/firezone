@@ -21,7 +21,7 @@ use itertools::Itertools;
 use tracing::Level;
 
 use crate::peer::GatewayOnClient;
-use crate::utils::{self, earliest, turn};
+use crate::utils::{self, earliest, turn, Candidates};
 use crate::{ClientEvent, ClientTunnel, Tun};
 use core::fmt;
 use secrecy::{ExposeSecret as _, Secret};
@@ -884,8 +884,8 @@ impl ClientState {
 
     fn drain_node_events(&mut self) {
         let mut resources_changed = false; // Track this separately to batch together `ResourcesChanged` events.
-        let mut added_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
-        let mut removed_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
+        let mut added_ice_candidates = BTreeMap::<GatewayId, Candidates>::default();
+        let mut removed_ice_candidates = BTreeMap::<GatewayId, Candidates>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -900,7 +900,7 @@ impl ClientState {
                     added_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .insert(candidate);
+                        .push(candidate);
                 }
                 snownet::Event::InvalidateIceCandidate {
                     connection,
@@ -909,7 +909,7 @@ impl ClientState {
                     removed_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .insert(candidate);
+                        .push(candidate);
                 }
                 snownet::Event::ConnectionEstablished(id) => {
                     self.update_site_status_by_gateway(&id, Status::Online);
@@ -929,7 +929,7 @@ impl ClientState {
             self.buffered_events
                 .push_back(ClientEvent::AddedIceCandidates {
                     conn_id,
-                    candidates,
+                    candidates: candidates.serialize(),
                 })
         }
 
@@ -937,7 +937,7 @@ impl ClientState {
             self.buffered_events
                 .push_back(ClientEvent::RemovedIceCandidates {
                     conn_id,
-                    candidates,
+                    candidates: candidates.serialize(),
                 })
         }
     }

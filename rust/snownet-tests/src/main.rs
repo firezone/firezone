@@ -392,7 +392,7 @@ impl<T> Eventloop<T> {
             }) => {
                 return Poll::Ready(Ok(Event::SignalIceCandidate {
                     conn: connection,
-                    candidate,
+                    candidate: candidate.to_sdp_string(),
                 }))
             }
             Some(snownet::Event::ConnectionEstablished(conn)) => {
