@@ -321,6 +321,7 @@ resource "google_monitoring_alert_policy" "errors" {
       -logName:"/logs/GCEGuestAgent"
       -logName:"/logs/OSConfigAgent"
       -logName:"/logs/ops-agent-fluent-bit"
+      -"OpentelemetryFinch"
       EOT
     }
   }
