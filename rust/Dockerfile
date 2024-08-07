@@ -99,7 +99,7 @@ CMD $PACKAGE
 FROM runtime AS test
 
 RUN set -xe \
-  && apk add --no-cache iperf3 bind-tools iproute2 jq procps
+  && apk add --no-cache curl iperf3 bind-tools iproute2 jq procps
 
 # used for local development
 FROM test AS dev
