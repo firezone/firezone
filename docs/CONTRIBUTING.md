@@ -69,60 +69,11 @@ instead so that you have v2 installed.
 Docker Compose version v2.27.0
 ```
 
-#### Test With Docker
-
-When you want to test every component together the ideal way to go is to use
-docker.
-
-To do this you first need a seeded database, for that follow the steps on the
-[Elixir's README](../elixir/README.md#running-control-plane-for-local-development).
-Then you can do:
-
-```sh
-# To start all the components
-docker compose up -d --build
-
-# To check the logs
-docker compose logs -f
-```
-
-After this you will have running:
-
-- A portal
-- A gateway connected to the portal
-- A headless Linux client connected to the portal
-- A relay connected to the portal
-- A resource with IP `172.20.0.100` on a separate network shared with the
-  gateway
-
-```sh
-# To test that a client can ping the resource
-docker compose exec -it client ping 172.20.0.100
-
-# You can also directly use the client
-docker compose exec -it client /bin/sh
-```
-
-##### Rust development with docker
-
-Sometimes it's useful to test your changes in a local docker, however the
-`docker-compose.yml` file at the root directory requires rebuilding the images
-each time you want to test the change.
-
-To solve this, you can use the `rust/docker-compose-dev.yml` file like
-`docker compose -f docker-compose.yml -f rust/docker-compose-dev.yml <command>`
-
-This will use locally compiled binaries situated at
-`rust/target/x86_64-unknown-musl/debug`
-
-You can also [set the env variable `COMPOSE_FILE`](https://docs.docker.com/compose/environment-variables/envvars/#compose_file)
-so you don't have to manually set the compose files each time.
-
-### Bootstrapping
+#### Bootstrapping the DB
 
 To start the local Firezone cluster, follow these steps:
 
-```
+```sh
 docker compose build
 docker compose run --rm elixir /bin/sh -c "cd apps/domain && mix ecto.create && mix ecto.migrate && mix ecto.seed"
 
@@ -137,8 +88,8 @@ docker compose up -d api web vault gateway client relay-1 relay-2
 You should now be able to connect to `http://localhost:8080/<account-uuid-here>`
 and sign in with the following credentials:
 
-```
-Email:    firezone@localhost
+```text
+Email:    firezone@localhost.local
 Password: Firezone1234
 ```
 
@@ -146,10 +97,23 @@ The [`docker-compose.yml`](../docker-compose.yml) file configures the Docker
 development environment. If you make any changes you feel would benefit all
 developers, feel free to open a PR to get them merged!
 
+After this you will have running:
+
+- A portal
+- A gateway connected to the portal
+- A headless Linux client connected to the portal
+- A relay connected to the portal
+- A resource with IP `172.20.0.100` on a separate network shared with the
+  gateway
+
 ### Ensure Everything Works
 
-```
-#TODO
+```sh
+# To test that a client can ping the resource
+docker compose exec -it client ping 172.20.0.100
+
+# You can also directly use the client
+docker compose exec -it client /bin/sh
 ```
 
 ## Developer Environment Setup
@@ -175,9 +139,9 @@ setup properly.
 
 ### asdf-vm Setup
 
-We use [asdf-vm](https://asdf-vm.com) to manage
-language versions for Firezone. Install the language runtimes
-defined in the [.tool-versions](../.tool-versions) file by running `asdf install` from the project root.
+We use [asdf-vm](https://asdf-vm.com) to manage language versions for Firezone.
+Install the language runtimes defined in the [.tool-versions](../.tool-versions)
+file by running `asdf install` from the project root.
 
 - Note: For a fresh install of `asdf` you will need to install some
   [asdf-plugins](https://asdf-vm.com/manage/plugins.html). Running
@@ -207,6 +171,22 @@ the detailed info found in the [Elixir Developer Guide](../elixir/README.md)
 If you are interested in contributing to the Gateway, Relay, or client library,
 please read the detailed info found in the
 [Rust Developer Guide](../rust/README.md)
+
+##### Rust development with docker
+
+Sometimes it's useful to test your changes in a local docker, however the
+`docker-compose.yml` file at the root directory requires rebuilding the images
+each time you want to test the change.
+
+To solve this, you can use the `rust/docker-compose-dev.yml` file like
+`docker compose -f docker-compose.yml -f rust/docker-compose-dev.yml <command>`
+
+This will use locally compiled binaries found at
+`rust/target/x86_64-unknown-musl/debug`
+
+You can also
+[set the env variable `COMPOSE_FILE`](https://docs.docker.com/compose/environment-variables/envvars/#compose_file)
+so you don't have to manually set the compose files each time.
 
 ### Shell script Development
 

@@ -7,6 +7,7 @@ defmodule Web.Settings.ApiClients.Index do
       socket =
         socket
         |> assign(page_title: "API Clients")
+        |> assign(api_url: Domain.Config.get_env(:web, :api_external_url))
         |> assign_live_table("actors",
           query_module: Actors.Actor.Query,
           sortable_fields: [
@@ -56,7 +57,7 @@ defmodule Web.Settings.ApiClients.Index do
       <:title><%= @page_title %></:title>
       <:help>
         API Clients are used to manage Firezone configuration through a REST API. See our
-        <.link navigate="https://api.firezone.dev/swaggerui" class={link_style()}>
+        <.link navigate={"#{@api_url}/swaggerui"} class={link_style()} target="_blank">
           OpenAPI-powered docs
         </.link>
         for more information.

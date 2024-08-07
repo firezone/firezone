@@ -171,10 +171,10 @@ defmodule Domain.ConfigTest do
     end
 
     test "raises an error when value is invalid", %{account: account} do
-      put_system_env_override(:external_url, "https://example.com/vpn")
+      put_system_env_override(:web_external_url, "https://example.com/vpn")
 
       message = """
-      Invalid configuration for 'external_url' retrieved from environment variable EXTERNAL_URL.
+      Invalid configuration for 'web_external_url' retrieved from environment variable WEB_EXTERNAL_URL.
 
       Errors:
 
@@ -182,7 +182,7 @@ defmodule Domain.ConfigTest do
 
       ## Documentation
 
-      The external URL the UI/API will be accessible at.
+      The external URL the UI will be accessible at.
 
       If this field is not set or set to `nil`, the server for `api` and `web` apps will not start.
 
@@ -191,7 +191,7 @@ defmodule Domain.ConfigTest do
       """
 
       assert_raise RuntimeError, message, fn ->
-        fetch_resolved_configs_with_sources!(account.id, [:external_url])
+        fetch_resolved_configs_with_sources!(account.id, [:web_external_url])
       end
     end
   end

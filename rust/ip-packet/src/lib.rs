@@ -8,6 +8,7 @@ pub use pnet_packet::*;
 #[cfg(all(test, feature = "proptest"))]
 mod proptests;
 
+use domain::base::Message;
 use pnet_packet::{
     icmp::{
         destination_unreachable::IcmpCodes, echo_reply::MutableEchoReplyPacket,
@@ -1409,9 +1410,9 @@ impl<'a> IpPacket<'a> {
     }
 
     /// Unwrap this [`IpPacket`] as a DNS message, panicking in case it is not.
-    pub fn unwrap_as_dns(&self) -> hickory_proto::op::Message {
+    pub fn unwrap_as_dns(&self) -> Message<Vec<u8>> {
         let udp = self.unwrap_as_udp();
-        let message = match hickory_proto::op::Message::from_vec(udp.payload()) {
+        let message = match Message::from_octets(udp.payload().to_vec()) {
             Ok(message) => message,
             Err(e) => {
                 panic!("Failed to parse UDP payload as DNS message: {e}");

@@ -98,13 +98,13 @@ if config_env() == :prod do
   config :domain, Domain.Auth.Adapters.Okta.Jobs.SyncDirectory,
     enabled: compile_config!(:background_jobs_enabled)
 
-  if external_url = compile_config!(:external_url) do
+  if web_external_url = compile_config!(:web_external_url) do
     %{
-      scheme: external_url_scheme,
-      host: external_url_host,
-      port: external_url_port,
-      path: external_url_path
-    } = URI.parse(external_url)
+      scheme: web_external_url_scheme,
+      host: web_external_url_host,
+      port: web_external_url_port,
+      path: web_external_url_path
+    } = URI.parse(web_external_url)
 
     ###############################
     ##### Web #####################
@@ -117,17 +117,17 @@ if config_env() == :prod do
         protocol_options: compile_config!(:phoenix_http_protocol_options)
       ],
       url: [
-        scheme: external_url_scheme,
-        host: external_url_host,
-        port: external_url_port,
-        path: external_url_path
+        scheme: web_external_url_scheme,
+        host: web_external_url_host,
+        port: web_external_url_port,
+        path: web_external_url_path
       ],
       secret_key_base: compile_config!(:secret_key_base),
       check_origin: [
-        "#{external_url_scheme}://#{external_url_host}:#{external_url_port}",
-        "#{external_url_scheme}://*.#{external_url_host}:#{external_url_port}",
-        "#{external_url_scheme}://#{external_url_host}",
-        "#{external_url_scheme}://*.#{external_url_host}"
+        "#{web_external_url_scheme}://#{web_external_url_host}:#{web_external_url_port}",
+        "#{web_external_url_scheme}://*.#{web_external_url_host}:#{web_external_url_port}",
+        "#{web_external_url_scheme}://#{web_external_url_host}",
+        "#{web_external_url_scheme}://*.#{web_external_url_host}"
       ],
       live_view: [
         signing_salt: compile_config!(:live_view_signing_salt)
@@ -143,6 +143,15 @@ if config_env() == :prod do
       cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
 
     config :web, api_url_override: compile_config!(:api_url_override)
+  end
+
+  if api_external_url = compile_config!(:api_external_url) do
+    %{
+      scheme: api_external_url_scheme,
+      host: api_external_url_host,
+      port: api_external_url_port,
+      path: api_external_url_path
+    } = URI.parse(api_external_url)
 
     ###############################
     ##### API #####################
@@ -155,10 +164,10 @@ if config_env() == :prod do
         protocol_options: compile_config!(:phoenix_http_protocol_options)
       ],
       url: [
-        scheme: external_url_scheme,
-        host: external_url_host,
-        port: external_url_port,
-        path: external_url_path
+        scheme: api_external_url_scheme,
+        host: api_external_url_host,
+        port: api_external_url_port,
+        path: api_external_url_path
       ],
       secret_key_base: compile_config!(:secret_key_base)
 
@@ -170,6 +179,9 @@ if config_env() == :prod do
     config :api,
       external_trusted_proxies: compile_config!(:phoenix_external_trusted_proxies),
       private_clients: compile_config!(:phoenix_private_clients)
+
+    config :web,
+      api_external_url: api_external_url
   end
 
   ###############################

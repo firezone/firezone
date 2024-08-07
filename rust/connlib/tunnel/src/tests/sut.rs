@@ -1,6 +1,7 @@
 use super::buffered_transmits::BufferedTransmits;
 use super::reference::ReferenceState;
 use super::sim_client::SimClient;
+use super::sim_dns::{DnsServerId, SimDns};
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
@@ -10,17 +11,12 @@ use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
 use crate::utils::earliest;
-use crate::{dns::DnsQuery, ClientEvent, GatewayEvent, Request};
+use crate::{ClientEvent, GatewayEvent, Request};
 use connlib_shared::messages::client::ResourceDescription;
 use connlib_shared::{
     messages::{ClientId, GatewayId, Interface, RelayId},
     DomainName,
 };
-use hickory_proto::{
-    op::Query,
-    rr::{RData, Record, RecordType},
-};
-use hickory_resolver::lookup::Lookup;
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
@@ -28,8 +24,6 @@ use std::iter;
 use std::{
     collections::{BTreeMap, HashSet},
     net::IpAddr,
-    str::FromStr as _,
-    sync::Arc,
     time::{Duration, Instant},
 };
 use tracing::debug_span;
@@ -47,6 +41,7 @@ pub(crate) struct TunnelTest {
     client: Host<SimClient>,
     gateways: BTreeMap<GatewayId, Host<SimGateway>>,
     relays: BTreeMap<RelayId, Host<SimRelay>>,
+    dns_servers: BTreeMap<DnsServerId, Host<SimDns>>,
 
     drop_direct_client_traffic: bool,
     network: RoutingTable,
@@ -101,6 +96,16 @@ impl StateMachineTest for TunnelTest {
             })
             .collect::<BTreeMap<_, _>>();
 
+        let dns_servers = ref_state
+            .dns_servers
+            .iter()
+            .map(|(did, dns_server)| {
+                let dns_server = dns_server.map(|_, _, _| SimDns {}, debug_span!("dns", %did));
+
+                (*did, dns_server)
+            })
+            .collect::<BTreeMap<_, _>>();
+
         // Configure client and gateway with the relays.
         client.exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
         for gateway in gateways.values_mut() {
@@ -116,6 +121,7 @@ impl StateMachineTest for TunnelTest {
             gateways,
             logger,
             relays,
+            dns_servers,
         };
 
         let mut buffered_transmits = BufferedTransmits::default();
@@ -221,12 +227,12 @@ impl StateMachineTest for TunnelTest {
 
                 buffered_transmits.push_from(transmit, &state.client, now);
             }
-            Transition::UpdateSystemDnsServers { servers } => {
+            Transition::UpdateSystemDnsServers(servers) => {
                 state
                     .client
                     .exec_mut(|c| c.sut.update_system_resolvers(servers));
             }
-            Transition::UpdateUpstreamDnsServers { servers } => {
+            Transition::UpdateUpstreamDnsServers(servers) => {
                 state.client.exec_mut(|c| {
                     c.sut.update_interface_config(Interface {
                         ipv4: c.sut.tunnel_ip4().unwrap(),
@@ -259,7 +265,7 @@ impl StateMachineTest for TunnelTest {
 
                 // Simulate receiving `init`.
                 state.client.exec_mut(|c| {
-                    let _ = c.sut.update_interface_config(Interface {
+                    c.sut.update_interface_config(Interface {
                         ipv4,
                         ipv6,
                         upstream_dns,
@@ -454,10 +460,6 @@ impl TunnelTest {
                 );
                 continue;
             }
-            if let Some(query) = self.client.exec_mut(|client| client.sut.poll_dns_queries()) {
-                self.on_forwarded_dns_query(query, ref_state);
-                continue;
-            }
             self.client.exec_mut(|sim| {
                 while let Some(packet) = sim.sut.poll_packets() {
                     sim.on_received_packet(packet)
@@ -514,7 +516,7 @@ impl TunnelTest {
 
         for (_, relay) in self.relays.iter_mut() {
             while let Some(transmit) = relay.poll_transmit(now) {
-                let Some(reply) = relay.exec_mut(|g| g.receive(transmit, now)) else {
+                let Some(reply) = relay.exec_mut(|r| r.receive(transmit, now)) else {
                     continue;
                 };
 
@@ -522,6 +524,18 @@ impl TunnelTest {
             }
 
             relay.exec_mut(|r| r.sut.handle_timeout(now))
+        }
+
+        for (_, dns_server) in self.dns_servers.iter_mut() {
+            while let Some(transmit) = dns_server.poll_transmit(now) {
+                let Some(reply) =
+                    dns_server.exec_mut(|d| d.receive(global_dns_records, transmit, now))
+                else {
+                    continue;
+                };
+
+                buffered_transmits.push_from(reply, dns_server, now);
+            }
         }
     }
 
@@ -590,6 +604,12 @@ impl TunnelTest {
             }
             HostId::Stale => {
                 tracing::debug!(%dst, "Dropping packet because host roamed away or is offline");
+            }
+            HostId::DnsServer(id) => {
+                self.dns_servers
+                    .get_mut(&id)
+                    .expect("unknown DNS server")
+                    .receive(transmit, now);
             }
         }
     }
@@ -780,41 +800,6 @@ impl TunnelTest {
             ClientEvent::TunRoutesUpdated { .. } => {}
         }
     }
-
-    // TODO: Should we vary the following things via proptests?
-    // - Forwarded DNS query timing out?
-    // - hickory error?
-    // - TTL?
-    fn on_forwarded_dns_query(&mut self, query: DnsQuery<'static>, ref_state: &ReferenceState) {
-        let all_ips = &ref_state
-            .global_dns_records
-            .get(&query.name)
-            .expect("Forwarded DNS query to be for known domain");
-
-        let name = domain_to_hickory_name(query.name.clone());
-        let requested_type = query.record_type;
-
-        let record_data = all_ips
-            .iter()
-            .filter_map(|ip| match (requested_type, ip) {
-                (RecordType::A, IpAddr::V4(v4)) => Some(RData::A((*v4).into())),
-                (RecordType::AAAA, IpAddr::V6(v6)) => Some(RData::AAAA((*v6).into())),
-                (RecordType::A, IpAddr::V6(_)) | (RecordType::AAAA, IpAddr::V4(_)) => None,
-                _ => unreachable!(),
-            })
-            .map(|rdata| Record::from_rdata(name.clone(), 86400_u32, rdata))
-            .collect::<Arc<_>>();
-
-        self.client.exec_mut(|c| {
-            c.sut.on_dns_result(
-                query,
-                Ok(Ok(Ok(Lookup::new_with_max_ttl(
-                    Query::query(name, requested_type),
-                    record_data,
-                )))),
-            )
-        })
-    }
 }
 
 fn on_gateway_event(
@@ -836,23 +821,4 @@ fn on_gateway_event(
         }),
         GatewayEvent::RefreshDns { .. } => todo!(),
     }
-}
-
-pub(crate) fn hickory_name_to_domain(mut name: hickory_proto::rr::Name) -> DomainName {
-    name.set_fqdn(false); // Hack to work around hickory always parsing as FQ
-    let name = name.to_string();
-
-    let domain = DomainName::from_chars(name.chars()).unwrap();
-    debug_assert_eq!(name, domain.to_string());
-
-    domain
-}
-
-pub(crate) fn domain_to_hickory_name(domain: DomainName) -> hickory_proto::rr::Name {
-    let domain = domain.to_string();
-
-    let name = hickory_proto::rr::Name::from_str(&domain).unwrap();
-    debug_assert_eq!(name.to_string(), domain);
-
-    name
 }

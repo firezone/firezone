@@ -60,8 +60,10 @@ services:
       - 8080:8080/tcp
     environment:
       # Web Server
-      EXTERNAL_URL: http://localhost:8080/
+      WEB_EXTERNAL_URL: http://localhost:8080/
+      API_EXTERNAL_URL: http://localhost:8081/
       PHOENIX_HTTP_WEB_PORT: "8080"
+      PHOENIX_HTTP_API_PORT: "8081"
       PHOENIX_SECURE_COOKIES: "false"
       # Erlang
       ERLANG_DISTRIBUTION_PORT: 9000
@@ -129,7 +131,9 @@ services:
       - 8081:8081/tcp
     environment:
       # Web Server
-      EXTERNAL_URL: http://localhost:8081/
+      WEB_EXTERNAL_URL: http://localhost:8080/
+      API_EXTERNAL_URL: http://localhost:8081/
+      PHOENIX_HTTP_WEB_PORT: "8080"
       PHOENIX_HTTP_API_PORT: "8081"
       PHOENIX_SECURE_COOKIES: "false"
       # Erlang
@@ -262,7 +266,8 @@ services:
     hostname: elixir
     environment:
       # Web Server
-      EXTERNAL_URL: http://localhost:8081/
+      WEB_EXTERNAL_URL: http://localhost:8080/
+      API_EXTERNAL_URL: http://localhost:8081/
       # Erlang
       ERLANG_DISTRIBUTION_PORT: 9000
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
@@ -324,7 +329,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/client:main
       args:
         PACKAGE: firezone-headless-client
-    image: ${CLIENT_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/client}:${CLIENT_TAG:-main}
+    image: ${CLIENT_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/client}:${CLIENT_TAG:-main}
     cap_add:
       - NET_ADMIN
     sysctls:
@@ -344,7 +349,7 @@ services:
     environment:
       FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkMjI3NDU2MGItZTk3Yi00NWU0LThiMzQtNjc5Yzc2MTdlOThkbQAAADhPMDJMN1VTMkozVklOT01QUjlKNklMODhRSVFQNlVPOEFRVk82VTVJUEwwVkpDMjJKR0gwPT09PW4GAI0Qi02QAWIAAVGA.emd2izXZdGngSMDruiTNgwRYbNtsVLYf_fouNyoKv8Q"
       RUST_LOG: ${RUST_LOG:-phoenix_channel=trace,firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,phoenix_channel=debug,boringtun=debug,snownet=debug,str0m=debug,info}
-      FIREZONE_ENABLE_MASQUERADE: 1
+      FIREZONE_ENABLE_MASQUERADE: 1 # FIXME: NOOP in latest version. Remove after next release.
       FIREZONE_API_URL: ws://api:8081
       FIREZONE_ID: 4694E56C-7643-4A15-9DF3-638E5B05F570
     build:
@@ -355,7 +360,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/gateway:main
       args:
         PACKAGE: firezone-gateway
-    image: ${GATEWAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/gateway}:${GATEWAY_TAG:-main}
+    image: ${GATEWAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/gateway}:${GATEWAY_TAG:-main}
     cap_add:
       - NET_ADMIN
     sysctls:
@@ -392,7 +397,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/http-test-server:main
       args:
         PACKAGE: http-test-server
-    image: ${HTTP_TEST_SERVER_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/http-test-server}:${HTTP_TEST_SERVER_TAG:-main}
+    image: ${HTTP_TEST_SERVER_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/http-test-server}:${HTTP_TEST_SERVER_TAG:-main}
     environment:
       PORT: 80
     networks:
@@ -438,7 +443,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
       args:
         PACKAGE: firezone-relay
-    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/relay}:${RELAY_TAG:-main}
+    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay}:${RELAY_TAG:-main}
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
@@ -479,7 +484,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
       args:
         PACKAGE: firezone-relay
-    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/relay}:${RELAY_TAG:-main}
+    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay}:${RELAY_TAG:-main}
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
