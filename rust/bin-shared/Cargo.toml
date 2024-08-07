@@ -20,7 +20,7 @@ tun = { workspace = true }
 url = { version = "2.5.2", default-features = false }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"

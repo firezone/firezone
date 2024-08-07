@@ -1,9 +1,12 @@
 //! Factory module for making all kinds of packets.
 
 use crate::{IpPacket, MutableIpPacket};
-use hickory_proto::{
-    op::{Message, Query, ResponseCode},
-    rr::{Name, RData, Record, RecordType},
+use domain::{
+    base::{
+        iana::{Class, Opcode, Rcode},
+        MessageBuilder, Name, Question, Record, Rtype, ToName, Ttl,
+    },
+    rdata::AllRecordData,
 };
 use pnet_packet::{
     ip::IpNextHeaderProtocol,
@@ -244,24 +247,26 @@ where
 }
 
 pub fn dns_query(
-    domain: Name,
-    kind: RecordType,
+    domain: Name<Vec<u8>>,
+    kind: Rtype,
     src: SocketAddr,
     dst: SocketAddr,
     id: u16,
 ) -> MutableIpPacket<'static> {
     // Create the DNS query message
-    let mut msg = Message::new();
-    msg.set_message_type(hickory_proto::op::MessageType::Query);
-    msg.set_op_code(hickory_proto::op::OpCode::Query);
-    msg.set_recursion_desired(true);
-    msg.set_id(id);
+    let mut msg_builder = MessageBuilder::new_vec();
+
+    msg_builder.header_mut().set_opcode(Opcode::QUERY);
+    msg_builder.header_mut().set_rd(true);
+    msg_builder.header_mut().set_id(id);
 
     // Create the query
-    let query = Query::query(domain, kind);
-    msg.add_query(query);
+    let mut question_builder = msg_builder.question();
+    question_builder
+        .push(Question::new_in(domain, kind))
+        .unwrap();
 
-    let payload = msg.to_vec().unwrap();
+    let payload = question_builder.finish();
 
     udp_packet(src.ip(), dst.ip(), src.port(), dst.port(), payload)
 }
@@ -269,60 +274,42 @@ pub fn dns_query(
 /// Makes a DNS response to the given DNS query packet, using a resolver callback.
 pub fn dns_ok_response<I>(
     packet: IpPacket<'static>,
-    resolve: impl Fn(&Name) -> I,
+    resolve: impl Fn(&Name<Vec<u8>>) -> I,
 ) -> MutableIpPacket<'static>
 where
     I: Iterator<Item = IpAddr>,
 {
     let udp = packet.unwrap_as_udp();
-    let mut query = packet.unwrap_as_dns();
+    let query = packet.unwrap_as_dns();
 
-    let mut response = Message::new();
-    response.set_id(query.id());
-    response.set_message_type(hickory_proto::op::MessageType::Response);
+    let response = MessageBuilder::new_vec();
+    let mut answers = response.start_answer(&query, Rcode::NOERROR).unwrap();
 
-    for query in query.take_queries() {
-        response.add_query(query.clone());
+    for query in query.question() {
+        let query = query.unwrap();
+        let name = query.qname().to_name();
 
-        let records = resolve(query.name())
+        let records = resolve(&name)
             .filter(|ip| {
                 #[allow(clippy::wildcard_enum_match_arm)]
-                match query.query_type() {
-                    RecordType::A => ip.is_ipv4(),
-                    RecordType::AAAA => ip.is_ipv6(),
+                match query.qtype() {
+                    Rtype::A => ip.is_ipv4(),
+                    Rtype::AAAA => ip.is_ipv6(),
                     _ => todo!(),
                 }
             })
             .map(|ip| match ip {
-                IpAddr::V4(v4) => RData::A(v4.into()),
-                IpAddr::V6(v6) => RData::AAAA(v6.into()),
+                IpAddr::V4(v4) => AllRecordData::<Vec<_>, Name<Vec<_>>>::A(v4.into()),
+                IpAddr::V6(v6) => AllRecordData::<Vec<_>, Name<Vec<_>>>::Aaaa(v6.into()),
             })
-            .map(|rdata| Record::from_rdata(query.name().clone(), 86400_u32, rdata));
+            .map(|rdata| Record::new(name.clone(), Class::IN, Ttl::from_days(1), rdata));
 
-        response.add_answers(records);
+        for record in records {
+            answers.push(record).unwrap();
+        }
     }
 
-    let payload = response.to_vec().unwrap();
-
-    udp_packet(
-        packet.destination(),
-        packet.source(),
-        udp.get_destination(),
-        udp.get_source(),
-        payload,
-    )
-}
-
-/// Makes a DNS response to the given DNS query packet, using the given error code.
-pub fn dns_err_response(packet: IpPacket<'static>, code: ResponseCode) -> MutableIpPacket<'static> {
-    let udp = packet.unwrap_as_udp();
-    let query = packet.unwrap_as_dns();
-
-    debug_assert_ne!(code, ResponseCode::NoError);
-
-    let response = Message::error_msg(query.id(), query.op_code(), code);
-
-    let payload = response.to_vec().unwrap();
+    let payload = answers.finish();
 
     udp_packet(
         packet.destination(),

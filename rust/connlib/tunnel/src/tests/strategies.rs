@@ -1,4 +1,9 @@
-use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
+use super::{
+    sim_dns::{dns_server_id, ref_dns_host, DnsServerId, RefDns},
+    sim_net::Host,
+    sim_relay::ref_relay_host,
+    stub_portal::StubPortal,
+};
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use connlib_shared::{
     messages::{
@@ -6,7 +11,7 @@ use connlib_shared::{
             ResourceDescriptionCidr, ResourceDescriptionDns, ResourceDescriptionInternet, Site,
             SiteId,
         },
-        DnsServer, GatewayId, RelayId,
+        GatewayId, RelayId,
     },
     proptest::{
         any_ip_network, cidr_resource, dns_resource, domain_name, gateway_id, relay_id, site,
@@ -14,41 +19,14 @@ use connlib_shared::{
     DomainName,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use itertools::Itertools as _;
+use itertools::Itertools;
 use prop::sample;
 use proptest::{collection, prelude::*};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Duration,
 };
-
-pub(crate) fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
-    let ip4_dns_servers = collection::vec(
-        any::<Ipv4Addr>().prop_map(|ip| DnsServer::from((ip, 53))),
-        1..4,
-    );
-    let ip6_dns_servers = collection::vec(
-        any::<Ipv6Addr>().prop_map(|ip| DnsServer::from((ip, 53))),
-        1..4,
-    );
-
-    // TODO: PRODUCTION CODE DOES NOT HAVE A SAFEGUARD FOR THIS YET.
-    // AN ADMIN COULD CONFIGURE ONLY IPv4 SERVERS IN WHICH CASE WE ARE SCREWED IF THE CLIENT ONLY HAS IPv6 CONNECTIVITY.
-
-    prop_oneof![
-        Just(Vec::new()),
-        (ip4_dns_servers, ip6_dns_servers).prop_map(|(mut ip4_servers, ip6_servers)| {
-            ip4_servers.extend(ip6_servers);
-
-            ip4_servers
-        })
-    ]
-}
-
-pub(crate) fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
-    collection::vec(any::<IpAddr>(), 1..4) // Always need at least 1 system DNS server. TODO: Should we test what happens if we don't?
-}
 
 pub(crate) fn global_dns_records() -> impl Strategy<Value = BTreeMap<DomainName, HashSet<IpAddr>>> {
     collection::btree_map(
@@ -142,6 +120,38 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
 
 pub(crate) fn relays() -> impl Strategy<Value = BTreeMap<RelayId, Host<u64>>> {
     collection::btree_map(relay_id(), ref_relay_host(), 1..=2)
+}
+
+/// Sample a list of DNS servers.
+///
+/// We make sure to always have at least 1 IPv4 and 1 IPv6 DNS server.
+pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeMap<DnsServerId, Host<RefDns>>> {
+    let ip4_dns_servers = collection::hash_set(
+        any::<Ipv4Addr>().prop_map(|ip| SocketAddr::from((ip, 53))),
+        1..4,
+    );
+    let ip6_dns_servers = collection::hash_set(
+        any::<Ipv6Addr>().prop_map(|ip| SocketAddr::from((ip, 53))),
+        1..4,
+    );
+
+    (ip4_dns_servers, ip6_dns_servers).prop_flat_map(|(ip4_dns_servers, ip6_dns_servers)| {
+        let servers = Vec::from_iter(ip4_dns_servers.into_iter().chain(ip6_dns_servers));
+
+        // First, generate a unique number of IDs, one for each DNS server.
+        let ids = collection::hash_set(dns_server_id(), servers.len());
+
+        (ids, Just(servers))
+            .prop_flat_map(move |(ids, servers)| {
+                let ids = ids.into_iter();
+
+                // Second, zip the IDs and addresses together.
+                ids.zip(servers)
+                    .map(|(id, addr)| (Just(id), ref_dns_host(addr)))
+                    .collect::<Vec<_>>()
+            })
+            .prop_map(BTreeMap::from_iter) // Third, turn the `Vec` of tuples into a `BTreeMap`.
+    })
 }
 
 fn any_site(sites: HashSet<Site>) -> impl Strategy<Value = Site> {

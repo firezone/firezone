@@ -116,13 +116,6 @@ impl ClientTunnel {
                 continue;
             }
 
-            if let Some(dns_query) = self.role_state.poll_dns_queries() {
-                if let Err(e) = self.io.perform_dns_query(dns_query.clone()) {
-                    self.role_state.on_dns_result(dns_query, Err(e))
-                }
-                continue;
-            }
-
             if let Some(timeout) = self.role_state.poll_timeout() {
                 self.io.reset_timeout(timeout);
             }
@@ -161,10 +154,6 @@ impl ClientTunnel {
                         self.io.device_mut().write(packet)?;
                     }
 
-                    continue;
-                }
-                Poll::Ready(io::Input::DnsResponse(query, response)) => {
-                    self.role_state.on_dns_result(query, Ok(response));
                     continue;
                 }
                 Poll::Pending => {}
@@ -253,9 +242,6 @@ impl GatewayTunnel {
                     }
 
                     continue;
-                }
-                Poll::Ready(io::Input::DnsResponse(_, _)) => {
-                    unreachable!("Gateway does not (yet) resolve DNS queries via `Io`")
                 }
                 Poll::Pending => {}
             }

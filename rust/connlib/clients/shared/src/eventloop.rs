@@ -205,12 +205,7 @@ where
     fn handle_portal_inbound_message(&mut self, msg: IngressMessages) {
         match msg {
             IngressMessages::ConfigChanged(config) => {
-                if let Err(e) = self
-                    .tunnel
-                    .set_new_interface_config(config.interface.clone())
-                {
-                    tracing::warn!(?config, "Failed to update configuration: {e:?}");
-                }
+                self.tunnel.set_new_interface_config(config.interface)
             }
             IngressMessages::IceCandidates(GatewayIceCandidates {
                 gateway_id,
@@ -225,14 +220,11 @@ where
                 resources,
                 relays,
             }) => {
-                if let Err(e) = self.tunnel.set_new_interface_config(interface) {
-                    tracing::warn!("Failed to set interface on tunnel: {e}");
-                    return;
-                }
+                self.tunnel.set_new_interface_config(interface);
+                self.tunnel.set_resources(resources);
+                self.tunnel.update_relays(BTreeSet::default(), relays);
 
                 tracing::info!("Firezone Started!");
-                self.tunnel.set_resources(resources);
-                self.tunnel.update_relays(BTreeSet::default(), relays)
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
                 self.tunnel.add_resource(resource);

@@ -22,7 +22,7 @@ secrecy = { workspace = true }
 serde_json = "1"
 socket-factory = { workspace = true }
 swift-bridge = { workspace = true }
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 tracing = { workspace = true }
 tracing-appender = "0.2"
 tracing-subscriber = "0.3"

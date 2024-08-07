@@ -7,16 +7,11 @@ use domain::base::{
     Message, MessageBuilder, ToName,
 };
 use domain::rdata::AllRecordData;
-use hickory_resolver::lookup::Lookup;
-use hickory_resolver::proto::error::{ProtoError, ProtoErrorKind};
-use hickory_resolver::proto::op::MessageType;
-use hickory_resolver::proto::rr::RecordType;
-use ip_packet::udp::UdpPacket;
 use ip_packet::IpPacket;
 use ip_packet::Packet as _;
 use itertools::Itertools;
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 const DNS_TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
@@ -34,22 +29,18 @@ pub struct StubResolver {
     known_hosts: KnownHosts,
 }
 
-#[derive(Debug)]
-pub struct DnsQuery<'a> {
-    pub name: DomainName,
-    pub record_type: RecordType,
-    // We could be much more efficient with this field,
-    // we only need the header to create the response.
-    pub query: ip_packet::IpPacket<'a>,
-}
-
 /// Tells the Client how to reply to a single DNS query
 #[derive(Debug)]
-pub(crate) enum ResolveStrategy<'a> {
+pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
     LocalResponse(IpPacket<'static>),
-    /// The query is for a non-Resource, forward it to an upstream or system resolver
-    ForwardQuery(DnsQuery<'a>),
+    /// The query is for a non-Resource, forward it to an upstream or system resolver.
+    ForwardQuery {
+        upstream: SocketAddr,
+        original_src: SocketAddr,
+        query_id: u16,
+        payload: Vec<u8>,
+    },
 }
 
 struct KnownHosts {
@@ -193,29 +184,35 @@ impl StubResolver {
         self.dns_resources.values().contains(resource)
     }
 
-    // TODO: we can save a few allocations here still
-    // We don't need to support multiple questions/qname in a single query because
-    // nobody does it and since this run with each packet we want to squeeze as much optimization
-    // as we can therefore we won't do it.
-    //
-    // See: https://stackoverflow.com/a/55093896
     /// Parses an incoming packet as a DNS query and decides how to respond to it
     ///
     /// Returns:
     /// - `None` if the packet is not a valid DNS query destined for one of our sentinel resolvers
     /// - Otherwise, a strategy for responding to the query
-    pub(crate) fn handle<'a>(
+    pub(crate) fn handle(
         &mut self,
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
-        packet: IpPacket<'a>,
-    ) -> Option<ResolveStrategy<'a>> {
-        dns_mapping.get_by_left(&packet.destination())?;
+        packet: IpPacket,
+    ) -> Option<ResolveStrategy> {
+        let upstream = dns_mapping.get_by_left(&packet.destination())?.address();
         let datagram = packet.as_udp()?;
-        let message = as_dns(&datagram)?;
+
+        // We only support DNS on port 53.
+        if datagram.get_destination() != DNS_PORT {
+            return None;
+        }
+
+        let message = Message::from_octets(datagram.payload()).ok()?;
+
         if message.header().qr() {
             return None;
         }
 
+        // We don't need to support multiple questions/qname in a single query because
+        // nobody does it and since this run with each packet we want to squeeze as much optimization
+        // as we can therefore we won't do it.
+        //
+        // See: https://stackoverflow.com/a/55093896
         let question = message.first_question()?;
         let domain = question.qname().to_vec();
         let qtype = question.qtype();
@@ -240,11 +237,12 @@ impl StubResolver {
 
         let resource_records = match (qtype, maybe_resource) {
             (_, Some(resource)) if !self.knows_resource(&resource) => {
-                return Some(ResolveStrategy::ForwardQuery(DnsQuery {
-                    name: domain,
-                    record_type: u16::from(qtype).into(),
-                    query: packet,
-                }))
+                return Some(ResolveStrategy::ForwardQuery {
+                    upstream,
+                    query_id: message.header().id(),
+                    payload: message.into_octets().to_vec(),
+                    original_src: SocketAddr::new(packet.source(), datagram.get_source()),
+                })
             }
             (Rtype::A, Some(resource)) => self.get_or_assign_a_records(domain.clone(), resource),
             (Rtype::AAAA, Some(resource)) => {
@@ -256,11 +254,12 @@ impl StubResolver {
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
             }
             _ => {
-                return Some(ResolveStrategy::ForwardQuery(DnsQuery {
-                    name: domain,
-                    record_type: u16::from(qtype).into(),
-                    query: packet,
-                }))
+                return Some(ResolveStrategy::ForwardQuery {
+                    upstream,
+                    query_id: message.header().id(),
+                    payload: message.into_octets().to_vec(),
+                    original_src: SocketAddr::new(packet.source(), datagram.get_source()),
+                })
             }
         };
 
@@ -278,35 +277,6 @@ impl StubResolver {
     }
 }
 
-impl<'a> DnsQuery<'a> {
-    pub(crate) fn into_owned(self) -> DnsQuery<'static> {
-        let Self {
-            name,
-            record_type,
-            query,
-        } = self;
-        let buf = query.packet().to_vec();
-        let query = ip_packet::IpPacket::owned(buf)
-            .expect("We are constructing the ip packet from an ip packet");
-
-        DnsQuery {
-            name,
-            record_type,
-            query,
-        }
-    }
-}
-
-impl Clone for DnsQuery<'static> {
-    fn clone(&self) -> Self {
-        Self {
-            name: self.name.clone(),
-            record_type: self.record_type,
-            query: self.query.clone(),
-        }
-    }
-}
-
 fn to_a_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
     ips.filter_map(get_v4)
         .map(domain::rdata::A::new)
@@ -321,57 +291,13 @@ fn to_aaaa_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u
         .collect_vec()
 }
 
-pub(crate) fn build_response_from_resolve_result(
-    original_pkt: IpPacket<'_>,
-    response: hickory_resolver::error::ResolveResult<Lookup>,
-) -> Result<IpPacket, hickory_resolver::error::ResolveError> {
-    let datagram = original_pkt.unwrap_as_udp();
-    let mut message = original_pkt.unwrap_as_dns();
-
-    message.set_message_type(MessageType::Response);
-    message.set_recursion_available(true);
-
-    let response = match response.map_err(|err| err.kind().clone()) {
-        Ok(response) => message.add_answers(response.records().to_vec()),
-        Err(hickory_resolver::error::ResolveErrorKind::Proto(ProtoError { kind, .. }))
-            if matches!(*kind, ProtoErrorKind::NoRecordsFound { .. }) =>
-        {
-            let ProtoErrorKind::NoRecordsFound {
-                soa, response_code, ..
-            } = *kind
-            else {
-                panic!("Impossible - We matched on `ProtoErrorKind::NoRecordsFound` but then could not destructure that same variant");
-            };
-            if let Some(soa) = soa {
-                message.add_name_server(soa.into_record_of_rdata());
-            }
-
-            message.set_response_code(response_code)
-        }
-        Err(e) => {
-            return Err(e.into());
-        }
-    };
-
-    let packet = ip_packet::make::udp_packet(
-        original_pkt.destination(),
-        original_pkt.source(),
-        datagram.get_destination(),
-        datagram.get_source(),
-        response.to_vec()?,
-    )
-    .into_immutable();
-
-    Ok(packet)
-}
-
 fn build_dns_with_answer(
-    message: &Message<[u8]>,
+    message: Message<&[u8]>,
     qname: DomainName,
     records: Vec<AllRecordData<Vec<u8>, DomainName>>,
 ) -> Option<Vec<u8>> {
     let mut answer_builder = MessageBuilder::new_vec()
-        .start_answer(message, Rcode::NOERROR)
+        .start_answer(&message, Rcode::NOERROR)
         .ok()?;
     answer_builder.header_mut().set_ra(true);
 
@@ -382,12 +308,6 @@ fn build_dns_with_answer(
     }
 
     Some(answer_builder.finish())
-}
-
-pub fn as_dns<'a>(pkt: &'a UdpPacket<'a>) -> Option<&'a Message<[u8]>> {
-    (pkt.get_destination() == DNS_PORT)
-        .then(|| Message::from_slice(pkt.payload()).ok())
-        .flatten()
 }
 
 pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
