@@ -54,7 +54,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/web:main
       args:
         APPLICATION_NAME: web
-    image: ${WEB_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/web}:${WEB_TAG:-latest}
+    image: ${WEB_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/web}:${WEB_TAG:-main}
     hostname: web.cluster.local
     ports:
       - 8080:8080/tcp
@@ -123,7 +123,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/api:main
       args:
         APPLICATION_NAME: api
-    image: ${API_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/api}:${API_TAG:-latest}
+    image: ${API_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/api}:${API_TAG:-main}
     hostname: api.cluster.local
     ports:
       - 8081:8081/tcp
@@ -192,7 +192,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/domain:main
       args:
         APPLICATION_NAME: domain
-    image: ${DOMAIN_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/domain}:${DOMAIN_TAG:-latest}
+    image: ${DOMAIN_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/domain}:${DOMAIN_TAG:-main}
     hostname: domain.cluster.local
     environment:
       # Erlang
@@ -258,7 +258,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/elixir:main
       args:
         APPLICATION_NAME: api
-    image: ${ELIXIR_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/elixir}:${ELIXIR_TAG:-latest}
+    image: ${ELIXIR_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/elixir}:${ELIXIR_TAG:-main}
     hostname: elixir
     environment:
       # Web Server
@@ -324,7 +324,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/client:main
       args:
         PACKAGE: firezone-headless-client
-    image: ${CLIENT_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/client}:${CLIENT_TAG:-latest}
+    image: ${CLIENT_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/client}:${CLIENT_TAG:-main}
     cap_add:
       - NET_ADMIN
     sysctls:
@@ -355,7 +355,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/gateway:main
       args:
         PACKAGE: firezone-gateway
-    image: ${GATEWAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/gateway}:${GATEWAY_TAG:-latest}
+    image: ${GATEWAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/gateway}:${GATEWAY_TAG:-main}
     cap_add:
       - NET_ADMIN
     sysctls:
@@ -392,7 +392,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/http-test-server:main
       args:
         PACKAGE: http-test-server
-    image: ${HTTP_TEST_SERVER_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/http-test-server}:${HTTP_TEST_SERVER_TAG:-latest}
+    image: ${HTTP_TEST_SERVER_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/http-test-server}:${HTTP_TEST_SERVER_TAG:-main}
     environment:
       PORT: 80
     networks:
@@ -438,7 +438,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
       args:
         PACKAGE: firezone-relay
-    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay}:${RELAY_TAG:-latest}
+    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay}:${RELAY_TAG:-main}
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
@@ -479,7 +479,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
       args:
         PACKAGE: firezone-relay
-    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay}:${RELAY_TAG:-latest}
+    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay}:${RELAY_TAG:-main}
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
