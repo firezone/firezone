@@ -181,7 +181,7 @@ jobs:
       client_image: ${{ steps.image-name.outputs.client_image }}
       relay_image: ${{ steps.image-name.outputs.relay_image }}
       gateway_image: ${{ steps.image-name.outputs.gateway_image }}
-      http_test_server_image: ${{ steps.image-name.outputs.http_test_server_image }}
+      http_test_server_image: ${{ steps.image-name.outputs.http-test-server_image }}
     steps:
       - uses: actions/checkout@v4
         with:
