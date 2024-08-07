@@ -752,18 +752,16 @@ defmodule API.Client.Channel do
   end
 
   defp map_and_filter_compatible_resource(resource, client_version) do
-    cond do
-      Version.match?(client_version, ">= 1.2.0") ->
-        {:cont, resource}
-
-      true ->
-        resource.address
-        |> String.codepoints()
-        |> Resources.map_resource_address()
-        |> case do
-          {:cont, address} -> {:cont, %{resource | address: address}}
-          :drop -> :drop
-        end
+    if Version.match?(client_version, ">= 1.2.0") do
+      {:cont, resource}
+    else
+      resource.address
+      |> String.codepoints()
+      |> Resources.map_resource_address()
+      |> case do
+        {:cont, address} -> {:cont, %{resource | address: address}}
+        :drop -> :drop
+      end
     end
   end
 end
