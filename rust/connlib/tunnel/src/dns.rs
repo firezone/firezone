@@ -184,12 +184,6 @@ impl StubResolver {
         self.dns_resources.values().contains(resource)
     }
 
-    // TODO: we can save a few allocations here still
-    // We don't need to support multiple questions/qname in a single query because
-    // nobody does it and since this run with each packet we want to squeeze as much optimization
-    // as we can therefore we won't do it.
-    //
-    // See: https://stackoverflow.com/a/55093896
     /// Parses an incoming packet as a DNS query and decides how to respond to it
     ///
     /// Returns:
@@ -214,6 +208,11 @@ impl StubResolver {
             return None;
         }
 
+        // We don't need to support multiple questions/qname in a single query because
+        // nobody does it and since this run with each packet we want to squeeze as much optimization
+        // as we can therefore we won't do it.
+        //
+        // See: https://stackoverflow.com/a/55093896
         let question = message.first_question()?;
         let domain = question.qname().to_vec();
         let qtype = question.qtype();
