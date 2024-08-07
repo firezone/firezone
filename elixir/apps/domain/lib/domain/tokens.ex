@@ -101,6 +101,8 @@ defmodule Domain.Tokens do
 
   def use_token(encoded_token, %Auth.Context{} = context) do
     with {:ok, {account_id, id, nonce, secret}} <- peek_token(encoded_token, context),
+         true <- not is_nil(account_id),
+         true <- not is_nil(id),
          {:ok, token} <- fetch_token_for_use(id, account_id, context.type),
          true <-
            Domain.Crypto.equal?(
