@@ -602,6 +602,29 @@ pub struct ClientOnGateway {
     buffered_events: VecDeque<GatewayEvent>,
 }
 
+fn ipv4_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
+    ip.iter().filter(|ip| ip.is_ipv4()).copied().collect_vec()
+}
+
+fn ipv6_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
+    ip.iter().filter(|ip| ip.is_ipv6()).copied().collect_vec()
+}
+
+fn mapped_ipv4(ips: &[IpAddr]) -> Vec<IpAddr> {
+    if !ipv4_addresses(ips).is_empty() {
+        ipv4_addresses(ips)
+    } else {
+        ipv6_addresses(ips)
+    }
+}
+fn mapped_ipv6(ips: &[IpAddr]) -> Vec<IpAddr> {
+    if !ipv6_addresses(ips).is_empty() {
+        ipv6_addresses(ips)
+    } else {
+        ipv4_addresses(ips)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -1489,28 +1512,5 @@ mod proptests {
                 ProtocolKind::Icmp => Filter::Icmp,
             }
         }
-    }
-}
-
-fn ipv4_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
-    ip.iter().filter(|ip| ip.is_ipv4()).copied().collect_vec()
-}
-
-fn ipv6_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
-    ip.iter().filter(|ip| ip.is_ipv6()).copied().collect_vec()
-}
-
-fn mapped_ipv4(ips: &[IpAddr]) -> Vec<IpAddr> {
-    if !ipv4_addresses(ips).is_empty() {
-        ipv4_addresses(ips)
-    } else {
-        ipv6_addresses(ips)
-    }
-}
-fn mapped_ipv6(ips: &[IpAddr]) -> Vec<IpAddr> {
-    if !ipv6_addresses(ips).is_empty() {
-        ipv6_addresses(ips)
-    } else {
-        ipv4_addresses(ips)
     }
 }

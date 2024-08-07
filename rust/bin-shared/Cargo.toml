@@ -10,6 +10,7 @@ anyhow = "1.0.82"
 clap = { version = "4.5.4", features = ["derive"] }
 connlib-shared = { workspace = true }
 futures = "0.3"
+git-version = "0.3.9"
 ip-packet = { workspace = true }
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
