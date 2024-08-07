@@ -45,7 +45,7 @@ ARG PACKAGE
 RUN cargo build -p ${PACKAGE} $([ -n "${TARGET}" ] && "--target ${TARGET}")
 
 # Image which is used to run the application binary
-FROM alpine:${ALPINE_VERSION} AS runtime
+FROM alpine:${ALPINE_VERSION} AS runtime_base
 
 # Important!  Update this no-op ENV variable when this Dockerfile
 # is updated with the current date. It will force refresh of all
@@ -59,19 +59,31 @@ ENV REFRESHED_AT=2023-10-23 \
 
 WORKDIR /bin
 
-## curl is needed by the entrypoint script
+FROM runtime_base as runtime_firezone-gateway
+## iptables are needed only by gateway for masquerading
+RUN apk add --no-cache iptables ip6tables
+COPY ./docker-init-gateway.sh ./docker-init.sh
+
+FROM runtime_base as runtime_firezone-relay
+## curl is needed by the entrypoint script for the relay
 RUN set -xe \
   && apk add --no-cache curl
+COPY ./docker-init-relay.sh ./docker-init.sh
 
-COPY ./docker-init.sh .
+FROM runtime_base as runtime_firezone-headless-client
+COPY ./docker-init.sh ./docker-init.sh
 
-## iptables are needed only by gateway for masquerading
+FROM runtime_base as runtime_http-test-server
+COPY ./docker-init.sh ./docker-init.sh
+
+FROM runtime_base as runtime_snownet-tests
+COPY ./docker-init.sh ./docker-init.sh
+
+# consolidate all package specific layers into one
+FROM runtime_${PACKAGE} as runtime
+
 ARG PACKAGE
-RUN set -xe \
-  && \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables || true
-
 ENTRYPOINT ["docker-init.sh"]
-
 ENV PACKAGE=${PACKAGE}
 
 CMD $PACKAGE
