@@ -216,7 +216,7 @@ context = %Domain.Auth.Context{type: :client, user_agent: user_agent, remote_ip:
 # For an admin user, imitating the browser session
 context = %Domain.Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
 provider = Domain.Repo.get_by(Domain.Auth.Provider, adapter: :userpass)
-identity = Domain.Repo.get_by(Domain.Auth.Identity, provider_id: provider.id, provider_identifier: "firezone@localhost")
+identity = Domain.Repo.get_by(Domain.Auth.Identity, provider_id: provider.id, provider_identifier: "firezone@localhost.localdomain")
 token = Domain.Auth.create_token(identity, context, "", nil)
 browser_token = Domain.Tokens.encode_fragment!(token)
 {:ok, subject} = Domain.Auth.authenticate(browser_token, context)

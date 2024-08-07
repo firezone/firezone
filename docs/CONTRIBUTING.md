@@ -89,7 +89,7 @@ You should now be able to connect to `http://localhost:8080/<account-uuid-here>`
 and sign in with the following credentials:
 
 ```text
-Email:    firezone@localhost
+Email:    firezone@localhost.localdomain
 Password: Firezone1234
 ```
 

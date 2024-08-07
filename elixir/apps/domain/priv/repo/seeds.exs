@@ -125,8 +125,8 @@ IO.puts("")
     adapter_config: %{}
   })
 
-unprivileged_actor_email = "firezone-unprivileged-1@localhost"
-admin_actor_email = "firezone@localhost"
+unprivileged_actor_email = "firezone-unprivileged-1@localhost.localdomain"
+admin_actor_email = "firezone@localhost.localdomain"
 
 {:ok, unprivileged_actor} =
   Actors.create_actor(account, %{
@@ -204,8 +204,8 @@ admin_actor_oidc_identity
 |> Repo.update!()
 
 # Other Account Users
-other_unprivileged_actor_email = "other-unprivileged-1@localhost"
-other_admin_actor_email = "other@localhost"
+other_unprivileged_actor_email = "other-unprivileged-1@localhost.localdomain"
+other_admin_actor_email = "other@localhost.localdomain"
 
 {:ok, other_unprivileged_actor} =
   Actors.create_actor(other_account, %{
