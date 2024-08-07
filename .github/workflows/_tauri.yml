@@ -1,10 +1,6 @@
 name: Tauri
 on:
   workflow_call:
-    inputs:
-      release_tag:
-        required: false
-        type: string
   workflow_dispatch:
 
 permissions:
