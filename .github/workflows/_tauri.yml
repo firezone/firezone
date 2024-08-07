@@ -3,21 +3,15 @@ on:
   workflow_call:
     inputs:
       profile:
-        description: "The profile for the application to build."
+        description: "The profile for the application to build ('debug' or 'release')"
         required: true
-        type: choice
-        options:
-        - debug
-        - release
+        type: string
   workflow_dispatch:
     inputs:
       profile:
-        description: "The profile for the application to build."
+        description: "The profile for the application to build ('debug' or 'release')"
         required: true
-        type: choice
-        options:
-        - debug
-        - release
+        type: string
 
 permissions:
   # For saving to release
