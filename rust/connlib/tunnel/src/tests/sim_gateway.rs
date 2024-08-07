@@ -4,7 +4,7 @@ use super::{
     sim_relay::{map_explode, SimRelay},
     strategies::latency,
 };
-use crate::{tests::sut::hickory_name_to_domain, GatewayState};
+use crate::GatewayState;
 use connlib_shared::{
     messages::{GatewayId, RelayId},
     DomainName,
@@ -67,6 +67,8 @@ impl SimGateway {
     ) -> Option<Transmit<'static>> {
         let packet = packet.to_owned();
 
+        // TODO: Instead of handling these things inline, here, should we dispatch them via `RoutingTable`?
+
         if packet.as_icmp().is_some() {
             self.received_icmp_requests.push_back(packet.clone());
 
@@ -78,11 +80,7 @@ impl SimGateway {
 
         if packet.as_udp().is_some() {
             let response = ip_packet::make::dns_ok_response(packet, |name| {
-                global_dns_records
-                    .get(&hickory_name_to_domain(name.clone()))
-                    .cloned()
-                    .into_iter()
-                    .flatten()
+                global_dns_records.get(name).cloned().into_iter().flatten()
             });
 
             let transmit = self.sut.encapsulate(response, now)?.into_owned();

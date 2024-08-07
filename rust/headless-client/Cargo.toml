@@ -26,7 +26,7 @@ socket-factory = { workspace = true }
 thiserror = { version = "1.0", default-features = false }
 # This actually relies on many other features in Tokio, so this will probably
 # fail to build outside the workspace. <https://github.com/firezone/firezone/pull/4328#discussion_r1540342142>
-tokio = { workspace = true, features = ["macros", "signal", "process", "time"] }
+tokio = { workspace = true, features = ["macros", "signal", "process", "time", "rt-multi-thread"] }
 tokio-stream = "0.1.15"
 tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
