@@ -24,12 +24,18 @@ From there, you can select the type of Resource you want to create:
 
 - **DNS**: A domain name pattern to match.
   - By default, the pattern will only match exactly the name you enter.
-  - To recursively match all subdomains, use a wildcard, such as
-    `*.example.com`. This will match `example.com`, `sub2.example.com`, and
+  - To recursively match all subdomains, use a double-wildcard, such as
+    `**.example.com`. This will match `example.com`, `sub2.example.com`, and
     `sub1.sub2.example.com`.
-  - To non-recursively match all subdomains, use a question mark, such as
-    `?.example.com`. This will match `example.com`, `sub1.example.com`, and
+  - To non-recursively match all subdomains, use a wildcard mark, such as
+    `*.example.com`. This will match `example.com`, `sub1.example.com`, and
     `sub2.example.com` **but not** `sub1.sub2.example.com`.
+  - To match a single character, use a question mark, such as
+    `us-east?.example.com`. This will match `us-east1.example.com`,
+    `.example.com`, **but not** `us-eastXY.example.com`.
+  - Any matching patterns can be placed in between domain name components, eg.
+    `foo.*.example.com` (will match `foo.bar.example.com`) or
+    `foo.**.example.com` (will match `foo.bar.buz.example.com).
 - **IP**: A single IPv4 or IPv6 address
 - **CIDR**: A range of IPv4 or IPv6 addresses in CIDR notation, such as
   `10.1.2.0/24` or `2001:db8::/48`
