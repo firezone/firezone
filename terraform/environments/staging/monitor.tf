@@ -90,7 +90,7 @@ resource "google_compute_firewall" "client-monitor-ssh-ipv4" {
   target_tags   = module.client_monitor.target_tags
 }
 
-resource "google_logging_metric" "logging_metric" {
+resource "google_logging_metric" "client_monitor_packet_loss" {
   project = module.google-cloud-project.project.project_id
 
   name = "client_monitor/packet_loss"
@@ -153,12 +153,11 @@ resource "google_monitoring_alert_policy" "client_monitor_high_packet_loss" {
     }
   }
 
-
   alert_strategy {
     auto_close = "3600s"
-
-    notification_rate_limit {
-      period = "3600s"
-    }
   }
+
+  depends_on = [
+    google_logging_metric.client_monitor_packet_loss,
+  ]
 }
