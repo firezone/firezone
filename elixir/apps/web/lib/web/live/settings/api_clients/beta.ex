@@ -34,13 +34,13 @@ defmodule Web.Settings.ApiClients.Beta do
         for more information.
       </:help>
       <:content>
-        <.flash kind={:info}>
-          <p class="flex items-center gap-1.5 text-sm font-semibold leading-6">
-            <span class="hero-wrench-screwdriver h-4 w-4"></span> REST API Beta
-          </p>
-          The REST API is currently in closed beta.
-          <span :if={@requested == false}>
-            <p>
+        <div class="w-1/2 mx-auto">
+          <.flash kind={:info}>
+            <p class="flex items-center gap-1.5 text-sm font-semibold leading-6">
+              <span class="hero-wrench-screwdriver h-4 w-4"></span> REST API Beta
+            </p>
+            The REST API is currently in closed beta.
+            <span :if={@requested == false}>
               <a
                 id="beta-request"
                 href="#"
@@ -50,14 +50,12 @@ defmodule Web.Settings.ApiClients.Beta do
                 Click here
               </a>
               to request access.
-            </p>
-          </span>
-          <span :if={@requested == true}>
-            <p>
+            </span>
+            <span :if={@requested == true}>
               Your request to join the closed beta has been made.
-            </p>
-          </span>
-        </.flash>
+            </span>
+          </.flash>
+        </div>
       </:content>
     </.section>
     """
