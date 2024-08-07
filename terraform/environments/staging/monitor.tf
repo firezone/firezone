@@ -89,3 +89,76 @@ resource "google_compute_firewall" "client-monitor-ssh-ipv4" {
   source_ranges = local.iap_ipv4_ranges
   target_tags   = module.client_monitor.target_tags
 }
+
+resource "google_logging_metric" "logging_metric" {
+  project = module.google-cloud-project.project.project_id
+
+  name = "client_monitor/packet_loss"
+
+  filter = <<-EOT
+  resource.type="gce_instance"
+  labels."compute.googleapis.com/resource_name"="client-monitor"
+  "packets transmitted"
+  EOT
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+
+    value_type = "DISTRIBUTION"
+    unit       = "%"
+
+    display_name = "Packet loss"
+  }
+
+  value_extractor = "REGEXP_EXTRACT(jsonPayload.message, \" ([0-9]+)% packet loss\")"
+
+  bucket_options {
+    linear_buckets {
+      num_finite_buckets = 10
+      width              = 10
+      offset             = 0
+    }
+  }
+}
+
+resource "google_monitoring_alert_policy" "client_monitor_high_packet_loss" {
+  project = module.google-cloud-project.project.project_id
+
+  display_name = "Client monitor packet loss is high"
+  combiner     = "OR"
+
+  notification_channels = module.ops.notification_channels
+
+  conditions {
+    display_name = "Client monitor packet loss"
+
+    condition_threshold {
+      filter     = "metric.type=\"logging.googleapis.com/user/client_monitor/packet_loss\""
+      comparison = "COMPARISON_GT"
+
+      threshold_value = 30
+      duration        = "60s"
+
+      trigger {
+        count = 5
+      }
+
+      evaluation_missing_data = "EVALUATION_MISSING_DATA_ACTIVE"
+
+      aggregations {
+        alignment_period     = "60s"
+        cross_series_reducer = "REDUCE_MEAN"
+        per_series_aligner   = "ALIGN_RATE"
+      }
+    }
+  }
+
+
+  alert_strategy {
+    auto_close = "3600s"
+
+    notification_rate_limit {
+      period = "3600s"
+    }
+  }
+}
