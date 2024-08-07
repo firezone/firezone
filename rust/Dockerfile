@@ -3,9 +3,11 @@ ARG RUST_VERSION="1.80"
 ARG ALPINE_VERSION="3.20"
 ARG CARGO_CHEF_VERSION="0.1.67"
 
+ARG PACKAGE
+
 # This image is used to prepare Cargo Chef which is used to cache dependencies
 # Keep the Rust version synced with `rust-toolchain.toml`
-FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION} as chef
+FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION} AS chef
 
 ARG CARGO_CHEF_VERSION
 RUN set -xe \
@@ -23,29 +25,27 @@ WORKDIR /build
 
 # Create a cache recipe for dependencies, which allows
 # to leverage Docker layer caching in a later build stage
-FROM chef as planner
+FROM chef AS planner
 
 COPY . .
 
 RUN cargo chef prepare --recipe-path recipe.json
 
 # Build dependencies and application application
-FROM chef as builder
+FROM chef AS builder
 
 COPY --from=planner /build/recipe.json .
 
-ARG PACKAGE
 RUN set -xe \
   && cargo chef cook --recipe-path recipe.json --bin ${PACKAGE}
 
 COPY . .
 
 ARG TARGET
-ARG PACKAGE
 RUN cargo build -p ${PACKAGE} $([ -n "${TARGET}" ] && "--target ${TARGET}")
 
-# Image which is used to run the application binary
-FROM alpine:${ALPINE_VERSION} AS runtime
+# Base image which is used to run the application binary
+FROM alpine:${ALPINE_VERSION} AS runtime_base
 
 # Important!  Update this no-op ENV variable when this Dockerfile
 # is updated with the current date. It will force refresh of all
@@ -59,25 +59,42 @@ ENV REFRESHED_AT=2023-10-23 \
 
 WORKDIR /bin
 
-## curl is needed by the entrypoint script
-RUN set -xe \
-  && apk add --no-cache curl
+## curl is needed to run tests (`main` runs CI against `release` images) and `firezone-relay` needs `curl` in its entry script.
+RUN apk add --no-cache curl
 
-COPY ./docker-init.sh .
-
+# Gateway specific runtime base image
+FROM runtime_base AS runtime_firezone-gateway
 ## iptables are needed only by gateway for masquerading
+RUN apk add --no-cache iptables ip6tables
+COPY ./docker-init-gateway.sh ./docker-init.sh
+
+# Relay specific runtime base image
+FROM runtime_base AS runtime_firezone-relay
+COPY ./docker-init-relay.sh ./docker-init.sh
+
+# Headless-client specific runtime base image
+FROM runtime_base AS runtime_firezone-headless-client
+COPY ./docker-init.sh ./docker-init.sh
+
+# HTTP test server specific runtime base image
+FROM runtime_base AS runtime_http-test-server
+COPY ./docker-init.sh ./docker-init.sh
+
+# snownet-tests specific runtime base image
+FROM runtime_base AS runtime_snownet-tests
+COPY ./docker-init.sh ./docker-init.sh
+
+# Funnel package specific base image back into `runtime`
+FROM runtime_${PACKAGE} AS runtime
+
 ARG PACKAGE
-RUN set -xe \
-  && \[ "${PACKAGE}" = "firezone-gateway" ] && apk add --no-cache iptables ip6tables || true
-
 ENTRYPOINT ["docker-init.sh"]
-
 ENV PACKAGE=${PACKAGE}
 
 CMD $PACKAGE
 
 # used as a base for dev and test
-FROM runtime as test
+FROM runtime AS test
 
 RUN set -xe \
   && apk add --no-cache iperf3 bind-tools iproute2 jq procps

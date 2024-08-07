@@ -781,6 +781,8 @@ impl ClientState {
     }
 
     fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, DnsServer>) {
+        tracing::debug!(mapping = ?new_mapping, "Updating DNS servers");
+
         self.dns_mapping = new_mapping;
         self.mangled_dns_queries.clear();
     }
@@ -789,7 +791,7 @@ impl ClientState {
         let current_disabled_resources = self.disabled_resources.clone();
 
         // We set disabled_resources before anything else so that add_resource knows what resources are enabled right now.
-        self.disabled_resources = new_disabled_resources.clone();
+        self.disabled_resources.clone_from(&new_disabled_resources);
 
         for re_enabled_resource in current_disabled_resources.difference(&new_disabled_resources) {
             let Some(resource) = self.resources_by_id.get(re_enabled_resource) else {

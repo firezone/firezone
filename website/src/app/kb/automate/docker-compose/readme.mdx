@@ -34,10 +34,6 @@ services:
       # See https://docs.rs/env_logger/latest/env_logger/ for more information.
       - RUST_LOG=str0m=warn,info
 
-      # Enable or disable masquerading. Default enabled. Disabling this can prevent
-      # the Gateway from reaching other hosts in your subnet or the internet.
-      # - FIREZONE_ENABLE_MASQUERADE=1
-
       # Human-friendly name to use for this Gateway in the admin portal.
       # $(hostname) is used by default if not set.
       # - FIREZONE_NAME=<name-of-gateway>
@@ -61,4 +57,19 @@ services:
       start_period: 1m
     devices:
       - /dev/net/tun:/dev/net/tun
+    init: true
+# If you want to access services within the same compose file, they must share a network.
+#    networks:
+#      fz-net:
+#
+#   # Heads-up for Linux users.
+#   # Due to limitations of `systemd-resolved` on Linux, a "two-label" domain is necessary if you want to define this as a DNS resource.
+#   # i.e. just using `yourservice` won't work.
+#   yourservice.docker:
+#     image: "..."
+#     networks:
+#       fz-net:
+#
+# networks:
+#   fz-net:
 ```

@@ -7,6 +7,8 @@
 
 use anyhow::Result;
 use connlib_client_shared::callbacks::{ResourceDescription, Status};
+use connlib_shared::messages::ResourceId;
+use std::collections::HashSet;
 use tauri::{SystemTray, SystemTrayHandle};
 use url::Url;
 
@@ -26,7 +28,11 @@ const NO_ACTIVITY: &str = "[-] No activity";
 const GATEWAY_CONNECTED: &str = "[O] Gateway connected";
 const ALL_GATEWAYS_OFFLINE: &str = "[X] All Gateways offline";
 
+const ADD_FAVORITE: &str = "Add to favorites";
+const REMOVE_FAVORITE: &str = "Remove from favorites";
+const FAVORITE_RESOURCES: &str = "Favorite Resources";
 const RESOURCES: &str = "Resources";
+const OTHER_RESOURCES: &str = "Other Resources";
 const SIGN_OUT: &str = "Sign out";
 const DISCONNECT_AND_QUIT: &str = "Disconnect and quit Firezone";
 
@@ -52,10 +58,15 @@ pub(crate) enum AppState<'a> {
 
 pub(crate) struct SignedIn<'a> {
     pub(crate) actor_name: &'a str,
+    pub(crate) favorite_resources: &'a HashSet<ResourceId>,
     pub(crate) resources: &'a [ResourceDescription],
 }
 
 impl<'a> SignedIn<'a> {
+    fn is_favorite(&self, res: &ResourceDescription) -> bool {
+        self.favorite_resources.contains(&res.id())
+    }
+
     /// Builds the submenu that has the resource address, name, desc,
     /// sites online, etc.
     fn resource_submenu(&self, res: &ResourceDescription) -> Menu {
@@ -66,6 +77,12 @@ impl<'a> SignedIn<'a> {
             .disabled("Resource")
             .copyable(res.name())
             .copyable(res.pastable().as_ref());
+
+        let submenu = if self.is_favorite(res) {
+            submenu.add_item(item(Event::RemoveFavorite(res.id()), REMOVE_FAVORITE).selected())
+        } else {
+            submenu.item(Event::AddFavorite(res.id()), ADD_FAVORITE)
+        };
 
         if let Some(site) = res.sites().first() {
             // Emojis may be causing an issue on some Ubuntu desktop environments.
@@ -186,8 +203,13 @@ impl<'a> AppState<'a> {
 fn signed_in(signed_in: &SignedIn) -> Menu {
     let SignedIn {
         actor_name,
+        favorite_resources,
         resources, // Make sure these are presented in the order we receive them
     } = signed_in;
+
+    let has_any_favorites = resources
+        .iter()
+        .any(|res| favorite_resources.contains(&res.id()));
 
     let mut menu = Menu::default()
         .disabled(format!("Signed in as {actor_name}"))
@@ -198,11 +220,36 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         resource_count = resources.len(),
         "Building signed-in tray menu"
     );
+    if has_any_favorites {
+        menu = menu.disabled(FAVORITE_RESOURCES);
+        // The user has some favorites and they're in the list, so only show those
+        // Always show Resources in the original order
+        for res in resources
+            .iter()
+            .filter(|res| favorite_resources.contains(&res.id()))
+        {
+            menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
+        }
+    } else {
+        // No favorites, show every Resource normally, just like before
+        // the favoriting feature was created
+        // Always show Resources in the original order
+        menu = menu.disabled(RESOURCES);
+        for res in *resources {
+            menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
+        }
+    }
 
-    menu = menu.disabled(RESOURCES);
-    // Always show Resources in the original order
-    for res in *resources {
-        menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
+    if has_any_favorites {
+        let mut submenu = Menu::default();
+        // Always show Resources in the original order
+        for res in resources
+            .iter()
+            .filter(|res| !favorite_resources.contains(&res.id()))
+        {
+            submenu = submenu.add_submenu(res.name(), signed_in.resource_submenu(res));
+        }
+        menu = menu.separator().add_submenu(OTHER_RESOURCES, submenu);
     }
 
     menu.add_bottom_section(DISCONNECT_AND_QUIT)
@@ -218,6 +265,8 @@ fn signing_in(waiting_message: &str) -> Menu {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::Result;
+    use std::str::FromStr as _;
 
     fn resources() -> Vec<ResourceDescription> {
         let s = r#"[
@@ -234,9 +283,9 @@ mod tests {
             {
                 "id": "03000143-e25e-45c7-aafb-144990e57dcd",
                 "type": "dns",
-                "name": "gitlab.mycorp.com",
+                "name": "MyCorp GitLab",
                 "address": "gitlab.mycorp.com",
-                "address_description": "dns resource",
+                "address_description": "https://gitlab.mycorp.com",
                 "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                 "status": "Online",
                 "can_toggle": false
@@ -257,10 +306,12 @@ mod tests {
     }
 
     #[test]
-    fn no_resources() {
+    fn no_resources_no_favorites() {
         let resources = vec![];
+        let favorites = Default::default();
         let input = AppState::SignedIn(SignedIn {
             actor_name: "Jane Doe",
+            favorite_resources: &favorites,
             resources: &resources,
         });
         let actual = input.into_menu();
@@ -280,22 +331,12 @@ mod tests {
     }
 
     #[test]
-    fn dns_resource_with_url() {
-        let s = r#"[
-            {
-                "id": "f716012d-5a0d-4008-86c2-1d37dd3c9915",
-                "type": "dns",
-                "name": "Example",
-                "address": "example.com",
-                "address_description": "https://example.com",
-                "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
-                "status": "Online",
-                "can_toggle": false
-            }
-        ]"#;
-        let resources: Vec<_> = serde_json::from_str(s).unwrap();
+    fn no_resources_invalid_favorite() {
+        let resources = vec![];
+        let favorites = HashSet::from([ResourceId::from_u128(42)]);
         let input = AppState::SignedIn(SignedIn {
             actor_name: "Jane Doe",
+            favorite_resources: &favorites,
             resources: &resources,
         });
         let actual = input.into_menu();
@@ -304,37 +345,23 @@ mod tests {
             .item(Event::SignOut, SIGN_OUT)
             .separator()
             .disabled(RESOURCES)
-            .add_submenu(
-                "Example",
-                Menu::default()
-                    .item(
-                        Event::Url("https://example.com".parse().unwrap()),
-                        "<https://example.com>",
-                    )
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("Example")
-                    .copyable("example.com")
-                    .separator()
-                    .disabled("Site")
-                    .copyable("test")
-                    .copyable(GATEWAY_CONNECTED),
-            )
             .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
             expected,
             "{}",
-            serde_json::to_string_pretty(&actual).unwrap(),
+            serde_json::to_string_pretty(&actual).unwrap()
         );
     }
 
     #[test]
-    fn some_resources() {
+    fn some_resources_no_favorites() {
         let resources = resources();
+        let favorites = Default::default();
         let input = AppState::SignedIn(SignedIn {
             actor_name: "Jane Doe",
+            favorite_resources: &favorites,
             resources: &resources,
         });
         let actual = input.into_menu();
@@ -351,19 +378,34 @@ mod tests {
                     .disabled("Resource")
                     .copyable("172.172.0.0/16")
                     .copyable("172.172.0.0/16")
+                    .item(
+                        Event::AddFavorite(
+                            ResourceId::from_str("73037362-715d-4a83-a749-f18eadd970e6").unwrap(),
+                        ),
+                        ADD_FAVORITE,
+                    )
                     .separator()
                     .disabled("Site")
                     .copyable("test")
                     .copyable(NO_ACTIVITY),
             )
             .add_submenu(
-                "gitlab.mycorp.com",
+                "MyCorp GitLab",
                 Menu::default()
-                    .copyable("dns resource")
+                    .item(
+                        Event::Url("https://gitlab.mycorp.com".parse().unwrap()),
+                        "<https://gitlab.mycorp.com>",
+                    )
                     .separator()
                     .disabled("Resource")
+                    .copyable("MyCorp GitLab")
                     .copyable("gitlab.mycorp.com")
-                    .copyable("gitlab.mycorp.com")
+                    .item(
+                        Event::AddFavorite(
+                            ResourceId::from_str("03000143-e25e-45c7-aafb-144990e57dcd").unwrap(),
+                        ),
+                        ADD_FAVORITE,
+                    )
                     .separator()
                     .disabled("Site")
                     .copyable("test")
@@ -377,6 +419,195 @@ mod tests {
                     .disabled("Resource")
                     .copyable("Internet")
                     .copyable("")
+                    .item(
+                        Event::AddFavorite(
+                            ResourceId::from_str("1106047c-cd5d-4151-b679-96b93da7383b").unwrap(),
+                        ),
+                        ADD_FAVORITE,
+                    )
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable(ALL_GATEWAYS_OFFLINE),
+            )
+            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            serde_json::to_string_pretty(&actual).unwrap(),
+        );
+    }
+
+    #[test]
+    fn some_resources_one_favorite() -> Result<()> {
+        let resources = resources();
+        let favorites = HashSet::from([ResourceId::from_str(
+            "03000143-e25e-45c7-aafb-144990e57dcd",
+        )?]);
+        let input = AppState::SignedIn(SignedIn {
+            actor_name: "Jane Doe",
+            favorite_resources: &favorites,
+            resources: &resources,
+        });
+        let actual = input.into_menu();
+        let expected = Menu::default()
+            .disabled("Signed in as Jane Doe")
+            .item(Event::SignOut, SIGN_OUT)
+            .separator()
+            .disabled(FAVORITE_RESOURCES)
+            .add_submenu(
+                "MyCorp GitLab",
+                Menu::default()
+                    .item(
+                        Event::Url("https://gitlab.mycorp.com".parse().unwrap()),
+                        "<https://gitlab.mycorp.com>",
+                    )
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("MyCorp GitLab")
+                    .copyable("gitlab.mycorp.com")
+                    .add_item(
+                        item(
+                            Event::RemoveFavorite(ResourceId::from_str(
+                                "03000143-e25e-45c7-aafb-144990e57dcd",
+                            )?),
+                            REMOVE_FAVORITE,
+                        )
+                        .selected(),
+                    )
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable(GATEWAY_CONNECTED),
+            )
+            .separator()
+            .add_submenu(
+                OTHER_RESOURCES,
+                Menu::default()
+                    .add_submenu(
+                        "172.172.0.0/16",
+                        Menu::default()
+                            .copyable("cidr resource")
+                            .separator()
+                            .disabled("Resource")
+                            .copyable("172.172.0.0/16")
+                            .copyable("172.172.0.0/16")
+                            .item(
+                                Event::AddFavorite(ResourceId::from_str(
+                                    "73037362-715d-4a83-a749-f18eadd970e6",
+                                )?),
+                                ADD_FAVORITE,
+                            )
+                            .separator()
+                            .disabled("Site")
+                            .copyable("test")
+                            .copyable(NO_ACTIVITY),
+                    )
+                    .add_submenu(
+                        "Internet",
+                        Menu::default()
+                            .copyable("")
+                            .separator()
+                            .disabled("Resource")
+                            .copyable("Internet")
+                            .copyable("")
+                            .item(
+                                Event::AddFavorite(ResourceId::from_str(
+                                    "1106047c-cd5d-4151-b679-96b93da7383b",
+                                )?),
+                                ADD_FAVORITE,
+                            )
+                            .separator()
+                            .disabled("Site")
+                            .copyable("test")
+                            .copyable(ALL_GATEWAYS_OFFLINE),
+                    ),
+            )
+            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            serde_json::to_string_pretty(&actual).unwrap()
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn some_resources_invalid_favorite() -> Result<()> {
+        let resources = resources();
+        let favorites = HashSet::from([ResourceId::from_str(
+            "00000000-0000-0000-0000-000000000000",
+        )?]);
+        let input = AppState::SignedIn(SignedIn {
+            actor_name: "Jane Doe",
+            favorite_resources: &favorites,
+            resources: &resources,
+        });
+        let actual = input.into_menu();
+        let expected = Menu::default()
+            .disabled("Signed in as Jane Doe")
+            .item(Event::SignOut, SIGN_OUT)
+            .separator()
+            .disabled(RESOURCES)
+            .add_submenu(
+                "172.172.0.0/16",
+                Menu::default()
+                    .copyable("cidr resource")
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("172.172.0.0/16")
+                    .copyable("172.172.0.0/16")
+                    .item(
+                        Event::AddFavorite(ResourceId::from_str(
+                            "73037362-715d-4a83-a749-f18eadd970e6",
+                        )?),
+                        ADD_FAVORITE,
+                    )
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable(NO_ACTIVITY),
+            )
+            .add_submenu(
+                "MyCorp GitLab",
+                Menu::default()
+                    .item(
+                        Event::Url("https://gitlab.mycorp.com".parse().unwrap()),
+                        "<https://gitlab.mycorp.com>",
+                    )
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("MyCorp GitLab")
+                    .copyable("gitlab.mycorp.com")
+                    .item(
+                        Event::AddFavorite(ResourceId::from_str(
+                            "03000143-e25e-45c7-aafb-144990e57dcd",
+                        )?),
+                        ADD_FAVORITE,
+                    )
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable(GATEWAY_CONNECTED),
+            )
+            .add_submenu(
+                "Internet",
+                Menu::default()
+                    .copyable("")
+                    .separator()
+                    .disabled("Resource")
+                    .copyable("Internet")
+                    .copyable("")
+                    .item(
+                        Event::AddFavorite(ResourceId::from_str(
+                            "1106047c-cd5d-4151-b679-96b93da7383b",
+                        )?),
+                        ADD_FAVORITE,
+                    )
                     .separator()
                     .disabled("Site")
                     .copyable("test")
@@ -390,5 +621,7 @@ mod tests {
             "{}",
             serde_json::to_string_pretty(&actual).unwrap(),
         );
+
+        Ok(())
     }
 }

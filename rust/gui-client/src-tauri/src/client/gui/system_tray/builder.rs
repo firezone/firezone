@@ -1,5 +1,6 @@
 //! An abstraction over Tauri's system tray menu structs, that implements `PartialEq` for unit testing
 
+use connlib_shared::messages::ResourceId;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -39,12 +40,16 @@ pub(crate) struct Item {
 /// Events that the menu can send to the app
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub(crate) enum Event {
+    /// Marks this Resource as favorite
+    AddFavorite(ResourceId),
     /// Opens the admin portal in the default web browser
     AdminPortal,
     /// Cancels any ongoing sign-in flow
     CancelSignIn,
     /// Copies this string to the desktop clipboard
     Copy(String),
+    /// Marks this Resource as non-favorite
+    RemoveFavorite(ResourceId),
     /// Starts the sign-in flow
     SignIn,
     /// Signs the user out, without quitting the app
@@ -164,8 +169,7 @@ impl Item {
         self
     }
 
-    // Will be used for favorited Resources in #5923
-    pub(crate) fn _selected(mut self) -> Self {
+    pub(crate) fn selected(mut self) -> Self {
         self.selected = true;
         self
     }
