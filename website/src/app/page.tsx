@@ -35,6 +35,7 @@ import ComplianceDiagram from "@/components/Animations/ComplianceDiagram";
 import SimpleArchitecture from "@/components/Animations/SimpleArchitecture";
 import { manrope } from "@/lib/fonts";
 import "@/styles/hero.css";
+import FeatureCards from "@/components/FeatureCards";
 
 export const metadata: Metadata = {
   title: "Firezone: Zero trust access that scales",
@@ -45,7 +46,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-neutral-900 bg-hero pt-28 xl:pt-32">
+      <section className="bg-black bg-hero pt-28 xl:pt-32">
         <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
           {/* <div className="absolute translate-y-16 justify-self-center self-center blur-[120px] bg-[rgba(94,82,239,0.5)] rounded-full w-[220px] h-[220px]" /> */}
           {/* <button className="flex w-fit mb-2 gap-2 text-xs items-center p-1.5 text-neutral-500 font-manrope font-500 border-[1px] rounded-full border-neutral-900 hover:text-neutral-200 transition-all ">
@@ -113,17 +114,12 @@ export default function Page() {
 
       {/* Feature section 1: Secure access to your most sensitive resources in minutes. */}
       <section className="bg-white px-4 sm:px-8 md:px-16 py-20 md:py-16">
-        <div className="flex w-full lg:flex-row flex-col justify-center gap-6 lg:gap-16 xl:gap-36 items-center my-8 md:my-16">
-          <ElevatorPitch />
-          <div className="w-full h-auto lg:max-w-[600px] overflow-hidden flex justify-center items-center rounded-xl lg:h-[600px] lg:w-[40%] bg-gradient-to-b from-[#FFF5ED] to-[#F2EEFE]">
-            <img
-              src="/images/simple-demonstration.png"
-              className="max-w-[600px] w-full lg:max-h-[400px] lg:object-cover rounded-lg"
-            />
-          </div>
-        </div>
-        <section className=" py-24 bg-white">
+        <ElevatorPitch />
+        <section className=" py-16 bg-white">
           <BattleCard2 />
+        </section>
+        <section className="relative py-24 bg-white">
+          <FeatureCards />
         </section>
 
         <div className="flex justify-center items-center px-4 mx-auto mt-8 md:mt-16 max-w-screen-lg">
