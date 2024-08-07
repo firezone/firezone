@@ -35,3 +35,4 @@ runs:
       run: |
         echo "$(jq '. += { "registry-mirrors": ["https://mirror.gcr.io"] }' /etc/docker/daemon.json)" > new_daemon.json
         sudo mv -f new_daemon.json /etc/docker/daemon.json
+        sudo service docker restart
