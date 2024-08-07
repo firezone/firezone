@@ -34,10 +34,6 @@ services:
       # See https://docs.rs/env_logger/latest/env_logger/ for more information.
       - RUST_LOG=str0m=warn,info
 
-      # Enable or disable masquerading. Default enabled. Disabling this can prevent
-      # the Gateway from reaching other hosts in your subnet or the internet.
-      # - FIREZONE_ENABLE_MASQUERADE=1
-
       # Human-friendly name to use for this Gateway in the admin portal.
       # $(hostname) is used by default if not set.
       # - FIREZONE_NAME=<name-of-gateway>
