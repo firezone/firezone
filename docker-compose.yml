@@ -123,7 +123,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/api:main
       args:
         APPLICATION_NAME: api
-    image: ${API_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/api}:${API_TAG:-main}
+    image: ${API_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/api}:${API_TAG:-latest}
     hostname: api.cluster.local
     ports:
       - 8081:8081/tcp
@@ -438,7 +438,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
       args:
         PACKAGE: firezone-relay
-    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/relay}:${RELAY_TAG:-main}
+    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/relay}:${RELAY_TAG:-latest}
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
