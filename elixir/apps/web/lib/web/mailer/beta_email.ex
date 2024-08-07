@@ -13,7 +13,7 @@ defmodule Web.Mailer.BetaEmail do
     |> subject("REST API Beta Request - #{account.slug}")
     |> to("support@firezone.dev")
     |> reply_to(
-      Kernel.get_in(subject, :identity, :provider_identifier) || "notifications@firezone.dev"
+      Kernel.get_in(subject, [:identity, :provider_identifier]) || "notifications@firezone.dev"
     )
     |> render_text_body(__MODULE__, :rest_api_request,
       account: account,
