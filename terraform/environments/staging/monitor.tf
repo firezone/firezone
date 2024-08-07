@@ -133,7 +133,7 @@ resource "google_monitoring_alert_policy" "client_monitor_high_packet_loss" {
     display_name = "Client monitor packet loss"
 
     condition_threshold {
-      filter     = "metric.type=\"logging.googleapis.com/user/client_monitor/packet_loss\""
+      filter     = "resource.type = \"gce_instance\" AND metric.type = \"logging.googleapis.com/user/client_monitor/packet_loss\""
       comparison = "COMPARISON_GT"
 
       threshold_value = 30
