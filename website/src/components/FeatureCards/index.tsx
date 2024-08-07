@@ -10,8 +10,8 @@ import UpgradeDiagram from "../Animations/UpgradeDiagram";
 export default function FeatureCards() {
   return (
     <div className="flex w-full justify-center">
-      <div className="flex flex-col mx-auto">
-        <div className="flex mb-16 lg:flex-row flex-col w-full items-start lg:items-end justify-between">
+      <div className="flex flex-col items-center mx-auto">
+        <div className="flex mb-8 lg:flex-row flex-col w-full items-start lg:items-end justify-between">
           <div className="">
             <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2 lg:mb-4">
               Stay Connected
@@ -39,9 +39,12 @@ export default function FeatureCards() {
             </ActionLink>
           </div>
         </div>
-        <UpgradeDiagram />
+        {/* <div className="relative w-[80%]">
+          <div className="absolute left-1/2 -translate-x-1/2 translate-y-1/2 blur-[120px] bg-primary-400 rounded-full w-[220px] h-[220px]" />
+          <UpgradeDiagram />
+        </div> */}
 
-        <div className="mt-16 items-stretch mx-auto gap-4 md:max-w-screen-lg grid md:grid-cols-3">
+        <div className="mt-8 items-stretch mx-auto gap-4 md:max-w-screen-lg grid md:grid-cols-3">
           <SlideIn
             direction="left"
             delay={0.5}
