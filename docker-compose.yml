@@ -324,7 +324,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/client:main
       args:
         PACKAGE: firezone-headless-client
-    image: ${CLIENT_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/client}:${CLIENT_TAG:-latest}
+    image: ${CLIENT_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/client}:${CLIENT_TAG:-latest}
     cap_add:
       - NET_ADMIN
     sysctls:
@@ -355,7 +355,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/gateway:main
       args:
         PACKAGE: firezone-gateway
-    image: ${GATEWAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/gateway}:${GATEWAY_TAG:-latest}
+    image: ${GATEWAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/gateway}:${GATEWAY_TAG:-latest}
     cap_add:
       - NET_ADMIN
     sysctls:
@@ -392,7 +392,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/http-test-server:main
       args:
         PACKAGE: http-test-server
-    image: ${HTTP_TEST_SERVER_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/http-test-server}:${HTTP_TEST_SERVER_TAG:-latest}
+    image: ${HTTP_TEST_SERVER_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/http-test-server}:${HTTP_TEST_SERVER_TAG:-latest}
     environment:
       PORT: 80
     networks:
@@ -438,7 +438,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
       args:
         PACKAGE: firezone-relay
-    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/dev/relay}:${RELAY_TAG:-latest}
+    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay}:${RELAY_TAG:-latest}
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
@@ -479,7 +479,7 @@ services:
         - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
       args:
         PACKAGE: firezone-relay
-    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/relay}:${RELAY_TAG:-latest}
+    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay}:${RELAY_TAG:-latest}
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
