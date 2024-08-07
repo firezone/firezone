@@ -142,6 +142,9 @@ jobs:
             export RUST_LOG="${{ matrix.test.rust_log }}"
           fi
 
+          # Pull all images in parallel
+          docker compose pull
+
           # Start one-by-one to avoid variability in service startup order
           docker compose up -d dns.httpbin httpbin download.httpbin
           docker compose up -d api web domain --no-build
