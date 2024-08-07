@@ -781,6 +781,8 @@ impl ClientState {
     }
 
     fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, DnsServer>) {
+        tracing::debug!(mapping = ?new_mapping, "Updating DNS servers");
+
         self.dns_mapping = new_mapping;
         self.mangled_dns_queries.clear();
     }
