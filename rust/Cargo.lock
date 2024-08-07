@@ -1782,6 +1782,7 @@ name = "firezone-bin-shared"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
  "connlib-shared",
  "futures",
  "ip-packet",
@@ -1855,6 +1856,7 @@ dependencies = [
  "chrono",
  "clap",
  "connlib-client-shared",
+ "connlib-shared",
  "crash-handler",
  "dirs",
  "firezone-bin-shared",

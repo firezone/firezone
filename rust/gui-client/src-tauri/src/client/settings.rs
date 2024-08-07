@@ -4,9 +4,10 @@
 use crate::client::gui::{self, ControllerRequest, Managed};
 use anyhow::{Context, Result};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
+use connlib_shared::messages::ResourceId;
 use firezone_headless_client::known_dirs;
 use serde::{Deserialize, Serialize};
-use std::{io::Write, path::PathBuf, time::Duration};
+use std::{collections::HashSet, io::Write, path::PathBuf, time::Duration};
 use tokio::sync::oneshot;
 use url::Url;
 
@@ -14,6 +15,9 @@ use url::Url;
 pub(crate) struct AdvancedSettings {
     pub auth_base_url: Url,
     pub api_url: Url,
+    // TODO: Will this cause problems when we add the ability to enable / disable Resources on the client side? At least the Internet Resource will need that.
+    #[serde(default)]
+    pub favorite_resources: HashSet<ResourceId>,
     pub log_filter: String,
 }
 
@@ -23,6 +27,7 @@ impl Default for AdvancedSettings {
         Self {
             auth_base_url: Url::parse("https://app.firez.one").unwrap(),
             api_url: Url::parse("wss://api.firez.one").unwrap(),
+            favorite_resources: Default::default(),
             log_filter: "firezone_gui_client=debug,info".to_string(),
         }
     }
@@ -34,6 +39,7 @@ impl Default for AdvancedSettings {
         Self {
             auth_base_url: Url::parse("https://app.firezone.dev").unwrap(),
             api_url: Url::parse("wss://api.firezone.dev").unwrap(),
+            favorite_resources: Default::default(),
             log_filter: "info".to_string(),
         }
     }
@@ -139,4 +145,24 @@ pub(crate) fn load_advanced_settings() -> Result<AdvancedSettings> {
     let text = std::fs::read_to_string(path)?;
     let settings = serde_json::from_str(&text)?;
     Ok(settings)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_old_formats() {
+        let s = r#"{
+            "auth_base_url": "https://example.com/",
+            "api_url": "wss://example.com/",
+            "log_filter": "info"
+        }"#;
+
+        let actual = serde_json::from_str::<AdvancedSettings>(s).unwrap();
+        // Apparently the trailing slash here matters
+        assert_eq!(actual.auth_base_url.to_string(), "https://example.com/");
+        assert_eq!(actual.api_url.to_string(), "wss://example.com/");
+        assert_eq!(actual.log_filter, "info");
+    }
 }

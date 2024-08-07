@@ -68,6 +68,20 @@
             android:layout_weight="1" />
     </LinearLayout>
 
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/addToFavoritesBtn"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Add to Favorites"/>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/removeFromFavoritesBtn"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Remove from Favorites"/>
+
     <!-- Site Section -->
     <TextView
         android:id="@+id/labelSite"

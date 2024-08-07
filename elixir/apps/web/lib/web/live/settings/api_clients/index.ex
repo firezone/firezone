@@ -56,7 +56,7 @@ defmodule Web.Settings.ApiClients.Index do
       <:title><%= @page_title %></:title>
       <:help>
         API Clients are used to manage Firezone configuration through a REST API. See our
-        <.link navigate={url(API.Endpoint, ~p"/swaggerui")} class={link_style()}>
+        <.link navigate="https://api.firezone.dev/swaggerui" class={link_style()}>
           OpenAPI-powered docs
         </.link>
         for more information.

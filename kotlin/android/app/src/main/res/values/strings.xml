@@ -1,6 +1,10 @@
 <resources>
 	<string name="app_short_name">Firezone</string>
 
+	<!-- Resources -->
+	<string name="resources_favorites">Favorites</string>
+	<string name="resources_all">All</string>
+
 	<!-- Settings -->
 	<string name="settings_title">Settings</string>
 	<string name="save">Save</string>

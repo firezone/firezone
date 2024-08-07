@@ -1,6 +1,7 @@
 use crate::CliCommon;
 use anyhow::{bail, Context as _, Result};
 use connlib_client_shared::file_logger;
+use firezone_bin_shared::DnsControlMethod;
 use futures::future::{self, Either};
 use std::{ffi::OsString, pin::pin, time::Duration};
 use tokio::sync::mpsc;
@@ -176,7 +177,7 @@ async fn service_run_async(mut shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
     // Useless - Windows will never send us Ctrl+C when running as a service
     // This just keeps the signatures simpler
     let mut signals = crate::signals::Terminate::new()?;
-    let listen_fut = pin!(super::ipc_listen(&mut signals));
+    let listen_fut = pin!(super::ipc_listen(DnsControlMethod::Nrpt, &mut signals));
     match future::select(listen_fut, pin!(shutdown_rx.recv())).await {
         Either::Left((Err(error), _)) => Err(error).context("`ipc_listen` threw an error"),
         Either::Left((Ok(()), _)) => {
