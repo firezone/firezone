@@ -18,6 +18,7 @@ futures = "0.3.30"
 git-version = "0.3.9"
 humantime = "2.1"
 ip_network = { version = "0.4", default-features = false }
+itertools = "0.13.0"
 phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
 serde = { version = "1.0.204", features = ["derive"] }

@@ -16,6 +16,7 @@
 use super::DnsController;
 use anyhow::{Context as _, Result};
 use firezone_bin_shared::{platform::CREATE_NO_WINDOW, DnsControlMethod};
+use itertools::Itertools as _;
 use std::{net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
 
 // Unique magic number that we can use to delete our well-known NRPT rule.
@@ -103,11 +104,7 @@ fn activate(dns_servers: &[IpAddr]) -> Result<()> {
     // <https://github.com/firezone/firezone/issues/3113#issuecomment-1882096111>
 
     tracing::info!("Activating DNS control");
-    let dns_servers = dns_servers
-        .iter()
-        .map(|ip| ip.to_string())
-        .collect::<Vec<_>>()
-        .join(";");
+    let dns_servers = dns_servers.iter().join(";");
 
     let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
     let base = Path::new("SYSTEM")
