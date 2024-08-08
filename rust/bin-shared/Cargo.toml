@@ -22,6 +22,7 @@ tun = { workspace = true }
 url = { version = "2.5.2", default-features = false }
 
 [dev-dependencies]
+hex-literal = "0.4.1"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -34,7 +35,6 @@ zbus = "4.4" # Can't use `zbus`'s `tokio` feature here, or it will break toast p
 
 [target.'cfg(windows)'.dependencies]
 known-folders = "1.1.0"
-hex-literal = "0.4.1"
 ring = "0.17"
 uuid = { version = "1.10.0", features = ["v4"] }
 windows-core = "0.57.0"
