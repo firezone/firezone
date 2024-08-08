@@ -287,6 +287,8 @@ pub enum ClientEvent {
         ///   If upstream DNS servers are configured (in the portal), we will use those.
         ///   Otherwise, we will use the DNS servers configured on the system.
         dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+
+        search_domains: Vec<DomainName>,
     },
     TunRoutesUpdated {
         ip4: Vec<Ipv4Network>,

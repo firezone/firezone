@@ -238,6 +238,7 @@ impl StateMachineTest for TunnelTest {
                         ipv4: c.sut.tunnel_ip4().unwrap(),
                         ipv6: c.sut.tunnel_ip6().unwrap(),
                         upstream_dns: servers,
+                        search_domains: vec![],
                     })
                 });
             }
@@ -269,6 +270,7 @@ impl StateMachineTest for TunnelTest {
                         ipv4,
                         ipv6,
                         upstream_dns,
+                        search_domains: vec![],
                     });
                     c.update_relays(iter::empty(), state.relays.iter(), now);
                     c.sut.set_resources(all_resources);

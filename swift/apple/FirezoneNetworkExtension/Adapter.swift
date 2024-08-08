@@ -311,7 +311,7 @@ extension Adapter {
 
 extension Adapter: CallbackHandlerDelegate {
   public func onSetInterfaceConfig(
-    tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddresses: [String]
+    tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsServers: [String], searchDomains: [String]
   ) {
     // This is a queued callback to ensure ordering
     workQueue.async { [weak self] in
@@ -323,14 +323,15 @@ extension Adapter: CallbackHandlerDelegate {
       }
 
       Log.tunnel.log(
-        "\(#function): \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsAddresses)")
+        "\(#function): \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsServers) \(searchDomains)")
 
       switch state {
       case .tunnelStarted(session: _):
         guard let networkSettings = networkSettings else { return }
         networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
         networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
-        networkSettings.dnsAddresses = dnsAddresses
+        networkSettings.dnsServers = dnsServers
+        networkSettings.searchDomains = searchDomains
         networkSettings.apply()
       case .tunnelStopped:
         Log.tunnel.error(

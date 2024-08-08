@@ -57,7 +57,7 @@ impl TunDeviceManager {
 
     pub fn make_tun(&mut self) -> Result<Tun> {
         let tun = Tun::new()?;
-        self.iface_idx = Some(tun.iface_idx());
+        self.iface_idx = Some(dbg!(tun.iface_idx()));
 
         Ok(tun)
     }

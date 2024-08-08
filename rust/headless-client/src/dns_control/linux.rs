@@ -1,6 +1,8 @@
 use super::DnsController;
 use anyhow::{bail, Context as _, Result};
+use connlib_shared::DomainName;
 use firezone_bin_shared::{DnsControlMethod, TunDeviceManager};
+use itertools::Itertools as _;
 use std::{net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;
@@ -22,15 +24,21 @@ impl DnsController {
     /// it would be bad if this was called from 2 threads at once.
     ///
     /// Cancel safety: Try not to cancel this.
-    pub(crate) async fn set_dns(&mut self, dns_config: Vec<IpAddr>) -> Result<()> {
+    pub async fn set_dns(
+        &mut self,
+        dns_servers: Vec<IpAddr>,
+        search_domains: Vec<DomainName>,
+    ) -> Result<()> {
         match self.dns_control_method {
             DnsControlMethod::Disabled => Ok(()),
-            DnsControlMethod::EtcResolvConf => {
-                tokio::task::spawn_blocking(move || etc_resolv_conf::configure(&dns_config))
-                    .await
-                    .context("Failed to `spawn_blocking` DNS control task")?
+            DnsControlMethod::EtcResolvConf => tokio::task::spawn_blocking(move || {
+                etc_resolv_conf::configure(&dns_servers, &search_domains)
+            })
+            .await
+            .context("Failed to `spawn_blocking` DNS control task")?,
+            DnsControlMethod::SystemdResolved => {
+                configure_systemd_resolved(&dns_servers, &search_domains).await
             }
-            DnsControlMethod::SystemdResolved => configure_systemd_resolved(&dns_config).await,
         }
         .context("Failed to control DNS")
     }
@@ -53,11 +61,14 @@ impl DnsController {
 ///
 /// Cancel safety: Cancelling the future may leave running subprocesses
 /// which should eventually exit on their own.
-async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
+async fn configure_systemd_resolved(
+    dns_servers: &[IpAddr],
+    search_domains: &[DomainName],
+) -> Result<()> {
     let status = tokio::process::Command::new("resolvectl")
         .arg("dns")
         .arg(TunDeviceManager::IFACE_NAME)
-        .args(dns_config.iter().map(ToString::to_string))
+        .args(dns_servers.iter().map(ToString::to_string))
         .status()
         .await
         .context("`resolvectl dns` didn't run")?;
@@ -68,7 +79,7 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
     let status = tokio::process::Command::new("resolvectl")
         .arg("domain")
         .arg(TunDeviceManager::IFACE_NAME)
-        .arg("~.")
+        .arg(search_domains.iter().join(" "))
         .status()
         .await
         .context("`resolvectl domain` didn't run")?;
@@ -76,7 +87,7 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
         bail!("`resolvectl domain` returned non-zero");
     }
 
-    tracing::info!(?dns_config, "Configured DNS sentinels with `resolvectl`");
+    tracing::info!(?dns_servers, "Configured DNS sentinels with `resolvectl`");
 
     Ok(())
 }

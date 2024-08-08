@@ -9,7 +9,7 @@ use connlib_client_shared::{
     callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
     LoginUrlError, Session, V4RouteList, V6RouteList,
 };
-use connlib_shared::{get_user_agent, messages::ResourceId};
+use connlib_shared::{get_user_agent, messages::ResourceId, DomainName};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
@@ -159,6 +159,7 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
+        search_domains: Vec<DomainName>,
     ) {
         self.env(|mut env| {
             let tunnel_address_v4 =
@@ -173,21 +174,28 @@ impl Callbacks for CallbackHandler {
                         name: "tunnel_address_v6",
                         source,
                     })?;
-            let dns_addresses = env
+            let dns_servers = env
                 .new_string(serde_json::to_string(&dns_addresses)?)
                 .map_err(|source| CallbackError::NewStringFailed {
                     name: "dns_addresses",
+                    source,
+                })?;
+            let search_domains = env
+                .new_string(serde_json::to_string(&search_domains)?)
+                .map_err(|source| CallbackError::NewStringFailed {
+                    name: "search_domains",
                     source,
                 })?;
             let name = "onSetInterfaceConfig";
             env.call_method(
                 &self.callback_handler,
                 name,
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
                 &[
                     JValue::from(&tunnel_address_v4),
                     JValue::from(&tunnel_address_v6),
-                    JValue::from(&dns_addresses),
+                    JValue::from(&dns_servers),
+                    JValue::from(&search_domains),
                 ],
             )
             .map_err(|source| CallbackError::CallMethodFailed { name, source })?;

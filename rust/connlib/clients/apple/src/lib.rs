@@ -10,7 +10,7 @@ use connlib_client_shared::{
     callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
     Session, V4RouteList, V6RouteList,
 };
-use connlib_shared::get_user_agent;
+use connlib_shared::{get_user_agent, DomainName};
 use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
@@ -71,7 +71,8 @@ mod ffi {
             &self,
             tunnelAddressIPv4: String,
             tunnelAddressIPv6: String,
-            dnsAddresses: String,
+            dnsServers: String,
+            searchDomains: String,
         );
 
         #[swift_bridge(swift_name = "onUpdateRoutes")]
@@ -114,13 +115,16 @@ impl Callbacks for CallbackHandler {
         &self,
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
-        dns_addresses: Vec<IpAddr>,
+        dns_servers: Vec<IpAddr>,
+        search_domains: Vec<DomainName>,
     ) {
         self.inner.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
-            serde_json::to_string(&dns_addresses)
+            serde_json::to_string(&dns_servers)
                 .expect("developer error: a list of ips should always be serializable"),
+            serde_json::to_string(&search_domains)
+                .expect("developer error: a list of domains should always be serializable"),
         );
     }
 

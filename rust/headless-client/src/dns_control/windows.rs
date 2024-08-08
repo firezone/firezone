@@ -15,7 +15,9 @@
 
 use super::DnsController;
 use anyhow::{Context as _, Result};
+use connlib_shared::DomainName;
 use firezone_bin_shared::{platform::CREATE_NO_WINDOW, DnsControlMethod};
+use itertools::Itertools as _;
 use std::{net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
 
 // Unique magic number that we can use to delete our well-known NRPT rule.
@@ -47,11 +49,15 @@ impl DnsController {
     ///
     /// Must be async and an owned `Vec` to match the Linux signature
     #[allow(clippy::unused_async)]
-    pub(crate) async fn set_dns(&mut self, dns_config: Vec<IpAddr>) -> Result<()> {
+    pub async fn set_dns(
+        &mut self,
+        dns_servers: Vec<IpAddr>,
+        search_domains: Vec<DomainName>,
+    ) -> Result<()> {
         match self.dns_control_method {
             DnsControlMethod::Disabled => {}
             DnsControlMethod::Nrpt => {
-                activate(&dns_config).context("Failed to activate DNS control")?
+                activate(&dns_servers, &search_domains).context("Failed to activate DNS control")?
             }
         }
         Ok(())
@@ -96,21 +102,18 @@ pub(crate) fn system_resolvers(_method: DnsControlMethod) -> Result<Vec<IpAddr>>
 const NRPT_REG_KEY: &str = "{6C0507CB-C884-4A78-BC55-0ACEE21227F6}";
 
 /// Tells Windows to send all DNS queries to our sentinels
-///
-/// Parameters:
-/// - `dns_config_string`: Comma-separated IP addresses of DNS servers, e.g. "1.1.1.1,8.8.8.8"
-fn activate(dns_config: &[IpAddr]) -> Result<()> {
+fn activate(dns_servers: &[IpAddr], search_domains: &[DomainName]) -> Result<()> {
     // TODO: Known issue where web browsers will keep a connection open to a site,
     // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS
     // again unless you let that connection time out:
     // <https://github.com/firezone/firezone/issues/3113#issuecomment-1882096111>
 
     tracing::info!("Activating DNS control");
-    let dns_config_string = dns_config
+    let dns_servers = dns_servers.iter().join(";");
+    let search_domains = search_domains
         .iter()
-        .map(|ip| ip.to_string())
-        .collect::<Vec<_>>()
-        .join(";");
+        .map(|d| format!(".{d}")) // Domains must start with a leading dot for Windows to treat them as suffixes
+        .collect::<Vec<_>>();
 
     let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
     let base = Path::new("SYSTEM")
@@ -125,9 +128,9 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
     key.set_value("Comment", &FZ_MAGIC)?;
     key.set_value("ConfigOptions", &0x8u32)?;
     key.set_value("DisplayName", &"Firezone SplitDNS")?;
-    key.set_value("GenericDNSServers", &dns_config_string)?;
+    key.set_value("GenericDNSServers", &dns_servers)?;
     key.set_value("IPSECCARestriction", &"")?;
-    key.set_value("Name", &vec!["."])?;
+    key.set_value("Name", &search_domains)?;
     key.set_value("Version", &0x2u32)?;
 
     Ok(())

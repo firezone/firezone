@@ -20,7 +20,8 @@ public protocol CallbackHandlerDelegate: AnyObject {
   func onSetInterfaceConfig(
     tunnelAddressIPv4: String,
     tunnelAddressIPv6: String,
-    dnsAddresses: [String]
+    dnsServers: [String],
+    searchDomains: [String]
   )
   func onUpdateRoutes(routeList4: String, routeList6: String)
   func onUpdateResources(resourceList: String)
@@ -33,23 +34,23 @@ public class CallbackHandler {
   func onSetInterfaceConfig(
     tunnelAddressIPv4: RustString,
     tunnelAddressIPv6: RustString,
-    dnsAddresses: RustString
+    dnsServers: RustString,
+    searchDomains: RustString
   ) {
     Log.tunnel.log(
       """
         CallbackHandler.onSetInterfaceConfig:
           IPv4: \(tunnelAddressIPv4.toString())
           IPv6: \(tunnelAddressIPv6.toString())
-          DNS: \(dnsAddresses.toString())
+          DNS Servers: \(dnsServers.toString())
+          Search Domains: \(searchDomains.toString())
       """)
-
-    let dnsData = dnsAddresses.toString().data(using: .utf8)!
-    let dnsArray = try! JSONDecoder().decode([String].self, from: dnsData)
 
     delegate?.onSetInterfaceConfig(
       tunnelAddressIPv4: tunnelAddressIPv4.toString(),
       tunnelAddressIPv6: tunnelAddressIPv6.toString(),
-      dnsAddresses: dnsArray
+      dnsServers: try! JSONDecoder().decode([String].self, from: dnsServers.toString().data(using: .utf8)!),
+      searchDomains: try! JSONDecoder().decode([String].self, from: searchDomains.toString().data(using: .utf8)!)
     )
   }
 
