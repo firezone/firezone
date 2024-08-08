@@ -35,8 +35,8 @@ impl Default for ResolvPaths {
 /// This is async because it's called in a Tokio context and it's nice to use their
 /// `fs` module
 #[cfg_attr(test, mutants::skip)] // Would modify system-wide `/etc/resolv.conf`
-pub(crate) fn configure(dns_config: &[IpAddr]) -> Result<()> {
-    configure_at_paths(dns_config, &ResolvPaths::default())
+pub(crate) fn configure(dns_servers: &[IpAddr]) -> Result<()> {
+    configure_at_paths(dns_servers, &ResolvPaths::default())
 }
 
 /// Revert changes Firezone made to `/etc/resolv.conf`
@@ -47,9 +47,9 @@ pub(crate) fn revert() -> Result<()> {
     revert_at_paths(&ResolvPaths::default())
 }
 
-fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Result<()> {
-    if dns_config.is_empty() {
-        tracing::warn!("`dns_config` is empty, leaving `/etc/resolv.conf` unchanged");
+fn configure_at_paths(dns_servers: &[IpAddr], paths: &ResolvPaths) -> Result<()> {
+    if dns_servers.is_empty() {
+        tracing::warn!("No DNS servers given, leaving `/etc/resolv.conf` unchanged");
         return Ok(());
     }
 
@@ -90,7 +90,7 @@ fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Result<()> 
 
     let mut new_resolv_conf = parsed;
 
-    new_resolv_conf.nameservers = dns_config.iter().map(|addr| (*addr).into()).collect();
+    new_resolv_conf.nameservers = dns_servers.iter().map(|addr| (*addr).into()).collect();
 
     // Over-writing `/etc/resolv.conf` actually violates Docker's plan for handling DNS
     // https://docs.docker.com/network/#dns-services
