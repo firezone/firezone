@@ -71,7 +71,8 @@ mod ffi {
             &self,
             tunnelAddressIPv4: String,
             tunnelAddressIPv6: String,
-            dnsAddresses: String,
+            dnsServers: String,
+            searchDomains: String,
         );
 
         #[swift_bridge(swift_name = "onUpdateRoutes")]
@@ -114,14 +115,16 @@ impl Callbacks for CallbackHandler {
         &self,
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
-        dns_addresses: Vec<IpAddr>,
-        _search_domains: Vec<DomainName>,
+        dns_servers: Vec<IpAddr>,
+        search_domains: Vec<DomainName>,
     ) {
         self.inner.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
-            serde_json::to_string(&dns_addresses)
+            serde_json::to_string(&dns_servers)
                 .expect("developer error: a list of ips should always be serializable"),
+            serde_json::to_string(&search_domains)
+                .expect("developer error: a list of domains should always be serializable"),
         );
     }
 

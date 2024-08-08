@@ -20,7 +20,8 @@ class NetworkSettings {
   // Modifiable values
   public var tunnelAddressIPv4: String?
   public var tunnelAddressIPv6: String?
-  public var dnsAddresses: [String] = []
+  public var dnsServers: [String] = []
+  public var searchDomains: [String] = []
   public var routes4: [NEIPv4Route] = []
   public var routes6: [NEIPv6Route] = []
   public var matchDomains: [String] = [""]
@@ -41,7 +42,7 @@ class NetworkSettings {
     // This is a hack since macos routing table ignores, for full route, any prefix smaller than 120.
     // Without this, adding a full route, remove the previous default route and leaves the system with none, breaking completely IPv6 on the user's system.
     let ipv6Settings = NEIPv6Settings(addresses: [tunnelAddressIPv6!], networkPrefixLengths: [120])
-    let dnsSettings = NEDNSSettings(servers: dnsAddresses)
+    let dnsSettings = NEDNSSettings(servers: dnsServers)
     ipv4Settings.includedRoutes = routes4
     ipv6Settings.includedRoutes = routes6
     dnsSettings.matchDomains = matchDomains
