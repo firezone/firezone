@@ -329,6 +329,11 @@ pub struct Interface {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(default)]
     pub upstream_dns: Vec<DnsServer>,
+    /// The search domains to set on our TUN interface.
+    ///
+    /// The order is important for these as the OS will try them in order to resolve hosts.
+    #[serde(default)]
+    pub search_domains: Vec<DomainName>,
 }
 
 /// A single relay
@@ -423,6 +428,34 @@ mod tests {
             resource_descriptions.into_iter().sorted().collect_vec(),
             expected
         );
+    }
+
+    #[test]
+    fn can_deserialize_search_domains() {
+        let json = r#"{
+            "ipv4": "1.1.1.1",
+            "ipv6": "::1",
+            "search_domains": ["example.com"]
+        }"#;
+
+        let interface = serde_json::from_str::<Interface>(json).unwrap();
+
+        assert_eq!(
+            interface.search_domains,
+            vec!["example.com".parse::<DomainName>().unwrap()]
+        )
+    }
+
+    #[test]
+    fn can_deserialize_without_search_domains() {
+        let json = r#"{
+            "ipv4": "1.1.1.1",
+            "ipv6": "::1"
+        }"#;
+
+        let interface = serde_json::from_str::<Interface>(json).unwrap();
+
+        assert!(interface.search_domains.is_empty())
     }
 
     fn fake_resource(name: &str, uuid: &str) -> ResourceDescription {

@@ -410,6 +410,7 @@ mod test {
                     ipv4: "100.115.164.78".parse().unwrap(),
                     ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
                     upstream_dns: vec![],
+                    search_domains: vec![],
                 },
                 config: Config {
                     ipv4_masquerade_enabled: true,
@@ -435,6 +436,7 @@ mod test {
                     ipv4: "100.115.164.78".parse().unwrap(),
                     ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
                     upstream_dns: vec![],
+                    search_domains: vec![],
                 },
                 config: Config {
                     ipv4_masquerade_enabled: true,
@@ -460,6 +462,7 @@ mod test {
                     ipv4: "100.115.164.78".parse().unwrap(),
                     ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
                     upstream_dns: vec![],
+                    search_domains: vec![],
                 },
                 config: Config {
                     ipv4_masquerade_enabled: true,
@@ -485,6 +488,7 @@ mod test {
                     ipv4: "100.115.164.78".parse().unwrap(),
                     ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
                     upstream_dns: vec![],
+                    search_domains: vec![],
                 },
                 config: Config {
                     ipv4_masquerade_enabled: true,
@@ -510,6 +514,7 @@ mod test {
                     ipv4: "100.115.164.78".parse().unwrap(),
                     ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
                     upstream_dns: vec![],
+                    search_domains: vec![],
                 },
                 config: Config {
                     ipv4_masquerade_enabled: true,
@@ -535,6 +540,7 @@ mod test {
                     ipv4: "100.115.164.78".parse().unwrap(),
                     ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
                     upstream_dns: vec![],
+                    search_domains: vec![],
                 },
                 config: Config {
                     ipv4_masquerade_enabled: true,
@@ -560,6 +566,7 @@ mod test {
                     ipv4: "100.115.164.78".parse().unwrap(),
                     ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
                     upstream_dns: vec![],
+                    search_domains: vec![],
                 },
                 config: Config {
                     ipv4_masquerade_enabled: true,

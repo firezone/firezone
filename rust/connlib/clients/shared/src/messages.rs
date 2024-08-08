@@ -194,6 +194,7 @@ mod test {
                     upstream_dns: vec![DnsServer::IpPort(IpDnsServer {
                         address: "1.1.1.1:53".parse().unwrap(),
                     })],
+                    search_domains: vec![],
                 },
             }),
             None,
@@ -231,6 +232,7 @@ mod test {
                     ipv4: "100.72.112.111".parse().unwrap(),
                     ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
                     upstream_dns: vec![],
+                    search_domains: vec![],
                 },
                 resources: vec![
                     ResourceDescription::Cidr(ResourceDescriptionCidr {
@@ -339,6 +341,7 @@ mod test {
                     ipv4: "100.72.112.111".parse().unwrap(),
                     ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
                     upstream_dns: vec![],
+                    search_domains: vec![],
                 },
                 resources: vec![
                     ResourceDescription::Cidr(ResourceDescriptionCidr {
@@ -415,6 +418,7 @@ mod test {
                     ipv4: "100.72.112.111".parse().unwrap(),
                     ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
                     upstream_dns: vec![],
+                    search_domains: vec![],
                 },
                 resources: vec![],
                 relays: vec![],
@@ -449,6 +453,7 @@ mod test {
                     ipv4: "100.72.112.111".parse().unwrap(),
                     ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
                     upstream_dns: vec![],
+                    search_domains: vec![],
                 },
                 resources: vec![],
                 relays: vec![],
@@ -483,6 +488,7 @@ mod test {
                     ipv4: "100.72.112.111".parse().unwrap(),
                     ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
                     upstream_dns: vec![],
+                    search_domains: vec![],
                 },
                 resources: vec![],
                 relays: vec![],
@@ -517,6 +523,7 @@ mod test {
                     ipv4: "100.72.112.111".parse().unwrap(),
                     ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
                     upstream_dns: vec![],
+                    search_domains: vec![],
                 },
                 resources: vec![],
                 relays: vec![],

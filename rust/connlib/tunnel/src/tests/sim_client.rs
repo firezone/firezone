@@ -292,6 +292,7 @@ impl RefClient {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,
             upstream_dns: self.upstream_dns_resolvers.clone(),
+            search_domains: vec![],
         });
         client_state.update_system_resolvers(self.system_dns_resolvers.clone());
 
