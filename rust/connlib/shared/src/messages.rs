@@ -381,19 +381,6 @@ mod tests {
     use client::{ResourceDescription, ResourceDescriptionDns, Site};
     use itertools::Itertools;
 
-    fn fake_resource(name: &str, uuid: &str) -> ResourceDescription {
-        ResourceDescription::Dns(ResourceDescriptionDns {
-            id: uuid.parse().unwrap(),
-            name: name.to_string(),
-            address: "unused.example.com".to_string(),
-            address_description: Some("test description".to_string()),
-            sites: vec![Site {
-                name: "test".to_string(),
-                id: "99ba0c1e-5189-4cfc-a4db-fd6cb1c937fd".parse().unwrap(),
-            }],
-        })
-    }
-
     #[test]
     fn sort_resources_normal() {
         let cloudflare = fake_resource("Cloudflare DNS", "2efe9c25-bd92-49a0-99d7-8b92da014dd5");
@@ -436,5 +423,18 @@ mod tests {
             resource_descriptions.into_iter().sorted().collect_vec(),
             expected
         );
+    }
+
+    fn fake_resource(name: &str, uuid: &str) -> ResourceDescription {
+        ResourceDescription::Dns(ResourceDescriptionDns {
+            id: uuid.parse().unwrap(),
+            name: name.to_string(),
+            address: "unused.example.com".to_string(),
+            address_description: Some("test description".to_string()),
+            sites: vec![Site {
+                name: "test".to_string(),
+                id: "99ba0c1e-5189-4cfc-a4db-fd6cb1c937fd".parse().unwrap(),
+            }],
+        })
     }
 }
