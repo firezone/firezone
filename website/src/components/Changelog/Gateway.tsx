@@ -8,6 +8,7 @@ export default function Gateway() {
 
   return (
     <Entries href={href} arches={arches} title="Gateway">
+      {/*
       <Entry version="1.1.X" date={new Date("2024-XX-XX")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
@@ -16,6 +17,7 @@ export default function Gateway() {
           </li>
         </ul>
       </Entry>
+      */}
       <Entry version="1.1.3" date={new Date("2024-08-02")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
