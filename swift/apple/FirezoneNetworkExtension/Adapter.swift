@@ -187,6 +187,14 @@ class Adapter {
       }
     }
   }
+
+  public func setDisabledResources(disabledResources: String) {
+    workQueue.async { [weak self] in
+      guard let self = self else { return }
+      guard case .tunnelStarted(let session) = self.state else { return }
+      session.setDisabledResources(disabledResources)
+    }
+  }
 }
 
 // MARK: Responding to path updates

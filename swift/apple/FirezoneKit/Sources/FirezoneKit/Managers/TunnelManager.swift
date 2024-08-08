@@ -22,6 +22,51 @@ public enum TunnelManagerKeys {
   public static let logFilter = "logFilter"
 }
 
+public enum TunnelMessage: Codable {
+  case getResourceList(Data)
+  case signOut
+  case setDisabledResources(String)
+
+  enum CodingKeys: String, CodingKey {
+    case type
+    case value
+  }
+
+  enum MessageType: String, Codable {
+    case getResourceList
+    case signOut
+    case setDisabledResources
+  }
+
+  public init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: CodingKeys.self)
+      let type = try container.decode(MessageType.self, forKey: .type)
+      switch type {
+      case .setDisabledResources:
+          let value = try container.decode(String.self, forKey: .value)
+          self = .setDisabledResources(value)
+      case .getResourceList:
+          let value = try container.decode(Data.self, forKey: .value)
+          self = .getResourceList(value)
+      case .signOut:
+          self = .signOut
+      }
+  }
+  public func encode(to encoder: Encoder) throws {
+      var container = encoder.container(keyedBy: CodingKeys.self)
+      switch self {
+      case .setDisabledResources(let value):
+          try container.encode(MessageType.setDisabledResources, forKey: .type)
+          try container.encode(value, forKey: .value)
+      case .getResourceList(let value):
+          try container.encode(MessageType.getResourceList, forKey: .type)
+          try container.encode(value, forKey: .value)
+      case .signOut:
+        try container.encode(MessageType.signOut, forKey: .type)
+      }
+  }
+}
+
 class TunnelManager {
   // Expose closures that someone else can use to respond to events
   // for this manager.
@@ -40,6 +85,12 @@ class TunnelManager {
 
   // Persists our tunnel settings
   private var manager: NETunnelProviderManager?
+
+  // Resources that are currently disabled and will not be used
+  private var disabledResources: Set<String> = []
+
+  // Encoder used to send messages to the tunnel
+  private let encoder = PropertyListEncoder()
 
   // Use separate bundle IDs for release and debug.
   // Helps with testing releases and dev builds on the same Mac.
@@ -69,6 +120,7 @@ class TunnelManager {
     protocolConfiguration.serverAddress = settings.apiURL
     manager.localizedDescription = bundleDescription
     manager.protocolConfiguration = protocolConfiguration
+    encoder.outputFormat = .binary
 
     // Save the new VPN profile to System Preferences and reload it,
     // which should update our status from invalid -> disconnected.
@@ -188,7 +240,7 @@ class TunnelManager {
   func stop(clearToken: Bool = false) {
     if clearToken {
       do {
-        try session().sendProviderMessage("signOut".data(using: .utf8)!) { _ in
+        try session().sendProviderMessage(encoder.encode(TunnelMessage.signOut)) { _ in
           self.session().stopTunnel()
         }
       } catch {
@@ -199,11 +251,25 @@ class TunnelManager {
     }
   }
 
+  func toggleResource(resource: String, enabled: Bool) {
+    if enabled {
+      disabledResources.remove(resource)
+    } else {
+      disabledResources.insert(resource)
+    }
+
+    guard session().status == .connected else { return }
+
+    let ids = String(data: try! JSONEncoder().encode(disabledResources), encoding: .utf8)!
+
+    try? session().sendProviderMessage(encoder.encode(TunnelMessage.setDisabledResources(ids))) { _ in }
+  }
+
   func fetchResources(callback: @escaping (Data) -> Void) {
     guard session().status == .connected else { return }
 
     do {
-      try session().sendProviderMessage(resourceListHash) { data in
+      try session().sendProviderMessage(encoder.encode(TunnelMessage.getResourceList(resourceListHash))) { data in
         if let data = data {
           self.resourceListHash = Data(SHA256.hash(data: data))
           self.resourcesListCache = data

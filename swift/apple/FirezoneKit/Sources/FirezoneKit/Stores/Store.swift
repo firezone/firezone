@@ -167,6 +167,10 @@ public final class Store: ObservableObject {
     }
   }
 
+  func toggleResource(resource: String, enabled: Bool) {
+    tunnelManager.toggleResource(resource: resource, enabled: enabled)
+  }
+
   // Handles the frequent VPN state changes during sign in, sign out, etc.
   private func handleVPNStatusChange(status: NEVPNStatus) async {
     self.status = status
