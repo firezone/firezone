@@ -102,7 +102,7 @@ pub(crate) fn system_resolvers(_method: DnsControlMethod) -> Result<Vec<IpAddr>>
 const NRPT_REG_KEY: &str = "{6C0507CB-C884-4A78-BC55-0ACEE21227F6}";
 
 /// Tells Windows to send all DNS queries to our sentinels
-fn activate(dns_servers: &[IpAddr], _search_domains: &[DomainName]) -> Result<()> {
+fn activate(dns_servers: &[IpAddr], search_domains: &[DomainName]) -> Result<()> {
     // TODO: Known issue where web browsers will keep a connection open to a site,
     // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS
     // again unless you let that connection time out:
@@ -110,6 +110,10 @@ fn activate(dns_servers: &[IpAddr], _search_domains: &[DomainName]) -> Result<()
 
     tracing::info!("Activating DNS control");
     let dns_servers = dns_servers.iter().join(";");
+    let search_domains = search_domains
+        .iter()
+        .map(|d| d.to_string())
+        .collect::<Vec<_>>();
 
     let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
     let base = Path::new("SYSTEM")
@@ -126,7 +130,7 @@ fn activate(dns_servers: &[IpAddr], _search_domains: &[DomainName]) -> Result<()
     key.set_value("DisplayName", &"Firezone SplitDNS")?;
     key.set_value("GenericDNSServers", &dns_servers)?;
     key.set_value("IPSECCARestriction", &"")?;
-    key.set_value("Name", &vec!["."])?;
+    key.set_value("Name", &search_domains)?;
     key.set_value("Version", &0x2u32)?;
 
     Ok(())
