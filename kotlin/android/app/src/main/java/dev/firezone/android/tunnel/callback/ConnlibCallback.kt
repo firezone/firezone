@@ -5,7 +5,8 @@ interface ConnlibCallback {
     fun onSetInterfaceConfig(
         addressIPv4: String,
         addressIPv6: String,
-        dnsAddresses: String,
+        dnsServers: String,
+        searchDomains: String,
     )
 
     fun onUpdateRoutes(
