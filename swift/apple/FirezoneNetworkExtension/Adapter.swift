@@ -62,6 +62,9 @@ class Adapter {
   /// Currently disabled resources
   private var disabledResources: Set<String> = []
 
+  /// Cache of resources that can be toggled
+  private var canBeToggled: Set<String> = []
+
   /// Adapter state.
   private var state: AdapterState {
     didSet {
@@ -202,7 +205,16 @@ class Adapter {
   public func resourcesUpdated() {
     guard case .tunnelStarted(let session) = self.state else { return }
 
-    let currentlyDisabled = try! JSONEncoder().encode(disabledResources)
+    let decoder = JSONDecoder()
+    decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+    guard let resourceList = resourceListJSON else { return }
+    guard let resources = try? decoder.decode([Resource].self, from: resourceList.data(using: .utf8)!) else { return }
+    canBeToggled = Set(resources.filter({ $0.canToggle }).map({ $0.id }))
+
+    let disablingResources = disabledResources.filter({ canBeToggled.contains($0) })
+
+    let currentlyDisabled = try! JSONEncoder().encode(disablingResources)
     session.setDisabledResources(String(data: currentlyDisabled, encoding: .utf8)!)
   }
 }
@@ -388,6 +400,7 @@ extension Adapter: CallbackHandlerDelegate {
 
       // Update resource List. We don't care what's inside.
       resourceListJSON = resourceList
+
       self.resourcesUpdated()
     }
   }
