@@ -33,6 +33,9 @@ on:
       gateway_image:
         description: "The gateway image that was built"
         value: ${{ jobs.data-plane.outputs.gateway_image }}
+      http_test_server_image:
+        description: "The http_test_server image that was built"
+        value: ${{ jobs.data-plane.outputs.http_test_server_image }}
 
 permissions:
   # write permission is required to create a github release
@@ -178,6 +181,7 @@ jobs:
       client_image: ${{ steps.image-name.outputs.client_image }}
       relay_image: ${{ steps.image-name.outputs.relay_image }}
       gateway_image: ${{ steps.image-name.outputs.gateway_image }}
+      http_test_server_image: ${{ steps.image-name.outputs.http-test-server_image }}
     steps:
       - uses: actions/checkout@v4
         with:

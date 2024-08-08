@@ -6,9 +6,12 @@ defmodule Web.Settings.ApiClients.Beta do
       {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients")}
     else
       socket =
-        socket
-        |> assign(:page_title, "API Clients")
-        |> assign(:requested, false)
+        assign(
+          socket,
+          page_title: "API Clients",
+          requested: false,
+          api_url: Domain.Config.get_env(:web, :api_external_url)
+        )
 
       {:ok, socket}
     end
@@ -25,16 +28,19 @@ defmodule Web.Settings.ApiClients.Beta do
       <:title><%= @page_title %></:title>
       <:help>
         API Clients are used to manage Firezone configuration through a REST API. See our
-        <a class={link_style()} href="https://api.firezone.dev/swaggerui">interactive API docs</a>
+        <.link navigate={"#{@api_url}/swaggerui"} class={link_style()} target="_blank">
+          OpenAPI-powered docs
+        </.link>
+        for more information.
       </:help>
       <:content>
-        <.flash kind={:info}>
-          <p class="flex items-center gap-1.5 text-sm font-semibold leading-6">
-            <span class="hero-wrench-screwdriver h-4 w-4"></span> REST API Beta
-          </p>
-          The REST API is currently in closed beta.
-          <span :if={@requested == false}>
-            <p>
+        <div class="w-1/2 mx-auto">
+          <.flash kind={:info}>
+            <p class="flex items-center gap-1.5 text-sm font-semibold leading-6">
+              <span class="hero-wrench-screwdriver h-4 w-4"></span> REST API Beta
+            </p>
+            The REST API is currently in closed beta.
+            <span :if={@requested == false}>
               <a
                 id="beta-request"
                 href="#"
@@ -44,14 +50,12 @@ defmodule Web.Settings.ApiClients.Beta do
                 Click here
               </a>
               to request access.
-            </p>
-          </span>
-          <span :if={@requested == true}>
-            <p>
+            </span>
+            <span :if={@requested == true}>
               Your request to join the closed beta has been made.
-            </p>
-          </span>
-        </.flash>
+            </span>
+          </.flash>
+        </div>
       </:content>
     </.section>
     """

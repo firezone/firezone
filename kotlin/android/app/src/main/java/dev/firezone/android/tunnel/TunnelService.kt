@@ -18,10 +18,13 @@ import android.os.IBinder
 import androidx.lifecycle.MutableLiveData
 import com.google.firebase.crashlytics.ktx.crashlytics
 import com.google.firebase.ktx.Firebase
+import com.google.gson.Gson
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.features.session.ui.ViewResource
+import dev.firezone.android.features.session.ui.toViewResource
 import dev.firezone.android.tunnel.callback.ConnlibCallback
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
@@ -47,9 +50,10 @@ class TunnelService : VpnService() {
     private var tunnelIpv6Address: String? = null
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
-    private var _tunnelResources: List<Resource> = emptyList()
+    private var _tunnelResources: List<ViewResource> = emptyList()
     private var _tunnelState: State = State.DOWN
     private var networkCallback: NetworkMonitor? = null
+    private var disabledResources: MutableSet<String> = mutableSetOf()
 
     // General purpose mutex lock for preventing network monitoring from calling connlib
     // during shutdown.
@@ -58,7 +62,7 @@ class TunnelService : VpnService() {
     var startedByUser: Boolean = false
     var connlibSessionPtr: Long? = null
 
-    var tunnelResources: List<Resource>
+    var tunnelResources: List<ViewResource>
         get() = _tunnelResources
         set(value) {
             _tunnelResources = value
@@ -73,7 +77,7 @@ class TunnelService : VpnService() {
 
     // Used to update the UI when the SessionActivity is bound to this service
     private var serviceStateLiveData: MutableLiveData<State>? = null
-    private var resourcesLiveData: MutableLiveData<List<Resource>>? = null
+    private var resourcesLiveData: MutableLiveData<List<ViewResource>>? = null
 
     // For binding the SessionActivity view to this service
     private val binder = LocalBinder()
@@ -90,7 +94,8 @@ class TunnelService : VpnService() {
         object : ConnlibCallback {
             override fun onUpdateResources(resourceListJSON: String) {
                 moshi.adapter<List<Resource>>().fromJson(resourceListJSON)?.let {
-                    tunnelResources = it
+                    tunnelResources = it.map { resource -> resource.toViewResource(!disabledResources.contains(resource.id)) }
+                    resourcesUpdated()
                 }
             }
 
@@ -204,6 +209,27 @@ class TunnelService : VpnService() {
         super.onRevoke()
     }
 
+    // UI updates for resources
+    fun resourcesUpdated() {
+        val newResources = tunnelResources.associateBy { it.id }
+        val currentlyDisabled = disabledResources.filter { newResources[it]?.canToggle ?: false }
+
+        connlibSessionPtr?.let {
+            ConnlibSession.setDisabledResources(it, Gson().toJson(currentlyDisabled))
+        }
+    }
+
+    fun resourceToggled(resource: ViewResource) {
+        if (!resource.enabled) {
+            disabledResources.add(resource.id)
+        } else {
+            disabledResources.remove(resource.id)
+        }
+
+        repo.saveDisabledResourcesSync(disabledResources)
+        resourcesUpdated()
+    }
+
     // Call this to stop the tunnel and shutdown the service, leaving the token intact.
     fun disconnect() {
         // Acquire mutex lock
@@ -230,6 +256,7 @@ class TunnelService : VpnService() {
     private fun connect() {
         val token = appRestrictions.getString("token") ?: repo.getTokenSync()
         val config = repo.getConfigSync()
+        disabledResources = repo.getDisabledResourcesSync().toMutableSet()
 
         if (!token.isNullOrBlank()) {
             tunnelState = State.CONNECTING
@@ -279,7 +306,7 @@ class TunnelService : VpnService() {
         serviceStateLiveData?.postValue(tunnelState)
     }
 
-    fun setResourcesLiveData(liveData: MutableLiveData<List<Resource>>) {
+    fun setResourcesLiveData(liveData: MutableLiveData<List<ViewResource>>) {
         resourcesLiveData = liveData
 
         // Update the newly bound SessionActivity with our current resources
@@ -290,7 +317,7 @@ class TunnelService : VpnService() {
         serviceStateLiveData?.postValue(state)
     }
 
-    private fun updateResourcesLiveData(resources: List<Resource>) {
+    private fun updateResourcesLiveData(resources: List<ViewResource>) {
         resourcesLiveData?.postValue(resources)
     }
 
