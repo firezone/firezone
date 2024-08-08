@@ -168,11 +168,12 @@ where
                 ip4,
                 ip6,
                 dns_by_sentinel,
+                search_domains,
             } => {
                 let dns_servers = dns_by_sentinel.left_values().copied().collect();
 
                 self.callbacks
-                    .on_set_interface_config(ip4, ip6, dns_servers);
+                    .on_set_interface_config(ip4, ip6, dns_servers, search_domains);
             }
             firezone_tunnel::ClientEvent::TunRoutesUpdated { ip4, ip6 } => {
                 self.callbacks.on_update_routes(ip4, ip6);

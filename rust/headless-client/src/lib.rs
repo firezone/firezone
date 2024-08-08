@@ -10,7 +10,7 @@
 
 use anyhow::{Context as _, Result};
 use connlib_client_shared::{Callbacks, Error as ConnlibError};
-use connlib_shared::callbacks;
+use connlib_shared::{callbacks, DomainName};
 use firezone_bin_shared::DnsControlMethod;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -138,7 +138,13 @@ impl Callbacks for CallbackHandler {
             .expect("should be able to send OnDisconnect");
     }
 
-    fn on_set_interface_config(&self, ipv4: Ipv4Addr, ipv6: Ipv6Addr, dns: Vec<IpAddr>) {
+    fn on_set_interface_config(
+        &self,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
+        dns: Vec<IpAddr>,
+        _search_domains: Vec<DomainName>,
+    ) {
         self.cb_tx
             .try_send(InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
             .expect("Should be able to send OnSetInterfaceConfig");

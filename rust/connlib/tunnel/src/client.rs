@@ -1083,6 +1083,7 @@ impl ClientState {
 
         let ip4 = config.ipv4;
         let ip6 = config.ipv6;
+        let search_domains = config.search_domains.clone();
 
         self.set_dns_mapping(dns_mapping);
 
@@ -1095,6 +1096,7 @@ impl ClientState {
                     .iter()
                     .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
                     .collect(),
+                search_domains,
             });
         self.buffered_events
             .push_back(ClientEvent::TunRoutesUpdated {

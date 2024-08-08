@@ -9,7 +9,7 @@ use connlib_client_shared::{
     callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
     LoginUrlError, Session, V4RouteList, V6RouteList,
 };
-use connlib_shared::{get_user_agent, messages::ResourceId};
+use connlib_shared::{get_user_agent, messages::ResourceId, DomainName};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
@@ -159,6 +159,7 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
+        _search_domains: Vec<DomainName>,
     ) {
         self.env(|mut env| {
             let tunnel_address_v4 =
