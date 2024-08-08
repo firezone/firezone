@@ -142,10 +142,10 @@ defmodule Web.Resources.New do
                     |> String.codepoints()
                     |> Resources.map_resource_address() == :drop
                 }
-                class="flex items-center gap-2 text-sm leading-6 text-yellow-600 mt-2 w-full"
+                class="flex items-center gap-2 text-sm leading-6 text-accent-600 mt-2 w-full"
               >
                 <.icon name="hero-exclamation-triangle" class="w-4 h-4" />
-                This is an advanced address format that is not supported by clients prior to v1.2.
+                This is an advanced address format. This Resource will be available to Clients v1.2.0 and higher only.
               </p>
               <p :if={@form[:type].value == :dns} class="mt-2 text-xs text-neutral-500">
                 Wildcards are supported:<br />
