@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
+import android.util.Log
 import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -43,7 +44,7 @@ internal class SessionActivity : AppCompatActivity() {
             }
         }
 
-    private val resourcesAdapter = ResourcesAdapter()
+    private val resourcesAdapter = ResourcesAdapter(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,6 +65,11 @@ internal class SessionActivity : AppCompatActivity() {
             unbindService(serviceConnection)
             serviceBound = false
         }
+    }
+
+    fun onViewResourceToggled(resourceToggled: ViewResource) {
+        Log.d(TAG, "Resource toggled $resourceToggled")
+        tunnelService?.resourceToggled(resourceToggled)
     }
 
     private fun setupViews() {
@@ -113,7 +119,7 @@ internal class SessionActivity : AppCompatActivity() {
             }
         }
 
-        viewModel.resourcesLiveData.observe(this) { value ->
+        viewModel.resourcesLiveData.observe(this) {
             refreshList()
         }
 
@@ -134,6 +140,7 @@ internal class SessionActivity : AppCompatActivity() {
             } else {
                 View.GONE
             }
+
         resourcesAdapter.submitList(viewModel.resourcesList())
     }
 
