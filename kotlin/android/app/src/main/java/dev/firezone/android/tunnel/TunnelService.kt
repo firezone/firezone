@@ -363,6 +363,10 @@ class TunnelService : VpnService() {
                 addDnsServer(dns)
             }
 
+            tunnelSearchDomains.forEach { domain ->
+                addSearchDomain(domain)
+            }
+
             addAddress(tunnelIpv4Address!!, 32)
             addAddress(tunnelIpv6Address!!, 128)
 
