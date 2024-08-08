@@ -501,8 +501,6 @@ public final class MenuBar: NSObject, ObservableObject {
     toggleFavoriteItem.target = self
     subMenu.addItem(toggleFavoriteItem)
 
-    menuCounter += 1
-
     // Site details
     if let site = resource.base.sites.first {
       subMenu.addItem(NSMenuItem.separator())
