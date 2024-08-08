@@ -16,7 +16,7 @@ export default function Headless() {
         </ul>
       </Entry>
       */}
-      <Entry version="1.1.5" date={new Date("Invalid date")}>
+      <Entry version="1.1.5" date={new Date("2024-08-08")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6163">
             Uses `systemd-resolved` DNS control by default on Linux
