@@ -54,29 +54,28 @@ impl DnsController {
 /// Cancel safety: Cancelling the future may leave running subprocesses
 /// which should eventually exit on their own.
 async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
-    let status = tokio::process::Command::new("resolvectl")
-        .arg("dns")
-        .arg(TunDeviceManager::IFACE_NAME)
-        .args(dns_config.iter().map(ToString::to_string))
-        .status()
-        .await
-        .context("`resolvectl dns` didn't run")?;
-    if !status.success() {
-        bail!("`resolvectl dns` returned non-zero");
-    }
-
-    let status = tokio::process::Command::new("resolvectl")
-        .arg("domain")
-        .arg(TunDeviceManager::IFACE_NAME)
-        .arg("~.")
-        .status()
-        .await
-        .context("`resolvectl domain` didn't run")?;
-    if !status.success() {
-        bail!("`resolvectl domain` returned non-zero");
-    }
+    configure_dns_for_tun("dns", dns_config).await?;
+    configure_dns_for_tun("domain", &["~."]).await?;
+    configure_dns_for_tun("llmnr", &[false]).await?; // Must disable LLMNR to not interfere with local search domains.
 
     tracing::info!(?dns_config, "Configured DNS sentinels with `resolvectl`");
+
+    Ok(())
+}
+
+/// Executes the provided `resolvectl` command for our TUN device.
+async fn configure_dns_for_tun(cmd: &str, params: &[impl ToString]) -> Result<()> {
+    let status = tokio::process::Command::new("resolvectl")
+        .arg(cmd)
+        .arg(TunDeviceManager::IFACE_NAME)
+        .args(params.iter().map(ToString::to_string))
+        .status()
+        .await
+        .with_context(|| format!("failed to execute `resolvectl {cmd}`"))?;
+
+    if !status.success() {
+        bail!("`resolvectl {cmd}` returned non-zero");
+    }
 
     Ok(())
 }
