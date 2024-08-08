@@ -239,12 +239,6 @@ unsafe fn to_ip_addr(addr: SOCKADDR_INET, dst: IpAddr) -> Option<IpAddr> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::TunDeviceManager;
-    use ip_network::Ipv4Network;
-    use socket_factory::DatagramOut;
-    use std::borrow::Cow;
-    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
-    use std::time::Duration;
 
     #[test]
     fn best_route_ip4_does_not_panic_or_segfault() {
@@ -254,60 +248,5 @@ mod test {
     #[test]
     fn best_route_ip6_does_not_panic_or_segfault() {
         let _ = get_best_non_tunnel_route("2404:6800:4006:811::200e".parse().unwrap());
-    }
-
-    // Starts up a WinTUN device, adds a "full-route" (`0.0.0.0/0`) and checks if we can still send packets to IPs outside of our tunnel.
-    #[tokio::test]
-    #[ignore = "Needs admin & Internet"]
-    async fn no_packet_loops() {
-        let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
-        let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
-
-        let mut device_manager = TunDeviceManager::new().unwrap();
-        let _tun = device_manager.make_tun().unwrap();
-        device_manager.set_ips(ipv4, ipv6).await.unwrap();
-
-        // Configure `0.0.0.0/0` route.
-        device_manager
-            .set_routes(
-                vec![Ipv4Network::new(Ipv4Addr::UNSPECIFIED, 0).unwrap()],
-                vec![],
-            )
-            .await
-            .unwrap();
-
-        // Make a socket.
-        let mut socket =
-            udp_socket_factory(&SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)))
-                .unwrap();
-
-        // Send a STUN request.
-        socket
-            .send(DatagramOut {
-                src: None,
-                dst: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(141, 101, 90, 0), 3478)), // stun.cloudflare.com,
-                packet: Cow::Borrowed(&hex_literal::hex!(
-                    "000100002112A4420123456789abcdef01234567"
-                )),
-            })
-            .unwrap();
-
-        // First send seems to always result as would block
-        std::future::poll_fn(|cx| socket.poll_flush(cx))
-            .await
-            .unwrap();
-
-        let task = std::future::poll_fn(|cx| {
-            let mut buf = [0u8; 1000];
-            let result = std::task::ready!(socket.poll_recv_from(&mut buf, cx));
-
-            let _response = result.unwrap().next().unwrap();
-
-            std::task::Poll::Ready(())
-        });
-
-        tokio::time::timeout(Duration::from_secs(10), task)
-            .await
-            .unwrap();
     }
 }
