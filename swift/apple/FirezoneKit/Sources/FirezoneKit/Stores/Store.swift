@@ -28,7 +28,7 @@ public final class Store: ObservableObject {
   // we could periodically update it if we need to.
   @Published private(set) var decision: UNAuthorizationStatus
 
-  private let tunnelManager: TunnelManager
+  public let tunnelManager: TunnelManager
   private var sessionNotification: SessionNotification
   private var cancellables: Set<AnyCancellable> = []
   private var resourcesTimer: Timer?
@@ -159,6 +159,7 @@ public final class Store: ObservableObject {
   func save(_ newSettings: Settings) async throws {
     Task {
       do {
+        Log.app.error("searchme: \(newSettings.disabledResources)")
         try await tunnelManager.saveSettings(newSettings)
         DispatchQueue.main.async { self.settings = newSettings }
       } catch {
@@ -169,6 +170,11 @@ public final class Store: ObservableObject {
 
   func toggleResource(resource: String, enabled: Bool) {
     tunnelManager.toggleResource(resource: resource, enabled: enabled)
+    var newSettings = settings
+    newSettings.disabledResources = tunnelManager.disabledResources
+    Task {
+      try await save(newSettings)
+    }
   }
 
   // Handles the frequent VPN state changes during sign in, sign out, etc.

@@ -68,7 +68,7 @@ public enum TunnelMessage: Codable {
   }
 }
 
-class TunnelManager {
+public class TunnelManager {
   // Expose closures that someone else can use to respond to events
   // for this manager.
   var statusChangeHandler: ((NEVPNStatus) async -> Void)?
@@ -88,7 +88,7 @@ class TunnelManager {
   private var manager: NETunnelProviderManager?
 
   // Resources that are currently disabled and will not be used
-  private var disabledResources: Set<String> = []
+  public var disabledResources: Set<String> = []
 
   // Encoder used to send messages to the tunnel
   private let encoder = PropertyListEncoder()
@@ -154,6 +154,10 @@ class TunnelManager {
           // Found it
           let settings = Settings.fromProviderConfiguration(providerConfiguration)
           let actorName = providerConfiguration[TunnelManagerKeys.actorName]
+          if let disabledResourcesData = providerConfiguration[TunnelManagerKeys.disabledResoruces]?.data(using: .utf8) {
+            self.disabledResources = (try? JSONDecoder().decode(Set<String>.self, from: disabledResourcesData)) ?? Set()
+
+          }
           let status = manager.connection.status
 
           // Share what we found with our caller
@@ -220,6 +224,7 @@ class TunnelManager {
     // was disabled by the system for some reason.
     manager.isEnabled = true
 
+    Log.app.error("searchme: \(newProviderConfiguration["disabledResources"])")
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
   }
@@ -252,6 +257,12 @@ class TunnelManager {
     }
   }
 
+  func updateDisabledResources() {
+    guard session().status == .connected else { return }
+
+    try? session().sendProviderMessage(encoder.encode(TunnelMessage.setDisabledResources(disabledResources))) { _ in }
+  }
+
   func toggleResource(resource: String, enabled: Bool) {
     if enabled {
       disabledResources.remove(resource)
@@ -259,9 +270,7 @@ class TunnelManager {
       disabledResources.insert(resource)
     }
 
-    guard session().status == .connected else { return }
-
-    try? session().sendProviderMessage(encoder.encode(TunnelMessage.setDisabledResources(disabledResources))) { _ in }
+    updateDisabledResources()
   }
 
   func fetchResources(callback: @escaping (Data) -> Void) {

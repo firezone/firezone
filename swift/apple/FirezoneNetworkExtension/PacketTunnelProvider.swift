@@ -78,9 +78,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           return
         }
 
+        let disabledResources: Set<String> = if let disabledResourcesJSON = providerConfiguration[TunnelManagerKeys.disabledResoruces]?.data(using: .utf8) {
+          (try? JSONDecoder().decode(Set<String>.self, from: disabledResourcesJSON )) ?? Set()
+        } else {
+          Set()
+        }
+
         let adapter = Adapter(
-          apiURL: apiURL, token: token, logFilter: logFilter, packetTunnelProvider: self)
+          apiURL: apiURL, token: token, logFilter: logFilter, disabledResources: disabledResources, packetTunnelProvider: self)
         self.adapter = adapter
+
 
         try adapter.start()
 

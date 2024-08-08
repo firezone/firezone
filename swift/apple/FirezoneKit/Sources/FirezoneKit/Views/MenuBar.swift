@@ -493,7 +493,7 @@ public final class MenuBar: NSObject, ObservableObject {
       resourceToggle.toolTip = "Toggle resource"
       resourceToggle.isEnabled = true
       resourceToggle.target = self
-      resourceToggle.state = .on
+      resourceToggle.state = model.store.tunnelManager.disabledResources.contains(resource.id) ? .off : .on
       resourceToggle.representedObject = resource.id
       subMenu.addItem(resourceToggle)
     }

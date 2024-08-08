@@ -85,6 +85,7 @@ class Adapter {
     apiURL: String,
     token: String,
     logFilter: String,
+    disabledResources: Set<String>,
     packetTunnelProvider: PacketTunnelProvider
   ) {
     self.apiURL = apiURL
@@ -95,6 +96,7 @@ class Adapter {
     self.logFilter = logFilter
     self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
     self.networkSettings = nil
+    self.disabledResources = disabledResources
   }
 
   // Could happen abruptly if the process is killed.
