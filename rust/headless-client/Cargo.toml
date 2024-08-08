@@ -13,10 +13,12 @@ backoff = "0.4.0"
 clap = { version = "4.5", features = ["derive",  "env", "string"] }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
+domain = "0.10.1"
 firezone-bin-shared = { workspace = true }
 futures = "0.3.30"
 git-version = "0.3.9"
 humantime = "2.1"
+ip-packet = { workspace = true }
 ip_network = { version = "0.4", default-features = false }
 itertools = "0.13.0"
 phoenix-channel = { workspace = true }
@@ -32,6 +34,7 @@ tokio-stream = "0.1.15"
 tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+tun = { workspace = true }
 url = { version = "2.5.2", default-features = false }
 uuid = { version = "1.10", default-features = false, features = ["std", "v4", "serde"] }
 

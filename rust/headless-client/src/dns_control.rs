@@ -26,7 +26,7 @@ use platform::system_resolvers;
 /// Always call `deactivate` when Firezone starts.
 ///
 /// Only one of these should exist on the entire system at a time.
-pub(crate) struct DnsController {
+pub struct DnsController {
     pub dns_control_method: DnsControlMethod,
 }
 

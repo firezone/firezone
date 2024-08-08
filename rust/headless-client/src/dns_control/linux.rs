@@ -23,7 +23,7 @@ impl DnsController {
     /// it would be bad if this was called from 2 threads at once.
     ///
     /// Cancel safety: Try not to cancel this.
-    pub(crate) async fn set_dns(
+    pub async fn set_dns(
         &mut self,
         dns_servers: Vec<IpAddr>,
         search_domains: Vec<DomainName>,

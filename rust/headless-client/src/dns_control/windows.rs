@@ -49,7 +49,7 @@ impl DnsController {
     ///
     /// Must be async and an owned `Vec` to match the Linux signature
     #[allow(clippy::unused_async)]
-    pub(crate) async fn set_dns(
+    pub async fn set_dns(
         &mut self,
         dns_servers: Vec<IpAddr>,
         search_domains: Vec<DomainName>,
