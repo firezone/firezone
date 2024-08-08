@@ -47,6 +47,7 @@ class NetworkSettings {
     ipv6Settings.includedRoutes = routes6
     dnsSettings.matchDomains = matchDomains
     dnsSettings.matchDomainsNoSearch = true
+    dnsSettings.searchDomains = searchDomains
     tunnelNetworkSettings.ipv4Settings = ipv4Settings
     tunnelNetworkSettings.ipv6Settings = ipv6Settings
     tunnelNetworkSettings.dnsSettings = dnsSettings
