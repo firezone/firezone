@@ -4,6 +4,7 @@ struct Favorites {
   private static let key = "favoriteResourceIDs"
 
   static func save(_ ids: Set<String>) {
+    // It's a run-time exception if we pass the `Set` directly here
     UserDefaults.standard.set(Array(ids), forKey: key)
   }
 

@@ -19,6 +19,7 @@ import SwiftUI
 public final class MenuBar: NSObject, ObservableObject {
   private var statusItem: NSStatusItem
   private var resources: [ViewResource]?
+  private var favorites: Set<String> = Favorites.load()
   private var cancellables: Set<AnyCancellable> = []
 
   @ObservedObject var model: SessionViewModel
@@ -58,14 +59,12 @@ public final class MenuBar: NSObject, ObservableObject {
       .sink(receiveValue: { [weak self] status in
         guard let self = self else { return }
 
-        let favorites = Favorites.load()
-
         if status == .connected {
           model.store.beginUpdatingResources { data in
             let decoder = JSONDecoder()
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             if let newResources = try? decoder.decode([Resource].self, from: data) {
-              let newResources = newResources.map { base in ViewResource(base: base, isFavorite: favorites.contains(base.id)) }
+              let newResources = newResources.map { base in ViewResource(base: base, isFavorite: self.favorites.contains(base.id)) }
               // Handle resource changes
               self.populateResourceMenu(newResources)
               self.handleTunnelStatusOrResourcesChanged(status: status, resources: newResources)
@@ -502,6 +501,8 @@ public final class MenuBar: NSObject, ObservableObject {
     toggleFavoriteItem.target = self
     subMenu.addItem(toggleFavoriteItem)
 
+    menuCounter += 1
+
     // Site details
     if let site = resource.base.sites.first {
       subMenu.addItem(NSMenuItem.separator())
@@ -552,23 +553,23 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func addFavoriteTapped(_ sender: NSMenuItem) {
-    guard let resources = self.resources else { return }
     guard let id = sender.representedObject as? String else { return }
-
-    let favorites = Favorites.add(id: id)
-    let newResources = resources.map { res in
-      ViewResource(base: res.base, isFavorite: favorites.contains(res.base.id))
-    }
-    // Handle resource changes
-    self.populateResourceMenu(newResources)
-    self.resources = newResources
+    setFavorited(id: id, favorited: true)
   }
 
   @objc private func removeFavoriteTapped(_ sender: NSMenuItem) {
-    guard let resources = self.resources else { return }
     guard let id = sender.representedObject as? String else { return }
+    setFavorited(id: id, favorited: false)
+  }
 
-    let favorites = Favorites.remove(id: id)
+  private func setFavorited(id: String, favorited: Bool) {
+    guard let resources = self.resources else { return }
+
+    favorites = if favorited {
+      Favorites.add(id: id)
+    } else {
+      Favorites.remove(id: id)
+    }
     let newResources = resources.map { res in
       ViewResource(base: res.base, isFavorite: favorites.contains(res.base.id))
     }
