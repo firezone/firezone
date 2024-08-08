@@ -377,19 +377,13 @@ pub struct RelaysPresence {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
+    use super::*;
+    use client::{ResourceDescription, ResourceDescriptionDns, Site};
     use itertools::Itertools;
-
-    use super::{
-        client::ResourceDescription,
-        client::{ResourceDescriptionDns, Site},
-        ResourceId,
-    };
 
     fn fake_resource(name: &str, uuid: &str) -> ResourceDescription {
         ResourceDescription::Dns(ResourceDescriptionDns {
-            id: ResourceId::from_str(uuid).unwrap(),
+            id: uuid.parse().unwrap(),
             name: name.to_string(),
             address: "unused.example.com".to_string(),
             address_description: Some("test description".to_string()),
