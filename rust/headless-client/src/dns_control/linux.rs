@@ -2,6 +2,7 @@ use super::DnsController;
 use anyhow::{bail, Context as _, Result};
 use connlib_shared::DomainName;
 use firezone_bin_shared::{DnsControlMethod, TunDeviceManager};
+use itertools::Itertools as _;
 use std::{net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;
@@ -62,7 +63,7 @@ impl DnsController {
 /// which should eventually exit on their own.
 async fn configure_systemd_resolved(
     dns_servers: &[IpAddr],
-    _search_domains: &[DomainName],
+    search_domains: &[DomainName],
 ) -> Result<()> {
     let status = tokio::process::Command::new("resolvectl")
         .arg("dns")
@@ -78,7 +79,7 @@ async fn configure_systemd_resolved(
     let status = tokio::process::Command::new("resolvectl")
         .arg("domain")
         .arg(TunDeviceManager::IFACE_NAME)
-        .arg("~.")
+        .arg(search_domains.iter().join(" "))
         .status()
         .await
         .context("`resolvectl domain` didn't run")?;
