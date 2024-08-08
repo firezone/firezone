@@ -20,12 +20,13 @@ public enum TunnelManagerKeys {
   static let authBaseURL = "authBaseURL"
   static let apiURL = "apiURL"
   public static let logFilter = "logFilter"
+  public static let disabledResoruces = "disabledResources"
 }
 
 public enum TunnelMessage: Codable {
   case getResourceList(Data)
   case signOut
-  case setDisabledResources(String)
+  case setDisabledResources(Set<String>)
 
   enum CodingKeys: String, CodingKey {
     case type
@@ -43,7 +44,7 @@ public enum TunnelMessage: Codable {
       let type = try container.decode(MessageType.self, forKey: .type)
       switch type {
       case .setDisabledResources:
-          let value = try container.decode(String.self, forKey: .value)
+          let value = try container.decode(Set<String>.self, forKey: .value)
           self = .setDisabledResources(value)
       case .getResourceList:
           let value = try container.decode(Data.self, forKey: .value)
@@ -260,9 +261,7 @@ class TunnelManager {
 
     guard session().status == .connected else { return }
 
-    let ids = String(data: try! JSONEncoder().encode(disabledResources), encoding: .utf8)!
-
-    try? session().sendProviderMessage(encoder.encode(TunnelMessage.setDisabledResources(ids))) { _ in }
+    try? session().sendProviderMessage(encoder.encode(TunnelMessage.setDisabledResources(disabledResources))) { _ in }
   }
 
   func fetchResources(callback: @escaping (Data) -> Void) {

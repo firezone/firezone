@@ -133,7 +133,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     switch tunnelMessage {
     case .setDisabledResources(let value):
-      adapter?.setDisabledResources(disabledResources: value)
+      adapter?.setDisabledResources(newDisabledResources: value)
     case .signOut:
       Task {
           await clearToken()

@@ -59,6 +59,9 @@ class Adapter {
   /// This is the primary async primitive used in this class.
   private let workQueue = DispatchQueue(label: "FirezoneAdapterWorkQueue")
 
+  /// Currently disabled resources
+  private var disabledResources: Set<String> = []
+
   /// Adapter state.
   private var state: AdapterState {
     didSet {
@@ -188,12 +191,19 @@ class Adapter {
     }
   }
 
-  public func setDisabledResources(disabledResources: String) {
+  public func setDisabledResources(newDisabledResources: Set<String>) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      guard case .tunnelStarted(let session) = self.state else { return }
-      session.setDisabledResources(disabledResources)
+      self.disabledResources = newDisabledResources
+      self.resourcesUpdated()
     }
+  }
+
+  public func resourcesUpdated() {
+    guard case .tunnelStarted(let session) = self.state else { return }
+
+    let currentlyDisabled = try! JSONEncoder().encode(disabledResources)
+    session.setDisabledResources(String(data: currentlyDisabled, encoding: .utf8)!)
   }
 }
 
@@ -378,6 +388,7 @@ extension Adapter: CallbackHandlerDelegate {
 
       // Update resource List. We don't care what's inside.
       resourceListJSON = resourceList
+      self.resourcesUpdated()
     }
   }
 
