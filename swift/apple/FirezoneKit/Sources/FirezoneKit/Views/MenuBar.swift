@@ -18,7 +18,7 @@ import SwiftUI
 // https://developer.apple.com/documentation/swiftui/menubarextra
 public final class MenuBar: NSObject, ObservableObject {
   private var statusItem: NSStatusItem
-  private var resources: [Resource]?
+  private var resources: [ViewResource]?
   private var cancellables: Set<AnyCancellable> = []
 
   @ObservedObject var model: SessionViewModel
@@ -58,11 +58,14 @@ public final class MenuBar: NSObject, ObservableObject {
       .sink(receiveValue: { [weak self] status in
         guard let self = self else { return }
 
+        let favorites = Set<String>()
+
         if status == .connected {
           model.store.beginUpdatingResources { data in
             let decoder = JSONDecoder()
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             if let newResources = try? decoder.decode([Resource].self, from: data) {
+              let newResources = newResources.map { base in ViewResource(base: base, isFavorite: favorites.contains(base.id)) }
               // Handle resource changes
               self.populateResourceMenu(newResources)
               self.handleTunnelStatusOrResourcesChanged(status: status, resources: newResources)
@@ -307,7 +310,7 @@ public final class MenuBar: NSObject, ObservableObject {
     (connectingAnimationImageIndex + 1) % connectingAnimationImages.count
   }
 
-  private func handleTunnelStatusOrResourcesChanged(status: NEVPNStatus, resources: [Resource]?) {
+  private func handleTunnelStatusOrResourcesChanged(status: NEVPNStatus, resources: [ViewResource]?) {
     // Update "Sign In" / "Sign Out" menu items
     switch status {
     case .invalid:
@@ -387,7 +390,7 @@ public final class MenuBar: NSObject, ObservableObject {
     }()
   }
 
-  private func resourceMenuTitle(_ resources: [Resource]?) -> String {
+  private func resourceMenuTitle(_ resources: [ViewResource]?) -> String {
     guard let resources = resources else { return "Loading Resources..." }
 
     if resources.isEmpty {
@@ -397,7 +400,7 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  private func populateResourceMenu(_ newResources: [Resource]?) {
+  private func populateResourceMenu(_ newResources: [ViewResource]?) {
     // the menu contains other things besides resources, so update it in-place
     let diff = (newResources ?? []).difference(
       from: resources ?? [],
@@ -415,8 +418,8 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  private func createResourceMenuItem(resource: Resource) -> NSMenuItem {
-    let item = NSMenuItem(title: resource.name, action: nil, keyEquivalent: "")
+  private func createResourceMenuItem(resource: ViewResource) -> NSMenuItem {
+    let item = NSMenuItem(title: resource.base.name, action: nil, keyEquivalent: "")
 
     item.isHidden = false
     item.submenu = createSubMenu(resource: resource)
@@ -424,7 +427,7 @@ public final class MenuBar: NSObject, ObservableObject {
     return item
   }
 
-  private func createSubMenu(resource: Resource) -> NSMenu {
+  private func createSubMenu(resource: ViewResource) -> NSMenu {
     let subMenu = NSMenu()
     let resourceAddressDescriptionItem = NSMenuItem()
     let resourceSectionItem = NSMenuItem()
@@ -437,7 +440,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
 
     // AddressDescription first -- will be most common action
-    if let addressDescription = resource.addressDescription {
+    if let addressDescription = resource.base.addressDescription {
       resourceAddressDescriptionItem.title = addressDescription
 
       if let url = URL(string: addressDescription),
@@ -456,7 +459,7 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     } else {
       // Show Address first if addressDescription is missing
-      resourceAddressDescriptionItem.title = resource.address
+      resourceAddressDescriptionItem.title = resource.base.address
       resourceAddressDescriptionItem.action = #selector(resourceValueTapped(_:))
     }
     resourceAddressDescriptionItem.isEnabled = true
@@ -471,7 +474,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
     // Resource name
     resourceNameItem.action = #selector(resourceValueTapped(_:))
-    resourceNameItem.title = resource.name
+    resourceNameItem.title = resource.base.name
     resourceNameItem.toolTip = "Resource name (click to copy)"
     resourceNameItem.isEnabled = true
     resourceNameItem.target = self
@@ -479,17 +482,29 @@ public final class MenuBar: NSObject, ObservableObject {
 
     // Resource address
     resourceAddressItem.action = #selector(resourceValueTapped(_:))
-    resourceAddressItem.title = resource.address
+    resourceAddressItem.title = resource.base.address
     resourceAddressItem.toolTip = "Resource address (click to copy)"
     resourceAddressItem.isEnabled = true
     resourceAddressItem.target = self
     subMenu.addItem(resourceAddressItem)
 
-    toggleFavoriteItem.title = "Toggle favorite"
+    toggleFavoriteItem.action = #selector(toggleFavoriteTapped(_:))
+    toggleFavoriteItem.title = if resource.isFavorite {
+      "Remove from favorites"
+    } else {
+      "Add to favorites"
+    }
+    toggleFavoriteItem.toolTip = if resource.isFavorite {
+      "Click to remove this Resource from Favorites"
+    } else {
+      "Click to add this Resource to Favorites"
+    }
+    toggleFavoriteItem.isEnabled = true
+    toggleFavoriteItem.target = self
     subMenu.addItem(toggleFavoriteItem)
 
     // Site details
-    if let site = resource.sites.first {
+    if let site = resource.base.sites.first {
       subMenu.addItem(NSMenuItem.separator())
 
       siteSectionItem.title = "Site"
@@ -506,9 +521,9 @@ public final class MenuBar: NSObject, ObservableObject {
 
       // Site status
       siteStatusItem.action = #selector(resourceValueTapped(_:))
-      siteStatusItem.title = resource.status.toSiteStatus()
-      siteStatusItem.toolTip = "\(resource.status.toSiteStatusTooltip()) (click to copy)"
-      siteStatusItem.state = statusToState(status: resource.status)
+      siteStatusItem.title = resource.base.status.toSiteStatus()
+      siteStatusItem.toolTip = "\(resource.base.status.toSiteStatusTooltip()) (click to copy)"
+      siteStatusItem.state = statusToState(status: resource.base.status)
       siteStatusItem.isEnabled = true
       siteStatusItem.target = self
       if let onImage = NSImage(named: NSImage.statusAvailableName),
@@ -535,6 +550,10 @@ public final class MenuBar: NSObject, ObservableObject {
       // URL has already been validated
       NSWorkspace.shared.open(URL(string: value)!)
     }
+  }
+
+  @objc private func toggleFavoriteTapped(_ sender: AnyObject?) {
+    print("toggleFavoriteTapped")
   }
 
   private func copyToClipboard(_ string: String) {
