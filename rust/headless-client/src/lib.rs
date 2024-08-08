@@ -93,7 +93,8 @@ enum InternalServerMsg {
     OnSetInterfaceConfig {
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
-        dns: Vec<IpAddr>,
+        dns_servers: Vec<IpAddr>,
+        search_domains: Vec<DomainName>,
     },
     OnUpdateRoutes {
         ipv4: Vec<Ipv4Network>,
@@ -142,11 +143,16 @@ impl Callbacks for CallbackHandler {
         &self,
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
-        dns: Vec<IpAddr>,
-        _search_domains: Vec<DomainName>,
+        dns_servers: Vec<IpAddr>,
+        search_domains: Vec<DomainName>,
     ) {
         self.cb_tx
-            .try_send(InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
+            .try_send(InternalServerMsg::OnSetInterfaceConfig {
+                ipv4,
+                ipv6,
+                dns_servers,
+                search_domains,
+            })
             .expect("Should be able to send OnSetInterfaceConfig");
     }
 
@@ -185,7 +191,7 @@ mod tests {
     // Make sure it's okay to store a bunch of these to mitigate #5880
     #[test]
     fn callback_msg_size() {
-        assert_eq!(std::mem::size_of::<InternalServerMsg>(), 56)
+        assert_eq!(std::mem::size_of::<InternalServerMsg>(), 72)
     }
 
     #[test]

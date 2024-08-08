@@ -15,6 +15,7 @@
 
 use super::DnsController;
 use anyhow::{Context as _, Result};
+use connlib_shared::DomainName;
 use firezone_bin_shared::{platform::CREATE_NO_WINDOW, DnsControlMethod};
 use itertools::Itertools as _;
 use std::{net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
@@ -48,11 +49,15 @@ impl DnsController {
     ///
     /// Must be async and an owned `Vec` to match the Linux signature
     #[allow(clippy::unused_async)]
-    pub(crate) async fn set_dns(&mut self, dns_servers: Vec<IpAddr>) -> Result<()> {
+    pub(crate) async fn set_dns(
+        &mut self,
+        dns_servers: Vec<IpAddr>,
+        search_domains: Vec<DomainName>,
+    ) -> Result<()> {
         match self.dns_control_method {
             DnsControlMethod::Disabled => {}
             DnsControlMethod::Nrpt => {
-                activate(&dns_servers).context("Failed to activate DNS control")?
+                activate(&dns_servers, &search_domains).context("Failed to activate DNS control")?
             }
         }
         Ok(())
@@ -97,7 +102,7 @@ pub(crate) fn system_resolvers(_method: DnsControlMethod) -> Result<Vec<IpAddr>>
 const NRPT_REG_KEY: &str = "{6C0507CB-C884-4A78-BC55-0ACEE21227F6}";
 
 /// Tells Windows to send all DNS queries to our sentinels
-fn activate(dns_servers: &[IpAddr]) -> Result<()> {
+fn activate(dns_servers: &[IpAddr], _search_domains: &[DomainName]) -> Result<()> {
     // TODO: Known issue where web browsers will keep a connection open to a site,
     // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS
     // again unless you let that connection time out:
