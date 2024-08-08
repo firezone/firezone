@@ -30,12 +30,19 @@ async fn setting_search_domain_triggers_dns_query() {
     dns_controller
         .set_dns(
             vec!["100.100.100.100".parse().unwrap()],
-            vec!["example.com".parse().unwrap()],
+            vec!["foo.bar".parse().unwrap(), "example.com".parse().unwrap()],
         )
         .await
         .unwrap();
 
-    let _handle = tokio::process::Command::new("nslookup")
+    #[cfg(windows)]
+    let _handle = tokio::process::Command::new("powershell")
+        .args(["Resolve-DnsName", "test"]) // `nslookup` doesn't respect NTRP rules so we need to test with `Resolve-DnsName`
+        .spawn()
+        .unwrap();
+
+    #[cfg(unix)]
+    let _handle = tokio::process::Command::new("host")
         .arg("test")
         .spawn()
         .unwrap();
@@ -73,4 +80,6 @@ async fn setting_search_domain_triggers_dns_query() {
     tokio::time::timeout(Duration::from_secs(5), wait_for_dns_query)
         .await
         .unwrap();
+
+    // wait_for_dns_query.await;
 }

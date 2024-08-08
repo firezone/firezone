@@ -112,7 +112,7 @@ fn activate(dns_servers: &[IpAddr], search_domains: &[DomainName]) -> Result<()>
     let dns_servers = dns_servers.iter().join(";");
     let search_domains = search_domains
         .iter()
-        .map(|d| d.to_string())
+        .map(|d| format!(".{d}")) // Domains must start with a leading dot for Windows to treat them as suffixes
         .collect::<Vec<_>>();
 
     let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
