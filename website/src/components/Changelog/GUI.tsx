@@ -13,23 +13,30 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries href={href} arches={arches} title={title}>
       {/*
-      <Entry version="1.1.10" date={new Date("Invalid date")}>
+      <Entry version="1.2.0" date={new Date("Invalid date")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          TODO
+        </ul>
+      </Entry>
+      */}
+      <Entry version="1.1.10" date={new Date("2024-08-08")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="5923">
             Adds the ability to mark Resources as favorites.
           </ChangeItem>
           <ChangeItem enable={title === "Linux GUI"} pull="6163">
-            Supports using `etc-resolv-conf` DNS control method, or disabling DNS control
+            Supports using `etc-resolv-conf` DNS control method, or disabling
+            DNS control
           </ChangeItem>
           <ChangeItem enable={title === "Windows"} pull="6163">
             Supports disabling DNS control
           </ChangeItem>
           <ChangeItem pull="6184">
-            Mitigates a bug where the IPC service can panic if an internal channel fills up
+            Mitigates a bug where the IPC service can panic if an internal
+            channel fills up
           </ChangeItem>
         </ul>
       </Entry>
-      */}
       <Entry version="1.1.9" date={new Date("2024-08-02")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6143">
