@@ -112,6 +112,9 @@ mod imp {
     impl Drop for ProcessToken {
         fn drop(&mut self) {
             // SAFETY: We got `inner` from `OpenProcessToken` and didn't mutate it after that.
+            // Closing a pseudo-handle is a harmless no-op, though this is a real handle.
+            // <https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocess>
+            // > The pseudo handle need not be closed when it is no longer needed. Calling the CloseHandle function with a pseudo handle has no effect. If the pseudo handle is duplicated by DuplicateHandle, the duplicate handle must be closed.
             unsafe { CloseHandle(self.inner) }.expect("`CloseHandle` should always succeed");
             self.inner = HANDLE::default();
         }
