@@ -117,3 +117,12 @@ mod imp {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    // Make sure it doesn't crash
+    #[test]
+    fn is_normal_user() {
+        super::is_normal_user().unwrap();
+    }
+}
