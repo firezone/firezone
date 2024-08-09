@@ -12,12 +12,19 @@ export default function Gateway() {
       <Entry version="1.1.X" date={new Date("2024-XX-XX")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
-            Removes `FIREZONE_ENABLE_MASQUERADE` env variable.
-            Masquerading is now always enabled unconditionally.
+          TODO
           </li>
         </ul>
       </Entry>
       */}
+      <Entry version="1.1.4" date={new Date("2024-08-08")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <li className="pl-2">
+            Removes `FIREZONE_ENABLE_MASQUERADE` env variable. Masquerading is
+            now always enabled unconditionally.
+          </li>
+        </ul>
+      </Entry>
       <Entry version="1.1.3" date={new Date("2024-08-02")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">

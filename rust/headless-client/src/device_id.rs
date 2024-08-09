@@ -6,8 +6,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub(crate) struct DeviceId {
-    pub(crate) id: String,
+pub struct DeviceId {
+    pub id: String,
 }
 
 /// Returns the path of the randomly-generated Firezone device ID
@@ -29,7 +29,7 @@ pub(crate) fn path() -> Result<PathBuf> {
 /// Returns: The UUID as a String, suitable for sending verbatim to `connlib_client_shared::Session::connect`.
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
-pub(crate) fn get_or_create() -> Result<DeviceId> {
+pub fn get_or_create() -> Result<DeviceId> {
     let path = path()?;
     let dir = path
         .parent()

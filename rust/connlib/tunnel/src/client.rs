@@ -19,7 +19,7 @@ use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
-use crate::utils::{self, earliest, turn};
+use crate::utils::{self, earliest, turn, Candidates};
 use crate::{ClientEvent, ClientTunnel, Tun};
 use domain::base::Message;
 use secrecy::{ExposeSecret as _, Secret};
@@ -261,13 +261,18 @@ pub struct ClientState {
     ///
     /// The [`Instant`] tracks when the DNS query expires.
     mangled_dns_queries: HashMap<u16, Instant>,
-    /// DNS queries that were forwarded to an upstream server.
+    /// DNS queries that were forwarded to an upstream server, indexed by the DNS query ID + the server we sent it to.
+    ///
+    /// The value is a tuple of:
     ///
     /// - The [`SocketAddr`] is the original source IP.
     /// - The [`Instant`] tracks when the DNS query expires.
     ///
     /// We store an explicit expiry to avoid a memory leak in case of a non-responding DNS server.
-    forwarded_dns_queries: HashMap<u16, (SocketAddr, Instant)>,
+    ///
+    /// DNS query IDs don't appear to be unique across servers they are being sent to on some operating systems (looking at you, Windows).
+    /// Hence, we need to index by ID + socket of the DNS server.
+    forwarded_dns_queries: HashMap<(u16, SocketAddr), (SocketAddr, Instant)>,
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
 
@@ -649,7 +654,7 @@ impl ClientState {
                 }
 
                 self.forwarded_dns_queries
-                    .insert(id, (original_src, now + IDS_EXPIRE));
+                    .insert((id, server), (original_src, now + IDS_EXPIRE));
                 self.buffered_transmits.push_back(Transmit {
                     src: None,
                     dst: server,
@@ -677,14 +682,15 @@ impl ClientState {
         let message = Message::from_slice(packet).ok()?;
         let query_id = message.header().id();
 
-        let (destination, _) = self.forwarded_dns_queries.remove(&query_id)?;
+        let (destination, _) = self.forwarded_dns_queries.remove(&(query_id, from))?;
         let daddr = destination.ip();
         let dport = destination.port();
 
-        Some(
-            ip_packet::make::udp_packet(saddr, daddr, sport, dport, packet.to_vec())
-                .into_immutable(),
-        )
+        let ip_packet = ip_packet::make::udp_packet(saddr, daddr, sport, dport, packet.to_vec())
+            .inspect_err(|_| tracing::warn!("Failed to find original dst for DNS response"))
+            .ok()?;
+
+        Some(ip_packet.into_immutable())
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
@@ -858,8 +864,8 @@ impl ClientState {
 
     fn drain_node_events(&mut self) {
         let mut resources_changed = false; // Track this separately to batch together `ResourcesChanged` events.
-        let mut added_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
-        let mut removed_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
+        let mut added_ice_candidates = BTreeMap::<GatewayId, Candidates>::default();
+        let mut removed_ice_candidates = BTreeMap::<GatewayId, Candidates>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -874,7 +880,7 @@ impl ClientState {
                     added_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .insert(candidate);
+                        .push(candidate);
                 }
                 snownet::Event::InvalidateIceCandidate {
                     connection,
@@ -883,7 +889,7 @@ impl ClientState {
                     removed_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .insert(candidate);
+                        .push(candidate);
                 }
                 snownet::Event::ConnectionEstablished(id) => {
                     self.update_site_status_by_gateway(&id, Status::Online);
@@ -903,7 +909,7 @@ impl ClientState {
             self.buffered_events
                 .push_back(ClientEvent::AddedIceCandidates {
                     conn_id,
-                    candidates,
+                    candidates: candidates.serialize(),
                 })
         }
 
@@ -911,7 +917,7 @@ impl ClientState {
             self.buffered_events
                 .push_back(ClientEvent::RemovedIceCandidates {
                     conn_id,
-                    candidates,
+                    candidates: candidates.serialize(),
                 })
         }
     }

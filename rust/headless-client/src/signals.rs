@@ -6,4 +6,4 @@ mod platform;
 #[path = "signals/windows.rs"]
 mod platform;
 
-pub(crate) use platform::{Hangup, Terminate};
+pub use platform::{Hangup, Terminate};

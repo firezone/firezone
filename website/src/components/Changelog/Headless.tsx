@@ -16,6 +16,13 @@ export default function Headless() {
         </ul>
       </Entry>
       */}
+      <Entry version="1.1.6" date={new Date("2024-08-09")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6233">
+            Fixes an issue where the IPC service can panic during DNS resolution.
+          </ChangeItem>
+        </ul>
+      </Entry>
       <Entry version="1.1.5" date={new Date("2024-08-08")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6163">

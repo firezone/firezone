@@ -22,7 +22,7 @@ pub fn icmp_request_packet(
     dst: impl Into<IpAddr>,
     seq: u16,
     identifier: u16,
-) -> MutableIpPacket<'static> {
+) -> Result<MutableIpPacket<'static>, IpVersionMismatch> {
     icmp_packet(src, dst.into(), seq, identifier, IcmpKind::Request)
 }
 
@@ -31,7 +31,7 @@ pub fn icmp_reply_packet(
     dst: impl Into<IpAddr>,
     seq: u16,
     identifier: u16,
-) -> MutableIpPacket<'static> {
+) -> Result<MutableIpPacket<'static>, IpVersionMismatch> {
     icmp_packet(src, dst.into(), seq, identifier, IcmpKind::Response)
 }
 
@@ -48,6 +48,7 @@ pub fn icmp_response_packet(packet: IpPacket<'static>) -> MutableIpPacket<'stati
         echo_request.identifier(),
         IcmpKind::Response,
     )
+    .expect("src and dst come from the same packet")
 }
 
 #[cfg_attr(test, derive(Debug, test_strategy::Arbitrary))]
@@ -115,11 +116,11 @@ pub(crate) fn icmp_packet(
     seq: u16,
     identifier: u16,
     kind: IcmpKind,
-) -> MutableIpPacket<'static> {
+) -> Result<MutableIpPacket<'static>, IpVersionMismatch> {
     match (src, dst) {
-        (IpAddr::V4(src), IpAddr::V4(dst)) => {
-            icmp4_packet_with_options(src, dst, seq, identifier, kind, 5)
-        }
+        (IpAddr::V4(src), IpAddr::V4(dst)) => Ok(icmp4_packet_with_options(
+            src, dst, seq, identifier, kind, 5,
+        )),
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             use crate::{
                 icmpv6::{
@@ -155,11 +156,10 @@ pub(crate) fn icmp_packet(
 
             let mut result = MutableIpPacket::owned(buf).unwrap();
             result.update_checksum();
-            result
+
+            Ok(result)
         }
-        (IpAddr::V6(_), IpAddr::V4(_)) | (IpAddr::V4(_), IpAddr::V6(_)) => {
-            panic!("IPs must be of the same version")
-        }
+        (IpAddr::V6(_), IpAddr::V4(_)) | (IpAddr::V4(_), IpAddr::V6(_)) => Err(IpVersionMismatch),
     }
 }
 
@@ -169,7 +169,7 @@ pub fn tcp_packet<IP>(
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
-) -> MutableIpPacket<'static>
+) -> Result<MutableIpPacket<'static>, IpVersionMismatch>
 where
     IP: Into<IpAddr>,
 {
@@ -187,7 +187,7 @@ where
             ipv4_header(src, dst, IpNextHeaderProtocols::Tcp, 5, &mut buf[20..]);
 
             tcp_header(saddr, daddr, sport, dport, &payload, &mut buf[40..]);
-            MutableIpPacket::owned(buf).unwrap()
+            Ok(MutableIpPacket::owned(buf).unwrap())
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             use crate::ip::IpNextHeaderProtocols;
@@ -197,11 +197,9 @@ where
             ipv6_header(src, dst, IpNextHeaderProtocols::Tcp, &mut buf[20..]);
 
             tcp_header(saddr, daddr, sport, dport, &payload, &mut buf[60..]);
-            MutableIpPacket::owned(buf).unwrap()
+            Ok(MutableIpPacket::owned(buf).unwrap())
         }
-        (IpAddr::V6(_), IpAddr::V4(_)) | (IpAddr::V4(_), IpAddr::V6(_)) => {
-            panic!("IPs must be of the same version")
-        }
+        (IpAddr::V6(_), IpAddr::V4(_)) | (IpAddr::V4(_), IpAddr::V6(_)) => Err(IpVersionMismatch),
     }
 }
 
@@ -211,7 +209,7 @@ pub fn udp_packet<IP>(
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
-) -> MutableIpPacket<'static>
+) -> Result<MutableIpPacket<'static>, IpVersionMismatch>
 where
     IP: Into<IpAddr>,
 {
@@ -228,7 +226,7 @@ where
             ipv4_header(src, dst, IpNextHeaderProtocols::Udp, 5, &mut buf[20..]);
 
             udp_header(saddr, daddr, sport, dport, &payload, &mut buf[40..]);
-            MutableIpPacket::owned(buf).unwrap()
+            Ok(MutableIpPacket::owned(buf).unwrap())
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             use crate::ip::IpNextHeaderProtocols;
@@ -238,11 +236,9 @@ where
             ipv6_header(src, dst, IpNextHeaderProtocols::Udp, &mut buf[20..]);
 
             udp_header(saddr, daddr, sport, dport, &payload, &mut buf[60..]);
-            MutableIpPacket::owned(buf).unwrap()
+            Ok(MutableIpPacket::owned(buf).unwrap())
         }
-        (IpAddr::V6(_), IpAddr::V4(_)) | (IpAddr::V4(_), IpAddr::V6(_)) => {
-            panic!("IPs must be of the same version")
-        }
+        (IpAddr::V6(_), IpAddr::V4(_)) | (IpAddr::V4(_), IpAddr::V6(_)) => Err(IpVersionMismatch),
     }
 }
 
@@ -252,7 +248,7 @@ pub fn dns_query(
     src: SocketAddr,
     dst: SocketAddr,
     id: u16,
-) -> MutableIpPacket<'static> {
+) -> Result<MutableIpPacket<'static>, IpVersionMismatch> {
     // Create the DNS query message
     let mut msg_builder = MessageBuilder::new_vec();
 
@@ -318,7 +314,12 @@ where
         udp.get_source(),
         payload,
     )
+    .expect("src and dst are retrieved from the same packet")
 }
+
+#[derive(thiserror::Error, Debug)]
+#[error("IPs must be of the same version")]
+pub struct IpVersionMismatch;
 
 fn ipv4_header(
     src: Ipv4Addr,

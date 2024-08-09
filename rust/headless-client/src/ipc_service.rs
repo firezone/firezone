@@ -1,11 +1,14 @@
 use crate::{
     device_id, dns_control::DnsController, known_dirs, signals, CallbackHandler, CliCommon,
-    InternalServerMsg, IpcServerMsg, TOKEN_ENV_KEY,
+    InternalServerMsg, IpcServerMsg,
 };
 use anyhow::{Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
-use firezone_bin_shared::{DnsControlMethod, TunDeviceManager};
+use firezone_bin_shared::{
+    platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
+    TunDeviceManager, TOKEN_ENV_KEY,
+};
 use futures::{
     future::poll_fn,
     task::{Context, Poll},
@@ -99,7 +102,7 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
     crate::setup_stdout_logging()?;
     tracing::info!(
         arch = std::env::consts::ARCH,
-        git_version = crate::GIT_VERSION,
+        git_version = firezone_bin_shared::GIT_VERSION,
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
     );
     let rt = tokio::runtime::Runtime::new()?;
@@ -354,8 +357,8 @@ impl<'a> Handler<'a> {
 
                 self.last_connlib_start_instant = Some(Instant::now());
                 let args = ConnectArgs {
-                    tcp_socket_factory: Arc::new(crate::tcp_socket_factory),
-                    udp_socket_factory: Arc::new(crate::udp_socket_factory),
+                    tcp_socket_factory: Arc::new(tcp_socket_factory),
+                    udp_socket_factory: Arc::new(udp_socket_factory),
                     private_key,
                     callbacks: self.callback_handler.clone(),
                 };
@@ -367,7 +370,7 @@ impl<'a> Handler<'a> {
                     ExponentialBackoffBuilder::default()
                         .with_max_elapsed_time(Some(Duration::from_secs(60 * 60 * 24 * 30)))
                         .build(),
-                    Arc::new(crate::tcp_socket_factory),
+                    Arc::new(tcp_socket_factory),
                 )?;
 
                 let new_session =
@@ -415,7 +418,7 @@ fn setup_logging(log_dir: Option<PathBuf>) -> Result<connlib_client_shared::file
     set_global_default(subscriber).context("`set_global_default` should always work)")?;
     tracing::info!(
         arch = std::env::consts::ARCH,
-        git_version = crate::GIT_VERSION,
+        git_version = firezone_bin_shared::GIT_VERSION,
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
         ?directives
     );

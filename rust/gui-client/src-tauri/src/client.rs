@@ -20,19 +20,6 @@ mod welcome;
 
 use settings::AdvancedSettings;
 
-/// Output of `git describe` at compile time
-/// e.g. `1.0.0-pre.4-20-ged5437c88-modified` where:
-///
-/// * `1.0.0-pre.4` is the most recent ancestor tag
-/// * `20` is the number of commits since then
-/// * `g` doesn't mean anything
-/// * `ed5437c88` is the Git commit hash
-/// * `-modified` is present if the working dir has any changes from that commit number
-const GIT_VERSION: &str = git_version::git_version!(
-    args = ["--always", "--dirty=-modified", "--tags"],
-    fallback = "unknown"
-);
-
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     #[error("GUI module error: {0}")]
@@ -140,7 +127,7 @@ fn start_logging(directives: &str) -> Result<logging::Handles> {
     tracing::info!(
         arch = std::env::consts::ARCH,
         ?directives,
-        ?GIT_VERSION,
+        git_version = firezone_bin_shared::GIT_VERSION,
         system_uptime_seconds = firezone_headless_client::uptime::get().map(|dur| dur.as_secs()),
         "`gui-client` started logging"
     );

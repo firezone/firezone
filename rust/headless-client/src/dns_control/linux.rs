@@ -1,13 +1,13 @@
 use super::DnsController;
 use anyhow::{bail, Context as _, Result};
-use firezone_bin_shared::{DnsControlMethod, TunDeviceManager};
+use firezone_bin_shared::{platform::DnsControlMethod, TunDeviceManager};
 use std::{net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;
 
 impl DnsController {
     #[allow(clippy::unnecessary_wraps)]
-    pub(crate) fn deactivate(&mut self) -> Result<()> {
+    pub fn deactivate(&mut self) -> Result<()> {
         tracing::debug!("Deactivating DNS control...");
         if let DnsControlMethod::EtcResolvConf = self.dns_control_method {
             // TODO: Check that nobody else modified the file while we were running.
@@ -22,7 +22,7 @@ impl DnsController {
     /// it would be bad if this was called from 2 threads at once.
     ///
     /// Cancel safety: Try not to cancel this.
-    pub(crate) async fn set_dns(&mut self, dns_config: Vec<IpAddr>) -> Result<()> {
+    pub async fn set_dns(&mut self, dns_config: Vec<IpAddr>) -> Result<()> {
         match self.dns_control_method {
             DnsControlMethod::Disabled => Ok(()),
             DnsControlMethod::EtcResolvConf => {
@@ -38,7 +38,7 @@ impl DnsController {
     /// Flush systemd-resolved's system-wide DNS cache
     ///
     /// Does nothing if we're using other DNS control methods or none at all
-    pub(crate) fn flush(&self) -> Result<()> {
+    pub fn flush(&self) -> Result<()> {
         // Flushing is only implemented for systemd-resolved
         if matches!(self.dns_control_method, DnsControlMethod::SystemdResolved) {
             tracing::debug!("Flushing systemd-resolved DNS cache...");
@@ -54,29 +54,28 @@ impl DnsController {
 /// Cancel safety: Cancelling the future may leave running subprocesses
 /// which should eventually exit on their own.
 async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
-    let status = tokio::process::Command::new("resolvectl")
-        .arg("dns")
-        .arg(TunDeviceManager::IFACE_NAME)
-        .args(dns_config.iter().map(ToString::to_string))
-        .status()
-        .await
-        .context("`resolvectl dns` didn't run")?;
-    if !status.success() {
-        bail!("`resolvectl dns` returned non-zero");
-    }
-
-    let status = tokio::process::Command::new("resolvectl")
-        .arg("domain")
-        .arg(TunDeviceManager::IFACE_NAME)
-        .arg("~.")
-        .status()
-        .await
-        .context("`resolvectl domain` didn't run")?;
-    if !status.success() {
-        bail!("`resolvectl domain` returned non-zero");
-    }
+    configure_dns_for_tun("dns", dns_config).await?;
+    configure_dns_for_tun("domain", &["~."]).await?;
+    configure_dns_for_tun("llmnr", &[false]).await?; // Must disable LLMNR to not interfere with local search domains.
 
     tracing::info!(?dns_config, "Configured DNS sentinels with `resolvectl`");
+
+    Ok(())
+}
+
+/// Executes the provided `resolvectl` command for our TUN device.
+async fn configure_dns_for_tun(cmd: &str, params: &[impl ToString]) -> Result<()> {
+    let status = tokio::process::Command::new("resolvectl")
+        .arg(cmd)
+        .arg(TunDeviceManager::IFACE_NAME)
+        .args(params.iter().map(ToString::to_string))
+        .status()
+        .await
+        .with_context(|| format!("failed to execute `resolvectl {cmd}`"))?;
+
+    if !status.success() {
+        bail!("`resolvectl {cmd}` returned non-zero");
+    }
 
     Ok(())
 }

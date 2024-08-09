@@ -1,7 +1,7 @@
 use crate::CliCommon;
 use anyhow::{bail, Context as _, Result};
 use connlib_client_shared::file_logger;
-use firezone_bin_shared::DnsControlMethod;
+use firezone_bin_shared::platform::DnsControlMethod;
 use futures::future::{self, Either};
 use std::{ffi::OsString, pin::pin, time::Duration};
 use tokio::sync::mpsc;

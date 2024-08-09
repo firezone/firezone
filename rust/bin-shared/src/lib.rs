@@ -18,6 +18,21 @@ use tracing_subscriber::{
     fmt, prelude::__tracing_subscriber_SubscriberExt, EnvFilter, Layer, Registry,
 };
 
+/// Output of `git describe` at compile time
+/// e.g. `1.0.0-pre.4-20-ged5437c88-modified` where:
+///
+/// * `1.0.0-pre.4` is the most recent ancestor tag
+/// * `20` is the number of commits since then
+/// * `g` doesn't mean anything
+/// * `ed5437c88` is the Git commit hash
+/// * `-modified` is present if the working dir has any changes from that commit number
+pub const GIT_VERSION: &str = git_version::git_version!(
+    args = ["--always", "--dirty=-modified", "--tags"],
+    fallback = "unknown"
+);
+
+pub const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
+
 // wintun automatically append " Tunnel" to this
 pub const TUNNEL_NAME: &str = "Firezone";
 
@@ -38,8 +53,6 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 
 /// Mark for Firezone sockets to prevent routing loops on Linux.
 pub const FIREZONE_MARK: u32 = 0xfd002021;
-
-pub use platform::DnsControlMethod;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use network_changes::{new_dns_notifier, new_network_notifier};
