@@ -7,16 +7,6 @@ use tracing_subscriber::{
     Registry,
 };
 
-/// A filter directive that silences noisy crates.
-///
-/// For debugging, it is useful to set a catch-all log like `debug`.
-/// This obviously creates a lot of logs from all kinds of crates.
-/// For our usecase, logs from `netlink_proto` and other crates are very likely not what you want to see.
-///
-/// By prepending this directive to the active log filter, a simple directive like `debug` actually produces useful logs.
-/// If necessary, you can still activate logs from these crates by restating them in your directive with a lower filter, i.e. `netlink_proto=debug`.
-pub const SILENCE_IRRELEVANT_CRATES: &str = "netlink_proto=warn,os_info=warn,rustls=warn";
-
 pub fn setup_global_subscriber<L>(additional_layer: L)
 where
     L: Layer<Registry> + Send + Sync,
@@ -38,7 +28,17 @@ pub fn filter(directives: &str) -> EnvFilter {
 
 /// Constructs an oppinionated [`EnvFilter`] with some crates already silenced.
 pub fn try_filter(directives: &str) -> Result<EnvFilter, ParseError> {
-    EnvFilter::try_new(format!("{SILENCE_IRRELEVANT_CRATES},{directives}"))
+    /// A filter directive that silences noisy crates.
+    ///
+    /// For debugging, it is useful to set a catch-all log like `debug`.
+    /// This obviously creates a lot of logs from all kinds of crates.
+    /// For our usecase, logs from `netlink_proto` and other crates are very likely not what you want to see.
+    ///
+    /// By prepending this directive to the active log filter, a simple directive like `debug` actually produces useful logs.
+    /// If necessary, you can still activate logs from these crates by restating them in your directive with a lower filter, i.e. `netlink_proto=debug`.
+    const IRRELEVANT_CRATES: &str = "netlink_proto=warn,os_info=warn,rustls=warn";
+
+    EnvFilter::try_new(format!("{IRRELEVANT_CRATES},{directives}"))
 }
 
 /// Initialises a logger to be used in tests.
