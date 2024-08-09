@@ -9,7 +9,7 @@ use chrono::Utc;
 use connlib_shared::{
     callbacks,
     messages::{ClientId, GatewayId, Relay, RelayId, ResourceId, ReuseConnection},
-    DomainName, Result, DEFAULT_MTU,
+    DomainName, PublicKey, Result, DEFAULT_MTU,
 };
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -53,6 +53,7 @@ pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::{ClientState, Request};
 pub use gateway::{GatewayState, IPV4_PEERS, IPV6_PEERS};
+use rand::rngs::OsRng;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
@@ -309,4 +310,11 @@ pub enum GatewayEvent {
         conn_id: ClientId,
         resource_id: ResourceId,
     },
+}
+
+pub fn keypair() -> (StaticSecret, PublicKey) {
+    let private_key = StaticSecret::random_from_rng(OsRng);
+    let public_key = PublicKey::from(&private_key);
+
+    (private_key, public_key)
 }

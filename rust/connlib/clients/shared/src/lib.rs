@@ -2,8 +2,9 @@
 pub use crate::serde_routelist::{V4RouteList, V6RouteList};
 pub use callbacks::Callbacks;
 pub use connlib_shared::messages::client::ResourceDescription;
-pub use connlib_shared::{keypair, Error, LoginUrl, LoginUrlError, StaticSecret};
+pub use connlib_shared::{Error, LoginUrl, LoginUrlError, StaticSecret};
 pub use eventloop::Eventloop;
+pub use firezone_tunnel::keypair;
 
 use connlib_shared::messages::ResourceId;
 use eventloop::Command;
