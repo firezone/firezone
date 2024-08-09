@@ -35,6 +35,8 @@ import ComplianceDiagram from "@/components/Animations/ComplianceDiagram";
 import SimpleArchitecture from "@/components/Animations/SimpleArchitecture";
 import { manrope } from "@/lib/fonts";
 import "@/styles/hero.css";
+import FeatureCards from "@/components/FeatureCards";
+import SingleFeature from "@/components/SingleFeature";
 
 export const metadata: Metadata = {
   title: "Firezone: Zero trust access that scales",
@@ -45,7 +47,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-neutral-900 bg-hero pt-28 xl:pt-32">
+      <section className="bg-black bg-hero pt-28 xl:pt-32">
         <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
           {/* <div className="absolute translate-y-16 justify-self-center self-center blur-[120px] bg-[rgba(94,82,239,0.5)] rounded-full w-[220px] h-[220px]" /> */}
           {/* <button className="flex w-fit mb-2 gap-2 text-xs items-center p-1.5 text-neutral-500 font-manrope font-500 border-[1px] rounded-full border-neutral-900 hover:text-neutral-200 transition-all ">
@@ -113,77 +115,32 @@ export default function Page() {
 
       {/* Feature section 1: Secure access to your most sensitive resources in minutes. */}
       <section className="bg-white px-4 sm:px-8 md:px-16 py-20 md:py-16">
-        <div className="flex w-full lg:flex-row flex-col justify-center gap-6 lg:gap-16 xl:gap-36 items-center my-8 md:my-16">
-          <ElevatorPitch />
-          <div className="w-full h-auto lg:max-w-[600px] overflow-hidden flex justify-center items-center rounded-xl lg:h-[600px] lg:w-[40%] bg-gradient-to-b from-[#FFF5ED] to-[#F2EEFE]">
-            <img
-              src="/images/simple-demonstration.png"
-              className="max-w-[600px] w-full lg:max-h-[400px] lg:object-cover rounded-lg"
-            />
-          </div>
-        </div>
-        <section className=" py-24 bg-white">
+        <ElevatorPitch />
+        <section className=" py-16 bg-white">
           <BattleCard2 />
         </section>
-
-        <div className="flex justify-center items-center px-4 mx-auto mt-8 md:mt-16 max-w-screen-lg">
-          <UpgradeDiagram />
-        </div>
-
-        <div className="items-stretch mx-auto mt-8 md:mt-16 gap-4 sm:gap-8 max-w-sm md:max-w-screen-lg grid md:grid-cols-3">
-          <SlideIn
-            direction="left"
-            delay={0.5}
-            duration={1}
-            className="flex flex-col p-4"
+        <section className="relative py-24 bg-white">
+          <FeatureCards />
+        </section>
+        <section className="relative py-24 bg-white">
+          <SingleFeature
+            title="Achieve compliance"
+            boldedTitle=" without the headache."
+            desc="Clients are available for every major platform and stay connected even
+          when switching WiFi networks."
+            link="/kb/architecture"
+            buttonDesc="Read about Firezone's architecture"
           >
-            <h4 className="mb-2 md:mb-4 text-md sm:text-lg md:text-xl font-semibold tracking-tight text-primary-450 uppercase">
-              Flexible
-            </h4>
-            <p className="text-md sm:text-lg md:text-xl tracking-tight md:text-justify">
-              Control access to VPCs, subnets, hosts by IP or DNS, and even
-              public SaaS apps.
-            </p>
-          </SlideIn>
-          <SlideIn
-            direction="left"
-            delay={0.75}
-            duration={1}
-            className="flex flex-col p-4"
-          >
-            <h4 className="mb-2 md:mb-4 text-md sm:text-lg md:text-xl font-semibold tracking-tight text-primary-450 uppercase">
-              Secure
-            </h4>
-            <p className="text-md sm:text-lg md:text-xl tracking-tight md:text-justify">
-              Users and groups automatically sync with your identity provider,
-              so access is revoked as soon as employees leave.
-            </p>
-          </SlideIn>
-          <SlideIn
-            direction="left"
-            delay={1}
-            duration={1}
-            className="flex flex-col p-4"
-          >
-            <h4 className="mb-2 md:mb-4 text-md sm:text-lg md:text-xl font-semibold tracking-tight text-primary-450 uppercase">
-              Granular
-            </h4>
-            <p className="text-md sm:text-lg md:text-xl tracking-tight md:text-justify">
-              Restrict access even further with port-level rules that allow
-              access to some services but not others, even on the same host.
-            </p>
-          </SlideIn>
-        </div>
-
-        <div className="flex justify-center mt-8">
-          <ActionLink
-            className="text-md md:text-xl tracking-tight font-medium"
-            href="/kb/deploy/resources"
-            color="accent-500"
-          >
-            Protect your resources
-          </ActionLink>
-        </div>
+            <div className="relative flex flex-col -space-y-4 items-center">
+              <div className="absolute z-10 bg-primary-200 rounded-full w-[400px] h-[400px]" />
+              <img src="/images/ComplianceHeader.svg" className="z-30" />
+              <img
+                src="/images/ComplianceBody.svg"
+                className="z-20 max-w-[80%]"
+              />
+            </div>
+          </SingleFeature>
+        </section>
       </section>
 
       {/* Feature section 2: Achieve compliance in minutes, not weeks. */}

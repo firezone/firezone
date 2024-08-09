@@ -1,10 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import Image from "next/image";
 import { ReactNode, useState } from "react";
 import { manrope } from "@/lib/fonts";
-import type { CustomFlowbiteTheme } from "flowbite-react";
 import {
   HiMiniShieldCheck,
   HiMiniPresentationChartLine,
@@ -16,20 +13,20 @@ export default function ElevatorPitch() {
 
   const data = [
     {
-      title: "Fast and secure.",
-      desc: "Built on WireGuard® to be 3-4 times faster than OpenVPN.",
+      title: "Fast and lightweight.",
+      desc: "Built on WireGuard® to be 3-4x faster than OpenVPN.",
       icon: <HiLightningBolt className="min-w-8 h-8 text-primary-400" />,
     },
     {
       title: "Scales with your business.",
-      desc: "Deploy two or more gateways for automatic load balancing and failover.",
+      desc: "Automatic load balancing and failover with two or more gateways.",
       icon: (
         <HiMiniPresentationChartLine className="min-w-8 h-8 text-primary-400" />
       ),
     },
     {
-      title: "Zero attack surface.",
-      desc: "Firezone's holepunching tech establishes tunnels on-the-fly at the time of access.",
+      title: "Easily create tunnels on-the-fly.",
+      desc: "Firezone's holepunching tech establishes tunnels whenever needed.",
       icon: <HiMiniShieldCheck className="min-w-8 h-8 text-primary-400" />,
     },
     {
@@ -49,7 +46,7 @@ export default function ElevatorPitch() {
   const OptionButton = ({ title, desc, icon, index }: OptionButtonProps) => {
     return (
       <button
-        className={`flex flex-col lg:flex-row lg:w-full pointer-events-none rounded-xl items-start lg:items-center p-5 gap-4 border-[1px] justify-center lg:justify-start transition duration-200 ease-in-out ${
+        className={`flex flex-col lg:flex-row lg:w-full pointer-events-none rounded-xl items-start lg:items-center p-0 gap-4 border-[1px] justify-center lg:justify-start transition duration-200 ease-in-out ${
           manrope.className
         } ${
           selectedOption == index
@@ -70,34 +67,44 @@ export default function ElevatorPitch() {
   };
 
   return (
-    <div className="flex flex-col w-full lg:w-[480px] xl:w-[580px]">
-      <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2 lg:mb-4">
-        Stay Connected
-      </h6>
-      <div className="mb-2 lg:mb-4 text-3xl md:text-4xl lg:text-5xl ">
-        <h3 className=" text-pretty text-left tracking-tight font-bold inline-block">
-          Supercharge your workforce
-          <span className="text-primary-450"> in minutes.</span>
-        </h3>
-      </div>
-      <div className="max-w-screen-md">
-        <p
-          className={`text-md text-left text-pretty text-slate-700 ${manrope.className}`}
-        >
-          Hassle-free, no-nonsense remote access that just works.
+    <div className="flex w-full lg:flex-row flex-col justify-center gap-6 lg:gap-16 xl:gap-36 items-center my-8 md:my-16">
+      <div className="flex flex-col w-full h-full justify-between lg:w-[480px] xl:w-[580px]">
+        <div>
+          <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2">
+            Stay Connected
+          </h6>
+          <div className="mb-2 text-3xl md:text-4xl lg:text-5xl ">
+            <h3 className=" text-pretty text-left tracking-tight font-bold inline-block">
+              Supercharge your workforce
+              <span className="text-primary-450"> in minutes.</span>
+            </h3>
+          </div>
+          <div className="max-w-screen-md">
+            <p
+              className={`text-md text-left text-pretty text-neutral-600 font-medium ${manrope.className}`}
+            >
+              Protect your workforce without the tedious configuration.
+            </p>
+          </div>
+        </div>
 
-        </p>
+        <div className="lg:flex grid  grid-cols-1 sm:grid-cols-2 lg:flex-col mt-16 space-y-6">
+          {data.map((item, index) => (
+            <OptionButton
+              key={index}
+              title={item.title}
+              desc={item.desc}
+              icon={item.icon}
+              index={index}
+            />
+          ))}
+        </div>
       </div>
-      <div className="lg:flex grid  grid-cols-1 sm:grid-cols-2 lg:flex-col mt-8 space-y-2">
-        {data.map((item, index) => (
-          <OptionButton
-            key={index}
-            title={item.title}
-            desc={item.desc}
-            icon={item.icon}
-            index={index}
-          />
-        ))}
+      <div className="w-full h-auto lg:max-w-[600px] overflow-hidden flex justify-center items-center rounded-xl lg:h-[600px] lg:w-[40%] bg-gradient-to-b from-[#FFF5ED] to-[#F2EEFE]">
+        <img
+          src="/images/simple-demonstration.png"
+          className="max-w-[600px] w-full lg:max-h-[400px] lg:object-cover rounded-lg"
+        />
       </div>
     </div>
   );

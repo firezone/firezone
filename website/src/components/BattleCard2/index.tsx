@@ -26,15 +26,19 @@ export default function BattleCard2() {
             role="list"
             className={`text-sm md:text-md min-w-[180px] md:min-w-[300px] ${manrope.className}`}
           >
-            <li className="px-6 py-4 bg-neutral-100">
+            <li className="px-6 h-14 place-content-center bg-neutral-100">
               Automatic NAT64 and NAT46
             </li>
-            <li className="px-6 py-4 w-full">Open source</li>
-            <li className="px-6 py-4 w-full bg-neutral-100">
+            <li className="px-6 h-14 place-content-center w-full">
+              Open source
+            </li>
+            <li className="px-6 h-14 place-content-center w-full bg-neutral-100">
               Built on WireGuard®
             </li>
-            <li className="px-6 py-4 w-full">IPv6 support</li>
-            <li className="px-6 py-4 w-full bg-neutral-100">
+            <li className="px-6 h-14 place-content-center w-full">
+              IPv6 support
+            </li>
+            <li className="px-6 h-14 place-content-center w-full bg-neutral-100">
               DNS-based routing
             </li>
             <li className="h-20" />
@@ -67,7 +71,7 @@ export default function BattleCard2() {
             <li className="h-14 flex justify-center items-center w-full ">
               <HiCheck className="text-2xl text-green-600" />
             </li>
-            <li className="py-3 px-6 ">
+            <li className="py-3 h-20 ">
               <button
                 type="button"
                 className="bg-accent-500 text-nowrap rounded-lg group lg:text-lg text-md inline-flex justify-center items-center lg:py-3 py-2 px-5 font-semibold text-center text-white hover:ring-1 hover:ring-accent-500 duration-50 transform transition"
@@ -81,14 +85,8 @@ export default function BattleCard2() {
             role="list"
             className={`flex flex-col items-center mb-[1px]  min-w-[160px] md:min-w-[200px] ${manrope.className}`}
           >
-            <li className="h-[72px] px-8 flex justify-center items-center">
-              <Image
-                width={120}
-                height={120}
-                src={"/images/tailscale-logo.svg"}
-                alt="Tailscale Logo"
-                className="w-24"
-              />
+            <li className="h-[72px] px-8 flex justify-center items-center font-bold tracking-tight text-slate-600">
+              Tailscale
             </li>
             <li className="h-14 flex justify-center items-center w-full bg-neutral-100">
               <HiXMark className="text-2xl text-red-600" />
@@ -111,14 +109,8 @@ export default function BattleCard2() {
             role="list"
             className={`flex flex-col items-center mb-[1px] min-w-[160px] md:min-w-[200px] ${manrope.className}`}
           >
-            <li className="h-[72px] px-8 flex justify-center items-center">
-              <Image
-                width={120}
-                height={120}
-                src={"/images/twingate-logo.png"}
-                alt="Twingate Logo"
-                className="w-24"
-              />
+            <li className="h-[72px] px-8 flex justify-center items-center font-bold tracking-tight text-slate-600">
+              Twingate
             </li>
             <li className="h-14 flex justify-center items-center w-full bg-neutral-100">
               <HiXMark className="text-2xl text-red-600" />
