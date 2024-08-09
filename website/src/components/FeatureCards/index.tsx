@@ -14,10 +14,12 @@ export default function FeatureCards() {
         <div className="flex mb-8 lg:flex-row flex-col w-full items-start lg:items-end justify-between">
           <div className="">
             <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2 lg:mb-4">
-              Stay Connected
+              built for you
             </h6>
             <div className="mb-4 lg:mb-0 text-3xl md:text-4xl lg:text-5xl w-[460px] lg:w-[600px]">
-              <h3 className=" text-pretty text-left tracking-tight font-bold inline-block">
+              <h3
+                className={` text-pretty text-left tracking-tight font-bold inline-block ${manrope.className}`}
+              >
                 Simplify access management
                 <span className="text-primary-450"> with WireGuard.</span>
               </h3>
@@ -25,7 +27,7 @@ export default function FeatureCards() {
           </div>
           <div className="">
             <p
-              className={`text-md mb-6 text-left text-pretty text-neutral-600 w-[400px] font-medium ${manrope.className}`}
+              className={`text-lg mb-6 text-left text-pretty text-neutral-800 w-[400px] `}
             >
               Seamlessly manage thousands of lightweight tunnels to whatever
               resources you need, whenever.

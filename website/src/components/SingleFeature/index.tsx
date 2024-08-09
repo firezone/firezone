@@ -28,6 +28,9 @@ export default function SingleFeature({
       {children}
       <div className="flex flex-col w-full h-full justify-between lg:w-[480px] xl:w-[580px]">
         <div className="mb-4 text-3xl md:text-4xl lg:text-5xl ">
+          <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2">
+            Stay Connected
+          </h6>
           <h3 className=" text-pretty text-left tracking-tight font-bold inline-block">
             {title}
             <span className="text-primary-450"> {boldedTitle}</span>

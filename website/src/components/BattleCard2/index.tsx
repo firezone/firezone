@@ -9,12 +9,14 @@ export default function BattleCard2() {
       <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide ">
         Features
       </h6>
-      <h3 className=" text-3xl md:text-4xl lg:text-5xl tracking-tight font-bold inline-block text-center my-2">
+      <h3
+        className={` text-3xl md:text-4xl lg:text-5xl tracking-tight font-bold inline-block text-center my-2 ${manrope.className}`}
+      >
         Why choose
         <span className="text-primary-450"> Firezone?</span>
       </h3>
       <p
-        className={`text-md text-center text-pretty text-slate-700 mb-16 ${manrope.className}`}
+        className={`text-lg text-center text-pretty text-neutral-800 mt-2 mb-16 `}
       >
         We're building the best Zero Trust Access product for a fraction of the
         cost of our competitors.

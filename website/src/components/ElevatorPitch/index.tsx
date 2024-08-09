@@ -1,12 +1,12 @@
 "use client";
 
 import { ReactNode, useState } from "react";
-import { manrope } from "@/lib/fonts";
 import {
   HiMiniShieldCheck,
   HiMiniPresentationChartLine,
 } from "react-icons/hi2";
 import { HiLightningBolt, HiGlobe } from "react-icons/hi";
+import { manrope } from "@/lib/fonts";
 
 export default function ElevatorPitch() {
   const [selectedOption, setSelectedOption] = useState(5);
@@ -74,15 +74,15 @@ export default function ElevatorPitch() {
             Stay Connected
           </h6>
           <div className="mb-2 text-3xl md:text-4xl lg:text-5xl ">
-            <h3 className=" text-pretty text-left tracking-tight font-bold inline-block">
+            <h3
+              className={` text-pretty text-left tracking-tight font-bold inline-block ${manrope.className}`}
+            >
               Supercharge your workforce
               <span className="text-primary-450"> in minutes.</span>
             </h3>
           </div>
           <div className="max-w-screen-md">
-            <p
-              className={`text-md text-left text-pretty text-neutral-600 font-medium ${manrope.className}`}
-            >
+            <p className={`text-lg text-left text-pretty text-neutral-800 `}>
               Protect your workforce without the tedious configuration.
             </p>
           </div>

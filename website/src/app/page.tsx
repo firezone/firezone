@@ -96,7 +96,7 @@ export default function Page() {
           </div>
         </div>
         <div className="pt-16 pb-8 max-w-screen-xl mx-auto">
-          <div className="text-center text-sm mb-6 font-base text-neutral-600">
+          <div className="text-center text-sm mb-6 font-base text-slate-700">
             Backed by{" "}
             <Image
               src="/images/yc-logo-gray.svg"
@@ -122,7 +122,7 @@ export default function Page() {
         <section className="relative py-24 bg-white">
           <FeatureCards />
         </section>
-        <section className="relative py-24 bg-white">
+        {/* <section className="relative py-24 bg-white">
           <SingleFeature
             title="Achieve compliance"
             boldedTitle=" without the headache."
@@ -140,28 +140,32 @@ export default function Page() {
               />
             </div>
           </SingleFeature>
-        </section>
+        </section> */}
       </section>
 
       {/* Feature section 2: Achieve compliance in minutes, not weeks. */}
       <section className="bg-white py-20 md:py-16">
         <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
-          <h3 className=" tracking-tight font-bold inline-block">
+          <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2 place-content-center">
+            Security
+          </h6>
+          <h3
+            className={` tracking-tight font-bold inline-block ${manrope.className}`}
+          >
             Achieve compliance{" "}
             <span className="text-primary-450">without </span>
             the headache.
           </h3>
         </div>
 
-        <div className="mx-auto px-4 max-w-screen-md">
-          <p className="text-md md:text-xl text-center tracking-tight text-pretty">
-            Connections are always end-to-end encrypted with keys that rotate
-            daily, and are directly established between your Users and Gateways,
-            so we can never see your data. Firezone's advanced Policy Engine
-            logs who accessed what and when and can be configured to allow
-            access only from certain countries, IPs, and timeframes, so you can
-            easily demonstrate compliance with internal and external security
-            audits.
+        <div className="mx-auto px-4 max-w-screen-md ">
+          <p className={`text-lg text-center text-pretty text-neutral-800`}>
+            Connections are directly established and end-to-end encrypted with
+            keys that rotate daily, so we can never see your data. Firezone's
+            advanced Policy Engine logs who accessed what and when and can be
+            configured to allow access only from certain countries, IPs, and
+            timeframes, so you can easily demonstrate compliance with internal
+            and external security audits.
           </p>
         </div>
 
@@ -182,7 +186,12 @@ export default function Page() {
 
       {/* Feature section 3: Add 2FA to WireGuard. */}
       <section className="bg-neutral-50 py-20 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
+        <div
+          className={`sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center ${manrope.className}`}
+        >
+          <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2 place-content-center">
+            Authentication
+          </h6>
           <h3 className=" tracking-tight font-bold inline-block">
             Add <span className="text-primary-450">two-factor </span>
             auth to WireGuard.
@@ -190,7 +199,7 @@ export default function Page() {
         </div>
 
         <div className="mx-auto px-4 max-w-screen-md">
-          <p className="text-md md:text-xl text-center tracking-tight text-pretty">
+          <p className={`text-lg text-center  text-pretty text-neutral-800`}>
             Looking for 2FA for WireGuard? Look no further. Firezone integrates
             with any OIDC-compatible identity provider to consistently enforce
             multi-factor authentication across your workforce.
@@ -223,13 +232,20 @@ export default function Page() {
       {/* Feature section 4: Say goodbye to bandwidth problems. */}
       <section className="bg-neutral-900 text-neutral-50 py-20 md:py-16">
         <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
-          <h3 className="tracking-tight font-bold inline-block">
+          <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2 place-content-center">
+            Lighweight
+          </h6>
+          <h3
+            className={`tracking-tight font-bold inline-block ${manrope.className}`}
+          >
             <Strike>Bandwidth problems.</Strike>
           </h3>
         </div>
 
         <div className="mx-auto mt-8 px-4 max-w-screen-md">
-          <p className="text-md md:text-xl text-center tracking-tight text-pretty">
+          <p
+            className={`text-lg text-neutral-300 text-center text-pretty -mt-3`}
+          >
             Eliminate throughput bottlenecks that plague other VPNs. Firezone's
             load-balancing architecture scales horizontally to handle an
             unlimited number of connections to even the most bandwidth-intensive
@@ -255,15 +271,20 @@ export default function Page() {
 
       {/* Feature section 5: No more open firewall ports. */}
       <section className="bg-white py-20 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
+        <div
+          className={`sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center ${manrope.className}`}
+        >
+          <h6 className="uppercase text-sm font-semibold text-primary-450 place-content-center tracking-wide mb-2">
+            setup
+          </h6>
           <h3 className="tracking-tight font-bold inline-block">
             Say <span className="text-primary-450">goodbye</span> to firewall
             configuration.
           </h3>
         </div>
 
-        <div className="mx-auto px-4 max-w-screen-md">
-          <p className="text-md md:text-xl text-center tracking-tight text-pretty">
+        <div className="mx-auto px-4 max-w-screen-md -mt-3">
+          <p className={`text-lg text-center text-pretty text-neutral-800 `}>
             Firezone securely punches through firewalls with ease, so keep those
             ports closed. Connections pick the shortest path and your attack
             surface is minimized, keeping your most sensitive resources
@@ -289,7 +310,12 @@ export default function Page() {
       {/* Feature section 6: Runs everywhere your business does. */}
       <section className="bg-neutral-50 py-20 md:py-16">
         <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
-          <h3 className="tracking-tight font-bold inline-block">
+          <h6 className="uppercase text-sm font-semibold text-primary-450 place-content-center tracking-wide mb-2">
+            Firezone everywhere
+          </h6>
+          <h3
+            className={`tracking-tight font-bold inline-block ${manrope.className}`}
+          >
             Runs <span className="text-primary-450">everywhere </span>
             your business does.
           </h3>
@@ -342,7 +368,7 @@ export default function Page() {
               </div>
             </div>
             <div className="mt-auto">
-              <p className="text-md md:text-xl tracking-tight md:text-justify">
+              <p className="text-lg text-neutral-800">
                 Clients are available for every major platform, require no
                 configuration, and stay connected even when switching WiFi
                 networks.
@@ -402,10 +428,10 @@ export default function Page() {
               </pre>
             </div>
             <div className="mt-auto">
-              <p className="text-md md:text-xl tracking-tight md:text-justify">
+              <p className="text-lg text-neutral-800">
                 Gateways are lightweight Linux binaries you deploy anywhere you
-                need access. Just configure a token with your preferred
-                orchestration tool and you're done.
+                need access. Just configure a token with your preferred tool and
+                you're done.
               </p>
               <p className="mt-4">
                 <ActionLink
@@ -424,14 +450,19 @@ export default function Page() {
       {/* Feature section 7: Open source for transparency and trust. */}
       <section className="bg-white py-20 md:py-16">
         <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
-          <h3 className="tracking-tight font-bold inline-block">
+          <h6 className="uppercase text-sm font-semibold place-content-center text-primary-450 tracking-wide mb-2">
+            Open source
+          </h6>
+          <h3
+            className={`tracking-tight font-bold inline-block ${manrope.className}`}
+          >
             <span className="text-primary-450">Open source</span> for
             transparency and trust.
           </h3>
         </div>
 
         <div className="mx-auto px-4 max-w-screen-md">
-          <p className="text-md md:text-xl text-center tracking-tight text-pretty">
+          <p className="text-lg text-center -mt-3 text-neutral-800 text-pretty">
             How can you trust a zero-trust solution if you can't see its source?
             We build Firezone in the open so anyone can make sure it does
             exactly what we claim it does, and nothing more.
@@ -468,7 +499,7 @@ export default function Page() {
       {/* Use cases */}
       <section className="border-t border-neutral-200 py-20 md:py-16 bg-neutral-100">
         <div className="mx-auto max-w-screen-lg">
-          <div className="px-4 flex flex-wrap">
+          <div className={`px-4 flex flex-wrap ${manrope.className}`}>
             <h3 className="mb-2 text-2xl md:text-4xl tracking-tight font-bold mr-1">
               Yes, you can use Firezone to{" "}
             </h3>
