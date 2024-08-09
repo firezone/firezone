@@ -16,14 +16,14 @@
 current-apple-version = 1.1.3
 current-android-version = 1.1.4
 current-gateway-version = 1.1.4
-current-gui-version = 1.1.10
+current-gui-version = 1.1.11
 current-headless-version = 1.1.5
 
 # Tracks the next version to release for each platform
 next-apple-version = 1.1.4
 next-android-version = 1.1.5
 next-gateway-version = 1.1.5
-next-gui-version = 1.1.11
+next-gui-version = 1.1.12
 next-headless-version = 1.1.6
 
 # macOS uses a slightly different sed syntax
