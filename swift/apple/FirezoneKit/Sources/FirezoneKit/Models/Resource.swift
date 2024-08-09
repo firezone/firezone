@@ -16,7 +16,7 @@ public struct Resource: Decodable, Identifiable, Equatable {
   public var status: ResourceStatus
   public var sites: [Site]
   public var type: ResourceType
-  public var canDisable: Bool
+  public var canToggle: Bool
 
   public init(id: String, name: String, address: String, addressDescription: String?, status: ResourceStatus, sites: [Site], type: ResourceType, canToggle: Bool) {
     self.id = id
@@ -26,7 +26,7 @@ public struct Resource: Decodable, Identifiable, Equatable {
     self.status = status
     self.sites = sites
     self.type = type
-    self.canDisable = canToggle
+    self.canToggle = canToggle
   }
 }
 
