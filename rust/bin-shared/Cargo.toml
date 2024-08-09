@@ -56,6 +56,10 @@ features = [
   "Win32_System_Threading",
 ]
 
+[target.'cfg(windows)'.dev-dependencies]
+ip-packet = { workspace = true }
+tokio = { workspace = true, features = ["net", "time"] }
+
 [lints]
 workspace = true
 

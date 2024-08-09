@@ -1772,6 +1772,7 @@ dependencies = [
  "anyhow",
  "clap",
  "futures",
+ "ip-packet",
  "ip_network",
  "known-folders",
  "libc",
