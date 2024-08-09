@@ -21,12 +21,12 @@ where
     LogTracer::init().unwrap();
 }
 
-/// Constructs an oppinionated [`EnvFilter`] with some crates already silenced.
+/// Constructs an opinionated [`EnvFilter`] with some crates already silenced.
 pub fn filter(directives: &str) -> EnvFilter {
     try_filter(directives).unwrap()
 }
 
-/// Constructs an oppinionated [`EnvFilter`] with some crates already silenced.
+/// Constructs an opinionated [`EnvFilter`] with some crates already silenced.
 pub fn try_filter(directives: &str) -> Result<EnvFilter, ParseError> {
     /// A filter directive that silences noisy crates.
     ///
