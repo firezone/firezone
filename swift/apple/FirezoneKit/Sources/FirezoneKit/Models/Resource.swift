@@ -28,6 +28,16 @@ public struct Resource: Decodable, Identifiable, Equatable {
   }
 }
 
+public struct ViewResource: Equatable {
+  public let base: Resource
+  public let isFavorite: Bool
+
+  public init(base: Resource, isFavorite: Bool) {
+    self.base = base
+    self.isFavorite = isFavorite
+  }
+}
+
 public enum ResourceStatus: String, Decodable {
   case offline = "Offline"
   case online = "Online"
