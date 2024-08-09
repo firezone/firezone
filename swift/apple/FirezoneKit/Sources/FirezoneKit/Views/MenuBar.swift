@@ -59,15 +59,11 @@ public final class MenuBar: NSObject, ObservableObject {
         guard let self = self else { return }
 
         if status == .connected {
-          model.store.beginUpdatingResources { data in
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            if let newResources = try? decoder.decode([Resource].self, from: data) {
+          model.store.beginUpdatingResources { newResources in
               // Handle resource changes
               self.populateResourceMenu(newResources)
               self.handleTunnelStatusOrResourcesChanged(status: status, resources: newResources)
               self.resources = newResources
-            }
           }
         } else {
           model.store.endUpdatingResources()
@@ -433,6 +429,7 @@ public final class MenuBar: NSObject, ObservableObject {
     let siteSectionItem = NSMenuItem()
     let siteNameItem = NSMenuItem()
     let siteStatusItem = NSMenuItem()
+    let resourceToggle = NSMenuItem()
 
 
     // AddressDescription first -- will be most common action
@@ -484,6 +481,19 @@ public final class MenuBar: NSObject, ObservableObject {
     resourceAddressItem.target = self
     subMenu.addItem(resourceAddressItem)
 
+    // Resource toggle
+    if resource.canToggle {
+      subMenu.addItem(NSMenuItem.separator())
+      resourceToggle.action = #selector(resourceToggle(_:))
+      resourceToggle.title = "Enabled"
+      resourceToggle.toolTip = "Toggle resource"
+      resourceToggle.isEnabled = true
+      resourceToggle.target = self
+      resourceToggle.state = model.isResourceEnabled(resource.id) ? .on : .off
+      resourceToggle.representedObject = resource.id
+      subMenu.addItem(resourceToggle)
+    }
+
     // Site details
     if let site = resource.sites.first {
       subMenu.addItem(NSMenuItem.separator())
@@ -524,6 +534,13 @@ public final class MenuBar: NSObject, ObservableObject {
     if let value = (sender as? NSMenuItem)?.title {
       copyToClipboard(value)
     }
+  }
+
+  @objc private func resourceToggle(_ sender: NSMenuItem) {
+    sender.state = sender.state == .on ? .off : .on
+    let id = sender.representedObject as! String
+
+    self.model.store.toggleResource(resource: id, enabled: sender.state == .on)
   }
 
   @objc private func resourceURLTapped(_ sender: AnyObject?) {

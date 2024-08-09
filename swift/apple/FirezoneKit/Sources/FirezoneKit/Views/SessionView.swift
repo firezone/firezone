@@ -15,6 +15,7 @@ public final class SessionViewModel: ObservableObject {
   @Published private(set) var resources: [Resource]? = nil
   @Published private(set) var status: NEVPNStatus? = nil
 
+
   let store: Store
 
   private var cancellables: Set<AnyCancellable> = []
@@ -40,10 +41,8 @@ public final class SessionViewModel: ObservableObject {
         self.status = status
 
         if status == .connected {
-          store.beginUpdatingResources() { data in
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            self.resources = try? decoder.decode([Resource].self, from: data)
+          store.beginUpdatingResources() { resources in
+            self.resources = resources
           }
         } else {
           store.endUpdatingResources()
@@ -52,6 +51,10 @@ public final class SessionViewModel: ObservableObject {
       })
       .store(in: &cancellables)
 #endif
+  }
+
+  public func isResourceEnabled(_ resource: String) -> Bool {
+    store.isResourceEnabled(resource)
   }
 
 }
@@ -69,9 +72,26 @@ struct SessionView: View {
           Text("No Resources. Contact your admin to be granted access.")
         } else {
           List(resources) { resource in
-            NavigationLink(resource.name, destination: ResourceView(resource: resource))
-              .navigationTitle("All Resources")
+            HStack {
+              NavigationLink { ResourceView(resource: resource) }
+                label: {
+                  HStack {
+                    Text(resource.name)
+                    if resource.canToggle {
+                      Spacer()
+                      Toggle("Enabled", isOn: Binding<Bool>(
+                        get: { model.isResourceEnabled(resource.id) },
+                        set: { newValue in
+                          model.store.toggleResource(resource: resource.id, enabled: newValue)
+                        }
+                      )).labelsHidden()
+                    }
+                  }
+                }
+                .navigationTitle("All Resources")
+            }
           }
+
           .listStyle(GroupedListStyle())
         }
       } else {
