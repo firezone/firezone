@@ -275,10 +275,10 @@ export default function Page() {
 
         <div className="mx-auto mt-8 px-4 max-w-screen-md">
           <p className="text-md md:text-xl text-center tracking-tight text-pretty">
-            Eliminate throughput bottlenecks that plague other VPNs. Firezone's
+            Eliminate bandwidth bottlenecks that plague other VPNs. Firezone's
             load-balancing architecture scales horizontally to handle an
             unlimited number of connections to even the most bandwidth-intensive
-            services. Need more speed? Just add more Gateways.
+            services.
           </p>
         </div>
 
