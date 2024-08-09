@@ -8,6 +8,13 @@ export default function Apple() {
       href="https://apps.apple.com/us/app/firezone/id6443661826"
       title="macOS / iOS"
     >
+      {/* <Entry version="1.1.4" date={new Date("2024-08-09")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6181">
+            Improves reliability of DNS resolution of non-resources.
+          </ChangeItem>
+        </ul>
+      </Entry> */}
       <Entry version="1.1.3" date={new Date("2024-08-02")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">
