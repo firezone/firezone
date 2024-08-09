@@ -1931,6 +1931,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "firezone-logging"
+version = "0.1.0"
+dependencies = [
+ "tracing",
+ "tracing-log",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "firezone-relay"
 version = "0.1.0"
 dependencies = [
