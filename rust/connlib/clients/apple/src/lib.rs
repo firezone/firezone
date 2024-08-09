@@ -21,7 +21,6 @@ use std::{
     time::Duration,
 };
 use tokio::runtime::Runtime;
-use tracing_subscriber::EnvFilter;
 use tracing_subscriber::{prelude::*, util::TryInitError};
 use tun::Tun;
 
@@ -146,7 +145,10 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<firezone_logging::file::Handle, TryInitError> {
+fn init_logging(
+    log_dir: PathBuf,
+    log_filter: String,
+) -> Result<firezone_logging::file::Handle, TryInitError> {
     let (file_layer, handle) = firezone_logging::file::layer(&log_dir);
 
     tracing_subscriber::registry()
@@ -161,7 +163,7 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<firezone_logging
                 )),
         )
         .with(file_layer)
-        .with(EnvFilter::new(log_filter))
+        .with(firezone_logging::filter(&log_filter))
         .try_init()?;
 
     Ok(handle)

@@ -413,7 +413,7 @@ fn setup_logging(log_dir: Option<PathBuf>) -> Result<firezone_logging::file::Han
         .context("We should have permissions to create our log dir")?;
     let (layer, handle) = firezone_logging::file::layer(&log_dir);
     let directives = get_log_filter().context("Couldn't read log filter")?;
-    let filter = EnvFilter::new(&directives);
+    let filter = firezone_logging::try_filter(&directives)?;
     let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber).context("`set_global_default` should always work)")?;
     tracing::info!(

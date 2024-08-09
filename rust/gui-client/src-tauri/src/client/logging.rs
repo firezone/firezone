@@ -59,7 +59,7 @@ pub(crate) fn setup(directives: &str) -> Result<Handles> {
     std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
     let (layer, logger) = firezone_logging::file::layer(&log_path);
     let layer = layer.and_then(fmt::layer());
-    let (filter, reloader) = reload::Layer::new(EnvFilter::try_new(directives)?);
+    let (filter, reloader) = reload::Layer::new(firezone_logging::try_filter(directives)?);
     let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber)?;
     if let Err(error) = output_vt100::try_init() {

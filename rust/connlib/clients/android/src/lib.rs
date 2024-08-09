@@ -30,7 +30,6 @@ use std::{sync::OnceLock, time::Duration};
 use thiserror::Error;
 use tokio::runtime::Runtime;
 use tracing_subscriber::prelude::*;
-use tracing_subscriber::EnvFilter;
 
 mod make_writer;
 mod tun;
@@ -147,7 +146,7 @@ fn init_logging(log_dir: &Path, log_filter: String) -> firezone_logging::file::H
                 .with_level(false)
                 .with_writer(make_writer::MakeWriter::new("connlib")),
         )
-        .with(EnvFilter::new(log_filter))
+        .with(firezone_logging::filter(&log_filter))
         .try_init();
 
     handle
