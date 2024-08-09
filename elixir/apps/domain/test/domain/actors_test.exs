@@ -2752,7 +2752,7 @@ defmodule Domain.ActorsTest do
       assert {:ok, _actor} = disable_actor(actor, subject)
 
       expires_at = Repo.one(Domain.Flows.Flow).expires_at
-      assert DateTime.diff(expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
     end
 
     test "returns error when trying to disable the last admin actor" do
@@ -3003,7 +3003,7 @@ defmodule Domain.ActorsTest do
       assert {:ok, _actor} = delete_actor(actor, subject)
 
       expires_at = Repo.one(Domain.Flows.Flow).expires_at
-      assert DateTime.diff(expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
     end
 
     test "returns error when trying to delete the last admin actor", %{

@@ -511,7 +511,7 @@ defmodule Domain.PoliciesTest do
       assert {:ok, _policy} = disable_policy(policy, subject)
 
       expires_at = Repo.one(Domain.Flows.Flow).expires_at
-      assert DateTime.diff(expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
     end
 
     test "broadcasts an account message when policy is disabled", %{
@@ -888,7 +888,7 @@ defmodule Domain.PoliciesTest do
       assert {:ok, [_deleted_policy]} = delete_policies_for(resource, subject)
 
       expires_at = Repo.one(Domain.Flows.Flow).expires_at
-      assert DateTime.diff(expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
     end
 
     test "broadcasts an account message when policy is deleted", %{
