@@ -770,8 +770,8 @@ impl Controller {
             .get_window(id)
             .context("Couldn't get handle to `{id}` window")?;
 
-        // Needed to bring shown windows to the front on Linux
-        // `request_user_attention` and `set_focus` don't work
+        // Needed to bring shown windows to the front
+        // `request_user_attention` and `set_focus` don't work, at least on Linux
         win.hide()?;
         // Needed to show windows that are completely hidden
         win.show()?;
