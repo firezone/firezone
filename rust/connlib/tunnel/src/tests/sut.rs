@@ -180,7 +180,8 @@ impl StateMachineTest for TunnelTest {
                 identifier,
                 ..
             } => {
-                let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
+                let packet =
+                    ip_packet::make::icmp_request_packet(src, dst, seq, identifier).unwrap();
 
                 let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
 
@@ -207,7 +208,8 @@ impl StateMachineTest for TunnelTest {
                     });
                 let dst = *resolved_ip.select(available_ips);
 
-                let packet = ip_packet::make::icmp_request_packet(src, dst, seq, identifier);
+                let packet =
+                    ip_packet::make::icmp_request_packet(src, dst, seq, identifier).unwrap();
 
                 let transmit = state
                     .client
