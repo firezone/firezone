@@ -1771,7 +1771,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "connlib-shared",
  "futures",
  "ip-packet",
  "ip_network",

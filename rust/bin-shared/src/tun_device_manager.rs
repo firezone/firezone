@@ -34,7 +34,7 @@ mod tests {
     }
 
     fn create_tun() {
-        let mut tun_device_manager = TunDeviceManager::new().unwrap();
+        let mut tun_device_manager = TunDeviceManager::new(1280).unwrap();
         let _tun = tun_device_manager.make_tun().unwrap();
     }
 

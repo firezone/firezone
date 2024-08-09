@@ -230,6 +230,7 @@ pub(crate) fn notify_service_controller() -> Result<()> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use connlib_shared::DEFAULT_MTU;
     use firezone_bin_shared::TunDeviceManager;
     use ip_network::Ipv4Network;
     use socket_factory::DatagramOut;
@@ -254,7 +255,7 @@ mod test {
         let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
         let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
 
-        let mut device_manager = TunDeviceManager::new().unwrap();
+        let mut device_manager = TunDeviceManager::new(DEFAULT_MTU).unwrap();
         let _tun = device_manager.make_tun().unwrap();
         device_manager.set_ips(ipv4, ipv6).await.unwrap();
 

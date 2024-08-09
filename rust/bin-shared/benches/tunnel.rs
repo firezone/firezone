@@ -49,7 +49,7 @@ mod platform {
 
         let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
         let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
-        let mut device_manager = TunDeviceManager::new()?;
+        let mut device_manager = TunDeviceManager::new(MTU)?;
         let mut tun = device_manager.make_tun()?;
 
         device_manager.set_ips(ipv4, ipv6).await?;
