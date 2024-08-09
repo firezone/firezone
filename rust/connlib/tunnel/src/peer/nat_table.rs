@@ -113,7 +113,6 @@ mod tests {
     use super::*;
     use ip_packet::{proptest::*, MutableIpPacket};
     use proptest::prelude::*;
-    use tracing_subscriber::util::SubscriberInitExt as _;
 
     #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
     fn translates_back_and_forth_packet(
@@ -123,10 +122,8 @@ mod tests {
     ) {
         proptest::prop_assume!(packet.destination().is_ipv4() == outside_dst.is_ipv4()); // Required for our test to simulate a response.
 
-        let _set_default = tracing_subscriber::fmt()
-            .with_env_filter("trace")
-            .with_test_writer()
-            .set_default();
+        let _guard = firezone_logging::test("trace");
+
         let sent_at = Instant::now();
         let mut table = NatTable::default();
         let response_delay = Duration::from_secs(response_delay);
@@ -175,10 +172,8 @@ mod tests {
                 != packet2.as_immutable().source_protocol().unwrap()
         );
 
-        let _set_default = tracing_subscriber::fmt()
-            .with_env_filter("trace")
-            .with_test_writer()
-            .set_default();
+        let _guard = firezone_logging::test("trace");
+
         let mut table = NatTable::default();
 
         let mut packets = [(packet1, outside_dst1), (packet2, outside_dst2)];

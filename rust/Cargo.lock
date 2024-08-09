@@ -1771,6 +1771,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "firezone-logging",
  "futures",
  "git-version",
  "hex-literal",
@@ -1786,8 +1787,6 @@ dependencies = [
  "socket-factory",
  "tokio",
  "tracing",
- "tracing-log",
- "tracing-subscriber",
  "tun",
  "uuid",
  "windows 0.57.0",
@@ -1813,6 +1812,7 @@ dependencies = [
  "domain",
  "either",
  "firezone-bin-shared",
+ "firezone-logging",
  "firezone-tunnel",
  "futures",
  "futures-bounded",
@@ -1897,6 +1897,7 @@ dependencies = [
  "connlib-shared",
  "dirs",
  "firezone-bin-shared",
+ "firezone-logging",
  "futures",
  "humantime",
  "ip_network",
@@ -1990,6 +1991,7 @@ dependencies = [
  "connlib-shared",
  "derivative",
  "domain",
+ "firezone-logging",
  "firezone-relay",
  "futures",
  "futures-util",
@@ -5510,6 +5512,7 @@ dependencies = [
  "boringtun",
  "bytecodec",
  "bytes",
+ "firezone-logging",
  "hex",
  "hex-display",
  "ip-packet",
@@ -5520,7 +5523,6 @@ dependencies = [
  "stun_codec",
  "thiserror",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -5529,6 +5531,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "boringtun",
+ "firezone-logging",
  "futures",
  "hex",
  "ip-packet",
@@ -5544,7 +5547,6 @@ dependencies = [
  "system-info",
  "tokio",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

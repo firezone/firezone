@@ -24,15 +24,11 @@ mod tests {
         net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
         time::Duration,
     };
-    use tracing_subscriber::EnvFilter;
 
     #[tokio::test]
     #[ignore = "Needs admin / sudo and Internet"]
     async fn tunnel() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(EnvFilter::from_default_env())
-            .with_test_writer()
-            .try_init();
+        let _guard = firezone_logging::test("debug");
 
         no_packet_loops().await;
         tunnel_drop();

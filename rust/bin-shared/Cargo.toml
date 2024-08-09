@@ -14,13 +14,12 @@ ip_network = { version = "0.4", default-features = false, features = ["serde"] }
 socket-factory = { workspace = true }
 tokio = { workspace = true, features = ["rt", "sync"] }
 tracing = { workspace = true }
-tracing-log = "0.2"
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tun = { workspace = true }
 
 [dev-dependencies]
 hex-literal = "0.4.1"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+firezone-logging = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
