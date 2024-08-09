@@ -1,6 +1,6 @@
 use crate::peer::ClientOnGateway;
 use crate::peer_store::PeerStore;
-use crate::utils::earliest;
+use crate::utils::{earliest, Candidates};
 use crate::{GatewayEvent, GatewayTunnel};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
@@ -347,8 +347,8 @@ impl GatewayState {
             Some(_) => {}
         }
 
-        let mut added_ice_candidates = BTreeMap::<ClientId, BTreeSet<String>>::default();
-        let mut removed_ice_candidates = BTreeMap::<ClientId, BTreeSet<String>>::default();
+        let mut added_ice_candidates = BTreeMap::<ClientId, Candidates>::default();
+        let mut removed_ice_candidates = BTreeMap::<ClientId, Candidates>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -362,7 +362,7 @@ impl GatewayState {
                     added_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .insert(candidate);
+                        .push(candidate);
                 }
                 snownet::Event::InvalidateIceCandidate {
                     connection,
@@ -371,7 +371,7 @@ impl GatewayState {
                     removed_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .insert(candidate);
+                        .push(candidate);
                 }
                 snownet::Event::ConnectionEstablished(_) => {}
             }
@@ -381,7 +381,7 @@ impl GatewayState {
             self.buffered_events
                 .push_back(GatewayEvent::AddedIceCandidates {
                     conn_id,
-                    candidates,
+                    candidates: candidates.serialize(),
                 })
         }
 
@@ -389,7 +389,7 @@ impl GatewayState {
             self.buffered_events
                 .push_back(GatewayEvent::RemovedIceCandidates {
                     conn_id,
-                    candidates,
+                    candidates: candidates.serialize(),
                 })
         }
     }
