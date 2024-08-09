@@ -15,6 +15,9 @@ export default function Android() {
           <ChangeItem pull="6107">
             Adds the ability to mark Resources as favorites.
           </ChangeItem>
+          <ChangeItem pull="6181">
+            Improves reliability of DNS resolution of non-resources.
+          </ChangeItem>
         </ul>
       </Entry>
 	  */}

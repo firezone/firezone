@@ -35,6 +35,9 @@ export default function GUI({ title }: { title: string }) {
             Supports using `etc-resolv-conf` DNS control method, or disabling
             DNS control
           </ChangeItem>
+          <ChangeItem pull="6181">
+            Improves reliability of DNS resolution of non-resources.
+          </ChangeItem>
           <ChangeItem enable={title === "Windows"} pull="6163">
             Supports disabling DNS control
           </ChangeItem>
