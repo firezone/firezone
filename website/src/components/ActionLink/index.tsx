@@ -23,7 +23,7 @@ export default function ActionLink({
       className={`${className} group inline-flex justify-center
                  items-center py-2 font-semibold border-b-[2px] ${
                    "text-" + color
-                 } ${"border-" + color}
+                 } ${`border-` + color}
                  ${
                    transitionColor === "white" &&
                    "hover:text-neutral-100 hover:border-neutral-100"

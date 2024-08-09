@@ -76,7 +76,7 @@ export default function BattleCard2() {
             <li className="py-3 h-20 ">
               <button
                 type="button"
-                className="bg-accent-500 text-nowrap rounded-lg group lg:text-lg text-md inline-flex justify-center items-center lg:py-3 py-2 px-5 font-semibold text-center text-white hover:ring-1 hover:ring-accent-500 duration-50 transform transition"
+                className="bg-accent-450 text-nowrap rounded-lg group lg:text-lg text-md inline-flex justify-center items-center lg:py-3 py-2 px-5 font-semibold text-center text-white hover:ring-1 hover:ring-accent-500 duration-50 transform transition"
               >
                 <Link href="/contact/sales">Book a demo</Link>
                 <HiArrowLongRight className="group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-7 h-7" />
