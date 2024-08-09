@@ -185,7 +185,8 @@ fn setup_tracing(args: &Args) -> Result<()> {
 
     let dispatch: Dispatch = match args.otlp_grpc_endpoint.clone() {
         None => tracing_subscriber::registry()
-            .with(log_layer(args).with_filter(env_filter()))
+            .with(log_layer(args))
+            .with(env_filter())
             .into(),
         Some(endpoint) => {
             let grpc_endpoint = format!("http://{endpoint}");
@@ -223,12 +224,9 @@ fn setup_tracing(args: &Args) -> Result<()> {
             tracing::trace!(target: "relay", "Successfully initialized metric provider on tokio runtime");
 
             tracing_subscriber::registry()
-                .with(log_layer(args).with_filter(env_filter()))
-                .with(
-                    tracing_opentelemetry::layer()
-                        .with_tracer(tracer_provider.tracer("relay"))
-                        .with_filter(env_filter()),
-                )
+                .with(log_layer(args))
+                .with(tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer("relay")))
+                .with(env_filter())
                 .into()
         }
     };

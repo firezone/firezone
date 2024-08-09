@@ -17,15 +17,11 @@ pub use platform::TunDeviceManager;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 mod tests {
     use super::*;
-    use tracing_subscriber::EnvFilter;
 
     #[tokio::test]
     #[ignore = "Needs admin / sudo"]
     async fn tunnel() {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(EnvFilter::from_default_env())
-            .with_test_writer()
-            .try_init();
+        let _guard = firezone_logging::test("debug");
 
         // Run these tests in series since they would fight over the tunnel interface
         // if they ran concurrently

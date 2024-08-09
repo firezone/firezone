@@ -7,11 +7,9 @@ use crate::{
 use anyhow::{anyhow, Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
+use connlib_client_shared::{keypair, ConnectArgs, LoginUrl, Session};
 use connlib_shared::get_user_agent;
-use firezone_bin_shared::{
-    new_dns_notifier, new_network_notifier, setup_global_subscriber, TunDeviceManager,
-};
+use firezone_bin_shared::{new_dns_notifier, new_network_notifier, TunDeviceManager};
 use futures::{FutureExt as _, StreamExt as _};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
@@ -119,9 +117,9 @@ pub fn run_only_headless_client() -> Result<()> {
         .common
         .log_dir
         .as_deref()
-        .map(file_logger::layer)
+        .map(firezone_logging::file::layer)
         .unzip();
-    setup_global_subscriber(layer);
+    firezone_logging::setup_global_subscriber(layer);
 
     tracing::info!(
         arch = std::env::consts::ARCH,

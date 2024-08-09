@@ -6,7 +6,7 @@
 use crate::tun::Tun;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
-    callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
+    callbacks::ResourceDescription, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
     LoginUrlError, Session, V4RouteList, V6RouteList,
 };
 use connlib_shared::{get_user_agent, messages::ResourceId};
@@ -30,7 +30,6 @@ use std::{sync::OnceLock, time::Duration};
 use thiserror::Error;
 use tokio::runtime::Runtime;
 use tracing_subscriber::prelude::*;
-use tracing_subscriber::EnvFilter;
 
 mod make_writer;
 mod tun;
@@ -43,7 +42,7 @@ const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
-    handle: file_logger::Handle,
+    handle: firezone_logging::file::Handle,
 }
 
 impl Clone for CallbackHandler {
@@ -118,7 +117,7 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
+fn init_logging(log_dir: &Path, log_filter: String) -> firezone_logging::file::Handle {
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
     // reinitialize the guard. This is a problem because the guard remains tied to
@@ -127,27 +126,27 @@ fn init_logging(log_dir: &Path, log_filter: String) -> file_logger::Handle {
     //
     // So we use a static variable to track whether the guard has been initialized and avoid
     // re-initialized it if so.
-    static LOGGING_HANDLE: OnceLock<file_logger::Handle> = OnceLock::new();
+    static LOGGING_HANDLE: OnceLock<firezone_logging::file::Handle> = OnceLock::new();
     if let Some(handle) = LOGGING_HANDLE.get() {
         return handle.clone();
     }
 
-    let (file_layer, handle) = file_logger::layer(log_dir);
+    let (file_layer, handle) = firezone_logging::file::layer(log_dir);
 
     LOGGING_HANDLE
         .set(handle.clone())
         .expect("Logging guard should never be initialized twice");
 
     let _ = tracing_subscriber::registry()
-        .with(file_layer.with_filter(EnvFilter::new(log_filter.clone())))
+        .with(file_layer)
         .with(
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
                 .without_time()
                 .with_level(false)
-                .with_writer(make_writer::MakeWriter::new("connlib"))
-                .with_filter(EnvFilter::new(log_filter)),
+                .with_writer(make_writer::MakeWriter::new("connlib")),
         )
+        .with(firezone_logging::filter(&log_filter))
         .try_init();
 
     handle
