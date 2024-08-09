@@ -990,7 +990,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-android"
-version = "1.2.0"
+version = "1.1.5"
 dependencies = [
  "android_log-sys",
  "backoff",
@@ -1015,7 +1015,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.2.0"
+version = "1.1.4"
 dependencies = [
  "anyhow",
  "backoff",
@@ -1800,7 +1800,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.2.0"
+version = "1.1.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1836,7 +1836,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.2.0"
+version = "1.1.11"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1888,7 +1888,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.2.0"
+version = "1.1.6"
 dependencies = [
  "anyhow",
  "atomicwrites",
