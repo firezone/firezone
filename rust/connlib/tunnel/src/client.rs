@@ -686,11 +686,11 @@ impl ClientState {
         let daddr = destination.ip();
         let dport = destination.port();
 
-        Some(
-            ip_packet::make::udp_packet(saddr, daddr, sport, dport, packet.to_vec())
-                .expect("FIXME")
-                .into_immutable(),
-        )
+        let ip_packet = ip_packet::make::udp_packet(saddr, daddr, sport, dport, packet.to_vec())
+            .inspect_err(|_| tracing::warn!("Failed to find original dst for DNS response"))
+            .ok()?;
+
+        Some(ip_packet.into_immutable())
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
