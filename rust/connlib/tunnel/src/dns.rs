@@ -228,6 +228,7 @@ impl StubResolver {
                 datagram.get_source(),
                 response,
             )
+            .expect("src and dst come from the same packet")
             .into_immutable();
 
             return Some(ResolveStrategy::LocalResponse(packet));
@@ -271,6 +272,7 @@ impl StubResolver {
             datagram.get_source(),
             response,
         )
+        .expect("src and dst come from the same packet")
         .into_immutable();
 
         Some(ResolveStrategy::LocalResponse(packet))

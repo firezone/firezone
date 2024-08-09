@@ -652,7 +652,8 @@ mod tests {
             5401,
             80,
             vec![0; 100],
-        );
+        )
+        .unwrap();
 
         let udp_packet = ip_packet::make::udp_packet(
             source_v4_addr(),
@@ -660,7 +661,8 @@ mod tests {
             5401,
             80,
             vec![0; 100],
-        );
+        )
+        .unwrap();
 
         peer.expire_resources(now);
 
@@ -1041,7 +1043,8 @@ mod proptests {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, *dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, *dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
-            };
+            }
+            .unwrap();
             assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
     }
@@ -1073,7 +1076,8 @@ mod proptests {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
-            };
+            }
+            .unwrap();
             assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
     }
@@ -1114,7 +1118,8 @@ mod proptests {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
-            };
+            }
+            .unwrap();
             assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
 
@@ -1128,7 +1133,8 @@ mod proptests {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
-            };
+            }
+            .unwrap();
             assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
     }
@@ -1170,7 +1176,8 @@ mod proptests {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
-            };
+            }
+            .unwrap();
 
             assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
@@ -1200,7 +1207,8 @@ mod proptests {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
             Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
-        };
+        }
+        .unwrap();
 
         peer.add_resource(vec![resource_addr], resource_id, filters, None, None);
 
@@ -1240,13 +1248,15 @@ mod proptests {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
             Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
-        };
+        }
+        .unwrap();
 
         let packet_rejected = match protocol_removed {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
             Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
-        };
+        }
+        .unwrap();
 
         peer.add_resource(
             vec![supernet(resource_addr).unwrap_or(resource_addr)],
