@@ -6,7 +6,7 @@
 //! On Windows, we use NRPT by default. We can also explicitly not control DNS.
 
 use anyhow::Result;
-use firezone_bin_shared::DnsControlMethod;
+use firezone_bin_shared::platform::DnsControlMethod;
 use std::net::IpAddr;
 
 #[cfg(target_os = "linux")]
@@ -26,7 +26,7 @@ use platform::system_resolvers;
 /// Always call `deactivate` when Firezone starts.
 ///
 /// Only one of these should exist on the entire system at a time.
-pub(crate) struct DnsController {
+pub struct DnsController {
     pub dns_control_method: DnsControlMethod,
 }
 
@@ -39,7 +39,7 @@ impl Drop for DnsController {
 }
 
 impl DnsController {
-    pub(crate) fn system_resolvers(&self) -> Vec<IpAddr> {
+    pub fn system_resolvers(&self) -> Vec<IpAddr> {
         system_resolvers(self.dns_control_method).unwrap_or_default()
     }
 }

@@ -23,7 +23,6 @@ crash-handler = "0.6.2"
 firezone-bin-shared = { workspace = true }
 firezone-headless-client = { path = "../../headless-client" }
 futures = { version = "0.3", default-features = false }
-git-version = "0.3.9"
 hex = "0.4.3"
 minidumper = "0.8.2"
 native-dialog = "0.7.0"
