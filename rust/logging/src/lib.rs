@@ -1,3 +1,5 @@
+pub mod file;
+
 use tracing::subscriber::DefaultGuard;
 use tracing_log::LogTracer;
 use tracing_subscriber::{
