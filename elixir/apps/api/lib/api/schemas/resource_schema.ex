@@ -37,7 +37,24 @@ defmodule API.Schemas.Resource do
       description: "POST body for creating a Resource",
       type: :object,
       properties: %{
-        resource: %Schema{anyOf: [Resource.Schema]}
+        resource: %Schema{
+          anyOf: [
+            Resource.Schema
+          ],
+          properties: %{
+            connections: %Schema{
+              title: "Connections",
+              description: "Gateway Groups to connect the Resource to",
+              type: :array,
+              items: %Schema{
+                type: :object,
+                properties: %{
+                  gateway_group_id: %Schema{type: :string, description: "Gateway Group ID"}
+                }
+              }
+            }
+          }
+        }
       },
       required: [:resource],
       example: %{
@@ -46,7 +63,12 @@ defmodule API.Schemas.Resource do
           "name" => "Prod DB",
           "address" => "10.0.0.10",
           "description" => "Production Database",
-          "type" => "ip"
+          "type" => "ip",
+          "connections" => [
+            %{
+              "gateway_group_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
+            }
+          ]
         }
       }
     })
