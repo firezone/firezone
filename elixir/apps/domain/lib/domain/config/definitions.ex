@@ -48,7 +48,8 @@ defmodule Domain.Config.Definitions do
        ]},
       {"WebServer",
        [
-         :external_url,
+         :web_external_url,
+         :api_external_url,
          :phoenix_secure_cookies,
          :phoenix_listen_address,
          :phoenix_http_web_port,
@@ -149,11 +150,26 @@ defmodule Domain.Config.Definitions do
   ##############################################
 
   @doc """
-  The external URL the UI/API will be accessible at.
+  The external URL the UI will be accessible at.
 
   If this field is not set or set to `nil`, the server for `api` and `web` apps will not start.
   """
-  defconfig(:external_url, :string,
+  defconfig(:web_external_url, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Domain.Repo.Changeset.validate_uri(key, require_trailing_slash: true)
+      |> Domain.Repo.Changeset.normalize_url(key)
+    end
+  )
+
+  @doc """
+  The external URL the API will be accessible at.
+
+  If this field is not set or set to `nil`, the server for `api` and `web` apps will not start.
+  """
+
+  defconfig(:api_external_url, :string,
     default: nil,
     changeset: fn changeset, key ->
       changeset

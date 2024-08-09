@@ -167,7 +167,14 @@ defmodule Web.AuthController do
               # by looking at the cookies
               Domain.Tokens.encode_fragment!(%Domain.Tokens.Token{
                 type: :email,
-                secret_fragment: Domain.Crypto.random_token(27)
+                secret_nonce: Domain.Crypto.random_token(5, encoder: :user_friendly),
+                secret_fragment: Domain.Crypto.random_token(27, encoder: :hex32),
+                account_id: Ecto.UUID.generate(),
+                actor_id: Ecto.UUID.generate(),
+                id: Ecto.UUID.generate(),
+                expires_at: DateTime.utc_now(),
+                created_by_user_agent: context.user_agent,
+                created_by_remote_ip: context.remote_ip
               })
           end
         end,

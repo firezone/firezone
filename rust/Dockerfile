@@ -59,6 +59,9 @@ ENV REFRESHED_AT=2023-10-23 \
 
 WORKDIR /bin
 
+## curl is needed to run tests (`main` runs CI against `release` images) and `firezone-relay` needs `curl` in its entry script.
+RUN apk add --no-cache curl
+
 # Gateway specific runtime base image
 FROM runtime_base AS runtime_firezone-gateway
 ## iptables are needed only by gateway for masquerading
@@ -67,9 +70,6 @@ COPY ./docker-init-gateway.sh ./docker-init.sh
 
 # Relay specific runtime base image
 FROM runtime_base AS runtime_firezone-relay
-## curl is needed by the entrypoint script for the relay
-RUN set -xe \
-  && apk add --no-cache curl
 COPY ./docker-init-relay.sh ./docker-init.sh
 
 # Headless-client specific runtime base image
@@ -82,8 +82,6 @@ COPY ./docker-init.sh ./docker-init.sh
 
 # snownet-tests specific runtime base image
 FROM runtime_base AS runtime_snownet-tests
-RUN set -xe \
-  && apk add --no-cache curl
 COPY ./docker-init.sh ./docker-init.sh
 
 # Funnel package specific base image back into `runtime`
@@ -99,7 +97,7 @@ CMD $PACKAGE
 FROM runtime AS test
 
 RUN set -xe \
-  && apk add --no-cache curl iperf3 bind-tools iproute2 jq procps
+  && apk add --no-cache iperf3 bind-tools iproute2 jq procps
 
 # used for local development
 FROM test AS dev

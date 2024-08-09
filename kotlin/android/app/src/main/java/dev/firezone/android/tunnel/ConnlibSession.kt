@@ -15,6 +15,12 @@ object ConnlibSession {
 
     external fun disconnect(connlibSession: Long): Boolean
 
+    // `disabledResourceList` is a JSON array of Resource ID strings.
+    external fun setDisabledResources(
+        connlibSession: Long,
+        disabledResourceList: String,
+    ): Boolean
+
     external fun setDns(
         connlibSession: Long,
         dnsList: String,
