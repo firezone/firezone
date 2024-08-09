@@ -84,7 +84,8 @@ export default function ElevatorPitch() {
         <p
           className={`text-md text-left text-pretty text-slate-700 ${manrope.className}`}
         >
-          Protect your workforce without the tedious configuration.
+          Hassle-free, no-nonsense remote access that just works.
+
         </p>
       </div>
       <div className="lg:flex grid  grid-cols-1 sm:grid-cols-2 lg:flex-col mt-8 space-y-2">
