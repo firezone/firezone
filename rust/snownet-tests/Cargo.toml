@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 boringtun = { workspace = true }
+firezone-logging = { workspace = true }
 futures = "0.3"
 hex = "0.4"
 ip-packet = { workspace = true }
@@ -21,7 +22,6 @@ snownet = { workspace = true }
 system-info = { version = "0.1.2", features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
 tracing = "0.1"
-firezone-logging = { workspace = true }
 
 [lints]
 workspace = true
