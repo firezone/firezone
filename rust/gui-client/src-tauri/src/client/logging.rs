@@ -2,7 +2,6 @@
 
 use crate::client::gui::{ControllerRequest, CtlrTx, Managed};
 use anyhow::{bail, Context, Result};
-use connlib_client_shared::file_logger;
 use firezone_headless_client::known_dirs;
 use serde::Serialize;
 use std::{
@@ -20,7 +19,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, reload, EnvFilter, Layer, Re
 /// resulting in empty log files.
 #[must_use]
 pub(crate) struct Handles {
-    pub logger: file_logger::Handle,
+    pub logger: firezone_logging::file::Handle,
     pub reloader: Reloader,
 }
 
@@ -58,7 +57,7 @@ pub(crate) fn setup(directives: &str) -> Result<Handles> {
     let log_path = known_dirs::logs().context("Can't compute app log dir")?;
 
     std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
-    let (layer, logger) = file_logger::layer(&log_path);
+    let (layer, logger) = firezone_logging::file::layer(&log_path);
     let layer = layer.and_then(fmt::layer());
     let (filter, reloader) = reload::Layer::new(EnvFilter::try_new(directives)?);
     let subscriber = Registry::default().with(layer.with_filter(filter));

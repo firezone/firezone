@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::{Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
+use connlib_client_shared::{keypair, ConnectArgs, LoginUrl, Session};
 use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
@@ -403,7 +403,7 @@ impl<'a> Handler<'a> {
 ///
 /// Returns: A `Handle` that must be kept alive. Dropping it stops logging
 /// and flushes the log file.
-fn setup_logging(log_dir: Option<PathBuf>) -> Result<connlib_client_shared::file_logger::Handle> {
+fn setup_logging(log_dir: Option<PathBuf>) -> Result<firezone_logging::file::Handle> {
     // If `log_dir` is Some, use that. Else call `ipc_service_logs`
     let log_dir = log_dir.map_or_else(
         || known_dirs::ipc_service_logs().context("Should be able to compute IPC service logs dir"),
@@ -411,7 +411,7 @@ fn setup_logging(log_dir: Option<PathBuf>) -> Result<connlib_client_shared::file
     )?;
     std::fs::create_dir_all(&log_dir)
         .context("We should have permissions to create our log dir")?;
-    let (layer, handle) = file_logger::layer(&log_dir);
+    let (layer, handle) = firezone_logging::file::layer(&log_dir);
     let directives = get_log_filter().context("Couldn't read log filter")?;
     let filter = EnvFilter::new(&directives);
     let subscriber = Registry::default().with(layer.with_filter(filter));

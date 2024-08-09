@@ -18,8 +18,8 @@ tun = { workspace = true }
 
 [dev-dependencies]
 hex-literal = "0.4.1"
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 firezone-logging = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"

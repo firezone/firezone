@@ -7,8 +7,8 @@ mod tun;
 use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
-    callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
-    Session, V4RouteList, V6RouteList,
+    callbacks::ResourceDescription, keypair, Callbacks, ConnectArgs, Error, LoginUrl, Session,
+    V4RouteList, V6RouteList,
 };
 use connlib_shared::get_user_agent;
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -96,7 +96,7 @@ pub struct WrappedSession {
     runtime: Runtime,
 
     #[allow(dead_code)]
-    logger: file_logger::Handle,
+    logger: firezone_logging::file::Handle,
 }
 
 // SAFETY: `CallbackHandler.swift` promises to be thread-safe.
@@ -146,8 +146,8 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<file_logger::Handle, TryInitError> {
-    let (file_layer, handle) = file_logger::layer(&log_dir);
+fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<firezone_logging::file::Handle, TryInitError> {
+    let (file_layer, handle) = firezone_logging::file::layer(&log_dir);
 
     tracing_subscriber::registry()
         .with(
