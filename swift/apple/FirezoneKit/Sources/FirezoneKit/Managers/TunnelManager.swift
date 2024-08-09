@@ -20,7 +20,7 @@ public enum TunnelManagerKeys {
   static let authBaseURL = "authBaseURL"
   static let apiURL = "apiURL"
   public static let logFilter = "logFilter"
-  public static let disabledResoruces = "disabledResources"
+  public static let disabledResources = "disabledResources"
 }
 
 public enum TunnelMessage: Codable {
@@ -154,7 +154,7 @@ public class TunnelManager {
           // Found it
           let settings = Settings.fromProviderConfiguration(providerConfiguration)
           let actorName = providerConfiguration[TunnelManagerKeys.actorName]
-          if let disabledResourcesData = providerConfiguration[TunnelManagerKeys.disabledResoruces]?.data(using: .utf8) {
+          if let disabledResourcesData = providerConfiguration[TunnelManagerKeys.disabledResources]?.data(using: .utf8) {
             self.disabledResources = (try? JSONDecoder().decode(Set<String>.self, from: disabledResourcesData)) ?? Set()
 
           }
@@ -262,7 +262,7 @@ public class TunnelManager {
     try? session().sendProviderMessage(encoder.encode(TunnelMessage.setDisabledResources(disabledResources))) { _ in }
   }
 
-  func toggleResource(resource: String, enabled: Bool) {
+  func toggleResourceDisabled(resource: String, enabled: Bool) {
     if enabled {
       disabledResources.remove(resource)
     } else {

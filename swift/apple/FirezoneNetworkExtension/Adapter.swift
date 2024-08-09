@@ -62,8 +62,8 @@ class Adapter {
   /// Currently disabled resources
   private var disabledResources: Set<String> = []
 
-  /// Cache of resources that can be toggled
-  private var canBeToggled: Set<String> = []
+  /// Cache of resources that can be disabled
+  private var canBeDisabled: Set<String> = []
 
   /// Adapter state.
   private var state: AdapterState {
@@ -217,9 +217,9 @@ class Adapter {
     let decoder = JSONDecoder()
     decoder.keyDecodingStrategy = .convertFromSnakeCase
 
-    canBeToggled = Set(resources().filter({ $0.canToggle }).map({ $0.id }))
+    canBeDisabled = Set(resources().filter({ $0.canDisable }).map({ $0.id }))
 
-    let disablingResources = disabledResources.filter({ canBeToggled.contains($0) })
+    let disablingResources = disabledResources.filter({ canBeDisabled.contains($0) })
 
     let currentlyDisabled = try! JSONEncoder().encode(disablingResources)
     session.setDisabledResources(String(data: currentlyDisabled, encoding: .utf8)!)

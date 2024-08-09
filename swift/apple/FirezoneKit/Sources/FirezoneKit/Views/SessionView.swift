@@ -77,12 +77,12 @@ struct SessionView: View {
                 label: {
                   HStack {
                     Text(resource.name)
-                    if resource.canToggle {
+                    if resource.canDisable {
                       Spacer()
                       Toggle("Enabled", isOn: Binding<Bool>(
                         get: { model.isResourceEnabled(resource.id) },
                         set: { newValue in
-                          model.store.toggleResource(resource: resource.id, enabled: newValue)
+                          model.store.toggleResourceDisabled(resource: resource.id, enabled: newValue)
                         }
                       )).labelsHidden()
                     }

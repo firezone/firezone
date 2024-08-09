@@ -45,8 +45,8 @@ public final class Store: ObservableObject {
     initTunnelManager()
   }
 
-  public func isResourceEnabled(_ resource: String) -> Bool {
-    !tunnelManager.disabledResources.contains(resource)
+  public func isResourceEnabled(_ id: String) -> Bool {
+    !tunnelManager.disabledResources.contains(id)
   }
 
   private func initNotifications() {
@@ -171,8 +171,8 @@ public final class Store: ObservableObject {
     }
   }
 
-  func toggleResource(resource: String, enabled: Bool) {
-    tunnelManager.toggleResource(resource: resource, enabled: enabled)
+  func toggleResourceDisabled(resource: String, enabled: Bool) {
+    tunnelManager.toggleResourceDisabled(resource: resource, enabled: enabled)
     var newSettings = settings
     newSettings.disabledResources = tunnelManager.disabledResources
     Task {

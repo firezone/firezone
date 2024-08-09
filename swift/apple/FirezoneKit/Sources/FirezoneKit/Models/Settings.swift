@@ -38,7 +38,7 @@ struct Settings: Equatable {
           ?? Settings.defaultValue.apiURL,
         logFilter: providerConfiguration[TunnelManagerKeys.logFilter]
           ?? Settings.defaultValue.logFilter,
-        disabledResources: getDisabledResources(disabledResources: providerConfiguration[TunnelManagerKeys.disabledResoruces])
+        disabledResources: getDisabledResources(disabledResources: providerConfiguration[TunnelManagerKeys.disabledResources])
       )
     } else {
       return Settings.defaultValue
@@ -59,7 +59,7 @@ struct Settings: Equatable {
       TunnelManagerKeys.authBaseURL: authBaseURL,
       TunnelManagerKeys.apiURL: apiURL,
       TunnelManagerKeys.logFilter: logFilter,
-      TunnelManagerKeys.disabledResoruces: String(data: try! JSONEncoder().encode(disabledResources), encoding: .utf8) ?? "",
+      TunnelManagerKeys.disabledResources: String(data: try! JSONEncoder().encode(disabledResources), encoding: .utf8) ?? "",
     ]
   }
 

@@ -429,7 +429,7 @@ public final class MenuBar: NSObject, ObservableObject {
     let siteSectionItem = NSMenuItem()
     let siteNameItem = NSMenuItem()
     let siteStatusItem = NSMenuItem()
-    let resourceToggle = NSMenuItem()
+    let enableToggle = NSMenuItem()
 
 
     // AddressDescription first -- will be most common action
@@ -482,16 +482,16 @@ public final class MenuBar: NSObject, ObservableObject {
     subMenu.addItem(resourceAddressItem)
 
     // Resource toggle
-    if resource.canToggle {
+    if resource.canDisable {
       subMenu.addItem(NSMenuItem.separator())
-      resourceToggle.action = #selector(resourceToggle(_:))
-      resourceToggle.title = "Enabled"
-      resourceToggle.toolTip = "Toggle resource"
-      resourceToggle.isEnabled = true
-      resourceToggle.target = self
-      resourceToggle.state = model.isResourceEnabled(resource.id) ? .on : .off
-      resourceToggle.representedObject = resource.id
-      subMenu.addItem(resourceToggle)
+      enableToggle.action = #selector(resourceToggle(_:))
+      enableToggle.title = "Enabled"
+      enableToggle.toolTip = "Toggle resource"
+      enableToggle.isEnabled = true
+      enableToggle.target = self
+      enableToggle.state = model.isResourceEnabled(resource.id) ? .on : .off
+      enableToggle.representedObject = resource.id
+      subMenu.addItem(enableToggle)
     }
 
     // Site details
@@ -540,7 +540,7 @@ public final class MenuBar: NSObject, ObservableObject {
     sender.state = sender.state == .on ? .off : .on
     let id = sender.representedObject as! String
 
-    self.model.store.toggleResource(resource: id, enabled: sender.state == .on)
+    self.model.store.toggleResourceDisabled(resource: id, enabled: sender.state == .on)
   }
 
   @objc private func resourceURLTapped(_ sender: AnyObject?) {
