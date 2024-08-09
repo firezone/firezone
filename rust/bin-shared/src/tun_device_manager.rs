@@ -35,15 +35,16 @@ mod tests {
 
     fn create_tun() {
         let mut tun_device_manager = TunDeviceManager::new(1280).unwrap();
-        let _tun = tun_device_manager.make_tun().unwrap();
     }
 
     /// Checks for regressions in issue #4765, un-initializing Wintun
     /// Redundant but harmless on Linux.
     fn tunnel_drop() {
+        let mut tun_device_manager = TunDeviceManager::new(1280).unwrap();
+
         // Each cycle takes about half a second, so this will take a fair bit to run.
         for _ in 0..50 {
-            let _tun = platform::Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
+            let _tun = tun_device_manager.make_tun().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
         }
     }
 }
