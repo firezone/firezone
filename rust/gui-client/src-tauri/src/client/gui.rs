@@ -9,7 +9,6 @@ use crate::client::{
     Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
-use connlib_client_shared::callbacks::ResourceDescription;
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
 use firezone_headless_client::IpcServerMsg;
 use secrecy::{ExposeSecret, SecretString};
@@ -46,6 +45,7 @@ mod os;
 #[allow(clippy::unnecessary_wraps)]
 mod os;
 
+use connlib_shared::callbacks::ResourceDescription;
 pub(crate) use errors::{show_error_dialog, Error};
 pub(crate) use os::set_autostart;
 

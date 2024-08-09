@@ -6,10 +6,10 @@
 use crate::tun::Tun;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
-    callbacks::ResourceDescription, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
-    LoginUrlError, Session, V4RouteList, V6RouteList,
+    keypair, Callbacks, ConnectArgs, Error, LoginUrl, LoginUrlError, Session, V4RouteList,
+    V6RouteList,
 };
-use connlib_shared::{get_user_agent, messages::ResourceId};
+use connlib_shared::{callbacks::ResourceDescription, get_user_agent, messages::ResourceId};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},

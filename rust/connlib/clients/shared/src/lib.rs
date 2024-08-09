@@ -1,9 +1,8 @@
 //! Main connlib library for clients.
 pub use crate::serde_routelist::{V4RouteList, V6RouteList};
+pub use callbacks::Callbacks;
 pub use connlib_shared::messages::client::ResourceDescription;
-pub use connlib_shared::{
-    callbacks, keypair, Callbacks, Error, LoginUrl, LoginUrlError, StaticSecret,
-};
+pub use connlib_shared::{keypair, Error, LoginUrl, LoginUrlError, StaticSecret};
 pub use eventloop::Eventloop;
 
 use connlib_shared::messages::ResourceId;
@@ -19,6 +18,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::task::JoinHandle;
 use tun::Tun;
 
+mod callbacks;
 mod eventloop;
 mod messages;
 mod serde_routelist;
