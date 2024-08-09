@@ -82,7 +82,7 @@ public class TunnelManager {
 
   // Cache resources on this side of the IPC barrier so we can
   // return them to callers when they haven't changed.
-  private var resourcesListCache = Data()
+  private var resourcesListCache: [Resource] = []
 
   // Persists our tunnel settings
   private var manager: NETunnelProviderManager?
@@ -224,7 +224,6 @@ public class TunnelManager {
     // was disabled by the system for some reason.
     manager.isEnabled = true
 
-    Log.app.error("searchme: \(newProviderConfiguration["disabledResources"])")
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
   }
@@ -273,14 +272,16 @@ public class TunnelManager {
     updateDisabledResources()
   }
 
-  func fetchResources(callback: @escaping (Data) -> Void) {
+  func fetchResources(callback: @escaping ([Resource]) -> Void) {
     guard session().status == .connected else { return }
 
     do {
       try session().sendProviderMessage(encoder.encode(TunnelMessage.getResourceList(resourceListHash))) { data in
         if let data = data {
           self.resourceListHash = Data(SHA256.hash(data: data))
-          self.resourcesListCache = data
+          var decoder = JSONDecoder()
+          decoder.keyDecodingStrategy = .convertFromSnakeCase
+          self.resourcesListCache = (try? decoder.decode([Resource].self, from: data)) ?? []
         }
 
         callback(self.resourcesListCache)
@@ -322,7 +323,7 @@ public class TunnelManager {
           if session.status == .disconnected {
             // Reset resource list on disconnect
             resourceListHash = Data()
-            resourcesListCache = Data()
+            resourcesListCache = []
           }
 
           await statusChangeHandler?(session.status)

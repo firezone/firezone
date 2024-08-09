@@ -196,6 +196,13 @@ class Adapter {
     }
   }
 
+  func resources() -> [Resource] {
+    let decoder = JSONDecoder()
+    decoder.keyDecodingStrategy = .convertFromSnakeCase
+    guard let resourceList = resourceListJSON else { return [] }
+    return (try? decoder.decode([Resource].self, from: resourceList.data(using: .utf8)!)) ?? []
+  }
+
   public func setDisabledResources(newDisabledResources: Set<String>) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
@@ -210,9 +217,7 @@ class Adapter {
     let decoder = JSONDecoder()
     decoder.keyDecodingStrategy = .convertFromSnakeCase
 
-    guard let resourceList = resourceListJSON else { return }
-    guard let resources = try? decoder.decode([Resource].self, from: resourceList.data(using: .utf8)!) else { return }
-    canBeToggled = Set(resources.filter({ $0.canToggle }).map({ $0.id }))
+    canBeToggled = Set(resources().filter({ $0.canToggle }).map({ $0.id }))
 
     let disablingResources = disabledResources.filter({ canBeToggled.contains($0) })
 

@@ -59,15 +59,11 @@ public final class MenuBar: NSObject, ObservableObject {
         guard let self = self else { return }
 
         if status == .connected {
-          model.store.beginUpdatingResources { data in
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            if let newResources = try? decoder.decode([Resource].self, from: data) {
+          model.store.beginUpdatingResources { newResources in
               // Handle resource changes
               self.populateResourceMenu(newResources)
               self.handleTunnelStatusOrResourcesChanged(status: status, resources: newResources)
               self.resources = newResources
-            }
           }
         } else {
           model.store.endUpdatingResources()
@@ -493,7 +489,7 @@ public final class MenuBar: NSObject, ObservableObject {
       resourceToggle.toolTip = "Toggle resource"
       resourceToggle.isEnabled = true
       resourceToggle.target = self
-      resourceToggle.state = model.store.tunnelManager.disabledResources.contains(resource.id) ? .off : .on
+      resourceToggle.state = model.isResourceEnabled(resource.id) ? .off : .on
       resourceToggle.representedObject = resource.id
       subMenu.addItem(resourceToggle)
     }
@@ -543,6 +539,7 @@ public final class MenuBar: NSObject, ObservableObject {
   @objc private func resourceToggle(_ sender: NSMenuItem) {
     sender.state = sender.state == .on ? .off : .on
     let id = sender.representedObject as! String
+
     self.model.store.toggleResource(resource: id, enabled: sender.state == .on)
   }
 

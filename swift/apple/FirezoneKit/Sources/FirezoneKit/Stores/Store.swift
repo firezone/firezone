@@ -28,7 +28,7 @@ public final class Store: ObservableObject {
   // we could periodically update it if we need to.
   @Published private(set) var decision: UNAuthorizationStatus
 
-  public let tunnelManager: TunnelManager
+  private let tunnelManager: TunnelManager
   private var sessionNotification: SessionNotification
   private var cancellables: Set<AnyCancellable> = []
   private var resourcesTimer: Timer?
@@ -43,6 +43,10 @@ public final class Store: ObservableObject {
 
     initNotifications()
     initTunnelManager()
+  }
+
+  public func isResourceEnabled(_ resource: String) -> Bool {
+    !tunnelManager.disabledResources.contains(resource)
   }
 
   private func initNotifications() {
@@ -138,7 +142,7 @@ public final class Store: ObservableObject {
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
   // so we need to periodically ask the tunnel process for them.
-  func beginUpdatingResources(callback: @escaping (Data) -> Void) {
+  func beginUpdatingResources(callback: @escaping ([Resource]) -> Void) {
     Log.app.log("\(#function)")
 
     tunnelManager.fetchResources(callback: callback)
