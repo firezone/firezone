@@ -65,8 +65,9 @@ where
     L: Layer<Registry> + Send + Sync,
 {
     let subscriber = Registry::default()
-        .with(additional_layer.with_filter(EnvFilter::from_default_env()))
-        .with(fmt::layer().with_filter(EnvFilter::from_default_env()));
+        .with(additional_layer)
+        .with(fmt::layer())
+        .with(EnvFilter::from_default_env());
     tracing::subscriber::set_global_default(subscriber).expect("Could not set global default");
     LogTracer::init().unwrap();
 }
