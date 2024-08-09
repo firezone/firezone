@@ -14,13 +14,12 @@ ip-packet = { workspace = true }
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
 tracing = { workspace = true }
-tracing-log = "0.2"
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tun = { workspace = true }
 url = { version = "2.5.2", default-features = false }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+firezone-logging = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"

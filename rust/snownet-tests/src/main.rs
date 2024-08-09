@@ -16,18 +16,13 @@ use redis::{aio::MultiplexedConnection, AsyncCommands};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{Answer, ClientNode, Credentials, Node, Offer, RelaySocket, ServerNode};
 use tokio::{io::ReadBuf, net::UdpSocket};
-use tracing_subscriber::EnvFilter;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::builder()
-                .parse("info,boringtun=debug,str0m=debug,boringtun=debug,snownet=debug")?,
-        )
-        .init();
+    let _guard =
+        firezone_logging::test("info,boringtun=debug,str0m=debug,boringtun=debug,snownet=debug");
 
     let role = std::env::var("ROLE")
         .context("Missing ROLE env variable")?

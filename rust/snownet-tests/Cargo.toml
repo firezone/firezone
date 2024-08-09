@@ -21,7 +21,7 @@ snownet = { workspace = true }
 system-info = { version = "0.1.2", features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+firezone-logging = { workspace = true }
 
 [lints]
 workspace = true

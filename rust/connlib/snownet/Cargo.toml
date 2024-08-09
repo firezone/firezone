@@ -20,7 +20,7 @@ thiserror = "1"
 tracing = { workspace = true }
 
 [dev-dependencies]
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+firezone-logging = { workspace = true }
 
 [lints]
 workspace = true
