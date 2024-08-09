@@ -66,7 +66,7 @@ impl ResourceDescriptionCidr {
             name: self.name,
             address_description: self.address_description,
             sites: self.sites,
-            can_toggle: true,
+            can_toggle: false,
             status,
         }
     }
