@@ -39,8 +39,12 @@ defmodule API.Schemas.Resource do
       properties: %{
         resource: %Schema{
           anyOf: [
-            Resource.Schema,
-            %Schema{
+            Resource.Schema
+          ],
+          properties: %{
+            connections: %Schema{
+              title: "Connections",
+              description: "Gateway Groups to connect the Resource to",
               type: :array,
               items: %Schema{
                 type: :object,
@@ -49,7 +53,7 @@ defmodule API.Schemas.Resource do
                 }
               }
             }
-          ]
+          }
         }
       },
       required: [:resource],
