@@ -15,7 +15,9 @@ export default function GUI({ title }: { title: string }) {
       {/*
       <Entry version="1.2.0" date={new Date("Invalid date")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          TODO
+          <ChangeItem pull="6226">
+            Fixes a bug where clearing the log files would delete the current files, preventing logs from being written.
+          </ChangeItem>
         </ul>
       </Entry>
       */}
