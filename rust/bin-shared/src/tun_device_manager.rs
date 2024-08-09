@@ -34,16 +34,8 @@ mod tests {
             .with_test_writer()
             .try_init();
 
-        // Run these tests in series since they would fight over the tunnel interface
-        // if they ran concurrently
-        create_tun();
         no_packet_loops().await;
         tunnel_drop();
-    }
-
-    fn create_tun() {
-        let mut tun_device_manager = TunDeviceManager::new().unwrap();
-        let _tun = tun_device_manager.make_tun().unwrap();
     }
 
     // Starts up a WinTUN device, adds a "full-route" (`0.0.0.0/0`) and checks if we can still send packets to IPs outside of our tunnel.
