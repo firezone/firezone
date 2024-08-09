@@ -25,6 +25,9 @@ export default function Headless() {
             Mitigates a bug where the Client can panic if an internal channel
             fills up
           </ChangeItem>
+          <ChangeItem pull="6181">
+            Improves reliability of DNS resolution of non-resources.
+          </ChangeItem>
         </ul>
       </Entry>
       <Entry version="1.1.4" date={new Date("2024-08-02")}>
