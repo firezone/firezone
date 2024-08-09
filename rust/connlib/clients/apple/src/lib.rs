@@ -238,7 +238,6 @@ impl WrappedSession {
     }
 
     fn set_disabled_resources(&mut self, disabled_resources: String) {
-        tracing::error!("disabled resources: {disabled_resources}");
         self.inner
             .set_disabled_resources(serde_json::from_str(&disabled_resources).unwrap())
     }

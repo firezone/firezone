@@ -489,7 +489,7 @@ public final class MenuBar: NSObject, ObservableObject {
       resourceToggle.toolTip = "Toggle resource"
       resourceToggle.isEnabled = true
       resourceToggle.target = self
-      resourceToggle.state = model.isResourceEnabled(resource.id) ? .off : .on
+      resourceToggle.state = model.isResourceEnabled(resource.id) ? .on : .off
       resourceToggle.representedObject = resource.id
       subMenu.addItem(resourceToggle)
     }

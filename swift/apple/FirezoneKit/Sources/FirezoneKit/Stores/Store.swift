@@ -163,7 +163,6 @@ public final class Store: ObservableObject {
   func save(_ newSettings: Settings) async throws {
     Task {
       do {
-        Log.app.error("searchme: \(newSettings.disabledResources)")
         try await tunnelManager.saveSettings(newSettings)
         DispatchQueue.main.async { self.settings = newSettings }
       } catch {
