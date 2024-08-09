@@ -27,14 +27,7 @@ mod tests {
             .with_test_writer()
             .try_init();
 
-        // Run these tests in series since they would fight over the tunnel interface
-        // if they ran concurrently
-        create_tun();
         tunnel_drop();
-    }
-
-    fn create_tun() {
-        let mut tun_device_manager = TunDeviceManager::new(1280).unwrap();
     }
 
     /// Checks for regressions in issue #4765, un-initializing Wintun
