@@ -1771,7 +1771,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "connlib-shared",
  "futures",
  "git-version",
  "hex-literal",
@@ -1790,7 +1789,6 @@ dependencies = [
  "tracing-log",
  "tracing-subscriber",
  "tun",
- "url",
  "uuid",
  "windows 0.57.0",
  "windows-core 0.57.0",

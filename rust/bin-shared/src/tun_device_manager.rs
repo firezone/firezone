@@ -43,7 +43,7 @@ mod tests {
         let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
         let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
 
-        let mut device_manager = TunDeviceManager::new().unwrap();
+        let mut device_manager = TunDeviceManager::new(1280).unwrap();
         let _tun = device_manager.make_tun().unwrap();
         device_manager.set_ips(ipv4, ipv6).await.unwrap();
 
@@ -96,9 +96,11 @@ mod tests {
     /// Checks for regressions in issue #4765, un-initializing Wintun
     /// Redundant but harmless on Linux.
     fn tunnel_drop() {
+        let mut tun_device_manager = TunDeviceManager::new(1280).unwrap();
+
         // Each cycle takes about half a second, so this will take a fair bit to run.
         for _ in 0..50 {
-            let _tun = platform::Tun::new().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
+            let _tun = tun_device_manager.make_tun().unwrap(); // This will panic if we don't correctly clean-up the wintun interface.
         }
     }
 }
