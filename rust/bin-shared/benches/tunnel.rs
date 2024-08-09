@@ -91,6 +91,7 @@ mod platform {
                             original_udp.get_source(),
                             vec![RESP_CODE],
                         )
+                        .unwrap()
                     })
                     .packet();
                 tun.write4(res_buf)?;
