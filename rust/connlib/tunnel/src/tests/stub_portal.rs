@@ -4,9 +4,9 @@ use super::{
     sim_net::Host,
     strategies::{resolved_ips, subdomain_records},
 };
+use crate::proptest::*;
 use connlib_shared::{
     messages::{client, gateway, GatewayId, ResourceId},
-    proptest::{domain_label, domain_name},
     DomainName,
 };
 use ip_network::{Ipv4Network, Ipv6Network};

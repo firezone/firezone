@@ -7,9 +7,6 @@ pub mod callbacks;
 pub mod error;
 pub mod messages;
 
-#[cfg(feature = "proptest")]
-pub mod proptest;
-
 pub use boringtun::x25519::PublicKey;
 pub use boringtun::x25519::StaticSecret;
 pub use error::ConnlibError as Error;

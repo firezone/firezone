@@ -1444,7 +1444,8 @@ mod tests {
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
     use super::*;
-    use connlib_shared::{messages::client::ResourceDescriptionDns, proptest::*};
+    use crate::proptest::*;
+    use connlib_shared::messages::client::ResourceDescriptionDns;
     use prop::collection;
     use proptest::prelude::*;
 
@@ -1714,23 +1715,22 @@ mod proptests {
     }
 
     fn resource() -> impl Strategy<Value = ResourceDescription> {
-        connlib_shared::proptest::resource(site().prop_map(|s| vec![s]))
+        crate::proptest::resource(site().prop_map(|s| vec![s]))
     }
 
     fn cidr_resource() -> impl Strategy<Value = ResourceDescriptionCidr> {
-        connlib_shared::proptest::cidr_resource(any_ip_network(8), site().prop_map(|s| vec![s]))
+        crate::proptest::cidr_resource(any_ip_network(8), site().prop_map(|s| vec![s]))
     }
 
     fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {
-        connlib_shared::proptest::dns_resource(site().prop_map(|s| vec![s]))
+        crate::proptest::dns_resource(site().prop_map(|s| vec![s]))
     }
 
     // Generate resources sharing 1 site
     fn resources_sharing_n_sites(
         num_sites: usize,
     ) -> impl Strategy<Value = Vec<ResourceDescription>> {
-        collection::vec(site(), num_sites).prop_flat_map(|sites| {
-            collection::vec(connlib_shared::proptest::resource(Just(sites)), 1..=100)
-        })
+        collection::vec(site(), num_sites)
+            .prop_flat_map(|sites| collection::vec(crate::proptest::resource(Just(sites)), 1..=100))
     }
 }

@@ -31,11 +31,12 @@ mod gateway;
 mod io;
 mod peer;
 mod peer_store;
+#[cfg(all(test, feature = "proptest"))]
+mod proptest;
 mod sockets;
-mod utils;
-
 #[cfg(all(test, feature = "proptest"))]
 mod tests;
+mod utils;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const REALM: &str = "firezone";

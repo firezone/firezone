@@ -1007,7 +1007,8 @@ mod tests {
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
     use super::*;
-    use connlib_shared::{messages::gateway::PortRange, proptest::*};
+    use crate::proptest::*;
+    use connlib_shared::messages::gateway::PortRange;
     use ip_packet::make::{icmp_request_packet, tcp_packet, udp_packet};
     use proptest::{
         arbitrary::any,
