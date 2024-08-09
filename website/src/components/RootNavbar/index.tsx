@@ -69,7 +69,7 @@ const navbarThemeLight: CustomFlowbiteTheme["navbar"] = {
 
 const navbarThemeDark: CustomFlowbiteTheme["navbar"] = {
   root: {
-    base: "fixed top-0 left-0 right-0 z-50 text-neutral-200 items-center bg-neutral-900 px-2 py-2.5 sm:px-4 transition-shadow",
+    base: "fixed top-0 left-0 right-0 z-50 text-neutral-200 items-center bg-black px-2 py-2.5 sm:px-4 transition-shadow",
     rounded: {
       on: "rounded",
       off: "",
@@ -242,7 +242,9 @@ function applyTheme(
     ...theme,
     root: {
       ...theme?.root,
-      base: `${theme?.root?.base} ${scrollPosition > 0 ? "shadow" : "shadow-none"}`,
+      base: `${theme?.root?.base} ${
+        scrollPosition > 0 ? "shadow" : "shadow-none"
+      }`,
     },
   };
 }
