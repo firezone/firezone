@@ -15,7 +15,7 @@
 
 use super::DnsController;
 use anyhow::{Context as _, Result};
-use firezone_bin_shared::{platform::CREATE_NO_WINDOW, DnsControlMethod};
+use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW};
 use std::{net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
 
 // Unique magic number that we can use to delete our well-known NRPT rule.
@@ -27,7 +27,7 @@ impl DnsController {
     ///
     /// Must be `sync` so we can call it from `Drop`
     /// TODO: Replace this with manual registry twiddling one day if we feel safe.
-    pub(crate) fn deactivate(&mut self) -> Result<()> {
+    pub fn deactivate(&mut self) -> Result<()> {
         Command::new("powershell")
             .creation_flags(CREATE_NO_WINDOW)
             .args(["-Command", "Get-DnsClientNrptRule", "|"])
@@ -47,7 +47,7 @@ impl DnsController {
     ///
     /// Must be async and an owned `Vec` to match the Linux signature
     #[allow(clippy::unused_async)]
-    pub(crate) async fn set_dns(&mut self, dns_config: Vec<IpAddr>) -> Result<()> {
+    pub async fn set_dns(&mut self, dns_config: Vec<IpAddr>) -> Result<()> {
         match self.dns_control_method {
             DnsControlMethod::Disabled => {}
             DnsControlMethod::Nrpt => {
@@ -60,7 +60,7 @@ impl DnsController {
     /// Flush Windows' system-wide DNS cache
     ///
     /// `&self` is needed to match the Linux signature
-    pub(crate) fn flush(&self) -> Result<()> {
+    pub fn flush(&self) -> Result<()> {
         tracing::debug!("Flushing Windows DNS cache...");
         Command::new("ipconfig")
             .creation_flags(CREATE_NO_WINDOW)
