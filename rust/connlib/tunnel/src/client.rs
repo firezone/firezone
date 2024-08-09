@@ -683,6 +683,7 @@ impl ClientState {
 
         Some(
             ip_packet::make::udp_packet(saddr, daddr, sport, dport, packet.to_vec())
+                .expect("FIXME")
                 .into_immutable(),
         )
     }
