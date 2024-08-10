@@ -15,9 +15,10 @@ use url::Url;
 pub(crate) struct AdvancedSettings {
     pub auth_base_url: Url,
     pub api_url: Url,
-    // TODO: Will this cause problems when we add the ability to enable / disable Resources on the client side? At least the Internet Resource will need that.
     #[serde(default)]
     pub favorite_resources: HashSet<ResourceId>,
+    #[serde(default)]
+    pub disabled_resources: HashSet<ResourceId>,
     pub log_filter: String,
 }
 
@@ -28,6 +29,7 @@ impl Default for AdvancedSettings {
             auth_base_url: Url::parse("https://app.firez.one").unwrap(),
             api_url: Url::parse("wss://api.firez.one").unwrap(),
             favorite_resources: Default::default(),
+            disabled_resources: Default::default(),
             log_filter: "firezone_gui_client=debug,info".to_string(),
         }
     }

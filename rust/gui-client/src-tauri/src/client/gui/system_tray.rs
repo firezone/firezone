@@ -37,6 +37,8 @@ const RESOURCES: &str = "Resources";
 const OTHER_RESOURCES: &str = "Other Resources";
 const SIGN_OUT: &str = "Sign out";
 const DISCONNECT_AND_QUIT: &str = "Disconnect and quit Firezone";
+const ENABLED: &str = "Disable this resource";
+const DISABLED: &str = "Enable this resource";
 
 pub(crate) fn loading() -> SystemTray {
     SystemTray::new()
@@ -62,6 +64,7 @@ pub(crate) struct SignedIn<'a> {
     pub(crate) actor_name: &'a str,
     pub(crate) favorite_resources: &'a HashSet<ResourceId>,
     pub(crate) resources: &'a [ResourceDescription],
+    pub(crate) disabled_resources: &'a HashSet<ResourceId>,
 }
 
 impl<'a> SignedIn<'a> {
@@ -72,19 +75,30 @@ impl<'a> SignedIn<'a> {
     /// Builds the submenu that has the resource address, name, desc,
     /// sites online, etc.
     fn resource_submenu(&self, res: &ResourceDescription) -> Menu {
-        let submenu = Menu::default().add_item(resource_header(res));
+        let mut submenu = Menu::default();
 
-        let submenu = submenu
+        submenu.add_item(resource_header(res));
+
+        let mut submenu = submenu
             .separator()
             .disabled("Resource")
             .copyable(res.name())
             .copyable(res.pastable().as_ref());
 
-        let submenu = if self.is_favorite(res) {
-            submenu.add_item(item(Event::RemoveFavorite(res.id()), REMOVE_FAVORITE).selected())
+        if self.is_favorite(res) {
+            submenu.add_item(item(Event::RemoveFavorite(res.id()), REMOVE_FAVORITE).selected());
         } else {
-            submenu.item(Event::AddFavorite(res.id()), ADD_FAVORITE)
-        };
+            submenu.add_item(item(Event::AddFavorite(res.id()), ADD_FAVORITE));
+        }
+
+        if res.can_toggle() {
+            submenu.add_separator();
+            if self.is_enabled(res) {
+                submenu.add_item(item(Event::DisableResource(res.id()), ENABLED));
+            } else {
+                submenu.add_item(item(Event::EnableResource(res.id()), DISABLED));
+            }
+        }
 
         if let Some(site) = res.sites().first() {
             // Emojis may be causing an issue on some Ubuntu desktop environments.
@@ -102,6 +116,10 @@ impl<'a> SignedIn<'a> {
         } else {
             submenu
         }
+    }
+
+    fn is_enabled(&self, res: &ResourceDescription) -> bool {
+        !self.disabled_resources.contains(&res.id())
     }
 }
 
@@ -207,6 +225,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         actor_name,
         favorite_resources,
         resources, // Make sure these are presented in the order we receive them
+        ..
     } = signed_in;
 
     let has_any_favorites = resources
@@ -311,10 +330,12 @@ mod tests {
     fn no_resources_no_favorites() {
         let resources = vec![];
         let favorites = Default::default();
+        let disabled_resources = Default::default();
         let input = AppState::SignedIn(SignedIn {
             actor_name: "Jane Doe",
             favorite_resources: &favorites,
             resources: &resources,
+            disabled_resources: &disabled_resources,
         });
         let actual = input.into_menu();
         let expected = Menu::default()
@@ -336,10 +357,12 @@ mod tests {
     fn no_resources_invalid_favorite() {
         let resources = vec![];
         let favorites = HashSet::from([ResourceId::from_u128(42)]);
+        let disabled_resources = Default::default();
         let input = AppState::SignedIn(SignedIn {
             actor_name: "Jane Doe",
             favorite_resources: &favorites,
             resources: &resources,
+            disabled_resources: &disabled_resources,
         });
         let actual = input.into_menu();
         let expected = Menu::default()
@@ -361,10 +384,12 @@ mod tests {
     fn some_resources_no_favorites() {
         let resources = resources();
         let favorites = Default::default();
+        let disabled_resources = Default::default();
         let input = AppState::SignedIn(SignedIn {
             actor_name: "Jane Doe",
             favorite_resources: &favorites,
             resources: &resources,
+            disabled_resources: &disabled_resources,
         });
         let actual = input.into_menu();
         let expected = Menu::default()
@@ -447,10 +472,12 @@ mod tests {
         let favorites = HashSet::from([ResourceId::from_str(
             "03000143-e25e-45c7-aafb-144990e57dcd",
         )?]);
+        let disabled_resources = Default::default();
         let input = AppState::SignedIn(SignedIn {
             actor_name: "Jane Doe",
             favorite_resources: &favorites,
             resources: &resources,
+            disabled_resources: &disabled_resources,
         });
         let actual = input.into_menu();
         let expected = Menu::default()
@@ -469,14 +496,11 @@ mod tests {
                     .disabled("Resource")
                     .copyable("MyCorp GitLab")
                     .copyable("gitlab.mycorp.com")
-                    .add_item(
-                        item(
-                            Event::RemoveFavorite(ResourceId::from_str(
-                                "03000143-e25e-45c7-aafb-144990e57dcd",
-                            )?),
-                            REMOVE_FAVORITE,
-                        )
-                        .selected(),
+                    .selected_item(
+                        Event::RemoveFavorite(ResourceId::from_str(
+                            "03000143-e25e-45c7-aafb-144990e57dcd",
+                        )?),
+                        REMOVE_FAVORITE,
                     )
                     .separator()
                     .disabled("Site")
@@ -544,10 +568,12 @@ mod tests {
         let favorites = HashSet::from([ResourceId::from_str(
             "00000000-0000-0000-0000-000000000000",
         )?]);
+        let disabled_resources = Default::default();
         let input = AppState::SignedIn(SignedIn {
             actor_name: "Jane Doe",
             favorite_resources: &favorites,
             resources: &resources,
+            disabled_resources: &disabled_resources,
         });
         let actual = input.into_menu();
         let expected = Menu::default()

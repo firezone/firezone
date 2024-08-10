@@ -10,7 +10,10 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
-use firezone_headless_client::{IpcClientMsg, IpcServerMsg};
+use firezone_headless_client::{
+    IpcClientMsg::{self, SetDisabledResources},
+    IpcServerMsg,
+};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     path::PathBuf,
@@ -621,6 +624,15 @@ impl Controller {
                 self.advanced_settings.favorite_resources.remove(&resource_id);
                 self.refresh_favorite_resources().await?;
             }
+            Req::SystemTrayMenu(TrayMenuEvent::EnableResource(resource_id)) => {
+                dbg!(resource_id);
+                self.advanced_settings.disabled_resources.remove(&resource_id);
+                self.update_disabled_resources().await?;
+            }
+            Req::SystemTrayMenu(TrayMenuEvent::DisableResource(resource_id)) => {
+                self.advanced_settings.disabled_resources.insert(resource_id);
+                self.update_disabled_resources().await?;
+            }
             Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
                 self.show_window(window)?;
                 // When the About or Settings windows are hidden / shown, log the
@@ -716,6 +728,9 @@ impl Controller {
                 if let Err(error) = self.refresh_system_tray_menu() {
                     tracing::error!(?error, "Failed to refresh Resource list");
                 }
+
+                self.update_disabled_resources().await?;
+
                 Ok(())
             }
             IpcServerMsg::TerminatingGracefully => {
@@ -724,6 +739,24 @@ impl Controller {
                 Err(Error::IpcServiceTerminating)
             }
         }
+    }
+
+    async fn update_disabled_resources(&mut self) -> Result<()> {
+        let Status::TunnelReady { resources } = &self.status else {
+            bail!("Tunnel is not ready");
+        };
+        let disabled_resources = resources
+            .iter()
+            .filter_map(|r| r.can_toggle().then_some(r.id()))
+            .filter(|id| self.advanced_settings.disabled_resources.contains(id))
+            .collect();
+
+        self.ipc_client
+            .send_msg(&SetDisabledResources(disabled_resources))
+            .await?;
+        self.refresh_system_tray_menu()?;
+
+        Ok(())
     }
 
     /// Saves the current settings (including favorites) to disk and refreshes the tray menu
@@ -748,6 +781,7 @@ impl Controller {
                     system_tray::AppState::SignedIn(system_tray::SignedIn {
                         actor_name: &auth_session.actor_name,
                         favorite_resources: &self.advanced_settings.favorite_resources,
+                        disabled_resources: &self.advanced_settings.disabled_resources,
                         resources,
                     })
                 }

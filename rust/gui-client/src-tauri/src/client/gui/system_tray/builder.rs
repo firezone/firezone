@@ -63,6 +63,10 @@ pub(crate) enum Event {
     Url(Url),
     /// Quits the app, without signing the user out
     Quit,
+    /// Resource enabled
+    EnableResource(ResourceId),
+    /// Resource disabled
+    DisableResource(ResourceId),
 }
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -94,9 +98,12 @@ impl Menu {
             .item(Event::Quit, quit_text)
     }
 
-    pub(crate) fn add_item(mut self, item: Item) -> Self {
+    pub(crate) fn add_separator(&mut self) {
+        self.entries.push(Entry::Separator);
+    }
+
+    pub(crate) fn add_item(&mut self, item: Item) {
         self.entries.push(Entry::Item(item));
-        self
     }
 
     pub(crate) fn add_submenu<S: Into<String>>(mut self, title: S, inner: Menu) -> Self {
@@ -125,23 +132,36 @@ impl Menu {
     }
 
     /// Appends a menu item that copies its title when clicked
-    pub(crate) fn copyable(self, s: &str) -> Self {
-        self.add_item(copyable(s))
+    pub(crate) fn copyable(mut self, s: &str) -> Self {
+        self.add_item(copyable(s));
+        self
     }
 
     /// Appends a disabled item with no accelerator or event
-    pub(crate) fn disabled<S: Into<String>>(self, title: S) -> Self {
-        self.add_item(item(None, title).disabled())
+    pub(crate) fn disabled<S: Into<String>>(mut self, title: S) -> Self {
+        self.add_item(item(None, title).disabled());
+        self
     }
 
     /// Appends a generic menu item
-    pub(crate) fn item<E: Into<Option<Event>>, S: Into<String>>(self, id: E, title: S) -> Self {
-        self.add_item(item(id, title))
+    pub(crate) fn item<E: Into<Option<Event>>, S: Into<String>>(mut self, id: E, title: S) -> Self {
+        self.add_item(item(id, title));
+        self
+    }
+
+    /// Appends a selected menu item
+    pub(crate) fn selected_item<E: Into<Option<Event>>, S: Into<String>>(
+        mut self,
+        id: E,
+        title: S,
+    ) -> Self {
+        self.add_item(item(id, title).selected());
+        self
     }
 
     /// Appends a separator
     pub(crate) fn separator(mut self) -> Self {
-        self.entries.push(Entry::Separator);
+        self.add_separator();
         self
     }
 }
