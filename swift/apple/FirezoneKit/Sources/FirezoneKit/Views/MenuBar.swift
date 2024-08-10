@@ -420,6 +420,10 @@ public final class MenuBar: NSObject, ObservableObject {
     return item
   }
 
+  private func resourceTitle(_ id: String) -> String {
+    model.isResourceEnabled(id) ? "Disable this resource" : "Enable this resource"
+  }
+
   private func createSubMenu(resource: Resource) -> NSMenu {
     let subMenu = NSMenu()
     let resourceAddressDescriptionItem = NSMenuItem()
@@ -485,11 +489,10 @@ public final class MenuBar: NSObject, ObservableObject {
     if resource.canToggle {
       subMenu.addItem(NSMenuItem.separator())
       enableToggle.action = #selector(resourceToggle(_:))
-      enableToggle.title = "Enabled"
-      enableToggle.toolTip = "Toggle resource"
+      enableToggle.title = resourceTitle(resource.id)
+      enableToggle.toolTip = "Enable or disable resource"
       enableToggle.isEnabled = true
       enableToggle.target = self
-      enableToggle.state = model.isResourceEnabled(resource.id) ? .on : .off
       enableToggle.representedObject = resource.id
       subMenu.addItem(enableToggle)
     }
@@ -537,10 +540,10 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func resourceToggle(_ sender: NSMenuItem) {
-    sender.state = sender.state == .on ? .off : .on
     let id = sender.representedObject as! String
 
-    self.model.store.toggleResourceDisabled(resource: id, enabled: sender.state == .on)
+    self.model.store.toggleResourceDisabled(resource: id, enabled: !model.isResourceEnabled(id))
+    sender.title = resourceTitle(id)
   }
 
   @objc private func resourceURLTapped(_ sender: AnyObject?) {
