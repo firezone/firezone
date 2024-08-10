@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import ActionLink from "@/components/ActionLink";
-import BattleCard2 from "@/components/BattleCard2";
+import BattleCard from "@/components/BattleCard";
 import { RunaCap } from "@/components/Badges";
 import { Metadata } from "next";
 import { CustomerLogosGrayscale } from "@/components/CustomerLogos";
@@ -49,13 +49,6 @@ export default function Page() {
     <>
       <section className="bg-black bg-hero pt-28 xl:pt-32">
         <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
-          {/* <div className="absolute translate-y-16 justify-self-center self-center blur-[120px] bg-[rgba(94,82,239,0.5)] rounded-full w-[220px] h-[220px]" /> */}
-          {/* <button className="flex w-fit mb-2 gap-2 text-xs items-center p-1.5 text-neutral-500 font-manrope font-500 border-[1px] rounded-full border-neutral-900 hover:text-neutral-200 transition-all ">
-            <img src="/images/play-icon.svg" className="h-5 w-5" />
-            <Link href="/blog">
-              <p className="pe-4">Read our latest updates</p>
-            </Link>
-          </button> */}
           <h1
             className={
               manrope.className +
@@ -74,20 +67,28 @@ export default function Page() {
           </h3>
           <div className="flex sm:flex-row flex-col-reverse items-center justify-center sm:gap-x-6 md:gap-x-12 mt-4 w-full">
             <div className="flex items-center my-4 mr-4">
-              <button
-                type="button"
-                className="group text-neutral-300 inline-flex justify-center items-center py-2 md:text-lg text-md font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 duration-50 transform transition"
+              <ActionLink
+                size="lg"
+                href="https://app.firezone.dev/sign_up"
+                color="white"
+                transitionColor="primary-450"
               >
-                <Link href="https://app.firezone.dev/sign_up">
-                  Get started for free
-                </Link>
-                <HiArrowLongRight className="group-hover:text-primary-450 group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-7 h-7" />
-              </button>
+                Get started for free
+              </ActionLink>
+              {/* <button */}
+              {/*   type="button" */}
+              {/*   className="group text-neutral-300 inline-flex justify-center items-center py-2 md:text-lg text-md font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 duration-50 transform transition" */}
+              {/* > */}
+              {/*   <Link href="https://app.firezone.dev/sign_up"> */}
+              {/*     Get started for free */}
+              {/*   </Link> */}
+              {/*   <HiArrowLongRight className="group-hover:text-primary-450 group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-7 h-7" /> */}
+              {/* </button> */}
             </div>
             <div className=" flex items-center w-full sm:w-fit">
               <button
                 type="button"
-                className="group shadow-primary-700 md:text-lg text-md sm:w-48 w-full inline-flex shadow-lg justify-center items-center md:py-3 py-2 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
+                className="tracking-tight group shadow-primary-700 md:text-lg text-md sm:w-48 w-full inline-flex shadow-lg justify-center items-center md:py-3 py-2 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
               >
                 <Link href="/contact/sales">Book a demo</Link>
                 <HiArrowLongRight className="group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-7 h-7" />
@@ -96,7 +97,7 @@ export default function Page() {
           </div>
         </div>
         <div className="pt-16 pb-8 max-w-screen-xl mx-auto">
-          <div className="text-center text-sm mb-6 font-base text-slate-700">
+          <div className="text-center text-sm mb-6 font-base text-neutral-600">
             Backed by{" "}
             <Image
               src="/images/yc-logo-gray.svg"
@@ -117,7 +118,7 @@ export default function Page() {
       <section className="bg-white px-4 sm:px-8 md:px-16 py-20 md:py-16">
         <ElevatorPitch />
         <section className=" py-16 bg-white">
-          <BattleCard2 />
+          <BattleCard />
         </section>
         <section className="relative py-24 bg-white">
           <FeatureCards />
@@ -174,11 +175,7 @@ export default function Page() {
         </div>
 
         <div className="flex justify-center mt-8 md:mt-16">
-          <ActionLink
-            className=" text-md md:text-xl tracking-tight font-medium text-accent-500"
-            href="/kb/architecture"
-            color="accent-500"
-          >
+          <ActionLink href="/kb/architecture" border>
             Read about Firezone's architecture
           </ActionLink>
         </div>
@@ -219,11 +216,7 @@ export default function Page() {
         </div>
 
         <div className="flex justify-center mt-8 md:mt-16">
-          <ActionLink
-            className=" text-md md:text-xl tracking-tight font-medium"
-            href="/kb/authenticate"
-            color="accent-500"
-          >
+          <ActionLink href="/kb/authenticate">
             Connect your identity provider
           </ActionLink>
         </div>
@@ -259,10 +252,9 @@ export default function Page() {
 
         <div className="flex justify-center mt-4 md:mt-16">
           <ActionLink
-            className=" text-md md:text-xl tracking-tight font-semibold "
             href="/kb/use-cases/scale-vpc-access"
-            color="primary-450"
-            transitionColor="white"
+            transitionColor="primary-450"
+            color="white"
           >
             Scale access to your VPCs
           </ActionLink>
@@ -297,11 +289,7 @@ export default function Page() {
         </div>
 
         <div className="flex justify-center mt-8">
-          <ActionLink
-            className="text-md md:text-xl tracking-tight font-medium"
-            href="/kb/deploy"
-            color="accent-500"
-          >
+          <ActionLink href="/kb/deploy">
             Make your resources invisible
           </ActionLink>
         </div>
@@ -374,11 +362,7 @@ export default function Page() {
                 networks.
               </p>
               <p className="mt-4">
-                <ActionLink
-                  className="text-md md:text-xl tracking-tight font-medium text-accent-500"
-                  href="/kb/client-apps"
-                  color="accent-500"
-                >
+                <ActionLink href="/kb/client-apps">
                   Download Client apps
                 </ActionLink>
               </p>
@@ -434,11 +418,7 @@ export default function Page() {
                 you're done.
               </p>
               <p className="mt-4">
-                <ActionLink
-                  className="text-md md:text-xl tracking-tight font-medium text-accent-500"
-                  href="/kb/deploy/gateways"
-                  color="accent-500"
-                >
+                <ActionLink href="/kb/deploy/gateways">
                   Deploy your first Gateway
                 </ActionLink>
               </p>
@@ -484,11 +464,7 @@ export default function Page() {
               <RunaCap />
             </div>
             <div className="mx-auto w-64 mb-8 inline-flex justify-center">
-              <ActionLink
-                className="flex text-md md:text-xl tracking-tight font-medium text-accent-500"
-                href="https://www.github.com/firezone/firezone"
-                color="accent-500"
-              >
+              <ActionLink href="https://www.github.com/firezone/firezone">
                 Leave us a star
               </ActionLink>
             </div>
@@ -692,11 +668,7 @@ export default function Page() {
             </SlideIn>
           </div>
           <div className="flex justify-center mt-8 md:mt-16">
-            <ActionLink
-              className="text-md md:text-xl tracking-tight font-medium text-accent-500"
-              href="/kb/use-cases"
-              color="accent-500"
-            >
+            <ActionLink size="md" href="/kb/use-cases" color="accent-500">
               See more use cases
             </ActionLink>
           </div>

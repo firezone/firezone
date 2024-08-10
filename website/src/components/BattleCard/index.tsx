@@ -1,262 +1,137 @@
 import Link from "next/link";
 import Image from "next/image";
-import { HiCheck, HiXMark } from "react-icons/hi2";
+import { HiArrowLongRight, HiCheck, HiXMark } from "react-icons/hi2";
+import { manrope } from "@/lib/fonts";
 
-export default function BattleCard() {
+export default function BattleCard2() {
   return (
     <div className="sm:mx-auto px-4 flex flex-col items-center">
-      <h3 className="text-4xl md:text-6xl tracking-tight font-bold text-center mb-4 md:mb-8">
-        See how Firezone compares
+      <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide ">
+        Features
+      </h6>
+      <h3
+        className={` text-3xl md:text-4xl lg:text-5xl tracking-tight font-bold inline-block text-center my-2 ${manrope.className}`}
+      >
+        Why choose
+        <span className="text-primary-450"> Firezone?</span>
       </h3>
-
-      <div className="mx-auto max-w-screen-md mb-4 md:mb-8">
-        <p className="text-md md:text-xl sm:text-center tracking-tight">
-          We're{" "}
-          <span className="underline underline-offset-2">laser-focused</span> on
-          building the best Zero Trust Access product available.{" "}
-          <span className="text-primary-450">That's what we do.</span> That
-          means we have <strong>more</strong> of the features your business
-          needs and <i>less</i> of the ones you don't. And because of that,
-          Firezone comes in at a{" "}
-          <span className="text-primary-450">fraction of the cost</span> of our
-          competitors. Don't believe us?{" "}
-          <Link
-            href="/contact/sales"
-            className="underline underline-offset-2 hover:no-underline text-accent-500"
-          >
-            Contact sales
-          </Link>{" "}
-          to find out.
-        </p>
-      </div>
+      <p
+        className={`text-lg text-center text-pretty text-neutral-800 mt-2 mb-16 `}
+      >
+        We're building the best Zero Trust Access product for a fraction of the
+        cost of our competitors.
+      </p>
 
       <div className="max-w-screen-lg w-full px-0 sm:px-4">
-        <div className="shadow-lg rounded mx-auto overflow-x-auto">
-          <table className="border w-full text-left text-neutral-900 text-sm md:text-md lg:text-lg">
-            <thead>
-              <tr className="border-b bg-primary-50 border-primary-300">
-                <th className="px-3 sm:px-6 py-3"></th>
-                <th className="text-center px-3 sm:px-6 py-3">Twingate</th>
-                <th className="text-center px-3 sm:px-6 py-3">Tailscale</th>
-                <th className="text-center px-3 sm:px-6 py-3 bg-primary-200">
-                  <span className="flex justify-center items-center">
-                    <Image
-                      src="/images/logo-main-light.svg"
-                      width={50}
-                      height={50}
-                      alt="Firezone logo"
-                      className="w-9 mr-2"
-                    />
-                    <span className="hidden sm:flex">Firezone</span>
-                  </span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-b bg-neutral-50">
-                <td className="px-3 sm:px-6 py-5 font-medium">Open source</td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">Partial</td>
-                <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-              </tr>
-              <tr className="border-b">
-                <td className="px-3 sm:px-6 py-5 font-medium">
-                  Built on WireGuard®
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-              </tr>
-              <tr className="border-b bg-neutral-50">
-                <td className="px-3 sm:px-6 py-5 font-medium">
-                  Load balancing
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">Partial</td>
-                <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-              </tr>
-              <tr className="border-b">
-                <td className="px-3 sm:px-6 py-5 font-medium">
-                  Automatic failover
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-              </tr>
-              <tr className="border-b bg-neutral-50">
-                <td className="px-3 sm:px-6 py-5 font-medium">
-                  NAT hole-punching
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-              </tr>
-              <tr className="border-b">
-                <td className="px-3 sm:px-6 py-5 font-medium">
-                  Resource-level access policies
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-              </tr>
-              <tr className="border-b bg-neutral-50">
-                <td className="px-3 sm:px-6 py-5 font-medium">
-                  Google directory sync
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-              </tr>
-              <tr className="border-b">
-                <td className="px-3 sm:px-6 py-5 font-medium">
-                  Entra directory sync
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-              </tr>
-              <tr className="border-b bg-neutral-50">
-                <td className="px-3 sm:px-6 py-5 font-medium">
-                  Okta directory sync
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-              </tr>
-              <tr className="border-b bg-neutral-50">
-                <td className="px-3 sm:px-6 py-5 font-medium">
-                  JumpCloud directory sync
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-              </tr>
-              <tr className="border-b bg-neutral-50">
-                <td className="px-3 sm:px-6 py-5 font-medium">IPv6 support</td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-              </tr>
-              <tr className="border-b bg-neutral-50">
-                <td className="px-3 sm:px-6 py-5 font-medium">
-                  Automatic NAT64 and NAT46
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-              </tr>
-              <tr className="border-b">
-                <td className="px-3 sm:px-6 py-5 font-medium">
-                  DNS-based routing
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">Partial</td>
-                <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-              </tr>
-              <tr className="border-b bg-neutral-50">
-                <td className="px-3 sm:px-6 py-5 font-medium">
-                  Mesh networking
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
-                  <HiXMark className="mx-auto text-red-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-              </tr>
-              <tr className="border-b">
-                <td className="px-3 sm:px-6 py-5 font-medium">
-                  Annual invoicing
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-                <td className="text-center px-3 sm:px-6 py-5 bg-primary-100">
-                  <HiCheck className="mx-auto text-green-600 flex-shrink-0 w-6 h-6 md:w-8 md:h-8" />
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div className="flex w-full items-end justify-start lg:justify-center overflow-x-auto flex-shrink-0">
+          <ul
+            role="list"
+            className={`text-sm md:text-md min-w-[180px] md:min-w-[300px] ${manrope.className}`}
+          >
+            <li className="px-6 h-14 place-content-center bg-neutral-100">
+              Automatic NAT64 and NAT46
+            </li>
+            <li className="px-6 h-14 place-content-center w-full">
+              Open source
+            </li>
+            <li className="px-6 h-14 place-content-center w-full bg-neutral-100">
+              Built on WireGuard®
+            </li>
+            <li className="px-6 h-14 place-content-center w-full">
+              IPv6 support
+            </li>
+            <li className="px-6 h-14 place-content-center w-full bg-neutral-100">
+              DNS-based routing
+            </li>
+            <li className="h-20" />
+          </ul>
+          <ul
+            role="list"
+            className={`flex flex-col items-center border-[1px] border-primary-450 bg-primary-100 rounded-xl  min-w-[200px] ${manrope.className}`}
+          >
+            <li className="h-[72px] flex justify-center items-center px-6 ">
+              <Image
+                width={150}
+                height={150}
+                src={"/images/logo-text-light.svg"}
+                alt="Firezone Logo"
+                className="flex w-32 sm:w-40 ml-2 mr-2 sm:mr-5"
+              />
+            </li>
+            <li className="h-14 flex justify-center items-center w-full ">
+              <HiCheck className="text-2xl text-green-600" />
+            </li>
+            <li className="h-14 flex justify-center items-center w-full ">
+              <HiCheck className="text-2xl text-green-600" />
+            </li>
+            <li className="h-14 flex justify-center items-center w-full ">
+              <HiCheck className="text-2xl text-green-600" />
+            </li>
+            <li className="h-14 flex justify-center items-center w-full ">
+              <HiCheck className="text-2xl text-green-600" />
+            </li>
+            <li className="h-14 flex justify-center items-center w-full ">
+              <HiCheck className="text-2xl text-green-600" />
+            </li>
+            <li className="py-3 h-20 ">
+              <button
+                type="button"
+                className="bg-accent-450 text-nowrap rounded-lg group lg:text-lg text-md inline-flex justify-center items-center lg:py-3 py-2 px-5 font-semibold text-center text-white hover:ring-1 hover:ring-accent-500 duration-50 transform transition"
+              >
+                <Link href="/contact/sales">Book a demo</Link>
+                <HiArrowLongRight className="group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-7 h-7" />
+              </button>
+            </li>
+          </ul>
+          <ul
+            role="list"
+            className={`flex flex-col items-center mb-[1px]  min-w-[160px] md:min-w-[200px] ${manrope.className}`}
+          >
+            <li className="h-[72px] px-8 flex justify-center items-center font-bold tracking-tight text-slate-600">
+              Tailscale
+            </li>
+            <li className="h-14 flex justify-center items-center w-full bg-neutral-100">
+              <HiXMark className="text-2xl text-red-600" />
+            </li>
+            <li className="h-14 flex justify-center items-center w-full ">
+              Partial
+            </li>
+            <li className="h-14 flex justify-center items-center w-full bg-neutral-100">
+              <HiCheck className="text-2xl text-green-600" />
+            </li>
+            <li className="h-14 flex justify-center items-center w-full">
+              <HiCheck className="text-2xl text-green-600" />
+            </li>
+            <li className="h-14 flex justify-center items-center w-full ">
+              Partial
+            </li>
+            <li className="h-20" />
+          </ul>
+          <ul
+            role="list"
+            className={`flex flex-col items-center mb-[1px] min-w-[160px] md:min-w-[200px] ${manrope.className}`}
+          >
+            <li className="h-[72px] px-8 flex justify-center items-center font-bold tracking-tight text-slate-600">
+              Twingate
+            </li>
+            <li className="h-14 flex justify-center items-center w-full bg-neutral-100">
+              <HiXMark className="text-2xl text-red-600" />
+            </li>
+            <li className="h-14 flex justify-center items-center w-full ">
+              <HiXMark className="text-2xl text-red-600" />
+            </li>
+            <li className="h-14 flex justify-center items-center w-full bg-neutral-100">
+              <HiXMark className="text-2xl text-red-600" />
+            </li>
+            <li className="h-14 flex justify-center items-center w-full">
+              <HiXMark className="text-2xl text-red-600" />
+            </li>
+            <li className="h-14 flex justify-center items-center w-full ">
+              <HiCheck className="text-2xl text-green-600" />
+            </li>
+            <li className="h-20" />
+          </ul>
         </div>
-
         <p className="text-neutral-900 text-center text-xs my-4">
           <i>Last updated: 07/14/2024</i>
         </p>

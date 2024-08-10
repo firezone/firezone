@@ -32,11 +32,7 @@ export default function FeatureCards() {
               Seamlessly manage thousands of lightweight tunnels to whatever
               resources you need, whenever.
             </p>
-            <ActionLink
-              className="text-md md:text-xl tracking-tight font-medium"
-              href="/kb/deploy/resources"
-              color="accent-500"
-            >
+            <ActionLink href="/kb/deploy/resources">
               Protect your resources
             </ActionLink>
           </div>

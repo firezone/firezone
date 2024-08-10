@@ -43,13 +43,7 @@ export default function SingleFeature({
           >
             {desc}
           </p>
-          <ActionLink
-            className=" text-md md:text-xl tracking-tight font-medium text-accent-500"
-            href={link}
-            color="accent-500"
-          >
-            {buttonDesc}
-          </ActionLink>
+          <ActionLink href={link}>{buttonDesc}</ActionLink>
         </div>
       </div>
     </div>

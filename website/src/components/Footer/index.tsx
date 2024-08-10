@@ -25,46 +25,39 @@ export default function Footer() {
         >
           Ready to get started?
         </h3>
-        <h4 className="text-neutral-200 text-md">
+        <p className="text-neutral-200 text-md">
           Give your organization the protection it deserves.
-        </h4>
-        <div className="flex sm:flex-row flex-col justify-center sm:items-end items-center sm:w-fit w-full sm:gap-8 gap-4 my-8">
-          <div className=" mx-auto px-4 md:px-0 ">
+        </p>
+        <div className="flex justify-center sm:gap-x-6 md:gap-x-12 mt-8 w-full">
+          <div className="w-full sm:w-fit flex flex-col justify-between h-20">
             <button
               type="button"
-              className="group md:text-lg text-md inline-flex md:w-48 w-full shadow-lg justify-center items-center py-2 md:py-3 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-2 hover:ring-primary-500 duration-50 transform transition"
+              className="tracking-tight group shadow-primary-700 md:text-lg text-md sm:w-48 w-full inline-flex shadow-lg justify-center items-center md:py-3 py-2 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
             >
               <Link href="/contact/sales">Book a demo</Link>
-              <HiArrowLongRight className="group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-6 h-6" />
+              <HiArrowLongRight className="group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-7 h-7" />
             </button>
-            <p className="mt-3 text-xs text-neutral-400">
-              Get a personalized walkthrough of Firezone.
+            <p className="text-xs text-neutral-200">
+              Get a personalized walkthrough.
             </p>
           </div>
-          <div className=" mx-auto ">
-            <button
-              type="button"
-              className="group md:text-lg text-md md:w-48 w-full inline-flex justify-center items-center py-0 px-0 font-semibold text-center text-white rounded duration-50 transform transition"
+          <div className="flex flex-col justify-between h-20">
+            <ActionLink
+              size="lg"
+              href="https://app.firezone.dev/sign_up"
+              color="white"
+              transitionColor="primary-450"
             >
-              <Link
-                href="https://app.firezone.dev/sign_up"
-                className="text-neutral-300 w-full group inline-flex justify-center
-                 items-center py-2 font-semibold border-b-[1px] border-neutral-200 hover:border-primary-450 hover:text-primary-450 transition transform duration-50"
-              >
-                <p>Try Firezone for free</p>
-                <HiArrowLongRight className="group-hover:text-primary-450 group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform ml-2 -mr-1 w-6 h-6" />
-              </Link>
-            </button>
-            <p className="mt-3 text-xs text-neutral-400">
-              No credit card required. Cancel anytime.
-            </p>
+              Try Firezone for free
+            </ActionLink>
+            <p className="text-xs text-neutral-200">No credit card required.</p>
           </div>
         </div>
       </div>
-      <div className="mx-auto w-full max-w-screen-xl p-4 py-6 lg:py-8">
+      <div className="mx-auto w-full max-w-screen-xl md:p-4 p-2 py-6 lg:py-8">
         <div className="flex md:flex-row flex-col md:justify-between gap-12">
           <div className="flex md:flex-col justify-between">
-            <div className="">
+            <div>
               <Link href="/">
                 <Image
                   width={150}
@@ -229,8 +222,9 @@ export default function Footer() {
           <div className="mt-4 sm:mt-0">
             <ActionLink
               href="https://probe.sh"
-              size="ml-1 -mr-1 w-5 h-5"
-              className="text-neutral-200 text-sm hover:underline hover:text-neutral-50"
+              size="sm"
+              color="white"
+              transitionColor="primary-450"
             >
               Test your WireGuard connection
             </ActionLink>
