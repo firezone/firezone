@@ -5,12 +5,13 @@ import { HiCloud, HiMiniPuzzlePiece, HiLockClosed } from "react-icons/hi2";
 import { SlideIn } from "@/components/Animations";
 import { manrope } from "@/lib/fonts";
 import ActionLink from "../ActionLink";
+import { Route } from "next";
 
 interface SingleFeatureProps {
   title: string;
   boldedTitle?: string;
   desc: string;
-  link: string;
+  link: Route<string>;
   buttonDesc: string;
   children: React.ReactNode;
 }
