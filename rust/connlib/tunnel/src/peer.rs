@@ -602,6 +602,29 @@ pub struct ClientOnGateway {
     buffered_events: VecDeque<GatewayEvent>,
 }
 
+fn ipv4_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
+    ip.iter().filter(|ip| ip.is_ipv4()).copied().collect_vec()
+}
+
+fn ipv6_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
+    ip.iter().filter(|ip| ip.is_ipv6()).copied().collect_vec()
+}
+
+fn mapped_ipv4(ips: &[IpAddr]) -> Vec<IpAddr> {
+    if !ipv4_addresses(ips).is_empty() {
+        ipv4_addresses(ips)
+    } else {
+        ipv6_addresses(ips)
+    }
+}
+fn mapped_ipv6(ips: &[IpAddr]) -> Vec<IpAddr> {
+    if !ipv6_addresses(ips).is_empty() {
+        ipv6_addresses(ips)
+    } else {
+        ipv4_addresses(ips)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -652,7 +675,8 @@ mod tests {
             5401,
             80,
             vec![0; 100],
-        );
+        )
+        .unwrap();
 
         let udp_packet = ip_packet::make::udp_packet(
             source_v4_addr(),
@@ -660,7 +684,8 @@ mod tests {
             5401,
             80,
             vec![0; 100],
-        );
+        )
+        .unwrap();
 
         peer.expire_resources(now);
 
@@ -1041,7 +1066,8 @@ mod proptests {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, *dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, *dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
-            };
+            }
+            .unwrap();
             assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
     }
@@ -1073,7 +1099,8 @@ mod proptests {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
-            };
+            }
+            .unwrap();
             assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
     }
@@ -1114,7 +1141,8 @@ mod proptests {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
-            };
+            }
+            .unwrap();
             assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
 
@@ -1128,7 +1156,8 @@ mod proptests {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
-            };
+            }
+            .unwrap();
             assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
     }
@@ -1170,7 +1199,8 @@ mod proptests {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
-            };
+            }
+            .unwrap();
 
             assert!(peer.ensure_allowed_dst(&packet).is_ok());
         }
@@ -1200,7 +1230,8 @@ mod proptests {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
             Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
-        };
+        }
+        .unwrap();
 
         peer.add_resource(vec![resource_addr], resource_id, filters, None, None);
 
@@ -1240,13 +1271,15 @@ mod proptests {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
             Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
-        };
+        }
+        .unwrap();
 
         let packet_rejected = match protocol_removed {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
             Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
-        };
+        }
+        .unwrap();
 
         peer.add_resource(
             vec![supernet(resource_addr).unwrap_or(resource_addr)],
@@ -1489,28 +1522,5 @@ mod proptests {
                 ProtocolKind::Icmp => Filter::Icmp,
             }
         }
-    }
-}
-
-fn ipv4_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
-    ip.iter().filter(|ip| ip.is_ipv4()).copied().collect_vec()
-}
-
-fn ipv6_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
-    ip.iter().filter(|ip| ip.is_ipv6()).copied().collect_vec()
-}
-
-fn mapped_ipv4(ips: &[IpAddr]) -> Vec<IpAddr> {
-    if !ipv4_addresses(ips).is_empty() {
-        ipv4_addresses(ips)
-    } else {
-        ipv6_addresses(ips)
-    }
-}
-fn mapped_ipv6(ips: &[IpAddr]) -> Vec<IpAddr> {
-    if !ipv6_addresses(ips).is_empty() {
-        ipv6_addresses(ips)
-    } else {
-        ipv4_addresses(ips)
     }
 }

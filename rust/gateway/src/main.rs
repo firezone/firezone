@@ -2,10 +2,12 @@ use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_shared::{get_user_agent, keypair, messages::Interface, LoginUrl, StaticSecret};
+use connlib_shared::{
+    get_user_agent, keypair, messages::Interface, LoginUrl, StaticSecret, DEFAULT_MTU,
+};
 use firezone_bin_shared::{
     linux::{tcp_socket_factory, udp_socket_factory},
-    setup_global_subscriber, TunDeviceManager,
+    TunDeviceManager,
 };
 use firezone_tunnel::{GatewayTunnel, IPV4_PEERS, IPV6_PEERS};
 
@@ -43,7 +45,7 @@ async fn main() {
 
 async fn try_main() -> Result<()> {
     let cli = Cli::parse();
-    setup_global_subscriber(layer::Identity::new());
+    firezone_logging::setup_global_subscriber(layer::Identity::new());
 
     let firezone_id = get_firezone_id(cli.firezone_id).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
@@ -118,7 +120,7 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
     )?;
 
     let (sender, receiver) = mpsc::channel::<Interface>(10);
-    let mut tun_device_manager = TunDeviceManager::new()?;
+    let mut tun_device_manager = TunDeviceManager::new(DEFAULT_MTU)?;
     let tun = tun_device_manager.make_tun()?;
     tunnel.set_tun(Box::new(tun));
 

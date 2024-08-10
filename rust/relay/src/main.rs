@@ -185,9 +185,16 @@ fn setup_tracing(args: &Args) -> Result<()> {
 
     let dispatch: Dispatch = match args.otlp_grpc_endpoint.clone() {
         None => tracing_subscriber::registry()
-            .with(log_layer(args).with_filter(env_filter()))
+            .with(log_layer(args))
+            .with(env_filter())
             .into(),
         Some(endpoint) => {
+            let default_metadata = Resource::new([
+                KeyValue::new("service.name", "relay"),
+                KeyValue::new("service.namespace", "firezone"),
+            ]);
+            let metadata = default_metadata.merge(&Resource::default()); // `Resource::default` fetches from env-variables.
+
             let grpc_endpoint = format!("http://{endpoint}");
 
             tracing::trace!(target: "relay", %grpc_endpoint, "Setting up OTLP exporter for collector");
@@ -199,10 +206,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
             let tracer_provider = opentelemetry_otlp::new_pipeline()
                 .tracing()
                 .with_exporter(exporter)
-                .with_trace_config(
-                    Config::default()
-                        .with_resource(Resource::new(vec![KeyValue::new("service.name", "relay")])),
-                )
+                .with_trace_config(Config::default().with_resource(metadata.clone()))
                 .install_batch(Tokio)
                 .context("Failed to create OTLP trace pipeline")?;
             global::set_tracer_provider(tracer_provider.clone());
@@ -215,6 +219,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
 
             let meter_provider = opentelemetry_otlp::new_pipeline()
                 .metrics(Tokio)
+                .with_resource(metadata)
                 .with_exporter(exporter)
                 .build()
                 .context("Failed to create OTLP metrics pipeline")?;
@@ -223,12 +228,9 @@ fn setup_tracing(args: &Args) -> Result<()> {
             tracing::trace!(target: "relay", "Successfully initialized metric provider on tokio runtime");
 
             tracing_subscriber::registry()
-                .with(log_layer(args).with_filter(env_filter()))
-                .with(
-                    tracing_opentelemetry::layer()
-                        .with_tracer(tracer_provider.tracer("relay"))
-                        .with_filter(env_filter()),
-                )
+                .with(log_layer(args))
+                .with(tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer("relay")))
+                .with(env_filter())
                 .into()
         }
     };

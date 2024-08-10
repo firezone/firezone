@@ -8,7 +8,6 @@ mock = ["connlib-shared/mock"]
 
 [dependencies]
 anyhow = "1.0.82"
-async-trait = { version = "0.1", default-features = false }
 backoff = { workspace = true }
 bimap = "0.6"
 connlib-shared = { workspace = true }
@@ -18,13 +17,9 @@ phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
 serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
 socket-factory = { workspace = true }
-time = { version = "0.3.36", features = ["formatting"] }
 tokio = { workspace = true, features = ["sync"] }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 tracing = { workspace = true }
-tracing-appender = { version = "0.2.2" }
-tracing-stackdriver = { version = "0.11.0" }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tun = { workspace = true }
 url = { version = "2.5.2", features = ["serde"] }
 

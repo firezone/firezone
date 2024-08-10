@@ -1,7 +1,7 @@
 [package]
 name = "connlib-client-apple"
 # mark:next-apple-version
-version = "1.1.4"
+version = "1.1.5"
 edition = "2021"
 
 [features]
@@ -15,6 +15,7 @@ anyhow = "1.0.86"
 backoff = "0.4.0"
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
+firezone-logging = { workspace = true }
 ip_network = "0.4"
 libc = "0.2"
 phoenix-channel = { workspace = true }

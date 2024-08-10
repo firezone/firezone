@@ -917,7 +917,7 @@ defmodule Domain.ResourcesTest do
              }
     end
 
-    test "validates dns address", %{subject: subject} do
+    test "validates dns address", %{account: account, subject: subject} do
       attrs = %{"address" => String.duplicate("a", 256), "type" => "dns"}
       assert {:error, changeset} = create_resource(attrs, subject)
       assert "should be at most 253 character(s)" in errors_on(changeset).address
@@ -925,6 +925,50 @@ defmodule Domain.ResourcesTest do
       attrs = %{"address" => "a", "type" => "dns"}
       assert {:error, changeset} = create_resource(attrs, subject)
       refute Map.has_key?(errors_on(changeset), :address)
+
+      for dns <- [
+            "**.example.com",
+            "example.com",
+            "app.**.example.com",
+            "app.bar.foo.example.com",
+            "**.example.com",
+            "foo.example.com",
+            "**.example.com",
+            "foo.bar.example.com",
+            "*.example.com",
+            "foo.example.com",
+            "*.example.com",
+            "example.com",
+            "foo.*.example.com",
+            "foo.bar.example.com",
+            "app.*.*.example.com",
+            "app.foo.bar.example.com",
+            "app.f??.example.com",
+            "app.foo.example.com",
+            "app.example.com",
+            "app.example.com",
+            "*?*.example.com",
+            "app.example.com",
+            "app.**.web.**.example.com",
+            "app.web.example.com",
+            "app.*.example.com",
+            "app.*com",
+            "app?com",
+            "google.com",
+            "myhost"
+          ] do
+        gateway = Fixtures.Gateways.create_gateway(account: account)
+
+        attrs =
+          Fixtures.Resources.resource_attrs(
+            address: dns,
+            connections: [
+              %{gateway_group_id: gateway.group_id}
+            ]
+          )
+
+        assert {:ok, _resource} = create_resource(attrs, subject)
+      end
     end
 
     test "validates cidr address", %{subject: subject} do

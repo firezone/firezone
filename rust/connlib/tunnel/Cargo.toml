@@ -34,6 +34,7 @@ uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
 
 [dev-dependencies]
 derivative = "2.2.0"
+firezone-logging = { workspace = true }
 firezone-relay = { workspace = true, features = ["proptest"] }
 ip-packet = { workspace = true, features = ["proptest"] }
 proptest-state-machine = "0.3"
