@@ -53,6 +53,16 @@ STUN/TURN. Additionally, the relay needs to have access to the port range
 When given a `token`, the relay will connect to the Firezone portal and wait for
 an `init` message before commencing relay operations.
 
+### Metrics
+
+The relay parses the `OTLP_GRPC_ENDPOINT` env variable.
+Traces and metrics will be sent to an OTLP collector listening on that endpoint.
+
+It is recommended to set additional environment variables to scope your metrics:
+
+- `OTEL_SERVICE_NAME`: Translates to the `service.name`.
+- `OTEL_RESOURCE_ATTRIBUTES`: Additional, comma-separated key=value attributes.
+
 ## Design
 
 The relay is designed in a sans-IO fashion, meaning the core components do not

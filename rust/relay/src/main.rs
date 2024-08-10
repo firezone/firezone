@@ -199,10 +199,6 @@ fn setup_tracing(args: &Args) -> Result<()> {
             let tracer_provider = opentelemetry_otlp::new_pipeline()
                 .tracing()
                 .with_exporter(exporter)
-                .with_trace_config(
-                    Config::default()
-                        .with_resource(Resource::new(vec![KeyValue::new("service.name", "relay")])),
-                )
                 .install_batch(Tokio)
                 .context("Failed to create OTLP trace pipeline")?;
             global::set_tracer_provider(tracer_provider.clone());
@@ -215,6 +211,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
 
             let meter_provider = opentelemetry_otlp::new_pipeline()
                 .metrics(Tokio)
+                .with_resource(Resource::default())
                 .with_exporter(exporter)
                 .build()
                 .context("Failed to create OTLP metrics pipeline")?;
