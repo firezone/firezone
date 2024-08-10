@@ -63,6 +63,15 @@ It is recommended to set additional environment variables to scope your metrics:
 - `OTEL_SERVICE_NAME`: Translates to the `service.name`.
 - `OTEL_RESOURCE_ATTRIBUTES`: Additional, comma-separated key=value attributes.
 
+By default, we set the following OTEL attributes:
+
+- `service.name=relay`
+- `service.namespace=firezone`
+
+The [`docker-init-relay.sh`](../docker-init-relay.sh) script integrates with GCE.
+When `OTEL_METADATA_DISCOVERY_METHOD=gce_metadata`, the `service.instance.id`
+variables is set to the instance ID of the VM.
+
 ## Design
 
 The relay is designed in a sans-IO fashion, meaning the core components do not
