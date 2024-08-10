@@ -2,7 +2,9 @@ use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_shared::{get_user_agent, keypair, messages::Interface, LoginUrl, StaticSecret};
+use connlib_shared::{
+    get_user_agent, keypair, messages::Interface, LoginUrl, StaticSecret, DEFAULT_MTU,
+};
 use firezone_bin_shared::{
     linux::{tcp_socket_factory, udp_socket_factory},
     setup_global_subscriber, TunDeviceManager,
@@ -118,7 +120,7 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
     )?;
 
     let (sender, receiver) = mpsc::channel::<Interface>(10);
-    let mut tun_device_manager = TunDeviceManager::new()?;
+    let mut tun_device_manager = TunDeviceManager::new(DEFAULT_MTU)?;
     let tun = tun_device_manager.make_tun()?;
     tunnel.set_tun(Box::new(tun));
 
