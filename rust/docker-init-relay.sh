@@ -25,9 +25,10 @@ if [ "${OTEL_METADATA_DISCOVERY_METHOD}" = "gce_metadata" ]; then
     echo "Using GCE metadata to set OTEL metadata"
 
     instance_id=$(curl "http://metadata.google.internal/computeMetadata/v1/instance/id" -H "Metadata-Flavor: Google" -s)
-    export OTEL_RESOURCE_ATTRIBUTES="service.instance.id=${instance_id}"
-    echo "Discovered OTEL metadata: ${OTEL_RESOURCE_ATTRIBUTES}"
+    instance_name=$(curl http://metadata.google.internal/computeMetadata/v1/instance/name -H "Metadata-Flavor: Google" -s)
 
+    export OTEL_RESOURCE_ATTRIBUTES="service.instance.id=${instance_id},gcp.gce.instance.name=${instance_name}"
+    echo "Discovered OTEL metadata: ${OTEL_RESOURCE_ATTRIBUTES}"
 fi
 
 exec "$@"
