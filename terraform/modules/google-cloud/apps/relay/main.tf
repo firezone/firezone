@@ -42,10 +42,6 @@ locals {
       value = "127.0.0.1:4317"
     },
     {
-      name  = "OTEL_SERVICE_NAME"
-      value = local.application_name
-    },
-    {
       name  = "FIREZONE_TOKEN"
       value = var.token
     },
