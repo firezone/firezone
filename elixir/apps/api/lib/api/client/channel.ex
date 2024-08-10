@@ -91,6 +91,9 @@ defmodule API.Client.Channel do
       :ok = Enum.each(relays, &Relays.subscribe_to_relay_presence/1)
       :ok = maybe_subscribe_for_relays_presence(relays, socket)
 
+      resources =
+        map_and_filter_compatible_resources(resources, socket.assigns.client.last_seen_version)
+
       :ok =
         push(socket, "init", %{
           resources: Views.Resource.render_many(resources),
@@ -223,7 +226,20 @@ defmodule API.Client.Channel do
              preload: [:gateway_groups]
            ) do
         {:ok, resource} ->
-          push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+          case map_and_filter_compatible_resource(
+                 resource,
+                 socket.assigns.client.last_seen_version
+               ) do
+            {:cont, resource} ->
+              push(
+                socket,
+                "resource_created_or_updated",
+                Views.Resource.render(resource)
+              )
+
+            :drop ->
+              :ok
+          end
 
         {:error, _reason} ->
           :ok
@@ -269,7 +285,20 @@ defmodule API.Client.Channel do
              preload: [:gateway_groups]
            ) do
         {:ok, resource} ->
-          push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+          case map_and_filter_compatible_resource(
+                 resource,
+                 socket.assigns.client.last_seen_version
+               ) do
+            {:cont, resource} ->
+              push(
+                socket,
+                "resource_created_or_updated",
+                Views.Resource.render(resource)
+              )
+
+            :drop ->
+              :ok
+          end
 
         {:error, _reason} ->
           :ok
@@ -302,7 +331,20 @@ defmodule API.Client.Channel do
              preload: [:gateway_groups]
            ) do
         {:ok, resource} ->
-          push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+          case map_and_filter_compatible_resource(
+                 resource,
+                 socket.assigns.client.last_seen_version
+               ) do
+            {:cont, resource} ->
+              push(
+                socket,
+                "resource_created_or_updated",
+                Views.Resource.render(resource)
+              )
+
+            :drop ->
+              :ok
+          end
 
         {:error, _reason} ->
           :ok
@@ -697,6 +739,29 @@ defmodule API.Client.Channel do
     |> case do
       [] -> {:error, :not_found}
       gateways -> {:ok, gateways}
+    end
+  end
+
+  defp map_and_filter_compatible_resources(resources, client_version) do
+    Enum.flat_map(resources, fn resource ->
+      case map_and_filter_compatible_resource(resource, client_version) do
+        {:cont, resource} -> [resource]
+        :drop -> []
+      end
+    end)
+  end
+
+  defp map_and_filter_compatible_resource(resource, client_version) do
+    if Version.match?(client_version, ">= 1.2.0") do
+      {:cont, resource}
+    else
+      resource.address
+      |> String.codepoints()
+      |> Resources.map_resource_address()
+      |> case do
+        {:cont, address} -> {:cont, %{resource | address: address}}
+        :drop -> :drop
+      end
     end
   end
 end

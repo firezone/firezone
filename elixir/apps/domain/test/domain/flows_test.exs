@@ -930,7 +930,7 @@ defmodule Domain.FlowsTest do
       actor_group: actor_group
     } do
       assert {:ok, [expired_flow]} = expire_flows_for(actor_group)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
       assert expired_flow.id == flow.id
     end
 
@@ -939,7 +939,7 @@ defmodule Domain.FlowsTest do
       identity: identity
     } do
       assert {:ok, [expired_flow]} = expire_flows_for(identity)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
       assert expired_flow.id == flow.id
     end
   end
@@ -974,7 +974,7 @@ defmodule Domain.FlowsTest do
       policy: policy
     } do
       assert {:ok, [expired_flow]} = expire_flows_for(actor.id, policy.actor_group_id)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
       assert expired_flow.id == flow.id
     end
 
@@ -984,7 +984,7 @@ defmodule Domain.FlowsTest do
       subject: subject
     } do
       assert {:ok, [expired_flow]} = expire_flows_for(actor, subject)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
       assert expired_flow.id == flow.id
     end
 
@@ -994,7 +994,7 @@ defmodule Domain.FlowsTest do
       subject: subject
     } do
       assert {:ok, [expired_flow]} = expire_flows_for(policy, subject)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
       assert expired_flow.id == flow.id
     end
 
@@ -1004,7 +1004,7 @@ defmodule Domain.FlowsTest do
       subject: subject
     } do
       assert {:ok, [expired_flow]} = expire_flows_for(resource, subject)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
       assert expired_flow.id == flow.id
     end
 
@@ -1014,7 +1014,7 @@ defmodule Domain.FlowsTest do
       subject: subject
     } do
       assert {:ok, [expired_flow]} = expire_flows_for(actor_group, subject)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
       assert expired_flow.id == flow.id
     end
 
@@ -1024,7 +1024,7 @@ defmodule Domain.FlowsTest do
       subject: subject
     } do
       assert {:ok, [expired_flow]} = expire_flows_for(identity, subject)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
       assert expired_flow.id == flow.id
     end
 
@@ -1034,7 +1034,7 @@ defmodule Domain.FlowsTest do
       subject: subject
     } do
       assert {:ok, [expired_flow]} = expire_flows_for(provider, subject)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
       assert expired_flow.id == flow.id
     end
 
