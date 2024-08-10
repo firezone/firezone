@@ -18,6 +18,10 @@ locals {
       value = "gce_metadata"
     },
     {
+      name  = "OTEL_METADATA_DISCOVERY_METHOD"
+      value = "gce_metadata"
+    },
+    {
       name  = "RUST_LOG"
       value = var.observability_log_level
     },
