@@ -17,8 +17,8 @@ tracing = { workspace = true }
 tun = { workspace = true }
 
 [dev-dependencies]
-hex-literal = "0.4.1"
 firezone-logging = { workspace = true }
+hex-literal = "0.4.1"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
