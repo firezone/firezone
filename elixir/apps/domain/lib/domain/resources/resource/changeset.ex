@@ -59,7 +59,7 @@ defmodule Domain.Resources.Resource.Changeset do
     |> validate_does_not_end_with(:address, "localhost",
       message: "localhost cannot be used, please add a DNS alias to /etc/hosts instead"
     )
-    |> validate_format(:address, ~r/^([*?]\.)?[\p{L}0-9-]{1,63}(\.[\p{L}0-9-]{1,63})*$/iu)
+    |> validate_format(:address, ~r/^[\p{L}\*\?0-9-]{1,63}(\.[\p{L}\*\?0-9-]{1,63})*$/iu)
   end
 
   defp validate_cidr_address(changeset) do

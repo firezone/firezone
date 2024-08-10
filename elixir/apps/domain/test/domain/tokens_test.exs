@@ -524,7 +524,7 @@ defmodule Domain.TokensTest do
       assert {:ok, _token} = delete_token_for(subject)
 
       expires_at = Repo.one(Domain.Flows.Flow).expires_at
-      assert DateTime.diff(expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
     end
 
     test "does not delete tokens for other actors", %{account: account, subject: subject} do

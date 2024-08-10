@@ -30,6 +30,19 @@ From there, you can select the type of Resource you want to create:
   - To non-recursively match all subdomains, use a question mark, such as
     `?.example.com`. This will match `example.com`, `sub1.example.com`, and
     `sub2.example.com` **but not** `sub1.sub2.example.com`.
+    {/* - By default, the pattern will only match the exact name you enter. */}
+    {/* - To match all subdomains recursively, use a double-wildcard, such as */}
+    {/* `**.example.com`. This will match `example.com`, `sub.example.com`, and */}
+    {/* `sub.sub.example.com`. */}
+    {/* - To match all subdomains non-recursively, use a single wildcard, such as */}
+    {/* `*.example.com`. This will match `sub.example.com` but not */}
+    {/* `sub.sub.example.com`. */}
+    {/* - To match a single character, use a question mark, such as */}
+    {/* `us-east?.example.com`. This will match `us-east1.example.com` but not */}
+    {/* `us-eastXY.example.com`. */}
+    {/* - Wildcards can be placed between domain components, e.g., `foo.*.example.com` */}
+    {/* will match `foo.bar.example.com` or `foo.**.example.com` will match */}
+    {/* `foo.bar.baz.example.com`. */}
 - **IP**: A single IPv4 or IPv6 address
 - **CIDR**: A range of IPv4 or IPv6 addresses in CIDR notation, such as
   `10.1.2.0/24` or `2001:db8::/48`
