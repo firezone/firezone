@@ -173,8 +173,7 @@ defmodule Domain.FlowsTest do
       Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group2)
 
       time = Time.utc_now()
-      one_hour_ago = Time.add(time, -1, :hour)
-      one_hour_in_future = Time.add(time, 1, :hour)
+      midnight = Time.from_iso8601!("23:59:59.999999")
 
       date = Date.utc_today()
       day_of_week = Enum.at(~w[M T W R F S U], Date.day_of_week(date) - 1)
@@ -193,7 +192,7 @@ defmodule Domain.FlowsTest do
             property: :current_utc_datetime,
             operator: :is_in_day_of_week_time_ranges,
             values: [
-              "#{day_of_week}/#{one_hour_ago}-#{one_hour_in_future}/UTC"
+              "#{day_of_week}/#{time}-#{midnight}/UTC"
             ]
           }
         ]
@@ -203,7 +202,7 @@ defmodule Domain.FlowsTest do
                authorize_flow(client, gateway, resource.id, subject)
 
       assert flow.policy_id == policy.id
-      assert DateTime.diff(flow.expires_at, DateTime.new!(date, one_hour_in_future)) < 5
+      assert DateTime.diff(flow.expires_at, DateTime.new!(date, midnight)) < 5
     end
 
     test "creates a flow when all conditions for at least one of the policies are satisfied", %{
