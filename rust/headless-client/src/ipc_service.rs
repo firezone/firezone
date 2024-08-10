@@ -22,7 +22,7 @@ use url::Url;
 
 pub mod ipc;
 use backoff::ExponentialBackoffBuilder;
-use connlib_shared::get_user_agent;
+use connlib_shared::{get_user_agent, DEFAULT_MTU};
 use ipc::{Server as IpcServer, ServiceId};
 use phoenix_channel::PhoenixChannel;
 use secrecy::Secret;
@@ -219,7 +219,7 @@ impl<'a> Handler<'a> {
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
         let (cb_tx, cb_rx) = mpsc::channel(1_000);
-        let tun_device = TunDeviceManager::new()?;
+        let tun_device = TunDeviceManager::new(DEFAULT_MTU)?;
 
         Ok(Self {
             callback_handler: CallbackHandler { cb_tx },

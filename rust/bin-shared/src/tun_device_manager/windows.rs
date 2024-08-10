@@ -1,7 +1,6 @@
 use crate::windows::CREATE_NO_WINDOW;
 use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
-use connlib_shared::DEFAULT_MTU;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ring::digest;
 use std::{
@@ -40,6 +39,7 @@ use wintun::Adapter;
 const RING_BUFFER_SIZE: u32 = 0x10_0000;
 
 pub struct TunDeviceManager {
+    mtu: u32,
     iface_idx: Option<u32>,
 
     routes: HashSet<IpNetwork>,
@@ -48,15 +48,16 @@ pub struct TunDeviceManager {
 impl TunDeviceManager {
     // Fallible on Linux
     #[allow(clippy::unnecessary_wraps)]
-    pub fn new() -> Result<Self> {
+    pub fn new(mtu: usize) -> Result<Self> {
         Ok(Self {
             iface_idx: None,
             routes: HashSet::default(),
+            mtu: mtu as u32,
         })
     }
 
     pub fn make_tun(&mut self) -> Result<Tun> {
-        let tun = Tun::new()?;
+        let tun = Tun::new(self.mtu)?;
         self.iface_idx = Some(tun.iface_idx());
 
         Ok(tun)
@@ -214,7 +215,7 @@ impl Drop for Tun {
 
 impl Tun {
     #[tracing::instrument(level = "debug")]
-    pub fn new() -> Result<Self> {
+    pub fn new(mtu: u32) -> Result<Self> {
         const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
 
         let path = ensure_dll()?;
@@ -228,7 +229,7 @@ impl Tun {
         let adapter = &Adapter::create(&wintun, TUNNEL_NAME, TUNNEL_NAME, Some(uuid))?;
         let iface_idx = adapter.get_adapter_index()?;
 
-        set_iface_config(adapter.get_luid(), DEFAULT_MTU as u32)?;
+        set_iface_config(adapter.get_luid(), mtu)?;
 
         let session = Arc::new(adapter.start_session(RING_BUFFER_SIZE)?);
         // 4 is a nice power of two. Wintun already queues packets for us, so we don't

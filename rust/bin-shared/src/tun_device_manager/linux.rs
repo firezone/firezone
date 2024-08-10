@@ -2,7 +2,6 @@
 
 use crate::FIREZONE_MARK;
 use anyhow::{anyhow, Context as _, Result};
-use connlib_shared::DEFAULT_MTU;
 use futures::TryStreamExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use libc::{
@@ -40,6 +39,7 @@ const FIREZONE_TABLE: u32 = 0x2021_fd00;
 
 /// For lack of a better name
 pub struct TunDeviceManager {
+    mtu: u32,
     connection: Connection,
     routes: HashSet<IpNetwork>,
 }
@@ -61,7 +61,7 @@ impl TunDeviceManager {
     /// Creates a new managed tunnel device.
     ///
     /// Panics if called without a Tokio runtime.
-    pub fn new() -> Result<Self> {
+    pub fn new(mtu: usize) -> Result<Self> {
         let (cxn, handle, _) = new_connection()?;
         let task = tokio::spawn(cxn);
         let connection = Connection { handle, task };
@@ -69,6 +69,7 @@ impl TunDeviceManager {
         Ok(Self {
             connection,
             routes: Default::default(),
+            mtu: mtu as u32,
         })
     }
 
@@ -105,7 +106,7 @@ impl TunDeviceManager {
         handle
             .link()
             .set(index)
-            .mtu(DEFAULT_MTU as u32)
+            .mtu(self.mtu)
             .execute()
             .await
             .context("Failed to set default MTU")?;
