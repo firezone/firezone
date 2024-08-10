@@ -196,7 +196,7 @@ mod tests {
 
     #[tokio::test]
     async fn single_instance() -> anyhow::Result<()> {
-        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+        let _guard = firezone_logging::test("trace");
         const ID: ServiceId = ServiceId::Test("2GOCMPBG");
         let mut server_1 = Server::new(ID).await?;
         let pipe_path = server_1.pipe_path.clone();

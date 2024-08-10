@@ -1,6 +1,5 @@
 use crate::CliCommon;
 use anyhow::{bail, Context as _, Result};
-use connlib_client_shared::file_logger;
 use firezone_bin_shared::platform::DnsControlMethod;
 use futures::future::{self, Either};
 use std::{ffi::OsString, pin::pin, time::Duration};
@@ -74,7 +73,7 @@ fn service_run(arguments: Vec<OsString>) {
 // If Windows stops us gracefully, this function may never return.
 fn fallible_service_run(
     arguments: Vec<OsString>,
-    logging_handle: file_logger::Handle,
+    logging_handle: firezone_logging::file::Handle,
 ) -> Result<()> {
     tracing::info!(?arguments, "fallible_windows_service_run");
 

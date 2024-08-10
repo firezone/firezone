@@ -3,12 +3,12 @@
 use anyhow::{anyhow, Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
+use connlib_client_shared::{keypair, ConnectArgs, LoginUrl, Session};
 use connlib_shared::{get_user_agent, DEFAULT_MTU};
 use firezone_bin_shared::{
     new_dns_notifier, new_network_notifier,
     platform::{tcp_socket_factory, udp_socket_factory},
-    setup_global_subscriber, TunDeviceManager, TOKEN_ENV_KEY,
+    TunDeviceManager, TOKEN_ENV_KEY,
 };
 use firezone_headless_client::{
     device_id, signals, CallbackHandler, CliCommon, DnsController, InternalServerMsg, IpcServerMsg,
@@ -128,9 +128,9 @@ fn main() -> Result<()> {
         .common
         .log_dir
         .as_deref()
-        .map(file_logger::layer)
+        .map(firezone_logging::file::layer)
         .unzip();
-    setup_global_subscriber(layer);
+    firezone_logging::setup_global_subscriber(layer);
 
     tracing::info!(
         arch = std::env::consts::ARCH,

@@ -1325,7 +1325,6 @@ mod tests {
         rfc5389::errors::{BadRequest, ServerError},
         rfc5766::errors::AllocationMismatch,
     };
-    use tracing_subscriber::util::SubscriberInitExt;
 
     const PEER1: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000);
 
@@ -2132,10 +2131,7 @@ mod tests {
 
     #[test]
     fn timed_out_refresh_requests_invalid_candidates() {
-        let _guard = tracing_subscriber::fmt()
-            .with_env_filter("trace")
-            .with_test_writer()
-            .set_default();
+        let _guard = firezone_logging::test("trace");
 
         let start = Instant::now();
         let mut allocation = Allocation::for_test_ip4(start).with_binding_response(PEER1);
@@ -2324,10 +2320,7 @@ mod tests {
 
     #[test]
     fn second_stun_request_gives_up_eventually() {
-        let _guard = tracing_subscriber::fmt()
-            .with_env_filter("trace")
-            .with_test_writer()
-            .set_default();
+        let _guard = firezone_logging::test("trace");
 
         let start = Instant::now();
         let mut allocation = Allocation::for_test_dual(start);

@@ -13,11 +13,6 @@ pub mod windows;
 #[cfg(target_os = "windows")]
 pub use windows as platform;
 
-use tracing_log::LogTracer;
-use tracing_subscriber::{
-    fmt, prelude::__tracing_subscriber_SubscriberExt, EnvFilter, Layer, Registry,
-};
-
 /// Output of `git describe` at compile time
 /// e.g. `1.0.0-pre.4-20-ged5437c88-modified` where:
 ///
@@ -59,14 +54,3 @@ pub use network_changes::{new_dns_notifier, new_network_notifier};
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use tun_device_manager::TunDeviceManager;
-
-pub fn setup_global_subscriber<L>(additional_layer: L)
-where
-    L: Layer<Registry> + Send + Sync,
-{
-    let subscriber = Registry::default()
-        .with(additional_layer.with_filter(EnvFilter::from_default_env()))
-        .with(fmt::layer().with_filter(EnvFilter::from_default_env()));
-    tracing::subscriber::set_global_default(subscriber).expect("Could not set global default");
-    LogTracer::init().unwrap();
-}

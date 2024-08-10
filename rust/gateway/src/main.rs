@@ -7,7 +7,7 @@ use connlib_shared::{
 };
 use firezone_bin_shared::{
     linux::{tcp_socket_factory, udp_socket_factory},
-    setup_global_subscriber, TunDeviceManager,
+    TunDeviceManager,
 };
 use firezone_tunnel::{GatewayTunnel, IPV4_PEERS, IPV6_PEERS};
 
@@ -45,7 +45,7 @@ async fn main() {
 
 async fn try_main() -> Result<()> {
     let cli = Cli::parse();
-    setup_global_subscriber(layer::Identity::new());
+    firezone_logging::setup_global_subscriber(layer::Identity::new());
 
     let firezone_id = get_firezone_id(cli.firezone_id).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;

@@ -178,7 +178,7 @@ mod tests {
 
     #[tokio::test]
     async fn no_such_service() -> Result<()> {
-        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+        let _guard = firezone_logging::test("trace");
         const ID: ServiceId = ServiceId::Test("H56FRXVH");
 
         if super::connect_to_service(ID).await.is_ok() {
@@ -190,7 +190,7 @@ mod tests {
     /// Make sure the IPC client and server can exchange messages
     #[tokio::test]
     async fn smoke() -> Result<()> {
-        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+        let _guard = firezone_logging::test("trace");
         let loops = 10;
         const ID: ServiceId = ServiceId::Test("OB5SZCGN");
 
@@ -265,7 +265,7 @@ mod tests {
     /// this test will fail.
     #[tokio::test]
     async fn loop_to_next_client() -> Result<()> {
-        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+        let _guard = firezone_logging::test("trace");
 
         let mut server = Server::new(ServiceId::Test("H6L73DG5")).await?;
         for i in 0..5 {
