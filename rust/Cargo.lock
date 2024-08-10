@@ -996,6 +996,7 @@ dependencies = [
  "backoff",
  "connlib-client-shared",
  "connlib-shared",
+ "firezone-logging",
  "ip_network",
  "jni 0.21.1",
  "libc",
@@ -1021,6 +1022,7 @@ dependencies = [
  "backoff",
  "connlib-client-shared",
  "connlib-shared",
+ "firezone-logging",
  "ip_network",
  "libc",
  "oslog",
@@ -1043,7 +1045,6 @@ name = "connlib-client-shared"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "backoff",
  "bimap",
  "chrono",
@@ -1055,13 +1056,9 @@ dependencies = [
  "serde",
  "serde_json",
  "socket-factory",
- "time",
  "tokio",
  "tokio-tungstenite",
  "tracing",
- "tracing-appender",
- "tracing-stackdriver",
- "tracing-subscriber",
  "tun",
  "url",
 ]
@@ -1771,6 +1768,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "firezone-logging",
  "futures",
  "git-version",
  "hex-literal",
@@ -1786,8 +1784,6 @@ dependencies = [
  "socket-factory",
  "tokio",
  "tracing",
- "tracing-log",
- "tracing-subscriber",
  "tun",
  "uuid",
  "windows 0.57.0",
@@ -1813,6 +1809,7 @@ dependencies = [
  "domain",
  "either",
  "firezone-bin-shared",
+ "firezone-logging",
  "firezone-tunnel",
  "futures",
  "futures-bounded",
@@ -1849,6 +1846,7 @@ dependencies = [
  "dirs",
  "firezone-bin-shared",
  "firezone-headless-client",
+ "firezone-logging",
  "futures",
  "hex",
  "keyring",
@@ -1897,6 +1895,7 @@ dependencies = [
  "connlib-shared",
  "dirs",
  "firezone-bin-shared",
+ "firezone-logging",
  "futures",
  "humantime",
  "ip_network",
@@ -1924,6 +1923,18 @@ dependencies = [
  "windows 0.57.0",
  "windows-service",
  "winreg 0.52.0",
+]
+
+[[package]]
+name = "firezone-logging"
+version = "0.1.0"
+dependencies = [
+ "time",
+ "tracing",
+ "tracing-appender",
+ "tracing-log",
+ "tracing-stackdriver",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1981,6 +1992,7 @@ dependencies = [
  "connlib-shared",
  "derivative",
  "domain",
+ "firezone-logging",
  "firezone-relay",
  "futures",
  "futures-util",
@@ -5501,6 +5513,7 @@ dependencies = [
  "boringtun",
  "bytecodec",
  "bytes",
+ "firezone-logging",
  "hex",
  "hex-display",
  "ip-packet",
@@ -5511,7 +5524,6 @@ dependencies = [
  "stun_codec",
  "thiserror",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -5520,6 +5532,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "boringtun",
+ "firezone-logging",
  "futures",
  "hex",
  "ip-packet",
@@ -5535,7 +5548,6 @@ dependencies = [
  "system-info",
  "tokio",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

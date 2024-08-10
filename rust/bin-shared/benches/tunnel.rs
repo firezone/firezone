@@ -1,11 +1,8 @@
 use anyhow::Result;
-use tracing_subscriber::EnvFilter;
 
 fn main() -> Result<()> {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .with_test_writer()
-        .try_init();
+    let _guard = firezone_logging::test("debug");
+
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(platform::perf())?;
     Ok(())
