@@ -10,6 +10,7 @@ struct Settings: Equatable {
   var authBaseURL: String
   var apiURL: String
   var logFilter: String
+  var disabledResources: Set<String>
 
   var isValid: Bool {
     let authBaseURL = URL(string: authBaseURL)
@@ -26,6 +27,7 @@ struct Settings: Equatable {
       && !logFilter.isEmpty
   }
 
+
   // Convert provider configuration (which may have empty fields if it was tampered with) to Settings
   static func fromProviderConfiguration(_ providerConfiguration: [String: Any]?) -> Settings {
     if let providerConfiguration = providerConfiguration as? [String: String] {
@@ -35,19 +37,29 @@ struct Settings: Equatable {
         apiURL: providerConfiguration[TunnelManagerKeys.apiURL]
           ?? Settings.defaultValue.apiURL,
         logFilter: providerConfiguration[TunnelManagerKeys.logFilter]
-          ?? Settings.defaultValue.logFilter
+          ?? Settings.defaultValue.logFilter,
+        disabledResources: getDisabledResources(disabledResources: providerConfiguration[TunnelManagerKeys.disabledResources])
       )
     } else {
       return Settings.defaultValue
     }
   }
 
+  static private func getDisabledResources(disabledResources: String?) -> Set<String> {
+    guard let disabledResourcesJSON = disabledResources, let disabledResourcesData = disabledResourcesJSON.data(using: .utf8)  else{
+      return Set()
+    }
+    return (try? JSONDecoder().decode(Set<String>.self, from: disabledResourcesData))
+      ?? Settings.defaultValue.disabledResources
+  }
+
   // Used for initializing a new providerConfiguration from Settings
   func toProviderConfiguration() -> [String: String] {
     return [
-      "authBaseURL": authBaseURL,
-      "apiURL": apiURL,
-      "logFilter": logFilter,
+      TunnelManagerKeys.authBaseURL: authBaseURL,
+      TunnelManagerKeys.apiURL: apiURL,
+      TunnelManagerKeys.logFilter: logFilter,
+      TunnelManagerKeys.disabledResources: String(data: try! JSONEncoder().encode(disabledResources), encoding: .utf8) ?? "",
     ]
   }
 
@@ -59,13 +71,15 @@ struct Settings: Equatable {
         authBaseURL: "https://app.firez.one",
         apiURL: "wss://api.firez.one",
         logFilter:
-          "firezone_tunnel=debug,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,snownet=debug,str0m=info,warn"
+          "firezone_tunnel=debug,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,snownet=debug,str0m=info,warn",
+        disabledResources: Set()
       )
     #else
       Settings(
         authBaseURL: "https://app.firezone.dev",
         apiURL: "wss://api.firezone.dev",
-        logFilter: "str0m=warn,info"
+        logFilter: "str0m=warn,info",
+        disabledResources: Set()
       )
     #endif
   }()

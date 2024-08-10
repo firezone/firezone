@@ -78,9 +78,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           return
         }
 
+        let disabledResources: Set<String> = if let disabledResourcesJSON = providerConfiguration[TunnelManagerKeys.disabledResources]?.data(using: .utf8) {
+          (try? JSONDecoder().decode(Set<String>.self, from: disabledResourcesJSON )) ?? Set()
+        } else {
+          Set()
+        }
+
         let adapter = Adapter(
-          apiURL: apiURL, token: token, logFilter: logFilter, packetTunnelProvider: self)
+          apiURL: apiURL, token: token, logFilter: logFilter, disabledResources: disabledResources, packetTunnelProvider: self)
         self.adapter = adapter
+
 
         try adapter.start()
 
@@ -128,37 +135,38 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     cancelTunnelWithError(nil)
   }
 
-  // TODO: Use a message format to allow requesting different types of data.
-  // This currently assumes we're requesting resources.
   override func handleAppMessage(_ message: Data, completionHandler: ((Data?) -> Void)? = nil) {
-    let string = String(data: message, encoding: .utf8)
+    guard let tunnelMessage =  try? PropertyListDecoder().decode(TunnelMessage.self, from: message) else { return }
 
-    switch string {
-    case "signOut":
+    switch tunnelMessage {
+    case .setDisabledResources(let value):
+      adapter?.setDisabledResources(newDisabledResources: value)
+    case .signOut:
       Task {
-        do {
-          try await clearToken()
-        } catch {
-          Log.tunnel.error("\(#function): Error: \(error)")
-        }
+          await clearToken()
       }
-    default:
-      adapter?.getResourcesIfVersionDifferentFrom(hash: message) {
+    case .getResourceList(let value):
+      adapter?.getResourcesIfVersionDifferentFrom(hash: value) {
         resourceListJSON in
         completionHandler?(resourceListJSON?.data(using: .utf8))
       }
     }
   }
 
-  private func clearToken() async throws {
-    let keychain = Keychain()
-    guard let ref = await keychain.search()
-    else {
-      Log.tunnel.error("\(#function): Error: token not found!")
-      return
-    }
+  enum TokenError: Error {
+    case TokenNotFound
+  }
 
-    try await keychain.delete(persistentRef: ref)
+  private func clearToken() async {
+    do {
+      let keychain = Keychain()
+      guard let ref = await keychain.search() else {
+        throw TokenError.TokenNotFound
+      }
+      try await keychain.delete(persistentRef: ref)
+    } catch {
+      Log.tunnel.error("\(#function): Error: \(error)")
+    }
   }
 }
 

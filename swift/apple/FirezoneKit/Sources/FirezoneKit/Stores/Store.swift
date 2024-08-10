@@ -45,6 +45,10 @@ public final class Store: ObservableObject {
     initTunnelManager()
   }
 
+  public func isResourceEnabled(_ id: String) -> Bool {
+    !tunnelManager.disabledResources.contains(id)
+  }
+
   private func initNotifications() {
     // Finish initializing notification binding
     sessionNotification.signInHandler = {
@@ -138,7 +142,7 @@ public final class Store: ObservableObject {
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
   // so we need to periodically ask the tunnel process for them.
-  func beginUpdatingResources(callback: @escaping (Data) -> Void) {
+  func beginUpdatingResources(callback: @escaping ([Resource]) -> Void) {
     Log.app.log("\(#function)")
 
     tunnelManager.fetchResources(callback: callback)
@@ -164,6 +168,15 @@ public final class Store: ObservableObject {
       } catch {
         Log.app.error("\(#function): \(error)")
       }
+    }
+  }
+
+  func toggleResourceDisabled(resource: String, enabled: Bool) {
+    tunnelManager.toggleResourceDisabled(resource: resource, enabled: enabled)
+    var newSettings = settings
+    newSettings.disabledResources = tunnelManager.disabledResources
+    Task {
+      try await save(newSettings)
     }
   }
 

@@ -59,6 +59,12 @@ class Adapter {
   /// This is the primary async primitive used in this class.
   private let workQueue = DispatchQueue(label: "FirezoneAdapterWorkQueue")
 
+  /// Currently disabled resources
+  private var disabledResources: Set<String> = []
+
+  /// Cache of resources that can be disabled
+  private var canBeDisabled: Set<String> = []
+
   /// Adapter state.
   private var state: AdapterState {
     didSet {
@@ -79,6 +85,7 @@ class Adapter {
     apiURL: String,
     token: String,
     logFilter: String,
+    disabledResources: Set<String>,
     packetTunnelProvider: PacketTunnelProvider
   ) {
     self.apiURL = apiURL
@@ -89,6 +96,7 @@ class Adapter {
     self.logFilter = logFilter
     self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
     self.networkSettings = nil
+    self.disabledResources = disabledResources
   }
 
   // Could happen abruptly if the process is killed.
@@ -186,6 +194,35 @@ class Adapter {
         completionHandler(resourceListJSON)
       }
     }
+  }
+
+  func resources() -> [Resource] {
+    let decoder = JSONDecoder()
+    decoder.keyDecodingStrategy = .convertFromSnakeCase
+    guard let resourceList = resourceListJSON else { return [] }
+    return (try? decoder.decode([Resource].self, from: resourceList.data(using: .utf8)!)) ?? []
+  }
+
+  public func setDisabledResources(newDisabledResources: Set<String>) {
+    workQueue.async { [weak self] in
+      guard let self = self else { return }
+      self.disabledResources = newDisabledResources
+      self.resourcesUpdated()
+    }
+  }
+
+  public func resourcesUpdated() {
+    guard case .tunnelStarted(let session) = self.state else { return }
+
+    let decoder = JSONDecoder()
+    decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+    canBeDisabled = Set(resources().filter({ $0.canToggle }).map({ $0.id }))
+
+    let disablingResources = disabledResources.filter({ canBeDisabled.contains($0) })
+
+    let currentlyDisabled = try! JSONEncoder().encode(disablingResources)
+    session.setDisabledResources(String(data: currentlyDisabled, encoding: .utf8)!)
   }
 }
 
@@ -370,6 +407,8 @@ extension Adapter: CallbackHandlerDelegate {
 
       // Update resource List. We don't care what's inside.
       resourceListJSON = resourceList
+
+      self.resourcesUpdated()
     }
   }
 

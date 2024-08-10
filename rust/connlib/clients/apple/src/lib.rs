@@ -60,6 +60,9 @@ mod ffi {
         // <https://github.com/firezone/firezone/issues/4350>
         #[swift_bridge(swift_name = "setDns")]
         fn set_dns(&mut self, dns_servers: String);
+
+        #[swift_bridge(swift_name = "setDisabledResources")]
+        fn set_disabled_resources(&mut self, disabled_resources: String);
         fn disconnect(self);
     }
 
@@ -232,6 +235,11 @@ impl WrappedSession {
     fn set_dns(&mut self, dns_servers: String) {
         self.inner
             .set_dns(serde_json::from_str(&dns_servers).unwrap())
+    }
+
+    fn set_disabled_resources(&mut self, disabled_resources: String) {
+        self.inner
+            .set_disabled_resources(serde_json::from_str(&disabled_resources).unwrap())
     }
 
     fn disconnect(self) {
