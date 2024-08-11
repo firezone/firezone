@@ -52,7 +52,7 @@ export default function Page() {
           <h1
             className={
               manrope.className +
-              " mb-8 text-5xl sm:text-6xl md:text-7xl text-center drop-shadow-[inset_0_2px_0_0_rgba(255,255,255,100)] font-medium tracking-tight leading-none bg-gradient-to-b from-white from-70% to-slate-200 text-transparent bg-clip-text"
+              " mb-8 text-5xl sm:text-6xl md:text-7xl text-center drop-shadow-[inset_0_2px_0_0_rgba(255,255,255,100)] font-medium tracking-tight leading-tight bg-gradient-to-b from-white from-70% to-slate-200 text-transparent bg-clip-text"
             }
           >
             Upgrade your VPN to zero-trust access
@@ -63,7 +63,8 @@ export default function Page() {
             }
           >
             Firezone is a fast, flexible VPN replacement built on WireGuard®
-            that protects your workforce without tedious configuration.
+            that protects your most valuable resources without tedious
+            configuration.
           </h3>
           <div className="flex sm:flex-row flex-col-reverse items-center justify-center sm:gap-x-6 md:gap-x-12 mt-4 w-full">
             <div className="flex items-center my-4 mr-4">
@@ -75,15 +76,6 @@ export default function Page() {
               >
                 Get started for free
               </ActionLink>
-              {/* <button */}
-              {/*   type="button" */}
-              {/*   className="group text-neutral-300 inline-flex justify-center items-center py-2 md:text-lg text-md font-semibold border-b-2 border-neutral-200 hover:border-primary-450 hover:text-primary-450 duration-50 transform transition" */}
-              {/* > */}
-              {/*   <Link href="https://app.firezone.dev/sign_up"> */}
-              {/*     Get started for free */}
-              {/*   </Link> */}
-              {/*   <HiArrowLongRight className="group-hover:text-primary-450 group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-7 h-7" /> */}
-              {/* </button> */}
             </div>
             <div className=" flex items-center w-full sm:w-fit">
               <button

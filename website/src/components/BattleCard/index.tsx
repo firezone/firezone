@@ -26,7 +26,7 @@ export default function BattleCard2() {
         <div className="flex w-full items-end justify-start lg:justify-center overflow-x-auto flex-shrink-0">
           <ul
             role="list"
-            className={`text-sm md:text-md min-w-[180px] md:min-w-[300px] ${manrope.className}`}
+            className={`text-sm md:text-md min-w-[180px] md:min-w-[300px]`}
           >
             <li className="px-6 h-14 place-content-center bg-neutral-100">
               Automatic NAT64 and NAT46
@@ -47,7 +47,7 @@ export default function BattleCard2() {
           </ul>
           <ul
             role="list"
-            className={`flex flex-col items-center border-[1px] border-primary-450 bg-primary-100 rounded-xl  min-w-[200px] ${manrope.className}`}
+            className={`flex flex-col items-center border-[1px] border-primary-450 bg-primary-100 rounded-xl  min-w-[200px]`}
           >
             <li className="h-[72px] flex justify-center items-center px-6 ">
               <Image
@@ -85,7 +85,7 @@ export default function BattleCard2() {
           </ul>
           <ul
             role="list"
-            className={`flex flex-col items-center mb-[1px]  min-w-[160px] md:min-w-[200px] ${manrope.className}`}
+            className={`flex flex-col items-center mb-[1px]  min-w-[160px] md:min-w-[200px]`}
           >
             <li className="h-[72px] px-8 flex justify-center items-center font-bold tracking-tight text-slate-600">
               Tailscale
@@ -102,14 +102,14 @@ export default function BattleCard2() {
             <li className="h-14 flex justify-center items-center w-full">
               <HiCheck className="text-2xl text-green-600" />
             </li>
-            <li className="h-14 flex justify-center items-center w-full ">
+            <li className="h-14 flex justify-center items-center w-full bg-neutral-100">
               Partial
             </li>
             <li className="h-20" />
           </ul>
           <ul
             role="list"
-            className={`flex flex-col items-center mb-[1px] min-w-[160px] md:min-w-[200px] ${manrope.className}`}
+            className={`flex flex-col items-center mb-[1px] min-w-[160px] md:min-w-[200px]`}
           >
             <li className="h-[72px] px-8 flex justify-center items-center font-bold tracking-tight text-slate-600">
               Twingate
@@ -126,7 +126,7 @@ export default function BattleCard2() {
             <li className="h-14 flex justify-center items-center w-full">
               <HiXMark className="text-2xl text-red-600" />
             </li>
-            <li className="h-14 flex justify-center items-center w-full ">
+            <li className="h-14 flex justify-center items-center w-full bg-neutral-100">
               <HiCheck className="text-2xl text-green-600" />
             </li>
             <li className="h-20" />

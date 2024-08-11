@@ -19,14 +19,14 @@ export default function ElevatorPitch() {
     },
     {
       title: "Scales with your business.",
-      desc: "Automatic load balancing and failover with two or more gateways.",
+      desc: "Automatic load balancing and failover with two or more Gateways.",
       icon: (
         <HiMiniPresentationChartLine className="min-w-8 h-8 text-primary-400" />
       ),
     },
     {
-      title: "Easily create tunnels on-the-fly.",
-      desc: "Firezone's holepunching tech establishes tunnels whenever needed.",
+      title: "Minimize your attack surface.",
+      desc: "Firezone's hole-punching tech hides your resources from the internet.",
       icon: <HiMiniShieldCheck className="min-w-8 h-8 text-primary-400" />,
     },
     {
@@ -84,7 +84,11 @@ export default function ElevatorPitch() {
           </div>
           <div className="max-w-screen-md">
             <p className={`text-lg text-left text-pretty text-neutral-800 `}>
-              Protect your workforce without the tedious configuration.
+              Firezone secures apps, services, networks and everything in
+              between.
+            </p>
+            <p className="text-lg font-semibold text-left text-pretty text-neutral-800">
+              No ACL hell required.
             </p>
           </div>
         </div>
