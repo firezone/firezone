@@ -18,7 +18,7 @@ import { manrope } from "@/lib/fonts";
 
 export default function Footer() {
   return (
-    <footer className="relative bg-neutral-900 py-16 md:px-16 px-4 text-neutral-500">
+    <footer className="relative bg-neutral-950 py-16 md:px-16 px-4 text-neutral-500">
       <div className="flex flex-col justify-center items-center text-center">
         <h3
           className={`text-neutral-200 mb-4 text-4xl md:text-6xl text-pretty tracking-tight justify-center font-semibold ${manrope.className}`}

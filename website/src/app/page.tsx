@@ -47,7 +47,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-black bg-hero pt-28 xl:pt-32">
+      <section className="bg-neutral-950 bg-hero pt-28 xl:pt-32">
         <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
           <h1
             className={
@@ -196,7 +196,7 @@ export default function Page() {
       </section>
 
       {/* Feature section 4: Say goodbye to bandwidth problems. */}
-      <section className="bg-neutral-900 text-neutral-50 py-20 md:py-16">
+      <section className="bg-neutral-950 text-neutral-50 py-20 md:py-16">
         <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
           <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2 place-content-center">
             Lightweight
@@ -377,7 +377,7 @@ export default function Page() {
                   />
                 </div>
               </div>
-              <pre className="mt-4 md:mt-8 text-xs p-2 bg-neutral-900 rounded shadow text-neutral-50 text-wrap">
+              <pre className="mt-4 md:mt-8 text-xs p-2 bg-neutral-950 rounded shadow text-neutral-50 text-wrap">
                 <code>
                   <strong>FIREZONE_TOKEN</strong>=&lt;your-token&gt; \<br /> ./
                   <strong>firezone-gateway</strong>
