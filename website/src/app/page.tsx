@@ -199,7 +199,7 @@ export default function Page() {
       <section className="bg-neutral-900 text-neutral-50 py-20 md:py-16">
         <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
           <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2 place-content-center">
-            Lighweight
+            Lightweight
           </h6>
           <h3
             className={`tracking-tight font-bold inline-block ${manrope.className}`}

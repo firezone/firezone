@@ -41,7 +41,7 @@ export default function ActionLink({
 }) {
   const linkClasses = `
     group inline-flex justify-center items-center py-2 font-semibold duration-50
-    transform transition tracking-tight font-medium 
+    transform transition tracking-tight font-medium
     text-${color}
     ${Size[size].link}
     ${border && `${Size[size].border} border-b-${color}`}
@@ -51,7 +51,7 @@ export default function ActionLink({
 
   const iconClasses = `
     group-hover:translate-x-1 group-hover:scale-110 duration-100 transform
-    transition 
+    transition
     ${Size[size].icon}
     ${(transitionColor && `group-hover:text-${transitionColor}`) || ""}
   `;
