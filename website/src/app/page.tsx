@@ -115,25 +115,6 @@ export default function Page() {
         <section className="relative py-24 bg-white">
           <FeatureCards />
         </section>
-        {/* <section className="relative py-24 bg-white">
-          <SingleFeature
-            title="Achieve compliance"
-            boldedTitle=" without the headache."
-            desc="Clients are available for every major platform and stay connected even
-          when switching WiFi networks."
-            link="/kb/architecture"
-            buttonDesc="Read about Firezone's architecture"
-          >
-            <div className="relative flex flex-col -space-y-4 items-center">
-              <div className="absolute z-10 bg-primary-200 rounded-full w-[400px] h-[400px]" />
-              <img src="/images/ComplianceHeader.svg" className="z-30" />
-              <img
-                src="/images/ComplianceBody.svg"
-                className="z-20 max-w-[80%]"
-              />
-            </div>
-          </SingleFeature>
-        </section> */}
       </section>
 
       {/* Feature section 2: Achieve compliance in minutes, not weeks. */}

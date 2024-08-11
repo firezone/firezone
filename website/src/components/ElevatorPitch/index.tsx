@@ -7,6 +7,7 @@ import {
 } from "react-icons/hi2";
 import { HiLightningBolt, HiGlobe } from "react-icons/hi";
 import { manrope } from "@/lib/fonts";
+import Image from "next/image";
 
 export default function ElevatorPitch() {
   const [selectedOption, setSelectedOption] = useState(5);
@@ -106,9 +107,12 @@ export default function ElevatorPitch() {
         </div>
       </div>
       <div className="w-full h-auto lg:max-w-[600px] overflow-hidden flex justify-center items-center rounded-xl lg:h-[600px] lg:w-[40%] bg-gradient-to-b from-[#FFF5ED] to-[#F2EEFE]">
-        <img
+        <Image
           src="/images/simple-demonstration.png"
           className="max-w-[600px] w-full lg:max-h-[400px] lg:object-cover rounded-lg"
+          width={600}
+          height={400}
+          alt="Elevator pitch graphic"
         />
       </div>
     </div>
