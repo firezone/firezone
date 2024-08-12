@@ -11,15 +11,6 @@ pub enum ConnlibError {
     /// Standard IO error.
     #[error(transparent)]
     Io(#[from] std::io::Error),
-    /// Glob for errors without a type.
-    #[error("Other error: {0}")]
-    Other(&'static str),
-    /// No iface found
-    #[error("No iface found")]
-    NoIface,
-    /// Expected file descriptor and none was found
-    #[error("No filedescriptor")]
-    NoFd,
     /// A panic occurred.
     #[error("Connlib panicked: {0}")]
     Panic(String),
