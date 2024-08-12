@@ -13,4 +13,5 @@ mod imp;
 #[allow(clippy::unnecessary_wraps)]
 mod imp;
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 pub use imp::{new_dns_notifier, new_network_notifier};
