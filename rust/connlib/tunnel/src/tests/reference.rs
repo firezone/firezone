@@ -335,13 +335,6 @@ impl ReferenceStateMachine for ReferenceState {
                         continue;
                     }
 
-                    // Only queries to upstream DNS servers are forwarded through the tunnel.
-                    // If we don't have upstream DNS servers, process the query normally.
-                    if state.client.inner().upstream_dns_resolvers.is_empty() {
-                        state.client.exec_mut(|client| client.on_dns_query(query));
-                        continue;
-                    }
-
                     // Check if we the DNS server is defined as a CIDR resource.
                     let Some(resource) = state.client.inner().dns_query_via_cidr_resource(query)
                     else {

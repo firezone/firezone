@@ -614,6 +614,11 @@ impl RefClient {
     ///
     /// DNS servers may be resources, in which case queries that need to be forwarded actually need to be encapsulated.
     pub(crate) fn dns_query_via_cidr_resource(&self, query: &DnsQuery) -> Option<ResourceId> {
+        // Unless we are using upstream resolvers, DNS queries are never routed through the tunnel.
+        if self.upstream_dns_resolvers.is_empty() {
+            return None;
+        }
+
         // If we are querying a DNS resource, we will issue a connection intent to the DNS resource, not the CIDR resource.
         if self.dns_resource_by_domain(&query.domain).is_some() {
             return None;
