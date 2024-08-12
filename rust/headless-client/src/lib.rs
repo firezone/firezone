@@ -59,9 +59,11 @@ pub struct CliCommon {
     pub max_partition_time: Option<humantime::Duration>,
 }
 
-/// Messages we get from connlib, including ones that aren't sent to IPC clients
-pub enum InternalServerMsg {
-    Ipc(IpcServerMsg),
+/// Messages that connlib can produce and send to the headless Client, IPC service, or GUI process.
+///
+/// i.e. callbacks
+pub enum ConnlibMsg {
+    /// Use this as `TunnelReady`, per `callbacks.rs`
     OnSetInterfaceConfig {
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
@@ -71,16 +73,15 @@ pub enum InternalServerMsg {
         ipv4: Vec<Ipv4Network>,
         ipv6: Vec<Ipv6Network>,
     },
+    ToGui(ConnlibMsgToGui),
 }
 
-/// Messages that we can send to IPC clients
+/// Messages that end up in the GUI, either from connlib or from the IPC service.
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum IpcServerMsg {
-    OnDisconnect {
-        error_msg: String,
-        is_authentication_error: bool,
-    },
-    OnUpdateResources(Vec<callbacks::ResourceDescription>),
+    /// The IPC service finished clearing its log dir.
+    ClearedLogs,
+    FromConnlib(ConnlibMsgToGui),
     /// The IPC service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
@@ -89,9 +90,19 @@ pub enum IpcServerMsg {
     TerminatingGracefully,
 }
 
+/// Messages that go all the way from connlib to the GUI process, or to the headless Client
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub enum ConnlibMsgToGui {
+    OnDisconnect {
+        error_msg: String,
+        is_authentication_error: bool,
+    },
+    OnUpdateResources(Vec<callbacks::ResourceDescription>),
+}
+
 #[derive(Clone)]
 pub struct CallbackHandler {
-    pub cb_tx: mpsc::Sender<InternalServerMsg>,
+    pub cb_tx: mpsc::Sender<ConnlibMsg>,
 }
 
 impl Callbacks for CallbackHandler {
@@ -103,7 +114,7 @@ impl Callbacks for CallbackHandler {
             false
         };
         self.cb_tx
-            .try_send(InternalServerMsg::Ipc(IpcServerMsg::OnDisconnect {
+            .try_send(ConnlibMsg::ToGui(ConnlibMsgToGui::OnDisconnect {
                 error_msg: error.to_string(),
                 is_authentication_error,
             }))
@@ -112,14 +123,14 @@ impl Callbacks for CallbackHandler {
 
     fn on_set_interface_config(&self, ipv4: Ipv4Addr, ipv6: Ipv6Addr, dns: Vec<IpAddr>) {
         self.cb_tx
-            .try_send(InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
+            .try_send(ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
             .expect("Should be able to send OnSetInterfaceConfig");
     }
 
     fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
         tracing::debug!(len = resources.len(), "New resource list");
         self.cb_tx
-            .try_send(InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(
+            .try_send(ConnlibMsg::ToGui(ConnlibMsgToGui::OnUpdateResources(
                 resources,
             )))
             .expect("Should be able to send OnUpdateResources");
@@ -127,7 +138,7 @@ impl Callbacks for CallbackHandler {
 
     fn on_update_routes(&self, ipv4: Vec<Ipv4Network>, ipv6: Vec<Ipv6Network>) {
         self.cb_tx
-            .try_send(InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 })
+            .try_send(ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 })
             .expect("Should be able to send messages");
     }
 }
@@ -151,7 +162,7 @@ mod tests {
     // Make sure it's okay to store a bunch of these to mitigate #5880
     #[test]
     fn callback_msg_size() {
-        assert_eq!(std::mem::size_of::<InternalServerMsg>(), 56)
+        assert_eq!(std::mem::size_of::<ConnlibMsg>(), 56)
     }
 
     #[test]

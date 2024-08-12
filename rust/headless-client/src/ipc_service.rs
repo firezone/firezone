@@ -1,6 +1,6 @@
 use crate::{
     device_id, dns_control::DnsController, known_dirs, signals, CallbackHandler, CliCommon,
-    InternalServerMsg, IpcServerMsg,
+    ConnlibMsg, ConnlibMsgToGui, IpcServerMsg,
 };
 use anyhow::{Context as _, Result};
 use clap::Parser;
@@ -71,6 +71,7 @@ impl Default for Cmd {
 
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
+    ClearLogs,
     Connect { api_url: String, token: String },
     Disconnect,
     Reset,
@@ -185,7 +186,7 @@ async fn ipc_listen(
 /// Handles one IPC client
 struct Handler<'a> {
     callback_handler: CallbackHandler,
-    cb_rx: mpsc::Receiver<InternalServerMsg>,
+    cb_rx: mpsc::Receiver<ConnlibMsg>,
     connlib: Option<connlib_client_shared::Session>,
     dns_controller: &'a mut DnsController,
     ipc_rx: ipc::ServerRead,
@@ -195,7 +196,7 @@ struct Handler<'a> {
 }
 
 enum Event {
-    Callback(InternalServerMsg),
+    Callback(ConnlibMsg),
     CallbackChannelClosed,
     Ipc(ClientMsg),
     IpcDisconnected,
@@ -307,28 +308,26 @@ impl<'a> Handler<'a> {
         Poll::Pending
     }
 
-    async fn handle_connlib_cb(&mut self, msg: InternalServerMsg) -> Result<()> {
+    async fn handle_connlib_cb(&mut self, msg: ConnlibMsg) -> Result<()> {
         match msg {
-            InternalServerMsg::Ipc(msg) => {
-                // The first `OnUpdateResources` marks when connlib is fully initialized
-                if let IpcServerMsg::OnUpdateResources(_) = &msg {
-                    if let Some(instant) = self.last_connlib_start_instant.take() {
-                        tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
-                    }
-
+            ConnlibMsg::ToGui(msg) => {
+                if let ConnlibMsgToGui::OnUpdateResources(_) = &msg {
                     // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                     self.dns_controller.flush()?;
                 }
                 self.ipc_tx
-                    .send(&msg)
+                    .send(&IpcServerMsg::FromConnlib(msg))
                     .await
                     .context("Error while sending IPC message")?
             }
-            InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
+            ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                 self.tun_device.set_ips(ipv4, ipv6).await?;
                 self.dns_controller.set_dns(dns).await?;
+                if let Some(instant) = self.last_connlib_start_instant.take() {
+                    tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
+                }
             }
-            InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
+            ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                 self.tun_device.set_routes(ipv4, ipv6).await?
             }
         }
@@ -337,6 +336,7 @@ impl<'a> Handler<'a> {
 
     fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
         match msg {
+            ClientMsg::ClearLogs => todo!(),
             ClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);
                 // There isn't an airtight way to implement a "disconnect and reconnect"
