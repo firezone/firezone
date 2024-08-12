@@ -21,6 +21,13 @@ export default function GUI({ title }: { title: string }) {
         </ul>
       </Entry>
       */}
+      <Entry version="1.1.11" date={new Date("2024-08-09")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6233">
+            Fixes an issue where the IPC service can panic during DNS resolution.
+          </ChangeItem>
+        </ul>
+      </Entry>
       <Entry version="1.1.10" date={new Date("2024-08-08")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="5923">
@@ -29,6 +36,9 @@ export default function GUI({ title }: { title: string }) {
           <ChangeItem enable={title === "Linux GUI"} pull="6163">
             Supports using `etc-resolv-conf` DNS control method, or disabling
             DNS control
+          </ChangeItem>
+          <ChangeItem pull="6181">
+            Improves reliability of DNS resolution of non-resources.
           </ChangeItem>
           <ChangeItem enable={title === "Windows"} pull="6163">
             Supports disabling DNS control

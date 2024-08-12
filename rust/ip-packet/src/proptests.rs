@@ -16,7 +16,9 @@ fn tcp_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
         any::<u16>(),
         any::<Vec<u8>>(),
     )
-        .prop_map(|(src, dst, sport, dport, payload)| tcp_packet(src, dst, sport, dport, payload))
+        .prop_map(|(src, dst, sport, dport, payload)| {
+            tcp_packet(src, dst, sport, dport, payload).unwrap()
+        })
 }
 
 fn tcp_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
@@ -27,7 +29,9 @@ fn tcp_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
         any::<u16>(),
         any::<Vec<u8>>(),
     )
-        .prop_map(|(src, dst, sport, dport, payload)| tcp_packet(src, dst, sport, dport, payload))
+        .prop_map(|(src, dst, sport, dport, payload)| {
+            tcp_packet(src, dst, sport, dport, payload).unwrap()
+        })
 }
 
 fn udp_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
@@ -38,7 +42,9 @@ fn udp_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
         any::<u16>(),
         any::<Vec<u8>>(),
     )
-        .prop_map(|(src, dst, sport, dport, payload)| udp_packet(src, dst, sport, dport, payload))
+        .prop_map(|(src, dst, sport, dport, payload)| {
+            udp_packet(src, dst, sport, dport, payload).unwrap()
+        })
 }
 
 fn udp_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
@@ -49,7 +55,9 @@ fn udp_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
         any::<u16>(),
         any::<Vec<u8>>(),
     )
-        .prop_map(|(src, dst, sport, dport, payload)| udp_packet(src, dst, sport, dport, payload))
+        .prop_map(|(src, dst, sport, dport, payload)| {
+            udp_packet(src, dst, sport, dport, payload).unwrap()
+        })
 }
 
 fn icmp_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
@@ -60,7 +68,9 @@ fn icmp_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
         any::<u16>(),
         any::<IcmpKind>(),
     )
-        .prop_map(|(src, dst, id, seq, kind)| icmp_packet(src.into(), dst.into(), id, seq, kind))
+        .prop_map(|(src, dst, id, seq, kind)| {
+            icmp_packet(src.into(), dst.into(), id, seq, kind).unwrap()
+        })
 }
 
 fn icmp_packet_v4_header_options() -> impl Strategy<Value = MutableIpPacket<'static>> {
@@ -85,7 +95,9 @@ fn icmp_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
         any::<u16>(),
         any::<IcmpKind>(),
     )
-        .prop_map(|(src, dst, id, seq, kind)| icmp_packet(src.into(), dst.into(), id, seq, kind))
+        .prop_map(|(src, dst, id, seq, kind)| {
+            icmp_packet(src.into(), dst.into(), id, seq, kind).unwrap()
+        })
 }
 
 fn packet() -> impl Strategy<Value = MutableIpPacket<'static>> {

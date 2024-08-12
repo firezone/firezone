@@ -9,9 +9,8 @@ use connlib_shared::{
     messages::{
         client::{
             ResourceDescriptionCidr, ResourceDescriptionDns, ResourceDescriptionInternet, Site,
-            SiteId,
         },
-        GatewayId, RelayId,
+        RelayId,
     },
     proptest::{
         any_ip_network, cidr_resource, dns_resource, domain_name, gateway_id, relay_id, site,
@@ -61,7 +60,6 @@ pub(crate) fn latency(max: u64) -> impl Strategy<Value = Duration> {
 pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
     collection::hash_set(site(), 1..=3)
         .prop_flat_map(|sites| {
-            let gateway_site = any_site(sites.clone()).prop_map(|s| s.id);
             let cidr_resources = collection::hash_set(
                 cidr_resource_outside_reserved_ranges(any_site(sites.clone())),
                 1..5,
@@ -74,20 +72,14 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 ],
                 1..5,
             );
-            let internet_resource = internet_resource(any_site(sites));
+            let internet_resource = internet_resource(any_site(sites.clone()));
 
-            // Gateways are unique across sites.
-            // Generate a map with `GatewayId`s as keys and then flip it into a map of site -> set(gateways).
-            let gateways_by_site = collection::hash_map(gateway_id(), gateway_site, 1..=3)
-                .prop_map(|gateway_site| {
-                    let mut gateways_by_site = HashMap::<SiteId, HashSet<GatewayId>>::default();
-
-                    for (gid, sid) in gateway_site {
-                        gateways_by_site.entry(sid).or_default().insert(gid);
-                    }
-
-                    gateways_by_site
-                });
+            // Assign between 1 and 3 gateways to each site.
+            let gateways_by_site = sites
+                .into_iter()
+                .map(|site| (Just(site.id), collection::hash_set(gateway_id(), 1..=3)))
+                .collect::<Vec<_>>()
+                .prop_map(HashMap::from_iter);
 
             let gateway_selector = any::<sample::Selector>();
 

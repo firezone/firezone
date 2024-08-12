@@ -283,4 +283,30 @@ defmodule Domain.Resources do
     |> account_topic()
     |> PubSub.broadcast(payload)
   end
+
+  @doc false
+  # This is the code that will be removed in future version of Firezone (in 1.3-1.4)
+  # and is reused to prevent breaking changes
+  def map_resource_address(address, acc \\ "")
+
+  def map_resource_address(["*", "*" | rest], ""),
+    do: map_resource_address(rest, "*")
+
+  def map_resource_address(["*", "*" | _rest], _acc),
+    do: :drop
+
+  def map_resource_address(["*" | rest], ""),
+    do: map_resource_address(rest, "?")
+
+  def map_resource_address(["*" | _rest], _acc),
+    do: :drop
+
+  def map_resource_address(["?" | _rest], _acc),
+    do: :drop
+
+  def map_resource_address([char | rest], acc),
+    do: map_resource_address(rest, acc <> char)
+
+  def map_resource_address([], acc),
+    do: {:cont, acc}
 end

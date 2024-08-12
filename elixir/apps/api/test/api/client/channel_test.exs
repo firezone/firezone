@@ -289,6 +289,92 @@ defmodule API.Client.ChannelTest do
              }
     end
 
+    test "sends backwards compatible list of resources if client version is below 1.2", %{
+      account: account,
+      subject: subject,
+      client: client,
+      gateway_group: gateway_group,
+      actor_group: actor_group
+    } do
+      assert_push "init", %{}
+
+      star_mapped_resource =
+        Fixtures.Resources.create_resource(
+          address: "**.glob-example.com",
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      question_mark_mapped_resource =
+        Fixtures.Resources.create_resource(
+          address: "*.question-example.com",
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      mid_question_mark_mapped_resource =
+        Fixtures.Resources.create_resource(
+          address: "foo.*.example.com",
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      mid_star_mapped_resource =
+        Fixtures.Resources.create_resource(
+          address: "foo.**.glob-example.com",
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      mid_single_char_mapped_resource =
+        Fixtures.Resources.create_resource(
+          address: "us-east?-d.glob-example.com",
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      for resource <- [
+            star_mapped_resource,
+            question_mark_mapped_resource,
+            mid_question_mark_mapped_resource,
+            mid_star_mapped_resource,
+            mid_single_char_mapped_resource
+          ] do
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group,
+          resource: resource
+        )
+      end
+
+      API.Client.Socket
+      |> socket("client:#{client.id}", %{
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+        client: client,
+        subject: subject
+      })
+      |> subscribe_and_join(API.Client.Channel, "client")
+
+      assert_push "init", %{
+        resources: resources
+      }
+
+      resource_addresses = Enum.map(resources, & &1.address)
+
+      assert "*.glob-example.com" in resource_addresses
+      assert "?.question-example.com" in resource_addresses
+
+      assert "foo.*.example.com" not in resource_addresses
+      assert "foo.?.example.com" not in resource_addresses
+
+      assert "foo.**.glob-example.com" not in resource_addresses
+      assert "foo.*.glob-example.com" not in resource_addresses
+
+      assert "us-east?-d.glob-example.com" not in resource_addresses
+      assert "us-east*-d.glob-example.com" not in resource_addresses
+    end
+
     test "subscribes for client events", %{
       client: client
     } do

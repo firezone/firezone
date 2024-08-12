@@ -1,5 +1,4 @@
 //! Everything related to the About window
-use crate::client::GIT_VERSION;
 
 #[tauri::command]
 pub(crate) fn get_cargo_version() -> String {
@@ -8,7 +7,7 @@ pub(crate) fn get_cargo_version() -> String {
 
 #[tauri::command]
 pub(crate) fn get_git_version() -> String {
-    GIT_VERSION.to_string()
+    firezone_bin_shared::GIT_VERSION.to_string()
 }
 
 #[cfg(test)]

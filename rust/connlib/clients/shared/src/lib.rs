@@ -5,7 +5,6 @@ pub use connlib_shared::{
     callbacks, keypair, Callbacks, Error, LoginUrl, LoginUrlError, StaticSecret,
 };
 pub use eventloop::Eventloop;
-pub use tracing_appender::non_blocking::WorkerGuard;
 
 use connlib_shared::messages::ResourceId;
 use eventloop::Command;
@@ -21,7 +20,6 @@ use tokio::task::JoinHandle;
 use tun::Tun;
 
 mod eventloop;
-pub mod file_logger;
 mod messages;
 mod serde_routelist;
 

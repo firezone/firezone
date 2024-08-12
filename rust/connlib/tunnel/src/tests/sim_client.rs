@@ -101,7 +101,8 @@ impl SimClient {
             SocketAddr::new(src, 9999), // An application would pick a random source port that is free.
             SocketAddr::new(dns_server, 53),
             query_id,
-        );
+        )
+        .unwrap();
 
         self.encapsulate(packet, now)
     }

@@ -21,4 +21,17 @@ if [ "${LISTEN_ADDRESS_DISCOVERY_METHOD}" = "gce_metadata" ]; then
     fi
 fi
 
+if [ "${OTEL_METADATA_DISCOVERY_METHOD}" = "gce_metadata" ]; then
+    echo "Using GCE metadata to set OTEL metadata"
+
+    instance_id=$(curl "http://metadata.google.internal/computeMetadata/v1/instance/id" -H "Metadata-Flavor: Google" -s)
+    instance_name=$(curl http://metadata.google.internal/computeMetadata/v1/instance/name -H "Metadata-Flavor: Google" -s)
+
+    # Source for attribute names:
+    # - https://opentelemetry.io/docs/specs/semconv/attributes-registry/service/
+    # - https://opentelemetry.io/docs/specs/semconv/attributes-registry/gcp/#gcp---google-compute-engine-gce-attributes:
+    export OTEL_RESOURCE_ATTRIBUTES="service.instance.id=${instance_id},gcp.gce.instance.name=${instance_name}"
+    echo "Discovered OTEL metadata: ${OTEL_RESOURCE_ATTRIBUTES}"
+fi
+
 exec "$@"
