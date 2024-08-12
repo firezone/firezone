@@ -751,8 +751,8 @@ IO.puts("")
   Resources.create_resource(
     %{
       type: :dns,
-      name: "*.httpbin",
-      address: "*.httpbin",
+      name: "**.httpbin",
+      address: "**.httpbin",
       address_description: "http://httpbin/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [

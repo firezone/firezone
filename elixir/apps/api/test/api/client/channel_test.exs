@@ -1004,6 +1004,88 @@ defmodule API.Client.ChannelTest do
       assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
     end
 
+    test "returns gateways that support the resource version", %{
+      account: account,
+      dns_resource: resource,
+      socket: socket
+    } do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+      assert_reply ref, :error, %{reason: :offline}
+    end
+
+    test "returns gateway that support the DNS resource address syntax", %{
+      account: account,
+      actor_group: actor_group,
+      socket: socket
+    } do
+      global_relay_group = Fixtures.Relays.create_global_group()
+      global_relay = Fixtures.Relays.create_relay(group: global_relay_group)
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
+
+      Fixtures.Relays.update_relay(global_relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
+      gateway_group = Fixtures.Gateways.create_group(account: account)
+
+      gateway =
+        Fixtures.Gateways.create_gateway(
+          account: account,
+          group: gateway_group,
+          last_seen_version: "1.1.0"
+        )
+
+      resource =
+        Fixtures.Resources.create_resource(
+          address: "foo.*.example.com",
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+      resource_id = resource.id
+
+      assert_reply ref, :error, %{reason: :not_found}
+
+      gateway =
+        Fixtures.Gateways.create_gateway(
+          account: account,
+          group: gateway_group,
+          context: %{
+            user_agent: "iOS/12.5 (iPhone) connlib/1.2.0"
+          }
+        )
+
+      Fixtures.Relays.update_relay(global_relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+
+      assert_reply ref, :ok, %{
+        gateway_id: gateway_id,
+        gateway_remote_ip: gateway_last_seen_remote_ip,
+        resource_id: ^resource_id
+      }
+
+      assert gateway_id == gateway.id
+      assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
+    end
+
     test "works with service accounts", %{
       account: account,
       dns_resource: resource,

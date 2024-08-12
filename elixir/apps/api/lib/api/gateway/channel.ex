@@ -132,26 +132,41 @@ defmodule API.Gateway.Channel do
       :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
 
       resource = Resources.fetch_resource_by_id!(resource_id)
-      :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
-      :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
-      opentelemetry_headers = :otel_propagator_text_map.inject([])
-      ref = encode_ref(socket, channel_pid, socket_ref, resource_id, opentelemetry_headers)
+      case API.Client.Channel.map_or_drop_compatible_resource(
+             resource,
+             socket.assigns.gateway.last_seen_version
+           ) do
+        {:cont, resource} ->
+          :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
+          :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
-      push(socket, "allow_access", %{
-        ref: ref,
-        client_id: client_id,
-        flow_id: flow_id,
-        resource: Views.Resource.render(resource),
-        expires_at: DateTime.to_unix(authorization_expires_at, :second),
-        payload: payload
-      })
+          opentelemetry_headers = :otel_propagator_text_map.inject([])
+          ref = encode_ref(socket, channel_pid, socket_ref, resource_id, opentelemetry_headers)
 
-      Logger.debug("Awaiting gateway connection_ready message",
-        client_id: client_id,
-        resource_id: resource_id,
-        flow_id: flow_id
-      )
+          push(socket, "allow_access", %{
+            ref: ref,
+            client_id: client_id,
+            flow_id: flow_id,
+            resource: Views.Resource.render(resource),
+            expires_at: DateTime.to_unix(authorization_expires_at, :second),
+            payload: payload
+          })
+
+          Logger.debug("Awaiting gateway connection_ready message",
+            client_id: client_id,
+            resource_id: resource_id,
+            flow_id: flow_id
+          )
+
+        :drop ->
+          Logger.debug("Resource is not compatible with the gateway version",
+            gateway_id: socket.assigns.gateway.id,
+            client_id: client_id,
+            resource_id: resource_id,
+            flow_id: flow_id
+          )
+      end
 
       {:noreply, socket}
     end
@@ -165,7 +180,21 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Tracer.with_span "gateway.resource_updated",
       attributes: %{resource_id: resource_id} do
       resource = Resources.fetch_resource_by_id!(resource_id)
-      push(socket, "resource_updated", Views.Resource.render(resource))
+
+      case API.Client.Channel.map_or_drop_compatible_resource(
+             resource,
+             socket.assigns.gateway.last_seen_version
+           ) do
+        {:cont, resource} ->
+          push(socket, "resource_updated", Views.Resource.render(resource))
+
+        :drop ->
+          Logger.debug("Resource is not compatible with the gateway version",
+            gateway_id: socket.assigns.gateway.id,
+            resource_id: resource_id
+          )
+      end
+
       {:noreply, socket}
     end
   end
@@ -229,26 +258,41 @@ defmodule API.Gateway.Channel do
 
       client = Clients.fetch_client_by_id!(client_id, preload: [:actor])
       resource = Resources.fetch_resource_by_id!(resource_id)
-      :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
-      :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
-      opentelemetry_headers = :otel_propagator_text_map.inject([])
-      ref = encode_ref(socket, channel_pid, socket_ref, resource_id, opentelemetry_headers)
+      case API.Client.Channel.map_or_drop_compatible_resource(
+             resource,
+             socket.assigns.gateway.last_seen_version
+           ) do
+        {:cont, resource} ->
+          :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
+          :ok = Resources.subscribe_to_events_for_resource(resource_id)
 
-      push(socket, "request_connection", %{
-        ref: ref,
-        flow_id: flow_id,
-        actor: Views.Actor.render(client.actor),
-        resource: Views.Resource.render(resource),
-        client: Views.Client.render(client, payload, preshared_key),
-        expires_at: DateTime.to_unix(authorization_expires_at, :second)
-      })
+          opentelemetry_headers = :otel_propagator_text_map.inject([])
+          ref = encode_ref(socket, channel_pid, socket_ref, resource_id, opentelemetry_headers)
 
-      Logger.debug("Awaiting gateway connection_ready message",
-        client_id: client_id,
-        resource_id: resource_id,
-        flow_id: flow_id
-      )
+          push(socket, "request_connection", %{
+            ref: ref,
+            flow_id: flow_id,
+            actor: Views.Actor.render(client.actor),
+            resource: Views.Resource.render(resource),
+            client: Views.Client.render(client, payload, preshared_key),
+            expires_at: DateTime.to_unix(authorization_expires_at, :second)
+          })
+
+          Logger.debug("Awaiting gateway connection_ready message",
+            client_id: client_id,
+            resource_id: resource_id,
+            flow_id: flow_id
+          )
+
+        :drop ->
+          Logger.debug("Resource is not compatible with the gateway version",
+            gateway_id: socket.assigns.gateway.id,
+            client_id: client_id,
+            resource_id: resource_id,
+            flow_id: flow_id
+          )
+      end
 
       {:noreply, socket}
     end
