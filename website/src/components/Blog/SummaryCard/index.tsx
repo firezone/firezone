@@ -44,12 +44,7 @@ export default function SummaryCard({
           />
           <span className="font-medium">{authorName}</span>
         </div>
-        <ActionLink
-          href={href}
-          className="group inline-flex items-center font-medium text-accent-500 underline hover:no-underline"
-        >
-          Read more
-        </ActionLink>
+        <ActionLink href={href}>Read more</ActionLink>
       </div>
     </article>
   );
