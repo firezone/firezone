@@ -4,7 +4,6 @@ use crate::peer_store::PeerStore;
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_shared::callbacks::Status;
-use connlib_shared::error::ConnlibError as Error;
 use connlib_shared::messages::client::{Site, SiteId};
 use connlib_shared::messages::ResolveRequest;
 use connlib_shared::messages::{
@@ -187,7 +186,7 @@ impl ClientTunnel {
         resource_id: ResourceId,
         answer: Answer,
         gateway_public_key: PublicKey,
-    ) -> connlib_shared::Result<()> {
+    ) -> anyhow::Result<()> {
         self.role_state.accept_answer(
             snownet::Answer {
                 credentials: snownet::Credentials {
@@ -534,12 +533,12 @@ impl ClientState {
         resource_id: ResourceId,
         gateway: PublicKey,
         now: Instant,
-    ) -> connlib_shared::Result<()> {
+    ) -> anyhow::Result<()> {
         debug_assert!(!self.awaiting_connection_details.contains_key(&resource_id));
 
         let gateway_id = self
             .gateway_by_resource(&resource_id)
-            .ok_or(Error::UnknownResource)?;
+            .with_context(|| format!("No gateway associated with resource {resource_id}"))?;
 
         self.node.accept_answer(gateway_id, gateway, answer, now);
 
@@ -1467,7 +1466,8 @@ mod tests {
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
     use super::*;
-    use connlib_shared::{messages::client::ResourceDescriptionDns, proptest::*};
+    use crate::proptest::*;
+    use connlib_shared::messages::client::ResourceDescriptionDns;
     use prop::collection;
     use proptest::prelude::*;
 
@@ -1737,23 +1737,22 @@ mod proptests {
     }
 
     fn resource() -> impl Strategy<Value = ResourceDescription> {
-        connlib_shared::proptest::resource(site().prop_map(|s| vec![s]))
+        crate::proptest::resource(site().prop_map(|s| vec![s]))
     }
 
     fn cidr_resource() -> impl Strategy<Value = ResourceDescriptionCidr> {
-        connlib_shared::proptest::cidr_resource(any_ip_network(8), site().prop_map(|s| vec![s]))
+        crate::proptest::cidr_resource(any_ip_network(8), site().prop_map(|s| vec![s]))
     }
 
     fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {
-        connlib_shared::proptest::dns_resource(site().prop_map(|s| vec![s]))
+        crate::proptest::dns_resource(site().prop_map(|s| vec![s]))
     }
 
     // Generate resources sharing 1 site
     fn resources_sharing_n_sites(
         num_sites: usize,
     ) -> impl Strategy<Value = Vec<ResourceDescription>> {
-        collection::vec(site(), num_sites).prop_flat_map(|sites| {
-            collection::vec(connlib_shared::proptest::resource(Just(sites)), 1..=100)
-        })
+        collection::vec(site(), num_sites)
+            .prop_flat_map(|sites| collection::vec(crate::proptest::resource(Just(sites)), 1..=100))
     }
 }

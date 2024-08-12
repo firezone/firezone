@@ -25,7 +25,6 @@ pub struct ResourceId(Uuid);
 pub struct RelayId(Uuid);
 
 impl RelayId {
-    #[cfg(feature = "proptest")]
     pub fn from_u128(v: u128) -> Self {
         Self(Uuid::from_u128(v))
     }
@@ -50,7 +49,6 @@ impl ResourceId {
 }
 
 impl GatewayId {
-    #[cfg(feature = "proptest")]
     pub fn from_u128(v: u128) -> Self {
         Self(Uuid::from_u128(v))
     }
@@ -68,7 +66,6 @@ impl FromStr for ClientId {
 }
 
 impl ClientId {
-    #[cfg(feature = "proptest")]
     pub fn from_u128(v: u128) -> Self {
         Self(Uuid::from_u128(v))
     }
@@ -90,45 +87,27 @@ impl FromStr for GatewayId {
     }
 }
 
-// We display the IDs as u128 in the proptests because shrinking will reduce them to short numbers that take less space.
-
 impl fmt::Display for ResourceId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if cfg!(feature = "proptest") {
-            write!(f, "{:X}", self.0.as_u128())
-        } else {
-            write!(f, "{}", self.0)
-        }
+        write!(f, "{}", self.0)
     }
 }
 
 impl fmt::Display for ClientId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if cfg!(feature = "proptest") {
-            write!(f, "{:X}", self.0.as_u128())
-        } else {
-            write!(f, "{}", self.0)
-        }
+        write!(f, "{}", self.0)
     }
 }
 
 impl fmt::Display for GatewayId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if cfg!(feature = "proptest") {
-            write!(f, "{:X}", self.0.as_u128())
-        } else {
-            write!(f, "{}", self.0)
-        }
+        write!(f, "{}", self.0)
     }
 }
 
 impl fmt::Display for RelayId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if cfg!(feature = "proptest") {
-            write!(f, "{:X}", self.0.as_u128())
-        } else {
-            write!(f, "{}", self.0)
-        }
+        write!(f, "{}", self.0)
     }
 }
 
