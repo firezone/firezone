@@ -988,9 +988,9 @@ impl ClientState {
             return;
         }
 
-        match &new_resource {
+        let added = match &new_resource {
             ResourceDescription::Dns(dns) => {
-                self.stub_resolver.add_resource(dns.id, dns.address.clone());
+                self.stub_resolver.add_resource(dns.id, dns.address.clone())
             }
             ResourceDescription::Cidr(cidr) => {
                 let existing = self
@@ -998,16 +998,24 @@ impl ClientState {
                     .insert(cidr.address, cidr.clone());
 
                 match existing {
-                    Some(existing) if existing.id != cidr.id => {
-                        tracing::info!(address = %cidr.address, old = %existing.name, new = %cidr.name, "Replacing CIDR resource");
-                    }
-                    Some(_) => {}
-                    None => {
-                        tracing::info!(address = %cidr.address, name = %cidr.name, "Activating CIDR resource");
-                    }
+                    Some(existing) => existing.id != cidr.id,
+                    None => true,
                 }
             }
-            ResourceDescription::Internet(_) => {}
+            ResourceDescription::Internet(_) => false, // FIXME: Update with real check once Internet Resources get added.
+        };
+
+        if !added {
+            return;
+        }
+
+        let name = new_resource.name();
+        let address = new_resource.address_string();
+        let sites = new_resource.sites_string();
+
+        match address {
+            Some(address) => tracing::info!(%name, %address, %sites, "Activating resource"),
+            None => tracing::info!(%name, %sites, "Activating resource"),
         }
     }
 
@@ -1018,16 +1026,26 @@ impl ClientState {
     }
 
     fn disable_resource(&mut self, id: ResourceId) {
-        self.awaiting_connection_details.remove(&id);
-        self.stub_resolver.remove_resource(id);
-        self.active_cidr_resources.retain(|_, r| {
-            if r.id == id {
-                tracing::info!(address = %r.address, name = %r.name, "Deactivating CIDR resource");
-                return false;
-            }
+        let Some(resource) = self.resources_by_id.get(&id) else {
+            return;
+        };
 
-            true
-        });
+        match resource {
+            ResourceDescription::Dns(_) => self.stub_resolver.remove_resource(id),
+            ResourceDescription::Cidr(_) => self.active_cidr_resources.retain(|_, r| r.id != id),
+            ResourceDescription::Internet(_) => {}
+        }
+
+        let name = resource.name();
+        let address = resource.address_string();
+        let sites = resource.sites_string();
+
+        match address {
+            Some(address) => tracing::info!(%name, %address, %sites, "Deactivating resource"),
+            None => tracing::info!(%name, %sites, "Deactivating resource"),
+        }
+
+        self.awaiting_connection_details.remove(&id);
 
         let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, id) else {
             return;
