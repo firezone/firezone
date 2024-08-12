@@ -28,7 +28,7 @@ use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Instant,
 };
 
@@ -46,8 +46,8 @@ pub(crate) struct SimClient {
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     pub(crate) dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 
-    pub(crate) sent_dns_queries: HashMap<QueryId, IpPacket<'static>>,
-    pub(crate) received_dns_responses: HashMap<QueryId, IpPacket<'static>>,
+    pub(crate) sent_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket<'static>>,
+    pub(crate) received_dns_responses: HashMap<(SocketAddr, QueryId), IpPacket<'static>>,
 
     pub(crate) sent_icmp_requests: HashMap<(u16, u16), IpPacket<'static>>,
     pub(crate) received_icmp_replies: HashMap<(u16, u16), IpPacket<'static>>,
@@ -133,7 +133,12 @@ impl SimClient {
                         "every DNS message sent from the client should be a DNS query"
                     );
 
-                    self.sent_dns_queries.insert(message.header().id(), packet);
+                    // Map back to upstream socket so we can assert on it correctly.
+                    let sentinel = SocketAddr::from((packet.destination(), udp.get_destination()));
+                    let upstream = self.upstream_dns_by_sentinel(&sentinel).unwrap();
+
+                    self.sent_dns_queries
+                        .insert((upstream, message.header().id()), packet);
                 }
             }
         }
@@ -174,8 +179,12 @@ impl SimClient {
                 let message = Message::from_slice(udp.payload())
                     .expect("ip packets on port 53 to be DNS packets");
 
+                // Map back to upstream socket so we can assert on it correctly.
+                let sentinel = SocketAddr::from((packet.source(), udp.get_source()));
+                let upstream = self.upstream_dns_by_sentinel(&sentinel).unwrap();
+
                 self.received_dns_responses
-                    .insert(message.header().id(), packet.to_owned());
+                    .insert((upstream, message.header().id()), packet.to_owned());
 
                 for record in message.answer().unwrap() {
                     let record = record.unwrap();
@@ -220,6 +229,12 @@ impl SimClient {
             map_explode(to_add, "client").collect(),
             now,
         )
+    }
+
+    fn upstream_dns_by_sentinel(&self, sentinel: &SocketAddr) -> Option<SocketAddr> {
+        let socket = self.dns_by_sentinel.get_by_left(&sentinel.ip())?;
+
+        Some(*socket)
     }
 }
 
@@ -280,7 +295,7 @@ pub struct RefClient {
         HashMap<GatewayId, VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>>,
     /// The expected DNS handshakes.
     #[derivative(Debug = "ignore")]
-    pub(crate) expected_dns_handshakes: VecDeque<QueryId>,
+    pub(crate) expected_dns_handshakes: VecDeque<(SocketAddr, QueryId)>,
 }
 
 impl RefClient {
@@ -534,26 +549,6 @@ impl RefClient {
         self.system_dns_resolvers
             .iter()
             .map(|ip| SocketAddr::new(*ip, 53))
-            .collect()
-    }
-
-    pub(crate) fn v4_dns_servers(&self) -> Vec<SocketAddrV4> {
-        self.expected_dns_servers()
-            .into_iter()
-            .filter_map(|s| match s {
-                SocketAddr::V4(v4) => Some(v4),
-                SocketAddr::V6(_) => None,
-            })
-            .collect()
-    }
-
-    pub(crate) fn v6_dns_servers(&self) -> Vec<SocketAddrV6> {
-        self.expected_dns_servers()
-            .into_iter()
-            .filter_map(|s| match s {
-                SocketAddr::V6(v6) => Some(v6),
-                SocketAddr::V4(_) => None,
-            })
             .collect()
     }
 

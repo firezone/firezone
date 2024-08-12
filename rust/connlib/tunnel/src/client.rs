@@ -640,7 +640,7 @@ impl ClientState {
             Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
             Some(dns::ResolveStrategy::ForwardQuery {
                 upstream: server,
-                query_id: id,
+                query_id,
                 payload,
                 original_src,
             }) => {
@@ -653,8 +653,10 @@ impl ClientState {
                     return Err((packet, ip));
                 }
 
+                tracing::trace!(%server, %query_id, "Forwarding DNS query");
+
                 self.forwarded_dns_queries
-                    .insert((id, server), (original_src, now + IDS_EXPIRE));
+                    .insert((query_id, server), (original_src, now + IDS_EXPIRE));
                 self.buffered_transmits.push_back(Transmit {
                     src: None,
                     dst: server,
@@ -683,6 +685,9 @@ impl ClientState {
         let query_id = message.header().id();
 
         let (destination, _) = self.forwarded_dns_queries.remove(&(query_id, from))?;
+
+        tracing::trace!(server = %from, %query_id, "Received forwarded DNS response");
+
         let daddr = destination.ip();
         let dport = destination.port();
 
