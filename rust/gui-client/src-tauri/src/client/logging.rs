@@ -145,9 +145,9 @@ fn choose_logs_to_delete(paths: &[PathBuf]) -> Vec<&Path> {
         if path.extension() != Some(OsStr::new("log")) {
             continue;
         }
-        let stem = path
-            .file_stem()
-            .expect("Every file in the log dir should have a stem");
+        let Some(stem) = path.file_stem() else {
+            continue;
+        };
         match most_recent_stem {
             None => most_recent_stem = Some(stem),
             Some(most_recent) if stem > most_recent => most_recent_stem = Some(stem),
@@ -160,19 +160,20 @@ fn choose_logs_to_delete(paths: &[PathBuf]) -> Vec<&Path> {
         );
         return vec![];
     };
-    let most_recent_stem = most_recent_stem
-        .to_str()
-        .expect("Every file in the log dir should have a UTF-8 file name");
+    let Some(most_recent_stem) = most_recent_stem.to_str() else {
+        tracing::warn!("Most recent log file does not have a UTF-8 path");
+        return vec![];
+    };
 
     paths
         .iter()
         .filter(|path| {
-            let stem = path
-                .file_stem()
-                .expect("Every file in the log dir should have a stem");
-            let stem = stem
-                .to_str()
-                .expect("Every file in the log dir should have a UTF-8 file name");
+            let Some(stem) = path.file_stem() else {
+                return false;
+            };
+            let Some(stem) = stem.to_str() else {
+                return false;
+            };
             if !stem.starts_with("connlib.") {
                 return false;
             }
