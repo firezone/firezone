@@ -11,6 +11,7 @@ bytes = { version = "1.4", default-features = false, features = ["std"] }
 chrono = { workspace = true }
 connlib-shared = { workspace = true }
 domain = { workspace = true }
+firezone-logging = { workspace = true }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
 hex = "0.4.3"
