@@ -244,7 +244,7 @@ impl ReferenceStateMachine for ReferenceState {
             .with_if_not_empty(
                 5,
                 (
-                    state.all_domains(state.client.inner()),
+                    state.all_domains(),
                     state.client.inner().v4_dns_servers(),
                     state.client.ip4,
                 ),
@@ -256,7 +256,7 @@ impl ReferenceStateMachine for ReferenceState {
             .with_if_not_empty(
                 5,
                 (
-                    state.all_domains(state.client.inner()),
+                    state.all_domains(),
                     state.client.inner().v6_dns_servers(),
                     state.client.ip6,
                 ),
@@ -609,12 +609,13 @@ impl ReferenceStateMachine for ReferenceState {
 
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
-    fn all_domains(&self, client: &RefClient) -> Vec<DomainName> {
+    fn all_domains(&self) -> Vec<DomainName> {
         self.global_dns_records
             .keys()
             .cloned()
             .chain(
-                client
+                self.client
+                    .inner()
                     .known_hosts
                     .keys()
                     .map(|h| DomainName::vec_from_str(h).unwrap()),
