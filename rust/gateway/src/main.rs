@@ -6,6 +6,7 @@ use connlib_shared::{
     get_user_agent, keypair, messages::Interface, LoginUrl, StaticSecret, DEFAULT_MTU,
 };
 use firezone_bin_shared::{
+    http_health_check,
     linux::{tcp_socket_factory, udp_socket_factory},
     TunDeviceManager,
 };
