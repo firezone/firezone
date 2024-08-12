@@ -11,7 +11,6 @@ members = [
   "gui-client/src-tauri",
   "gui-smoke-test",
   "headless-client",
-  "http-health-check",
   "http-test-server",
   "ip-packet",
   "logging",
@@ -55,7 +54,6 @@ firezone-relay = { path = "relay" }
 connlib-shared = { path = "connlib/shared" }
 firezone-tunnel = { path = "connlib/tunnel" }
 phoenix-channel = { path = "phoenix-channel" }
-http-health-check = { path = "http-health-check" }
 ip-packet = { path = "ip-packet" }
 socket-factory = { path = "socket-factory" }
 tun = { path = "tun" }
