@@ -11,12 +11,6 @@ pub enum ConnlibError {
     /// Standard IO error.
     #[error(transparent)]
     Io(#[from] std::io::Error),
-    /// One of the stored resources isn't a valid CIDR/DNS.
-    #[error("Invalid resource")]
-    InvalidResource,
-    /// Error regarding our own control protocol.
-    #[error("Control plane protocol error. Unexpected messages or message order.")]
-    ControlProtocolError,
     /// Glob for errors without a type.
     #[error("Other error: {0}")]
     Other(&'static str),

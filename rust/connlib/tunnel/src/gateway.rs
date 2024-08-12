@@ -2,13 +2,14 @@ use crate::peer::ClientOnGateway;
 use crate::peer_store::PeerStore;
 use crate::utils::{earliest, Candidates};
 use crate::{GatewayEvent, GatewayTunnel};
+use anyhow::{bail, Context};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
     gateway::ResolvedResourceDescriptionDns, gateway::ResourceDescription, Answer, ClientId, Key,
     Offer, RelayId, ResourceId,
 };
-use connlib_shared::{DomainName, Error, Result, StaticSecret};
+use connlib_shared::{DomainName, StaticSecret};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MutableIpPacket};
 use secrecy::{ExposeSecret as _, Secret};
@@ -48,7 +49,7 @@ impl GatewayTunnel {
         domain: Option<(DomainName, Vec<IpAddr>)>,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
-    ) -> Result<Answer> {
+    ) -> anyhow::Result<Answer> {
         self.role_state.accept(
             client_id,
             snownet::Offer {
@@ -78,7 +79,7 @@ impl GatewayTunnel {
         client: ClientId,
         expires_at: Option<DateTime<Utc>>,
         domain: Option<(DomainName, Vec<IpAddr>)>,
-    ) -> Result<()> {
+    ) -> anyhow::Result<()> {
         self.role_state
             .allow_access(resource, client, expires_at, domain, Instant::now())
     }
@@ -241,14 +242,19 @@ impl GatewayState {
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         now: Instant,
-    ) -> Result<Answer> {
+    ) -> anyhow::Result<Answer> {
         match (&domain, &resource) {
             (Some((domain, _)), ResourceDescription::Dns(r)) => {
                 if !crate::dns::is_subdomain(domain, &r.domain) {
-                    return Err(Error::InvalidResource);
+                    bail!(
+                        "Requested domain '{domain}' isn't a sub-domain of resource address '{}'",
+                        r.domain
+                    );
                 }
             }
-            (None, ResourceDescription::Dns(_)) => return Err(Error::ControlProtocolError),
+            (None, ResourceDescription::Dns(_)) => {
+                bail!("Cannot setup connection for DNS resource without domain")
+            }
             _ => {}
         }
 
@@ -296,23 +302,25 @@ impl GatewayState {
         expires_at: Option<DateTime<Utc>>,
         domain: Option<(DomainName, Vec<IpAddr>)>,
         now: Instant,
-    ) -> Result<()> {
+    ) -> anyhow::Result<()> {
         match (&domain, &resource) {
             (Some((domain, _)), ResourceDescription::Dns(r)) => {
                 if !crate::dns::is_subdomain(domain, &r.domain) {
-                    return Err(Error::InvalidResource);
+                    bail!(
+                        "Requested domain '{domain}' isn't a sub-domain of resource address '{}'",
+                        r.domain
+                    );
                 }
             }
-            (None, ResourceDescription::Dns(_)) => return Err(Error::InvalidResource),
+            (None, ResourceDescription::Dns(_)) => {
+                bail!("Cannot setup connection for DNS resource without domain")
+            }
             _ => {}
         }
 
-        let Some(peer) = self.peers.get_mut(&client) else {
-            return Err(Error::ControlProtocolError);
-        };
+        let peer = self.peers.get_mut(&client).context("Unknown client")?;
 
         peer.assign_proxies(&resource, domain.clone(), now)?;
-
         peer.add_resource(
             resource.addresses(),
             resource.id(),

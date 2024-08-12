@@ -299,7 +299,7 @@ impl Eventloop {
                 let client = req.client.id;
 
                 self.tunnel.cleanup_connection(&client);
-                tracing::debug!(%client, "Connection request failed: {:#}", anyhow::Error::new(e));
+                tracing::debug!(%client, "Connection request failed: {e:#}");
             }
         }
     }

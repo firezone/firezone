@@ -18,6 +18,7 @@ use rangemap::RangeInclusiveSet;
 use crate::utils::network_contains_network;
 use crate::GatewayEvent;
 
+use anyhow::bail;
 use nat_table::NatTable;
 
 mod nat_table;
@@ -235,7 +236,7 @@ impl ClientOnGateway {
         resource: &ResourceDescription<ResolvedResourceDescriptionDns>,
         domain_ips: Option<(DomainName, Vec<IpAddr>)>,
         now: Instant,
-    ) -> connlib_shared::Result<()> {
+    ) -> anyhow::Result<()> {
         match (resource, domain_ips) {
             (ResourceDescription::Dns(r), Some((name, resource_ips))) => {
                 if resource_ips.is_empty() {
@@ -245,11 +246,12 @@ impl ClientOnGateway {
 
                 self.assign_translations(name, r.id, &r.addresses, resource_ips, now);
             }
-            (ResourceDescription::Cidr(_), None) => {}
-            _ => {
-                return Err(connlib_shared::Error::InvalidResource);
+            (ResourceDescription::Dns(_), None) => {
+                bail!("Cannot assign proxy IPs for DNS resource without domain");
             }
+            (ResourceDescription::Cidr(_) | ResourceDescription::Internet(_), Some(_) | None) => {}
         }
+
         Ok(())
     }
 
