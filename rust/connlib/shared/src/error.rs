@@ -19,20 +19,6 @@ pub enum ConnlibError {
     /// A panic occurred with a non-string payload.
     #[error("Panicked with a non-string payload")]
     PanicNonStringPayload,
-    #[cfg(target_os = "windows")]
-    #[error("Can't compute path for wintun.dll")]
-    WintunDllPath,
-    #[cfg(target_os = "windows")]
-    #[error("Can't find AppData/Local folder")]
-    CantFindLocalAppDataFolder,
-
-    #[cfg(target_os = "linux")]
-    #[error("Error while rewriting `/etc/resolv.conf`: {0}")]
-    ResolvConf(anyhow::Error),
-
-    // Error variants for `systemd-resolved` DNS control
-    #[error("Failed to control system DNS with `resolvectl`")]
-    ResolvectlFailed,
 
     #[error("connection to the portal failed: {0}")]
     PortalConnectionFailed(phoenix_channel::Error),
