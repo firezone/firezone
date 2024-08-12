@@ -28,7 +28,7 @@ use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Instant,
 };
 
@@ -534,26 +534,6 @@ impl RefClient {
         self.system_dns_resolvers
             .iter()
             .map(|ip| SocketAddr::new(*ip, 53))
-            .collect()
-    }
-
-    pub(crate) fn v4_dns_servers(&self) -> Vec<SocketAddrV4> {
-        self.expected_dns_servers()
-            .into_iter()
-            .filter_map(|s| match s {
-                SocketAddr::V4(v4) => Some(v4),
-                SocketAddr::V6(_) => None,
-            })
-            .collect()
-    }
-
-    pub(crate) fn v6_dns_servers(&self) -> Vec<SocketAddrV6> {
-        self.expected_dns_servers()
-            .into_iter()
-            .filter_map(|s| match s {
-                SocketAddr::V6(v6) => Some(v6),
-                SocketAddr::V4(_) => None,
-            })
             .collect()
     }
 

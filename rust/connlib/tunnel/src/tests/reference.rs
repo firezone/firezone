@@ -16,7 +16,7 @@ use proptest_state_machine::ReferenceStateMachine;
 use std::{
     collections::{BTreeMap, HashSet},
     fmt, iter,
-    net::IpAddr,
+    net::{IpAddr, SocketAddr},
 };
 
 /// The reference state machine of the tunnel.
@@ -243,25 +243,9 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .with_if_not_empty(
                 5,
-                (
-                    state.all_domains(),
-                    state.client.inner().v4_dns_servers(),
-                    state.client.ip4,
-                ),
-                |(domains, v4_dns_servers, _)| {
-                    dns_query(sample::select(domains), sample::select(v4_dns_servers))
-                        .prop_map(Transition::SendDnsQuery)
-                },
-            )
-            .with_if_not_empty(
-                5,
-                (
-                    state.all_domains(),
-                    state.client.inner().v6_dns_servers(),
-                    state.client.ip6,
-                ),
-                |(domains, v6_dns_servers, _)| {
-                    dns_query(sample::select(domains), sample::select(v6_dns_servers))
+                (state.all_domains(), state.reachable_dns_servers()),
+                |(domains, dns_servers)| {
+                    dns_query(sample::select(domains), sample::select(dns_servers))
                         .prop_map(Transition::SendDnsQuery)
                 },
             )
@@ -620,6 +604,18 @@ impl ReferenceState {
                     .keys()
                     .map(|h| DomainName::vec_from_str(h).unwrap()),
             )
+            .collect()
+    }
+
+    fn reachable_dns_servers(&self) -> Vec<SocketAddr> {
+        self.client
+            .inner()
+            .expected_dns_servers()
+            .into_iter()
+            .filter(|s| match s {
+                SocketAddr::V4(_) => self.client.ip4.is_some(),
+                SocketAddr::V6(_) => self.client.ip6.is_some(),
+            })
             .collect()
     }
 

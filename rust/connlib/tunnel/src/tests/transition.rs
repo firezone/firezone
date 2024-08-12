@@ -161,16 +161,13 @@ where
         })
 }
 
-pub(crate) fn dns_query<S>(
+pub(crate) fn dns_query(
     domain: impl Strategy<Value = DomainName>,
-    dns_server: impl Strategy<Value = S>,
-) -> impl Strategy<Value = DnsQuery>
-where
-    S: Into<SocketAddr>,
-{
+    dns_server: impl Strategy<Value = SocketAddr>,
+) -> impl Strategy<Value = DnsQuery> {
     (
         domain,
-        dns_server.prop_map_into(),
+        dns_server,
         prop_oneof![Just(Rtype::A), Just(Rtype::AAAA)],
         any::<u16>(),
     )
