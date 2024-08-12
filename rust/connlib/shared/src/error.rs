@@ -1,5 +1,4 @@
 //! Error module.
-use base64::DecodeError;
 use std::net::IpAddr;
 use thiserror::Error;
 
@@ -12,9 +11,6 @@ pub enum ConnlibError {
     /// Standard IO error.
     #[error(transparent)]
     Io(#[from] std::io::Error),
-    /// Error while decoding a base64 value.
-    #[error("There was an error while decoding a base64 value: {0}")]
-    Base64DecodeError(#[from] DecodeError),
     /// Tried to access a resource which didn't exists.
     #[error("Tried to access an undefined resource")]
     UnknownResource,
