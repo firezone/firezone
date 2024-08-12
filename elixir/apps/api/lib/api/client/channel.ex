@@ -226,7 +226,7 @@ defmodule API.Client.Channel do
              preload: [:gateway_groups]
            ) do
         {:ok, resource} ->
-          case map_and_filter_compatible_resource(
+          case map_or_drop_compatible_resource(
                  resource,
                  socket.assigns.client.last_seen_version
                ) do
@@ -285,7 +285,7 @@ defmodule API.Client.Channel do
              preload: [:gateway_groups]
            ) do
         {:ok, resource} ->
-          case map_and_filter_compatible_resource(
+          case map_or_drop_compatible_resource(
                  resource,
                  socket.assigns.client.last_seen_version
                ) do
@@ -331,7 +331,7 @@ defmodule API.Client.Channel do
              preload: [:gateway_groups]
            ) do
         {:ok, resource} ->
-          case map_and_filter_compatible_resource(
+          case map_or_drop_compatible_resource(
                  resource,
                  socket.assigns.client.last_seen_version
                ) do
@@ -483,8 +483,12 @@ defmodule API.Client.Channel do
              Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
                preload: :group
              ),
-           {:ok, gateways} <-
-             filter_compatible_gateways(gateways, socket.assigns.gateway_version_requirement) do
+           gateway_version_requirement =
+             maybe_update_gateway_version_requirement(
+               resource,
+               socket.assigns.gateway_version_requirement
+             ),
+           {:ok, gateways} <- filter_compatible_gateways(gateways, gateway_version_requirement) do
         location = {
           socket.assigns.client.last_seen_remote_ip_location_lat,
           socket.assigns.client.last_seen_remote_ip_location_lon
@@ -731,6 +735,16 @@ defmodule API.Client.Channel do
     end
   end
 
+  defp maybe_update_gateway_version_requirement(resource, gateway_version_requirement) do
+    case map_or_drop_compatible_resource(resource, "1.0.0") do
+      {:cont, _resource} ->
+        gateway_version_requirement
+
+      :drop ->
+        ">= 1.2.0"
+    end
+  end
+
   defp filter_compatible_gateways(gateways, gateway_version_requirement) do
     gateways
     |> Enum.filter(fn gateway ->
@@ -744,15 +758,15 @@ defmodule API.Client.Channel do
 
   defp map_and_filter_compatible_resources(resources, client_version) do
     Enum.flat_map(resources, fn resource ->
-      case map_and_filter_compatible_resource(resource, client_version) do
+      case map_or_drop_compatible_resource(resource, client_version) do
         {:cont, resource} -> [resource]
         :drop -> []
       end
     end)
   end
 
-  defp map_and_filter_compatible_resource(resource, client_version) do
-    if Version.match?(client_version, ">= 1.2.0") do
+  def map_or_drop_compatible_resource(resource, client_or_gateway_version) do
+    if Version.match?(client_or_gateway_version, ">= 1.2.0") do
       {:cont, resource}
     else
       resource.address
