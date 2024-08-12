@@ -69,7 +69,7 @@ export default function ElevatorPitch() {
   };
 
   return (
-    <div className="flex w-full lg:flex-row flex-col justify-center gap-6 lg:gap-16 xl:gap-36 items-center my-8 md:my-16">
+    <div className="flex w-full lg:flex-row flex-col justify-center gap-6 lg:gap-16 xl:gap-36 items-center">
       <div className="flex flex-col w-full h-full justify-between lg:w-[480px] xl:w-[580px]">
         <div>
           <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2">
