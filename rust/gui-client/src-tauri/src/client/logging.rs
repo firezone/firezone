@@ -5,6 +5,7 @@ use anyhow::{bail, Context, Result};
 use firezone_headless_client::known_dirs;
 use serde::Serialize;
 use std::{
+    ffi::OsStr,
     fs,
     io::{self, ErrorKind::NotFound},
     path::{Path, PathBuf},
@@ -122,21 +123,64 @@ pub(crate) async fn clear_logs_inner() -> Result<()> {
                 return Err(error.into());
             }
         };
+        let mut paths = vec![];
         while let Some(entry) = dir.next_entry().await? {
-            let path = entry.path();
-            if let Err(error) = tokio::fs::remove_file(&path).await {
-                tracing::error!(
-                    ?error,
-                    path = path.display().to_string(),
-                    "Error while removing log file"
-                );
-                // We'll return the most recent error, it loses some information but it's better than nothing.
-                result = Err(error);
+            paths.push(entry.path());
+        }
+
+        let to_delete = choose_logs_to_delete(&paths);
+        for path in &to_delete {
+            if let Err(e) = tokio::fs::remove_file(path).await {
+                result = Err(e);
             }
         }
     }
 
     Ok(result?)
+}
+
+fn choose_logs_to_delete(paths: &[PathBuf]) -> Vec<&Path> {
+    let mut most_recent_stem = None;
+    for path in paths {
+        if path.extension() != Some(OsStr::new("log")) {
+            continue;
+        }
+        let Some(stem) = path.file_stem() else {
+            continue;
+        };
+        match most_recent_stem {
+            None => most_recent_stem = Some(stem),
+            Some(most_recent) if stem > most_recent => most_recent_stem = Some(stem),
+            Some(_) => {}
+        }
+    }
+    let Some(most_recent_stem) = most_recent_stem else {
+        tracing::warn!(
+            "Nothing to delete, should be impossible since both processes always write logs"
+        );
+        return vec![];
+    };
+    let Some(most_recent_stem) = most_recent_stem.to_str() else {
+        tracing::warn!("Most recent log file does not have a UTF-8 path");
+        return vec![];
+    };
+
+    paths
+        .iter()
+        .filter(|path| {
+            let Some(stem) = path.file_stem() else {
+                return false;
+            };
+            let Some(stem) = stem.to_str() else {
+                return false;
+            };
+            if !stem.starts_with("connlib.") {
+                return false;
+            }
+            stem < most_recent_stem
+        })
+        .map(|x| x.as_path())
+        .collect()
 }
 
 /// Pops up the "Save File" dialog
@@ -266,4 +310,44 @@ fn log_paths() -> Result<Vec<LogPath>> {
             dst: PathBuf::from("app"),
         },
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    #[test]
+    fn clear_logs_logic() {
+        // These are out of order just to make sure it works anyway
+        let paths: Vec<_> = [
+            "connlib.2024-08-05-19-41-46.jsonl",
+            "connlib.2024-08-05-19-41-46.log",
+            "connlib.2024-08-07-14-17-56.jsonl",
+            "connlib.2024-08-07-14-17-56.log",
+            "connlib.2024-08-06-14-21-13.jsonl",
+            "connlib.2024-08-06-14-21-13.log",
+            "connlib.2024-08-06-14-51-19.jsonl",
+            "connlib.2024-08-06-14-51-19.log",
+            "crash.2024-07-22-21-16-20.dmp",
+            "last_crash.dmp",
+        ]
+        .into_iter()
+        .map(|x| Path::new("/bogus").join(x))
+        .collect();
+        let to_delete = super::choose_logs_to_delete(&paths);
+        assert_eq!(
+            to_delete,
+            [
+                "/bogus/connlib.2024-08-05-19-41-46.jsonl",
+                "/bogus/connlib.2024-08-05-19-41-46.log",
+                "/bogus/connlib.2024-08-06-14-21-13.jsonl",
+                "/bogus/connlib.2024-08-06-14-21-13.log",
+                "/bogus/connlib.2024-08-06-14-51-19.jsonl",
+                "/bogus/connlib.2024-08-06-14-51-19.log",
+            ]
+            .into_iter()
+            .map(Path::new)
+            .collect::<Vec<_>>()
+        );
+    }
 }
