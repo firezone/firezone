@@ -15,4 +15,3 @@ pub use node::{
     Transmit, HANDSHAKE_TIMEOUT,
 };
 pub use stats::{ConnectionStats, NodeStats};
-pub use str0m::Candidate;

@@ -99,7 +99,9 @@ fn only_generate_candidate_event_after_answer() {
     assert!(iter::from_fn(|| alice.poll_event()).any(|ev| ev
         == Event::NewIceCandidate {
             connection: 1,
-            candidate: Candidate::host(local_candidate, Protocol::Udp).unwrap()
+            candidate: Candidate::host(local_candidate, Protocol::Udp)
+                .unwrap()
+                .to_sdp_string()
         }));
 }
 

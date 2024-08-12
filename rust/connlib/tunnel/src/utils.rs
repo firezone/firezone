@@ -3,7 +3,7 @@ use connlib_shared::messages::{Relay, RelayId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use snownet::RelaySocket;
-use std::{cmp::Ordering, collections::BTreeSet, net::SocketAddr, time::Instant};
+use std::{collections::BTreeSet, net::SocketAddr, time::Instant};
 
 pub fn turn(relays: &[Relay]) -> BTreeSet<(RelayId, RelaySocket, String, String, String)> {
     relays
@@ -83,57 +83,5 @@ pub(crate) fn ipv6(ip: IpNetwork) -> Option<Ipv6Network> {
     match ip {
         IpNetwork::V4(_) => None,
         IpNetwork::V6(v6) => Some(v6),
-    }
-}
-
-/// Helper container to aggregate candidates and emit them in sorted order, starting with the highest-priority one (host candidates).
-///
-/// Whilst no fatal in theory, emitting candidates in the wrong order can cause temporary connectivity problems.
-/// `str0m` needs to "replace" candidates when it receives better ones which can cancel in-flight STUN requests.
-/// By sorting the candidates by priority, we try the best ones first, being symphatic to the ICE algorithm.
-#[derive(Default)]
-pub(crate) struct Candidates(Vec<snownet::Candidate>);
-
-impl Candidates {
-    pub(crate) fn push(&mut self, candidate: snownet::Candidate) {
-        self.0.push(candidate)
-    }
-
-    pub(crate) fn serialize(mut self) -> BTreeSet<String> {
-        self.0.sort_by(priority_desc);
-
-        self.0.into_iter().map(|c| c.to_sdp_string()).collect()
-    }
-}
-
-fn priority_desc(c1: &snownet::Candidate, c2: &snownet::Candidate) -> Ordering {
-    c1.prio().cmp(&c2.prio()).reverse()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::net::{Ipv4Addr, SocketAddrV4};
-
-    #[test]
-    fn sorts_candidates_by_priority() {
-        let mut candidates = vec![
-            snownet::Candidate::host(
-                SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1)),
-                "udp",
-            )
-            .unwrap(),
-            snownet::Candidate::server_reflexive(
-                SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 2)),
-                SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1)),
-                "udp",
-            )
-            .unwrap(),
-        ];
-
-        candidates.sort_by(priority_desc);
-
-        assert_eq!(candidates[0].kind().to_string(), "host");
-        assert_eq!(candidates[1].kind().to_string(), "srflx");
     }
 }
