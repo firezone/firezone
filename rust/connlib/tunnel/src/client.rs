@@ -1014,13 +1014,10 @@ impl ClientState {
         }
 
         let name = new_resource.name();
-        let address = new_resource.address_string();
+        let address = new_resource.address_string().map(tracing::field::display);
         let sites = new_resource.sites_string();
 
-        match address {
-            Some(address) => tracing::info!(%name, %address, %sites, "Activating resource"),
-            None => tracing::info!(%name, %sites, "Activating resource"),
-        }
+        tracing::info!(%name, address, %sites, "Activating resource");
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
@@ -1041,13 +1038,10 @@ impl ClientState {
         }
 
         let name = resource.name();
-        let address = resource.address_string();
+        let address = resource.address_string().map(tracing::field::display);
         let sites = resource.sites_string();
 
-        match address {
-            Some(address) => tracing::info!(%name, %address, %sites, "Deactivating resource"),
-            None => tracing::info!(%name, %sites, "Deactivating resource"),
-        }
+        tracing::info!(%name, address, %sites, "Deactivating resource");
 
         self.awaiting_connection_details.remove(&id);
 
