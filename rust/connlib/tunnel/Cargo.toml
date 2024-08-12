@@ -45,7 +45,7 @@ tracing-appender = "0.2.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [features]
-proptest = ["dep:proptest", "connlib-shared/proptest"]
+proptest = ["dep:proptest"]
 
 [lints]
 workspace = true
