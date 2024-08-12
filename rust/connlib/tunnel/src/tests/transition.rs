@@ -176,8 +176,10 @@ pub(crate) fn dns_queries(
         let unique_queries = unique_queries.into_iter();
         let domains = domains.into_iter();
 
-        unique_queries
-            .zip(domains)
+        // We may not necessarily have the same number of items in both but we don't care if we drop some.
+        let zipped = unique_queries.zip(domains);
+
+        zipped
             .map(|((dns_server, query_id), domain)| {
                 (
                     Just(domain),
