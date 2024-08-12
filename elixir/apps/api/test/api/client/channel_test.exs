@@ -289,6 +289,92 @@ defmodule API.Client.ChannelTest do
              }
     end
 
+    test "sends backwards compatible list of resources if client version is below 1.2", %{
+      account: account,
+      subject: subject,
+      client: client,
+      gateway_group: gateway_group,
+      actor_group: actor_group
+    } do
+      assert_push "init", %{}
+
+      star_mapped_resource =
+        Fixtures.Resources.create_resource(
+          address: "**.glob-example.com",
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      question_mark_mapped_resource =
+        Fixtures.Resources.create_resource(
+          address: "*.question-example.com",
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      mid_question_mark_mapped_resource =
+        Fixtures.Resources.create_resource(
+          address: "foo.*.example.com",
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      mid_star_mapped_resource =
+        Fixtures.Resources.create_resource(
+          address: "foo.**.glob-example.com",
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      mid_single_char_mapped_resource =
+        Fixtures.Resources.create_resource(
+          address: "us-east?-d.glob-example.com",
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      for resource <- [
+            star_mapped_resource,
+            question_mark_mapped_resource,
+            mid_question_mark_mapped_resource,
+            mid_star_mapped_resource,
+            mid_single_char_mapped_resource
+          ] do
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group,
+          resource: resource
+        )
+      end
+
+      API.Client.Socket
+      |> socket("client:#{client.id}", %{
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+        client: client,
+        subject: subject
+      })
+      |> subscribe_and_join(API.Client.Channel, "client")
+
+      assert_push "init", %{
+        resources: resources
+      }
+
+      resource_addresses = Enum.map(resources, & &1.address)
+
+      assert "*.glob-example.com" in resource_addresses
+      assert "?.question-example.com" in resource_addresses
+
+      assert "foo.*.example.com" not in resource_addresses
+      assert "foo.?.example.com" not in resource_addresses
+
+      assert "foo.**.glob-example.com" not in resource_addresses
+      assert "foo.*.glob-example.com" not in resource_addresses
+
+      assert "us-east?-d.glob-example.com" not in resource_addresses
+      assert "us-east*-d.glob-example.com" not in resource_addresses
+    end
+
     test "subscribes for client events", %{
       client: client
     } do
@@ -907,6 +993,88 @@ defmodule API.Client.ChannelTest do
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
+
+      assert_reply ref, :ok, %{
+        gateway_id: gateway_id,
+        gateway_remote_ip: gateway_last_seen_remote_ip,
+        resource_id: ^resource_id
+      }
+
+      assert gateway_id == gateway.id
+      assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
+    end
+
+    test "returns gateways that support the resource version", %{
+      account: account,
+      dns_resource: resource,
+      socket: socket
+    } do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+      assert_reply ref, :error, %{reason: :offline}
+    end
+
+    test "returns gateway that support the DNS resource address syntax", %{
+      account: account,
+      actor_group: actor_group,
+      socket: socket
+    } do
+      global_relay_group = Fixtures.Relays.create_global_group()
+      global_relay = Fixtures.Relays.create_relay(group: global_relay_group)
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
+
+      Fixtures.Relays.update_relay(global_relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
+      gateway_group = Fixtures.Gateways.create_group(account: account)
+
+      gateway =
+        Fixtures.Gateways.create_gateway(
+          account: account,
+          group: gateway_group,
+          last_seen_version: "1.1.0"
+        )
+
+      resource =
+        Fixtures.Resources.create_resource(
+          address: "foo.*.example.com",
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+      resource_id = resource.id
+
+      assert_reply ref, :error, %{reason: :not_found}
+
+      gateway =
+        Fixtures.Gateways.create_gateway(
+          account: account,
+          group: gateway_group,
+          context: %{
+            user_agent: "iOS/12.5 (iPhone) connlib/1.2.0"
+          }
+        )
+
+      Fixtures.Relays.update_relay(global_relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
       assert_reply ref, :ok, %{
         gateway_id: gateway_id,

@@ -112,23 +112,14 @@ impl StubResolver {
         Some((fqdn, self.fqdn_to_ips.get(fqdn).unwrap()))
     }
 
-    pub(crate) fn add_resource(&mut self, id: ResourceId, address: String) {
-        let existing = self.dns_resources.insert(address.clone(), id);
+    pub(crate) fn add_resource(&mut self, id: ResourceId, address: String) -> bool {
+        let existing = self.dns_resources.insert(address, id);
 
-        if existing.is_none() {
-            tracing::info!(%address, "Activating DNS resource");
-        }
+        existing.is_none()
     }
 
     pub(crate) fn remove_resource(&mut self, id: ResourceId) {
-        self.dns_resources.retain(|address, r| {
-            if *r == id {
-                tracing::info!(%address, "Deactivating DNS resource");
-                return false;
-            }
-
-            true
-        });
+        self.dns_resources.retain(|_, r| *r != id);
     }
 
     fn get_or_assign_a_records(

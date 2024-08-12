@@ -15,10 +15,7 @@ defmodule API.Client.Views.Resource do
       id: resource.id,
       type: :cidr,
       address: address,
-      # TODO: This is a workaround due to clients expecting address_description not
-      # to be null. Remove this to send null address_description on or after 8/13/24
-      # once we can reasonably expect clients to have upgraded.
-      address_description: resource.address_description || address,
+      address_description: resource.address_description,
       name: resource.name,
       gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
       filters: Enum.flat_map(resource.filters, &render_filter/1)
@@ -30,10 +27,7 @@ defmodule API.Client.Views.Resource do
       id: resource.id,
       type: resource.type,
       address: resource.address,
-      # TODO: This is a workaround due to clients expecting address_description not
-      # to be null. Remove this to send null address_description on or after 8/13/24
-      # once we can reasonably expect clients to have upgraded.
-      address_description: resource.address_description || resource.address,
+      address_description: resource.address_description,
       name: resource.name,
       gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
       filters: Enum.flat_map(resource.filters, &render_filter/1)

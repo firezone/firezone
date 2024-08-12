@@ -15,7 +15,9 @@ export default function GUI({ title }: { title: string }) {
       {/*
       <Entry version="1.2.0" date={new Date("Invalid date")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          TODO
+          <ChangeItem pull="6226">
+            Fixes a bug where clearing the log files would delete the current files, preventing logs from being written.
+          </ChangeItem>
         </ul>
       </Entry>
       */}
@@ -34,6 +36,9 @@ export default function GUI({ title }: { title: string }) {
           <ChangeItem enable={title === "Linux GUI"} pull="6163">
             Supports using `etc-resolv-conf` DNS control method, or disabling
             DNS control
+          </ChangeItem>
+          <ChangeItem pull="6181">
+            Improves reliability of DNS resolution of non-resources.
           </ChangeItem>
           <ChangeItem enable={title === "Windows"} pull="6163">
             Supports disabling DNS control

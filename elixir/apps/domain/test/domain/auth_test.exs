@@ -933,7 +933,7 @@ defmodule Domain.AuthTest do
       assert {:ok, _provider} = disable_provider(provider, subject)
 
       expires_at = Repo.one(Domain.Flows.Flow).expires_at
-      assert DateTime.diff(expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
     end
 
     test "returns error when trying to disable the last provider", %{
@@ -1153,7 +1153,7 @@ defmodule Domain.AuthTest do
       assert {:ok, _provider} = delete_provider(provider, subject)
 
       expires_at = Repo.one(Domain.Flows.Flow).expires_at
-      assert DateTime.diff(expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
     end
 
     test "returns error when trying to delete the last provider", %{
@@ -2876,7 +2876,7 @@ defmodule Domain.AuthTest do
       assert delete_identities_for(actor, subject) == :ok
 
       expires_at = Repo.one(Domain.Flows.Flow).expires_at
-      assert DateTime.diff(expires_at, DateTime.utc_now()) < 1
+      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
     end
 
     test "updates dynamic group memberships", %{

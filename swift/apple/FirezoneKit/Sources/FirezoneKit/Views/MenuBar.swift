@@ -60,16 +60,12 @@ public final class MenuBar: NSObject, ObservableObject {
         guard let self = self else { return }
 
         if status == .connected {
-          model.store.beginUpdatingResources { data in
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            if let newResources = try? decoder.decode([Resource].self, from: data) {
+          model.store.beginUpdatingResources { newResources in
               let newResources = newResources.map { base in ViewResource(base: base, isFavorite: self.favorites.contains(base.id)) }
               // Handle resource changes
               self.populateResourceMenu(newResources)
               self.handleTunnelStatusOrResourcesChanged(status: status, resources: newResources)
               self.resources = newResources
-            }
           }
         } else {
           model.store.endUpdatingResources()
@@ -426,6 +422,10 @@ public final class MenuBar: NSObject, ObservableObject {
     return item
   }
 
+  private func resourceTitle(_ id: String) -> String {
+    model.isResourceEnabled(id) ? "Disable this resource" : "Enable this resource"
+  }
+
   private func createSubMenu(resource: ViewResource) -> NSMenu {
     let subMenu = NSMenu()
     let resourceAddressDescriptionItem = NSMenuItem()
@@ -436,6 +436,7 @@ public final class MenuBar: NSObject, ObservableObject {
     let siteNameItem = NSMenuItem()
     let siteStatusItem = NSMenuItem()
     let toggleFavoriteItem = NSMenuItem()
+    let enableToggle = NSMenuItem()
 
 
     // AddressDescription first -- will be most common action
@@ -501,6 +502,19 @@ public final class MenuBar: NSObject, ObservableObject {
     toggleFavoriteItem.target = self
     subMenu.addItem(toggleFavoriteItem)
 
+
+    // Resource enable / disable toggle
+    if resource.base.canToggle {
+      subMenu.addItem(NSMenuItem.separator())
+      enableToggle.action = #selector(resourceToggle(_:))
+      enableToggle.title = resourceTitle(resource.base.id)
+      enableToggle.toolTip = "Enable or disable resource"
+      enableToggle.isEnabled = true
+      enableToggle.target = self
+      enableToggle.representedObject = resource.base.id
+      subMenu.addItem(enableToggle)
+    }
+
     // Site details
     if let site = resource.base.sites.first {
       subMenu.addItem(NSMenuItem.separator())
@@ -541,6 +555,13 @@ public final class MenuBar: NSObject, ObservableObject {
     if let value = (sender as? NSMenuItem)?.title {
       copyToClipboard(value)
     }
+  }
+
+  @objc private func resourceToggle(_ sender: NSMenuItem) {
+    let id = sender.representedObject as! String
+
+    self.model.store.toggleResourceDisabled(resource: id, enabled: !model.isResourceEnabled(id))
+    sender.title = resourceTitle(id)
   }
 
   @objc private func resourceURLTapped(_ sender: AnyObject?) {
