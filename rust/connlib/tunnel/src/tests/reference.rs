@@ -246,7 +246,7 @@ impl ReferenceStateMachine for ReferenceState {
                 (state.all_domains(), state.reachable_dns_servers()),
                 |(domains, dns_servers)| {
                     dns_query(sample::select(domains), sample::select(dns_servers))
-                        .prop_map(Transition::SendDnsQuery)
+                        .prop_map(|query| Transition::SendDnsQueries(vec![query]))
                 },
             )
             .with_if_not_empty(
@@ -321,38 +321,43 @@ impl ReferenceStateMachine for ReferenceState {
                     client.disconnect_resource(id)
                 }
             }),
-            Transition::SendDnsQuery(DnsQuery {
-                domain,
-                r_type,
-                dns_server,
-                query_id,
-            }) => match state
-                .client
-                .inner()
-                .dns_query_via_cidr_resource(dns_server.ip(), domain)
-            {
-                Some(resource)
-                    if !state.client.inner().is_connected_to_cidr(resource)
-                        && !state.client.inner().upstream_dns_resolvers.is_empty()
-                        && !state.client.inner().is_known_host(&domain.to_string()) =>
+            Transition::SendDnsQueries(queries) => {
+                for DnsQuery {
+                    domain,
+                    r_type,
+                    dns_server,
+                    query_id,
+                } in queries
                 {
-                    state
+                    match state
                         .client
-                        .exec_mut(|client| client.connected_cidr_resources.insert(resource));
+                        .inner()
+                        .dns_query_via_cidr_resource(dns_server.ip(), domain)
+                    {
+                        Some(resource)
+                            if !state.client.inner().is_connected_to_cidr(resource)
+                                && !state.client.inner().upstream_dns_resolvers.is_empty()
+                                && !state.client.inner().is_known_host(&domain.to_string()) =>
+                        {
+                            state.client.exec_mut(|client| {
+                                client.connected_cidr_resources.insert(resource)
+                            });
+                        }
+                        Some(_) | None => {
+                            state.client.exec_mut(|client| {
+                                client
+                                    .dns_records
+                                    .entry(domain.clone())
+                                    .or_default()
+                                    .insert(*r_type)
+                            });
+                            state.client.exec_mut(|client| {
+                                client.expected_dns_handshakes.push_back(*query_id)
+                            });
+                        }
+                    }
                 }
-                Some(_) | None => {
-                    state.client.exec_mut(|client| {
-                        client
-                            .dns_records
-                            .entry(domain.clone())
-                            .or_default()
-                            .insert(*r_type)
-                    });
-                    state
-                        .client
-                        .exec_mut(|client| client.expected_dns_handshakes.push_back(*query_id));
-                }
-            },
+            }
             Transition::SendICMPPacketToNonResourceIp {
                 src,
                 dst,
@@ -532,34 +537,36 @@ impl ReferenceStateMachine for ReferenceState {
                     .iter()
                     .any(|dns_server| state.client.sending_socket_for(dns_server.ip()).is_some())
             }
-            Transition::SendDnsQuery(DnsQuery {
-                domain, dns_server, ..
-            }) => {
-                let is_known_domain = state.global_dns_records.contains_key(domain);
-                let has_dns_server = state
-                    .client
-                    .inner()
-                    .expected_dns_servers()
-                    .contains(dns_server);
-                let gateway_is_present_in_case_dns_server_is_cidr_resource = match state
-                    .client
-                    .inner()
-                    .dns_query_via_cidr_resource(dns_server.ip(), domain)
-                {
-                    Some(r) => {
-                        let Some(gateway) = state.portal.gateway_for_resource(r) else {
-                            return false;
-                        };
+            Transition::SendDnsQueries(queries) => queries.iter().all(
+                |DnsQuery {
+                     domain, dns_server, ..
+                 }| {
+                    let is_known_domain = state.global_dns_records.contains_key(domain);
+                    let has_dns_server = state
+                        .client
+                        .inner()
+                        .expected_dns_servers()
+                        .contains(dns_server);
+                    let gateway_is_present_in_case_dns_server_is_cidr_resource = match state
+                        .client
+                        .inner()
+                        .dns_query_via_cidr_resource(dns_server.ip(), domain)
+                    {
+                        Some(r) => {
+                            let Some(gateway) = state.portal.gateway_for_resource(r) else {
+                                return false;
+                            };
 
-                        state.gateways.contains_key(gateway)
-                    }
-                    None => true,
-                };
+                            state.gateways.contains_key(gateway)
+                        }
+                        None => true,
+                    };
 
-                is_known_domain
-                    && has_dns_server
-                    && gateway_is_present_in_case_dns_server_is_cidr_resource
-            }
+                    is_known_domain
+                        && has_dns_server
+                        && gateway_is_present_in_case_dns_server_is_cidr_resource
+                },
+            ),
             Transition::RoamClient { ip4, ip6, port } => {
                 // In production, we always rebind to a new port so we never roam to our old existing IP / port combination.
 

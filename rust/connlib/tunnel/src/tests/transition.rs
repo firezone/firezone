@@ -50,7 +50,7 @@ pub(crate) enum Transition {
     },
 
     /// Send a DNS query.
-    SendDnsQuery(DnsQuery),
+    SendDnsQueries(Vec<DnsQuery>),
 
     /// The system's DNS servers changed.
     UpdateSystemDnsServers(Vec<IpAddr>),

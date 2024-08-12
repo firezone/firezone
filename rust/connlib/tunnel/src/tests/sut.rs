@@ -217,17 +217,20 @@ impl StateMachineTest for TunnelTest {
 
                 buffered_transmits.push_from(transmit, &state.client, now);
             }
-            Transition::SendDnsQuery(DnsQuery {
-                domain,
-                r_type,
-                dns_server,
-                query_id,
-            }) => {
-                let transmit = state.client.exec_mut(|sim| {
-                    sim.send_dns_query_for(domain, r_type, query_id, dns_server, now)
-                });
+            Transition::SendDnsQueries(queries) => {
+                for DnsQuery {
+                    domain,
+                    r_type,
+                    dns_server,
+                    query_id,
+                } in queries
+                {
+                    let transmit = state.client.exec_mut(|sim| {
+                        sim.send_dns_query_for(domain, r_type, query_id, dns_server, now)
+                    });
 
-                buffered_transmits.push_from(transmit, &state.client, now);
+                    buffered_transmits.push_from(transmit, &state.client, now);
+                }
             }
             Transition::UpdateSystemDnsServers(servers) => {
                 state
