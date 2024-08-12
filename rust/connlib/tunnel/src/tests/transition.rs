@@ -7,6 +7,7 @@ use connlib_shared::{
     DomainName,
 };
 use domain::base::Rtype;
+use prop::collection;
 use proptest::{prelude::*, sample};
 use std::{
     collections::{BTreeMap, HashSet},
@@ -161,22 +162,44 @@ where
         })
 }
 
-pub(crate) fn dns_query(
+/// Samples up to 5 DNS queries that will be sent concurrently into connlib.
+pub(crate) fn dns_queries(
     domain: impl Strategy<Value = DomainName>,
     dns_server: impl Strategy<Value = SocketAddr>,
-) -> impl Strategy<Value = DnsQuery> {
-    (
-        domain,
-        dns_server,
-        prop_oneof![Just(Rtype::A), Just(Rtype::AAAA)],
-        any::<u16>(),
-    )
-        .prop_map(move |(domain, dns_server, r_type, query_id)| DnsQuery {
-            domain,
-            r_type,
-            query_id,
-            dns_server,
-        })
+) -> impl Strategy<Value = Vec<DnsQuery>> {
+    // Queries can be uniquely identified by the tuple of DNS server and query ID.
+    let unique_queries = collection::btree_set((dns_server, any::<u16>()), 1..5);
+
+    let domains = collection::btree_set(domain, 1..5);
+
+    (unique_queries, domains).prop_flat_map(|(unique_queries, domains)| {
+        let unique_queries = unique_queries.into_iter();
+        let domains = domains.into_iter();
+
+        unique_queries
+            .zip(domains)
+            .map(|((dns_server, query_id), domain)| {
+                (
+                    Just(domain),
+                    Just(dns_server),
+                    intercepted_query_type(),
+                    Just(query_id),
+                )
+                    .prop_map(move |(domain, dns_server, r_type, query_id)| {
+                        DnsQuery {
+                            domain,
+                            r_type,
+                            query_id,
+                            dns_server,
+                        }
+                    })
+            })
+            .collect::<Vec<_>>()
+    })
+}
+
+pub(crate) fn intercepted_query_type() -> impl Strategy<Value = Rtype> {
+    prop_oneof![Just(Rtype::A), Just(Rtype::AAAA)]
 }
 
 pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {

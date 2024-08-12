@@ -245,8 +245,8 @@ impl ReferenceStateMachine for ReferenceState {
                 5,
                 (state.all_domains(), state.reachable_dns_servers()),
                 |(domains, dns_servers)| {
-                    dns_query(sample::select(domains), sample::select(dns_servers))
-                        .prop_map(|query| Transition::SendDnsQueries(vec![query]))
+                    dns_queries(sample::select(domains), sample::select(dns_servers))
+                        .prop_map(Transition::SendDnsQueries)
                 },
             )
             .with_if_not_empty(
@@ -352,7 +352,9 @@ impl ReferenceStateMachine for ReferenceState {
                                     .insert(*r_type)
                             });
                             state.client.exec_mut(|client| {
-                                client.expected_dns_handshakes.push_back(*query_id)
+                                client
+                                    .expected_dns_handshakes
+                                    .push_back((*dns_server, *query_id))
                             });
                         }
                     }
@@ -541,6 +543,8 @@ impl ReferenceStateMachine for ReferenceState {
                 |DnsQuery {
                      domain, dns_server, ..
                  }| {
+                    let has_socket_for_server =
+                        state.client.sending_socket_for(dns_server.ip()).is_some();
                     let is_known_domain = state.global_dns_records.contains_key(domain);
                     let has_dns_server = state
                         .client
@@ -562,7 +566,8 @@ impl ReferenceStateMachine for ReferenceState {
                         None => true,
                     };
 
-                    is_known_domain
+                    has_socket_for_server
+                        && is_known_domain
                         && has_dns_server
                         && gateway_is_present_in_case_dns_server_is_cidr_resource
                 },
