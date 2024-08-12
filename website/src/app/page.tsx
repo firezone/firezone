@@ -104,17 +104,16 @@ export default function Page() {
         </div>
       </section>
 
-      {/* TODO: ACLs for the rest of us */}
-
-      {/* Feature section 1: Secure access to your most sensitive resources in minutes. */}
       <section className="bg-white px-4 sm:px-8 md:px-16 py-20 md:py-16">
-        <ElevatorPitch />
-        <section className=" py-16 bg-white">
+        <div className="py-8 md:py-12">
+          <ElevatorPitch />
+        </div>
+        <div className="py-8 md:py-12">
           <BattleCard />
-        </section>
-        <section className="relative py-24 bg-white">
+        </div>
+        <div className="py-8 md:py-12">
           <FeatureCards />
-        </section>
+        </div>
       </section>
 
       {/* Feature section 2: Achieve compliance in minutes, not weeks. */}
