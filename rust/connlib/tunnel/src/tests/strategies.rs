@@ -5,15 +5,13 @@ use super::{
     stub_portal::StubPortal,
 };
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+use crate::proptest::*;
 use connlib_shared::{
     messages::{
         client::{
             ResourceDescriptionCidr, ResourceDescriptionDns, ResourceDescriptionInternet, Site,
         },
         RelayId,
-    },
-    proptest::{
-        any_ip_network, cidr_resource, dns_resource, domain_name, gateway_id, relay_id, site,
     },
     DomainName,
 };
@@ -172,7 +170,7 @@ fn cidr_resource_outside_reserved_ranges(
 fn internet_resource(
     site: impl Strategy<Value = Site>,
 ) -> impl Strategy<Value = ResourceDescriptionInternet> {
-    connlib_shared::proptest::internet_resource(site.prop_map(|s| vec![s]))
+    crate::proptest::internet_resource(site.prop_map(|s| vec![s]))
 }
 
 fn non_wildcard_dns_resource(

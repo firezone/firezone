@@ -6,8 +6,10 @@
 //! <https://learn.microsoft.com/en-us/windows/win32/shell/notification-area?redirectedfrom=MSDN#notifications-and-the-notification-area>
 
 use anyhow::Result;
-use connlib_client_shared::callbacks::{ResourceDescription, Status};
-use connlib_shared::messages::ResourceId;
+use connlib_shared::{
+    callbacks::{ResourceDescription, Status},
+    messages::ResourceId,
+};
 use std::collections::HashSet;
 use tauri::{SystemTray, SystemTrayHandle};
 use url::Url;

@@ -5,14 +5,13 @@ use super::{
     strategies::latency,
     IcmpIdentifier, IcmpSeq, QueryId,
 };
-use crate::ClientState;
+use crate::{proptest::*, ClientState};
 use bimap::BiMap;
 use connlib_shared::{
     messages::{
         client::{ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns},
         ClientId, DnsServer, GatewayId, Interface, RelayId, ResourceId,
     },
-    proptest::{client_id, domain_name},
     DomainName,
 };
 use domain::{

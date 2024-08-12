@@ -15,31 +15,32 @@ pub(crate) struct Sockets {
 }
 
 impl Sockets {
-    pub fn rebind(&mut self, socket_factory: &dyn SocketFactory<UdpSocket>) -> io::Result<()> {
+    pub fn rebind(
+        &mut self,
+        socket_factory: &dyn SocketFactory<UdpSocket>,
+    ) -> Result<(), NoInterfaces> {
         let socket_v4 = socket_factory(&SocketAddr::V4(UNSPECIFIED_V4_SOCKET));
         let socket_v6 = socket_factory(&SocketAddr::V6(UNSPECIFIED_V6_SOCKET));
 
-        match (socket_v4.as_ref(), socket_v6.as_ref()) {
-            (Err(e), Ok(_)) => {
+        let (socket_v4, socket_v6) = match (socket_v4, socket_v6) {
+            (Err(e), Ok(socket)) => {
                 tracing::warn!("Failed to bind IPv4 socket: {e}");
+
+                (None, Some(socket))
             }
-            (Ok(_), Err(e)) => {
+            (Ok(socket), Err(e)) => {
                 tracing::warn!("Failed to bind IPv6 socket: {e}");
+
+                (Some(socket), None)
             }
             (Err(e4), Err(e6)) => {
-                tracing::error!("Failed to bind IPv4 socket: {e4}");
-                tracing::error!("Failed to bind IPv6 socket: {e6}");
-
-                return Err(io::Error::new(
-                    io::ErrorKind::AddrNotAvailable,
-                    "Unable to bind to interfaces",
-                ));
+                return Err(NoInterfaces { e4, e6 });
             }
-            _ => (),
-        }
+            (Ok(v4), Ok(v6)) => (Some(v4), Some(v6)),
+        };
 
-        self.socket_v4 = socket_v4.ok();
-        self.socket_v6 = socket_v6.ok();
+        self.socket_v4 = socket_v4;
+        self.socket_v6 = socket_v6;
 
         Ok(())
     }
@@ -105,6 +106,13 @@ impl Sockets {
 
         Poll::Ready(Ok(iter))
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+#[error("Failed to bind to interfaces: {e4} | {e6}")]
+pub struct NoInterfaces {
+    e4: io::Error,
+    e6: io::Error,
 }
 
 struct PacketIter<T4, T6> {

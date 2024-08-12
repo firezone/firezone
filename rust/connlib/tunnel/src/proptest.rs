@@ -1,4 +1,4 @@
-use crate::messages::{
+use connlib_shared::messages::{
     client::{
         ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
         ResourceDescriptionInternet, Site, SiteId,
@@ -81,29 +81,11 @@ pub fn internet_resource(
     (resource_id(), sites).prop_map(move |(id, sites)| ResourceDescriptionInternet { id, sites })
 }
 
-pub fn cidr_v4_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
-    cidr_resource(
-        any_ip4_network(host_mask_bits),
-        site().prop_map(|s| vec![s]),
-    )
-}
-
-pub fn cidr_v6_resource(host_mask_bits: usize) -> impl Strategy<Value = ResourceDescriptionCidr> {
-    cidr_resource(
-        any_ip6_network(host_mask_bits),
-        site().prop_map(|s| vec![s]),
-    )
-}
-
 pub fn address_description() -> impl Strategy<Value = Option<String>> {
     prop_oneof![
         any_with::<String>("[a-z]{4,10}".into()).prop_map(Some),
         Just(None),
     ]
-}
-
-pub fn sites() -> impl Strategy<Value = Vec<Site>> {
-    collection::vec(site(), 1..=3)
 }
 
 pub fn site() -> impl Strategy<Value = Site> + Clone {
@@ -149,14 +131,6 @@ pub fn domain_name(depth: Range<usize>) -> impl Strategy<Value = String> {
 /// A strategy of IP networks, configurable by the size of the host mask.
 pub fn any_ip_network(host_mask_bits: usize) -> impl Strategy<Value = IpNetwork> {
     any::<IpAddr>().prop_flat_map(move |ip| ip_network(ip, host_mask_bits))
-}
-
-pub fn any_ip4_network(host_mask_bits: usize) -> impl Strategy<Value = IpNetwork> {
-    any::<Ipv4Addr>().prop_flat_map(move |ip| ip_network(ip.into(), host_mask_bits))
-}
-
-pub fn any_ip6_network(host_mask_bits: usize) -> impl Strategy<Value = IpNetwork> {
-    any::<Ipv6Addr>().prop_flat_map(move |ip| ip_network(ip.into(), host_mask_bits))
 }
 
 pub fn ip_network(network: IpAddr, host_mask_bits: usize) -> impl Strategy<Value = IpNetwork> {
