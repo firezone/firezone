@@ -177,7 +177,7 @@ impl GatewayState {
 
         let packet = peer
             .encapsulate(packet, now)
-            .inspect_err(|e| tracing::debug!(%cid, "Failed to encapsulate: {e}"))
+            .inspect_err(|e| tracing::debug!(%cid, "Failed to encapsulate: {e:#}"))
             .ok()??;
 
         let transmit = self
@@ -215,7 +215,7 @@ impl GatewayState {
 
         let packet = peer
             .decapsulate(packet, now)
-            .inspect_err(|e| tracing::debug!(%cid, "Invalid packet: {e}"))
+            .inspect_err(|e| tracing::debug!(%cid, "Invalid packet: {e:#}"))
             .ok()?;
 
         Some(packet.into_immutable())

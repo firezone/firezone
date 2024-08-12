@@ -1,5 +1,4 @@
 //! Error module.
-use std::net::IpAddr;
 use thiserror::Error;
 
 /// Unified Result type to use across connlib.
@@ -20,15 +19,6 @@ pub enum ConnlibError {
     /// A panic occurred with a non-string payload.
     #[error("Panicked with a non-string payload")]
     PanicNonStringPayload,
-    /// Exhausted nat table
-    #[error("exhausted nat")]
-    ExhaustedNat,
-    #[error(transparent)]
-    UnsupportedProtocol(ip_packet::UnsupportedProtocol),
-    // TODO: we might want to log some extra parameters on these failed translations
-    /// Packet translation failed
-    #[error("failed packet translation")]
-    FailedTranslation,
     #[cfg(target_os = "windows")]
     #[error("Can't compute path for wintun.dll")]
     WintunDllPath,
@@ -39,12 +29,6 @@ pub enum ConnlibError {
     #[cfg(target_os = "linux")]
     #[error("Error while rewriting `/etc/resolv.conf`: {0}")]
     ResolvConf(anyhow::Error),
-
-    #[error("Source not allowed: {src}")]
-    SrcNotAllowed { src: IpAddr },
-
-    #[error("Destination not allowed: {dst}")]
-    DstNotAllowed { dst: IpAddr },
 
     // Error variants for `systemd-resolved` DNS control
     #[error("Failed to control system DNS with `resolvectl`")]
