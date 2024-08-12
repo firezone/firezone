@@ -102,7 +102,7 @@ impl ClientTunnel {
         Ok(())
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<ClientEvent>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
             if let Some(e) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(e));
@@ -191,7 +191,7 @@ impl GatewayTunnel {
             .update_relays(to_remove, turn(&to_add), Instant::now())
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<GatewayEvent>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<GatewayEvent>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
             if let Some(other) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(other));
