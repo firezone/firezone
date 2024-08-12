@@ -134,6 +134,7 @@ defmodule Web.Resources.New do
                 disabled={is_nil(@form[:type].value)}
                 required
               />
+
               <p
                 :if={
                   @form[:type].value == :dns and
@@ -145,28 +146,32 @@ defmodule Web.Resources.New do
                 class="flex items-center gap-2 text-sm leading-6 text-accent-600 mt-2 w-full"
               >
                 <.icon name="hero-exclamation-triangle" class="w-4 h-4" />
-                This is an advanced address format. This Resource will be available to Clients v1.2.0 and higher only.
+                This is an advanced address format. This Resource will be available to Clients and Gateways v1.2.0 and higher only.
               </p>
-              <p :if={@form[:type].value == :dns} class="mt-2 text-xs text-neutral-500">
-                Wildcards are supported:<br />
-                <code class="ml-2 px-0.5 font-semibold">**.c.com</code>
-                matches any level of subdomains (e.g., <code class="px-0.5 font-semibold">foo.c.com</code>,
-                <code class="px-0.5 font-semibold">bar.foo.c.com</code>
-                and <code class="px-0.5 font-semibold">c.com</code>).<br />
-                <code class="ml-2 px-0.5 font-semibold">*.c.com</code>
-                matches a zero and single level subdomains (e.g.,
-                <code class="px-0.5 font-semibold">foo.c.com</code>
-                and <code class="px-0.5 font-semibold">c.com</code>
-                but not <code class="px-0.5 font-semibold">bar.foo.c.com</code>). <br />
-                <code class="ml-2 px-0.5 font-semibold">us-east?.c.com</code>
-                matches a single character (e.g., <code class="px-0.5 font-semibold">us-east1.c.com</code>).
-              </p>
-              <p :if={@form[:type].value == :ip} class="mt-2 text-xs text-neutral-500">
+              <div :if={@form[:type].value == :dns}>
+                <div class="mt-2 text-xs text-neutral-500">
+                  <span class="text-orange-600">New</span> wildcard matching is supported:
+                </div>
+                <div class="mt-2 text-xs text-neutral-500">
+                  <code class="ml-2 px-0.5 font-semibold">**.c.com</code>
+                  matches any level of subdomains (e.g., <code class="px-0.5 font-semibold">foo.c.com</code>,
+                  <code class="px-0.5 font-semibold">bar.foo.c.com</code>
+                  and <code class="px-0.5 font-semibold">c.com</code>).<br />
+                  <code class="ml-2 px-0.5 font-semibold">*.c.com</code>
+                  matches a zero and single level subdomains (e.g.,
+                  <code class="px-0.5 font-semibold">foo.c.com</code>
+                  and <code class="px-0.5 font-semibold">c.com</code>
+                  but not <code class="px-0.5 font-semibold">bar.foo.c.com</code>). <br />
+                  <code class="ml-2 px-0.5 font-semibold">us-east?.c.com</code>
+                  matches a single character (e.g., <code class="px-0.5 font-semibold">us-east1.c.com</code>).
+                </div>
+              </div>
+              <div :if={@form[:type].value == :ip} class="mt-2 text-xs text-neutral-500">
                 IPv4 and IPv6 addresses are supported.
-              </p>
-              <p :if={@form[:type].value == :cidr} class="mt-2 text-xs text-neutral-500">
+              </div>
+              <div :if={@form[:type].value == :cidr} class="mt-2 text-xs text-neutral-500">
                 IPv4 and IPv6 CIDR ranges are supported.
-              </p>
+              </div>
             </div>
 
             <div>
