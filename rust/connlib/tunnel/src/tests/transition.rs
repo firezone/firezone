@@ -50,14 +50,7 @@ pub(crate) enum Transition {
     },
 
     /// Send a DNS query.
-    SendDnsQuery {
-        domain: DomainName,
-        /// The type of DNS query we should send.
-        r_type: Rtype,
-        /// The DNS query ID.
-        query_id: u16,
-        dns_server: SocketAddr,
-    },
+    SendDnsQuery(DnsQuery),
 
     /// The system's DNS servers changed.
     UpdateSystemDnsServers(Vec<IpAddr>),
@@ -85,6 +78,16 @@ pub(crate) enum Transition {
 
     /// Idle connlib for a while, forcing connection to auto-close.
     Idle,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DnsQuery {
+    pub(crate) domain: DomainName,
+    /// The type of DNS query we should send.
+    pub(crate) r_type: Rtype,
+    /// The DNS query ID.
+    pub(crate) query_id: u16,
+    pub(crate) dns_server: SocketAddr,
 }
 
 pub(crate) fn ping_random_ip<I>(
@@ -161,7 +164,7 @@ where
 pub(crate) fn dns_query<S>(
     domain: impl Strategy<Value = DomainName>,
     dns_server: impl Strategy<Value = S>,
-) -> impl Strategy<Value = Transition>
+) -> impl Strategy<Value = DnsQuery>
 where
     S: Into<SocketAddr>,
 {
@@ -171,14 +174,12 @@ where
         prop_oneof![Just(Rtype::A), Just(Rtype::AAAA)],
         any::<u16>(),
     )
-        .prop_map(
-            move |(domain, dns_server, r_type, query_id)| Transition::SendDnsQuery {
-                domain,
-                r_type,
-                query_id,
-                dns_server,
-            },
-        )
+        .prop_map(move |(domain, dns_server, r_type, query_id)| DnsQuery {
+            domain,
+            r_type,
+            query_id,
+            dns_server,
+        })
 }
 
 pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {

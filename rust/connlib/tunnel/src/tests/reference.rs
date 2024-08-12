@@ -250,6 +250,7 @@ impl ReferenceStateMachine for ReferenceState {
                 ),
                 |(domains, v4_dns_servers, _)| {
                     dns_query(sample::select(domains), sample::select(v4_dns_servers))
+                        .prop_map(Transition::SendDnsQuery)
                 },
             )
             .with_if_not_empty(
@@ -261,6 +262,7 @@ impl ReferenceStateMachine for ReferenceState {
                 ),
                 |(domains, v6_dns_servers, _)| {
                     dns_query(sample::select(domains), sample::select(v6_dns_servers))
+                        .prop_map(Transition::SendDnsQuery)
                 },
             )
             .with_if_not_empty(
@@ -335,13 +337,12 @@ impl ReferenceStateMachine for ReferenceState {
                     client.disconnect_resource(id)
                 }
             }),
-            Transition::SendDnsQuery {
+            Transition::SendDnsQuery(DnsQuery {
                 domain,
                 r_type,
                 dns_server,
                 query_id,
-                ..
-            } => match state
+            }) => match state
                 .client
                 .inner()
                 .dns_query_via_cidr_resource(dns_server.ip(), domain)
@@ -547,9 +548,9 @@ impl ReferenceStateMachine for ReferenceState {
                     .iter()
                     .any(|dns_server| state.client.sending_socket_for(dns_server.ip()).is_some())
             }
-            Transition::SendDnsQuery {
+            Transition::SendDnsQuery(DnsQuery {
                 domain, dns_server, ..
-            } => {
+            }) => {
                 let is_known_domain = state.global_dns_records.contains_key(domain);
                 let has_dns_server = state
                     .client
