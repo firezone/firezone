@@ -9,15 +9,15 @@ members = [
   "connlib/tunnel",
   "gateway",
   "gui-client/src-tauri",
-  "gui-smoke-test",
   "headless-client",
-  "http-test-server",
   "ip-packet",
   "logging",
   "phoenix-channel",
   "relay",
-  "snownet-tests",
   "socket-factory",
+  "tests/gui-smoke-test",
+  "tests/http-test-server",
+  "tests/snownet-tests",
   "tun"
 ]
 
