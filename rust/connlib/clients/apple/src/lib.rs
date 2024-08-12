@@ -7,7 +7,7 @@ mod tun;
 use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
-    keypair, Callbacks, ConnectArgs, Error, LoginUrl, Session, V4RouteList, V6RouteList,
+    keypair, Callbacks, ConnectArgs, DisconnectError, LoginUrl, Session, V4RouteList, V6RouteList,
 };
 use connlib_shared::{callbacks::ResourceDescription, get_user_agent};
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -139,7 +139,7 @@ impl Callbacks for CallbackHandler {
         );
     }
 
-    fn on_disconnect(&self, error: &Error) {
+    fn on_disconnect(&self, error: &DisconnectError) {
         self.inner.on_disconnect(error.to_string());
     }
 }

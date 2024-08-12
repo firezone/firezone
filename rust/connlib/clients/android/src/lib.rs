@@ -6,8 +6,8 @@
 use crate::tun::Tun;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
-    keypair, Callbacks, ConnectArgs, Error, LoginUrl, LoginUrlError, Session, V4RouteList,
-    V6RouteList,
+    keypair, Callbacks, ConnectArgs, DisconnectError, LoginUrl, LoginUrlError, Session,
+    V4RouteList, V6RouteList,
 };
 use connlib_shared::{callbacks::ResourceDescription, get_user_agent, messages::ResourceId};
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -244,7 +244,7 @@ impl Callbacks for CallbackHandler {
         .expect("onUpdateResources callback failed")
     }
 
-    fn on_disconnect(&self, error: &Error) {
+    fn on_disconnect(&self, error: &DisconnectError) {
         self.env(|mut env| {
             let error = env
                 .new_string(serde_json::to_string(&error.to_string())?)
@@ -297,7 +297,7 @@ enum ConnectError {
     #[error("Failed to get Java VM: {0}")]
     GetJavaVmFailed(#[source] jni::errors::Error),
     #[error(transparent)]
-    ConnectFailed(#[from] Error),
+    ConnectFailed(#[from] DisconnectError),
     #[error(transparent)]
     InvalidLoginUrl(#[from] LoginUrlError<url::ParseError>),
     #[error("Unable to create tokio runtime: {0}")]

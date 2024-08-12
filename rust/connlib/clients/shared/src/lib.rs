@@ -1,8 +1,8 @@
 //! Main connlib library for clients.
 pub use crate::serde_routelist::{V4RouteList, V6RouteList};
-pub use callbacks::Callbacks;
+pub use callbacks::{Callbacks, DisconnectError};
 pub use connlib_shared::messages::client::ResourceDescription;
-pub use connlib_shared::{Error, LoginUrl, LoginUrlError, StaticSecret};
+pub use connlib_shared::{LoginUrl, LoginUrlError, StaticSecret};
 pub use eventloop::Eventloop;
 pub use firezone_tunnel::keypair;
 
@@ -120,7 +120,7 @@ async fn connect<CB>(
     args: ConnectArgs<CB>,
     portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
     rx: UnboundedReceiver<Command>,
-) -> Result<(), Error>
+) -> Result<(), DisconnectError>
 where
     CB: Callbacks + 'static,
 {
@@ -140,16 +140,16 @@ where
 
     let mut eventloop = Eventloop::new(tunnel, callbacks, portal, rx);
 
-    std::future::poll_fn(|cx| eventloop.poll(cx))
-        .await
-        .map_err(Error::PortalConnectionFailed)?;
+    std::future::poll_fn(|cx| eventloop.poll(cx)).await?;
 
     Ok(())
 }
 
 /// A supervisor task that handles, when [`connect`] exits.
-async fn connect_supervisor<CB>(connect_handle: JoinHandle<Result<(), Error>>, callbacks: CB)
-where
+async fn connect_supervisor<CB>(
+    connect_handle: JoinHandle<Result<(), DisconnectError>>,
+    callbacks: CB,
+) where
     CB: Callbacks,
 {
     match connect_handle.await {
@@ -164,21 +164,21 @@ where
             Ok(panic) => {
                 if let Some(msg) = panic.downcast_ref::<&str>() {
                     tracing::error!("connlib panicked: {msg}");
-                    callbacks.on_disconnect(&Error::Panic(msg.to_string()));
+                    callbacks.on_disconnect(&DisconnectError::Panic(msg.to_string()));
                     return;
                 }
                 if let Some(msg) = panic.downcast_ref::<String>() {
                     tracing::error!("connlib panicked: {msg}");
-                    callbacks.on_disconnect(&Error::Panic(msg.to_string()));
+                    callbacks.on_disconnect(&DisconnectError::Panic(msg.to_string()));
                     return;
                 }
 
                 tracing::error!("connlib panicked with a non-string payload");
-                callbacks.on_disconnect(&Error::PanicNonStringPayload);
+                callbacks.on_disconnect(&DisconnectError::PanicNonStringPayload);
             }
             Err(_) => {
                 tracing::error!("connlib task was cancelled");
-                callbacks.on_disconnect(&Error::Cancelled);
+                callbacks.on_disconnect(&DisconnectError::Cancelled);
             }
         },
     }

@@ -1,4 +1,5 @@
 use connlib_shared::callbacks::ResourceDescription;
+use firezone_tunnel::NoInterfaces;
 use ip_network::{Ipv4Network, Ipv6Network};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -25,9 +26,29 @@ pub trait Callbacks: Clone + Send + Sync {
     ///
     /// If the tunnel disconnected due to a fatal error, `error` is the error
     /// that caused the disconnect.
-    fn on_disconnect(&self, error: &crate::Error) {
+    fn on_disconnect(&self, error: &DisconnectError) {
         tracing::error!(error = ?error, "tunnel_disconnected");
         // Note that we can't panic here, since we already hooked the panic to this function.
         std::process::exit(0);
     }
+}
+
+/// Unified error type to use across connlib.
+#[derive(thiserror::Error, Debug)]
+pub enum DisconnectError {
+    /// Failed to bind to interfaces.
+    #[error(transparent)]
+    NoInterfaces(#[from] NoInterfaces),
+    /// A panic occurred.
+    #[error("Connlib panicked: {0}")]
+    Panic(String),
+    /// The task was cancelled
+    #[error("Connlib task was cancelled")]
+    Cancelled,
+    /// A panic occurred with a non-string payload.
+    #[error("Panicked with a non-string payload")]
+    PanicNonStringPayload,
+
+    #[error("connection to the portal failed: {0}")]
+    PortalConnectionFailed(#[from] phoenix_channel::Error),
 }

@@ -4,13 +4,10 @@
 //! we are using the same version across our own crates.
 
 pub mod callbacks;
-pub mod error;
 pub mod messages;
 
 pub use boringtun::x25519::PublicKey;
 pub use boringtun::x25519::StaticSecret;
-pub use error::ConnlibError as Error;
-pub use error::Result;
 pub use phoenix_channel::{LoginUrl, LoginUrlError};
 
 pub type DomainName = domain::base::Name<Vec<u8>>;
