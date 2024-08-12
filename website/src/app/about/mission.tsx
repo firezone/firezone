@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function Mission() {
   return (
-    <section className="pt-12 bg-neutral-900">
+    <section className="pt-12 bg-neutral-950">
       <div className="py-8 px-4 mx-auto max-w-screen-lg text-center lg:py-16 lg:px-6 sm:text-lg">
         <h2 className="uppercase mb-14 justify-center md:text-5xl text-4xl tracking-tight font-semibold text-neutral-100 leading-none">
           Our mission

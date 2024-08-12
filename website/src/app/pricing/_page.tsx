@@ -184,7 +184,7 @@ export default function _Page() {
               </li>
             </ul>
           </div>
-          <div className="p-8 bg-neutral-900 text-neutral-50 rounded shadow border border-primary-450 mb-4">
+          <div className="p-8 bg-neutral-950 text-neutral-50 rounded shadow border border-primary-450 mb-4">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-2xl tracking-tight font-semibold text-primary-450">
                 Enterprise

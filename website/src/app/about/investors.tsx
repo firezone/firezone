@@ -20,7 +20,7 @@ export default function Investors() {
             </Link>
           </div>
           <div className="flex">
-            <div className="my-auto p-2 bg-neutral-900">
+            <div className="my-auto p-2 bg-neutral-950">
               <Link href={new URL("https://1984.vc")}>
                 <Image
                   src="/images/1984-logo.svg"
