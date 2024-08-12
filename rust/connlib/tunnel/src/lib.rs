@@ -85,7 +85,7 @@ impl ClientTunnel {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         known_hosts: HashMap<String, Vec<IpAddr>>,
-    ) -> std::result::Result<Self, NoInterfaces> {
+    ) -> Result<Self, NoInterfaces> {
         Ok(Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory)?,
             role_state: ClientState::new(private_key, known_hosts, rand::random()),
@@ -96,7 +96,7 @@ impl ClientTunnel {
         })
     }
 
-    pub fn reset(&mut self) -> std::result::Result<(), NoInterfaces> {
+    pub fn reset(&mut self) -> Result<(), NoInterfaces> {
         self.role_state.reset();
         self.io.rebind_sockets()?;
 
@@ -176,7 +176,7 @@ impl GatewayTunnel {
         private_key: StaticSecret,
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    ) -> std::result::Result<Self, NoInterfaces> {
+    ) -> Result<Self, NoInterfaces> {
         Ok(Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory)?,
             role_state: GatewayState::new(private_key, rand::random()),

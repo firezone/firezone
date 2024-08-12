@@ -398,10 +398,7 @@ fn resolve_addresses(addr: &str) -> std::io::Result<Vec<IpAddr>> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn resolve_address_family(
-    addr: &str,
-    family: i32,
-) -> std::result::Result<AddrInfoIter, LookupError> {
+fn resolve_address_family(addr: &str, family: i32) -> Result<AddrInfoIter, LookupError> {
     use libc::SOCK_STREAM;
 
     dns_lookup::getaddrinfo(
