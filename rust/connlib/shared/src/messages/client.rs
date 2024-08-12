@@ -123,7 +123,6 @@ impl FromStr for SiteId {
 }
 
 impl SiteId {
-    #[cfg(feature = "proptest")]
     pub fn from_u128(v: u128) -> Self {
         Self(Uuid::from_u128(v))
     }
@@ -131,11 +130,7 @@ impl SiteId {
 
 impl fmt::Display for SiteId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if cfg!(feature = "proptest") {
-            write!(f, "{:X}", self.0.as_u128())
-        } else {
-            write!(f, "{}", self.0)
-        }
+        write!(f, "{}", self.0)
     }
 }
 
