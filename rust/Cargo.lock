@@ -1767,6 +1767,7 @@ name = "firezone-bin-shared"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "clap",
  "firezone-logging",
  "futures",
@@ -1813,7 +1814,6 @@ dependencies = [
  "firezone-tunnel",
  "futures",
  "futures-bounded",
- "http-health-check",
  "ip_network",
  "libc",
  "phoenix-channel",
@@ -1950,10 +1950,10 @@ dependencies = [
  "derive_more",
  "difference",
  "env_logger",
+ "firezone-bin-shared",
  "futures",
  "hex",
  "hex-display",
- "http-health-check",
  "mio",
  "once_cell",
  "opentelemetry",
@@ -2744,15 +2744,6 @@ dependencies = [
  "http 1.1.0",
  "http-body",
  "pin-project-lite",
-]
-
-[[package]]
-name = "http-health-check"
-version = "0.1.0"
-dependencies = [
- "axum",
- "clap",
- "tokio",
 ]
 
 [[package]]
