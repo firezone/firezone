@@ -4,7 +4,6 @@ use crate::peer_store::PeerStore;
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_shared::callbacks::Status;
-use connlib_shared::error::ConnlibError as Error;
 use connlib_shared::messages::client::{Site, SiteId};
 use connlib_shared::messages::ResolveRequest;
 use connlib_shared::messages::{
@@ -187,7 +186,7 @@ impl ClientTunnel {
         resource_id: ResourceId,
         answer: Answer,
         gateway_public_key: PublicKey,
-    ) -> connlib_shared::Result<()> {
+    ) -> anyhow::Result<()> {
         self.role_state.accept_answer(
             snownet::Answer {
                 credentials: snownet::Credentials {
@@ -534,12 +533,12 @@ impl ClientState {
         resource_id: ResourceId,
         gateway: PublicKey,
         now: Instant,
-    ) -> connlib_shared::Result<()> {
+    ) -> anyhow::Result<()> {
         debug_assert!(!self.awaiting_connection_details.contains_key(&resource_id));
 
         let gateway_id = self
             .gateway_by_resource(&resource_id)
-            .ok_or(Error::UnknownResource)?;
+            .with_context(|| format!("No gateway associated with resource {resource_id}"))?;
 
         self.node.accept_answer(gateway_id, gateway, answer, now);
 

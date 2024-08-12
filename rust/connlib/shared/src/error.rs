@@ -11,9 +11,6 @@ pub enum ConnlibError {
     /// Standard IO error.
     #[error(transparent)]
     Io(#[from] std::io::Error),
-    /// Tried to access a resource which didn't exists.
-    #[error("Tried to access an undefined resource")]
-    UnknownResource,
     /// One of the stored resources isn't a valid CIDR/DNS.
     #[error("Invalid resource")]
     InvalidResource,
