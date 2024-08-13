@@ -10,6 +10,7 @@ boringtun = { workspace = true }
 bytes = { version = "1.7", default-features = false, features = ["std"] }
 chrono = { workspace = true }
 connlib-shared = { workspace = true }
+divan = { version = "0.1.14", optional = true }
 domain = { workspace = true }
 firezone-logging = { workspace = true }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
@@ -33,7 +34,6 @@ tokio = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
 uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
-divan = { version = "0.1.14", optional = true }
 
 [dev-dependencies]
 derivative = "2.2.0"
