@@ -65,7 +65,12 @@ defmodule Web.Router do
 
     live "/", SignUp
   end
+    # Maintained from the LaunchHN - show SignUp form
+    scope "/try", Web do
+      pipe_through :public
 
+      live "/", SignUp
+    end
   scope "/:account_id_or_slug", Web do
     pipe_through [:public, :account, :redirect_if_user_is_authenticated]
 
