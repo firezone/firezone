@@ -90,8 +90,7 @@ config :domain, :enabled_features,
   self_hosted_relays: true,
   policy_conditions: true,
   multi_site_resources: true,
-  rest_api: true,
-  temp_accounts: true
+  rest_api: true
 
 config :domain, sign_up_whitelisted_domains: []
 
