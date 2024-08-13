@@ -165,17 +165,6 @@ defmodule Web.Actors.Components do
     """
   end
 
-  def provider_form(%{provider: %{adapter: :temp_account}} = assigns) do
-    ~H"""
-    <div>
-      No other identities can be created using this provider.  The temporary account is intended to be used as a brief trial of Firezone.  To create a free starter account <a
-        class={link_style()}
-        href={url(~p"/sign_up")}
-      >click here</a>.
-    </div>
-    """
-  end
-
   def next_step_path(:service_account, account) do
     ~p"/#{account}/actors/service_accounts/new"
   end

@@ -264,7 +264,6 @@ defmodule Web.Settings.IdentityProviders.Components do
 
   def adapter_name(:email), do: "Email"
   def adapter_name(:userpass), do: "Username & Password"
-  def adapter_name(:temp_account), do: "Temporary Account"
   def adapter_name(:google_workspace), do: "Google Workspace"
   def adapter_name(:microsoft_entra), do: "Microsoft Entra"
   def adapter_name(:okta), do: "Okta"
@@ -272,7 +271,7 @@ defmodule Web.Settings.IdentityProviders.Components do
   def adapter_name(:openid_connect), do: "OpenID Connect"
 
   def view_provider(account, %{adapter: adapter} = provider)
-      when adapter in [:email, :userpass, :temp_account],
+      when adapter in [:email, :userpass],
       do: ~p"/#{account}/settings/identity_providers/system/#{provider}"
 
   def view_provider(account, %{adapter: :openid_connect} = provider),

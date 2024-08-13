@@ -72,7 +72,7 @@ defmodule Domain.Auth do
   alias Domain.Auth.Identity
 
   # This session duration is used when IdP doesn't return the token expiration date,
-  # or no IdP is used (eg. sign in via email, userpass, or temp_account).
+  # or no IdP is used (eg. sign in via email or userpass).
   @default_session_duration_hours [
     browser: [
       account_admin_user: 10,
@@ -143,7 +143,7 @@ defmodule Domain.Auth do
   This functions allows to fetch singleton providers like `email` or `token`.
   """
   def fetch_active_provider_by_adapter(adapter, %Subject{} = subject, opts \\ [])
-      when adapter in [:email, :userpass, :temp_account] do
+      when adapter in [:email, :userpass] do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
       Provider.Query.not_disabled()
       |> Provider.Query.by_adapter(adapter)
@@ -170,7 +170,7 @@ defmodule Domain.Auth do
   def all_third_party_providers!(%Subject{} = subject) do
     Provider.Query.not_deleted()
     |> Provider.Query.by_account_id(subject.account.id)
-    |> Provider.Query.by_adapter({:not_in, [:email, :userpass, :temp_account]})
+    |> Provider.Query.by_adapter({:not_in, [:email, :userpass]})
     |> Authorizer.for_subject(Provider, subject)
     |> Repo.all()
   end
