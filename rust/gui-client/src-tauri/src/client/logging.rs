@@ -175,7 +175,7 @@ fn choose_logs_to_delete(paths: &[PathBuf]) -> Vec<&Path> {
                 return false;
             };
             if !stem.starts_with("connlib.") {
-                return false;
+                return true;
             }
             stem < most_recent_stem
         })
@@ -344,6 +344,8 @@ mod tests {
                 "/bogus/connlib.2024-08-06-14-21-13.log",
                 "/bogus/connlib.2024-08-06-14-51-19.jsonl",
                 "/bogus/connlib.2024-08-06-14-51-19.log",
+                "/bogus/crash.2024-07-22-21-16-20.dmp",
+                "/bogus/last_crash.dmp",
             ]
             .into_iter()
             .map(Path::new)
