@@ -1,14 +1,15 @@
 use crate::peer::ClientOnGateway;
 use crate::peer_store::PeerStore;
-use crate::utils::{earliest, Candidates};
+use crate::utils::earliest;
 use crate::{GatewayEvent, GatewayTunnel};
+use anyhow::{bail, Context};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
     gateway::ResolvedResourceDescriptionDns, gateway::ResourceDescription, Answer, ClientId, Key,
     Offer, RelayId, ResourceId,
 };
-use connlib_shared::{DomainName, Error, Result, StaticSecret};
+use connlib_shared::{DomainName, StaticSecret};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MutableIpPacket};
 use secrecy::{ExposeSecret as _, Secret};
@@ -48,7 +49,7 @@ impl GatewayTunnel {
         domain: Option<(DomainName, Vec<IpAddr>)>,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
-    ) -> Result<Answer> {
+    ) -> anyhow::Result<Answer> {
         self.role_state.accept(
             client_id,
             snownet::Offer {
@@ -78,7 +79,7 @@ impl GatewayTunnel {
         client: ClientId,
         expires_at: Option<DateTime<Utc>>,
         domain: Option<(DomainName, Vec<IpAddr>)>,
-    ) -> Result<()> {
+    ) -> anyhow::Result<()> {
         self.role_state
             .allow_access(resource, client, expires_at, domain, Instant::now())
     }
@@ -176,7 +177,7 @@ impl GatewayState {
 
         let packet = peer
             .encapsulate(packet, now)
-            .inspect_err(|e| tracing::debug!(%cid, "Failed to encapsulate: {e}"))
+            .inspect_err(|e| tracing::debug!(%cid, "Failed to encapsulate: {e:#}"))
             .ok()??;
 
         let transmit = self
@@ -214,7 +215,7 @@ impl GatewayState {
 
         let packet = peer
             .decapsulate(packet, now)
-            .inspect_err(|e| tracing::debug!(%cid, "Invalid packet: {e}"))
+            .inspect_err(|e| tracing::debug!(%cid, "Invalid packet: {e:#}"))
             .ok()?;
 
         Some(packet.into_immutable())
@@ -241,14 +242,19 @@ impl GatewayState {
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         now: Instant,
-    ) -> Result<Answer> {
+    ) -> anyhow::Result<Answer> {
         match (&domain, &resource) {
             (Some((domain, _)), ResourceDescription::Dns(r)) => {
                 if !crate::dns::is_subdomain(domain, &r.domain) {
-                    return Err(Error::InvalidResource);
+                    bail!(
+                        "Requested domain '{domain}' isn't a sub-domain of resource address '{}'",
+                        r.domain
+                    );
                 }
             }
-            (None, ResourceDescription::Dns(_)) => return Err(Error::ControlProtocolError),
+            (None, ResourceDescription::Dns(_)) => {
+                bail!("Cannot setup connection for DNS resource without domain")
+            }
             _ => {}
         }
 
@@ -296,23 +302,25 @@ impl GatewayState {
         expires_at: Option<DateTime<Utc>>,
         domain: Option<(DomainName, Vec<IpAddr>)>,
         now: Instant,
-    ) -> Result<()> {
+    ) -> anyhow::Result<()> {
         match (&domain, &resource) {
             (Some((domain, _)), ResourceDescription::Dns(r)) => {
                 if !crate::dns::is_subdomain(domain, &r.domain) {
-                    return Err(Error::InvalidResource);
+                    bail!(
+                        "Requested domain '{domain}' isn't a sub-domain of resource address '{}'",
+                        r.domain
+                    );
                 }
             }
-            (None, ResourceDescription::Dns(_)) => return Err(Error::InvalidResource),
+            (None, ResourceDescription::Dns(_)) => {
+                bail!("Cannot setup connection for DNS resource without domain")
+            }
             _ => {}
         }
 
-        let Some(peer) = self.peers.get_mut(&client) else {
-            return Err(Error::ControlProtocolError);
-        };
+        let peer = self.peers.get_mut(&client).context("Unknown client")?;
 
         peer.assign_proxies(&resource, domain.clone(), now)?;
-
         peer.add_resource(
             resource.addresses(),
             resource.id(),
@@ -347,8 +355,8 @@ impl GatewayState {
             Some(_) => {}
         }
 
-        let mut added_ice_candidates = BTreeMap::<ClientId, Candidates>::default();
-        let mut removed_ice_candidates = BTreeMap::<ClientId, Candidates>::default();
+        let mut added_ice_candidates = BTreeMap::<ClientId, BTreeSet<String>>::default();
+        let mut removed_ice_candidates = BTreeMap::<ClientId, BTreeSet<String>>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -362,7 +370,7 @@ impl GatewayState {
                     added_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .push(candidate);
+                        .insert(candidate);
                 }
                 snownet::Event::InvalidateIceCandidate {
                     connection,
@@ -371,7 +379,7 @@ impl GatewayState {
                     removed_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .push(candidate);
+                        .insert(candidate);
                 }
                 snownet::Event::ConnectionEstablished(_) => {}
             }
@@ -381,7 +389,7 @@ impl GatewayState {
             self.buffered_events
                 .push_back(GatewayEvent::AddedIceCandidates {
                     conn_id,
-                    candidates: candidates.serialize(),
+                    candidates,
                 })
         }
 
@@ -389,7 +397,7 @@ impl GatewayState {
             self.buffered_events
                 .push_back(GatewayEvent::RemovedIceCandidates {
                     conn_id,
-                    candidates: candidates.serialize(),
+                    candidates,
                 })
         }
     }

@@ -129,22 +129,27 @@ pub(crate) fn assert_dns_packets_properties(ref_client: &RefClient, sim_client: 
     let unexpected_dns_replies = find_unexpected_entries(
         &ref_client.expected_dns_handshakes,
         &sim_client.received_dns_responses,
-        |id_a, id_b| id_a == id_b,
+        |(_, id_a), (_, id_b)| id_a == id_b,
     );
 
     if !unexpected_dns_replies.is_empty() {
         tracing::error!(target: "assertions", ?unexpected_dns_replies, "❌ Unexpected DNS replies on client");
     }
 
-    for query_id in ref_client.expected_dns_handshakes.iter() {
-        let _guard = tracing::info_span!(target: "assertions", "dns", %query_id).entered();
+    for (dns_server, query_id) in ref_client.expected_dns_handshakes.iter() {
+        let _guard =
+            tracing::info_span!(target: "assertions", "dns", %query_id, %dns_server).entered();
+        let key = &(*dns_server, *query_id);
 
-        let Some(client_sent_query) = sim_client.sent_dns_queries.get(query_id) else {
-            tracing::error!(target: "assertions", ?unexpected_dns_replies, "❌ Missing DNS query on client");
+        let queries = &sim_client.sent_dns_queries;
+        let responses = &sim_client.received_dns_responses;
+
+        let Some(client_sent_query) = queries.get(key) else {
+            tracing::error!(target: "assertions", ?queries, "❌ Missing DNS query on client");
             continue;
         };
-        let Some(client_received_response) = sim_client.received_dns_responses.get(query_id) else {
-            tracing::error!(target: "assertions", ?unexpected_dns_replies, "❌ Missing DNS response on client");
+        let Some(client_received_response) = responses.get(key) else {
+            tracing::error!(target: "assertions", ?responses, "❌ Missing DNS response on client");
             continue;
         };
 

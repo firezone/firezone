@@ -1,6 +1,6 @@
 //! Client related messages that are needed within connlib
 
-use std::{collections::HashSet, fmt, str::FromStr};
+use std::{collections::BTreeSet, fmt, str::FromStr};
 
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::callbacks::Status;
 
 use super::ResourceId;
+use itertools::Itertools;
 
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
@@ -123,7 +124,6 @@ impl FromStr for SiteId {
 }
 
 impl SiteId {
-    #[cfg(feature = "proptest")]
     pub fn from_u128(v: u128) -> Self {
         Self(Uuid::from_u128(v))
     }
@@ -131,11 +131,7 @@ impl SiteId {
 
 impl fmt::Display for SiteId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if cfg!(feature = "proptest") {
-            write!(f, "{:X}", self.0.as_u128())
-        } else {
-            write!(f, "{}", self.0)
-        }
+        write!(f, "{}", self.0)
     }
 }
 
@@ -146,11 +142,16 @@ impl fmt::Debug for SiteId {
 }
 
 impl ResourceDescription {
-    pub fn dns_name(&self) -> Option<&str> {
+    pub fn address_string(&self) -> Option<String> {
         match self {
-            ResourceDescription::Dns(r) => Some(&r.address),
-            ResourceDescription::Cidr(_) | ResourceDescription::Internet(_) => None,
+            ResourceDescription::Dns(d) => Some(d.address.clone()),
+            ResourceDescription::Cidr(c) => Some(c.address.to_string()),
+            ResourceDescription::Internet(_) => None,
         }
+    }
+
+    pub fn sites_string(&self) -> String {
+        self.sites().iter().map(|s| &s.name).join("|")
     }
 
     pub fn id(&self) -> ResourceId {
@@ -161,11 +162,11 @@ impl ResourceDescription {
         }
     }
 
-    pub fn sites(&self) -> HashSet<&Site> {
+    pub fn sites(&self) -> BTreeSet<&Site> {
         match self {
-            ResourceDescription::Dns(r) => HashSet::from_iter(r.sites.iter()),
-            ResourceDescription::Cidr(r) => HashSet::from_iter(r.sites.iter()),
-            ResourceDescription::Internet(_) => HashSet::default(),
+            ResourceDescription::Dns(r) => BTreeSet::from_iter(r.sites.iter()),
+            ResourceDescription::Cidr(r) => BTreeSet::from_iter(r.sites.iter()),
+            ResourceDescription::Internet(_) => BTreeSet::default(),
         }
     }
 

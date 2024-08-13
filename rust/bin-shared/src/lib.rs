@@ -1,3 +1,5 @@
+pub mod http_health_check;
+
 mod network_changes;
 mod tun_device_manager;
 
