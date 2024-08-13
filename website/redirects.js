@@ -10,7 +10,7 @@ module.exports = [
     source: "/dl/firezone-client-gui-windows/latest/x86_64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.1.11/firezone-client-gui-windows_1.1.11_x86_64.msi",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.1.12/firezone-client-gui-windows_1.1.12_x86_64.msi",
     permanent: false,
   },
   /*
@@ -22,35 +22,35 @@ module.exports = [
     source: "/dl/firezone-client-gui-linux/latest/x86_64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.1.11/firezone-client-gui-linux_1.1.11_x86_64.deb",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.1.12/firezone-client-gui-linux_1.1.12_x86_64.deb",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-gui-linux/latest/aarch64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.1.11/firezone-client-gui-linux_1.1.11_aarch64.deb",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.1.12/firezone-client-gui-linux_1.1.12_aarch64.deb",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-headless-linux/latest/x86_64",
     destination:
       // mark:current-headless-version
-      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.1.6/firezone-client-headless-linux_1.1.6_x86_64",
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.1.7/firezone-client-headless-linux_1.1.7_x86_64",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-headless-linux/latest/aarch64",
     destination:
       // mark:current-headless-version
-      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.1.6/firezone-client-headless-linux_1.1.6_aarch64",
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.1.7/firezone-client-headless-linux_1.1.7_aarch64",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-headless-linux/latest/armv7",
     destination:
       // mark:current-headless-version
-      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.1.6/firezone-client-headless-linux_1.1.6_armv7",
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.1.7/firezone-client-headless-linux_1.1.7_armv7",
     permanent: false,
   },
   /*
@@ -62,21 +62,21 @@ module.exports = [
     source: "/dl/firezone-gateway/latest/x86_64",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.1.4/firezone-gateway_1.1.4_x86_64",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.1.5/firezone-gateway_1.1.5_x86_64",
     permanent: false,
   },
   {
     source: "/dl/firezone-gateway/latest/aarch64",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.1.4/firezone-gateway_1.1.4_aarch64",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.1.5/firezone-gateway_1.1.5_aarch64",
     permanent: false,
   },
   {
     source: "/dl/firezone-gateway/latest/armv7",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.1.4/firezone-gateway_1.1.4_armv7",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.1.5/firezone-gateway_1.1.5_armv7",
     permanent: false,
   },
   /*
