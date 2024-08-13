@@ -9,7 +9,7 @@
 //! Otherwise we would just make it a normal binary crate.
 
 use anyhow::{Context as _, Result};
-use connlib_client_shared::{Callbacks, Error as ConnlibError};
+use connlib_client_shared::{Callbacks, DisconnectError};
 use connlib_shared::callbacks;
 use firezone_bin_shared::platform::DnsControlMethod;
 use std::{
@@ -106,9 +106,10 @@ pub struct CallbackHandler {
 }
 
 impl Callbacks for CallbackHandler {
-    fn on_disconnect(&self, error: &connlib_client_shared::Error) {
+    fn on_disconnect(&self, error: &connlib_client_shared::DisconnectError) {
         tracing::error!(?error, "Got `on_disconnect` from connlib");
-        let is_authentication_error = if let ConnlibError::PortalConnectionFailed(error) = error {
+        let is_authentication_error = if let DisconnectError::PortalConnectionFailed(error) = error
+        {
             error.is_authentication_error()
         } else {
             false

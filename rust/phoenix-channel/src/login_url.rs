@@ -44,7 +44,7 @@ impl LoginUrl {
         device_id: String,
         device_name: Option<String>,
         public_key: [u8; 32],
-    ) -> std::result::Result<Self, LoginUrlError<E>> {
+    ) -> Result<Self, LoginUrlError<E>> {
         let external_id = hex::encode(sha2::Sha256::digest(device_id));
         let device_name = device_name
             .or(get_host_name())
@@ -74,7 +74,7 @@ impl LoginUrl {
         device_id: String,
         device_name: Option<String>,
         public_key: [u8; 32],
-    ) -> std::result::Result<Self, LoginUrlError<E>> {
+    ) -> Result<Self, LoginUrlError<E>> {
         let external_id = hex::encode(sha2::Sha256::digest(device_id));
         let device_name = device_name
             .or(get_host_name())
@@ -105,7 +105,7 @@ impl LoginUrl {
         listen_port: u16,
         ipv4_address: Option<Ipv4Addr>,
         ipv6_address: Option<Ipv6Addr>,
-    ) -> std::result::Result<Self, LoginUrlError<E>> {
+    ) -> Result<Self, LoginUrlError<E>> {
         let url = get_websocket_path(
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
             firezone_token,
@@ -183,7 +183,7 @@ fn get_websocket_path<E>(
     port: Option<u16>,
     ipv4_address: Option<Ipv4Addr>,
     ipv6_address: Option<Ipv6Addr>,
-) -> std::result::Result<Url, LoginUrlError<E>> {
+) -> Result<Url, LoginUrlError<E>> {
     set_ws_scheme(&mut api_url)?;
 
     {
@@ -224,7 +224,7 @@ fn get_websocket_path<E>(
     Ok(api_url)
 }
 
-fn set_ws_scheme<E>(url: &mut Url) -> std::result::Result<(), LoginUrlError<E>> {
+fn set_ws_scheme<E>(url: &mut Url) -> Result<(), LoginUrlError<E>> {
     let scheme = match url.scheme() {
         "http" | "ws" => "ws",
         "https" | "wss" => "wss",

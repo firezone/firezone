@@ -1,4 +1,5 @@
 use crate::{
+    callbacks::Callbacks,
     messages::{
         Connect, ConnectionDetails, EgressMessages, GatewayIceCandidates, GatewaysIceCandidates,
         IngressMessages, InitClient, ReplyMessages,
@@ -6,9 +7,8 @@ use crate::{
     PHOENIX_TOPIC,
 };
 use anyhow::Result;
-use connlib_shared::{
-    messages::{ConnectionAccepted, GatewayResponse, RelaysPresence, ResourceAccepted, ResourceId},
-    Callbacks,
+use connlib_shared::messages::{
+    ConnectionAccepted, GatewayResponse, RelaysPresence, ResourceAccepted, ResourceId,
 };
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
