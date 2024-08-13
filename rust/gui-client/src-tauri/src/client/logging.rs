@@ -9,9 +9,8 @@ use std::{
     fs,
     io::{self, ErrorKind::NotFound},
     path::{Path, PathBuf},
-    result::Result as StdResult,
 };
-use tokio::task::spawn_blocking;
+use tokio::{sync::oneshot, task::spawn_blocking};
 use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
 use tracing_subscriber::{fmt, layer::SubscriberExt, reload, EnvFilter, Layer, Registry};
@@ -75,18 +74,22 @@ pub(crate) fn setup(directives: &str) -> Result<Handles> {
 }
 
 #[tauri::command]
-pub(crate) async fn clear_logs() -> StdResult<(), String> {
-    if let Err(error) = clear_logs_inner().await {
-        // Log the error ourselves since Tauri will only log it to the JS console
-        tracing::error!(?error, "Error while clearing logs");
-        Err(error.to_string())
-    } else {
-        Ok(())
+pub(crate) async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<(), String> {
+    let (tx, rx) = oneshot::channel();
+    if let Err(error) = managed.ctlr_tx.send(ControllerRequest::ClearLogs(tx)).await {
+        // Tauri will only log errors to the JS console for us, so log this ourselves.
+        tracing::error!(?error, "Error while asking `Controller` to clear logs");
+        return Err(error.to_string());
     }
+    if let Err(error) = rx.await {
+        tracing::error!(?error, "Error while awaiting log-clearing operation");
+        return Err(error.to_string());
+    }
+    Ok(())
 }
 
 #[tauri::command]
-pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> StdResult<(), String> {
+pub(crate) async fn export_logs(managed: tauri::State<'_, Managed>) -> Result<(), String> {
     show_export_dialog(managed.ctlr_tx.clone()).map_err(|e| e.to_string())
 }
 
@@ -97,7 +100,7 @@ pub(crate) struct FileCount {
 }
 
 #[tauri::command]
-pub(crate) async fn count_logs() -> StdResult<FileCount, String> {
+pub(crate) async fn count_logs() -> Result<FileCount, String> {
     count_logs_inner().await.map_err(|e| e.to_string())
 }
 
@@ -108,7 +111,7 @@ pub(crate) async fn count_logs() -> StdResult<FileCount, String> {
 ///
 /// If we get an error while removing a file, we still try to remove all other
 /// files, then we return the most recent error.
-pub(crate) async fn clear_logs_inner() -> Result<()> {
+pub(crate) async fn clear_gui_logs() -> Result<()> {
     let mut result = Ok(());
 
     for log_path in log_paths()?.into_iter().map(|x| x.src) {

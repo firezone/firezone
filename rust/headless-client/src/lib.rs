@@ -80,7 +80,7 @@ pub enum ConnlibMsg {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum IpcServerMsg {
     /// The IPC service finished clearing its log dir.
-    ClearedLogs,
+    ClearedLogs(Result<(), String>),
     FromConnlib(ConnlibMsgToGui),
     /// The IPC service is terminating, maybe due to a software update
     ///

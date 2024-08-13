@@ -254,7 +254,7 @@ impl<'a> Handler<'a> {
                     break HandlerOk::Err;
                 }
                 Event::Ipc(msg) => {
-                    if let Err(error) = self.handle_ipc_msg(msg) {
+                    if let Err(error) = self.handle_ipc_msg(msg).await {
                         tracing::error!(?error, "Error while handling IPC message from client");
                         continue;
                     }
@@ -334,9 +334,15 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
-    fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
+    async fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
         match msg {
-            ClientMsg::ClearLogs => todo!(),
+            ClientMsg::ClearLogs => {
+                // TODO: Clear logs
+                self.ipc_tx
+                    .send(&IpcServerMsg::ClearedLogs(Ok(())))
+                    .await
+                    .context("Error while sending IPC message")?
+            }
             ClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);
                 // There isn't an airtight way to implement a "disconnect and reconnect"
