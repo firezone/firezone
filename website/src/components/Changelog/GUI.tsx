@@ -13,8 +13,14 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This cannot be done when the issue's PR merges. */}
-      {/*
-      <Entry version="1.1.12" date={new Date("Invalid date")}>
+      {/* <Entry version="1.2.0" date={new Date("Invalid date")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="5901">
+            Implements glob-like matching of domains for DNS resources.
+          </ChangeItem>
+        </ul>
+      </Entry>   */}
+      <Entry version="1.1.12" date={new Date("2024-08-13")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6226">
             Fixes a bug where clearing the log files would delete the current files, preventing logs from being written.
@@ -27,22 +33,6 @@ export default function GUI({ title }: { title: string }) {
           </ChangeItem>
           <ChangeItem enable={title === "Windows"} pull="6280">
             Fixes a bug where the "Clear Logs" button did not clear the IPC service logs.
-          </ChangeItem>
-        </ul>
-      </Entry>
-      */}
-      <Entry version="1.1.12" date={new Date("2024-08-13")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6226">
-            Fixes a bug where clearing the log files would delete the current
-            logfile, preventing logs from being written.
-          </ChangeItem>
-          <ChangeItem pull="6276">
-            Fixes a bug where relayed connections failed to establish after an
-            idle period.
-          </ChangeItem>
-          <ChangeItem pull="6277">
-            Fixes a bug where restrictive NATs caused connectivity problems.
           </ChangeItem>
         </ul>
       </Entry>
