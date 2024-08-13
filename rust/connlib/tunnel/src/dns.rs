@@ -580,41 +580,6 @@ mod tests {
 
         assert!(!matches);
     }
-
-    #[test]
-    fn exact_subdomain_match() {
-        assert!(is_subdomain(&domain("foo.com"), "foo.com"));
-        assert!(!is_subdomain(&domain("a.foo.com"), "foo.com"));
-        assert!(!is_subdomain(&domain("a.b.foo.com"), "foo.com"));
-        assert!(!is_subdomain(&domain("foo.com"), "a.foo.com"));
-    }
-
-    #[test]
-    fn wildcard_subdomain_match() {
-        assert!(is_subdomain(&domain("foo.com"), "*.foo.com"));
-        assert!(is_subdomain(&domain("a.foo.com"), "*.foo.com"));
-        assert!(is_subdomain(&domain("a.foo.com"), "*.a.foo.com"));
-        assert!(is_subdomain(&domain("b.a.foo.com"), "*.a.foo.com"));
-        assert!(is_subdomain(&domain("a.b.foo.com"), "*.foo.com"));
-        assert!(!is_subdomain(&domain("afoo.com"), "*.foo.com"));
-        assert!(!is_subdomain(&domain("b.afoo.com"), "*.foo.com"));
-        assert!(!is_subdomain(&domain("bar.com"), "*.foo.com"));
-        assert!(!is_subdomain(&domain("foo.com"), "*.a.foo.com"));
-    }
-
-    #[test]
-    fn question_mark_subdomain_match() {
-        assert!(is_subdomain(&domain("foo.com"), "?.foo.com"));
-        assert!(is_subdomain(&domain("a.foo.com"), "?.foo.com"));
-        assert!(!is_subdomain(&domain("a.b.foo.com"), "?.foo.com"));
-        assert!(!is_subdomain(&domain("bar.com"), "?.foo.com"));
-        assert!(!is_subdomain(&domain("foo.com"), "?.a.foo.com"));
-        assert!(!is_subdomain(&domain("afoo.com"), "?.foo.com"));
-    }
-
-    fn domain(name: &str) -> DomainName {
-        DomainName::vec_from_str(name).unwrap()
-    }
 }
 
 #[cfg(feature = "divan")]
