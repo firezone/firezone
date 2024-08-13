@@ -7,7 +7,7 @@ defmodule Web.Resources.Show do
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, resource} <-
            Resources.fetch_resource_by_id(id, socket.assigns.subject,
-             preload: [:gateway_groups, created_by_identity: [:actor]]
+             preload: [:gateway_groups, :created_by_actor, created_by_identity: [:actor]]
            ),
          {:ok, actor_groups_peek} <-
            Resources.peek_resource_actor_groups([resource], 3, socket.assigns.subject) do
