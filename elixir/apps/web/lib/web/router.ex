@@ -66,10 +66,11 @@ defmodule Web.Router do
     live "/", SignUp
   end
 
+  # Maintained from the LaunchHN - show SignUp form
   scope "/try", Web do
     pipe_through :public
 
-    live "/", TempAccounts.Index
+    live "/", SignUp
   end
 
   scope "/:account_id_or_slug", Web do
@@ -95,7 +96,7 @@ defmodule Web.Router do
     get "/sign_in/client_auth_error", SignInController, :client_auth_error
 
     scope "/sign_in/providers/:provider_id" do
-      # UserPass / Temp Account
+      # UserPass
       post "/verify_credentials", AuthController, :verify_credentials
 
       # Email

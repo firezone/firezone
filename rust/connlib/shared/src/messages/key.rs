@@ -5,8 +5,6 @@ use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
 use std::{fmt, str::FromStr};
 
-use crate::Error;
-
 // Note: the wireguard key and the ICE session key are the same length by mere coincidence
 // it'd be correct to define key with a const generic parameter for the size and have a different type
 // that depends on the length.
@@ -22,7 +20,7 @@ pub struct Key(pub [u8; KEY_SIZE]);
 impl DebugSecret for Key {}
 
 impl FromStr for Key {
-    type Err = Error;
+    type Err = base64::DecodeError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut key_bytes = [0u8; KEY_SIZE];
@@ -37,9 +35,7 @@ impl FromStr for Key {
         // TODO: https://github.com/marshallpierce/rust-base64/issues/210
         let bytes_decoded = STANDARD.decode(s)?;
         if bytes_decoded.len() != KEY_SIZE {
-            Err(Error::Base64DecodeError(
-                base64::DecodeError::InvalidLength(bytes_decoded.len()),
-            ))
+            Err(base64::DecodeError::InvalidLength(bytes_decoded.len()))
         } else {
             key_bytes.copy_from_slice(&bytes_decoded);
             Ok(Key(key_bytes))

@@ -4,7 +4,6 @@ use crate::peer_store::PeerStore;
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_shared::callbacks::Status;
-use connlib_shared::error::ConnlibError as Error;
 use connlib_shared::messages::client::{Site, SiteId};
 use connlib_shared::messages::ResolveRequest;
 use connlib_shared::messages::{
@@ -19,7 +18,7 @@ use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
-use crate::utils::{self, earliest, turn, Candidates};
+use crate::utils::{self, earliest, turn};
 use crate::{ClientEvent, ClientTunnel, Tun};
 use domain::base::Message;
 use secrecy::{ExposeSecret as _, Secret};
@@ -187,7 +186,7 @@ impl ClientTunnel {
         resource_id: ResourceId,
         answer: Answer,
         gateway_public_key: PublicKey,
-    ) -> connlib_shared::Result<()> {
+    ) -> anyhow::Result<()> {
         self.role_state.accept_answer(
             snownet::Answer {
                 credentials: snownet::Credentials {
@@ -534,12 +533,12 @@ impl ClientState {
         resource_id: ResourceId,
         gateway: PublicKey,
         now: Instant,
-    ) -> connlib_shared::Result<()> {
+    ) -> anyhow::Result<()> {
         debug_assert!(!self.awaiting_connection_details.contains_key(&resource_id));
 
         let gateway_id = self
             .gateway_by_resource(&resource_id)
-            .ok_or(Error::UnknownResource)?;
+            .with_context(|| format!("No gateway associated with resource {resource_id}"))?;
 
         self.node.accept_answer(gateway_id, gateway, answer, now);
 
@@ -869,8 +868,8 @@ impl ClientState {
 
     fn drain_node_events(&mut self) {
         let mut resources_changed = false; // Track this separately to batch together `ResourcesChanged` events.
-        let mut added_ice_candidates = BTreeMap::<GatewayId, Candidates>::default();
-        let mut removed_ice_candidates = BTreeMap::<GatewayId, Candidates>::default();
+        let mut added_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
+        let mut removed_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -885,7 +884,7 @@ impl ClientState {
                     added_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .push(candidate);
+                        .insert(candidate);
                 }
                 snownet::Event::InvalidateIceCandidate {
                     connection,
@@ -894,7 +893,7 @@ impl ClientState {
                     removed_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .push(candidate);
+                        .insert(candidate);
                 }
                 snownet::Event::ConnectionEstablished(id) => {
                     self.update_site_status_by_gateway(&id, Status::Online);
@@ -914,7 +913,7 @@ impl ClientState {
             self.buffered_events
                 .push_back(ClientEvent::AddedIceCandidates {
                     conn_id,
-                    candidates: candidates.serialize(),
+                    candidates,
                 })
         }
 
@@ -922,7 +921,7 @@ impl ClientState {
             self.buffered_events
                 .push_back(ClientEvent::RemovedIceCandidates {
                     conn_id,
-                    candidates: candidates.serialize(),
+                    candidates,
                 })
         }
     }
@@ -1015,13 +1014,10 @@ impl ClientState {
         }
 
         let name = new_resource.name();
-        let address = new_resource.address_string();
+        let address = new_resource.address_string().map(tracing::field::display);
         let sites = new_resource.sites_string();
 
-        match address {
-            Some(address) => tracing::info!(%name, %address, %sites, "Activating resource"),
-            None => tracing::info!(%name, %sites, "Activating resource"),
-        }
+        tracing::info!(%name, address, %sites, "Activating resource");
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
@@ -1042,13 +1038,10 @@ impl ClientState {
         }
 
         let name = resource.name();
-        let address = resource.address_string();
+        let address = resource.address_string().map(tracing::field::display);
         let sites = resource.sites_string();
 
-        match address {
-            Some(address) => tracing::info!(%name, %address, %sites, "Deactivating resource"),
-            None => tracing::info!(%name, %sites, "Deactivating resource"),
-        }
+        tracing::info!(%name, address, %sites, "Deactivating resource");
 
         self.awaiting_connection_details.remove(&id);
 
@@ -1467,7 +1460,8 @@ mod tests {
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
     use super::*;
-    use connlib_shared::{messages::client::ResourceDescriptionDns, proptest::*};
+    use crate::proptest::*;
+    use connlib_shared::messages::client::ResourceDescriptionDns;
     use prop::collection;
     use proptest::prelude::*;
 
@@ -1737,23 +1731,22 @@ mod proptests {
     }
 
     fn resource() -> impl Strategy<Value = ResourceDescription> {
-        connlib_shared::proptest::resource(site().prop_map(|s| vec![s]))
+        crate::proptest::resource(site().prop_map(|s| vec![s]))
     }
 
     fn cidr_resource() -> impl Strategy<Value = ResourceDescriptionCidr> {
-        connlib_shared::proptest::cidr_resource(any_ip_network(8), site().prop_map(|s| vec![s]))
+        crate::proptest::cidr_resource(any_ip_network(8), site().prop_map(|s| vec![s]))
     }
 
     fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {
-        connlib_shared::proptest::dns_resource(site().prop_map(|s| vec![s]))
+        crate::proptest::dns_resource(site().prop_map(|s| vec![s]))
     }
 
     // Generate resources sharing 1 site
     fn resources_sharing_n_sites(
         num_sites: usize,
     ) -> impl Strategy<Value = Vec<ResourceDescription>> {
-        collection::vec(site(), num_sites).prop_flat_map(|sites| {
-            collection::vec(connlib_shared::proptest::resource(Just(sites)), 1..=100)
-        })
+        collection::vec(site(), num_sites)
+            .prop_flat_map(|sites| collection::vec(crate::proptest::resource(Just(sites)), 1..=100))
     }
 }

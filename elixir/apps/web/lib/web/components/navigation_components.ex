@@ -3,30 +3,6 @@ defmodule Web.NavigationComponents do
   use Web, :verified_routes
   import Web.CoreComponents
 
-  def bottom_banner(assigns) do
-    ~H"""
-    <div
-      id="bottom-banner"
-      tabindex="-1"
-      class="fixed bottom-0 start-0 z-50 flex justify-between w-full p-4 bg-primary-400"
-    >
-      <div class="flex items-center mx-auto">
-        <p class="flex items-center text-md font-normal text-neutral-800">
-          <.icon name="hero-exclamation-triangle" class="w-5 h-5 mx-2" />
-          <span class="mr-1">
-            <b>Reminder:</b> This account is temporary and will be deleted! &rarr;
-          </span>
-          <span>
-            <a href={url(~p"/sign_up")} class={[link_style()]}>
-              Click here to create a free starter account!
-            </a>
-          </span>
-        </p>
-      </div>
-    </div>
-    """
-  end
-
   attr :subject, :any, required: true
 
   def topbar(assigns) do

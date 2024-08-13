@@ -1082,6 +1082,7 @@ struct Channel {
 impl Channel {
     fn refresh(&mut self, now: Instant) {
         self.expiry = now + CHANNEL_BINDING_DURATION;
+        self.bound = true;
     }
 
     fn is_expired(&self, now: Instant) -> bool {
