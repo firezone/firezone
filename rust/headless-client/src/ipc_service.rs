@@ -337,9 +337,14 @@ impl<'a> Handler<'a> {
     async fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
         match msg {
             ClientMsg::ClearLogs => {
-                // TODO: Clear logs
+                let result = firezone_bin_shared::clear_logs(
+                    &crate::known_dirs::ipc_service_logs().context("Can't compute logs dir")?,
+                )
+                .await;
                 self.ipc_tx
-                    .send(&IpcServerMsg::ClearedLogs(Ok(())))
+                    .send(&IpcServerMsg::ClearedLogs(
+                        result.map_err(|e| e.to_string()),
+                    ))
                     .await
                     .context("Error while sending IPC message")?
             }
