@@ -12,6 +12,7 @@ export default function GUI({ title }: { title: string }) {
 
   return (
     <Entries href={href} arches={arches} title={title}>
+      {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This cannot be done when the issue's PR merges. */}
       {/*
       <Entry version="1.1.12" date={new Date("Invalid date")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
@@ -23,6 +24,9 @@ export default function GUI({ title }: { title: string }) {
           </ChangeItem>
           <ChangeItem pull="6277">
             Fixes a bug where restrictive NATs caused connectivity problems.
+          </ChangeItem>
+          <ChangeItem enable={title === "Windows"} pull="6280">
+            Fixes a bug where the "Clear Logs" button did not clear the IPC service logs.
           </ChangeItem>
         </ul>
       </Entry>
