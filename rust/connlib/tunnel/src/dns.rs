@@ -641,7 +641,7 @@ mod benches {
                 let mut rng = rand::thread_rng();
 
                 for n in 0..NUM_RES {
-                    resolver.add_resource(ResourceId::from_u128(n), make_domain(&mut rng))
+                    resolver.add_resource(ResourceId::from_u128(n), make_domain(&mut rng));
                 }
 
                 let needle = resolver

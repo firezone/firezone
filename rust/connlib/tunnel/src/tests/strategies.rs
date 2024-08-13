@@ -187,15 +187,6 @@ fn star_wildcard_dns_resource(
     })
 }
 
-fn question_mark_wildcard_dns_resource(
-    site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = ResourceDescriptionDns> {
-    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| ResourceDescriptionDns {
-        address: format!("?.{}", r.address),
-        ..r
-    })
-}
-
 pub(crate) fn resolved_ips() -> impl Strategy<Value = HashSet<IpAddr>> {
     collection::hash_set(
         prop_oneof![

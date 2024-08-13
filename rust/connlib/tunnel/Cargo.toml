@@ -34,7 +34,6 @@ tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
 uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
 divan = { version = "0.1.14", optional = true }
-rand = { version = "0.8", optional = true }
 
 [dev-dependencies]
 derivative = "2.2.0"
@@ -56,7 +55,7 @@ required-features = ["divan"]
 
 [features]
 proptest = ["dep:proptest"]
-divan = ["dep:divan", "dep:rand"]
+divan = ["dep:divan"]
 
 [lints]
 workspace = true
