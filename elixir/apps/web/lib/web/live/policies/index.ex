@@ -13,7 +13,12 @@ defmodule Web.Policies.Index do
       |> assign_live_table("policies",
         query_module: Policies.Policy.Query,
         sortable_fields: [],
-        hide_filters: [:resource_id, :actor_group_id],
+        hide_filters: [
+          :actor_group_id,
+          :actor_group_name,
+          :resource_id,
+          :resource_name
+        ],
         callback: &handle_policies_update!/2
       )
 
