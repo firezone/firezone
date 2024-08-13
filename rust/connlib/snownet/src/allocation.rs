@@ -341,16 +341,48 @@ impl Allocation {
                 return true;
             }
 
+            // If we receive an allocation mismatch, we need to clear our local state.
+            if error.code() == AllocationMismatch::CODEPOINT {
+                self.invalidate_allocation();
+
+                match message.method() {
+                    ALLOCATE => {
+                        // AllocationMismatch during allocate means we already have an allocation.
+                        // Delete it.
+                        self.authenticate_and_queue(make_delete_allocation_request(), None);
+
+                        tracing::debug!("Deleting existing allocation to re-sync");
+                    }
+                    REFRESH => {
+                        // AllocationMismatch for refresh means we don't have an allocation.
+                        // Make one.
+                        self.authenticate_and_queue(make_allocate_request(), None);
+
+                        tracing::debug!("Making new allocation to re-sync");
+                    }
+                    CHANNEL_BIND => {
+                        // AllocationMismatch for channel-bind means we don't have an allocation.
+                        // Make one.
+                        self.authenticate_and_queue(make_allocate_request(), None);
+
+                        tracing::debug!("Making new allocation to re-sync");
+
+                        // Re-queue the failed channel binding.
+                        let peer = original_request
+                            .get_attribute::<XorPeerAddress>()
+                            .map(|c| c.address());
+                        self.buffered_channel_bindings.extend(peer);
+                    }
+                    _ => {}
+                }
+
+                return true;
+            }
+
+            // Catch-all error handling if none of the above apply.
             match message.method() {
                 ALLOCATE => {
                     self.buffered_channel_bindings.clear();
-                    self.invalidate_allocation();
-
-                    // AllocationMismatch during allocate means we already have an allocation.
-                    // Delete it.
-                    if error.code() == AllocationMismatch::CODEPOINT {
-                        self.authenticate_and_queue(make_delete_allocation_request(), None);
-                    }
                 }
                 CHANNEL_BIND => {
                     let Some(channel) = original_request
@@ -373,10 +405,6 @@ impl Allocation {
                     // Duplicate log here because we want to attach "channel number" and "peer".
                     tracing::warn!(error = %error.reason_phrase(), %channel, %peer);
                     return true;
-                }
-                REFRESH => {
-                    self.invalidate_allocation();
-                    self.authenticate_and_queue(make_allocate_request(), None);
                 }
                 _ => {}
             }
@@ -1898,7 +1926,7 @@ mod tests {
         allocation.refresh_with_same_credentials();
 
         let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(&failed_refresh(&refresh), Instant::now());
+        allocation.handle_test_input_ip4(&allocation_mismatch(&refresh), Instant::now());
 
         assert_eq!(
             allocation.poll_event(),
@@ -1943,7 +1971,7 @@ mod tests {
         allocation.refresh_with_same_credentials();
 
         let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(&failed_refresh(&refresh), Instant::now());
+        allocation.handle_test_input_ip4(&allocation_mismatch(&refresh), Instant::now());
 
         let msg = allocation.encode_to_owned_transmit(PEER2_IP4, b"foobar", Instant::now());
         assert!(msg.is_none(), "expect to no longer have a channel to peer");
@@ -1978,7 +2006,7 @@ mod tests {
         allocation.handle_test_input_ip4(&binding_response(&binding, PEER1), Instant::now());
 
         let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(&failed_refresh(&refresh), Instant::now());
+        allocation.handle_test_input_ip4(&allocation_mismatch(&refresh), Instant::now());
 
         let allocate = allocation.next_message().unwrap();
         assert_eq!(allocate.method(), ALLOCATE);
@@ -2035,7 +2063,7 @@ mod tests {
         allocation.advance_to_next_timeout();
 
         let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(&failed_refresh(&refresh), Instant::now());
+        allocation.handle_test_input_ip4(&allocation_mismatch(&refresh), Instant::now());
 
         let allocate = allocation.next_message().unwrap();
         allocation.handle_test_input_ip4(&server_error(&allocate), Instant::now()); // These ones are not retried.
@@ -2083,6 +2111,38 @@ mod tests {
 
         let next_msg = allocation.next_message();
         assert!(next_msg.is_none())
+    }
+
+    #[test]
+    fn allocation_mismatch_in_channel_binding_clears_and_reallocates() {
+        let _guard = firezone_logging::test("debug");
+
+        let mut allocation = Allocation::for_test_ip4(Instant::now())
+            .with_binding_response(PEER1)
+            .with_allocate_response(&[RELAY_ADDR_IP4, RELAY_ADDR_IP6]);
+
+        allocation.bind_channel(PEER1, Instant::now());
+
+        let channel_bind = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(&allocation_mismatch(&channel_bind), Instant::now());
+
+        let allocate = allocation.next_message().unwrap();
+        assert_eq!(
+            allocate.method(),
+            ALLOCATE,
+            "should allocate after failed channel binding"
+        );
+        allocation.handle_test_input_ip4(
+            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
+            Instant::now(),
+        );
+
+        let channel_bind = allocation.next_message().unwrap();
+        assert_eq!(
+            channel_bind.method(),
+            CHANNEL_BIND,
+            "channel bind to be automatically retried"
+        );
     }
 
     #[test]
@@ -2491,10 +2551,10 @@ mod tests {
         encode(message)
     }
 
-    fn failed_refresh(request: &Message<Attribute>) -> Vec<u8> {
+    fn allocation_mismatch(request: &Message<Attribute>) -> Vec<u8> {
         let mut message = Message::new(
             MessageClass::ErrorResponse,
-            REFRESH,
+            request.method(),
             request.transaction_id(),
         );
         message.add_attribute(ErrorCode::from(AllocationMismatch));

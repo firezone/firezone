@@ -14,6 +14,9 @@ export default function Apple() {
           <ChangeItem pull="6276">
             Fixes a bug where relayed connections failed to establish after an idle period.
           </ChangeItem>
+          <ChangeItem pull="6277">
+            Fixes a bug where restrictive NATs caused connectivity problems.
+          </ChangeItem>
         </ul>
       </Entry> */}
       <Entry version="1.1.4" date={new Date("2024-08-10")}>
