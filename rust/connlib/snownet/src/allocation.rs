@@ -1898,7 +1898,7 @@ mod tests {
         allocation.refresh_with_same_credentials();
 
         let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(&failed_refresh(&refresh), Instant::now());
+        allocation.handle_test_input_ip4(&allocation_mismatch(&refresh), Instant::now());
 
         assert_eq!(
             allocation.poll_event(),
@@ -1943,7 +1943,7 @@ mod tests {
         allocation.refresh_with_same_credentials();
 
         let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(&failed_refresh(&refresh), Instant::now());
+        allocation.handle_test_input_ip4(&allocation_mismatch(&refresh), Instant::now());
 
         let msg = allocation.encode_to_owned_transmit(PEER2_IP4, b"foobar", Instant::now());
         assert!(msg.is_none(), "expect to no longer have a channel to peer");
@@ -1978,7 +1978,7 @@ mod tests {
         allocation.handle_test_input_ip4(&binding_response(&binding, PEER1), Instant::now());
 
         let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(&failed_refresh(&refresh), Instant::now());
+        allocation.handle_test_input_ip4(&allocation_mismatch(&refresh), Instant::now());
 
         let allocate = allocation.next_message().unwrap();
         assert_eq!(allocate.method(), ALLOCATE);
@@ -2035,7 +2035,7 @@ mod tests {
         allocation.advance_to_next_timeout();
 
         let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(&failed_refresh(&refresh), Instant::now());
+        allocation.handle_test_input_ip4(&allocation_mismatch(&refresh), Instant::now());
 
         let allocate = allocation.next_message().unwrap();
         allocation.handle_test_input_ip4(&server_error(&allocate), Instant::now()); // These ones are not retried.
@@ -2491,10 +2491,10 @@ mod tests {
         encode(message)
     }
 
-    fn failed_refresh(request: &Message<Attribute>) -> Vec<u8> {
+    fn allocation_mismatch(request: &Message<Attribute>) -> Vec<u8> {
         let mut message = Message::new(
             MessageClass::ErrorResponse,
-            REFRESH,
+            request.method(),
             request.transaction_id(),
         );
         message.add_attribute(ErrorCode::from(AllocationMismatch));
