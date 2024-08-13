@@ -31,6 +31,7 @@ defmodule Web.Actors.Show do
         |> assign_live_table("clients",
           query_module: Clients.Client.Query,
           sortable_fields: [],
+          hide_filters: [:client_or_actor_name],
           callback: &handle_clients_update!/2
         )
         |> assign_live_table("flows",
