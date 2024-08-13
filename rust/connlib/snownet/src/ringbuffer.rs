@@ -42,6 +42,17 @@ impl<T: PartialEq> RingBuffer<T> {
     }
 }
 
+impl<T> Extend<T> for RingBuffer<T>
+where
+    T: PartialEq,
+{
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        for val in iter.into_iter() {
+            self.push(val)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
