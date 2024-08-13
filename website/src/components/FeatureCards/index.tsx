@@ -13,7 +13,7 @@ export default function FeatureCards() {
       <div className="flex mb-8 lg:flex-row flex-col w-full items-start lg:items-end justify-between">
         <div>
           <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2 lg:mb-4">
-            built for you
+            Built for you
           </h6>
           <div className="mb-4 lg:mb-0 text-3xl md:text-4xl lg:text-5xl">
             <h3
@@ -49,7 +49,7 @@ export default function FeatureCards() {
           >
             Flexible
           </h4>
-          <p className={`text-sm md:text-md semi-bold text-neutral-800`}>
+          <p className={`text-sm md:text-base semi-bold text-neutral-800`}>
             Control access to VPCs, subnets, hosts by IP or DNS, and even public
             SaaS apps.
           </p>
@@ -68,7 +68,7 @@ export default function FeatureCards() {
           >
             Secure
           </h4>
-          <p className={`text-sm md:text-md semi-bold text-neutral-800`}>
+          <p className={`text-sm md:text-base semi-bold text-neutral-800`}>
             Users and groups automatically sync with your identity provider, so
             access is revoked immediately.
           </p>
@@ -90,7 +90,7 @@ export default function FeatureCards() {
           >
             Granular
           </h4>
-          <p className="text-sm md:text-md semi-bold text-neutral-800">
+          <p className="text-sm md:text-base semi-bold text-neutral-800">
             Restrict access even further with port-level rules that control
             access to services, even on the same host.
           </p>
