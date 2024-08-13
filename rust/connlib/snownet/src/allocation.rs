@@ -641,7 +641,11 @@ impl Allocation {
 
         self.update_now(now);
 
-        if self.channel_bindings.channel_to_peer(peer, now).is_some() {
+        if self
+            .channel_bindings
+            .connected_channel_to_peer(peer, now)
+            .is_some()
+        {
             tracing::debug!("Already got a channel");
             return;
         }
@@ -683,7 +687,7 @@ impl Allocation {
         let buffer_len = buffer.len();
         let packet_len = buffer_len - 4;
 
-        let channel_number = self.channel_bindings.channel_to_peer(peer, now)?;
+        let channel_number = self.channel_bindings.connected_channel_to_peer(peer, now)?;
         let total_length = crate::channel_data::encode_header_to_slice(
             &mut buffer[..4],
             channel_number,
@@ -703,7 +707,7 @@ impl Allocation {
         packet: &[u8],
         now: Instant,
     ) -> Option<Transmit<'static>> {
-        let channel_number = self.channel_bindings.channel_to_peer(peer, now)?;
+        let channel_number = self.channel_bindings.connected_channel_to_peer(peer, now)?;
         let channel_data = crate::channel_data::encode(channel_number, packet);
 
         Some(Transmit {
@@ -1161,6 +1165,10 @@ impl ChannelBindings {
     }
 
     fn new_channel_to_peer(&mut self, peer: SocketAddr, now: Instant) -> Option<u16> {
+        if let Some(number) = self.bound_channel_to_peer(peer, now) {
+            return Some(number);
+        }
+
         let number = self.next_channel_number(now)?;
 
         if number == Self::LAST_CHANNEL {
@@ -1211,10 +1219,17 @@ impl ChannelBindings {
             .map(|(number, channel)| (*number, channel.peer))
     }
 
-    fn channel_to_peer(&self, peer: SocketAddr, now: Instant) -> Option<u16> {
+    fn connected_channel_to_peer(&self, peer: SocketAddr, now: Instant) -> Option<u16> {
         self.inner
             .iter()
             .find(|(_, c)| c.connected_to_peer(peer, now))
+            .map(|(n, _)| *n)
+    }
+
+    fn bound_channel_to_peer(&self, peer: SocketAddr, now: Instant) -> Option<u16> {
+        self.inner
+            .iter()
+            .find(|(_, c)| c.bound_to_peer(peer, now))
             .map(|(n, _)| *n)
     }
 
@@ -1264,6 +1279,13 @@ impl Channel {
     /// In case the channel is older than its lifetime (10 minutes), this returns false because the relay will have de-allocated the channel.
     fn connected_to_peer(&self, peer: SocketAddr, now: Instant) -> bool {
         self.peer == peer && self.age(now) < Self::CHANNEL_LIFETIME && self.bound
+    }
+
+    /// Check if this channel is bound to the given peer.
+    fn bound_to_peer(&self, peer: SocketAddr, now: Instant) -> bool {
+        self.peer == peer
+            && self.age(now) < Self::CHANNEL_LIFETIME + Self::CHANNEL_REBIND_TIMEOUT
+            && self.bound
     }
 
     fn can_rebind(&self, now: Instant) -> bool {
@@ -1379,8 +1401,10 @@ mod tests {
         let mut channel_bindings = ChannelBindings::default();
         let mut now = Instant::now();
 
-        for _ in 0..100 {
-            let allocated_channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+        for n in 0..100 {
+            let allocated_channel = channel_bindings
+                .new_channel_to_peer(SocketAddr::new(PEER1.ip(), PEER1.port() + n), now)
+                .unwrap();
             channel_bindings.set_confirmed(allocated_channel, now);
         }
 
@@ -1396,8 +1420,10 @@ mod tests {
         let mut channel_bindings = ChannelBindings::default();
         let mut now = Instant::now();
 
-        for _ in 0..=4095 {
-            let allocated_channel = channel_bindings.new_channel_to_peer(PEER1, now).unwrap();
+        for n in 0..=4095 {
+            let allocated_channel = channel_bindings
+                .new_channel_to_peer(SocketAddr::new(PEER1.ip(), PEER1.port() + n), now)
+                .unwrap();
             channel_bindings.set_confirmed(allocated_channel, now);
         }
 
@@ -1476,6 +1502,23 @@ mod tests {
             .next();
 
         assert!(maybe_refresh.is_none())
+    }
+
+    #[test]
+    fn when_in_cooldown_reuses_same_channel_for_peer() {
+        let twelve = 10 * MINUTE + 2 * MINUTE;
+
+        let mut channel_bindings = ChannelBindings::default();
+        let start = Instant::now();
+
+        let channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
+        channel_bindings.set_confirmed(channel, start + Duration::from_secs(1));
+
+        let second_channel = channel_bindings
+            .new_channel_to_peer(PEER1, start + twelve)
+            .unwrap();
+
+        assert_eq!(second_channel, channel);
     }
 
     #[test]
