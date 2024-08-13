@@ -1,7 +1,6 @@
 use crate::client::IpProvider;
 use connlib_shared::messages::{DnsServer, ResourceId};
 use connlib_shared::DomainName;
-use domain::base::RelativeName;
 use domain::base::{
     iana::{Class, Rcode, Rtype},
     Message, MessageBuilder, ToName,
@@ -332,25 +331,17 @@ fn build_dns_with_answer(
 }
 
 pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
-    let question_mark = RelativeName::<Vec<_>>::from_octets(b"\x01?".as_ref().into()).unwrap();
-    let Ok(resource) = DomainName::vec_from_str(resource) else {
-        return false;
+    let pattern = match Pattern::new(resource) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(%resource, "Unable to parse pattern: {e}");
+            return false;
+        }
     };
 
-    if resource.starts_with(&question_mark) {
-        return resource
-            .parent()
-            .is_some_and(|r| r == name || name.parent().is_some_and(|n| r == n));
-    }
+    let candidate = Candidate::from_domain(name);
 
-    if resource.starts_with(&RelativeName::wildcard_vec()) {
-        let Some(resource) = resource.parent() else {
-            return false;
-        };
-        return name.iter_suffixes().any(|n| n == resource);
-    }
-
-    name == &resource
+    pattern.matches(&candidate)
 }
 
 fn reverse_dns_addr(name: &str) -> Option<IpAddr> {

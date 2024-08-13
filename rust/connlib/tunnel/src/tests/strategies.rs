@@ -66,6 +66,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 prop_oneof![
                     non_wildcard_dns_resource(any_site(sites.clone())),
                     star_wildcard_dns_resource(any_site(sites.clone())),
+                    double_star_wildcard_dns_resource(any_site(sites.clone())),
                 ],
                 1..5,
             );
@@ -183,6 +184,15 @@ fn star_wildcard_dns_resource(
 ) -> impl Strategy<Value = ResourceDescriptionDns> {
     dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| ResourceDescriptionDns {
         address: format!("*.{}", r.address),
+        ..r
+    })
+}
+
+fn double_star_wildcard_dns_resource(
+    site: impl Strategy<Value = Site>,
+) -> impl Strategy<Value = ResourceDescriptionDns> {
+    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| ResourceDescriptionDns {
+        address: format!("**.{}", r.address),
         ..r
     })
 }

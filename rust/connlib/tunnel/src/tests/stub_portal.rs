@@ -216,7 +216,9 @@ impl StubPortal {
                 // What we do want to cover is multiple domains pointing to the same resource.
                 // For example, `*.example.com` and `app.example.com`.
                 match address.split_once('.') {
-                    Some(("*", base)) => subdomain_records(base.to_owned(), domain_label()).boxed(),
+                    Some(("*" | "**", base)) => {
+                        subdomain_records(base.to_owned(), domain_label()).boxed()
+                    }
                     _ => resolved_ips()
                         .prop_map(move |resolved_ips| {
                             HashMap::from([(address.parse().unwrap(), resolved_ips)])
