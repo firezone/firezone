@@ -940,10 +940,7 @@ defmodule Web.CoreComponents do
 
   def actor_link(%{actor: %Domain.Actors.Actor{type: :api_client}} = assigns) do
     ~H"""
-    <.link
-      class="text-accent-500 hover:underline"
-      navigate={~p"/#{@account}/settings/api_clients/#{@actor}"}
-    >
+    <.link class={link_style()} navigate={~p"/#{@account}/settings/api_clients/#{@actor}"}>
       <%= assigns.actor.name %>
     </.link>
     """
@@ -951,7 +948,7 @@ defmodule Web.CoreComponents do
 
   def actor_link(assigns) do
     ~H"""
-    <.link class="text-accent-500 hover:underline" navigate={~p"/#{@account}/actors/#{@actor}"}>
+    <.link class={link_style()} navigate={~p"/#{@account}/actors/#{@actor}"}>
       <%= assigns.actor.name %>
     </.link>
     """
