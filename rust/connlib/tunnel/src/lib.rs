@@ -9,10 +9,11 @@ use chrono::Utc;
 use connlib_shared::{
     callbacks,
     messages::{ClientId, GatewayId, Relay, RelayId, ResourceId, ReuseConnection},
-    DomainName, Result, DEFAULT_MTU,
+    DomainName, PublicKey, DEFAULT_MTU,
 };
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
+use rand::rngs::OsRng;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
@@ -31,11 +32,12 @@ mod gateway;
 mod io;
 mod peer;
 mod peer_store;
+#[cfg(all(test, feature = "proptest"))]
+mod proptest;
 mod sockets;
-mod utils;
-
 #[cfg(all(test, feature = "proptest"))]
 mod tests;
+mod utils;
 
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const REALM: &str = "firezone";
@@ -53,6 +55,7 @@ pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::{ClientState, Request};
 pub use gateway::{GatewayState, IPV4_PEERS, IPV6_PEERS};
+pub use sockets::NoInterfaces;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
@@ -82,7 +85,7 @@ impl ClientTunnel {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         known_hosts: HashMap<String, Vec<IpAddr>>,
-    ) -> std::io::Result<Self> {
+    ) -> Result<Self, NoInterfaces> {
         Ok(Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory)?,
             role_state: ClientState::new(private_key, known_hosts, rand::random()),
@@ -93,14 +96,14 @@ impl ClientTunnel {
         })
     }
 
-    pub fn reset(&mut self) -> std::io::Result<()> {
+    pub fn reset(&mut self) -> Result<(), NoInterfaces> {
         self.role_state.reset();
         self.io.rebind_sockets()?;
 
         Ok(())
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<ClientEvent>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
             if let Some(e) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(e));
@@ -173,7 +176,7 @@ impl GatewayTunnel {
         private_key: StaticSecret,
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    ) -> std::io::Result<Self> {
+    ) -> Result<Self, NoInterfaces> {
         Ok(Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory)?,
             role_state: GatewayState::new(private_key, rand::random()),
@@ -189,7 +192,7 @@ impl GatewayTunnel {
             .update_relays(to_remove, turn(&to_add), Instant::now())
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<GatewayEvent>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<GatewayEvent>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
             if let Some(other) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(other));
@@ -309,4 +312,11 @@ pub enum GatewayEvent {
         conn_id: ClientId,
         resource_id: ResourceId,
     },
+}
+
+pub fn keypair() -> (StaticSecret, PublicKey) {
+    let private_key = StaticSecret::random_from_rng(OsRng);
+    let public_key = PublicKey::from(&private_key);
+
+    (private_key, public_key)
 }

@@ -4,33 +4,17 @@
 //! we are using the same version across our own crates.
 
 pub mod callbacks;
-pub mod error;
 pub mod messages;
-
-#[cfg(feature = "proptest")]
-pub mod proptest;
 
 pub use boringtun::x25519::PublicKey;
 pub use boringtun::x25519::StaticSecret;
-pub use callbacks::Callbacks;
-pub use error::ConnlibError as Error;
-pub use error::Result;
 pub use phoenix_channel::{LoginUrl, LoginUrlError};
-
-use rand_core::OsRng;
 
 pub type DomainName = domain::base::Name<Vec<u8>>;
 
 pub const DEFAULT_MTU: usize = 1280;
 
 const LIB_NAME: &str = "connlib";
-
-pub fn keypair() -> (StaticSecret, PublicKey) {
-    let private_key = StaticSecret::random_from_rng(OsRng);
-    let public_key = PublicKey::from(&private_key);
-
-    (private_key, public_key)
-}
 
 pub fn get_user_agent(os_version_override: Option<String>, app_version: &str) -> String {
     // Note: we could switch to sys-info and get the hostname

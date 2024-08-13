@@ -1056,6 +1056,7 @@ dependencies = [
  "serde",
  "serde_json",
  "socket-factory",
+ "thiserror",
  "tokio",
  "tokio-tungstenite",
  "tracing",
@@ -1067,20 +1068,17 @@ dependencies = [
 name = "connlib-shared"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "base64 0.22.1",
  "boringtun",
  "chrono",
  "domain",
  "futures",
  "futures-util",
- "ip-packet",
  "ip_network",
  "itertools 0.13.0",
  "libc",
  "os_info",
  "phoenix-channel",
- "proptest",
  "rand 0.8.5",
  "rand_core 0.6.4",
  "secrecy",
@@ -5974,14 +5972,14 @@ dependencies = [
 
 [[package]]
 name = "tauri-build"
-version = "1.5.1"
+version = "1.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9914a4715e0b75d9f387a285c7e26b5bbfeb1249ad9f842675a82481565c532"
+checksum = "b0c6ec7a5c3296330c7818478948b422967ce4649094696c985f61d50076d29c"
 dependencies = [
  "anyhow",
  "cargo_toml",
  "dirs-next",
- "heck 0.4.1",
+ "heck 0.5.0",
  "json-patch",
  "semver",
  "serde",

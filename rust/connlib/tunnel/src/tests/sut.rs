@@ -6,6 +6,7 @@ use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
+use super::transition::DnsQuery;
 use crate::dns::is_subdomain;
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
@@ -216,17 +217,20 @@ impl StateMachineTest for TunnelTest {
 
                 buffered_transmits.push_from(transmit, &state.client, now);
             }
-            Transition::SendDnsQuery {
-                domain,
-                r_type,
-                query_id,
-                dns_server,
-            } => {
-                let transmit = state.client.exec_mut(|sim| {
-                    sim.send_dns_query_for(domain, r_type, query_id, dns_server, now)
-                });
+            Transition::SendDnsQueries(queries) => {
+                for DnsQuery {
+                    domain,
+                    r_type,
+                    dns_server,
+                    query_id,
+                } in queries
+                {
+                    let transmit = state.client.exec_mut(|sim| {
+                        sim.send_dns_query_for(domain, r_type, query_id, dns_server, now)
+                    });
 
-                buffered_transmits.push_from(transmit, &state.client, now);
+                    buffered_transmits.push_from(transmit, &state.client, now);
+                }
             }
             Transition::UpdateSystemDnsServers(servers) => {
                 state
@@ -300,7 +304,7 @@ impl StateMachineTest for TunnelTest {
                 state.relays = online; // Override all relays.
             }
             Transition::Idle => {
-                const IDLE_DURATION: Duration = Duration::from_secs(5 * 60);
+                const IDLE_DURATION: Duration = Duration::from_secs(6 * 60); // Ensure idling twice in a row puts us in the 10-15 minute window where TURN data channels are cooling down.
                 let cut_off = state.flux_capacitor.now::<Instant>() + IDLE_DURATION;
 
                 while state.flux_capacitor.now::<Instant>() <= cut_off {

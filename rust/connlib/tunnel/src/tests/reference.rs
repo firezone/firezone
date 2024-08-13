@@ -16,7 +16,7 @@ use proptest_state_machine::ReferenceStateMachine;
 use std::{
     collections::{BTreeMap, HashSet},
     fmt, iter,
-    net::IpAddr,
+    net::{IpAddr, SocketAddr},
 };
 
 /// The reference state machine of the tunnel.
@@ -205,8 +205,7 @@ impl ReferenceStateMachine for ReferenceState {
                 |ip4_resources| {
                     icmp_to_cidr_resource(
                         packet_source_v4(state.client.inner().tunnel_ip4),
-                        sample::select(ip4_resources)
-                            .prop_flat_map(connlib_shared::proptest::host_v4),
+                        sample::select(ip4_resources).prop_flat_map(crate::proptest::host_v4),
                     )
                 },
             )
@@ -216,8 +215,7 @@ impl ReferenceStateMachine for ReferenceState {
                 |ip6_resources| {
                     icmp_to_cidr_resource(
                         packet_source_v6(state.client.inner().tunnel_ip6),
-                        sample::select(ip6_resources)
-                            .prop_flat_map(connlib_shared::proptest::host_v6),
+                        sample::select(ip6_resources).prop_flat_map(crate::proptest::host_v6),
                     )
                 },
             )
@@ -243,24 +241,10 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .with_if_not_empty(
                 5,
-                (
-                    state.all_domains(state.client.inner()),
-                    state.client.inner().v4_dns_servers(),
-                    state.client.ip4,
-                ),
-                |(domains, v4_dns_servers, _)| {
-                    dns_query(sample::select(domains), sample::select(v4_dns_servers))
-                },
-            )
-            .with_if_not_empty(
-                5,
-                (
-                    state.all_domains(state.client.inner()),
-                    state.client.inner().v6_dns_servers(),
-                    state.client.ip6,
-                ),
-                |(domains, v6_dns_servers, _)| {
-                    dns_query(sample::select(domains), sample::select(v6_dns_servers))
+                (state.all_domains(), state.reachable_dns_servers()),
+                |(domains, dns_servers)| {
+                    dns_queries(sample::select(domains), sample::select(dns_servers))
+                        .prop_map(Transition::SendDnsQueries)
                 },
             )
             .with_if_not_empty(
@@ -335,39 +319,45 @@ impl ReferenceStateMachine for ReferenceState {
                     client.disconnect_resource(id)
                 }
             }),
-            Transition::SendDnsQuery {
-                domain,
-                r_type,
-                dns_server,
-                query_id,
-                ..
-            } => match state
-                .client
-                .inner()
-                .dns_query_via_cidr_resource(dns_server.ip(), domain)
-            {
-                Some(resource)
-                    if !state.client.inner().is_connected_to_cidr(resource)
-                        && !state.client.inner().upstream_dns_resolvers.is_empty()
-                        && !state.client.inner().is_known_host(&domain.to_string()) =>
+            Transition::SendDnsQueries(queries) => {
+                for DnsQuery {
+                    domain,
+                    r_type,
+                    dns_server,
+                    query_id,
+                } in queries
                 {
-                    state
+                    match state
                         .client
-                        .exec_mut(|client| client.connected_cidr_resources.insert(resource));
+                        .inner()
+                        .dns_query_via_cidr_resource(dns_server.ip(), domain)
+                    {
+                        Some(resource)
+                            if !state.client.inner().is_connected_to_cidr(resource)
+                                && !state.client.inner().upstream_dns_resolvers.is_empty()
+                                && !state.client.inner().is_known_host(&domain.to_string()) =>
+                        {
+                            state.client.exec_mut(|client| {
+                                client.connected_cidr_resources.insert(resource)
+                            });
+                        }
+                        Some(_) | None => {
+                            state.client.exec_mut(|client| {
+                                client
+                                    .dns_records
+                                    .entry(domain.clone())
+                                    .or_default()
+                                    .insert(*r_type)
+                            });
+                            state.client.exec_mut(|client| {
+                                client
+                                    .expected_dns_handshakes
+                                    .push_back((*dns_server, *query_id))
+                            });
+                        }
+                    }
                 }
-                Some(_) | None => {
-                    state.client.exec_mut(|client| {
-                        client
-                            .dns_records
-                            .entry(domain.clone())
-                            .or_default()
-                            .insert(*r_type)
-                    });
-                    state
-                        .client
-                        .exec_mut(|client| client.expected_dns_handshakes.push_back(*query_id));
-                }
-            },
+            }
             Transition::SendICMPPacketToNonResourceIp {
                 src,
                 dst,
@@ -547,34 +537,39 @@ impl ReferenceStateMachine for ReferenceState {
                     .iter()
                     .any(|dns_server| state.client.sending_socket_for(dns_server.ip()).is_some())
             }
-            Transition::SendDnsQuery {
-                domain, dns_server, ..
-            } => {
-                let is_known_domain = state.global_dns_records.contains_key(domain);
-                let has_dns_server = state
-                    .client
-                    .inner()
-                    .expected_dns_servers()
-                    .contains(dns_server);
-                let gateway_is_present_in_case_dns_server_is_cidr_resource = match state
-                    .client
-                    .inner()
-                    .dns_query_via_cidr_resource(dns_server.ip(), domain)
-                {
-                    Some(r) => {
-                        let Some(gateway) = state.portal.gateway_for_resource(r) else {
-                            return false;
-                        };
+            Transition::SendDnsQueries(queries) => queries.iter().all(
+                |DnsQuery {
+                     domain, dns_server, ..
+                 }| {
+                    let has_socket_for_server =
+                        state.client.sending_socket_for(dns_server.ip()).is_some();
+                    let is_known_domain = state.global_dns_records.contains_key(domain);
+                    let has_dns_server = state
+                        .client
+                        .inner()
+                        .expected_dns_servers()
+                        .contains(dns_server);
+                    let gateway_is_present_in_case_dns_server_is_cidr_resource = match state
+                        .client
+                        .inner()
+                        .dns_query_via_cidr_resource(dns_server.ip(), domain)
+                    {
+                        Some(r) => {
+                            let Some(gateway) = state.portal.gateway_for_resource(r) else {
+                                return false;
+                            };
 
-                        state.gateways.contains_key(gateway)
-                    }
-                    None => true,
-                };
+                            state.gateways.contains_key(gateway)
+                        }
+                        None => true,
+                    };
 
-                is_known_domain
-                    && has_dns_server
-                    && gateway_is_present_in_case_dns_server_is_cidr_resource
-            }
+                    has_socket_for_server
+                        && is_known_domain
+                        && has_dns_server
+                        && gateway_is_present_in_case_dns_server_is_cidr_resource
+                },
+            ),
             Transition::RoamClient { ip4, ip6, port } => {
                 // In production, we always rebind to a new port so we never roam to our old existing IP / port combination.
 
@@ -608,16 +603,29 @@ impl ReferenceStateMachine for ReferenceState {
 
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
-    fn all_domains(&self, client: &RefClient) -> Vec<DomainName> {
+    fn all_domains(&self) -> Vec<DomainName> {
         self.global_dns_records
             .keys()
             .cloned()
             .chain(
-                client
+                self.client
+                    .inner()
                     .known_hosts
                     .keys()
                     .map(|h| DomainName::vec_from_str(h).unwrap()),
             )
+            .collect()
+    }
+
+    fn reachable_dns_servers(&self) -> Vec<SocketAddr> {
+        self.client
+            .inner()
+            .expected_dns_servers()
+            .into_iter()
+            .filter(|s| match s {
+                SocketAddr::V4(_) => self.client.ip4.is_some(),
+                SocketAddr::V6(_) => self.client.ip6.is_some(),
+            })
             .collect()
     }
 
