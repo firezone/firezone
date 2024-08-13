@@ -3,6 +3,7 @@ use super::{
     sim_net::{any_ip_stack, any_port, host, Host},
     sim_relay::{map_explode, SimRelay},
     strategies::latency,
+    transition::DnsQuery,
     IcmpIdentifier, IcmpSeq, QueryId,
 };
 use crate::{proptest::*, ClientState};
@@ -462,6 +463,16 @@ impl RefClient {
         }
     }
 
+    pub(crate) fn on_dns_query(&mut self, query: &DnsQuery) {
+        self.dns_records
+            .entry(query.domain.clone())
+            .or_default()
+            .insert(query.r_type);
+
+        self.expected_dns_handshakes
+            .push_back((query.dns_server, query.query_id));
+    }
+
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Network> {
         self.cidr_resources
             .iter_ipv4()
@@ -601,17 +612,18 @@ impl RefClient {
     /// Returns the CIDR resource we will forward the DNS query for the given name to.
     ///
     /// DNS servers may be resources, in which case queries that need to be forwarded actually need to be encapsulated.
-    pub(crate) fn dns_query_via_cidr_resource(
-        &self,
-        dns_server: IpAddr,
-        domain: &DomainName,
-    ) -> Option<ResourceId> {
-        // If we are querying a DNS resource, we will issue a connection intent to the DNS resource, not the CIDR resource.
-        if self.dns_resource_by_domain(domain).is_some() {
+    pub(crate) fn dns_query_via_cidr_resource(&self, query: &DnsQuery) -> Option<ResourceId> {
+        // Unless we are using upstream resolvers, DNS queries are never routed through the tunnel.
+        if self.upstream_dns_resolvers.is_empty() {
             return None;
         }
 
-        self.cidr_resource_by_ip(dns_server)
+        // If we are querying a DNS resource, we will issue a connection intent to the DNS resource, not the CIDR resource.
+        if self.dns_resource_by_domain(&query.domain).is_some() {
+            return None;
+        }
+
+        self.cidr_resource_by_ip(query.dns_server.ip())
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {

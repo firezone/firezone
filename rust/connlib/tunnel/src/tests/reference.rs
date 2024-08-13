@@ -320,42 +320,42 @@ impl ReferenceStateMachine for ReferenceState {
                 }
             }),
             Transition::SendDnsQueries(queries) => {
-                for DnsQuery {
-                    domain,
-                    r_type,
-                    dns_server,
-                    query_id,
-                } in queries
-                {
-                    match state
+                let mut pending_connections = HashSet::new();
+
+                for query in queries {
+                    // Queries to known hosts are always successful.
+                    if state
                         .client
                         .inner()
-                        .dns_query_via_cidr_resource(dns_server.ip(), domain)
+                        .is_known_host(&query.domain.to_string())
                     {
-                        Some(resource)
-                            if !state.client.inner().is_connected_to_cidr(resource)
-                                && !state.client.inner().upstream_dns_resolvers.is_empty()
-                                && !state.client.inner().is_known_host(&domain.to_string()) =>
-                        {
-                            state.client.exec_mut(|client| {
-                                client.connected_cidr_resources.insert(resource)
-                            });
-                        }
-                        Some(_) | None => {
-                            state.client.exec_mut(|client| {
-                                client
-                                    .dns_records
-                                    .entry(domain.clone())
-                                    .or_default()
-                                    .insert(*r_type)
-                            });
-                            state.client.exec_mut(|client| {
-                                client
-                                    .expected_dns_handshakes
-                                    .push_back((*dns_server, *query_id))
-                            });
-                        }
+                        state.client.exec_mut(|client| client.on_dns_query(query));
+                        continue;
                     }
+
+                    // Check if we the DNS server is defined as a CIDR resource.
+                    let Some(resource) = state.client.inner().dns_query_via_cidr_resource(query)
+                    else {
+                        // Not a CIDR resource, process normally.
+                        state.client.exec_mut(|client| client.on_dns_query(query));
+                        continue;
+                    };
+
+                    if pending_connections.contains(&resource) {
+                        // DNS server is a CIDR resource and a previous query of this batch is already triggering a connection.
+                        // That connection isn't ready yet so further queries to the same resource are dropped until then.
+                        continue;
+                    }
+
+                    if !state.client.inner().is_connected_to_cidr(resource) {
+                        state
+                            .client
+                            .exec_mut(|client| client.connected_cidr_resources.insert(resource));
+                        pending_connections.insert(resource);
+                        continue;
+                    }
+
+                    state.client.exec_mut(|client| client.on_dns_query(query));
                 }
             }
             Transition::SendICMPPacketToNonResourceIp {
@@ -537,23 +537,19 @@ impl ReferenceStateMachine for ReferenceState {
                     .iter()
                     .any(|dns_server| state.client.sending_socket_for(dns_server.ip()).is_some())
             }
-            Transition::SendDnsQueries(queries) => queries.iter().all(
-                |DnsQuery {
-                     domain, dns_server, ..
-                 }| {
-                    let has_socket_for_server =
-                        state.client.sending_socket_for(dns_server.ip()).is_some();
-                    let is_known_domain = state.global_dns_records.contains_key(domain);
-                    let has_dns_server = state
-                        .client
-                        .inner()
-                        .expected_dns_servers()
-                        .contains(dns_server);
-                    let gateway_is_present_in_case_dns_server_is_cidr_resource = match state
-                        .client
-                        .inner()
-                        .dns_query_via_cidr_resource(dns_server.ip(), domain)
-                    {
+            Transition::SendDnsQueries(queries) => queries.iter().all(|query| {
+                let has_socket_for_server = state
+                    .client
+                    .sending_socket_for(query.dns_server.ip())
+                    .is_some();
+                let is_known_domain = state.global_dns_records.contains_key(&query.domain);
+                let has_dns_server = state
+                    .client
+                    .inner()
+                    .expected_dns_servers()
+                    .contains(&query.dns_server);
+                let gateway_is_present_in_case_dns_server_is_cidr_resource =
+                    match state.client.inner().dns_query_via_cidr_resource(query) {
                         Some(r) => {
                             let Some(gateway) = state.portal.gateway_for_resource(r) else {
                                 return false;
@@ -564,12 +560,11 @@ impl ReferenceStateMachine for ReferenceState {
                         None => true,
                     };
 
-                    has_socket_for_server
-                        && is_known_domain
-                        && has_dns_server
-                        && gateway_is_present_in_case_dns_server_is_cidr_resource
-                },
-            ),
+                has_socket_for_server
+                    && is_known_domain
+                    && has_dns_server
+                    && gateway_is_present_in_case_dns_server_is_cidr_resource
+            }),
             Transition::RoamClient { ip4, ip6, port } => {
                 // In production, we always rebind to a new port so we never roam to our old existing IP / port combination.
 
