@@ -1,6 +1,5 @@
 pub mod http_health_check;
 
-mod clear_logs;
 mod network_changes;
 mod tun_device_manager;
 
@@ -51,8 +50,6 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 
 /// Mark for Firezone sockets to prevent routing loops on Linux.
 pub const FIREZONE_MARK: u32 = 0xfd002021;
-
-pub use clear_logs::clear_logs;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use network_changes::{new_dns_notifier, new_network_notifier};

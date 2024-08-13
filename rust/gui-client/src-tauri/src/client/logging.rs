@@ -111,7 +111,8 @@ pub(crate) async fn count_logs() -> Result<FileCount, String> {
 /// If we get an error while removing a file, we still try to remove all other
 /// files, then we return the most recent error.
 pub(crate) async fn clear_gui_logs() -> Result<()> {
-    firezone_bin_shared::clear_logs(&known_dirs::logs().context("Can't compute GUI log dir")?).await
+    firezone_headless_client::clear_logs(&known_dirs::logs().context("Can't compute GUI log dir")?)
+        .await
 }
 
 /// Pops up the "Save File" dialog

@@ -20,6 +20,7 @@ use tokio::sync::mpsc;
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{fmt, layer::SubscriberExt as _, EnvFilter, Layer as _, Registry};
 
+mod clear_logs;
 /// Generate a persistent device ID, stores it to disk, and reads it back.
 pub mod device_id;
 // Pub because the GUI reads the system resolvers
@@ -30,9 +31,10 @@ pub mod known_dirs;
 pub mod signals;
 pub mod uptime;
 
+pub use clear_logs::clear_logs;
+pub use dns_control::DnsController;
 pub use ipc_service::{ipc, run_only_ipc_service, ClientMsg as IpcClientMsg};
 
-pub use dns_control::DnsController;
 use ip_network::{Ipv4Network, Ipv6Network};
 
 /// Only used on Linux
