@@ -21,6 +21,9 @@ export default function Android() {
           <ChangeItem pull="6276">
             Fixes a bug where relayed connections failed to establish after an idle period.
           </ChangeItem>
+          <ChangeItem pull="6277">
+            Fixes a bug where restrictive NATs caused connectivity problems.
+          </ChangeItem>
         </ul>
       </Entry>
 	  */}
