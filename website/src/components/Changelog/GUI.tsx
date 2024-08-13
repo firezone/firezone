@@ -18,8 +18,6 @@ export default function GUI({ title }: { title: string }) {
           <ChangeItem pull="6226">
             Fixes a bug where clearing the log files would delete the current files, preventing logs from being written.
           </ChangeItem>
-        </ul>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6276">
             Fixes a bug where relayed connections failed to establish after an idle period.
           </ChangeItem>
