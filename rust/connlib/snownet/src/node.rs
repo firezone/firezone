@@ -1144,7 +1144,7 @@ fn add_local_candidate<TId>(
     if candidate.kind() == CandidateKind::ServerReflexive {
         pending_events.push_back(Event::NewIceCandidate {
             connection: id,
-            candidate,
+            candidate: candidate.to_sdp_string(),
         });
         return;
     }
@@ -1154,7 +1154,7 @@ fn add_local_candidate<TId>(
     if is_new {
         pending_events.push_back(Event::NewIceCandidate {
             connection: id,
-            candidate,
+            candidate: candidate.to_sdp_string(),
         })
     }
 }
@@ -1170,7 +1170,7 @@ fn remove_local_candidate<TId>(
     if candidate.kind() == CandidateKind::ServerReflexive {
         pending_events.push_back(Event::NewIceCandidate {
             connection: id,
-            candidate: candidate.clone(),
+            candidate: candidate.to_sdp_string(),
         });
         return;
     }
@@ -1180,7 +1180,7 @@ fn remove_local_candidate<TId>(
     if was_present {
         pending_events.push_back(Event::InvalidateIceCandidate {
             connection: id,
-            candidate: candidate.clone(),
+            candidate: candidate.to_sdp_string(),
         })
     }
 }
@@ -1209,7 +1209,7 @@ pub enum Event<TId> {
     /// Candidates are in SDP format although this may change and should be considered an implementation detail of the application.
     NewIceCandidate {
         connection: TId,
-        candidate: Candidate,
+        candidate: String,
     },
 
     /// We invalidated a candidate for this connection and ask to signal that to the remote party.
@@ -1217,7 +1217,7 @@ pub enum Event<TId> {
     /// Candidates are in SDP format although this may change and should be considered an implementation detail of the application.
     InvalidateIceCandidate {
         connection: TId,
-        candidate: Candidate,
+        candidate: String,
     },
 
     ConnectionEstablished(TId),

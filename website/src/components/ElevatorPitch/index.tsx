@@ -5,7 +5,8 @@ import {
   HiMiniShieldCheck,
   HiMiniPresentationChartLine,
 } from "react-icons/hi2";
-import { HiLightningBolt, HiGlobe } from "react-icons/hi";
+import { HiLightningBolt } from "react-icons/hi";
+import { FaBookOpen } from "react-icons/fa";
 import { manrope } from "@/lib/fonts";
 import Image from "next/image";
 
@@ -33,7 +34,7 @@ export default function ElevatorPitch() {
     {
       title: "Open source for full transparency.",
       desc: "Our entire product is open-source, allowing anyone to audit the codebase.",
-      icon: <HiGlobe className="min-w-8 h-8 text-primary-400" />,
+      icon: <FaBookOpen className="min-w-8 h-8 text-primary-400" />,
     },
   ];
 
@@ -59,17 +60,17 @@ export default function ElevatorPitch() {
       >
         {icon}
         <div>
-          <p className="text-neutral-900 font-semibold text-md text-left mb-1.5">
+          <p className="text-neutral-900 font-semibold text-lg text-left mb-1.5">
             {title}
           </p>
-          <p className="text-slate-700 text-left text-sm">{desc}</p>
+          <p className="text-neutral-800 text-left text-md mr-4">{desc}</p>
         </div>
       </button>
     );
   };
 
   return (
-    <div className="flex w-full lg:flex-row flex-col justify-center gap-6 lg:gap-16 xl:gap-36 items-center my-8 md:my-16">
+    <div className="flex w-full lg:flex-row flex-col justify-center gap-6 lg:gap-16 xl:gap-36 items-center">
       <div className="flex flex-col w-full h-full justify-between lg:w-[480px] xl:w-[580px]">
         <div>
           <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2">
