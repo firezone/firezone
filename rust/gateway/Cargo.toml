@@ -17,10 +17,10 @@ dns-lookup = { workspace = true }
 domain = { workspace = true }
 either = "1"
 firezone-bin-shared = { workspace = true }
+firezone-logging = { workspace = true }
 firezone-tunnel = { workspace = true }
 futures = "0.3.29"
 futures-bounded = { workspace = true }
-http-health-check = { workspace = true }
 ip_network = { version = "0.4", default-features = false }
 libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
 phoenix-channel = { workspace = true }

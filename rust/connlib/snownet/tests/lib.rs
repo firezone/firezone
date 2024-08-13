@@ -21,8 +21,7 @@ fn connection_times_out_after_20_seconds() {
 
 #[test]
 fn connection_without_candidates_times_out_after_10_seconds() {
-    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-
+    let _guard = firezone_logging::test("trace");
     let start = Instant::now();
 
     let (mut alice, mut bob) = alice_and_bob();
@@ -38,8 +37,7 @@ fn connection_without_candidates_times_out_after_10_seconds() {
 
 #[test]
 fn connection_with_candidates_does_not_time_out_after_10_seconds() {
-    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-
+    let _guard = firezone_logging::test("trace");
     let start = Instant::now();
 
     let (mut alice, mut bob) = alice_and_bob();
@@ -101,7 +99,9 @@ fn only_generate_candidate_event_after_answer() {
     assert!(iter::from_fn(|| alice.poll_event()).any(|ev| ev
         == Event::NewIceCandidate {
             connection: 1,
-            candidate: Candidate::host(local_candidate, Protocol::Udp).unwrap()
+            candidate: Candidate::host(local_candidate, Protocol::Udp)
+                .unwrap()
+                .to_sdp_string()
         }));
 }
 

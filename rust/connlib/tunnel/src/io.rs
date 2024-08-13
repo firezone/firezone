@@ -1,4 +1,7 @@
-use crate::{device_channel::Device, sockets::Sockets};
+use crate::{
+    device_channel::Device,
+    sockets::{NoInterfaces, Sockets},
+};
 use futures_util::FutureExt as _;
 use ip_packet::{IpPacket, MutableIpPacket};
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
@@ -38,7 +41,7 @@ impl Io {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    ) -> io::Result<Self> {
+    ) -> Result<Self, NoInterfaces> {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.as_ref())?; // Bind sockets on startup. Must happen within a tokio runtime context.
 
@@ -84,7 +87,7 @@ impl Io {
         &mut self.device
     }
 
-    pub fn rebind_sockets(&mut self) -> io::Result<()> {
+    pub fn rebind_sockets(&mut self) -> Result<(), NoInterfaces> {
         self.sockets.rebind(self.udp_socket_factory.as_ref())?;
 
         Ok(())

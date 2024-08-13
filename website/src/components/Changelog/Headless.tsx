@@ -10,12 +10,24 @@ export default function Headless() {
   return (
     <Entries href={href} arches={arches} title="Linux headless">
       {/*
-      <Entry version="1.2.0" date={new Date("Invalid date")}>
+      <Entry version="1.1.7" date={new Date("Invalid date")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-        TODO
+          <ChangeItem pull="6276">
+            Fixes a bug where relayed connections failed to establish after an idle period.
+          </ChangeItem>
+          <ChangeItem pull="6277">
+            Fixes a bug where restrictive NATs caused connectivity problems.
+          </ChangeItem>
         </ul>
       </Entry>
       */}
+      <Entry version="1.1.6" date={new Date("2024-08-09")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6233">
+            Fixes an issue where the IPC service can panic during DNS resolution.
+          </ChangeItem>
+        </ul>
+      </Entry>
       <Entry version="1.1.5" date={new Date("2024-08-08")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6163">
@@ -24,6 +36,9 @@ export default function Headless() {
           <ChangeItem pull="6184">
             Mitigates a bug where the Client can panic if an internal channel
             fills up
+          </ChangeItem>
+          <ChangeItem pull="6181">
+            Improves reliability of DNS resolution of non-resources.
           </ChangeItem>
         </ul>
       </Entry>

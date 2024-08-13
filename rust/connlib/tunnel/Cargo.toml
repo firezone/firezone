@@ -11,6 +11,7 @@ bytes = { version = "1.4", default-features = false, features = ["std"] }
 chrono = { workspace = true }
 connlib-shared = { workspace = true }
 domain = { workspace = true }
+firezone-logging = { workspace = true }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
 hex = "0.4.3"
@@ -34,6 +35,7 @@ uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
 
 [dev-dependencies]
 derivative = "2.2.0"
+firezone-logging = { workspace = true }
 firezone-relay = { workspace = true, features = ["proptest"] }
 ip-packet = { workspace = true, features = ["proptest"] }
 proptest-state-machine = "0.3"
@@ -44,7 +46,7 @@ tracing-appender = "0.2.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [features]
-proptest = ["dep:proptest", "connlib-shared/proptest"]
+proptest = ["dep:proptest"]
 
 [lints]
 workspace = true

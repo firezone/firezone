@@ -6,6 +6,7 @@ use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
+use super::transition::DnsQuery;
 use crate::dns::is_subdomain;
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
@@ -29,7 +30,6 @@ use std::{
 use tracing::debug_span;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::Layer as _;
 use tracing_subscriber::{util::SubscriberInitExt as _, EnvFilter};
 
 /// The actual system-under-test.
@@ -217,17 +217,20 @@ impl StateMachineTest for TunnelTest {
 
                 buffered_transmits.push_from(transmit, &state.client, now);
             }
-            Transition::SendDnsQuery {
-                domain,
-                r_type,
-                query_id,
-                dns_server,
-            } => {
-                let transmit = state.client.exec_mut(|sim| {
-                    sim.send_dns_query_for(domain, r_type, query_id, dns_server, now)
-                });
+            Transition::SendDnsQueries(queries) => {
+                for DnsQuery {
+                    domain,
+                    r_type,
+                    dns_server,
+                    query_id,
+                } in queries
+                {
+                    let transmit = state.client.exec_mut(|sim| {
+                        sim.send_dns_query_for(domain, r_type, query_id, dns_server, now)
+                    });
 
-                buffered_transmits.push_from(transmit, &state.client, now);
+                    buffered_transmits.push_from(transmit, &state.client, now);
+                }
             }
             Transition::UpdateSystemDnsServers(servers) => {
                 state
@@ -301,7 +304,7 @@ impl StateMachineTest for TunnelTest {
                 state.relays = online; // Override all relays.
             }
             Transition::Idle => {
-                const IDLE_DURATION: Duration = Duration::from_secs(5 * 60);
+                const IDLE_DURATION: Duration = Duration::from_secs(6 * 60); // Ensure idling twice in a row puts us in the 10-15 minute window where TURN data channels are cooling down.
                 let cut_off = state.flux_capacitor.now::<Instant>() + IDLE_DURATION;
 
                 while state.flux_capacitor.now::<Instant>() <= cut_off {
@@ -346,10 +349,10 @@ impl StateMachineTest for TunnelTest {
             .with(
                 tracing_subscriber::fmt::layer()
                     .with_test_writer()
-                    .with_timer(state.flux_capacitor.clone())
-                    .with_filter(EnvFilter::from_default_env()),
+                    .with_timer(state.flux_capacitor.clone()),
             )
             .with(PanicOnErrorEvents::default()) // Temporarily install a layer that panics when `_guard` goes out of scope if any of our assertions emitted an error.
+            .with(EnvFilter::from_default_env())
             .set_default();
 
         let ref_client = ref_state.client.inner();

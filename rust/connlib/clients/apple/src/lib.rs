@@ -7,10 +7,9 @@ mod tun;
 use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
-    callbacks::ResourceDescription, file_logger, keypair, Callbacks, ConnectArgs, Error, LoginUrl,
-    Session, V4RouteList, V6RouteList,
+    keypair, Callbacks, ConnectArgs, DisconnectError, LoginUrl, Session, V4RouteList, V6RouteList,
 };
-use connlib_shared::get_user_agent;
+use connlib_shared::{callbacks::ResourceDescription, get_user_agent};
 use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
@@ -21,7 +20,6 @@ use std::{
     time::Duration,
 };
 use tokio::runtime::Runtime;
-use tracing_subscriber::EnvFilter;
 use tracing_subscriber::{prelude::*, util::TryInitError};
 use tun::Tun;
 
@@ -60,6 +58,9 @@ mod ffi {
         // <https://github.com/firezone/firezone/issues/4350>
         #[swift_bridge(swift_name = "setDns")]
         fn set_dns(&mut self, dns_servers: String);
+
+        #[swift_bridge(swift_name = "setDisabledResources")]
+        fn set_disabled_resources(&mut self, disabled_resources: String);
         fn disconnect(self);
     }
 
@@ -93,7 +94,7 @@ pub struct WrappedSession {
     runtime: Runtime,
 
     #[allow(dead_code)]
-    logger: file_logger::Handle,
+    logger: firezone_logging::file::Handle,
 }
 
 // SAFETY: `CallbackHandler.swift` promises to be thread-safe.
@@ -138,13 +139,16 @@ impl Callbacks for CallbackHandler {
         );
     }
 
-    fn on_disconnect(&self, error: &Error) {
+    fn on_disconnect(&self, error: &DisconnectError) {
         self.inner.on_disconnect(error.to_string());
     }
 }
 
-fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<file_logger::Handle, TryInitError> {
-    let (file_layer, handle) = file_logger::layer(&log_dir);
+fn init_logging(
+    log_dir: PathBuf,
+    log_filter: String,
+) -> Result<firezone_logging::file::Handle, TryInitError> {
+    let (file_layer, handle) = firezone_logging::file::layer(&log_dir);
 
     tracing_subscriber::registry()
         .with(
@@ -155,10 +159,10 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<file_logger::Han
                 .with_writer(make_writer::MakeWriter::new(
                     "dev.firezone.firezone",
                     "connlib",
-                ))
-                .with_filter(EnvFilter::new(log_filter.clone())),
+                )),
         )
-        .with(file_layer.with_filter(EnvFilter::new(log_filter)))
+        .with(file_layer)
+        .with(firezone_logging::filter(&log_filter))
         .try_init()?;
 
     Ok(handle)
@@ -232,6 +236,11 @@ impl WrappedSession {
     fn set_dns(&mut self, dns_servers: String) {
         self.inner
             .set_dns(serde_json::from_str(&dns_servers).unwrap())
+    }
+
+    fn set_disabled_resources(&mut self, disabled_resources: String) {
+        self.inner
+            .set_disabled_resources(serde_json::from_str(&disabled_resources).unwrap())
     }
 
     fn disconnect(self) {

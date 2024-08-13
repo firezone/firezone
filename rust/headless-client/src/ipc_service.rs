@@ -1,11 +1,14 @@
 use crate::{
     device_id, dns_control::DnsController, known_dirs, signals, CallbackHandler, CliCommon,
-    InternalServerMsg, IpcServerMsg, TOKEN_ENV_KEY,
+    InternalServerMsg, IpcServerMsg,
 };
 use anyhow::{Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{file_logger, keypair, ConnectArgs, LoginUrl, Session};
-use firezone_bin_shared::{DnsControlMethod, TunDeviceManager};
+use connlib_client_shared::{keypair, ConnectArgs, LoginUrl, Session};
+use firezone_bin_shared::{
+    platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
+    TunDeviceManager, TOKEN_ENV_KEY,
+};
 use futures::{
     future::poll_fn,
     task::{Context, Poll},
@@ -19,7 +22,7 @@ use url::Url;
 
 pub mod ipc;
 use backoff::ExponentialBackoffBuilder;
-use connlib_shared::get_user_agent;
+use connlib_shared::{get_user_agent, DEFAULT_MTU};
 use ipc::{Server as IpcServer, ServiceId};
 use phoenix_channel::PhoenixChannel;
 use secrecy::Secret;
@@ -99,7 +102,7 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
     crate::setup_stdout_logging()?;
     tracing::info!(
         arch = std::env::consts::ARCH,
-        git_version = crate::GIT_VERSION,
+        git_version = firezone_bin_shared::GIT_VERSION,
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
     );
     let rt = tokio::runtime::Runtime::new()?;
@@ -216,7 +219,7 @@ impl<'a> Handler<'a> {
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
         let (cb_tx, cb_rx) = mpsc::channel(1_000);
-        let tun_device = TunDeviceManager::new()?;
+        let tun_device = TunDeviceManager::new(DEFAULT_MTU)?;
 
         Ok(Self {
             callback_handler: CallbackHandler { cb_tx },
@@ -354,8 +357,8 @@ impl<'a> Handler<'a> {
 
                 self.last_connlib_start_instant = Some(Instant::now());
                 let args = ConnectArgs {
-                    tcp_socket_factory: Arc::new(crate::tcp_socket_factory),
-                    udp_socket_factory: Arc::new(crate::udp_socket_factory),
+                    tcp_socket_factory: Arc::new(tcp_socket_factory),
+                    udp_socket_factory: Arc::new(udp_socket_factory),
                     private_key,
                     callbacks: self.callback_handler.clone(),
                 };
@@ -367,7 +370,7 @@ impl<'a> Handler<'a> {
                     ExponentialBackoffBuilder::default()
                         .with_max_elapsed_time(Some(Duration::from_secs(60 * 60 * 24 * 30)))
                         .build(),
-                    Arc::new(crate::tcp_socket_factory),
+                    Arc::new(tcp_socket_factory),
                 )?;
 
                 let new_session =
@@ -400,7 +403,7 @@ impl<'a> Handler<'a> {
 ///
 /// Returns: A `Handle` that must be kept alive. Dropping it stops logging
 /// and flushes the log file.
-fn setup_logging(log_dir: Option<PathBuf>) -> Result<connlib_client_shared::file_logger::Handle> {
+fn setup_logging(log_dir: Option<PathBuf>) -> Result<firezone_logging::file::Handle> {
     // If `log_dir` is Some, use that. Else call `ipc_service_logs`
     let log_dir = log_dir.map_or_else(
         || known_dirs::ipc_service_logs().context("Should be able to compute IPC service logs dir"),
@@ -408,14 +411,14 @@ fn setup_logging(log_dir: Option<PathBuf>) -> Result<connlib_client_shared::file
     )?;
     std::fs::create_dir_all(&log_dir)
         .context("We should have permissions to create our log dir")?;
-    let (layer, handle) = file_logger::layer(&log_dir);
+    let (layer, handle) = firezone_logging::file::layer(&log_dir);
     let directives = get_log_filter().context("Couldn't read log filter")?;
-    let filter = EnvFilter::new(&directives);
+    let filter = firezone_logging::try_filter(&directives)?;
     let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber).context("`set_global_default` should always work)")?;
     tracing::info!(
         arch = std::env::consts::ARCH,
-        git_version = crate::GIT_VERSION,
+        git_version = firezone_bin_shared::GIT_VERSION,
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
         ?directives
     );

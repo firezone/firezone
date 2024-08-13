@@ -990,12 +990,13 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-android"
-version = "1.1.5"
+version = "1.1.6"
 dependencies = [
  "android_log-sys",
  "backoff",
  "connlib-client-shared",
  "connlib-shared",
+ "firezone-logging",
  "ip_network",
  "jni 0.21.1",
  "libc",
@@ -1015,12 +1016,13 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.1.4"
+version = "1.1.5"
 dependencies = [
  "anyhow",
  "backoff",
  "connlib-client-shared",
  "connlib-shared",
+ "firezone-logging",
  "ip_network",
  "libc",
  "oslog",
@@ -1043,7 +1045,6 @@ name = "connlib-client-shared"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "backoff",
  "bimap",
  "chrono",
@@ -1055,13 +1056,10 @@ dependencies = [
  "serde",
  "serde_json",
  "socket-factory",
- "time",
+ "thiserror",
  "tokio",
  "tokio-tungstenite",
  "tracing",
- "tracing-appender",
- "tracing-stackdriver",
- "tracing-subscriber",
  "tun",
  "url",
 ]
@@ -1070,20 +1068,17 @@ dependencies = [
 name = "connlib-shared"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "base64 0.22.1",
  "boringtun",
  "chrono",
  "domain",
  "futures",
  "futures-util",
- "ip-packet",
  "ip_network",
  "itertools 0.13.0",
  "libc",
  "os_info",
  "phoenix-channel",
- "proptest",
  "rand 0.8.5",
  "rand_core 0.6.4",
  "secrecy",
@@ -1191,9 +1186,9 @@ dependencies = [
 
 [[package]]
 name = "crc"
-version = "3.0.1"
+version = "3.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86ec7a15cbe22e59248fc7eadb1907dab5ba09372595da4d73dd805ed4417dfe"
+checksum = "69e6e4d7b33a94f0991c26729976b10ebde1d34c3ee82408fb536164fa10d636"
 dependencies = [
  "crc-catalog",
 ]
@@ -1770,9 +1765,12 @@ name = "firezone-bin-shared"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "clap",
- "connlib-shared",
+ "firezone-logging",
  "futures",
+ "git-version",
+ "hex-literal",
  "ip-packet",
  "ip_network",
  "known-folders",
@@ -1783,12 +1781,10 @@ dependencies = [
  "ring",
  "rtnetlink",
  "socket-factory",
+ "thiserror",
  "tokio",
  "tracing",
- "tracing-log",
- "tracing-subscriber",
  "tun",
- "url",
  "uuid",
  "windows 0.57.0",
  "windows-core 0.57.0",
@@ -1813,10 +1809,10 @@ dependencies = [
  "domain",
  "either",
  "firezone-bin-shared",
+ "firezone-logging",
  "firezone-tunnel",
  "futures",
  "futures-bounded",
- "http-health-check",
  "ip_network",
  "libc",
  "phoenix-channel",
@@ -1836,7 +1832,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.1.11"
+version = "1.1.12"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1849,8 +1845,8 @@ dependencies = [
  "dirs",
  "firezone-bin-shared",
  "firezone-headless-client",
+ "firezone-logging",
  "futures",
- "git-version",
  "hex",
  "keyring",
  "minidumper",
@@ -1888,7 +1884,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.1.6"
+version = "1.1.7"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -1898,9 +1894,8 @@ dependencies = [
  "connlib-shared",
  "dirs",
  "firezone-bin-shared",
+ "firezone-logging",
  "futures",
- "git-version",
- "hex-literal",
  "humantime",
  "ip_network",
  "ipconfig",
@@ -1915,7 +1910,6 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
- "socket-factory",
  "tempfile",
  "thiserror",
  "tokio",
@@ -1931,6 +1925,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "firezone-logging"
+version = "0.1.0"
+dependencies = [
+ "time",
+ "tracing",
+ "tracing-appender",
+ "tracing-log",
+ "tracing-stackdriver",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "firezone-relay"
 version = "0.1.0"
 dependencies = [
@@ -1943,10 +1949,10 @@ dependencies = [
  "derive_more",
  "difference",
  "env_logger",
+ "firezone-bin-shared",
  "futures",
  "hex",
  "hex-display",
- "http-health-check",
  "mio",
  "once_cell",
  "opentelemetry",
@@ -1985,6 +1991,7 @@ dependencies = [
  "connlib-shared",
  "derivative",
  "domain",
+ "firezone-logging",
  "firezone-relay",
  "futures",
  "futures-util",
@@ -2736,15 +2743,6 @@ dependencies = [
  "http 1.1.0",
  "http-body",
  "pin-project-lite",
-]
-
-[[package]]
-name = "http-health-check"
-version = "0.1.0"
-dependencies = [
- "axum",
- "clap",
- "tokio",
 ]
 
 [[package]]
@@ -5160,9 +5158,9 @@ dependencies = [
 
 [[package]]
 name = "sctp-proto"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6220f78bb44c15f326b0596113305f6101097a18755d53727a575c97e09fb24"
+checksum = "d4dea4fe3384a24652f065296ac333c810dfd0c5b39b98a2214762c16aaadc3c"
 dependencies = [
  "bytes",
  "crc",
@@ -5505,6 +5503,7 @@ dependencies = [
  "boringtun",
  "bytecodec",
  "bytes",
+ "firezone-logging",
  "hex",
  "hex-display",
  "ip-packet",
@@ -5515,7 +5514,6 @@ dependencies = [
  "stun_codec",
  "thiserror",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -5524,6 +5522,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "boringtun",
+ "firezone-logging",
  "futures",
  "hex",
  "ip-packet",
@@ -5539,7 +5538,6 @@ dependencies = [
  "system-info",
  "tokio",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -5619,8 +5617,8 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "str0m"
-version = "0.6.1"
-source = "git+https://github.com/algesten/str0m?branch=main#386c665b9801783c5840047ffd11025534069758"
+version = "0.6.2"
+source = "git+https://github.com/firezone/str0m?branch=main#94775f23167bd364ab7bd7f9bb96ddbe12a885ea"
 dependencies = [
  "combine",
  "crc",
@@ -6178,18 +6176,18 @@ checksum = "8eaa81235c7058867fa8c0e7314f33dcce9c215f535d1913822a2b3f5e289f3c"
 
 [[package]]
 name = "thiserror"
-version = "1.0.61"
+version = "1.0.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c546c80d6be4bc6a00c0f01730c08df82eaa7a7a61f11d656526506112cc1709"
+checksum = "c0342370b38b6a11b6cc11d6a805569958d54cfa061a29969c3b5ce2ea405724"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.61"
+version = "1.0.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46c3384250002a6d5af4d114f2845d37b57521033f30d5c3f46c4d70e1197533"
+checksum = "a4558b58466b9ad7ca0f102865eccc95938dca1a74a856f2b57b6629050da261"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -18,6 +18,7 @@ use rangemap::RangeInclusiveSet;
 use crate::utils::network_contains_network;
 use crate::GatewayEvent;
 
+use anyhow::{bail, Context};
 use nat_table::NatTable;
 
 mod nat_table;
@@ -235,7 +236,7 @@ impl ClientOnGateway {
         resource: &ResourceDescription<ResolvedResourceDescriptionDns>,
         domain_ips: Option<(DomainName, Vec<IpAddr>)>,
         now: Instant,
-    ) -> connlib_shared::Result<()> {
+    ) -> anyhow::Result<()> {
         match (resource, domain_ips) {
             (ResourceDescription::Dns(r), Some((name, resource_ips))) => {
                 if resource_ips.is_empty() {
@@ -245,11 +246,12 @@ impl ClientOnGateway {
 
                 self.assign_translations(name, r.id, &r.addresses, resource_ips, now);
             }
-            (ResourceDescription::Cidr(_), None) => {}
-            _ => {
-                return Err(connlib_shared::Error::InvalidResource);
+            (ResourceDescription::Dns(_), None) => {
+                bail!("Cannot assign proxy IPs for DNS resource without domain");
             }
+            (ResourceDescription::Cidr(_) | ResourceDescription::Internet(_), Some(_) | None) => {}
         }
+
         Ok(())
     }
 
@@ -377,7 +379,7 @@ impl ClientOnGateway {
         &mut self,
         packet: MutableIpPacket<'a>,
         now: Instant,
-    ) -> Result<MutableIpPacket<'a>, connlib_shared::Error> {
+    ) -> anyhow::Result<MutableIpPacket<'a>> {
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
             return Ok(packet);
         };
@@ -388,7 +390,7 @@ impl ClientOnGateway {
 
         let mut packet = packet
             .translate_destination(self.ipv4, self.ipv6, real_ip)
-            .ok_or(connlib_shared::Error::FailedTranslation)?;
+            .context("Failed to translate packet")?;
         packet.set_source_protocol(source_protocol.value());
         packet.update_checksum();
 
@@ -401,7 +403,7 @@ impl ClientOnGateway {
         &mut self,
         packet: MutableIpPacket<'a>,
         now: Instant,
-    ) -> Result<MutableIpPacket<'a>, connlib_shared::Error> {
+    ) -> anyhow::Result<MutableIpPacket<'a>> {
         self.ensure_allowed_src(&packet)?;
 
         let packet = self.transform_network_to_tun(packet, now)?;
@@ -415,7 +417,7 @@ impl ClientOnGateway {
         &mut self,
         packet: MutableIpPacket<'a>,
         now: Instant,
-    ) -> Result<Option<MutableIpPacket<'a>>, connlib_shared::Error> {
+    ) -> anyhow::Result<Option<MutableIpPacket<'a>>> {
         let Some((proto, ip)) = self
             .nat_table
             .translate_incoming(packet.as_immutable(), now)?
@@ -438,31 +440,25 @@ impl ClientOnGateway {
         Ok(Some(packet))
     }
 
-    fn ensure_allowed_src(
-        &self,
-        packet: &MutableIpPacket<'_>,
-    ) -> Result<(), connlib_shared::Error> {
+    fn ensure_allowed_src(&self, packet: &MutableIpPacket<'_>) -> anyhow::Result<()> {
         let src = packet.source();
 
         if !self.allowed_ips().contains(&src) {
-            return Err(connlib_shared::Error::SrcNotAllowed { src });
+            return Err(anyhow::Error::new(SrcNotAllowed(src)));
         }
 
         Ok(())
     }
 
     /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
-    fn ensure_allowed_dst(
-        &self,
-        packet: &MutableIpPacket<'_>,
-    ) -> Result<(), connlib_shared::Error> {
+    fn ensure_allowed_dst(&self, packet: &MutableIpPacket<'_>) -> anyhow::Result<()> {
         let dst = packet.destination();
         if !self
             .filters
             .longest_match(dst)
             .is_some_and(|(_, filter)| filter.is_allowed(&packet.to_immutable()))
         {
-            return Err(connlib_shared::Error::DstNotAllowed { dst });
+            return Err(anyhow::Error::new(DstNotAllowed(dst)));
         };
 
         Ok(())
@@ -474,14 +470,11 @@ impl ClientOnGateway {
 }
 
 impl GatewayOnClient {
-    pub(crate) fn ensure_allowed_src(
-        &self,
-        packet: &MutableIpPacket,
-    ) -> Result<(), connlib_shared::Error> {
+    pub(crate) fn ensure_allowed_src(&self, packet: &MutableIpPacket) -> anyhow::Result<()> {
         let src = packet.source();
 
         if self.allowed_ips.longest_match(src).is_none() {
-            return Err(connlib_shared::Error::SrcNotAllowed { src });
+            return Err(anyhow::Error::new(SrcNotAllowed(src)));
         }
 
         Ok(())
@@ -491,6 +484,14 @@ impl GatewayOnClient {
         self.id
     }
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("Source not allowed: {0}")]
+pub(crate) struct SrcNotAllowed(IpAddr);
+
+#[derive(Debug, thiserror::Error)]
+#[error("Destination not allowed: {0}")]
+pub(crate) struct DstNotAllowed(IpAddr);
 
 #[derive(Debug)]
 struct ResourceOnGateway {
@@ -602,6 +603,29 @@ pub struct ClientOnGateway {
     buffered_events: VecDeque<GatewayEvent>,
 }
 
+fn ipv4_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
+    ip.iter().filter(|ip| ip.is_ipv4()).copied().collect_vec()
+}
+
+fn ipv6_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
+    ip.iter().filter(|ip| ip.is_ipv6()).copied().collect_vec()
+}
+
+fn mapped_ipv4(ips: &[IpAddr]) -> Vec<IpAddr> {
+    if !ipv4_addresses(ips).is_empty() {
+        ipv4_addresses(ips)
+    } else {
+        ipv6_addresses(ips)
+    }
+}
+fn mapped_ipv6(ips: &[IpAddr]) -> Vec<IpAddr> {
+    if !ipv6_addresses(ips).is_empty() {
+        ipv6_addresses(ips)
+    } else {
+        ipv4_addresses(ips)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -671,22 +695,13 @@ mod tests {
 
         peer.expire_resources(then);
 
-        assert!(matches!(
-            peer.ensure_allowed_dst(&tcp_packet),
-            Err(connlib_shared::Error::DstNotAllowed { .. })
-        ));
+        assert!(peer.ensure_allowed_dst(&tcp_packet).is_err());
         assert!(peer.ensure_allowed_dst(&udp_packet).is_ok());
 
         peer.expire_resources(after_then);
 
-        assert!(matches!(
-            peer.ensure_allowed_dst(&tcp_packet),
-            Err(connlib_shared::Error::DstNotAllowed { .. })
-        ));
-        assert!(matches!(
-            peer.ensure_allowed_dst(&udp_packet),
-            Err(connlib_shared::Error::DstNotAllowed { .. })
-        ));
+        assert!(peer.ensure_allowed_dst(&tcp_packet).is_err());
+        assert!(peer.ensure_allowed_dst(&udp_packet).is_err());
     }
 
     #[test]
@@ -984,7 +999,8 @@ mod tests {
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
     use super::*;
-    use connlib_shared::{messages::gateway::PortRange, proptest::*};
+    use crate::proptest::*;
+    use connlib_shared::messages::gateway::PortRange;
     use ip_packet::make::{icmp_request_packet, tcp_packet, udp_packet};
     use proptest::{
         arbitrary::any,
@@ -1212,10 +1228,7 @@ mod proptests {
 
         peer.add_resource(vec![resource_addr], resource_id, filters, None, None);
 
-        assert!(matches!(
-            peer.ensure_allowed_dst(&packet),
-            Err(connlib_shared::Error::DstNotAllowed { .. })
-        ));
+        assert!(peer.ensure_allowed_dst(&packet).is_err());
     }
 
     #[test_strategy::proptest()]
@@ -1276,10 +1289,7 @@ mod proptests {
         peer.remove_resource(&resource_id_removed);
 
         assert!(peer.ensure_allowed_dst(&packet_allowed).is_ok());
-        assert!(matches!(
-            peer.ensure_allowed_dst(&packet_rejected),
-            Err(connlib_shared::Error::DstNotAllowed { .. })
-        ));
+        assert!(peer.ensure_allowed_dst(&packet_rejected).is_err());
     }
 
     fn cidr_with_host() -> impl Strategy<Value = (IpNetwork, IpAddr)> {
@@ -1499,28 +1509,5 @@ mod proptests {
                 ProtocolKind::Icmp => Filter::Icmp,
             }
         }
-    }
-}
-
-fn ipv4_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
-    ip.iter().filter(|ip| ip.is_ipv4()).copied().collect_vec()
-}
-
-fn ipv6_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
-    ip.iter().filter(|ip| ip.is_ipv6()).copied().collect_vec()
-}
-
-fn mapped_ipv4(ips: &[IpAddr]) -> Vec<IpAddr> {
-    if !ipv4_addresses(ips).is_empty() {
-        ipv4_addresses(ips)
-    } else {
-        ipv6_addresses(ips)
-    }
-}
-fn mapped_ipv6(ips: &[IpAddr]) -> Vec<IpAddr> {
-    if !ipv6_addresses(ips).is_empty() {
-        ipv6_addresses(ips)
-    } else {
-        ipv4_addresses(ips)
     }
 }

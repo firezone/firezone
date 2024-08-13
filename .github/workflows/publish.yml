@@ -42,7 +42,7 @@ jobs:
           elif [[ "${{ github.event.release.name }}" =~ headless* ]]; then
             ARTIFACT=client
             # mark:next-headless-version
-            VERSION="1.1.6"
+            VERSION="1.1.7"
           else
             echo "Shouldn't have gotten here. Exiting."
             exit 1

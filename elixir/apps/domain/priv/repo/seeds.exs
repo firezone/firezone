@@ -640,8 +640,8 @@ IO.puts("")
   Resources.create_resource(
     %{
       type: :dns,
-      name: "*.firez.one",
-      address: "*.firez.one",
+      name: "**.firez.one",
+      address: "**.firez.one",
       address_description: "https://firez.one/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: []
@@ -653,8 +653,8 @@ IO.puts("")
   Resources.create_resource(
     %{
       type: :dns,
-      name: "?.firezone.dev",
-      address: "?.firezone.dev",
+      name: "*.firezone.dev",
+      address: "*.firezone.dev",
       address_description: "https://firezone.dev/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: []
@@ -751,8 +751,8 @@ IO.puts("")
   Resources.create_resource(
     %{
       type: :dns,
-      name: "?.httpbin",
-      address: "?.httpbin",
+      name: "**.httpbin",
+      address: "**.httpbin",
       address_description: "http://httpbin/",
       connections: [%{gateway_group_id: gateway_group.id}],
       filters: [

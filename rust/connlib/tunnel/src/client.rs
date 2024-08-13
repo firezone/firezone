@@ -4,7 +4,6 @@ use crate::peer_store::PeerStore;
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_shared::callbacks::Status;
-use connlib_shared::error::ConnlibError as Error;
 use connlib_shared::messages::client::{Site, SiteId};
 use connlib_shared::messages::ResolveRequest;
 use connlib_shared::messages::{
@@ -19,7 +18,7 @@ use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
-use crate::utils::{self, earliest, turn, Candidates};
+use crate::utils::{self, earliest, turn};
 use crate::{ClientEvent, ClientTunnel, Tun};
 use domain::base::Message;
 use secrecy::{ExposeSecret as _, Secret};
@@ -187,7 +186,7 @@ impl ClientTunnel {
         resource_id: ResourceId,
         answer: Answer,
         gateway_public_key: PublicKey,
-    ) -> connlib_shared::Result<()> {
+    ) -> anyhow::Result<()> {
         self.role_state.accept_answer(
             snownet::Answer {
                 credentials: snownet::Credentials {
@@ -534,12 +533,12 @@ impl ClientState {
         resource_id: ResourceId,
         gateway: PublicKey,
         now: Instant,
-    ) -> connlib_shared::Result<()> {
+    ) -> anyhow::Result<()> {
         debug_assert!(!self.awaiting_connection_details.contains_key(&resource_id));
 
         let gateway_id = self
             .gateway_by_resource(&resource_id)
-            .ok_or(Error::UnknownResource)?;
+            .with_context(|| format!("No gateway associated with resource {resource_id}"))?;
 
         self.node.accept_answer(gateway_id, gateway, answer, now);
 
@@ -640,7 +639,7 @@ impl ClientState {
             Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
             Some(dns::ResolveStrategy::ForwardQuery {
                 upstream: server,
-                query_id: id,
+                query_id,
                 payload,
                 original_src,
             }) => {
@@ -653,8 +652,10 @@ impl ClientState {
                     return Err((packet, ip));
                 }
 
+                tracing::trace!(%server, %query_id, "Forwarding DNS query");
+
                 self.forwarded_dns_queries
-                    .insert((id, server), (original_src, now + IDS_EXPIRE));
+                    .insert((query_id, server), (original_src, now + IDS_EXPIRE));
                 self.buffered_transmits.push_back(Transmit {
                     src: None,
                     dst: server,
@@ -683,6 +684,9 @@ impl ClientState {
         let query_id = message.header().id();
 
         let (destination, _) = self.forwarded_dns_queries.remove(&(query_id, from))?;
+
+        tracing::trace!(server = %from, %query_id, "Received forwarded DNS response");
+
         let daddr = destination.ip();
         let dport = destination.port();
 
@@ -864,8 +868,8 @@ impl ClientState {
 
     fn drain_node_events(&mut self) {
         let mut resources_changed = false; // Track this separately to batch together `ResourcesChanged` events.
-        let mut added_ice_candidates = BTreeMap::<GatewayId, Candidates>::default();
-        let mut removed_ice_candidates = BTreeMap::<GatewayId, Candidates>::default();
+        let mut added_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
+        let mut removed_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -880,7 +884,7 @@ impl ClientState {
                     added_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .push(candidate);
+                        .insert(candidate);
                 }
                 snownet::Event::InvalidateIceCandidate {
                     connection,
@@ -889,7 +893,7 @@ impl ClientState {
                     removed_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .push(candidate);
+                        .insert(candidate);
                 }
                 snownet::Event::ConnectionEstablished(id) => {
                     self.update_site_status_by_gateway(&id, Status::Online);
@@ -909,7 +913,7 @@ impl ClientState {
             self.buffered_events
                 .push_back(ClientEvent::AddedIceCandidates {
                     conn_id,
-                    candidates: candidates.serialize(),
+                    candidates,
                 })
         }
 
@@ -917,7 +921,7 @@ impl ClientState {
             self.buffered_events
                 .push_back(ClientEvent::RemovedIceCandidates {
                     conn_id,
-                    candidates: candidates.serialize(),
+                    candidates,
                 })
         }
     }
@@ -988,9 +992,9 @@ impl ClientState {
             return;
         }
 
-        match &new_resource {
+        let added = match &new_resource {
             ResourceDescription::Dns(dns) => {
-                self.stub_resolver.add_resource(dns.id, dns.address.clone());
+                self.stub_resolver.add_resource(dns.id, dns.address.clone())
             }
             ResourceDescription::Cidr(cidr) => {
                 let existing = self
@@ -998,17 +1002,22 @@ impl ClientState {
                     .insert(cidr.address, cidr.clone());
 
                 match existing {
-                    Some(existing) if existing.id != cidr.id => {
-                        tracing::info!(address = %cidr.address, old = %existing.name, new = %cidr.name, "Replacing CIDR resource");
-                    }
-                    Some(_) => {}
-                    None => {
-                        tracing::info!(address = %cidr.address, name = %cidr.name, "Activating CIDR resource");
-                    }
+                    Some(existing) => existing.id != cidr.id,
+                    None => true,
                 }
             }
-            ResourceDescription::Internet(_) => {}
+            ResourceDescription::Internet(_) => false, // FIXME: Update with real check once Internet Resources get added.
+        };
+
+        if !added {
+            return;
         }
+
+        let name = new_resource.name();
+        let address = new_resource.address_string().map(tracing::field::display);
+        let sites = new_resource.sites_string();
+
+        tracing::info!(%name, address, %sites, "Activating resource");
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
@@ -1018,16 +1027,23 @@ impl ClientState {
     }
 
     fn disable_resource(&mut self, id: ResourceId) {
-        self.awaiting_connection_details.remove(&id);
-        self.stub_resolver.remove_resource(id);
-        self.active_cidr_resources.retain(|_, r| {
-            if r.id == id {
-                tracing::info!(address = %r.address, name = %r.name, "Deactivating CIDR resource");
-                return false;
-            }
+        let Some(resource) = self.resources_by_id.get(&id) else {
+            return;
+        };
 
-            true
-        });
+        match resource {
+            ResourceDescription::Dns(_) => self.stub_resolver.remove_resource(id),
+            ResourceDescription::Cidr(_) => self.active_cidr_resources.retain(|_, r| r.id != id),
+            ResourceDescription::Internet(_) => {}
+        }
+
+        let name = resource.name();
+        let address = resource.address_string().map(tracing::field::display);
+        let sites = resource.sites_string();
+
+        tracing::info!(%name, address, %sites, "Deactivating resource");
+
+        self.awaiting_connection_details.remove(&id);
 
         let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, id) else {
             return;
@@ -1444,7 +1460,8 @@ mod tests {
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
     use super::*;
-    use connlib_shared::{messages::client::ResourceDescriptionDns, proptest::*};
+    use crate::proptest::*;
+    use connlib_shared::messages::client::ResourceDescriptionDns;
     use prop::collection;
     use proptest::prelude::*;
 
@@ -1714,23 +1731,22 @@ mod proptests {
     }
 
     fn resource() -> impl Strategy<Value = ResourceDescription> {
-        connlib_shared::proptest::resource(site().prop_map(|s| vec![s]))
+        crate::proptest::resource(site().prop_map(|s| vec![s]))
     }
 
     fn cidr_resource() -> impl Strategy<Value = ResourceDescriptionCidr> {
-        connlib_shared::proptest::cidr_resource(any_ip_network(8), site().prop_map(|s| vec![s]))
+        crate::proptest::cidr_resource(any_ip_network(8), site().prop_map(|s| vec![s]))
     }
 
     fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {
-        connlib_shared::proptest::dns_resource(site().prop_map(|s| vec![s]))
+        crate::proptest::dns_resource(site().prop_map(|s| vec![s]))
     }
 
     // Generate resources sharing 1 site
     fn resources_sharing_n_sites(
         num_sites: usize,
     ) -> impl Strategy<Value = Vec<ResourceDescription>> {
-        collection::vec(site(), num_sites).prop_flat_map(|sites| {
-            collection::vec(connlib_shared::proptest::resource(Just(sites)), 1..=100)
-        })
+        collection::vec(site(), num_sites)
+            .prop_flat_map(|sites| collection::vec(crate::proptest::resource(Just(sites)), 1..=100))
     }
 }

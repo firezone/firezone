@@ -1,4 +1,5 @@
 //! a stateful symmetric NAT table that performs conversion between a client's picked proxy ip and the actual resource's IP
+use anyhow::Context;
 use bimap::BiMap;
 use ip_packet::{IpPacket, Protocol};
 use std::collections::HashMap;
@@ -46,10 +47,8 @@ impl NatTable {
         packet: IpPacket,
         outside_dst: IpAddr,
         now: Instant,
-    ) -> Result<(Protocol, IpAddr), connlib_shared::Error> {
-        let src = packet
-            .source_protocol()
-            .map_err(connlib_shared::Error::UnsupportedProtocol)?;
+    ) -> anyhow::Result<(Protocol, IpAddr)> {
+        let src = packet.source_protocol()?;
         let dst = packet.destination();
 
         let inside = (src, dst);
@@ -71,7 +70,7 @@ impl NatTable {
             .chain(1..src.value())
             .map(|p| (src.with_value(p), outside_dst))
             .find(|outside| !self.table.contains_right(outside))
-            .ok_or(connlib_shared::Error::ExhaustedNat)?;
+            .context("Exhausted NAT")?;
 
         let inside = (src, dst);
 
@@ -87,13 +86,8 @@ impl NatTable {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> Result<Option<(Protocol, IpAddr)>, connlib_shared::Error> {
-        let outside = (
-            packet
-                .destination_protocol()
-                .map_err(connlib_shared::Error::UnsupportedProtocol)?,
-            packet.source(),
-        );
+    ) -> anyhow::Result<Option<(Protocol, IpAddr)>> {
+        let outside = (packet.destination_protocol()?, packet.source());
 
         if let Some(inside) = self.table.get_by_right(&outside) {
             tracing::trace!(?inside, ?outside, "Translating incoming packet");
@@ -113,7 +107,6 @@ mod tests {
     use super::*;
     use ip_packet::{proptest::*, MutableIpPacket};
     use proptest::prelude::*;
-    use tracing_subscriber::util::SubscriberInitExt as _;
 
     #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
     fn translates_back_and_forth_packet(
@@ -123,10 +116,8 @@ mod tests {
     ) {
         proptest::prop_assume!(packet.destination().is_ipv4() == outside_dst.is_ipv4()); // Required for our test to simulate a response.
 
-        let _set_default = tracing_subscriber::fmt()
-            .with_env_filter("trace")
-            .with_test_writer()
-            .set_default();
+        let _guard = firezone_logging::test("trace");
+
         let sent_at = Instant::now();
         let mut table = NatTable::default();
         let response_delay = Duration::from_secs(response_delay);
@@ -175,10 +166,8 @@ mod tests {
                 != packet2.as_immutable().source_protocol().unwrap()
         );
 
-        let _set_default = tracing_subscriber::fmt()
-            .with_env_filter("trace")
-            .with_test_writer()
-            .set_default();
+        let _guard = firezone_logging::test("trace");
+
         let mut table = NatTable::default();
 
         let mut packets = [(packet1, outside_dst1), (packet2, outside_dst2)];
