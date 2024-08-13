@@ -26,7 +26,7 @@ export default function BattleCard2() {
         <div className="flex w-full items-end justify-start lg:justify-center overflow-x-auto flex-shrink-0">
           <ul
             role="list"
-            className={`text-sm md:text-md min-w-[180px] md:min-w-[300px]`}
+            className="text-sm md:text-base min-w-[180px] md:min-w-[300px]"
           >
             <li className="px-6 h-14 place-content-center bg-neutral-100">
               Automatic NAT64 and NAT46

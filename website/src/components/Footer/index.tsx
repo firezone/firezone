@@ -28,7 +28,7 @@ export default function Footer() {
         <p className="text-neutral-200 text-md">
           Give your organization the protection it deserves.
         </p>
-        <div className="flex justify-center sm:gap-x-6 md:gap-x-12 mt-8 w-full">
+        <div className="flex flex-wrap justify-center sm:gap-x-6 md:gap-x-12 mt-8 w-full">
           <div className="w-full sm:w-fit flex flex-col justify-between h-20">
             <button
               type="button"
@@ -41,7 +41,7 @@ export default function Footer() {
               Get a personalized walkthrough.
             </p>
           </div>
-          <div className="flex flex-col justify-between h-20">
+          <div className="my-6 sm:my-0 flex flex-col justify-between h-20">
             <ActionLink
               size="lg"
               href="https://app.firezone.dev/sign_up"

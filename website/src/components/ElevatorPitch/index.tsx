@@ -5,7 +5,8 @@ import {
   HiMiniShieldCheck,
   HiMiniPresentationChartLine,
 } from "react-icons/hi2";
-import { HiLightningBolt, HiGlobe } from "react-icons/hi";
+import { HiLightningBolt } from "react-icons/hi";
+import { FaBookOpen } from "react-icons/fa";
 import { manrope } from "@/lib/fonts";
 import Image from "next/image";
 
@@ -33,7 +34,7 @@ export default function ElevatorPitch() {
     {
       title: "Open source for full transparency.",
       desc: "Our entire product is open-source, allowing anyone to audit the codebase.",
-      icon: <HiGlobe className="min-w-8 h-8 text-primary-400" />,
+      icon: <FaBookOpen className="min-w-8 h-8 text-primary-400" />,
     },
   ];
 
@@ -59,10 +60,10 @@ export default function ElevatorPitch() {
       >
         {icon}
         <div>
-          <p className="text-neutral-900 font-semibold text-md text-left mb-1.5">
+          <p className="text-neutral-900 font-semibold text-lg text-left mb-1.5">
             {title}
           </p>
-          <p className="text-slate-700 text-left text-sm">{desc}</p>
+          <p className="text-neutral-800 text-left text-md mr-4">{desc}</p>
         </div>
       </button>
     );
