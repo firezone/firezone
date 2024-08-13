@@ -285,10 +285,10 @@ defmodule Web.CoreComponents do
       id={@id}
       class={[
         "p-4 text-sm flash-#{@kind}",
-        @kind == :success && "text-green-800 bg-green-100",
-        @kind == :info && "text-blue-800 bg-blue-100",
-        @kind == :warning && "text-yellow-800 bg-yellow-100",
-        @kind == :error && "text-red-800 bg-red-100",
+        @kind == :success && "text-green-800 bg-green-50",
+        @kind == :info && "text-blue-800 bg-blue-50",
+        @kind == :warning && "text-yellow-800 bg-yellow-50",
+        @kind == :error && "text-red-800 bg-red-50",
         @style != "wide" && "mb-4 rounded"
       ]}
       role="alert"
@@ -1246,12 +1246,6 @@ defmodule Web.CoreComponents do
   end
 
   def provider_icon(%{adapter: :userpass} = assigns) do
-    ~H"""
-    <.icon name="hero-key" {@rest} />
-    """
-  end
-
-  def provider_icon(%{adapter: :temp_account} = assigns) do
     ~H"""
     <.icon name="hero-key" {@rest} />
     """
