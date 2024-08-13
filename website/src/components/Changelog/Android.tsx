@@ -15,8 +15,15 @@ export default function Android() {
           <ChangeItem pull="6107">
             Adds the ability to mark Resources as favorites.
           </ChangeItem>
+        </ul>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6181">
             Improves reliability of DNS resolution of non-resources.
+          </ChangeItem>
+        </ul>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6276">
+            Fixes a bug where relayed connections failed to establish after an idle period.
           </ChangeItem>
         </ul>
       </Entry>

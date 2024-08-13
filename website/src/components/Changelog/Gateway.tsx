@@ -11,9 +11,9 @@ export default function Gateway() {
       {/*
       <Entry version="1.1.X" date={new Date("2024-XX-XX")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <li className="pl-2">
-          TODO
-          </li>
+          <ChangeItem pull="6276">
+            Fixes a bug where relayed connections failed to establish after an idle period.
+          </ChangeItem>
         </ul>
       </Entry>
       */}

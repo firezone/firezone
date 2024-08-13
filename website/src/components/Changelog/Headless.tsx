@@ -10,9 +10,11 @@ export default function Headless() {
   return (
     <Entries href={href} arches={arches} title="Linux headless">
       {/*
-      <Entry version="1.2.0" date={new Date("Invalid date")}>
+      <Entry version="1.1.7" date={new Date("Invalid date")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-        TODO
+          <ChangeItem pull="6276">
+            Fixes a bug where relayed connections failed to establish after an idle period.
+          </ChangeItem>
         </ul>
       </Entry>
       */}
