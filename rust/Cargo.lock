@@ -1964,6 +1964,7 @@ dependencies = [
  "secrecy",
  "serde",
  "sha2",
+ "smallvec 1.13.2",
  "socket-factory",
  "socket2",
  "stun_codec",
