@@ -170,7 +170,6 @@ impl platform::Server {
 #[cfg(test)]
 mod tests {
     use super::{platform::Server, *};
-    use crate::ConnlibMsgToGui;
     use anyhow::{bail, ensure, Result};
     use futures::{SinkExt, StreamExt};
     use std::time::Duration;
@@ -207,11 +206,9 @@ mod tests {
                 while let Some(req) = rx.next().await {
                     let req = req.expect("Error while reading from IPC client");
                     ensure!(req == IpcClientMsg::Reset);
-                    tx.send(&IpcServerMsg::FromConnlib(
-                        ConnlibMsgToGui::OnUpdateResources(vec![]),
-                    ))
-                    .await
-                    .expect("Error while writing to IPC client");
+                    tx.send(&IpcServerMsg::OnUpdateResources(vec![]))
+                        .await
+                        .expect("Error while writing to IPC client");
                 }
                 tracing::info!("Client disconnected");
             }
@@ -234,10 +231,7 @@ mod tests {
                         .await
                         .expect("Should have gotten a reply from the IPC server")
                         .expect("Error while reading from IPC server");
-                    ensure!(matches!(
-                        resp,
-                        IpcServerMsg::FromConnlib(ConnlibMsgToGui::OnUpdateResources(_))
-                    ));
+                    ensure!(matches!(resp, IpcServerMsg::OnUpdateResources(_)));
                 }
             }
             Ok(())

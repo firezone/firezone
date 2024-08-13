@@ -10,7 +10,7 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
-use firezone_headless_client::{ConnlibMsgToGui, IpcClientMsg, IpcServerMsg};
+use firezone_headless_client::{IpcClientMsg, IpcServerMsg};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     path::PathBuf,
@@ -673,10 +673,10 @@ impl Controller {
                 })?;
                 Ok(())
             }
-            IpcServerMsg::FromConnlib(ConnlibMsgToGui::OnDisconnect {
+            IpcServerMsg::OnDisconnect {
                 error_msg,
                 is_authentication_error,
-            }) => {
+            } => {
                 self.sign_out().await?;
                 if is_authentication_error {
                     tracing::info!(?error_msg, "Auth error");
@@ -695,7 +695,7 @@ impl Controller {
                 }
                 Ok(())
             }
-            IpcServerMsg::FromConnlib(ConnlibMsgToGui::OnUpdateResources(resources)) => {
+            IpcServerMsg::OnUpdateResources(resources) => {
                 if self.auth.session().is_none() {
                     // This could happen if the user cancels the sign-in
                     // before it completes. This is because the state machine

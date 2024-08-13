@@ -62,18 +62,24 @@ pub struct CliCommon {
 /// Messages that connlib can produce and send to the headless Client, IPC service, or GUI process.
 ///
 /// i.e. callbacks
+// The names are CamelCase versions of the connlib callbacks.
+#[allow(clippy::enum_variant_names)]
 pub enum ConnlibMsg {
+    OnDisconnect {
+        error_msg: String,
+        is_authentication_error: bool,
+    },
     /// Use this as `TunnelReady`, per `callbacks.rs`
     OnSetInterfaceConfig {
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
         dns: Vec<IpAddr>,
     },
+    OnUpdateResources(Vec<callbacks::ResourceDescription>),
     OnUpdateRoutes {
         ipv4: Vec<Ipv4Network>,
         ipv6: Vec<Ipv6Network>,
     },
-    ToGui(ConnlibMsgToGui),
 }
 
 /// Messages that end up in the GUI, either from connlib or from the IPC service.
@@ -81,23 +87,17 @@ pub enum ConnlibMsg {
 pub enum IpcServerMsg {
     /// The IPC service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
-    FromConnlib(ConnlibMsgToGui),
+    OnDisconnect {
+        error_msg: String,
+        is_authentication_error: bool,
+    },
+    OnUpdateResources(Vec<callbacks::ResourceDescription>),
     /// The IPC service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
     /// "Firezone is updating, please restart the GUI" instead of an error like,
     /// "IPC connection closed".
     TerminatingGracefully,
-}
-
-/// Messages that go all the way from connlib to the GUI process, or to the headless Client
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub enum ConnlibMsgToGui {
-    OnDisconnect {
-        error_msg: String,
-        is_authentication_error: bool,
-    },
-    OnUpdateResources(Vec<callbacks::ResourceDescription>),
 }
 
 #[derive(Clone)]
@@ -115,10 +115,10 @@ impl Callbacks for CallbackHandler {
             false
         };
         self.cb_tx
-            .try_send(ConnlibMsg::ToGui(ConnlibMsgToGui::OnDisconnect {
+            .try_send(ConnlibMsg::OnDisconnect {
                 error_msg: error.to_string(),
                 is_authentication_error,
-            }))
+            })
             .expect("should be able to send OnDisconnect");
     }
 
@@ -131,9 +131,7 @@ impl Callbacks for CallbackHandler {
     fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
         tracing::debug!(len = resources.len(), "New resource list");
         self.cb_tx
-            .try_send(ConnlibMsg::ToGui(ConnlibMsgToGui::OnUpdateResources(
-                resources,
-            )))
+            .try_send(ConnlibMsg::OnUpdateResources(resources))
             .expect("Should be able to send OnUpdateResources");
     }
 

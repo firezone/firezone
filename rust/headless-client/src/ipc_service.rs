@@ -1,6 +1,6 @@
 use crate::{
     device_id, dns_control::DnsController, known_dirs, signals, CallbackHandler, CliCommon,
-    ConnlibMsg, ConnlibMsgToGui, IpcServerMsg,
+    ConnlibMsg, IpcServerMsg,
 };
 use anyhow::{Context as _, Result};
 use clap::Parser;
@@ -310,22 +310,31 @@ impl<'a> Handler<'a> {
 
     async fn handle_connlib_cb(&mut self, msg: ConnlibMsg) -> Result<()> {
         match msg {
-            ConnlibMsg::ToGui(msg) => {
-                if let ConnlibMsgToGui::OnUpdateResources(_) = &msg {
-                    // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
-                    self.dns_controller.flush()?;
-                }
-                self.ipc_tx
-                    .send(&IpcServerMsg::FromConnlib(msg))
-                    .await
-                    .context("Error while sending IPC message")?
-            }
+            ConnlibMsg::OnDisconnect {
+                error_msg,
+                is_authentication_error,
+            } => self
+                .ipc_tx
+                .send(&IpcServerMsg::OnDisconnect {
+                    error_msg,
+                    is_authentication_error,
+                })
+                .await
+                .context("Error while sending IPC message `OnDisconnect`")?,
             ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                 self.tun_device.set_ips(ipv4, ipv6).await?;
                 self.dns_controller.set_dns(dns).await?;
                 if let Some(instant) = self.last_connlib_start_instant.take() {
                     tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
                 }
+            }
+            ConnlibMsg::OnUpdateResources(resources) => {
+                // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
+                self.dns_controller.flush()?;
+                self.ipc_tx
+                    .send(&IpcServerMsg::OnUpdateResources(resources))
+                    .await
+                    .context("Error while sending IPC message `OnUpdateResources`")?;
             }
             ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                 self.tun_device.set_routes(ipv4, ipv6).await?

@@ -11,7 +11,7 @@ use firezone_bin_shared::{
     TunDeviceManager, TOKEN_ENV_KEY,
 };
 use firezone_headless_client::{
-    device_id, signals, CallbackHandler, CliCommon, ConnlibMsg, ConnlibMsgToGui, DnsController,
+    device_id, signals, CallbackHandler, CliCommon, ConnlibMsg, DnsController,
 };
 use futures::{FutureExt as _, StreamExt as _};
 use phoenix_channel::PhoenixChannel;
@@ -252,11 +252,11 @@ fn main() -> Result<()> {
 
             match cb {
                 // TODO: Headless Client shouldn't be using messages labelled `Ipc`
-                ConnlibMsg::ToGui(ConnlibMsgToGui::OnDisconnect {
+                ConnlibMsg::OnDisconnect {
                     error_msg,
                     is_authentication_error: _,
-                }) => break Err(anyhow!(error_msg).context("Firezone disconnected")),
-                ConnlibMsg::ToGui(ConnlibMsgToGui::OnUpdateResources(_)) => {
+                } => break Err(anyhow!(error_msg).context("Firezone disconnected")),
+                ConnlibMsg::OnUpdateResources(_) => {
                     // On every Resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                     dns_controller.flush()?;
                 }
