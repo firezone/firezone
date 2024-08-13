@@ -83,7 +83,7 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Components do
                   </p>
                 </div>
 
-                <div>
+                <div class="hidden">
                   <.input
                     type="hidden"
                     label="Discovery Document URI"
@@ -93,6 +93,16 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Components do
                   />
                 </div>
               </.inputs_for>
+
+              <p class="text-sm text-neutral-500">
+                <strong>Note:</strong>
+                Only active users count towards your billing limits.
+                See your
+                <.link navigate={~p"/#{@account}/settings/billing"} class={link_style()}>
+                  billing page
+                </.link>
+                for more information.
+              </p>
             </div>
 
             <.submit_button>

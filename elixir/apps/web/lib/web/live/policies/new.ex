@@ -92,7 +92,7 @@ defmodule Web.Policies.New do
                   field={@form[:description]}
                   label="Description"
                   type="textarea"
-                  placeholder="Optionally, enter a reason for creating a policy here."
+                  placeholder="Why are you creating this policy?"
                   phx-debounce="300"
                 />
               </fieldset>
