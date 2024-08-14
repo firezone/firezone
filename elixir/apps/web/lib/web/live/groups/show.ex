@@ -230,7 +230,7 @@ defmodule Web.Groups.Show do
                 >
                   Add a policy
                 </.link>
-                to grant access to a resource.
+                to grant this Group access to Resources.
               </div>
             </div>
           </:empty>
