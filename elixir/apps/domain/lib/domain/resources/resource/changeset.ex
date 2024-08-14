@@ -5,7 +5,7 @@ defmodule Domain.Resources.Resource.Changeset do
 
   @fields ~w[address address_description name type]a
   @update_fields ~w[name address_description]a
-  @required_fields ~w[name address type]a
+  @required_fields ~w[name type]a
 
   # This list is based on the list of TLDs from the IANA but only contains
   # all the country zones and most common generic zones.
@@ -36,7 +36,7 @@ defmodule Domain.Resources.Resource.Changeset do
     |> validate_required(@required_fields)
     |> put_change(:account_id, account.id)
     |> update_change(:address, &String.trim/1)
-    |> validate_address()
+    |> validate_address(account)
     |> cast_assoc(:connections,
       with: &Connection.Changeset.changeset(account.id, &1, &2, subject),
       required: true
@@ -49,25 +49,36 @@ defmodule Domain.Resources.Resource.Changeset do
     |> cast(attrs, @fields)
     |> changeset()
     |> validate_required(@required_fields)
-    |> validate_address()
+    |> validate_address(account)
+    |> put_change(:account_id, account.id)
+    |> put_change(:created_by, :system)
     |> cast_assoc(:connections,
       with: &Connection.Changeset.changeset(account.id, &1, &2)
     )
   end
 
-  defp validate_address(changeset) do
+  defp validate_address(changeset, account) do
     if has_errors?(changeset, :type) do
       changeset
     else
       case fetch_field(changeset, :type) do
         {_data_or_changes, :dns} ->
-          validate_dns_address(changeset)
+          changeset
+          |> validate_required(:address)
+          |> validate_dns_address()
 
         {_data_or_changes, :cidr} ->
-          validate_cidr_address(changeset)
+          changeset
+          |> validate_required(:address)
+          |> validate_cidr_address(account)
 
         {_data_or_changes, :ip} ->
-          validate_ip_address(changeset)
+          changeset
+          |> validate_required(:address)
+          |> validate_ip_address()
+
+        {_data_or_changes, :internet} ->
+          put_change(changeset, :address, nil)
 
         _other ->
           changeset
@@ -110,11 +121,18 @@ defmodule Domain.Resources.Resource.Changeset do
     end)
   end
 
-  defp validate_cidr_address(changeset) do
+  defp validate_cidr_address(changeset, account) do
+    internet_resource_message =
+      if Accounts.internet_resource_enabled?(account) do
+        "please use the Internet resource to route all traffic through Firezone instead"
+      else
+        "routing all traffic through Firezone is available on paid plans using Internet resource"
+      end
+
     changeset
     |> validate_and_normalize_cidr(:address)
     |> validate_not_in_cidr(:address, %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 32},
-      message: "cannot contain all IPv4 addresses"
+      message: internet_resource_message
     )
     |> validate_not_in_cidr(:address, %Postgrex.INET{address: {127, 0, 0, 0}, netmask: 8},
       message: "cannot contain loopback addresses"
@@ -125,7 +143,7 @@ defmodule Domain.Resources.Resource.Changeset do
         address: {0, 0, 0, 0, 0, 0, 0, 0},
         netmask: 128
       },
-      message: "cannot contain all IPv6 addresses"
+      message: internet_resource_message
     )
     |> validate_not_in_cidr(
       :address,
