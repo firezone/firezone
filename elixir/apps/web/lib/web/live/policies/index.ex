@@ -15,9 +15,7 @@ defmodule Web.Policies.Index do
         sortable_fields: [],
         hide_filters: [
           :actor_group_id,
-          :actor_group_name,
-          :resource_id,
-          :resource_name
+          :resource_id
         ],
         callback: &handle_policies_update!/2
       )

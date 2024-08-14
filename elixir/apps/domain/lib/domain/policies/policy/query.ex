@@ -126,18 +126,6 @@ defmodule Domain.Policies.Policy.Query do
         fun: &filter_by_actor_group_id/2
       },
       %Domain.Repo.Filter{
-        name: :actor_group_name,
-        title: "Actor Group Name",
-        type: {:string, :websearch},
-        fun: &filter_by_actor_group_name/2
-      },
-      %Domain.Repo.Filter{
-        name: :resource_name,
-        title: "Resource Name",
-        type: {:string, :websearch},
-        fun: &filter_by_resource_name/2
-      },
-      %Domain.Repo.Filter{
         name: :group_or_resource_name,
         title: "Group Name or Resource Name",
         type: {:string, :websearch},
@@ -166,36 +154,6 @@ defmodule Domain.Policies.Policy.Query do
 
   def filter_by_actor_group_id(queryable, actor_group_id) do
     {queryable, dynamic([policies: policies], policies.actor_group_id == ^actor_group_id)}
-  end
-
-  def filter_by_actor_group_name(queryable, actor_group_name) do
-    queryable =
-      with_named_binding(queryable, :actor_group, fn queryable, binding ->
-        join(queryable, :inner, [policies: policies], actor_group in assoc(policies, ^binding),
-          as: ^binding
-        )
-      end)
-
-    {queryable,
-     dynamic(
-       [actor_group: actor_group],
-       ilike(actor_group.name, ^"%#{actor_group_name}%")
-     )}
-  end
-
-  def filter_by_resource_name(queryable, resource_name) do
-    queryable =
-      with_named_binding(queryable, :resource, fn queryable, binding ->
-        join(queryable, :inner, [policies: policies], resource in assoc(policies, ^binding),
-          as: ^binding
-        )
-      end)
-
-    {queryable,
-     dynamic(
-       [resource: resource],
-       ilike(resource.name, ^"%#{resource_name}%")
-     )}
   end
 
   def filter_by_group_or_resource_name(queryable, name) do
