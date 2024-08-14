@@ -9,8 +9,11 @@ export default function Apple() {
       href="https://apps.apple.com/us/app/firezone/id6443661826"
       title="macOS / iOS"
     >
-      {/* <Entry version="1.1.5" date={new Date(TODO)}>
+      {/* <Entry version="(TODO)" date={new Date(TODO)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6186">
+            macOS: Adds the ability to mark Resources as favorites.
+          </ChangeItem>
         </ul>
       </Entry> */}
       <Entry version="1.1.5" date={new Date("2024-08-13")}>
