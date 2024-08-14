@@ -131,7 +131,7 @@ defmodule Web.Settings.Billing do
                 <%= @active_users_count %> used
               </span>
               / <%= @account.limits.monthly_active_users_count %> allowed
-              <p class="text-xs">users with at least one device signed-in within last month</p>
+              <p class="text-xs">Users that have signed in from a device within the last month</p>
             </:value>
           </.vertical_table_row>
 

@@ -239,7 +239,7 @@ defmodule Web.Resources.Show do
                 >
                   Add a policy
                 </.link>
-                to grant access to a resource.
+                to grant access to this Resource.
               </div>
             </div>
           </:empty>

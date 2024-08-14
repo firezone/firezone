@@ -99,7 +99,7 @@ defmodule Web.Policies.Index do
                 <.link class={[link_style()]} navigate={~p"/#{@account}/policies/new"}>
                   Add a policy
                 </.link>
-                to grant access to a resource.
+                to grant access to Resources.
               </div>
             </div>
           </:empty>

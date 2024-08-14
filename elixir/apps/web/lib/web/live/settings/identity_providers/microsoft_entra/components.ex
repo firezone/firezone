@@ -96,6 +96,16 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Components do
                   </p>
                 </div>
               </.inputs_for>
+
+              <p class="text-sm text-neutral-500">
+                <strong>Note:</strong>
+                Only active users count towards your billing limits.
+                See your
+                <.link navigate={~p"/#{@account}/settings/billing"} class={link_style()}>
+                  billing page
+                </.link>
+                for more information.
+              </p>
             </div>
 
             <.submit_button>

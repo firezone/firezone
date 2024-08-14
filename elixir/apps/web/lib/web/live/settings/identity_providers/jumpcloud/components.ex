@@ -83,16 +83,24 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Components do
                   </p>
                 </div>
 
-                <div>
-                  <.input
-                    type="hidden"
-                    label="Discovery Document URI"
-                    autocomplete="off"
-                    field={adapter_config_form[:discovery_document_uri]}
-                    value="https://oauth.id.jumpcloud.com/.well-known/openid-configuration"
-                  />
-                </div>
+                <.input
+                  type="hidden"
+                  label="Discovery Document URI"
+                  autocomplete="off"
+                  field={adapter_config_form[:discovery_document_uri]}
+                  value="https://oauth.id.jumpcloud.com/.well-known/openid-configuration"
+                />
               </.inputs_for>
+
+              <p class="text-sm text-neutral-500">
+                <strong>Note:</strong>
+                Only active users count towards your billing limits.
+                See your
+                <.link navigate={~p"/#{@account}/settings/billing"} class={link_style()}>
+                  billing page
+                </.link>
+                for more information.
+              </p>
             </div>
 
             <.submit_button>
