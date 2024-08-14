@@ -12,7 +12,7 @@ export default function Apple() {
       {/* <Entry version="(TODO)" date={new Date(TODO)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6186">
-            macOS: Adds the ability to mark Resources as favorites.
+            Adds the ability to mark Resources as favorites.
           </ChangeItem>
         </ul>
       </Entry> */}
