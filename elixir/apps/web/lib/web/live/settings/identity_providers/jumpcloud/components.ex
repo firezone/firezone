@@ -83,15 +83,13 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Components do
                   </p>
                 </div>
 
-                <div class="hidden">
-                  <.input
-                    type="hidden"
-                    label="Discovery Document URI"
-                    autocomplete="off"
-                    field={adapter_config_form[:discovery_document_uri]}
-                    value="https://oauth.id.jumpcloud.com/.well-known/openid-configuration"
-                  />
-                </div>
+                <.input
+                  type="hidden"
+                  label="Discovery Document URI"
+                  autocomplete="off"
+                  field={adapter_config_form[:discovery_document_uri]}
+                  value="https://oauth.id.jumpcloud.com/.well-known/openid-configuration"
+                />
               </.inputs_for>
 
               <p class="text-sm text-neutral-500">
