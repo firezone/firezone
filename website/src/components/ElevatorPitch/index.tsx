@@ -48,7 +48,7 @@ export default function ElevatorPitch() {
   const OptionButton = ({ title, desc, icon, index }: OptionButtonProps) => {
     return (
       <button
-        className={`flex flex-col lg:flex-row lg:w-full pointer-events-none rounded-xl
+        className={`flex flex-col lg:flex-row lg:w-full pointer-events-none
           items-start lg:items-center p-0 gap-4 border-[1px] justify-center
           lg:justify-start transition duration-200 ease-in-out
         ${
@@ -60,7 +60,7 @@ export default function ElevatorPitch() {
       >
         {icon}
         <div>
-          <p className="text-neutral-900 font-semibold text-lg text-left mb-1.5">
+          <p className="text-neutral-900 font-semibold text-lg text-left mb-0">
             {title}
           </p>
           <p className="text-neutral-800 text-left text-md mr-4">{desc}</p>
@@ -78,7 +78,7 @@ export default function ElevatorPitch() {
           </h6>
           <div className="mb-2 text-3xl md:text-4xl lg:text-5xl ">
             <h3
-              className={`leading-tight text-pretty text-left tracking-tight font-bold inline-block ${manrope.className}`}
+              className={`leading-none text-pretty text-left tracking-tight font-bold inline-block ${manrope.className}`}
             >
               Supercharge your workforce
               <span className="text-primary-450"> in minutes.</span>

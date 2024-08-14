@@ -37,6 +37,7 @@ import { manrope } from "@/lib/fonts";
 import "@/styles/hero.css";
 import FeatureCards from "@/components/FeatureCards";
 import SingleFeature from "@/components/SingleFeature";
+import BlobCards from "@/components/BlobCards";
 
 export const metadata: Metadata = {
   title: "Firezone: Zero trust access that scales",
@@ -113,6 +114,9 @@ export default function Page() {
         </div>
         <div className="py-8 md:py-12">
           <FeatureCards />
+        </div>
+        <div className="py-8 md:py-12">
+          <BlobCards />
         </div>
       </section>
 
