@@ -11,7 +11,7 @@ use firezone_bin_shared::{
     TunDeviceManager, TOKEN_ENV_KEY,
 };
 use firezone_headless_client::{
-    device_id, signals, CallbackHandler, CliCommon, DnsController, InternalServerMsg, IpcServerMsg,
+    device_id, signals, CallbackHandler, CliCommon, ConnlibMsg, DnsController,
 };
 use futures::{FutureExt as _, StreamExt as _};
 use phoenix_channel::PhoenixChannel;
@@ -252,18 +252,15 @@ fn main() -> Result<()> {
 
             match cb {
                 // TODO: Headless Client shouldn't be using messages labelled `Ipc`
-                InternalServerMsg::Ipc(IpcServerMsg::OnDisconnect {
+                ConnlibMsg::OnDisconnect {
                     error_msg,
                     is_authentication_error: _,
-                }) => break Err(anyhow!(error_msg).context("Firezone disconnected")),
-                InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(_)) => {
+                } => break Err(anyhow!(error_msg).context("Firezone disconnected")),
+                ConnlibMsg::OnUpdateResources(_) => {
                     // On every Resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                     dns_controller.flush()?;
                 }
-                InternalServerMsg::Ipc(IpcServerMsg::TerminatingGracefully) => unimplemented!(
-                    "The standalone Client does not send `TerminatingGracefully` messages"
-                ),
-                InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
+                ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                     tun_device.set_ips(ipv4, ipv6).await?;
                     dns_controller.set_dns(dns).await?;
                     // `on_set_interface_config` is guaranteed to be called when the tunnel is completely ready
@@ -278,7 +275,7 @@ fn main() -> Result<()> {
                         break Ok(());
                     }
                 }
-                InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 } => {
+                ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                     tun_device.set_routes(ipv4, ipv6).await?;
                 }
             }
