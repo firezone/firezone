@@ -904,6 +904,13 @@ defmodule Web.CoreComponents do
     """
   end
 
+  def created_by(%{schema: %{created_by: :actor}} = assigns) do
+    ~H"""
+    <.relative_datetime datetime={@schema.inserted_at} /> by
+    <.actor_link account={@account} actor={@schema.created_by_actor} />
+    """
+  end
+
   def created_by(%{schema: %{created_by: :identity}} = assigns) do
     ~H"""
     <.relative_datetime datetime={@schema.inserted_at} /> by
@@ -925,6 +932,25 @@ defmodule Web.CoreComponents do
     >
       <%= @schema.provider.name %>
     </.link> sync
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :actor, :any, required: true
+
+  def actor_link(%{actor: %Domain.Actors.Actor{type: :api_client}} = assigns) do
+    ~H"""
+    <.link class={link_style()} navigate={~p"/#{@account}/settings/api_clients/#{@actor}"}>
+      <%= assigns.actor.name %>
+    </.link>
+    """
+  end
+
+  def actor_link(assigns) do
+    ~H"""
+    <.link class={link_style()} navigate={~p"/#{@account}/actors/#{@actor}"}>
+      <%= assigns.actor.name %>
+    </.link>
     """
   end
 
@@ -1246,12 +1272,6 @@ defmodule Web.CoreComponents do
   end
 
   def provider_icon(%{adapter: :userpass} = assigns) do
-    ~H"""
-    <.icon name="hero-key" {@rest} />
-    """
-  end
-
-  def provider_icon(%{adapter: :temp_account} = assigns) do
     ~H"""
     <.icon name="hero-key" {@rest} />
     """

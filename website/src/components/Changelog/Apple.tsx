@@ -11,9 +11,19 @@ export default function Apple() {
     >
       {/* <Entry version="1.1.5" date={new Date(TODO)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-        TODO
         </ul>
       </Entry> */}
+      <Entry version="1.1.5" date={new Date("2024-08-13")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6276">
+            Fixes a bug where relayed connections failed to establish after an
+            idle period.
+          </ChangeItem>
+          <ChangeItem pull="6277">
+            Fixes a bug where restrictive NATs caused connectivity problems.
+          </ChangeItem>
+        </ul>
+      </Entry>
       <Entry version="1.1.4" date={new Date("2024-08-10")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6181">

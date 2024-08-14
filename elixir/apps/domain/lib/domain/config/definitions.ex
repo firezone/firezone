@@ -101,7 +101,6 @@ defmodule Domain.Config.Definitions do
         * `openid_connect` is used to authenticate users via OpenID Connect, this is recommended for production use;
         * `email` is used to authenticate users via sign in tokens sent to the email;
         * `token` is used to authenticate service accounts using an API token;
-        * `temp_account` is used to authenticate users with a password, only used for Launch HN;
         * `userpass` is used to authenticate users with username and password, should be used
         with extreme care and is not recommended for production use.
        """,
@@ -459,11 +458,9 @@ defmodule Domain.Config.Definitions do
       okta
       jumpcloud
       userpass
-      temp_account
       token
     ]a)}},
-    default:
-      ~w[email openid_connect google_workspace microsoft_entra okta jumpcloud token temp_account]a
+    default: ~w[email openid_connect google_workspace microsoft_entra okta jumpcloud token]a
   )
 
   ##############################################
@@ -687,11 +684,6 @@ defmodule Domain.Config.Definitions do
   Boolean flag to turn API Client UI functionality on/off for all accounts.
   """
   defconfig(:feature_rest_api_enabled, :boolean, default: false)
-
-  @doc """
-  Boolean flag to turn 'Try Firezone' / temporary accounts functionality on/off
-  """
-  defconfig(:feature_temp_accounts, :boolean, default: false)
 
   ##############################################
   ## Analytics

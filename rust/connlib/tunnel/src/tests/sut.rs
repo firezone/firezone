@@ -304,7 +304,7 @@ impl StateMachineTest for TunnelTest {
                 state.relays = online; // Override all relays.
             }
             Transition::Idle => {
-                const IDLE_DURATION: Duration = Duration::from_secs(5 * 60);
+                const IDLE_DURATION: Duration = Duration::from_secs(6 * 60); // Ensure idling twice in a row puts us in the 10-15 minute window where TURN data channels are cooling down.
                 let cut_off = state.flux_capacitor.now::<Instant>() + IDLE_DURATION;
 
                 while state.flux_capacitor.now::<Instant>() <= cut_off {

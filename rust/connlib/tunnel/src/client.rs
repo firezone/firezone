@@ -18,7 +18,7 @@ use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
-use crate::utils::{self, earliest, turn, Candidates};
+use crate::utils::{self, earliest, turn};
 use crate::{ClientEvent, ClientTunnel, Tun};
 use domain::base::Message;
 use secrecy::{ExposeSecret as _, Secret};
@@ -868,8 +868,8 @@ impl ClientState {
 
     fn drain_node_events(&mut self) {
         let mut resources_changed = false; // Track this separately to batch together `ResourcesChanged` events.
-        let mut added_ice_candidates = BTreeMap::<GatewayId, Candidates>::default();
-        let mut removed_ice_candidates = BTreeMap::<GatewayId, Candidates>::default();
+        let mut added_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
+        let mut removed_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -884,7 +884,7 @@ impl ClientState {
                     added_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .push(candidate);
+                        .insert(candidate);
                 }
                 snownet::Event::InvalidateIceCandidate {
                     connection,
@@ -893,7 +893,7 @@ impl ClientState {
                     removed_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .push(candidate);
+                        .insert(candidate);
                 }
                 snownet::Event::ConnectionEstablished(id) => {
                     self.update_site_status_by_gateway(&id, Status::Online);
@@ -913,7 +913,7 @@ impl ClientState {
             self.buffered_events
                 .push_back(ClientEvent::AddedIceCandidates {
                     conn_id,
-                    candidates: candidates.serialize(),
+                    candidates,
                 })
         }
 
@@ -921,7 +921,7 @@ impl ClientState {
             self.buffered_events
                 .push_back(ClientEvent::RemovedIceCandidates {
                     conn_id,
-                    candidates: candidates.serialize(),
+                    candidates,
                 })
         }
     }
@@ -1014,13 +1014,10 @@ impl ClientState {
         }
 
         let name = new_resource.name();
-        let address = new_resource.address_string();
+        let address = new_resource.address_string().map(tracing::field::display);
         let sites = new_resource.sites_string();
 
-        match address {
-            Some(address) => tracing::info!(%name, %address, %sites, "Activating resource"),
-            None => tracing::info!(%name, %sites, "Activating resource"),
-        }
+        tracing::info!(%name, address, %sites, "Activating resource");
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
@@ -1041,13 +1038,10 @@ impl ClientState {
         }
 
         let name = resource.name();
-        let address = resource.address_string();
+        let address = resource.address_string().map(tracing::field::display);
         let sites = resource.sites_string();
 
-        match address {
-            Some(address) => tracing::info!(%name, %address, %sites, "Deactivating resource"),
-            None => tracing::info!(%name, %sites, "Deactivating resource"),
-        }
+        tracing::info!(%name, address, %sites, "Deactivating resource");
 
         self.awaiting_connection_details.remove(&id);
 

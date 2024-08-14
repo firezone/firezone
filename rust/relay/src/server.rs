@@ -17,6 +17,7 @@ use opentelemetry::metrics::{Counter, UpDownCounter};
 use opentelemetry::KeyValue;
 use rand::Rng;
 use secrecy::SecretString;
+use smallvec::SmallVec;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
@@ -862,6 +863,7 @@ where
     fn send_message(&mut self, message: Message<Attribute>, recipient: ClientSocket) {
         let method = message.method();
         let class = message.class();
+        let error_code = message.get_attribute::<ErrorCode>().map(|e| e.code());
         tracing::trace!(target: "relay",  method = %message.method(), class = %message.class(), "Sending message");
 
         let Ok(bytes) = self.encoder.encode_into_bytes(message) else {
@@ -890,13 +892,18 @@ where
             CREATE_PERMISSION => "createpermission",
             _ => return,
         };
-        self.responses_counter.add(
-            1,
-            &[
-                KeyValue::new("response_class", response_class),
-                KeyValue::new("message_type", message_type),
-            ],
-        );
+        let error_code = error_code.map(|c| opentelemetry::Value::from(c as i64));
+
+        // Use a `SmallVec` to avoid heap-allocations when collecting metrics.
+        let mut attributes = SmallVec::<[KeyValue; 3]>::with_capacity(3);
+        attributes.push(KeyValue::new("response_class", response_class));
+        attributes.push(KeyValue::new("message_type", message_type));
+
+        if let Some(error_code) = error_code {
+            attributes.push(KeyValue::new("error_code", error_code));
+        }
+
+        self.responses_counter.add(1, &attributes);
     }
 
     fn delete_allocation(&mut self, port: AllocationPort) {
@@ -1082,6 +1089,7 @@ struct Channel {
 impl Channel {
     fn refresh(&mut self, now: Instant) {
         self.expiry = now + CHANNEL_BINDING_DURATION;
+        self.bound = true;
     }
 
     fn is_expired(&self, now: Instant) -> bool {
