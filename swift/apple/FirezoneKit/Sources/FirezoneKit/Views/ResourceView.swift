@@ -68,6 +68,22 @@ struct ResourceView: View {
               }
           }
         }
+
+        Button(action: {}) {
+          HStack {
+            Image(systemName: "star.fill")
+            Text("Add to favorites")
+            Spacer()
+          }
+        }
+
+        Button(action: {}) {
+          HStack {
+            Image(systemName: "star")
+            Text("Remove from favorites")
+            Spacer()
+          }
+        }
       }
 
       if let site = resource.sites.first {
