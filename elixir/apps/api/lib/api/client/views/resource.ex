@@ -6,6 +6,18 @@ defmodule API.Client.Views.Resource do
     Enum.map(resources, &render/1)
   end
 
+  def render(%Resources.Resource{type: :internet} = resource) do
+    %{
+      id: resource.id,
+      type: :internet,
+      gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
+      can_be_disabled:
+        Enum.any?(resource.authorized_by_policies, fn policy ->
+          policy.options.allow_clients_to_bypass
+        end)
+    }
+  end
+
   def render(%Resources.Resource{type: :ip} = resource) do
     {:ok, inet} = Domain.Types.IP.cast(resource.address)
     netmask = Domain.Types.CIDR.max_netmask(inet)
