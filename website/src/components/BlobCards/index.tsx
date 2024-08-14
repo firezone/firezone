@@ -7,7 +7,7 @@ export default function BlobCards() {
   return (
     <div className="max-w-screen-xl flex flex-col items-center mx-auto">
       <h3
-        className={` text-3xl md:text-4xl lg:text-5xl leading-none tracking-tight font-bold text-balance text-center my-2 max-w-[70%] ${manrope.className}`}
+        className={` text-3xl md:text-4xl lg:text-5xl leading-none tracking-tight font-bold text-balance text-center my-2 lg:max-w-[70%] ${manrope.className}`}
       >
         Protect your workforce without the tedious configuration.
       </h3>
