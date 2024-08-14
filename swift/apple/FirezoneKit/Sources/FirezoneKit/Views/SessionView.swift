@@ -71,9 +71,11 @@ struct SessionView: View {
         if resources.isEmpty {
           Text("No Resources. Contact your admin to be granted access.")
         } else {
-          List(resources) { resource in
-            HStack {
-              NavigationLink { ResourceView(resource: resource) }
+          List {
+            Section(header: Text("Favorites")) {
+              ForEach(resources.filter { $0.id.starts(with: "6") }) { resource in
+                HStack {
+                  NavigationLink { ResourceView(resource: resource) }
                 label: {
                   HStack {
                     Text(resource.name)
@@ -89,6 +91,31 @@ struct SessionView: View {
                   }
                 }
                 .navigationTitle("All Resources")
+                }
+              }
+            }
+
+            Section(header: Text("Other Resources")) {
+              ForEach(resources.filter { !$0.id.starts(with: "6") }) { resource in
+                HStack {
+                  NavigationLink { ResourceView(resource: resource) }
+                label: {
+                  HStack {
+                    Text(resource.name)
+                    if resource.canToggle {
+                      Spacer()
+                      Toggle("Enabled", isOn: Binding<Bool>(
+                        get: { model.isResourceEnabled(resource.id) },
+                        set: { newValue in
+                          model.store.toggleResourceDisabled(resource: resource.id, enabled: newValue)
+                        }
+                      )).labelsHidden()
+                    }
+                  }
+                }
+                .navigationTitle("All Resources")
+                }
+              }
             }
           }
 
