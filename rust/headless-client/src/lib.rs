@@ -20,6 +20,7 @@ use tokio::sync::mpsc;
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{fmt, layer::SubscriberExt as _, EnvFilter, Layer as _, Registry};
 
+mod clear_logs;
 /// Generate a persistent device ID, stores it to disk, and reads it back.
 pub mod device_id;
 // Pub because the GUI reads the system resolvers
@@ -30,9 +31,10 @@ pub mod known_dirs;
 pub mod signals;
 pub mod uptime;
 
+pub use clear_logs::clear_logs;
+pub use dns_control::DnsController;
 pub use ipc_service::{ipc, run_only_ipc_service, ClientMsg as IpcClientMsg};
 
-pub use dns_control::DnsController;
 use ip_network::{Ipv4Network, Ipv6Network};
 
 /// Only used on Linux
@@ -59,23 +61,34 @@ pub struct CliCommon {
     pub max_partition_time: Option<humantime::Duration>,
 }
 
-/// Messages we get from connlib, including ones that aren't sent to IPC clients
-pub enum InternalServerMsg {
-    Ipc(IpcServerMsg),
+/// Messages that connlib can produce and send to the headless Client, IPC service, or GUI process.
+///
+/// i.e. callbacks
+// The names are CamelCase versions of the connlib callbacks.
+#[allow(clippy::enum_variant_names)]
+pub enum ConnlibMsg {
+    OnDisconnect {
+        error_msg: String,
+        is_authentication_error: bool,
+    },
+    /// Use this as `TunnelReady`, per `callbacks.rs`
     OnSetInterfaceConfig {
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
         dns: Vec<IpAddr>,
     },
+    OnUpdateResources(Vec<callbacks::ResourceDescription>),
     OnUpdateRoutes {
         ipv4: Vec<Ipv4Network>,
         ipv6: Vec<Ipv6Network>,
     },
 }
 
-/// Messages that we can send to IPC clients
+/// Messages that end up in the GUI, either from connlib or from the IPC service.
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum IpcServerMsg {
+    /// The IPC service finished clearing its log dir.
+    ClearedLogs(Result<(), String>),
     OnDisconnect {
         error_msg: String,
         is_authentication_error: bool,
@@ -91,7 +104,7 @@ pub enum IpcServerMsg {
 
 #[derive(Clone)]
 pub struct CallbackHandler {
-    pub cb_tx: mpsc::Sender<InternalServerMsg>,
+    pub cb_tx: mpsc::Sender<ConnlibMsg>,
 }
 
 impl Callbacks for CallbackHandler {
@@ -104,31 +117,29 @@ impl Callbacks for CallbackHandler {
             false
         };
         self.cb_tx
-            .try_send(InternalServerMsg::Ipc(IpcServerMsg::OnDisconnect {
+            .try_send(ConnlibMsg::OnDisconnect {
                 error_msg: error.to_string(),
                 is_authentication_error,
-            }))
+            })
             .expect("should be able to send OnDisconnect");
     }
 
     fn on_set_interface_config(&self, ipv4: Ipv4Addr, ipv6: Ipv6Addr, dns: Vec<IpAddr>) {
         self.cb_tx
-            .try_send(InternalServerMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
+            .try_send(ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
             .expect("Should be able to send OnSetInterfaceConfig");
     }
 
     fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
         tracing::debug!(len = resources.len(), "New resource list");
         self.cb_tx
-            .try_send(InternalServerMsg::Ipc(IpcServerMsg::OnUpdateResources(
-                resources,
-            )))
+            .try_send(ConnlibMsg::OnUpdateResources(resources))
             .expect("Should be able to send OnUpdateResources");
     }
 
     fn on_update_routes(&self, ipv4: Vec<Ipv4Network>, ipv6: Vec<Ipv6Network>) {
         self.cb_tx
-            .try_send(InternalServerMsg::OnUpdateRoutes { ipv4, ipv6 })
+            .try_send(ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 })
             .expect("Should be able to send messages");
     }
 }
@@ -152,7 +163,7 @@ mod tests {
     // Make sure it's okay to store a bunch of these to mitigate #5880
     #[test]
     fn callback_msg_size() {
-        assert_eq!(std::mem::size_of::<InternalServerMsg>(), 56)
+        assert_eq!(std::mem::size_of::<ConnlibMsg>(), 56)
     }
 
     #[test]
