@@ -18,7 +18,11 @@ import SwiftUI
 // https://developer.apple.com/documentation/swiftui/menubarextra
 public final class MenuBar: NSObject, ObservableObject {
   private var statusItem: NSStatusItem
-  private var resources: [ViewResource]?
+  private var resources: [ViewResource] = []
+
+  // Wish these could be `[String]` but diffing between different types is tricky
+  private var lastShownFavorites: [Resource] = []
+  private var lastShownOthers: [Resource] = []
   private var favorites: Set<String> = Favorites.load()
   private var cancellables: Set<AnyCancellable> = []
 
@@ -63,14 +67,14 @@ public final class MenuBar: NSObject, ObservableObject {
           model.store.beginUpdatingResources { newResources in
               let newResources = newResources.map { base in ViewResource(base: base, isFavorite: self.favorites.contains(base.id)) }
               // Handle resource changes
-              self.populateResourceMenu(newResources)
+              self.populateResourceMenus(newResources)
               self.handleTunnelStatusOrResourcesChanged(status: status, resources: newResources)
               self.resources = newResources
           }
         } else {
           model.store.endUpdatingResources()
-          populateResourceMenu(nil)
-          resources = nil
+          populateResourceMenus([])
+          resources = []
         }
 
         // Handle status changes
@@ -117,6 +121,13 @@ public final class MenuBar: NSObject, ObservableObject {
     target: self
   )
   private lazy var resourcesSeparatorMenuItem = NSMenuItem.separator()
+  private var otherResourcesMenu: NSMenu = NSMenu()
+  private lazy var otherResourcesMenuItem: NSMenuItem = {
+    let menuItem = NSMenuItem(title: "Other Resources", action: nil, keyEquivalent: "")
+    menuItem.submenu = otherResourcesMenu
+    return menuItem
+  }()
+  private lazy var otherResourcesSeparatorMenuItem = NSMenuItem.separator()
   private lazy var aboutMenuItem: NSMenuItem = {
     let menuItem = createMenuItem(
       menu,
@@ -192,6 +203,8 @@ public final class MenuBar: NSObject, ObservableObject {
     menu.addItem(resourcesUnavailableMenuItem)
     menu.addItem(resourcesUnavailableReasonMenuItem)
     menu.addItem(resourcesSeparatorMenuItem)
+    menu.addItem(otherResourcesMenuItem)
+    menu.addItem(otherResourcesSeparatorMenuItem)
 
     menu.addItem(aboutMenuItem)
     menu.addItem(adminPortalMenuItem)
@@ -395,22 +408,62 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  private func populateResourceMenu(_ newResources: [ViewResource]?) {
-    // the menu contains other things besides resources, so update it in-place
-    let diff = (newResources ?? []).difference(
-      from: resources ?? [],
+  private func populateResourceMenus(_ newResources: [ViewResource]) {
+    // If we have no favorites, then everything is a favorite
+    let hasAnyFavorites = newResources.contains { self.favorites.contains($0.base.id) }
+    let newFavorites = if (hasAnyFavorites) {
+      newResources.compactMap { if (self.favorites.contains($0.base.id)) { $0.base } else { nil } }
+    } else {
+      newResources.map { $0.base }
+    }
+    let newOthers: [Resource] = if hasAnyFavorites {
+      newResources.compactMap { if (self.favorites.contains($0.base.id)) { nil } else { $0.base } }
+    } else {
+      []
+    }
+
+    populateFavoriteResourcesMenu(newFavorites, hasAnyFavorites)
+    populateOtherResourcesMenu(newOthers)
+  }
+
+  private func populateFavoriteResourcesMenu(_ newFavorites: [Resource], _ hasAnyFavorites: Bool) {
+    // Update the menu in place so everything won't vanish if it's open when it updates
+    let diff = (newFavorites).difference(
+      from: lastShownFavorites,
       by: { $0 == $1 }
     )
     let index = menu.index(of: resourcesTitleMenuItem) + 1
     for change in diff {
       switch change {
       case .insert(let offset, let element, associatedWith: _):
-        let menuItem = createResourceMenuItem(resource: element)
+        let menuItem = createResourceMenuItem(resource: ViewResource(base: element, isFavorite: hasAnyFavorites))
         menu.insertItem(menuItem, at: index + offset)
       case .remove(let offset, element: _, associatedWith: _):
         menu.removeItem(at: index + offset)
       }
     }
+    lastShownFavorites = newFavorites
+  }
+
+  private func populateOtherResourcesMenu(_ newOthers: [Resource]) {
+    otherResourcesMenuItem.isHidden = newOthers.isEmpty
+    otherResourcesSeparatorMenuItem.isHidden = newOthers.isEmpty
+
+    // Update the menu in place so everything won't vanish if it's open when it updates
+    let diff = (newOthers).difference(
+      from: lastShownOthers,
+      by: { $0 == $1 }
+    )
+    for change in diff {
+      switch change {
+      case .insert(let offset, let element, associatedWith: _):
+        let menuItem = createResourceMenuItem(resource: ViewResource(base: element, isFavorite: false))
+        otherResourcesMenu.insertItem(menuItem, at: offset)
+      case .remove(let offset, element: _, associatedWith: _):
+        otherResourcesMenu.removeItem(at: offset)
+      }
+    }
+    lastShownOthers = newOthers
   }
 
   private func createResourceMenuItem(resource: ViewResource) -> NSMenuItem {
@@ -582,8 +635,6 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func setFavorited(id: String, favorited: Bool) {
-    guard let resources = self.resources else { return }
-
     favorites = if favorited {
       Favorites.add(id: id)
     } else {
@@ -592,9 +643,10 @@ public final class MenuBar: NSObject, ObservableObject {
     let newResources = resources.map { res in
       ViewResource(base: res.base, isFavorite: favorites.contains(res.base.id))
     }
-    // Handle resource changes
-    self.populateResourceMenu(newResources)
-    self.resources = newResources
+    // When the user clicks to add or remove a favorite, the menu will close anyway, so just recreate the whole menu.
+    // This avoids complex logic when changing in and out of the "nothing is favorited" special case
+    self.populateResourceMenus([])
+    self.populateResourceMenus(newResources)
   }
 
   private func copyToClipboard(_ string: String) {
