@@ -117,7 +117,12 @@ defmodule Web.Resources.Show do
               Address
             </:label>
             <:value>
-              <%= @resource.address %>
+              <span :if={@resource.type == :internet}>
+                0.0.0.0/0, ::/0
+              </span>
+              <span :if={@resource.type != :internet}>
+                <%= @resource.address %>
+              </span>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -125,14 +130,20 @@ defmodule Web.Resources.Show do
               Address Description
             </:label>
             <:value>
-              <%= if http_link?(@resource.address_description) do %>
-                <.link class={link_style()} navigate={@resource.address_description} target="_blank">
+              <span :if={@resource.type == :internet}>
+                Internet resources include all IPv4 and IPv6 addresses.
+              </span>
+
+              <span :if={@resource.type != :internet}>
+                <%= if http_link?(@resource.address_description) do %>
+                  <.link class={link_style()} navigate={@resource.address_description} target="_blank">
+                    <%= @resource.address_description %>
+                    <.icon name="hero-arrow-top-right-on-square" class="mb-3 w-3 h-3" />
+                  </.link>
+                <% else %>
                   <%= @resource.address_description %>
-                  <.icon name="hero-arrow-top-right-on-square" class="mb-3 w-3 h-3" />
-                </.link>
-              <% else %>
-                <%= @resource.address_description %>
-              <% end %>
+                <% end %>
+              </span>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -151,7 +162,7 @@ defmodule Web.Resources.Show do
                 </.badge>
               </.link>
               <span :if={@resource.gateway_groups == []}>
-                No linked gateways to display
+                No linked Sites to display
               </span>
             </:value>
           </.vertical_table_row>
@@ -306,7 +317,7 @@ defmodule Web.Resources.Show do
       </:content>
     </.section>
 
-    <.danger_zone :if={is_nil(@resource.deleted_at)}>
+    <.danger_zone :if={is_nil(@resource.deleted_at) and @resource.type != :internet}>
       <:action>
         <.button_with_confirmation
           id="delete_resource"
