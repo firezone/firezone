@@ -10,7 +10,7 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
-use firezone_headless_client::IpcServerMsg;
+use firezone_headless_client::{IpcClientMsg, IpcServerMsg};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     path::PathBuf,
@@ -301,11 +301,16 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
             stem,
         })
         .await
-        .context("Failed to send ExportLogs request")?;
+        .context("Failed to send `ExportLogs` request")?;
+    let (tx, rx) = oneshot::channel();
     ctlr_tx
-        .send(ControllerRequest::ClearLogs)
+        .send(ControllerRequest::ClearLogs(tx))
         .await
-        .context("Failed to send ClearLogs request")?;
+        .context("Failed to send `ClearLogs` request")?;
+    rx.await
+        .context("Failed to await `ClearLogs` result")?
+        .map_err(|s| anyhow!(s))
+        .context("`ClearLogs` failed")?;
 
     // Tray icon stress test
     let num_icon_cycles = 100;
@@ -420,8 +425,8 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 pub(crate) enum ControllerRequest {
     /// The GUI wants us to use these settings in-memory, they've already been saved to disk
     ApplySettings(AdvancedSettings),
-    /// Only used for smoke tests
-    ClearLogs,
+    /// Clear the GUI's logs and await the IPC service to clear its logs
+    ClearLogs(oneshot::Sender<Result<(), String>>),
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {
         path: PathBuf,
@@ -473,6 +478,7 @@ struct Controller {
     app: tauri::AppHandle,
     // Sign-in state with the portal / deep links
     auth: client::auth::Auth,
+    clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
     log_filter_reloader: logging::Reloader,
@@ -534,9 +540,16 @@ impl Controller {
                 // Refresh the menu in case the favorites were reset.
                 self.refresh_system_tray_menu()?;
             }
-            Req::ClearLogs => logging::clear_logs_inner()
-                .await
-                .context("Failed to clear logs")?,
+            Req::ClearLogs(completion_tx) => {
+                if self.clear_logs_callback.is_some() {
+                    tracing::error!("Can't clear logs, we're already waiting on another log-clearing operation");
+                }
+                if let Err(error) = logging::clear_gui_logs().await {
+                    tracing::error!(?error, "Failed to clear GUI logs");
+                }
+                self.ipc_client.send_msg(&IpcClientMsg::ClearLogs).await?;
+                self.clear_logs_callback = Some(completion_tx);
+            }
             Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
                 .await
                 .context("Failed to export logs to zip")?,
@@ -651,6 +664,15 @@ impl Controller {
 
     async fn handle_ipc(&mut self, msg: IpcServerMsg) -> Result<(), Error> {
         match msg {
+            IpcServerMsg::ClearedLogs(result) => {
+                let Some(tx) = self.clear_logs_callback.take() else {
+                    return Err(Error::Other(anyhow!("Can't handle `IpcClearedLogs` when there's no callback waiting for a `ClearLogs` result")));
+                };
+                tx.send(result).map_err(|_| {
+                    Error::Other(anyhow!("Couldn't send `ClearLogs` result to Tauri task"))
+                })?;
+                Ok(())
+            }
             IpcServerMsg::OnDisconnect {
                 error_msg,
                 is_authentication_error,
@@ -793,6 +815,7 @@ async fn run_controller(
         advanced_settings,
         app: app.clone(),
         auth: client::auth::Auth::new()?,
+        clear_logs_callback: None,
         ctlr_tx,
         ipc_client,
         log_filter_reloader,
