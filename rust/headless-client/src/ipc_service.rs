@@ -415,11 +415,13 @@ impl<'a> Handler<'a> {
                 .as_mut()
                 .context("No connlib session")?
                 .set_dns(v),
-            ClientMsg::SetDisabledResources(disabled_resources) => self
-                .connlib
-                .as_mut()
-                .context("No connlib session")?
-                .set_disabled_resources(disabled_resources),
+            ClientMsg::SetDisabledResources(disabled_resources) => {
+                self.connlib
+                    .as_mut()
+                    .context("No connlib session")?
+                    .set_disabled_resources(disabled_resources);
+                self.dns_controller.flush()?;
+            }
         }
         Ok(())
     }
