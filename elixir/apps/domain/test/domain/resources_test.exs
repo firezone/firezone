@@ -1027,7 +1027,7 @@ defmodule Domain.ResourcesTest do
       assert "cannot be in the CIDR fd00:2021:1111::/48" in errors_on(changeset).address
 
       internet_resource_message =
-        "routing all traffic through Firezone is available on paid plans using Internet resource"
+        "routing all traffic through Firezone is available on paid plans using the Internet Resource"
 
       attrs = %{"address" => "::/0", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
