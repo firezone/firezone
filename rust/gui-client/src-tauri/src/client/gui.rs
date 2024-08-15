@@ -625,6 +625,7 @@ impl Controller {
                 self.refresh_favorite_resources().await?;
             }
             Req::SystemTrayMenu(TrayMenuEvent::EnableResource(resource_id)) => {
+                dbg!(resource_id);
                 self.advanced_settings.disabled_resources.remove(&resource_id);
                 self.update_disabled_resources().await?;
             }
@@ -741,6 +742,8 @@ impl Controller {
     }
 
     async fn update_disabled_resources(&mut self) -> Result<()> {
+        settings::save(&self.advanced_settings).await?;
+
         let Status::TunnelReady { resources } = &self.status else {
             bail!("Tunnel is not ready");
         };
