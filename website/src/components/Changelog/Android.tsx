@@ -10,8 +10,11 @@ export default function Android() {
       title="Android"
     >
       {/*
-      <Entry version="1.1.7" date={new Date(todo)}>
+      <Entry version="1.2.0" date={new Date(todo)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="5901">
+            Implements glob-like matching of domains for DNS resources.
+          </ChangeItem>
         </ul>
       </Entry>
 	  */}
