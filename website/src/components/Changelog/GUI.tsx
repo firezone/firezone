@@ -13,7 +13,8 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This cannot be done when the issue's PR merges. */}
-      {/* <Entry version="1.2.0" date={new Date("Invalid date")}>
+      {/* 
+      <Entry version="1.2.0" date={new Date("Invalid date")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="5901">
             Implements glob-like matching of domains for DNS resources.
@@ -22,7 +23,8 @@ export default function GUI({ title }: { title: string }) {
             Fixes a bug where the "Clear Logs" button did not clear the IPC service logs.
           </ChangeItem>
         </ul>
-      </Entry>   */}
+      </Entry>
+      */}
       <Entry version="1.1.12" date={new Date("2024-08-13")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6226">
