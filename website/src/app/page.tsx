@@ -59,20 +59,19 @@ export default function Page() {
             Upgrade your VPN to zero-trust access
           </h1>
           <h3
-            className={
-              manrope.className + "my-4 text-xl text-center text-neutral-400"
+            className={"text-xl text-center text-neutral-400"
             }
           >
             Firezone is a fast, flexible VPN replacement built on WireGuard®
             that protects your most valuable resources without tedious
             configuration.
           </h3>
-          <div className="flex sm:flex-row flex-col-reverse items-center justify-center sm:gap-x-6 md:gap-x-12 mt-4 w-full">
+          <div className="flex sm:flex-row flex-col-reverse items-center justify-center sm:gap-x-6 md:gap-x-12 mt-10 w-full">
             <div className="flex items-center my-4 mr-4">
               <ActionLink
                 size="lg"
                 href="https://app.firezone.dev/sign_up"
-                color="neutral-50"
+                color="neutral-100"
                 transitionColor="primary-450"
               >
                 Get started for free

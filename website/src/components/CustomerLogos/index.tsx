@@ -68,8 +68,8 @@ export function CustomerLogosGrayscale() {
           <Image
             alt="double11 logo"
             src="/images/logos/cust-logo-double11-gray.svg"
-            width={70}
-            height={70}
+            width={55}
+            height={75}
           />
         </Link>
       </div>
@@ -130,8 +130,8 @@ export function CustomerLogosGrayscale() {
           <Image
             alt="double11 logo"
             src="/images/logos/cust-logo-double11-gray.svg"
-            width={70}
-            height={70}
+            width={55}
+            height={75}
           />
         </Link>
       </div>
