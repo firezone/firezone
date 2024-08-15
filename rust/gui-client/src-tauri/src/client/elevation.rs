@@ -1,4 +1,5 @@
-pub(crate) use imp::is_normal_user;
+use anyhow::Result;
+pub(crate) use imp::{gui_check, ipc_service_check};
 
 #[cfg(target_os = "linux")]
 mod imp {
@@ -6,13 +7,16 @@ mod imp {
     use anyhow::{Context as _, Result};
     use firezone_headless_client::FIREZONE_GROUP;
 
-    /// Returns true if we're running without root privileges
+    pub(crate) fn gui_check() -> Result<bool, Error> {
+        is_normal_user()
+    }
+
+    /// Returns true if we're running without root privileges, meaning the GUI can run
     ///
     /// Everything that needs root / admin powers happens in the IPC services,
     /// so for security and practicality reasons the GUIs must be non-root.
     /// (In Linux by default a root GUI app barely works at all)
-    pub(crate) fn is_normal_user() -> Result<bool, Error> {
-        // Must use `eprintln` here because `tracing` won't be initialized yet.
+    pub(crate) fn gui_check() -> Result<bool, Error> {
         let user = std::env::var("USER").context("USER env var should be set")?;
         if user == "root" {
             return Ok(false);
@@ -25,6 +29,12 @@ mod imp {
         }
 
         Ok(true)
+    }
+
+    /// Returns true if the IPC service can run properly
+    pub(crate) fn ipc_service_check() -> Result<bool> {
+        let user = std::env::var("USER").context("USER env var should be set")?;
+        user == "root"
     }
 
     fn firezone_group() -> Result<nix::unistd::Group> {
@@ -57,15 +67,18 @@ mod imp {
 
     // Returns true on Windows
     ///
-    /// On Windows, checking for elevation is complicated,
-    /// so it just always returns true. The Windows GUI does work correctly even if
-    /// elevated, so we should warn users that it doesn't need elevation, but it's
-    /// not a show-stopper if they accidentally "Run as admin".
+    /// On Windows, some users will run as admin, and the GUI does work correctly,
+    /// unlike on Linux where most distros don't like to mix root GUI apps with X11 / Wayland.
     #[allow(clippy::unnecessary_wraps)]
-    pub(crate) fn is_normal_user() -> Result<bool, Error> {
-        let token = ProcessToken::our_process().map_err(Error::Other)?;
-        let elevated = token.is_elevated().map_err(Error::Other)?;
-        Ok(!elevated)
+    pub(crate) fn gui_check() -> Result<bool, Error> {
+        true
+    }
+
+    /// Returns true if the IPC service can run properly
+    pub(crate) fn ipc_service_check() -> Result<bool> {
+        let token = ProcessToken::our_process()?;
+        let elevated = token.is_elevated()?;
+        Ok(elevated)
     }
 
     // https://stackoverflow.com/questions/8046097/how-to-check-if-a-process-has-the-administrative-rights/8196291#8196291
@@ -123,9 +136,10 @@ mod imp {
 
 #[cfg(test)]
 mod tests {
-    // Make sure it doesn't crash
+    // Make sure it doesn't panic
     #[test]
     fn is_normal_user() {
-        super::is_normal_user().unwrap();
+        super::gui_check().ok();
+        super::ipc_service_check().ok();
     }
 }
