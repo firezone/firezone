@@ -6,7 +6,7 @@ use bytecodec::DecodeExt;
 use secrecy::SecretString;
 use std::io;
 use std::time::Duration;
-use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, Nonce, Username};
+use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, Nonce, Software, Username};
 use stun_codec::rfc5389::errors::BadRequest;
 use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{
@@ -113,21 +113,33 @@ impl ClientMessage<'_> {
 #[derive(Debug)]
 pub struct Binding {
     transaction_id: TransactionId,
+    software: Option<Software>,
 }
 
 impl Binding {
     pub fn new(transaction_id: TransactionId) -> Self {
-        Self { transaction_id }
+        Self {
+            transaction_id,
+            software: None,
+        }
     }
 
     pub fn parse(message: &Message<Attribute>) -> Self {
         let transaction_id = message.transaction_id();
+        let software = message.get_attribute::<Software>().cloned();
 
-        Binding { transaction_id }
+        Binding {
+            transaction_id,
+            software,
+        }
     }
 
     pub fn transaction_id(&self) -> TransactionId {
         self.transaction_id
+    }
+
+    pub fn software(&self) -> Option<&Software> {
+        self.software.as_ref()
     }
 }
 
@@ -140,6 +152,7 @@ pub struct Allocate {
     nonce: Option<Nonce>,
     requested_address_family: Option<RequestedAddressFamily>,
     additional_address_family: Option<AdditionalAddressFamily>,
+    software: Option<Software>,
 }
 
 impl Allocate {
@@ -168,6 +181,7 @@ impl Allocate {
             nonce: Some(nonce),
             requested_address_family: None, // IPv4 is the default.
             additional_address_family: None,
+            software: None,
         }
     }
 
@@ -198,6 +212,7 @@ impl Allocate {
             nonce: Some(nonce),
             requested_address_family: Some(requested_address_family),
             additional_address_family: None,
+            software: None,
         }
     }
 
@@ -224,6 +239,7 @@ impl Allocate {
             nonce: None,
             requested_address_family: None,
             additional_address_family: None,
+            software: None,
         }
     }
 
@@ -275,6 +291,7 @@ impl Allocate {
         let username = message.get_attribute::<Username>().cloned();
         let requested_address_family = message.get_attribute::<RequestedAddressFamily>().cloned();
         let additional_address_family = message.get_attribute::<AdditionalAddressFamily>().cloned();
+        let software = message.get_attribute::<Software>().cloned();
 
         Ok(Allocate {
             transaction_id,
@@ -285,6 +302,7 @@ impl Allocate {
             nonce,
             requested_address_family,
             additional_address_family,
+            software,
         })
     }
 
@@ -319,6 +337,10 @@ impl Allocate {
     pub fn additional_address_family(&self) -> Option<&AdditionalAddressFamily> {
         self.additional_address_family.as_ref()
     }
+
+    pub fn software(&self) -> Option<&Software> {
+        self.software.as_ref()
+    }
 }
 
 pub struct Refresh {
@@ -327,6 +349,7 @@ pub struct Refresh {
     lifetime: Option<Lifetime>,
     username: Option<Username>,
     nonce: Option<Nonce>,
+    software: Option<Software>,
 }
 
 impl Refresh {
@@ -362,6 +385,7 @@ impl Refresh {
             lifetime,
             username: Some(username),
             nonce: Some(nonce),
+            software: None,
         }
     }
 
@@ -371,6 +395,7 @@ impl Refresh {
         let nonce = message.get_attribute::<Nonce>().cloned();
         let lifetime = message.get_attribute::<Lifetime>().cloned();
         let username = message.get_attribute::<Username>().cloned();
+        let software = message.get_attribute::<Software>().cloned();
 
         Refresh {
             transaction_id,
@@ -378,6 +403,7 @@ impl Refresh {
             lifetime,
             username,
             nonce,
+            software,
         }
     }
 
@@ -400,6 +426,10 @@ impl Refresh {
     pub fn nonce(&self) -> Option<&Nonce> {
         self.nonce.as_ref()
     }
+
+    pub fn software(&self) -> Option<&Software> {
+        self.software.as_ref()
+    }
 }
 
 pub struct ChannelBind {
@@ -409,6 +439,7 @@ pub struct ChannelBind {
     nonce: Option<Nonce>,
     xor_peer_address: XorPeerAddress,
     username: Option<Username>,
+    software: Option<Software>,
 }
 
 impl ChannelBind {
@@ -445,6 +476,7 @@ impl ChannelBind {
             xor_peer_address,
             username: Some(username),
             nonce: Some(nonce),
+            software: None,
         }
     }
 
@@ -461,6 +493,7 @@ impl ChannelBind {
             .get_attribute::<XorPeerAddress>()
             .ok_or(bad_request(message))?
             .clone();
+        let software = message.get_attribute::<Software>().cloned();
 
         Ok(ChannelBind {
             transaction_id,
@@ -469,6 +502,7 @@ impl ChannelBind {
             nonce,
             xor_peer_address,
             username,
+            software,
         })
     }
 
@@ -495,6 +529,10 @@ impl ChannelBind {
     pub fn nonce(&self) -> Option<&Nonce> {
         self.nonce.as_ref()
     }
+
+    pub fn software(&self) -> Option<&Software> {
+        self.software.as_ref()
+    }
 }
 
 pub struct CreatePermission {
@@ -502,6 +540,7 @@ pub struct CreatePermission {
     message_integrity: Option<MessageIntegrity>,
     username: Option<Username>,
     nonce: Option<Nonce>,
+    software: Option<Software>,
 }
 
 impl CreatePermission {
@@ -510,12 +549,14 @@ impl CreatePermission {
         let message_integrity = message.get_attribute::<MessageIntegrity>().cloned();
         let username = message.get_attribute::<Username>().cloned();
         let nonce = message.get_attribute::<Nonce>().cloned();
+        let software = message.get_attribute::<Software>().cloned();
 
         CreatePermission {
             transaction_id,
             message_integrity,
             username,
             nonce,
+            software,
         }
     }
 
@@ -533,6 +574,10 @@ impl CreatePermission {
 
     pub fn nonce(&self) -> Option<&Nonce> {
         self.nonce.as_ref()
+    }
+
+    pub fn software(&self) -> Option<&Software> {
+        self.software.as_ref()
     }
 }
 

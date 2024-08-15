@@ -8,6 +8,7 @@ use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
+use hex_display::HexDisplayExt;
 use ip_packet::{
     ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, MutableIpPacket, Packet as _,
 };
@@ -15,6 +16,7 @@ use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, SeedableRng};
 use secrecy::{ExposeSecret, Secret};
+use sha2::Digest;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::hash::Hash;
@@ -80,6 +82,7 @@ pub enum Client {}
 pub struct Node<T, TId, RId> {
     private_key: StaticSecret,
     public_key: PublicKey,
+    session_id: SessionId,
 
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
@@ -128,6 +131,7 @@ where
         let public_key = &(&private_key).into();
         Self {
             rng: StdRng::from_seed(seed), // TODO: Use this seed for private key too. Requires refactoring of how we generate the login-url because that one needs to know the public key.
+            session_id: SessionId::new(*public_key),
             private_key,
             public_key: *public_key,
             marker: Default::default(),
@@ -526,7 +530,14 @@ where
 
             self.allocations.insert(
                 *rid,
-                Allocation::new(*server, username, password.clone(), realm, now),
+                Allocation::new(
+                    *server,
+                    username,
+                    password.clone(),
+                    realm,
+                    now,
+                    self.session_id.clone(),
+                ),
             );
 
             tracing::info!(%rid, address = ?server, "Added new TURN server");
@@ -1821,4 +1832,26 @@ fn new_agent() -> IceAgent {
     agent.set_max_stun_rto(Duration::from_millis(1500));
 
     agent
+}
+
+/// A session ID is constant for as long as a [`Node`] is operational.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct SessionId([u8; 32]);
+
+impl SessionId {
+    /// Construct a new session ID by hashing the node's public key with a domain-separator.
+    fn new(key: PublicKey) -> Self {
+        Self(
+            sha2::Sha256::new_with_prefix(b"SESSION-ID")
+                .chain_update(key.as_bytes())
+                .finalize()
+                .into(),
+        )
+    }
+}
+
+impl fmt::Display for SessionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:X}", &self.0.hex())
+    }
 }

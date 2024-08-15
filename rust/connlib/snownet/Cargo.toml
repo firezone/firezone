@@ -14,6 +14,7 @@ ip-packet = { workspace = true }
 once_cell = "1.17.1"
 rand = "0.8"
 secrecy = { workspace = true }
+sha2 = "0.10.8"
 str0m = { workspace = true }
 stun_codec = "0.3.4"
 thiserror = "1"
