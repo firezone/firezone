@@ -1,6 +1,7 @@
 import Entry from "./Entry";
 import Entries from "./Entries";
 import Link from "next/link";
+import ChangeItem from "./ChangeItem";
 
 export default function Gateway() {
   const href = "/dl/firezone-gateway/:version/:arch";
@@ -9,17 +10,25 @@ export default function Gateway() {
   return (
     <Entries href={href} arches={arches} title="Gateway">
       {/*
-      <Entry version="1.1.X" date={new Date("2024-XX-XX")}>
+      <Entry version="1.2.0" date={new Date("2024-XX-XX")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="5901">
+            Implements glob-like matching of domains for DNS resources.
+          </ChangeItem>
+        </ul>
+      </Entry>
+      */}
+      <Entry version="1.1.5" date={new Date("2024-08-13")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6276">
-            Fixes a bug where relayed connections failed to establish after an idle period.
+            Fixes a bug where relayed connections failed to establish after an
+            idle period.
           </ChangeItem>
           <ChangeItem pull="6277">
             Fixes a bug where restrictive NATs caused connectivity problems.
           </ChangeItem>
         </ul>
       </Entry>
-      */}
       <Entry version="1.1.4" date={new Date("2024-08-08")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <li className="pl-2">

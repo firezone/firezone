@@ -10,21 +10,30 @@ export default function Headless() {
   return (
     <Entries href={href} arches={arches} title="Linux headless">
       {/*
-      <Entry version="1.1.7" date={new Date("Invalid date")}>
+      <Entry version="1.2.0" date={new Date(todo)}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="5901">
+            Implements glob-like matching of domains for DNS resources.
+          </ChangeItem>
+        </ul>
+      </Entry>
+      */}
+      <Entry version="1.1.7" date={new Date("2024-08-13")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6276">
-            Fixes a bug where relayed connections failed to establish after an idle period.
+            Fixes a bug where relayed connections failed to establish after an
+            idle period.
           </ChangeItem>
           <ChangeItem pull="6277">
             Fixes a bug where restrictive NATs caused connectivity problems.
           </ChangeItem>
         </ul>
       </Entry>
-      */}
       <Entry version="1.1.6" date={new Date("2024-08-09")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6233">
-            Fixes an issue where the IPC service can panic during DNS resolution.
+            Fixes an issue where the IPC service can panic during DNS
+            resolution.
           </ChangeItem>
         </ul>
       </Entry>

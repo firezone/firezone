@@ -17,13 +17,14 @@ use opentelemetry::metrics::{Counter, UpDownCounter};
 use opentelemetry::KeyValue;
 use rand::Rng;
 use secrecy::SecretString;
+use smallvec::SmallVec;
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
 use std::ops::RangeInclusive;
 use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{
-    ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,
+    ErrorCode, MessageIntegrity, Nonce, Realm, Software, Username, XorMappedAddress,
 };
 use stun_codec::rfc5389::errors::{BadRequest, StaleNonce, Unauthorized};
 use stun_codec::rfc5389::methods::BINDING;
@@ -415,7 +416,7 @@ where
         }
     }
 
-    #[tracing::instrument(level = "info", skip_all, fields(tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
+    #[tracing::instrument(level = "info", skip_all, fields(software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_binding_request(&mut self, request: Binding, sender: ClientSocket) {
         let mut message = Message::new(
             MessageClass::SuccessResponse,
@@ -432,7 +433,7 @@ where
     /// Handle a TURN allocate request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque> for details.
-    #[tracing::instrument(level = "info", skip_all, fields(allocation, tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
+    #[tracing::instrument(level = "info", skip_all, fields(allocation, software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_allocate_request(
         &mut self,
         request: Allocate,
@@ -551,7 +552,7 @@ where
     /// Handle a TURN refresh request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-refresh-request> for details.
-    #[tracing::instrument(level = "info", skip_all, fields(allocation, tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
+    #[tracing::instrument(level = "info", skip_all, fields(allocation, software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_refresh_request(
         &mut self,
         request: Refresh,
@@ -600,7 +601,7 @@ where
     /// Handle a TURN channel bind request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-channelbind-req> for details.
-    #[tracing::instrument(level = "info", skip_all, fields(allocation, peer, channel, tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
+    #[tracing::instrument(level = "info", skip_all, fields(allocation, peer, channel, software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_channel_bind_request(
         &mut self,
         request: ChannelBind,
@@ -704,7 +705,7 @@ where
     ///
     /// This TURN server implementation does not support relaying data other than through channels.
     /// Thus, creating a permission is a no-op that always succeeds.
-    #[tracing::instrument(level = "info", skip_all, fields(tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
+    #[tracing::instrument(level = "info", skip_all, fields(software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_create_permission_request(
         &mut self,
         request: CreatePermission,
@@ -862,6 +863,7 @@ where
     fn send_message(&mut self, message: Message<Attribute>, recipient: ClientSocket) {
         let method = message.method();
         let class = message.class();
+        let error_code = message.get_attribute::<ErrorCode>().map(|e| e.code());
         tracing::trace!(target: "relay",  method = %message.method(), class = %message.class(), "Sending message");
 
         let Ok(bytes) = self.encoder.encode_into_bytes(message) else {
@@ -890,13 +892,18 @@ where
             CREATE_PERMISSION => "createpermission",
             _ => return,
         };
-        self.responses_counter.add(
-            1,
-            &[
-                KeyValue::new("response_class", response_class),
-                KeyValue::new("message_type", message_type),
-            ],
-        );
+        let error_code = error_code.map(|c| opentelemetry::Value::from(c as i64));
+
+        // Use a `SmallVec` to avoid heap-allocations when collecting metrics.
+        let mut attributes = SmallVec::<[KeyValue; 3]>::with_capacity(3);
+        attributes.push(KeyValue::new("response_class", response_class));
+        attributes.push(KeyValue::new("message_type", message_type));
+
+        if let Some(error_code) = error_code {
+            attributes.push(KeyValue::new("error_code", error_code));
+        }
+
+        self.responses_counter.add(1, &attributes);
     }
 
     fn delete_allocation(&mut self, port: AllocationPort) {
@@ -1263,7 +1270,8 @@ stun_codec::define_attribute_enums!(
         Realm,
         Username,
         RequestedAddressFamily,
-        AdditionalAddressFamily
+        AdditionalAddressFamily,
+        Software
     ]
 );
 
