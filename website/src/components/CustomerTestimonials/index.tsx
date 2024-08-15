@@ -55,21 +55,23 @@ const TestimonialBox = ({
   authorTitle,
 }: TestimonialBoxProps) => {
   return (
-    <div className="px-16 md:px-24">
-      <p className=" text-sm md:text-lg font-light text-pretty mb-2 md:mb-6 italic">
-        "{desc}"
-      </p>
-      <div className="flex gap-4">
+    <div className="h-full px-8 md:px-16 py-8 md:py-12">
+      <div className="mb-4 md:mb-8">
+        <p className="text-md md:text-lg tracking-wide font-light mb-2 md:mb-6 break-keep italic">
+          "{desc}"
+        </p>
+      </div>
+      <div className="flex gap-4 items-center">
         <Image
           src={authorImage}
           alt="author portrait"
-          width={96}
-          height={96}
-          className="w-8 h-8 sm:w-12 sm:h-12 md:w-16 md:h-16 rounded-full"
+          width={128}
+          height={128}
+          className="w-10 h-10 sm:h-12 sm:h-12 md:h-16 md:w-16 rounded-full"
         />
-        <div>
-          <p className="text-sm md:text-lg">{authorName}</p>
-          <p className="text-xs md:text-sm font-regular">{authorTitle}</p>
+        <div className>
+          <p className="text-md md:text-lg">{authorName}</p>
+          <p className="text-sm md:text-md font-light">{authorTitle}</p>
         </div>
       </div>
     </div>

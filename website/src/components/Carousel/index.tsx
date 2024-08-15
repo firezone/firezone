@@ -5,9 +5,9 @@ const theme: CustomFlowbiteTheme["carousel"] = {
   root: {
     base: "relative h-full w-full",
     leftControl:
-      "absolute left-0 top-0 flex h-full items-center justify-center px-4 focus:outline-none",
+      "absolute left-0 bottom-4 flex items-end justify-center px-4 focus:outline-none",
     rightControl:
-      "absolute right-0 top-0 flex h-full items-center justify-center px-4 focus:outline-none",
+      "absolute right-0 bottom-4 flex items-end justify-center px-4 focus:outline-none",
   },
   indicators: {
     active: {
@@ -15,10 +15,10 @@ const theme: CustomFlowbiteTheme["carousel"] = {
       on: "bg-white dark:bg-gray-800",
     },
     base: "h-3 w-3 rounded-full",
-    wrapper: "absolute bottom-5 left-1/2 flex -translate-x-1/2 space-x-3",
+    wrapper: "absolute bottom-7 left-1/2 flex -translate-x-1/2 space-x-3",
   },
   item: {
-    base: "absolute left-1/2 top-1/2 block w-full -translate-x-1/2 -translate-y-1/2",
+    base: "absolute left-1/2 block w-full -translate-x-1/2",
     wrapper: {
       off: "w-full flex-shrink-0 transform cursor-default snap-center",
       on: "w-full flex-shrink-0 transform cursor-grab snap-center",
@@ -37,7 +37,7 @@ const theme: CustomFlowbiteTheme["carousel"] = {
 export default function Carousel({ children }: { children: React.ReactNode }) {
   return (
     <div className="h-96 rounded-2xl text-neutral-50 bg-[#1B1B1D]">
-      <FlowbiteCarousel pauseOnHover theme={theme}>
+      <FlowbiteCarousel slideInterval={10000} pauseOnHover theme={theme}>
         {children}
       </FlowbiteCarousel>
     </div>
