@@ -7,14 +7,21 @@ use anyhow::{bail, Result};
 /// Linux uses the CLI args from here, Windows does not
 pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
     let _handle = super::setup_logging(cli.log_dir)?;
-    if !nix::unistd::getuid().is_root() {
-        anyhow::bail!("This is the IPC service binary, it's not meant to run interactively.");
+    if !elevation_check()? {
+        bail!("IPC service failed its elevation check, try running as admin / root");
     }
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
     rt.block_on(super::ipc_listen(cli.dns_control, &mut signals))
+}
+
+/// Returns true if the IPC service can run properly
+// Fallible on Windows
+#[allow(clippy::unnecessary_wraps)]
+pub(crate) fn elevation_check() -> Result<bool> {
+    Ok(nix::unistd::getuid().is_root())
 }
 
 pub(crate) fn install_ipc_service() -> Result<()> {

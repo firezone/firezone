@@ -41,7 +41,7 @@ pub(crate) fn run() -> Result<()> {
             if cli.no_deep_links {
                 return run_gui(cli);
             }
-            match elevation::is_normal_user() {
+            match elevation::gui_check() {
                 // Our elevation is correct (not elevated), just run the GUI
                 Ok(true) => run_gui(cli),
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),

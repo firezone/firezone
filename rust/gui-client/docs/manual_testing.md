@@ -34,9 +34,19 @@ If the client stops running while signed in, then the token may be stored in Win
 
 # Permissions
 
-- [ ] Given a production exe, when you run it normally, then it will ask to escalate to Admin privileges ([#2751](https://github.com/firezone/firezone/issues/2751))
-- [ ] Given the client is running, when you authenticate in the browser, then the client will not ask for privileges again ([#2751](https://github.com/firezone/firezone/issues/2751))
-- (Running as an unprivileged user is not supported yet) ([#2751](https://github.com/firezone/firezone/issues/2751))
+## Linux Permissions
+
+- [ ] The IPC service with `run-debug` can NOT run as a normal user
+- [ ] The IPC service with `run-debug` can run with `sudo`
+- [ ] The GUI can run as a normal user
+- [ ] The GUI can NOT run with `sudo`
+
+## Windows Permissions
+
+- [ ] The IPC service with `run-debug` can NOT run as a normal user
+- [ ] The IPC service with `run-debug` can run as admin
+- [ ] The GUI can run as a normal user
+- [ ] The GUI can run as admin
 
 # Auth flow
 

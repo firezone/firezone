@@ -2,7 +2,7 @@ use crate::{
     device_id, dns_control::DnsController, known_dirs, signals, CallbackHandler, CliCommon,
     ConnlibMsg, IpcServerMsg,
 };
-use anyhow::{Context as _, Result};
+use anyhow::{bail, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{keypair, ConnectArgs, LoginUrl, Session};
 use firezone_bin_shared::{
@@ -106,6 +106,9 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
         git_version = firezone_bin_shared::GIT_VERSION,
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
     );
+    if !platform::elevation_check()? {
+        bail!("IPC service failed its elevation check, try running as admin / root");
+    }
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
@@ -124,6 +127,9 @@ fn run_smoke_test() -> Result<()> {
 #[cfg(debug_assertions)]
 fn run_smoke_test() -> Result<()> {
     crate::setup_stdout_logging()?;
+    if !platform::elevation_check()? {
+        bail!("IPC service failed its elevation check, try running as admin / root");
+    }
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
     let mut dns_controller = DnsController {

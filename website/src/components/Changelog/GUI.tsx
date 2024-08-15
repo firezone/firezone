@@ -22,6 +22,9 @@ export default function GUI({ title }: { title: string }) {
           <ChangeItem enable={title === "Windows"} pull="6280">
             Fixes a bug where the "Clear Logs" button did not clear the IPC service logs.
           </ChangeItem>
+          <ChangeItem enable={title === "Windows"} pull="6308">
+            Fixes a bug where the GUI could not run if the user is Administrator
+          </ChangeItem>
         </ul>
       </Entry>
       */}
