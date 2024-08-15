@@ -1,6 +1,6 @@
 use crate::{
     backoff::{self, ExponentialBackoff},
-    node::{CandidateEvent, Transmit},
+    node::{CandidateEvent, SessionId, Transmit},
     ringbuffer::RingBuffer,
     utils::earliest,
 };
@@ -17,7 +17,9 @@ use std::{
 use str0m::{net::Protocol, Candidate};
 use stun_codec::{
     rfc5389::{
-        attributes::{ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress},
+        attributes::{
+            ErrorCode, MessageIntegrity, Nonce, Realm, Software, Username, XorMappedAddress,
+        },
         errors::{StaleNonce, Unauthorized},
         methods::BINDING,
     },
@@ -50,6 +52,8 @@ pub struct Allocation {
     /// To figure out, how to communicate with the relay, we start by sending a BINDING request on all known sockets.
     /// Whatever comes back first, wins.
     active_socket: Option<SocketAddr>,
+
+    software: Software,
 
     /// If present, the IPv4 address the relay observed for us.
     ip4_srflx_candidate: Option<Candidate>,
@@ -191,6 +195,7 @@ impl Allocation {
         password: String,
         realm: Realm,
         now: Instant,
+        session_id: SessionId,
     ) -> Self {
         let mut allocation = Self {
             server,
@@ -212,6 +217,7 @@ impl Allocation {
             channel_bindings: Default::default(),
             last_now: now,
             buffered_channel_bindings: RingBuffer::new(100),
+            software: Software::new(format!("snownet; session={session_id}")).unwrap(),
         };
 
         allocation.send_binding_requests();
@@ -349,21 +355,30 @@ impl Allocation {
                     ALLOCATE => {
                         // AllocationMismatch during allocate means we already have an allocation.
                         // Delete it.
-                        self.authenticate_and_queue(make_delete_allocation_request(), None);
+                        self.authenticate_and_queue(
+                            make_delete_allocation_request(self.software.clone()),
+                            None,
+                        );
 
                         tracing::debug!("Deleting existing allocation to re-sync");
                     }
                     REFRESH => {
                         // AllocationMismatch for refresh means we don't have an allocation.
                         // Make one.
-                        self.authenticate_and_queue(make_allocate_request(), None);
+                        self.authenticate_and_queue(
+                            make_allocate_request(self.software.clone()),
+                            None,
+                        );
 
                         tracing::debug!("Making new allocation to re-sync");
                     }
                     CHANNEL_BIND => {
                         // AllocationMismatch for channel-bind means we don't have an allocation.
                         // Make one.
-                        self.authenticate_and_queue(make_allocate_request(), None);
+                        self.authenticate_and_queue(
+                            make_allocate_request(self.software.clone()),
+                            None,
+                        );
 
                         tracing::debug!("Making new allocation to re-sync");
 
@@ -454,9 +469,9 @@ impl Allocation {
                 tracing::debug!(active_socket = %original_dst, "Updating active socket");
 
                 if self.has_allocation() {
-                    self.authenticate_and_queue(make_refresh_request(), None);
+                    self.authenticate_and_queue(make_refresh_request(self.software.clone()), None);
                 } else {
-                    self.authenticate_and_queue(make_allocate_request(), None);
+                    self.authenticate_and_queue(make_allocate_request(self.software.clone()), None);
                 }
             }
             ALLOCATE => {
@@ -509,7 +524,7 @@ impl Allocation {
                 // If we refreshed with a lifetime of 0, we deleted our previous allocation.
                 // Make a new one.
                 if lifetime.lifetime().is_zero() {
-                    self.authenticate_and_queue(make_allocate_request(), None);
+                    self.authenticate_and_queue(make_allocate_request(self.software.clone()), None);
                     return true;
                 }
 
@@ -616,7 +631,7 @@ impl Allocation {
         if let Some(refresh_at) = self.refresh_allocation_at() {
             if (now >= refresh_at) && !self.refresh_in_flight() {
                 tracing::debug!("Allocation is due for a refresh");
-                self.authenticate_and_queue(make_refresh_request(), None);
+                self.authenticate_and_queue(make_refresh_request(self.software.clone()), None);
             }
         }
 
@@ -628,7 +643,7 @@ impl Allocation {
             .inspect(|(number, peer)| {
                 tracing::debug!(%number, %peer, "Channel is due for a refresh");
             })
-            .map(|(number, peer)| make_channel_bind_request(peer, number))
+            .map(|(number, peer)| make_channel_bind_request(peer, number, self.software.clone()))
             .collect::<Vec<_>>(); // Need to allocate here to satisfy borrow-checker. Number of channel refresh messages should be small so this shouldn't be a big impact.
 
         for message in channel_refresh_messages {
@@ -700,7 +715,10 @@ impl Allocation {
             return;
         };
 
-        self.authenticate_and_queue(make_channel_bind_request(peer, channel), None);
+        self.authenticate_and_queue(
+            make_channel_bind_request(peer, channel, self.software.clone()),
+            None,
+        );
     }
 
     /// Encodes the packet contained in the given buffer into a [`Transmit`].
@@ -902,10 +920,18 @@ impl Allocation {
 
     fn send_binding_requests(&mut self) {
         if let Some(v4) = self.server.as_v4() {
-            self.queue((*v4).into(), make_binding_request(), None);
+            self.queue(
+                (*v4).into(),
+                make_binding_request(self.software.clone()),
+                None,
+            );
         }
         if let Some(v6) = self.server.as_v6() {
-            self.queue((*v6).into(), make_binding_request(), None);
+            self.queue(
+                (*v6).into(),
+                make_binding_request(self.software.clone()),
+                None,
+            );
         }
     }
 
@@ -1030,11 +1056,14 @@ fn update_candidate(
     }
 }
 
-fn make_binding_request() -> Message<Attribute> {
-    Message::new(MessageClass::Request, BINDING, TransactionId::new(random()))
+fn make_binding_request(software: Software) -> Message<Attribute> {
+    let mut message = Message::new(MessageClass::Request, BINDING, TransactionId::new(random()));
+    message.add_attribute(software);
+
+    message
 }
 
-fn make_allocate_request() -> Message<Attribute> {
+fn make_allocate_request(software: Software) -> Message<Attribute> {
     let mut message = Message::new(
         MessageClass::Request,
         ALLOCATE,
@@ -1045,30 +1074,36 @@ fn make_allocate_request() -> Message<Attribute> {
     message.add_attribute(AdditionalAddressFamily::new(
         stun_codec::rfc8656::attributes::AddressFamily::V6,
     ));
+    message.add_attribute(software);
 
     message
 }
 
 /// To delete an allocation, we need to refresh it with a lifetime of 0.
-fn make_delete_allocation_request() -> Message<Attribute> {
-    let mut refresh = make_refresh_request();
+fn make_delete_allocation_request(software: Software) -> Message<Attribute> {
+    let mut refresh = make_refresh_request(software);
     refresh.add_attribute(Lifetime::from_u32(0));
 
     refresh
 }
 
-fn make_refresh_request() -> Message<Attribute> {
+fn make_refresh_request(software: Software) -> Message<Attribute> {
     let mut message = Message::new(MessageClass::Request, REFRESH, TransactionId::new(random()));
 
     message.add_attribute(RequestedTransport::new(17));
     message.add_attribute(AdditionalAddressFamily::new(
         stun_codec::rfc8656::attributes::AddressFamily::V6,
     ));
+    message.add_attribute(software);
 
     message
 }
 
-fn make_channel_bind_request(target: SocketAddr, channel: u16) -> Message<Attribute> {
+fn make_channel_bind_request(
+    target: SocketAddr,
+    channel: u16,
+    software: Software,
+) -> Message<Attribute> {
     let mut message = Message::new(
         MessageClass::Request,
         CHANNEL_BIND,
@@ -1077,6 +1112,7 @@ fn make_channel_bind_request(target: SocketAddr, channel: u16) -> Message<Attrib
 
     message.add_attribute(XorPeerAddress::new(target));
     message.add_attribute(ChannelNumber::new(channel).unwrap());
+    message.add_attribute(software);
 
     message
 }
@@ -1148,7 +1184,8 @@ stun_codec::define_attribute_enums!(
         XorRelayAddress,
         XorPeerAddress,
         ChannelNumber,
-        Lifetime
+        Lifetime,
+        Software
     ]
 );
 
@@ -2593,6 +2630,7 @@ mod tests {
                 "baz".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 start,
+                SessionId::default(),
             )
         }
 
@@ -2606,6 +2644,7 @@ mod tests {
                 "baz".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 start,
+                SessionId::default(),
             )
         }
 

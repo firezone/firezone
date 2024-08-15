@@ -8,7 +8,7 @@ anyhow = "1.0.82"
 backoff = "0.4"
 base64 = "0.22.1"
 bytecodec = "0.4.15"
-bytes = "1.4.0"
+bytes = "1.7.1"
 clap = { version = "4.5.4", features = ["derive", "env"] }
 derive_more = { version = "0.99.18", features = ["from"] }
 firezone-bin-shared = { workspace = true }
@@ -23,6 +23,7 @@ opentelemetry_sdk = { version = "0.24.1", features = ["rt-tokio"] }
 phoenix-channel = { path = "../phoenix-channel" }
 proptest = { version = "1", optional = true }
 rand = "0.8.5"
+rustls = { workspace = true }
 secrecy = { workspace = true }
 serde = { version = "1.0.204", features = ["derive"] }
 sha2 = "0.10.8"
