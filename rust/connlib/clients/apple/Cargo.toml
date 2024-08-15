@@ -19,6 +19,7 @@ firezone-logging = { workspace = true }
 ip_network = "0.4"
 libc = "0.2"
 phoenix-channel = { workspace = true }
+rustls = { workspace = true }
 secrecy = { workspace = true }
 serde_json = "1"
 socket-factory = { workspace = true }

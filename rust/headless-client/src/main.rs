@@ -101,6 +101,10 @@ enum Cmd {
 }
 
 fn main() -> Result<()> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Calling `install_default` only once per process should always succeed");
+
     let mut cli = Cli::try_parse()?;
 
     // Modifying the environment of a running process is unsafe. If any other

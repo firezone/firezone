@@ -342,6 +342,8 @@ fn connect(
     let log_filter = string_from_jstring!(env, log_filter);
 
     let handle = init_logging(&PathBuf::from(log_dir), log_filter);
+    install_rustls_crypto_provider();
+
     let callbacks = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
@@ -572,5 +574,15 @@ fn protected_udp_socket_factory(callbacks: CallbackHandler) -> impl SocketFactor
         let socket = socket_factory::udp(addr)?;
         callbacks.protect(socket.as_raw_fd())?;
         Ok(socket)
+    }
+}
+
+/// Installs the `ring` crypto provider for rustls.
+fn install_rustls_crypto_provider() {
+    let existing = rustls::crypto::ring::default_provider().install_default();
+
+    if existing.is_err() {
+        // On Android, connlib gets loaded as shared library by the JVM and may remain loaded even if we disconnect the tunnel.
+        tracing::debug!("Skipping install of crypto provider because we already have one.");
     }
 }
