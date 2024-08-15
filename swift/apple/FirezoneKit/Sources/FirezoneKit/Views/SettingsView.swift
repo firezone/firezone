@@ -352,6 +352,7 @@ public struct SettingsView: View {
                 "Reset to Defaults",
                 action: {
                   model.settings = Settings.defaultValue
+                  Favorites.reset()
                 }
               )
               .disabled(model.settings == Settings.defaultValue)

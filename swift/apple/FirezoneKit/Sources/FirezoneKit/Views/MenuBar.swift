@@ -23,7 +23,7 @@ public final class MenuBar: NSObject, ObservableObject {
   // Wish these could be `[String]` but diffing between different types is tricky
   private var lastShownFavorites: [Resource] = []
   private var lastShownOthers: [Resource] = []
-  private var favorites: Set<String> = Favorites.load()
+  private @EnvironmentObject var favorites: Set<String> = Favorites.load()
   private var cancellables: Set<AnyCancellable> = []
 
   @ObservedObject var model: SessionViewModel
@@ -640,6 +640,10 @@ public final class MenuBar: NSObject, ObservableObject {
     } else {
       Favorites.remove(id: id)
     }
+    favoritesChanged()
+  }
+
+  func favoritesChanged() {
     let newResources = resources.map { res in
       ViewResource(base: res.base, isFavorite: favorites.contains(res.base.id))
     }
