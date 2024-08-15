@@ -9,7 +9,7 @@ export function CustomerLogosGrayscale() {
         maskImage:
           "linear-gradient(to right, rgba(0, 0, 0, 0) 0%, rgb(0, 0, 0) 35%, rgb(0, 0, 0) 65%, rgba(0, 0, 0, 0) 100%)",
       }}
-      className="inline-block overflow-hidden whitespace-nowrap h-12 mx-auto"
+      className="inline-block overflow-hidden whitespace-nowrap mx-auto"
     >
       <div
         className="inline-flex w-full"
