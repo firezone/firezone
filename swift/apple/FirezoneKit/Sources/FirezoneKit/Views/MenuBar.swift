@@ -23,9 +23,9 @@ public final class MenuBar: NSObject, ObservableObject {
   // Wish these could be `[String]` but diffing between different types is tricky
   private var lastShownFavorites: [Resource] = []
   private var lastShownOthers: [Resource] = []
-  private @EnvironmentObject var favorites: Set<String> = Favorites.load()
   private var cancellables: Set<AnyCancellable> = []
 
+  @ObservedObject var favorites: Favorites
   @ObservedObject var model: SessionViewModel
 
   private lazy var signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
@@ -39,8 +39,9 @@ public final class MenuBar: NSObject, ObservableObject {
   private var connectingAnimationImageIndex: Int = 0
   private var connectingAnimationTimer: Timer?
 
-  public init(model: SessionViewModel) {
+  public init(favorites: Favorites, model: SessionViewModel) {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    self.favorites = favorites
     self.model = model
 
     super.init()
@@ -58,6 +59,13 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func setupObservers() {
+    favorites.$ids
+      .receive(on: DispatchQueue.main)
+      .sink(receiveValue: { [weak self] ids in
+        guard let self = self else { return }
+        favoritesChanged()
+      }).store(in: &cancellables)
+
     model.store.$status
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] status in
@@ -635,10 +643,10 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func setFavorited(id: String, favorited: Bool) {
-    favorites = if favorited {
-      Favorites.add(id: id)
+    if favorited {
+      favorites.add(id)
     } else {
-      Favorites.remove(id: id)
+      favorites.remove(id)
     }
     favoritesChanged()
   }
