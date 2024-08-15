@@ -1,7 +1,6 @@
 use crate::client::IpProvider;
 use connlib_shared::messages::{DnsServer, ResourceId};
 use connlib_shared::DomainName;
-use domain::base::RelativeName;
 use domain::base::{
     iana::{Class, Rcode, Rtype},
     Message, MessageBuilder, ToName,
@@ -10,6 +9,7 @@ use domain::rdata::AllRecordData;
 use ip_packet::IpPacket;
 use ip_packet::Packet as _;
 use itertools::Itertools;
+use pattern::{Candidate, Pattern};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
@@ -23,8 +23,8 @@ pub struct StubResolver {
     fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
     ips_to_fqdn: HashMap<IpAddr, (DomainName, ResourceId)>,
     ip_provider: IpProvider,
-    /// All DNS resources we know about, indexed by their domain (could be wildcard domain like `*.mycompany.com`).
-    dns_resources: HashMap<String, ResourceId>,
+    /// All DNS resources we know about, indexed by the glob pattern they match against.
+    dns_resources: HashMap<Pattern, ResourceId>,
     /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
     known_hosts: KnownHosts,
 }
@@ -112,8 +112,16 @@ impl StubResolver {
         Some((fqdn, self.fqdn_to_ips.get(fqdn).unwrap()))
     }
 
-    pub(crate) fn add_resource(&mut self, id: ResourceId, address: String) -> bool {
-        let existing = self.dns_resources.insert(address, id);
+    pub(crate) fn add_resource(&mut self, id: ResourceId, pattern: String) -> bool {
+        let parsed_pattern = match Pattern::new(&pattern) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(%pattern, "Domain pattern is not valid: {e}");
+                return false;
+            }
+        };
+
+        let existing = self.dns_resources.insert(parsed_pattern, id);
 
         existing.is_none()
     }
@@ -157,8 +165,26 @@ impl StubResolver {
         ips
     }
 
-    fn match_resource(&self, domain_name: &DomainName) -> Option<ResourceId> {
-        match_domain(domain_name, &self.dns_resources)
+    /// Attempts to match the given domain against our list of possible patterns.
+    ///
+    /// This performs a linear search and is thus O(N) and **must not** be called in the hot-path of packet routing.
+    #[tracing::instrument(level = "trace", skip_all, fields(domain))]
+    fn match_resource_linear(&self, domain_name: &DomainName) -> Option<ResourceId> {
+        let name = Candidate::from_domain(domain_name);
+
+        for (pattern, id) in &self.dns_resources {
+            if pattern.matches(&name) {
+                tracing::trace!(%id, %pattern, "Matched domain");
+
+                return Some(*id);
+            }
+
+            tracing::trace!(%pattern, %id, "No match");
+        }
+
+        tracing::debug!("No resources matched");
+
+        None
     }
 
     fn resource_address_name_by_reservse_dns(
@@ -225,7 +251,8 @@ impl StubResolver {
             return Some(ResolveStrategy::LocalResponse(packet));
         }
 
-        let maybe_resource = self.match_resource(&domain);
+        // `match_resource` is `O(N)` which we deem fine for DNS queries.
+        let maybe_resource = self.match_resource_linear(&domain);
 
         let resource_records = match (qtype, maybe_resource) {
             (_, Some(resource)) if !self.knows_resource(&resource) => {
@@ -304,68 +331,17 @@ fn build_dns_with_answer(
 }
 
 pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
-    let question_mark = RelativeName::<Vec<_>>::from_octets(b"\x01?".as_ref().into()).unwrap();
-    let Ok(resource) = DomainName::vec_from_str(resource) else {
-        return false;
+    let pattern = match Pattern::new(resource) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(%resource, "Unable to parse pattern: {e}");
+            return false;
+        }
     };
 
-    if resource.starts_with(&question_mark) {
-        return resource
-            .parent()
-            .is_some_and(|r| r == name || name.parent().is_some_and(|n| r == n));
-    }
+    let candidate = Candidate::from_domain(name);
 
-    if resource.starts_with(&RelativeName::wildcard_vec()) {
-        let Some(resource) = resource.parent() else {
-            return false;
-        };
-        return name.iter_suffixes().any(|n| n == resource);
-    }
-
-    name == &resource
-}
-
-fn match_domain<T>(name: &DomainName, resources: &HashMap<String, T>) -> Option<T>
-where
-    T: Copy,
-{
-    // Safety: `?` is less than 254 bytes long.
-    const QUESTION_MARK: RelativeName<&'static [u8]> =
-        unsafe { RelativeName::from_octets_unchecked(b"\x01?") };
-    // Safety: `*` is less than 254 bytes long.
-    const WILDCARD: RelativeName<&'static [u8]> =
-        unsafe { RelativeName::from_octets_unchecked(b"\x01*") };
-
-    // First, check for full match.
-    if let Some(resource) = resources.get(&name.to_string()) {
-        return Some(*resource);
-    }
-
-    // Second, check for `?` matching this domain exactly.
-    let qm_dot_domain = QUESTION_MARK.chain(name).ok()?.to_string();
-    if let Some(resource) = resources.get(&qm_dot_domain) {
-        return Some(*resource);
-    }
-
-    // Third, check for `?` matching up to 1 parent.
-    if let Some(parent) = name.parent() {
-        let qm_dot_parent = QUESTION_MARK.chain(parent).ok()?.to_string();
-
-        if let Some(resource) = resources.get(&qm_dot_parent) {
-            return Some(*resource);
-        }
-    }
-
-    // Last, check for any wildcard domains, starting with the most specific one.
-    for suffix in name.iter_suffixes() {
-        let wildcard_dot_suffix = WILDCARD.chain(suffix).ok()?.to_string();
-
-        if let Some(resource) = resources.get(&wildcard_dot_suffix) {
-            return Some(*resource);
-        }
-    }
-
-    None
+    pattern.matches(&candidate)
 }
 
 fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
@@ -438,9 +414,78 @@ fn ips_to_fqdn_for_known_hosts(
         .collect()
 }
 
+mod pattern {
+    use super::*;
+    use std::{convert::Infallible, fmt, str::FromStr};
+
+    #[derive(Debug, PartialEq, Eq, Hash)]
+    pub struct Pattern {
+        inner: glob::Pattern,
+        original: String,
+    }
+
+    impl fmt::Display for Pattern {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.original.fmt(f)
+        }
+    }
+
+    impl Pattern {
+        pub fn new(p: &str) -> Result<Self, glob::PatternError> {
+            Ok(Self {
+                inner: glob::Pattern::new(&p.replace('.', "/"))?,
+                original: p.to_string(),
+            })
+        }
+
+        /// Matches a [`Candidate`] against this [`Pattern`].
+        ///
+        /// Matching only requires a reference, thus allowing users to test a [`Candidate`] against multiple [`Pattern`]s.
+        pub fn matches(&self, domain: &Candidate) -> bool {
+            let domain = domain.0.as_str();
+
+            if let Some(rem) = self.inner.as_str().strip_prefix("*/") {
+                if domain == rem {
+                    return true;
+                }
+            }
+
+            self.inner.matches_with(
+                domain,
+                glob::MatchOptions {
+                    case_sensitive: false,
+                    require_literal_separator: true,
+                    require_literal_leading_dot: false,
+                },
+            )
+        }
+    }
+
+    /// A candidate for matching against a domain [`Pattern`].
+    ///
+    /// Creates a type-safe contract that replaces `.` with `/` in the domain which is requires for pattern matching.
+    pub struct Candidate(String);
+
+    impl Candidate {
+        pub fn from_domain(domain: &DomainName) -> Self {
+            Self(domain.to_string().replace('.', "/"))
+        }
+    }
+
+    impl FromStr for Candidate {
+        type Err = Infallible;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            Ok(Self(s.replace('.', "/")))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr as _;
+    use test_case::test_case;
 
     #[test]
     fn reverse_dns_addr_works_v4() {
@@ -496,66 +541,82 @@ mod tests {
     }
 
     #[test]
-    fn wildcard_matching() {
-        let resources = HashMap::from([("*.foo.com".to_string(), 0), ("*.com".to_string(), 1)]);
+    fn pattern_displays_without_slash() {
+        let pattern = Pattern::new("**.example.com").unwrap();
 
-        assert_eq!(match_domain(&domain("a.foo.com"), &resources), Some(0));
-        assert_eq!(match_domain(&domain("foo.com"), &resources), Some(0));
-        assert_eq!(match_domain(&domain("a.b.foo.com"), &resources), Some(0));
-        assert_eq!(match_domain(&domain("oo.com"), &resources), Some(1));
-        assert_eq!(match_domain(&domain("oo.xyz"), &resources), None);
+        assert_eq!(pattern.to_string(), "**.example.com")
     }
 
-    #[test]
-    fn question_mark_matching() {
-        let resources = HashMap::from([("?.bar.com".to_string(), 1)]);
+    #[test_case("**.example.com", "example.com"; "double star matches root domain")]
+    #[test_case("app.**.example.com", "app.bar.foo.example.com"; "double star matches multiple levels within domain")]
+    #[test_case("**.example.com", "foo.example.com"; "double star matches one level")]
+    #[test_case("**.example.com", "foo.bar.example.com"; "double star matches two levels")]
+    #[test_case("*.example.com", "foo.example.com"; "single star matches one level")]
+    #[test_case("*.example.com", "example.com"; "single star matches root domain")]
+    #[test_case("foo.*.example.com", "foo.bar.example.com"; "single star matches one domain within domain")]
+    #[test_case("app.*.*.example.com", "app.foo.bar.example.com"; "single star can appear on multiple levels")]
+    #[test_case("app.f??.example.com", "app.foo.example.com"; "question mark matches one letter")]
+    #[test_case("app.example.com", "app.example.com"; "matches literal domain")]
+    #[test_case("*?*.example.com", "app.example.com"; "mix of * and ?")]
+    #[test_case("app.**.web.**.example.com", "app.web.example.com"; "multiple double star within domain")]
 
-        assert_eq!(match_domain(&domain("a.bar.com"), &resources), Some(1));
-        assert_eq!(match_domain(&domain("bar.com"), &resources), Some(1));
-        assert_eq!(match_domain(&domain("a.b.bar.com"), &resources), None);
+    fn domain_pattern_matches(pattern: &str, domain: &str) {
+        let pattern = Pattern::new(pattern).unwrap();
+        let candidate = Candidate::from_str(domain).unwrap();
+
+        let matches = pattern.matches(&candidate);
+
+        assert!(matches);
     }
 
-    #[test]
-    fn exact_matching() {
-        let resources = HashMap::from([("baz.com".to_string(), 2)]);
+    #[test_case("app.*.example.com", "app.foo.bar.example.com"; "single star does not match two level")]
+    #[test_case("app.*com", "app.foo.com"; "single star does not match dot")]
+    #[test_case("app?com", "app.com"; "question mark does not match dot")]
+    fn domain_pattern_does_not_match(pattern: &str, domain: &str) {
+        let pattern = Pattern::new(pattern).unwrap();
+        let candidate = Candidate::from_str(domain).unwrap();
 
-        assert_eq!(match_domain(&domain("baz.com"), &resources), Some(2));
-        assert_eq!(match_domain(&domain("a.baz.com"), &resources), None);
-        assert_eq!(match_domain(&domain("a.b.baz.com"), &resources), None);
+        let matches = pattern.matches(&candidate);
+
+        assert!(!matches);
+    }
+}
+
+#[cfg(feature = "divan")]
+mod benches {
+    use super::*;
+    use rand::{distributions::DistString, seq::IteratorRandom, Rng};
+
+    #[divan::bench(
+        consts = [10, 100, 1_000, 10_000, 100_000]
+    )]
+    fn match_domain_linear<const NUM_RES: u128>(bencher: divan::Bencher) {
+        bencher
+            .with_inputs(|| {
+                let mut resolver = StubResolver::new(HashMap::default());
+                let mut rng = rand::thread_rng();
+
+                for n in 0..NUM_RES {
+                    resolver.add_resource(ResourceId::from_u128(n), make_domain(&mut rng));
+                }
+
+                let needle = resolver
+                    .dns_resources
+                    .keys()
+                    .choose(&mut rng)
+                    .unwrap()
+                    .to_string();
+
+                let needle = DomainName::vec_from_str(&needle).unwrap();
+
+                (resolver, needle)
+            })
+            .bench_refs(|(resolver, needle)| resolver.match_resource_linear(needle).unwrap());
     }
 
-    #[test]
-    fn exact_subdomain_match() {
-        assert!(is_subdomain(&domain("foo.com"), "foo.com"));
-        assert!(!is_subdomain(&domain("a.foo.com"), "foo.com"));
-        assert!(!is_subdomain(&domain("a.b.foo.com"), "foo.com"));
-        assert!(!is_subdomain(&domain("foo.com"), "a.foo.com"));
-    }
-
-    #[test]
-    fn wildcard_subdomain_match() {
-        assert!(is_subdomain(&domain("foo.com"), "*.foo.com"));
-        assert!(is_subdomain(&domain("a.foo.com"), "*.foo.com"));
-        assert!(is_subdomain(&domain("a.foo.com"), "*.a.foo.com"));
-        assert!(is_subdomain(&domain("b.a.foo.com"), "*.a.foo.com"));
-        assert!(is_subdomain(&domain("a.b.foo.com"), "*.foo.com"));
-        assert!(!is_subdomain(&domain("afoo.com"), "*.foo.com"));
-        assert!(!is_subdomain(&domain("b.afoo.com"), "*.foo.com"));
-        assert!(!is_subdomain(&domain("bar.com"), "*.foo.com"));
-        assert!(!is_subdomain(&domain("foo.com"), "*.a.foo.com"));
-    }
-
-    #[test]
-    fn question_mark_subdomain_match() {
-        assert!(is_subdomain(&domain("foo.com"), "?.foo.com"));
-        assert!(is_subdomain(&domain("a.foo.com"), "?.foo.com"));
-        assert!(!is_subdomain(&domain("a.b.foo.com"), "?.foo.com"));
-        assert!(!is_subdomain(&domain("bar.com"), "?.foo.com"));
-        assert!(!is_subdomain(&domain("foo.com"), "?.a.foo.com"));
-        assert!(!is_subdomain(&domain("afoo.com"), "?.foo.com"));
-    }
-
-    fn domain(name: &str) -> DomainName {
-        DomainName::vec_from_str(name).unwrap()
+    fn make_domain(rng: &mut impl Rng) -> String {
+        (0..rng.gen_range(2..5))
+            .map(|_| rand::distributions::Alphanumeric.sample_string(rng, 3))
+            .join(".")
     }
 }
