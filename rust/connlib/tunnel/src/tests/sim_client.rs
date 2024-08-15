@@ -674,13 +674,7 @@ fn is_subdomain(name: &str, record: &str) -> bool {
         return false;
     };
     match first {
-        "*" => name.ends_with(end) && name.strip_suffix(end).is_some_and(|n| n.ends_with('.')),
-        "?" => {
-            name.ends_with(end)
-                && name
-                    .strip_suffix(end)
-                    .is_some_and(|n| n.ends_with('.') && n.matches('.').count() == 1)
-        }
+        "**" => name.ends_with(end) && name.strip_suffix(end).is_some_and(|n| n.ends_with('.')),
         _ => false,
     }
 }
