@@ -33,7 +33,7 @@ const ID_PATH: &str = "/var/lib/firezone/gateway_id";
 async fn main() {
     rustls::crypto::ring::default_provider()
         .install_default()
-        .expect("Calling `install_default` only once per process always succeeds");
+        .expect("Calling `install_default` only once per process should always succeed");
 
     // Enforce errors only being printed on a single line using the technique recommended in the anyhow docs:
     // https://docs.rs/anyhow/latest/anyhow/struct.Error.html#display-representations

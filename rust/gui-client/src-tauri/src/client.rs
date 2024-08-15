@@ -34,7 +34,7 @@ pub(crate) fn run() -> Result<()> {
 
     rustls::crypto::ring::default_provider()
         .install_default()
-        .expect("Calling `install_default` only once per process always succeeds");
+        .expect("Calling `install_default` only once per process should always succeed");
 
     match cli.command {
         None => {

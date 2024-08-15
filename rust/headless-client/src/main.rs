@@ -103,7 +103,7 @@ enum Cmd {
 fn main() -> Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()
-        .expect("Calling `install_default` only once per process always succeeds");
+        .expect("Calling `install_default` only once per process should always succeed");
 
     let mut cli = Cli::try_parse()?;
 
