@@ -35,6 +35,7 @@ import ComplianceDiagram from "@/components/Animations/ComplianceDiagram";
 import SimpleArchitecture from "@/components/Animations/SimpleArchitecture";
 import { manrope } from "@/lib/fonts";
 import "@/styles/hero.css";
+import CustomerTestimonials from "@/components/CustomerTestimonials";
 import FeatureCards from "@/components/FeatureCards";
 import SingleFeature from "@/components/SingleFeature";
 
@@ -115,6 +116,8 @@ export default function Page() {
           <FeatureCards />
         </div>
       </section>
+
+      <CustomerTestimonials />
 
       {/* Feature section 2: Achieve compliance in minutes, not weeks. */}
       <section className="bg-white py-20 md:py-16">
