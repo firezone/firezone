@@ -48,8 +48,8 @@ export default function ElevatorPitch() {
   const OptionButton = ({ title, desc, icon, index }: OptionButtonProps) => {
     return (
       <button
-        className={`flex flex-col lg:flex-row lg:w-full pointer-events-none rounded-xl
-          items-start lg:items-center p-0 gap-4 border-[1px] justify-center
+        className={`flex flex-col lg:flex-row lg:w-full pointer-events-none
+          items-start lg:items-center py-6 lg:py-0 gap-4 border-[1px] justify-center
           lg:justify-start transition duration-200 ease-in-out
         ${
           selectedOption == index
@@ -60,7 +60,7 @@ export default function ElevatorPitch() {
       >
         {icon}
         <div>
-          <p className="text-neutral-900 font-semibold text-lg text-left mb-1.5">
+          <p className="text-neutral-900 font-semibold text-lg text-left mb-0.5">
             {title}
           </p>
           <p className="text-neutral-800 text-left text-md mr-4">{desc}</p>
@@ -70,7 +70,7 @@ export default function ElevatorPitch() {
   };
 
   return (
-    <div className="flex w-full lg:flex-row flex-col justify-center gap-6 lg:gap-16 xl:gap-36 items-center">
+    <div className="flex w-full h-fit lg:flex-row flex-col justify-center gap-6 lg:gap-12 xl:gap-20 items-center max-w-screen-xl ">
       <div className="flex flex-col w-full h-full justify-between lg:w-[480px] xl:w-[580px]">
         <div>
           <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2">
@@ -78,7 +78,7 @@ export default function ElevatorPitch() {
           </h6>
           <div className="mb-2 text-3xl md:text-4xl lg:text-5xl ">
             <h3
-              className={`leading-tight text-pretty text-left tracking-tight font-bold inline-block ${manrope.className}`}
+              className={`leading-none text-pretty text-left tracking-tight font-bold inline-block ${manrope.className}`}
             >
               Supercharge your workforce
               <span className="text-primary-450"> in minutes.</span>
@@ -95,7 +95,7 @@ export default function ElevatorPitch() {
           </div>
         </div>
 
-        <div className="lg:flex grid  grid-cols-1 sm:grid-cols-2 lg:flex-col mt-16 space-y-6">
+        <div className="lg:flex grid  grid-cols-1 sm:grid-cols-2 lg:flex-col my-8 lg:mt-16 lg:space-y-8">
           {data.map((item, index) => (
             <OptionButton
               key={index}

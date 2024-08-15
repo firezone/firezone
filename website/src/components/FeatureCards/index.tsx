@@ -17,7 +17,7 @@ export default function FeatureCards() {
           </h6>
           <div className="mb-4 lg:mb-0 text-3xl md:text-4xl lg:text-5xl">
             <h3
-              className={` text-pretty text-left leading-tight tracking-tight font-bold inline-block ${manrope.className}`}
+              className={` text-pretty text-left leading-none tracking-tight font-bold inline-block ${manrope.className}`}
             >
               Simplify access management
               <span className="text-primary-450"> with WireGuard.</span>
