@@ -31,6 +31,10 @@ const ID_PATH: &str = "/var/lib/firezone/gateway_id";
 
 #[tokio::main]
 async fn main() {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Calling `install_default` only once per process always succeeds");
+
     // Enforce errors only being printed on a single line using the technique recommended in the anyhow docs:
     // https://docs.rs/anyhow/latest/anyhow/struct.Error.html#display-representations
     //
@@ -57,10 +61,6 @@ async fn try_main() -> Result<()> {
         cli.firezone_name,
         public_key.to_bytes(),
     )?;
-
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .expect("Calling `install_default` only once per process always succeeds");
 
     let task = tokio::spawn(run(login, private_key)).err_into();
 

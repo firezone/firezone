@@ -342,6 +342,8 @@ fn connect(
     let log_filter = string_from_jstring!(env, log_filter);
 
     let handle = init_logging(&PathBuf::from(log_dir), log_filter);
+    install_rustls_crypto_provider();
+
     let callbacks = CallbackHandler {
         vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
         callback_handler,
@@ -365,16 +367,6 @@ fn connect(
     let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
     let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(callbacks.clone()));
-
-    // On Android, the VpnService may still be loaded into memory when reconnecting.
-    // Only install the crypto-provider if we haven't done so previously.
-    if rustls::crypto::CryptoProvider::get_default().is_none() {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .expect(
-                "Calling `install_default` should succeed if we don't have a crypto provider yet.",
-            );
-    }
 
     let args = ConnectArgs {
         tcp_socket_factory: tcp_socket_factory.clone(),
@@ -582,5 +574,15 @@ fn protected_udp_socket_factory(callbacks: CallbackHandler) -> impl SocketFactor
         let socket = socket_factory::udp(addr)?;
         callbacks.protect(socket.as_raw_fd())?;
         Ok(socket)
+    }
+}
+
+/// Installs the `ring` crypto provider for rustls.
+fn install_rustls_crypto_provider() {
+    let exising = rustls::crypto::ring::default_provider().install_default();
+
+    if exising.is_err() {
+        // On Android, connlib gets loaded as shared library by the JVM and may remain loaded even if we disconnect the tunnel.
+        tracing::debug!("Skipping install of crypto provider because we already have one.");
     }
 }

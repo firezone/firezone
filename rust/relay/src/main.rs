@@ -96,6 +96,10 @@ enum LogFormat {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Calling `install_default` only once per process always succeeds");
+
     let args = Args::parse();
 
     setup_tracing(&args)?;
@@ -122,10 +126,6 @@ async fn main() -> Result<()> {
         args.health_check.health_check_addr,
         make_is_healthy(last_heartbeat_sent.clone()),
     ));
-
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .expect("Calling `install_default` only once per process always succeeds");
 
     let channel = if let Some(token) = args.token.as_ref() {
         use secrecy::ExposeSecret;
