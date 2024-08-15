@@ -126,7 +126,7 @@ defmodule Domain.Resources.Resource.Changeset do
       if Accounts.internet_resource_enabled?(account) do
         "please use the Internet resource to route all traffic through Firezone instead"
       else
-        "routing all traffic through Firezone is available on paid plans using Internet resource"
+        "routing all traffic through Firezone is available on paid plans using the Internet Resource"
       end
 
     changeset
