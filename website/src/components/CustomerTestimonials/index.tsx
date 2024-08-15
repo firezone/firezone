@@ -2,6 +2,7 @@ import Carousel from "@/components/Carousel";
 import Image from "next/image";
 import Link from "next/link";
 import { HiArrowLeft, HiArrowRight } from "react-icons/hi2";
+import { FaHeart } from "react-icons/fa";
 import { manrope } from "@/lib/fonts";
 
 const customerData = [
@@ -69,7 +70,7 @@ const TestimonialBox = ({
           height={128}
           className="w-10 h-10 sm:h-12 sm:h-12 md:h-16 md:w-16 rounded-full"
         />
-        <div className>
+        <div>
           <p className="text-md md:text-lg">{authorName}</p>
           <p className="text-sm md:text-md font-light">{authorTitle}</p>
         </div>
@@ -83,10 +84,14 @@ export default function CustomerTestimonials() {
     <section className="bg-neutral-950 py-24 px-8 md:px-0">
       <div className="max-w-screen-md mx-auto">
         <h3
-          className={`text-white text-3xl leading-5 md:text-4xl lg:text-5xl tracking-tight font-medium inline-block text-left mb-8 ${manrope.className}`}
+          className={`text-white text-3xl leading-5 md:text-4xl lg:text-5xl tracking-tight font-medium inline-block text-left mb-4 ${manrope.className}`}
         >
-          Why choose Firezone?
+          Customers{" "}
+          <FaHeart className="text-red-500 w-12 h-12 mx-1 inline-block" /> us
         </h3>
+        <p className="text-neutral-500 text-sm md:text-md font-light mb-8">
+          (and we love them back)
+        </p>
         <Carousel>
           {customerData.map((item, index) => (
             <TestimonialBox
