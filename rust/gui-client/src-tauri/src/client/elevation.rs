@@ -6,11 +6,7 @@ mod platform {
     use anyhow::{Context as _, Result};
     use firezone_headless_client::FIREZONE_GROUP;
 
-    pub(crate) fn gui_check() -> Result<bool, Error> {
-        is_normal_user()
-    }
-
-    /// Returns true if we're running without root privileges, meaning the GUI can run
+    /// Returns true if all permissions are correct for the GUI to run
     ///
     /// Everything that needs root / admin powers happens in the IPC services,
     /// so for security and practicality reasons the GUIs must be non-root.
