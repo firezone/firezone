@@ -40,20 +40,22 @@ export default function ActionLink({
   border?: boolean;
 }) {
   const linkClasses = `
-    group inline-flex justify-center items-center py-2 font-semibold duration-50
-    transform transition tracking-tight font-medium
+    group inline-flex justify-center items-center py-2 font-bold
     text-${color}
     ${Size[size].link}
     ${border && `${Size[size].border} border-b-${color}`}
     ${(transitionColor && `hover:text-${transitionColor}`) || ""}
-    ${(border && transitionColor && `hover:border-${transitionColor}`) || ""}
+    ${
+      border && transitionColor ? `hover:border-${transitionColor}` : ""
+    } duration-50
+    transform transition
   `;
 
   const iconClasses = `
-    group-hover:translate-x-1 group-hover:scale-110 duration-100 transform
+    group-hover:translate-x-1 group-hover:scale-110 duration-100
     transition
-    ${Size[size].icon}
     ${(transitionColor && `group-hover:text-${transitionColor}`) || ""}
+    ${Size[size].icon}
   `;
 
   return (

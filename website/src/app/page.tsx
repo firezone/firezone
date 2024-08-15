@@ -48,7 +48,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-neutral-950 bg-hero pt-28 xl:pt-32">
+      <section className="bg-neutral-950 bg-hero pt-32 xl:pt-32">
         <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
           <h1
             className={
@@ -72,7 +72,7 @@ export default function Page() {
               <ActionLink
                 size="lg"
                 href="https://app.firezone.dev/sign_up"
-                color="white"
+                color="neutral-50"
                 transitionColor="primary-450"
               >
                 Get started for free
@@ -89,8 +89,8 @@ export default function Page() {
             </div>
           </div>
         </div>
-        <div className="pt-16 pb-8 max-w-screen-xl mx-auto">
-          <div className="text-center text-sm mb-6 font-base text-neutral-600">
+        <div className="pt-16 pb-4 max-w-screen-xl mx-auto">
+          <div className="text-center text-sm mb-2 font-base text-neutral-600">
             Backed by{" "}
             <Image
               src="/images/yc-logo-gray.svg"
