@@ -256,9 +256,9 @@ fn err_to_string(result: Result<WrappedSession>) -> Result<WrappedSession, Strin
 
 /// Installs the `ring` crypto provider for rustls.
 fn install_rustls_crypto_provider() {
-    let exising = rustls::crypto::ring::default_provider().install_default();
+    let existing = rustls::crypto::ring::default_provider().install_default();
 
-    if exising.is_err() {
+    if existing.is_err() {
         // On Apple platforms, network extensions get terminated on disconnect and thus all memory is free'd.
         // Therefore, this should not never happen unless the above is somehow no longer true.
         tracing::warn!("Skipping install of crypto provider because we already have one.");

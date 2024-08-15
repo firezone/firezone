@@ -579,9 +579,9 @@ fn protected_udp_socket_factory(callbacks: CallbackHandler) -> impl SocketFactor
 
 /// Installs the `ring` crypto provider for rustls.
 fn install_rustls_crypto_provider() {
-    let exising = rustls::crypto::ring::default_provider().install_default();
+    let existing = rustls::crypto::ring::default_provider().install_default();
 
-    if exising.is_err() {
+    if existing.is_err() {
         // On Android, connlib gets loaded as shared library by the JVM and may remain loaded even if we disconnect the tunnel.
         tracing::debug!("Skipping install of crypto provider because we already have one.");
     }
