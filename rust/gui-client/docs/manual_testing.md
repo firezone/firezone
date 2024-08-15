@@ -36,17 +36,17 @@ If the client stops running while signed in, then the token may be stored in Win
 
 ## Linux Permissions
 
-- [ ] The GUI can run as a normal user
-- [ ] The GUI can NOT run with `sudo`
 - [ ] The IPC service with `run-debug` can NOT run as a normal user
 - [ ] The IPC service with `run-debug` can run with `sudo`
+- [ ] The GUI can run as a normal user
+- [ ] The GUI can NOT run with `sudo`
 
 ## Windows Permissions
 
-- [ ] The GUI can run as a normal user
-- [ ] The GUI can run as admin
 - [ ] The IPC service with `run-debug` can NOT run as a normal user
 - [ ] The IPC service with `run-debug` can run as admin
+- [ ] The GUI can run as a normal user
+- [ ] The GUI can run as admin
 
 # Auth flow
 
