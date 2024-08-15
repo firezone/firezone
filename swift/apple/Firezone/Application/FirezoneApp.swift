@@ -27,7 +27,6 @@ struct FirezoneApp: App {
   }
 
   var body: some Scene {
-    let favorites = FirezoneKit.Favorites()
 #if os(iOS)
     WindowGroup {
       AppView(model: appViewModel)

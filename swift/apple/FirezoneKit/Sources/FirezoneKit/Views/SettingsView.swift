@@ -151,7 +151,7 @@ extension FileManager {
 }
 
 public struct SettingsView: View {
-  var favorites: Favorites
+  @ObservedObject var favorites: Favorites
   @ObservedObject var model: SettingsViewModel
   @Environment(\.dismiss) var dismiss
 
@@ -357,7 +357,7 @@ public struct SettingsView: View {
                   favorites.reset()
                 }
               )
-              .disabled(model.settings == Settings.defaultValue)
+              .disabled(favorites.ids.isEmpty && model.settings == Settings.defaultValue)
             }
             .padding(.top, 5)
           }
