@@ -16,7 +16,7 @@ defmodule Domain.Repo.Migrations.AddInternetResources do
       add(:options, :map, default: %{})
     end
 
-    # Manual migration that needs o be run after deployment
+    # Manual migration that needs to be run after deployment
     # Domain.Accounts.Account.Query.not_deleted()
     # |> Domain.Repo.all()
     # |> Enum.each(fn account ->
