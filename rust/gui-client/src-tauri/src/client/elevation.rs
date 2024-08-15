@@ -53,7 +53,7 @@ mod platform {
 mod tests {
     // Make sure it doesn't panic
     #[test]
-    fn is_normal_user() {
+    fn gui_check_no_panic() {
         super::gui_check().ok();
     }
 }
