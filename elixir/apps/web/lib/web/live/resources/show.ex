@@ -131,7 +131,7 @@ defmodule Web.Resources.Show do
             </:label>
             <:value>
               <span :if={@resource.type == :internet}>
-                Internet resources include all IPv4 and IPv6 addresses.
+                The Internet Resource includes all IPv4 and IPv6 addresses.
               </span>
 
               <span :if={@resource.type != :internet}>
