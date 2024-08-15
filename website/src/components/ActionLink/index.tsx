@@ -40,7 +40,7 @@ export default function ActionLink({
   border?: boolean;
 }) {
   const linkClasses = `
-    group inline-flex justify-center items-center py-2 font-bold
+    group inline-flex justify-center items-center py-2 font-semibold
     text-${color}
     ${Size[size].link}
     ${border && `${Size[size].border} border-b-${color}`}

@@ -90,7 +90,7 @@ export default function Page() {
           </div>
         </div>
         <div className="pt-16 pb-4 max-w-screen-xl mx-auto">
-          <div className="text-center text-sm mb-2 font-base text-neutral-600">
+          <div className="text-center text-sm mb-6 font-base text-neutral-600">
             Backed by{" "}
             <Image
               src="/images/yc-logo-gray.svg"
