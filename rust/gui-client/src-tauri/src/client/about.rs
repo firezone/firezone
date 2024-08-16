@@ -7,7 +7,7 @@ pub(crate) fn get_cargo_version() -> String {
 
 #[tauri::command]
 pub(crate) fn get_git_version() -> String {
-    firezone_bin_shared::GIT_VERSION.to_string()
+    firezone_bin_shared::git_version!().to_string()
 }
 
 #[cfg(test)]

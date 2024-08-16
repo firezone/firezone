@@ -131,7 +131,7 @@ fn start_logging(directives: &str) -> Result<logging::Handles> {
     tracing::info!(
         arch = std::env::consts::ARCH,
         ?directives,
-        git_version = firezone_bin_shared::GIT_VERSION,
+        git_version = firezone_bin_shared::git_version!(),
         system_uptime_seconds = firezone_headless_client::uptime::get().map(|dur| dur.as_secs()),
         "`gui-client` started logging"
     );
