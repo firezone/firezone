@@ -248,6 +248,8 @@ pub struct ClientState {
 
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
     active_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    /// When it's Some it indicates that the Internet resource was enabled
+    internet_resource: Option<ResourceId>,
     /// All resources indexed by their ID.
     resources_by_id: HashMap<ResourceId, ResourceDescription>,
 
@@ -318,6 +320,7 @@ impl ClientState {
             stub_resolver: StubResolver::new(known_hosts),
             disabled_resources: Default::default(),
             buffered_transmits: Default::default(),
+            internet_resource: None,
         }
     }
 
@@ -812,6 +815,16 @@ impl ClientState {
             .map(|(ip, _)| ip)
             .chain(iter::once(IPV4_RESOURCES.into()))
             .chain(iter::once(IPV6_RESOURCES.into()))
+            .chain(iter::from_fn(|| {
+                self.internet_resource
+                    .is_some()
+                    .then_some(Ipv4Network::DEFAULT_ROUTE.into())
+            }))
+            .chain(iter::from_fn(|| {
+                self.internet_resource
+                    .is_some()
+                    .then_some(Ipv6Network::DEFAULT_ROUTE.into())
+            }))
             .chain(self.dns_mapping.left_values().copied().map(Into::into))
     }
 
@@ -820,7 +833,10 @@ impl ClientState {
     }
 
     fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
-        let maybe_dns_resource_id = self.stub_resolver.resolve_resource_by_ip(&destination);
+        let maybe_dns_resource_id = self
+            .stub_resolver
+            .resolve_resource_by_ip(&destination)
+            .filter(|resource| self.is_resource_enabled(resource));
 
         let maybe_cidr_resource_id = self
             .active_cidr_resources
@@ -830,7 +846,7 @@ impl ClientState {
         // We need to filter disabled resources because we never remove resources from the stub_resolver
         maybe_dns_resource_id
             .or(maybe_cidr_resource_id)
-            .filter(|resource| self.is_resource_enabled(resource))
+            .or(self.internet_resource)
     }
 
     pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
@@ -1006,7 +1022,9 @@ impl ClientState {
                     None => true,
                 }
             }
-            ResourceDescription::Internet(_) => false, // FIXME: Update with real check once Internet Resources get added.
+            ResourceDescription::Internet(resource) => {
+                self.internet_resource.replace(resource.id).is_none()
+            }
         };
 
         if !added {
@@ -1034,7 +1052,11 @@ impl ClientState {
         match resource {
             ResourceDescription::Dns(_) => self.stub_resolver.remove_resource(id),
             ResourceDescription::Cidr(_) => self.active_cidr_resources.retain(|_, r| r.id != id),
-            ResourceDescription::Internet(_) => {}
+            ResourceDescription::Internet(_) => {
+                if Some(id) == self.internet_resource {
+                    self.internet_resource.take();
+                }
+            }
         }
 
         let name = resource.name();
