@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
@@ -598,7 +598,7 @@ pub struct ClientOnGateway {
     ipv6: Ipv6Addr,
     resources: HashMap<ResourceId, Vec<ResourceOnGateway>>,
     filters: IpNetworkTable<FilterEngine>,
-    permanent_translations: HashMap<IpAddr, TranslationState>,
+    permanent_translations: BTreeMap<IpAddr, TranslationState>,
     nat_table: NatTable,
     buffered_events: VecDeque<GatewayEvent>,
 }

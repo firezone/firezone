@@ -10,7 +10,7 @@ use hex_display::HexDisplayExt as _;
 use rand::random;
 use std::{
     borrow::Cow,
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, VecDeque},
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
 };
@@ -70,7 +70,7 @@ pub struct Allocation {
     buffered_transmits: VecDeque<Transmit<'static>>,
     events: VecDeque<CandidateEvent>,
 
-    sent_requests: HashMap<
+    sent_requests: BTreeMap<
         TransactionId,
         (
             SocketAddr,
@@ -1191,7 +1191,7 @@ stun_codec::define_attribute_enums!(
 
 #[derive(Debug)]
 struct ChannelBindings {
-    inner: HashMap<u16, Channel>,
+    inner: BTreeMap<u16, Channel>,
     next_channel: u16,
 }
 

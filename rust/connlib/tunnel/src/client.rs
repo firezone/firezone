@@ -80,7 +80,7 @@ impl ClientTunnel {
             });
     }
 
-    pub fn set_disabled_resources(&mut self, new_disabled_resources: HashSet<ResourceId>) {
+    pub fn set_disabled_resources(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
         self.role_state
             .set_disabled_resource(new_disabled_resources);
 
@@ -279,7 +279,7 @@ pub struct ClientState {
     interface_config: Option<InterfaceConfig>,
 
     /// Resources that have been disabled by the UI
-    disabled_resources: HashSet<ResourceId>,
+    disabled_resources: BTreeSet<ResourceId>,
 
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket<'static>>,
@@ -296,7 +296,7 @@ pub(crate) struct AwaitingConnectionDetails {
 impl ClientState {
     pub(crate) fn new(
         private_key: impl Into<StaticSecret>,
-        known_hosts: HashMap<String, Vec<IpAddr>>,
+        known_hosts: BTreeMap<String, Vec<IpAddr>>,
         seed: [u8; 32],
     ) -> Self {
         Self {
@@ -776,7 +776,7 @@ impl ClientState {
         self.mangled_dns_queries.clear();
     }
 
-    pub fn set_disabled_resource(&mut self, new_disabled_resources: HashSet<ResourceId>) {
+    pub fn set_disabled_resource(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
         let current_disabled_resources = self.disabled_resources.clone();
 
         // We set disabled_resources before anything else so that add_resource knows what resources are enabled right now.
@@ -1185,7 +1185,7 @@ fn effective_dns_servers(
         .peekable();
 
     if dns_servers.peek().is_none() {
-        tracing::error!("No system default DNS servers available! Can't initialize resolver. DNS interception will be disabled.");
+        tracing::warn!("No system default DNS servers available! Can't initialize resolver. DNS interception will be disabled.");
         return Vec::new();
     }
 
@@ -1425,7 +1425,7 @@ mod tests {
         pub fn for_test() -> ClientState {
             ClientState::new(
                 StaticSecret::random_from_rng(OsRng),
-                HashMap::new(),
+                BTreeMap::new(),
                 rand::random(),
             )
         }

@@ -16,7 +16,7 @@ use ip_network::{Ipv4Network, Ipv6Network};
 use rand::rngs::OsRng;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
     task::{Context, Poll},
@@ -84,7 +84,7 @@ impl ClientTunnel {
         private_key: StaticSecret,
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        known_hosts: HashMap<String, Vec<IpAddr>>,
+        known_hosts: BTreeMap<String, Vec<IpAddr>>,
     ) -> Result<Self, NoInterfaces> {
         Ok(Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory)?,

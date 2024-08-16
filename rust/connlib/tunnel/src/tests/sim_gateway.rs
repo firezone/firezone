@@ -13,7 +13,7 @@ use ip_packet::IpPacket;
 use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
-    collections::{BTreeMap, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     net::IpAddr,
     time::Instant,
 };
@@ -40,7 +40,7 @@ impl SimGateway {
 
     pub(crate) fn receive(
         &mut self,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
         transmit: Transmit,
         now: Instant,
     ) -> Option<Transmit<'static>> {
@@ -61,7 +61,7 @@ impl SimGateway {
     /// Process an IP packet received on the gateway.
     fn on_received_packet(
         &mut self,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
         packet: IpPacket<'_>,
         now: Instant,
     ) -> Option<Transmit<'static>> {

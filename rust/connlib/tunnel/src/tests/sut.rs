@@ -21,16 +21,14 @@ use connlib_shared::{
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
+use std::collections::BTreeSet;
 use std::iter;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     net::IpAddr,
     time::{Duration, Instant},
 };
 use tracing::debug_span;
-use tracing::subscriber::DefaultGuard;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::{util::SubscriberInitExt as _, EnvFilter};
 
 /// The actual system-under-test.
 ///
@@ -45,9 +43,6 @@ pub(crate) struct TunnelTest {
 
     drop_direct_client_traffic: bool,
     network: RoutingTable,
-
-    #[allow(dead_code)]
-    logger: DefaultGuard,
 }
 
 impl StateMachineTest for TunnelTest {
@@ -58,16 +53,6 @@ impl StateMachineTest for TunnelTest {
     fn init_test(
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
     ) -> Self::SystemUnderTest {
-        let flux_capacitor = FluxCapacitor::default();
-
-        let logger = tracing_subscriber::fmt()
-            .with_test_writer()
-            // .with_writer(crate::tests::run_count_appender::appender()) // Useful for diffing logs between runs.
-            .with_timer(flux_capacitor.clone())
-            .with_env_filter(EnvFilter::from_default_env())
-            .finish()
-            .set_default();
-
         // Construct client, gateway and relay from the initial state.
         let mut client = ref_state
             .client
@@ -107,19 +92,21 @@ impl StateMachineTest for TunnelTest {
             .collect::<BTreeMap<_, _>>();
 
         // Configure client and gateway with the relays.
-        client.exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
+        client.exec_mut(|c| {
+            c.update_relays(iter::empty(), relays.iter(), ref_state.flux_capacitor.now())
+        });
         for gateway in gateways.values_mut() {
-            gateway
-                .exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
+            gateway.exec_mut(|g| {
+                g.update_relays(iter::empty(), relays.iter(), ref_state.flux_capacitor.now())
+            });
         }
 
         let mut this = Self {
-            flux_capacitor,
+            flux_capacitor: ref_state.flux_capacitor.clone(),
             network: ref_state.network.clone(),
             drop_direct_client_traffic: ref_state.drop_direct_client_traffic,
             client,
             gateways,
-            logger,
             relays,
             dns_servers,
         };
@@ -345,16 +332,6 @@ impl StateMachineTest for TunnelTest {
         state: &Self::SystemUnderTest,
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
     ) {
-        let _guard = tracing_subscriber::registry()
-            .with(
-                tracing_subscriber::fmt::layer()
-                    .with_test_writer()
-                    .with_timer(state.flux_capacitor.clone()),
-            )
-            .with(PanicOnErrorEvents::default()) // Temporarily install a layer that panics when `_guard` goes out of scope if any of our assertions emitted an error.
-            .with(EnvFilter::from_default_env())
-            .set_default();
-
         let ref_client = ref_state.client.inner();
         let sim_client = state.client.inner();
         let sim_gateways = state
@@ -495,7 +472,7 @@ impl TunnelTest {
 
     fn handle_timeout(
         &mut self,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
         buffered_transmits: &mut BufferedTransmits,
     ) {
         let now = self.flux_capacitor.now();
@@ -624,7 +601,7 @@ impl TunnelTest {
         src: ClientId,
         event: ClientEvent,
         portal: &StubPortal,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
     ) {
         let now = self.flux_capacitor.now();
 

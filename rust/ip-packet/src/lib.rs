@@ -45,7 +45,7 @@ macro_rules! swap_src_dst {
     };
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Protocol {
     /// Contains either the source or destination port.
     Tcp(u16),
