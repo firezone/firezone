@@ -78,7 +78,7 @@ export default function ElevatorPitch() {
           </h6>
           <div className="mb-2 text-3xl md:text-4xl lg:text-5xl ">
             <h3
-              className={`leading-none text-pretty text-left tracking-tight font-bold inline-block ${manrope.className}`}
+              className={`leading-tight text-pretty text-left tracking-tight font-bold inline-block ${manrope.className}`}
             >
               Supercharge your workforce
               <span className="text-primary-450"> in minutes.</span>
