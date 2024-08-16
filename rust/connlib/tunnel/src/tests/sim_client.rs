@@ -669,6 +669,8 @@ impl RefClient {
     }
 }
 
+// This function only works on the tests because we are limited to resources with a single wildcard at the beginning of the resource.
+// This limitation doesn't exists in production.
 fn is_subdomain(name: &str, record: &str) -> bool {
     if name == record {
         return true;
@@ -678,6 +680,12 @@ fn is_subdomain(name: &str, record: &str) -> bool {
     };
     match first {
         "**" => name.ends_with(end) && name.strip_suffix(end).is_some_and(|n| n.ends_with('.')),
+        "*" => {
+            name.ends_with(end)
+                && name
+                    .strip_suffix(end)
+                    .is_some_and(|n| n.ends_with('.') && n.matches('.').count() == 1)
+        }
         _ => false,
     }
 }
