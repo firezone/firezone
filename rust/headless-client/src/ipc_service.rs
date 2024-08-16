@@ -338,7 +338,7 @@ impl<'a> Handler<'a> {
                     .context("Error while sending IPC message `OnUpdateResources`")?;
             }
             ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                self.tun_device.set_routes(ipv4, ipv6).await?
+                self.tun_device.set_routes(ipv4, ipv6).await?;
                 self.dns_controller.flush()?;
             }
         }
