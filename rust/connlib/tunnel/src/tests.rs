@@ -30,7 +30,7 @@ type IcmpIdentifier = u16;
 
 #[test]
 #[allow(clippy::print_stdout, clippy::print_stderr)]
-fn run_tunnel_test() {
+fn tunnel_test() {
     let config = Config {
         source_file: Some(file!()),
         ..Default::default()
