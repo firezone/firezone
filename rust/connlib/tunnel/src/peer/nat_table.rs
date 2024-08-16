@@ -116,8 +116,6 @@ mod tests {
     ) {
         proptest::prop_assume!(packet.destination().is_ipv4() == outside_dst.is_ipv4()); // Required for our test to simulate a response.
 
-        let _guard = firezone_logging::test("trace");
-
         let sent_at = Instant::now();
         let mut table = NatTable::default();
         let response_delay = Duration::from_secs(response_delay);
@@ -165,8 +163,6 @@ mod tests {
             packet1.as_immutable().source_protocol().unwrap()
                 != packet2.as_immutable().source_protocol().unwrap()
         );
-
-        let _guard = firezone_logging::test("trace");
 
         let mut table = NatTable::default();
 
