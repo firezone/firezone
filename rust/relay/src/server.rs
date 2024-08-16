@@ -672,6 +672,12 @@ where
 
             channel.refresh(now);
 
+            // Update the fast-path map in case the binding expired in the cooldown period and got removed.
+            self.channel_and_client_by_port_and_peer.insert(
+                (channel.allocation, channel.peer_address),
+                (sender, requested_channel),
+            );
+
             tracing::info!(target: "relay", "Refreshed channel binding");
 
             self.send_message(
