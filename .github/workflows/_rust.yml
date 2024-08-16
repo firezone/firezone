@@ -93,13 +93,13 @@ jobs:
         run: |
 
           # First, run all tests.
-          cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored
+          cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored --nocapture
 
           # Backup dumped state and transition samples
           mv $TESTCASES_DIR $TESTCASES_BACKUP_DIR
 
           # Re-run only the regression seeds
-          PROPTEST_CASES=0 cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- tunnel_test
+          PROPTEST_CASES=0 cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- tunnel_test --nocapture
 
            # Assert that sampled state and transitions don't change between runs
           for file in "$TESTCASES_DIR"/*.{state,transitions}; do
