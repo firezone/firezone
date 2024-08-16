@@ -178,9 +178,9 @@ async fn main() -> Result<()> {
 ///
 /// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
 fn setup_tracing(args: &Args) -> Result<()> {
-    use opentelemetry::{global, trace::TracerProvider as _, KeyValue};
+    use opentelemetry::{global, trace::TracerProvider as _};
     use opentelemetry_otlp::WithExportConfig;
-    use opentelemetry_sdk::{runtime::Tokio, trace::Config, Resource};
+    use opentelemetry_sdk::{runtime::Tokio, trace::Config};
 
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
@@ -194,12 +194,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
             .with(env_filter())
             .into(),
         Some(endpoint) => {
-            let default_metadata = Resource::new([
-                KeyValue::new("service.name", "relay"),
-                KeyValue::new("service.namespace", "firezone"),
-            ]);
-            let metadata = default_metadata.merge(&Resource::default()); // `Resource::default` fetches from env-variables.
-
+            let metadata = make_otel_metadata();
             let grpc_endpoint = format!("http://{endpoint}");
 
             tracing::trace!(target: "relay", %grpc_endpoint, "Setting up OTLP exporter for collector");
@@ -617,6 +612,29 @@ fn is_healthy(last_heartbeat_sent: Arc<Mutex<Option<Instant>>>) -> bool {
     };
 
     last_hearbeat_sent.elapsed() < MAX_PARTITION_TIME
+}
+
+fn make_otel_metadata() -> opentelemetry_sdk::Resource {
+    use opentelemetry::{Key, KeyValue};
+    use opentelemetry_sdk::resource::{EnvResourceDetector, TelemetryResourceDetector};
+    use opentelemetry_sdk::Resource;
+
+    const SERVICE_NAME: Key = Key::from_static_str("service.name");
+    const SERVICE_NAMESPACE: Key = Key::from_static_str("service.namespace");
+
+    let default_metadata = Resource::new([
+        KeyValue::new(SERVICE_NAMESPACE, "firezone"),
+        KeyValue::new(SERVICE_NAME, "relay"),
+    ]);
+    let detected_metadata = Resource::from_detectors(
+        Duration::ZERO,
+        vec![
+            Box::new(TelemetryResourceDetector),
+            Box::new(EnvResourceDetector::new()), // Allow overriding metadata using `OTEL_RESOURCE_ATTRIBUTES` env var.
+        ],
+    );
+
+    default_metadata.merge(&detected_metadata)
 }
 
 #[cfg(test)]
