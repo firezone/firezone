@@ -294,7 +294,7 @@ impl Tunn {
             }
         }
 
-        if dbg!(handshake_initiation_required) {
+        if handshake_initiation_required {
             return self.format_handshake_initiation(dst, true, time);
         }
 
