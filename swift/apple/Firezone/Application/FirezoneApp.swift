@@ -13,13 +13,16 @@ struct FirezoneApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
   #endif
 
+  @StateObject var favorites: Favorites
   @StateObject var appViewModel: AppViewModel
   @StateObject var store: Store
 
   init() {
+    let favorites = Favorites()
     let store = Store()
+    _favorites = StateObject(wrappedValue: favorites)
     _store = StateObject(wrappedValue: store)
-    _appViewModel = StateObject(wrappedValue: AppViewModel(store: store))
+    _appViewModel = StateObject(wrappedValue: AppViewModel(favorites: favorites, store: store))
 
     #if os(macOS)
       appDelegate.store = store
