@@ -279,7 +279,7 @@ public class TunnelManager {
       try session().sendProviderMessage(encoder.encode(TunnelMessage.getResourceList(resourceListHash))) { data in
         if let data = data {
           self.resourceListHash = Data(SHA256.hash(data: data))
-          var decoder = JSONDecoder()
+          let decoder = JSONDecoder()
           decoder.keyDecodingStrategy = .convertFromSnakeCase
           self.resourcesListCache = (try? decoder.decode([Resource].self, from: data)) ?? []
         }
