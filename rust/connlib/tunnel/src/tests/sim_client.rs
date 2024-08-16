@@ -10,7 +10,10 @@ use crate::{proptest::*, ClientState};
 use bimap::BiMap;
 use connlib_shared::{
     messages::{
-        client::{ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns},
+        client::{
+            ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
+            ResourceDescriptionInternet,
+        },
         ClientId, DnsServer, GatewayId, Interface, RelayId, ResourceId,
     },
     DomainName,
@@ -256,7 +259,7 @@ pub struct RefClient {
     /// The upstream DNS resolvers configured in the portal.
     pub(crate) upstream_dns_resolvers: Vec<DnsServer>,
 
-    pub(crate) internet_resource: Option<ResourceId>,
+    pub(crate) internet_resource: Option<ResourceDescriptionInternet>,
 
     /// The CIDR resources the client is aware of.
     #[derivative(Debug = "ignore")]
@@ -350,7 +353,7 @@ impl RefClient {
         tracing::Span::current().record("dst", tracing::field::display(dst));
 
         // Second, if we are not yet connected, check if we have a resource for this IP.
-        let Some(rid) = self.internet_resource else {
+        let Some(rid) = self.internet_resource.as_ref().map(|r| r.id) else {
             tracing::debug!("No internet resource");
             return;
         };
@@ -402,7 +405,9 @@ impl RefClient {
             return;
         };
 
-        if self.is_connected_to_cidr(rid) && self.is_tunnel_ip(src) {
+        if (self.is_connected_to_cidr(rid) || self.is_connected_to_internet(rid))
+            && self.is_tunnel_ip(src)
+        {
             tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
             self.expected_icmp_handshakes
                 .entry(gateway)
@@ -413,7 +418,11 @@ impl RefClient {
 
         // If we have a resource, the first packet will initiate a connection to the gateway.
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.connected_cidr_resources.insert(rid);
+        if self.internet_resource.as_ref().map(|r| r.id) == Some(rid) {
+            self.connected_internet_resources = true;
+        } else {
+            self.connected_cidr_resources.insert(rid);
+        }
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
@@ -485,6 +494,11 @@ impl RefClient {
             .iter_ipv6()
             .map(|(n, _)| n)
             .collect_vec()
+    }
+
+    fn is_connected_to_internet(&self, id: ResourceId) -> bool {
+        self.internet_resource.as_ref().map(|r| r.id) == Some(id)
+            && self.connected_internet_resources
     }
 
     pub(crate) fn is_connected_to_cidr(&self, id: ResourceId) -> bool {
@@ -615,10 +629,10 @@ impl RefClient {
             .copied()
     }
 
-    /// Returns the CIDR resource we will forward the DNS query for the given name to.
+    /// Returns the resource we will forward the DNS query for the given name to.
     ///
     /// DNS servers may be resources, in which case queries that need to be forwarded actually need to be encapsulated.
-    pub(crate) fn dns_query_via_cidr_resource(&self, query: &DnsQuery) -> Option<ResourceId> {
+    pub(crate) fn dns_query_via_resource(&self, query: &DnsQuery) -> Option<ResourceId> {
         // Unless we are using upstream resolvers, DNS queries are never routed through the tunnel.
         if self.upstream_dns_resolvers.is_empty() {
             return None;
@@ -630,6 +644,7 @@ impl RefClient {
         }
 
         self.cidr_resource_by_ip(query.dns_server.ip())
+            .or(self.internet_resource.as_ref().map(|r| r.id))
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
@@ -648,7 +663,11 @@ impl RefClient {
             return true;
         }
 
-        if self.internet_resource.is_some_and(|r| r == resource_id) {
+        if self
+            .internet_resource
+            .as_ref()
+            .is_some_and(|r| r.id == resource_id)
+        {
             return true;
         }
 
@@ -662,13 +681,20 @@ impl RefClient {
             .map(|(_, r)| r)
             .cloned()
             .map(ResourceDescription::Cidr);
+
         let dns_resources = self
             .dns_resources
             .values()
             .cloned()
             .map(ResourceDescription::Dns);
 
-        Vec::from_iter(cidr_resources.chain(dns_resources))
+        Vec::from_iter(
+            cidr_resources.chain(dns_resources).chain(
+                self.internet_resource
+                    .clone()
+                    .map(ResourceDescription::Internet),
+            ),
+        )
     }
 }
 

@@ -650,7 +650,8 @@ impl ClientState {
 
                 // In case the DNS server is a CIDR resource, it needs to go through the tunnel.
                 if self.is_upstream_set_by_the_portal()
-                    && self.active_cidr_resources.longest_match(ip).is_some()
+                    && (self.internet_resource.is_some()
+                        || self.active_cidr_resources.longest_match(ip).is_some())
                 {
                     return Err((packet, ip));
                 }
@@ -815,16 +816,16 @@ impl ClientState {
             .map(|(ip, _)| ip)
             .chain(iter::once(IPV4_RESOURCES.into()))
             .chain(iter::once(IPV6_RESOURCES.into()))
-            .chain(iter::from_fn(|| {
+            .chain(
                 self.internet_resource
                     .is_some()
-                    .then_some(Ipv4Network::DEFAULT_ROUTE.into())
-            }))
-            .chain(iter::from_fn(|| {
+                    .then_some(Ipv4Network::DEFAULT_ROUTE.into()),
+            )
+            .chain(
                 self.internet_resource
                     .is_some()
-                    .then_some(Ipv6Network::DEFAULT_ROUTE.into())
-            }))
+                    .then_some(Ipv6Network::DEFAULT_ROUTE.into()),
+            )
             .chain(self.dns_mapping.left_values().copied().map(Into::into))
     }
 
@@ -1183,7 +1184,10 @@ fn get_addresses_for_awaiting_resource(
             .map_into()
             .collect_vec(),
         ResourceDescription::Cidr(r) => vec![r.address],
-        ResourceDescription::Internet(_) => vec![],
+        ResourceDescription::Internet(_) => vec![
+            Ipv4Network::DEFAULT_ROUTE.into(),
+            Ipv6Network::DEFAULT_ROUTE.into(),
+        ],
     }
 }
 
