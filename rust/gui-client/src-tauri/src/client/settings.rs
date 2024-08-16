@@ -42,6 +42,7 @@ impl Default for AdvancedSettings {
             auth_base_url: Url::parse("https://app.firezone.dev").unwrap(),
             api_url: Url::parse("wss://api.firezone.dev").unwrap(),
             favorite_resources: Default::default(),
+            disabled_resources: Default::default(),
             log_filter: "info".to_string(),
         }
     }
