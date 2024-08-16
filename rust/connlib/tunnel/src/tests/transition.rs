@@ -10,7 +10,7 @@ use domain::base::Rtype;
 use prop::collection;
 use proptest::{prelude::*, sample};
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
 
@@ -24,7 +24,7 @@ pub(crate) enum Transition {
     /// Deactivate a resource on the client.
     DeactivateResource(ResourceId),
     /// Client-side disable resource
-    DisableResources(HashSet<ResourceId>),
+    DisableResources(BTreeSet<ResourceId>),
     /// Send an ICMP packet to non-resource IP.
     SendICMPPacketToNonResourceIp {
         src: IpAddr,

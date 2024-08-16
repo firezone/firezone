@@ -6,7 +6,7 @@ use crate::tests::reference::ResourceDst;
 use connlib_shared::{messages::GatewayId, DomainName};
 use ip_packet::IpPacket;
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, VecDeque},
     marker::PhantomData,
     net::IpAddr,
     sync::atomic::{AtomicBool, Ordering},
@@ -24,7 +24,7 @@ pub(crate) fn assert_icmp_packets_properties(
     ref_client: &RefClient,
     sim_client: &SimClient,
     sim_gateways: HashMap<GatewayId, &SimGateway>,
-    global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+    global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
 ) {
     let unexpected_icmp_replies = find_unexpected_entries(
         &ref_client
@@ -219,7 +219,7 @@ fn assert_destination_is_cdir_resource(gateway_received_request: &IpPacket<'_>, 
 
 fn assert_destination_is_dns_resource(
     gateway_received_request: &IpPacket<'_>,
-    global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+    global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
     domain: &DomainName,
 ) {
     let actual = gateway_received_request.destination();

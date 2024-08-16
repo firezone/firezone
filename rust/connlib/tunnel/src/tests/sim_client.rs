@@ -247,7 +247,7 @@ impl SimClient {
 pub struct RefClient {
     pub(crate) id: ClientId,
     pub(crate) key: PrivateKey,
-    pub(crate) known_hosts: HashMap<String, Vec<IpAddr>>,
+    pub(crate) known_hosts: BTreeMap<String, Vec<IpAddr>>,
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,
 
@@ -285,7 +285,7 @@ pub struct RefClient {
 
     /// Actively disabled resources by the UI
     #[derivative(Debug = "ignore")]
-    pub(crate) disabled_resources: HashSet<ResourceId>,
+    pub(crate) disabled_resources: BTreeSet<ResourceId>,
 
     /// The expected ICMP handshakes.
     ///
@@ -574,7 +574,7 @@ impl RefClient {
 
     pub(crate) fn resolved_ip4_for_non_resources(
         &self,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
     ) -> Vec<Ipv4Addr> {
         self.resolved_ips_for_non_resources(global_dns_records)
             .filter_map(|ip| match ip {
@@ -586,7 +586,7 @@ impl RefClient {
 
     pub(crate) fn resolved_ip6_for_non_resources(
         &self,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
     ) -> Vec<Ipv6Addr> {
         self.resolved_ips_for_non_resources(global_dns_records)
             .filter_map(|ip| match ip {
@@ -598,7 +598,7 @@ impl RefClient {
 
     fn resolved_ips_for_non_resources<'a>(
         &'a self,
-        global_dns_records: &'a BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &'a BTreeMap<DomainName, BTreeSet<IpAddr>>,
     ) -> impl Iterator<Item = IpAddr> + 'a {
         self.dns_records
             .iter()
@@ -736,8 +736,8 @@ fn ref_client(
         )
 }
 
-fn known_hosts() -> impl Strategy<Value = HashMap<String, Vec<IpAddr>>> {
-    collection::hash_map(
+fn known_hosts() -> impl Strategy<Value = BTreeMap<String, Vec<IpAddr>>> {
+    collection::btree_map(
         domain_name(2..4).prop_map(|d| d.parse().unwrap()),
         collection::vec(any::<IpAddr>(), 1..6),
         0..15,

@@ -20,7 +20,7 @@ use jni::{
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
-use std::{collections::HashSet, io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};
+use std::{collections::BTreeSet, io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
@@ -484,7 +484,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
             })
             .expect("Invalid string returned from android client"),
     );
-    let disabled_resources: HashSet<ResourceId> =
+    let disabled_resources: BTreeSet<ResourceId> =
         serde_json::from_str(&disabled_resources).unwrap();
     tracing::debug!("disabled resource: {disabled_resources:?}");
     let session = &*(session_ptr as *const SessionWrapper);

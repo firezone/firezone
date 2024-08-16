@@ -12,7 +12,7 @@ use super::ResourceId;
 use itertools::Itertools;
 
 /// Description of a resource that maps to a DNS record.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ResourceDescriptionDns {
     /// Resource's id.
     pub id: ResourceId,

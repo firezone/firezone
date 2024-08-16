@@ -21,9 +21,10 @@ use connlib_shared::{
 use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
+use std::collections::BTreeSet;
 use std::iter;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     net::IpAddr,
     time::{Duration, Instant},
 };
@@ -471,7 +472,7 @@ impl TunnelTest {
 
     fn handle_timeout(
         &mut self,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
         buffered_transmits: &mut BufferedTransmits,
     ) {
         let now = self.flux_capacitor.now();
@@ -600,7 +601,7 @@ impl TunnelTest {
         src: ClientId,
         event: ClientEvent,
         portal: &StubPortal,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
     ) {
         let now = self.flux_capacitor.now();
 
