@@ -177,10 +177,10 @@ impl Tunn {
 
         // All the times are counted from tunnel initiation, for efficiency our timers are rounded
         // to a second, as there is no real benefit to having highly accurate timers.
-        let now = time.duration_since(self.timers.time_started);
-        self.timers[TimeCurrent] = now;
+        let since_started = time.duration_since(self.timers.time_started);
+        self.timers[TimeCurrent] = since_started;
 
-        self.update_session_timers(now);
+        self.update_session_timers(since_started);
 
         // Load timers only once:
         let session_established = self.timers[TimeSessionEstablished];
@@ -198,14 +198,14 @@ impl Tunn {
 
             // Clear cookie after COOKIE_EXPIRATION_TIME
             if self.handshake.has_cookie()
-                && now - self.timers[TimeCookieReceived] >= COOKIE_EXPIRATION_TIME
+                && since_started - self.timers[TimeCookieReceived] >= COOKIE_EXPIRATION_TIME
             {
                 self.handshake.clear_cookie();
             }
 
             // All ephemeral private keys and symmetric session keys are zeroed out after
             // (REJECT_AFTER_TIME * 3) ms if no new keys have been exchanged.
-            if now - session_established >= REJECT_AFTER_TIME * 3 {
+            if since_started - session_established >= REJECT_AFTER_TIME * 3 {
                 tracing::error!("CONNECTION_EXPIRED(REJECT_AFTER_TIME * 3)");
                 self.handshake.set_expired();
                 self.clear_all(time);
@@ -214,7 +214,7 @@ impl Tunn {
 
             if let Some(time_init_sent) = self.handshake.timer() {
                 // Handshake Initiation Retransmission
-                if now - handshake_started >= REKEY_ATTEMPT_TIME {
+                if since_started - handshake_started >= REKEY_ATTEMPT_TIME {
                     // After REKEY_ATTEMPT_TIME ms of trying to initiate a new handshake,
                     // the retries give up and cease, and clear all existing packets queued
                     // up to be sent. If a packet is explicitly queued up to be sent, then
@@ -225,7 +225,7 @@ impl Tunn {
                     return TunnResult::Err(WireGuardError::ConnectionExpired);
                 }
 
-                if time_init_sent.elapsed() >= REKEY_TIMEOUT {
+                if now.duration_since(time_init_sent) >= REKEY_TIMEOUT {
                     // We avoid using `time` here, because it can be earlier than `time_init_sent`.
                     // Once `checked_duration_since` is stable we can use that.
                     // A handshake initiation is retried after REKEY_TIMEOUT + jitter ms,
@@ -242,7 +242,7 @@ impl Tunn {
                     // responder of the handshake, it does not re-initiate a new handshake
                     // after REKEY_AFTER_TIME ms like the original initiator does.
                     if session_established < data_packet_sent
-                        && now - session_established >= REKEY_AFTER_TIME
+                        && since_started - session_established >= REKEY_AFTER_TIME
                     {
                         tracing::debug!("HANDSHAKE(REKEY_AFTER_TIME (on send))");
                         handshake_initiation_required = true;
@@ -253,7 +253,7 @@ impl Tunn {
                     // - KEEPALIVE_TIMEOUT - REKEY_TIMEOUT ms old, we initiate a new
                     // handshake.
                     if session_established < data_packet_received
-                        && now - session_established
+                        && since_started - session_established
                             >= REJECT_AFTER_TIME - KEEPALIVE_TIMEOUT - REKEY_TIMEOUT
                     {
                         tracing::warn!(
@@ -269,7 +269,7 @@ impl Tunn {
                 // packet after from that peer for (KEEPALIVE + REKEY_TIMEOUT) ms,
                 // we initiate a new handshake.
                 if data_packet_sent > aut_packet_received
-                    && now - aut_packet_received >= KEEPALIVE_TIMEOUT + REKEY_TIMEOUT
+                    && since_started - aut_packet_received >= KEEPALIVE_TIMEOUT + REKEY_TIMEOUT
                     && mem::replace(&mut self.timers.want_handshake, false)
                 {
                     tracing::warn!("HANDSHAKE(KEEPALIVE + REKEY_TIMEOUT)");
@@ -280,7 +280,7 @@ impl Tunn {
                     // If a packet has been received from a given peer, but we have not sent one back
                     // to the given peer in KEEPALIVE ms, we send an empty packet.
                     if data_packet_received > aut_packet_sent
-                        && now - aut_packet_sent >= KEEPALIVE_TIMEOUT
+                        && since_started - aut_packet_sent >= KEEPALIVE_TIMEOUT
                         && mem::replace(&mut self.timers.want_keepalive, false)
                     {
                         tracing::debug!("KEEPALIVE(KEEPALIVE_TIMEOUT)");
@@ -289,7 +289,7 @@ impl Tunn {
 
                     // Persistent KEEPALIVE
                     if persistent_keepalive > 0
-                        && (now - self.timers[TimePersistentKeepalive]
+                        && (since_started - self.timers[TimePersistentKeepalive]
                             >= Duration::from_secs(persistent_keepalive as _))
                     {
                         tracing::debug!("KEEPALIVE(PERSISTENT_KEEPALIVE)");
@@ -300,7 +300,7 @@ impl Tunn {
             }
         }
 
-        if handshake_initiation_required {
+        if dbg!(handshake_initiation_required) {
             return self.format_handshake_initiation(dst, true, time);
         }
 
