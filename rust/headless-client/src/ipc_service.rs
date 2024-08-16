@@ -104,7 +104,7 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
     crate::setup_stdout_logging()?;
     tracing::info!(
         arch = std::env::consts::ARCH,
-        git_version = firezone_bin_shared::GIT_VERSION,
+        git_version = firezone_bin_shared::git_version!(),
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
     );
     if !platform::elevation_check()? {
@@ -452,7 +452,7 @@ fn setup_logging(log_dir: Option<PathBuf>) -> Result<firezone_logging::file::Han
     set_global_default(subscriber).context("`set_global_default` should always work)")?;
     tracing::info!(
         arch = std::env::consts::ARCH,
-        git_version = firezone_bin_shared::GIT_VERSION,
+        git_version = firezone_bin_shared::git_version!(),
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
         ?directives
     );
