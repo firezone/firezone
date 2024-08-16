@@ -19,8 +19,8 @@ struct FirezoneApp: App {
 
   init() {
     let favorites = Favorites()
-    _favorites = StateObject(wrappedValue: Favorites())
     let store = Store()
+    _favorites = StateObject(wrappedValue: favorites)
     _store = StateObject(wrappedValue: store)
     _appViewModel = StateObject(wrappedValue: AppViewModel(favorites: favorites, store: store))
 
