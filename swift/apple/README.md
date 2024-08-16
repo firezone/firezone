@@ -15,6 +15,16 @@ CI/CD pipeline.
 
 ## Building
 
+1. Set up Rust to cross-compile for iOS:
+
+   Ensure you've activated the correct toolchain version for your local
+   environment with `rustup default <toolchain>` (find this from
+   `/rust/rust-toolchain.toml` file), then run:
+
+   ```
+   rustup target add aarch64-apple-ios
+   ```
+
 1. Clone this repo:
 
    ```bash
