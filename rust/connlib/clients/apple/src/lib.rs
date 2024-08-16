@@ -153,13 +153,13 @@ fn init_logging(
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
-                .with_ansi(false)
-                .without_time()
-                .with_level(false)
                 .with_writer(make_writer::MakeWriter::new(
                     "dev.firezone.firezone",
                     "connlib",
-                )),
+                ))
+                .without_time()
+                .with_level(false)
+                .with_ansi(false),
         )
         .with(file_layer)
         .with(firezone_logging::filter(&log_filter))

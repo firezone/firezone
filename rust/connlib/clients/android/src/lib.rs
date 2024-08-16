@@ -141,10 +141,10 @@ fn init_logging(log_dir: &Path, log_filter: String) -> firezone_logging::file::H
         .with(file_layer)
         .with(
             tracing_subscriber::fmt::layer()
-                .with_ansi(false)
+                .with_writer(make_writer::MakeWriter::new("connlib"))
                 .without_time()
                 .with_level(false)
-                .with_writer(make_writer::MakeWriter::new("connlib")),
+                .with_ansi(false),
         )
         .with(firezone_logging::filter(&log_filter))
         .try_init();
