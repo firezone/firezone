@@ -58,12 +58,10 @@ impl StateMachineTest for TunnelTest {
     fn init_test(
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
     ) -> Self::SystemUnderTest {
-        let flux_capacitor = FluxCapacitor::default();
-
         let logger = tracing_subscriber::fmt()
             .with_test_writer()
             // .with_writer(crate::tests::run_count_appender::appender()) // Useful for diffing logs between runs.
-            .with_timer(flux_capacitor.clone())
+            .with_timer(ref_state.flux_capacitor.clone())
             .with_env_filter(EnvFilter::from_default_env())
             .finish()
             .set_default();
@@ -107,14 +105,17 @@ impl StateMachineTest for TunnelTest {
             .collect::<BTreeMap<_, _>>();
 
         // Configure client and gateway with the relays.
-        client.exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
+        client.exec_mut(|c| {
+            c.update_relays(iter::empty(), relays.iter(), ref_state.flux_capacitor.now())
+        });
         for gateway in gateways.values_mut() {
-            gateway
-                .exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
+            gateway.exec_mut(|g| {
+                g.update_relays(iter::empty(), relays.iter(), ref_state.flux_capacitor.now())
+            });
         }
 
         let mut this = Self {
-            flux_capacitor,
+            flux_capacitor: ref_state.flux_capacitor.clone(),
             network: ref_state.network.clone(),
             drop_direct_client_traffic: ref_state.drop_direct_client_traffic,
             client,

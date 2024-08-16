@@ -1,6 +1,6 @@
 use super::{
-    composite_strategy::CompositeStrategy, sim_client::*, sim_dns::*, sim_gateway::*, sim_net::*,
-    strategies::*, stub_portal::StubPortal, transition::*,
+    composite_strategy::CompositeStrategy, flux_capacitor::FluxCapacitor, sim_client::*,
+    sim_dns::*, sim_gateway::*, sim_net::*, strategies::*, stub_portal::StubPortal, transition::*,
 };
 use crate::dns::is_subdomain;
 use connlib_shared::{
@@ -22,7 +22,8 @@ use std::{
 /// The reference state machine of the tunnel.
 ///
 /// This is the "expected" part of our test.
-#[derive(Clone, Debug)]
+#[derive(Clone, derivative::Derivative)]
+#[derivative(Debug)]
 pub(crate) struct ReferenceState {
     pub(crate) client: Host<RefClient>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
@@ -39,6 +40,9 @@ pub(crate) struct ReferenceState {
     pub(crate) global_dns_records: BTreeMap<DomainName, HashSet<IpAddr>>,
 
     pub(crate) network: RoutingTable,
+
+    #[derivative(Debug = "ignore")]
+    pub(crate) flux_capacitor: FluxCapacitor,
 }
 
 #[derive(Debug, Clone)]
@@ -161,6 +165,7 @@ impl ReferenceStateMachine for ReferenceState {
                         global_dns_records,
                         network,
                         drop_direct_client_traffic,
+                        flux_capacitor: FluxCapacitor::default(),
                     }
                 },
             )
