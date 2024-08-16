@@ -106,7 +106,7 @@ export default function Page() {
       </section>
 
       <section className="bg-white px-4 sm:px-8 md:px-16 py-20 md:py-16">
-        <div className="py-8 md:py-12">
+        <div className="py-8 md:py-12 flex justify-center">
           <ElevatorPitch />
         </div>
         <div className="py-8 md:py-12">
