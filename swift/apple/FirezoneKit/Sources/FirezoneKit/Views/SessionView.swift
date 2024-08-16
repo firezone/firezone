@@ -12,16 +12,25 @@ import SwiftUI
 @MainActor
 public final class SessionViewModel: ObservableObject {
   @Published private(set) var actorName: String? = nil
-  @Published private(set) var resources: [Resource]? = nil
+  @Published private(set) var resources: [ViewResource] = []
   @Published private(set) var status: NEVPNStatus? = nil
 
-
+  let favorites: Favorites
   let store: Store
 
   private var cancellables: Set<AnyCancellable> = []
 
-  public init(store: Store) {
+  public init(favorites: Favorites, store: Store) {
+    self.favorites = favorites
     self.store = store
+
+    favorites.$ids
+      .receive(on: DispatchQueue.main)
+      .sink(receiveValue: { [weak self] ids in
+        guard let self = self else { return }
+        resources = resources.map { ViewResource(base: $0.base, isFavorite: favorites.contains($0.base.id)) }
+      })
+      .store(in: &cancellables)
 
     store.$actorName
       .receive(on: DispatchQueue.main)
@@ -42,7 +51,7 @@ public final class SessionViewModel: ObservableObject {
 
         if status == .connected {
           store.beginUpdatingResources() { resources in
-            self.resources = resources
+            self.resources = resources.map { ViewResource(base: $0, isFavorite: favorites.contains($0.id)) }
           }
         } else {
           store.endUpdatingResources()
@@ -73,18 +82,18 @@ struct SessionView: View {
         } else {
           List {
             Section(header: Text("Favorites")) {
-              ForEach(resources.filter { $0.id.starts(with: "6") }) { resource in
+              ForEach(resources.filter { $0.isFavorite }) { resource in
                 HStack {
-                  NavigationLink { ResourceView(resource: resource) }
+                  NavigationLink { ResourceView(resource: resource.base) }
                 label: {
                   HStack {
-                    Text(resource.name)
-                    if resource.canToggle {
+                    Text(resource.base.name)
+                    if resource.base.canToggle {
                       Spacer()
                       Toggle("Enabled", isOn: Binding<Bool>(
-                        get: { model.isResourceEnabled(resource.id) },
+                        get: { model.isResourceEnabled(resource.base.id) },
                         set: { newValue in
-                          model.store.toggleResourceDisabled(resource: resource.id, enabled: newValue)
+                          model.store.toggleResourceDisabled(resource: resource.base.id, enabled: newValue)
                         }
                       )).labelsHidden()
                     }
@@ -96,18 +105,18 @@ struct SessionView: View {
             }
 
             Section(header: Text("Other Resources")) {
-              ForEach(resources.filter { !$0.id.starts(with: "6") }) { resource in
+              ForEach(resources.filter { !$0.isFavorite }) { resource in
                 HStack {
-                  NavigationLink { ResourceView(resource: resource) }
+                  NavigationLink { ResourceView(resource: resource.base) }
                 label: {
                   HStack {
-                    Text(resource.name)
-                    if resource.canToggle {
+                    Text(resource.base.name)
+                    if resource.base.canToggle {
                       Spacer()
                       Toggle("Enabled", isOn: Binding<Bool>(
-                        get: { model.isResourceEnabled(resource.id) },
+                        get: { model.isResourceEnabled(resource.base.id) },
                         set: { newValue in
-                          model.store.toggleResourceDisabled(resource: resource.id, enabled: newValue)
+                          model.store.toggleResourceDisabled(resource: resource.base.id, enabled: newValue)
                         }
                       )).labelsHidden()
                     }
