@@ -138,7 +138,7 @@ async fn main() -> Result<()> {
                                 ))
                         ); // Expect the listener to flip src and dst
 
-                        let rtt = start.elapsed();
+                        let rtt = Instant::now().duration_since(start);
 
                         tracing::info!("RTT is {rtt:?}");
 
