@@ -47,10 +47,10 @@ pub(crate) struct SimClient {
     pub(crate) dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 
     pub(crate) sent_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket<'static>>,
-    pub(crate) received_dns_responses: HashMap<(SocketAddr, QueryId), IpPacket<'static>>,
+    pub(crate) received_dns_responses: BTreeMap<(SocketAddr, QueryId), IpPacket<'static>>,
 
     pub(crate) sent_icmp_requests: HashMap<(u16, u16), IpPacket<'static>>,
-    pub(crate) received_icmp_replies: HashMap<(u16, u16), IpPacket<'static>>,
+    pub(crate) received_icmp_replies: BTreeMap<(u16, u16), IpPacket<'static>>,
 
     buffer: Vec<u8>,
 }
@@ -270,7 +270,7 @@ pub struct RefClient {
     /// The IPs assigned to a domain by connlib are an implementation detail that we don't want to model in these tests.
     /// Instead, we just remember what _kind_ of records we resolved to be able to sample a matching src IP.
     #[derivative(Debug = "ignore")]
-    pub(crate) dns_records: BTreeMap<DomainName, HashSet<Rtype>>,
+    pub(crate) dns_records: BTreeMap<DomainName, BTreeSet<Rtype>>,
 
     /// Whether we are connected to the gateway serving the Internet resource.
     pub(crate) connected_internet_resources: bool,
@@ -292,7 +292,7 @@ pub struct RefClient {
     /// This is indexed by gateway because our assertions rely on the order of the sent packets.
     #[derivative(Debug = "ignore")]
     pub(crate) expected_icmp_handshakes:
-        HashMap<GatewayId, VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>>,
+        BTreeMap<GatewayId, VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>>,
     /// The expected DNS handshakes.
     #[derivative(Debug = "ignore")]
     pub(crate) expected_dns_handshakes: VecDeque<(SocketAddr, QueryId)>,
@@ -508,7 +508,7 @@ impl RefClient {
             .find(|id| !self.disabled_resources.contains(id))
     }
 
-    fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, HashSet<Rtype>)> + '_ {
+    fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, BTreeSet<Rtype>)> + '_ {
         self.dns_records
             .iter()
             .filter(|(domain, _)| self.dns_resource_by_domain(domain).is_some())

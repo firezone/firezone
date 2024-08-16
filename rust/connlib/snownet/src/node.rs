@@ -18,7 +18,7 @@ use rand::{random, SeedableRng};
 use secrecy::{ExposeSecret, Secret};
 use sha2::Digest;
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::mem;
@@ -86,7 +86,7 @@ pub struct Node<T, TId, RId> {
 
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
-    host_candidates: HashSet<Candidate>,
+    host_candidates: Vec<Candidate>, // `Candidate` doesn't implement `PartialOrd` so we cannot use a `BTreeSet`.
     buffered_transmits: VecDeque<Transmit<'static>>,
 
     next_rate_limiter_reset: Option<Instant>,
@@ -595,11 +595,11 @@ where
     fn add_local_as_host_candidate(&mut self, local: SocketAddr) -> Result<(), Error> {
         let host_candidate = Candidate::host(local, Protocol::Udp)?;
 
-        let is_new = self.host_candidates.insert(host_candidate.clone());
-
-        if !is_new {
+        if self.host_candidates.contains(&host_candidate) {
             return Ok(());
         }
+
+        self.host_candidates.push(host_candidate.clone());
 
         for (cid, agent) in self.connections.agents_mut() {
             let _span = info_span!("connection", %cid).entered();

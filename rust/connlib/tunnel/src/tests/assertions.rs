@@ -269,7 +269,7 @@ fn assert_proxy_ip_mapping_is_stable(
 
 fn find_unexpected_entries<'a, E, K, V>(
     expected: &VecDeque<E>,
-    actual: &'a HashMap<K, V>,
+    actual: &'a BTreeMap<K, V>,
     is_equal: impl Fn(&E, &K) -> bool,
 ) -> Vec<&'a V> {
     actual

@@ -2,7 +2,7 @@
 use anyhow::Context;
 use bimap::BiMap;
 use ip_packet::{IpPacket, Protocol};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 #[derive(Default, Debug)]
 pub(crate) struct NatTable {
     pub(crate) table: BiMap<(Protocol, IpAddr), (Protocol, IpAddr)>,
-    pub(crate) last_seen: HashMap<(Protocol, IpAddr), Instant>,
+    pub(crate) last_seen: BTreeMap<(Protocol, IpAddr), Instant>,
 }
 
 const TTL: Duration = Duration::from_secs(60);
