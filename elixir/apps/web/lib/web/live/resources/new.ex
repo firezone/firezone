@@ -155,16 +155,16 @@ defmodule Web.Resources.New do
                 </div>
                 <div class="mt-2 text-xs text-neutral-500">
                   <code class="ml-2 px-0.5 font-semibold">**.c.com</code>
-                  matches any level of subdomains (e.g., <code class="px-0.5 font-semibold">foo.c.com</code>,
+                  matches any level of subdomains (e.g. <code class="px-0.5 font-semibold">foo.c.com</code>,
                   <code class="px-0.5 font-semibold">bar.foo.c.com</code>
                   and <code class="px-0.5 font-semibold">c.com</code>).<br />
                   <code class="ml-2 px-0.5 font-semibold">*.c.com</code>
-                  matches a zero and single level subdomains (e.g.,
+                  matches zero or single-level subdomains (e.g.
                   <code class="px-0.5 font-semibold">foo.c.com</code>
                   and <code class="px-0.5 font-semibold">c.com</code>
                   but not <code class="px-0.5 font-semibold">bar.foo.c.com</code>). <br />
                   <code class="ml-2 px-0.5 font-semibold">us-east?.c.com</code>
-                  matches a single character (e.g., <code class="px-0.5 font-semibold">us-east1.c.com</code>).
+                  matches a single character (e.g. <code class="px-0.5 font-semibold">us-east1.c.com</code>).
                 </div>
               </div>
               <div :if={@form[:type].value == :ip} class="mt-2 text-xs text-neutral-500">

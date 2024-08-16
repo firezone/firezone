@@ -2,7 +2,7 @@ use crate::{
     device_id, dns_control::DnsController, known_dirs, signals, CallbackHandler, CliCommon,
     ConnlibMsg, IpcServerMsg,
 };
-use anyhow::{Context as _, Result};
+use anyhow::{bail, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{keypair, ConnectArgs, LoginUrl, Session};
 use firezone_bin_shared::{
@@ -14,7 +14,7 @@ use futures::{
     task::{Context, Poll},
     Future as _, SinkExt as _, Stream as _,
 };
-use std::{net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
+use std::{collections::HashSet, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
 use tokio::{sync::mpsc, time::Instant};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
@@ -22,7 +22,7 @@ use url::Url;
 
 pub mod ipc;
 use backoff::ExponentialBackoffBuilder;
-use connlib_shared::{get_user_agent, DEFAULT_MTU};
+use connlib_shared::{get_user_agent, messages::ResourceId, DEFAULT_MTU};
 use ipc::{Server as IpcServer, ServiceId};
 use phoenix_channel::PhoenixChannel;
 use secrecy::Secret;
@@ -76,6 +76,7 @@ pub enum ClientMsg {
     Disconnect,
     Reset,
     SetDns(Vec<IpAddr>),
+    SetDisabledResources(HashSet<ResourceId>),
 }
 
 /// Only called from the GUI Client's build of the IPC service
@@ -106,6 +107,9 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
         git_version = firezone_bin_shared::GIT_VERSION,
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
     );
+    if !platform::elevation_check()? {
+        bail!("IPC service failed its elevation check, try running as admin / root");
+    }
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
@@ -124,6 +128,9 @@ fn run_smoke_test() -> Result<()> {
 #[cfg(debug_assertions)]
 fn run_smoke_test() -> Result<()> {
     crate::setup_stdout_logging()?;
+    if !platform::elevation_check()? {
+        bail!("IPC service failed its elevation check, try running as admin / root");
+    }
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
     let mut dns_controller = DnsController {
@@ -337,7 +344,8 @@ impl<'a> Handler<'a> {
                     .context("Error while sending IPC message `OnUpdateResources`")?;
             }
             ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                self.tun_device.set_routes(ipv4, ipv6).await?
+                self.tun_device.set_routes(ipv4, ipv6).await?;
+                self.dns_controller.flush()?;
             }
         }
         Ok(())
@@ -414,6 +422,12 @@ impl<'a> Handler<'a> {
                 .as_mut()
                 .context("No connlib session")?
                 .set_dns(v),
+            ClientMsg::SetDisabledResources(disabled_resources) => {
+                self.connlib
+                    .as_mut()
+                    .context("No connlib session")?
+                    .set_disabled_resources(disabled_resources);
+            }
         }
         Ok(())
     }
