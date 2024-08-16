@@ -1,39 +1,42 @@
 import Foundation
 
 public class Favorites: ObservableObject {
-  private static let key = "favoriteResourceIDs"
-  @Published private(set) var ids: Set<String> = Favorites.load()
+  private let key = "favoriteResourceIDs"
+  @Published private(set) var ids: Set<String>
 
-  public init() {}
+  public init() {
+    ids = Favorites.load(key: key)
+  }
 
   func contains(_ id: String) -> Bool {
     return ids.contains(id)
   }
 
   func reset() {
-    objectWillChange.send()
     ids = Set()
-    Favorites.save(ids)
+    save()
   }
 
   func add(_ id: String) {
-    objectWillChange.send()
     ids.insert(id)
-    Favorites.save(ids)
+    save()
   }
 
   func remove(_ id: String) {
-    objectWillChange.send()
     ids.remove(id)
-    Favorites.save(ids)
+    save()
   }
 
-  private static func save(_ ids: Set<String>) {
+  private func save() {
     // It's a run-time exception if we pass the `Set` directly here
-    UserDefaults.standard.set(Array(ids), forKey: key)
+    let ids = Array(ids)
+    let key = self.key
+    UserDefaults.standard.set(ids, forKey: key)
+    // Trigger reactive updates
+    self.ids = self.ids
   }
 
-  private static func load() -> Set<String> {
+  private static func load(key: String) -> Set<String> {
     if let ids = UserDefaults.standard.stringArray(forKey: key) {
       return Set(ids)
     }

@@ -9,6 +9,7 @@ import SwiftUI
 
 #if os(iOS)
 struct ResourceView: View {
+  var model: SessionViewModel
   var resource: Resource
   @Environment(\.openURL) var openURL
 
@@ -69,19 +70,27 @@ struct ResourceView: View {
           }
         }
 
-        Button(action: {}) {
-          HStack {
-            Image(systemName: "star.fill")
-            Text("Add to favorites")
-            Spacer()
+        if(model.favorites.ids.contains(resource.id)) {
+          Button(action: {
+            print("Removing favorite")
+            model.favorites.remove(resource.id)
+          }) {
+            HStack {
+              Image(systemName: "star")
+              Text("Remove from favorites")
+              Spacer()
+            }
           }
-        }
-
-        Button(action: {}) {
-          HStack {
-            Image(systemName: "star")
-            Text("Remove from favorites")
-            Spacer()
+        } else {
+          Button(action: {
+            print("Adding favorite")
+            model.favorites.add(resource.id)
+          }) {
+            HStack {
+              Image(systemName: "star.fill")
+              Text("Add to favorites")
+              Spacer()
+            }
           }
         }
       }

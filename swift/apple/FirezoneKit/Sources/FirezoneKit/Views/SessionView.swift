@@ -12,10 +12,10 @@ import SwiftUI
 @MainActor
 public final class SessionViewModel: ObservableObject {
   @Published private(set) var actorName: String? = nil
-  @Published private(set) var resources: [Resource] = []
+  @Published private(set) var favorites: Favorites
+  @Published private(set) var resources: [Resource]? = nil
   @Published private(set) var status: NEVPNStatus? = nil
 
-  let favorites: Favorites
   let store: Store
 
   private var cancellables: Set<AnyCancellable> = []
@@ -76,55 +76,22 @@ struct SessionView: View {
   var body: some View {
     switch model.status {
     case .connected:
+      if let resources = model.resources {
         if resources.isEmpty {
           Text("No Resources. Contact your admin to be granted access.")
         } else {
           List {
-            Section(header: Text("Favorites")) {
-              ForEach(resources.filter { model.favorites.contains($0.id) }) { resource in
-                HStack {
-                  NavigationLink { ResourceView(resource: resource) }
-                label: {
-                  HStack {
-                    Text(resource.name)
-                    if resource.canToggle {
-                      Spacer()
-                      Toggle("Enabled", isOn: Binding<Bool>(
-                        get: { model.isResourceEnabled(resource.id) },
-                        set: { newValue in
-                          model.store.toggleResourceDisabled(resource: resource.id, enabled: newValue)
-                        }
-                      )).labelsHidden()
-                    }
-                  }
-                }
-                .navigationTitle("All Resources")
-                }
-              }
-            }
+            ResourceSection(
+              title: "Favorites",
+              resources: resources.filter { model.favorites.contains($0.id) },
+              model: model
+            )
 
-            Section(header: Text("Other Resources")) {
-              ForEach(resources.filter { !model.favorites.contains($0.id) }) { resource in
-                HStack {
-                  NavigationLink { ResourceView(resource: resource) }
-                label: {
-                  HStack {
-                    Text(resource.name)
-                    if resource.canToggle {
-                      Spacer()
-                      Toggle("Enabled", isOn: Binding<Bool>(
-                        get: { model.isResourceEnabled(resource.id) },
-                        set: { newValue in
-                          model.store.toggleResourceDisabled(resource: resource.id, enabled: newValue)
-                        }
-                      )).labelsHidden()
-                    }
-                  }
-                }
-                .navigationTitle("All Resources")
-                }
-              }
-            }
+            ResourceSection(
+              title: "Other Resources",
+              resources: resources.filter { !model.favorites.contains($0.id) },
+              model: model
+            )
           }
 
           .listStyle(GroupedListStyle())
@@ -144,6 +111,37 @@ struct SessionView: View {
       Text("Signed out. Please sign in again to connect to Resources.")
     @unknown default:
       Text("Unknown status. Please report this and attach your logs.")
+    }
+  }
+}
+
+struct ResourceSection: View {
+  let title: String
+  let resources: [Resource]
+  @ObservedObject var model: SessionViewModel
+
+  var body: some View {
+    Section(header: Text(title)) {
+      ForEach(resources) { resource in
+        HStack {
+          NavigationLink { ResourceView(model: model, resource: resource).id(resource.id) }
+        label: {
+          HStack {
+            Text(resource.name)
+            if resource.canToggle {
+              Spacer()
+              Toggle("Enabled", isOn: Binding<Bool>(
+                get: { model.isResourceEnabled(resource.id) },
+                set: { newValue in
+                  model.store.toggleResourceDisabled(resource: resource.id, enabled: newValue)
+                }
+              )).labelsHidden()
+            }
+          }
+        }
+        .navigationTitle("All Resources")
+        }
+      }
     }
   }
 }
