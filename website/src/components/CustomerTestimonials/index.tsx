@@ -84,15 +84,15 @@ const TestimonialBox = ({
 export default function CustomerTestimonials() {
   return (
     <section className="bg-neutral-950 py-24">
-      <div className="max-w-screen-lg mx-auto">
-        <div className="px-4 sm:px-8 md:px-16">
+      <div className="mx-auto max-w-screen-lg">
+        <div className="px-8 sm:px-16 md:px-24 ">
           <h3
             className={`text-white text-3xl leading-5 md:text-4xl lg:text-5xl tracking-tight font-medium inline-block text-left mb-2 ${manrope.className}`}
           >
             Customers{" "}
             <FaHeart className="text-red-500 w-12 h-12 mx-1 inline-block" /> us,
           </h3>
-          <p className="text-neutral-500 text-2xl md:text-3xl font-medium mb-8">
+          <p className="text-neutral-500 text-2xl md:text-3xl font-medium mb-8 ">
             and we love them back.
           </p>
         </div>

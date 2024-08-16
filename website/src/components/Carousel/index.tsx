@@ -3,11 +3,11 @@ import { Carousel as FlowbiteCarousel } from "flowbite-react";
 
 const theme: CustomFlowbiteTheme["carousel"] = {
   root: {
-    base: "h-full flex justify-center w-full",
+    base: "relative h-full flex justify-center w-full",
     leftControl:
-      "absolute md:left-16 sm:left-8 left-4 bottom-4 flex items-end justify-center px-4 focus:outline-none",
+      "absolute md:right-4 right-1/2 -translate-x-1/2 md:bottom-auto bottom-3 md:-top-28 flex items-end justify-center px-4 focus:outline-none",
     rightControl:
-      "absolute md:right-16 sm:right-8 right-4 bottom-4 flex items-end justify-center px-4 focus:outline-none",
+      "absolute md:right-0 left-1/2 translate-x-1/2 md:bottom-auto bottom-3 md:-top-28 flex items-end justify-center px-4 focus:outline-none",
   },
   indicators: {
     active: {
