@@ -491,8 +491,11 @@ impl RefClient {
         self.connected_cidr_resources.contains(&id)
     }
 
-    pub(crate) fn is_known_host(&self, name: &str) -> bool {
-        self.known_hosts.contains_key(name)
+    pub(crate) fn is_locally_answered_query(&self, domain: &DomainName) -> bool {
+        let is_known_host = self.known_hosts.contains_key(&domain.to_string());
+        let is_dns_resource = self.dns_resource_by_domain(domain).is_some();
+
+        is_known_host || is_dns_resource
     }
 
     pub(crate) fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {

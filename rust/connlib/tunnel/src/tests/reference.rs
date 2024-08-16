@@ -323,11 +323,11 @@ impl ReferenceStateMachine for ReferenceState {
                 let mut pending_connections = HashSet::new();
 
                 for query in queries {
-                    // Queries to known hosts are always successful.
+                    // Some queries get answered locally.
                     if state
                         .client
                         .inner()
-                        .is_known_host(&query.domain.to_string())
+                        .is_locally_answered_query(&query.domain)
                     {
                         state.client.exec_mut(|client| client.on_dns_query(query));
                         continue;
