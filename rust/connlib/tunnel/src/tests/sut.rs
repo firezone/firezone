@@ -59,6 +59,7 @@ impl StateMachineTest for TunnelTest {
         ref_state: &<Self::Reference as ReferenceStateMachine>::State,
     ) -> Self::SystemUnderTest {
         let flux_capacitor = FluxCapacitor::default();
+        let now = flux_capacitor.now();
 
         let logger = tracing_subscriber::fmt()
             .with_test_writer()
@@ -69,16 +70,17 @@ impl StateMachineTest for TunnelTest {
             .set_default();
 
         // Construct client, gateway and relay from the initial state.
-        let mut client = ref_state
-            .client
-            .map(|ref_client, _, _| ref_client.init(), debug_span!("client"));
+        let mut client = ref_state.client.map(
+            |ref_client, _, _| ref_client.init(now),
+            debug_span!("client"),
+        );
 
         let mut gateways = ref_state
             .gateways
             .iter()
             .map(|(gid, gateway)| {
                 let gateway = gateway.map(
-                    |ref_gateway, _, _| ref_gateway.init(*gid),
+                    |ref_gateway, _, _| ref_gateway.init(*gid, now),
                     debug_span!("gateway", %gid),
                 );
 
@@ -107,10 +109,9 @@ impl StateMachineTest for TunnelTest {
             .collect::<BTreeMap<_, _>>();
 
         // Configure client and gateway with the relays.
-        client.exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
+        client.exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), now));
         for gateway in gateways.values_mut() {
-            gateway
-                .exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
+            gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), now));
         }
 
         let mut this = Self {

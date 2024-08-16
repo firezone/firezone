@@ -298,6 +298,7 @@ impl ClientState {
         private_key: impl Into<StaticSecret>,
         known_hosts: HashMap<String, Vec<IpAddr>>,
         seed: [u8; 32],
+        now: Instant,
     ) -> Self {
         Self {
             awaiting_connection_details: Default::default(),
@@ -309,7 +310,7 @@ impl ClientState {
             buffered_events: Default::default(),
             interface_config: Default::default(),
             buffered_packets: Default::default(),
-            node: ClientNode::new(private_key.into(), seed),
+            node: ClientNode::new(private_key.into(), seed, now),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
@@ -1427,6 +1428,7 @@ mod tests {
                 StaticSecret::random_from_rng(OsRng),
                 HashMap::new(),
                 rand::random(),
+                Instant::now(),
             )
         }
     }

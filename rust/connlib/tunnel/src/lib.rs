@@ -88,7 +88,7 @@ impl ClientTunnel {
     ) -> Result<Self, NoInterfaces> {
         Ok(Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory)?,
-            role_state: ClientState::new(private_key, known_hosts, rand::random()),
+            role_state: ClientState::new(private_key, known_hosts, rand::random(), Instant::now()),
             write_buf: Box::new([0u8; DEFAULT_MTU + 16 + 20]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
@@ -179,7 +179,7 @@ impl GatewayTunnel {
     ) -> Result<Self, NoInterfaces> {
         Ok(Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory)?,
-            role_state: GatewayState::new(private_key, rand::random()),
+            role_state: GatewayState::new(private_key, rand::random(), Instant::now()),
             write_buf: Box::new([0u8; DEFAULT_MTU + 20 + 16]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),

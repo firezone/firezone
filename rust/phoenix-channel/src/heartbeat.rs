@@ -98,7 +98,7 @@ mod tests {
 
         let result = poll_fn(|cx| heartbeat.poll(cx)).await;
 
-        let elapsed = start.elapsed();
+        let elapsed = Instant::now().duration_since(start);
 
         assert!(result.is_ok());
         assert!(elapsed >= INTERVAL);

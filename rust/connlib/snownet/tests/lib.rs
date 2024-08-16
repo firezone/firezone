@@ -44,6 +44,7 @@ fn connection_with_candidates_does_not_time_out_after_10_seconds() {
     let answer = send_offer(&mut alice, &mut bob, start);
 
     let accepted_at = start + Duration::from_secs(1);
+
     alice.accept_answer(1, bob.public_key(), answer, accepted_at);
     alice.add_local_host_candidate(s("10.0.0.2:4444")).unwrap();
     alice.add_remote_candidate(1, host("10.0.0.1:4444"), accepted_at);
@@ -76,12 +77,14 @@ fn only_generate_candidate_event_after_answer() {
     let mut alice = ClientNode::<u64, u64>::new(
         StaticSecret::random_from_rng(rand::thread_rng()),
         rand::random(),
+        Instant::now(),
     );
     alice.add_local_host_candidate(local_candidate).unwrap();
 
     let mut bob = ServerNode::<u64, u64>::new(
         StaticSecret::random_from_rng(rand::thread_rng()),
         rand::random(),
+        Instant::now(),
     );
 
     let offer = alice.new_connection(1, Instant::now(), Instant::now());
@@ -109,10 +112,12 @@ fn alice_and_bob() -> (ClientNode<u64, u64>, ServerNode<u64, u64>) {
     let alice = ClientNode::new(
         StaticSecret::random_from_rng(rand::thread_rng()),
         rand::random(),
+        Instant::now(),
     );
     let bob = ServerNode::new(
         StaticSecret::random_from_rng(rand::thread_rng()),
         rand::random(),
+        Instant::now(),
     );
 
     (alice, bob)

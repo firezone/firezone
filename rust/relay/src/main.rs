@@ -616,7 +616,7 @@ fn is_healthy(last_heartbeat_sent: Arc<Mutex<Option<Instant>>>) -> bool {
         return true; // If we are not connected to the portal, we are always healthy.
     };
 
-    last_hearbeat_sent.elapsed() < MAX_PARTITION_TIME
+    Instant::now().duration_since(last_hearbeat_sent) < MAX_PARTITION_TIME
 }
 
 #[cfg(test)]

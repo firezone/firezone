@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "bin-shared",
+  "boringtun",
   "connlib/clients/android",
   "connlib/clients/apple",
   "connlib/clients/shared",
@@ -24,7 +25,7 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-boringtun = { version = "0.6", default-features = false }
+boringtun = { path = "boringtun", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 swift-bridge = "0.1.55"
 backoff = { version = "0.4", features = ["tokio"] }
@@ -74,7 +75,6 @@ redundant_clone = "warn"
 private-intra-doc-links = "allow" # We don't publish any of our docs but want to catch dead links.
 
 [patch.crates-io]
-boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
