@@ -4,12 +4,7 @@ import Marquee from "react-fast-marquee";
 
 export function CustomerLogosGrayscale() {
   return (
-    <div
-      style={{
-        maskImage:
-          "linear-gradient(to right, rgba(0, 0, 0, 0) 0%, rgb(0, 0, 0) 35%, rgb(0, 0, 0) 65%, rgba(0, 0, 0, 0) 100%)",
-      }}
-    >
+    <div className="fade-side">
       <div className="mx-8 grid grid-cols-3 md:grid-cols-7 gap-4">
         <div className="content-center">
           <Link href="https://corrdyn.com">
