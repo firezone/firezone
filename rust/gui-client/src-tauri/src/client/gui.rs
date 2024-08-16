@@ -746,6 +746,7 @@ impl Controller {
         let Status::TunnelReady { resources } = &self.status else {
             bail!("Tunnel is not ready");
         };
+
         let disabled_resources = resources
             .iter()
             .filter_map(|r| r.can_toggle().then_some(r.id()))

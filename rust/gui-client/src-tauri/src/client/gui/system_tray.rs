@@ -37,8 +37,8 @@ const RESOURCES: &str = "Resources";
 const OTHER_RESOURCES: &str = "Other Resources";
 const SIGN_OUT: &str = "Sign out";
 const DISCONNECT_AND_QUIT: &str = "Disconnect and quit Firezone";
-const ENABLED: &str = "Disable this resource";
-const DISABLED: &str = "Enable this resource";
+const DISABLE: &str = "Disable this resource";
+const ENABLE: &str = "Enable this resource";
 
 pub(crate) fn loading() -> SystemTray {
     SystemTray::new()
@@ -94,9 +94,9 @@ impl<'a> SignedIn<'a> {
         if res.can_toggle() {
             submenu.add_separator();
             if self.is_enabled(res) {
-                submenu.add_item(item(Event::DisableResource(res.id()), ENABLED));
+                submenu.add_item(item(Event::DisableResource(res.id()), DISABLE));
             } else {
-                submenu.add_item(item(Event::EnableResource(res.id()), DISABLED));
+                submenu.add_item(item(Event::EnableResource(res.id()), ENABLE));
             }
         }
 
@@ -290,8 +290,7 @@ mod tests {
     use std::str::FromStr as _;
 
     impl Menu {
-        /// Appends a elected menu item
-        pub(crate) fn selected_item<E: Into<Option<Event>>, S: Into<String>>(
+        fn selected_item<E: Into<Option<Event>>, S: Into<String>>(
             mut self,
             id: E,
             title: S,
@@ -299,6 +298,19 @@ mod tests {
             self.add_item(item(id, title).selected());
             self
         }
+    }
+
+    fn signed_in<'a>(
+        resources: &'a [ResourceDescription],
+        favorite_resources: &'a HashSet<ResourceId>,
+        disabled_resources: &'a HashSet<ResourceId>,
+    ) -> AppState<'a> {
+        AppState::SignedIn(SignedIn {
+            actor_name: "Jane Doe",
+            favorite_resources,
+            resources,
+            disabled_resources,
+        })
     }
 
     fn resources() -> Vec<ResourceDescription> {
@@ -343,12 +355,7 @@ mod tests {
         let resources = vec![];
         let favorites = Default::default();
         let disabled_resources = Default::default();
-        let input = AppState::SignedIn(SignedIn {
-            actor_name: "Jane Doe",
-            favorite_resources: &favorites,
-            resources: &resources,
-            disabled_resources: &disabled_resources,
-        });
+        let input = signed_in(&resources, &favorites, &disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -370,12 +377,7 @@ mod tests {
         let resources = vec![];
         let favorites = HashSet::from([ResourceId::from_u128(42)]);
         let disabled_resources = Default::default();
-        let input = AppState::SignedIn(SignedIn {
-            actor_name: "Jane Doe",
-            favorite_resources: &favorites,
-            resources: &resources,
-            disabled_resources: &disabled_resources,
-        });
+        let input = signed_in(&resources, &favorites, &disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -397,12 +399,7 @@ mod tests {
         let resources = resources();
         let favorites = Default::default();
         let disabled_resources = Default::default();
-        let input = AppState::SignedIn(SignedIn {
-            actor_name: "Jane Doe",
-            favorite_resources: &favorites,
-            resources: &resources,
-            disabled_resources: &disabled_resources,
-        });
+        let input = signed_in(&resources, &favorites, &disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -485,12 +482,7 @@ mod tests {
             "03000143-e25e-45c7-aafb-144990e57dcd",
         )?]);
         let disabled_resources = Default::default();
-        let input = AppState::SignedIn(SignedIn {
-            actor_name: "Jane Doe",
-            favorite_resources: &favorites,
-            resources: &resources,
-            disabled_resources: &disabled_resources,
-        });
+        let input = signed_in(&resources, &favorites, &disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -581,12 +573,7 @@ mod tests {
             "00000000-0000-0000-0000-000000000000",
         )?]);
         let disabled_resources = Default::default();
-        let input = AppState::SignedIn(SignedIn {
-            actor_name: "Jane Doe",
-            favorite_resources: &favorites,
-            resources: &resources,
-            disabled_resources: &disabled_resources,
-        });
+        let input = signed_in(&resources, &favorites, &disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")

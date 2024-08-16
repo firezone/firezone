@@ -339,6 +339,7 @@ impl<'a> Handler<'a> {
             }
             ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 } => {
                 self.tun_device.set_routes(ipv4, ipv6).await?
+                self.dns_controller.flush()?;
             }
         }
         Ok(())
@@ -420,7 +421,6 @@ impl<'a> Handler<'a> {
                     .as_mut()
                     .context("No connlib session")?
                     .set_disabled_resources(disabled_resources);
-                self.dns_controller.flush()?;
             }
         }
         Ok(())
