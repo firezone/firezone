@@ -23,7 +23,7 @@ current-headless-version = 1.1.7
 next-apple-version = 1.2.0
 next-android-version = 1.2.0
 next-gateway-version = 1.2.0
-next-gui-version = 1.2.0
+next-gui-version = 1.1.13
 next-headless-version = 1.2.0
 
 # macOS uses a slightly different sed syntax
