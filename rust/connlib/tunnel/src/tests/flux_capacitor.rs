@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use std::{
     fmt,
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use tracing_subscriber::fmt::{format::Writer, time::FormatTime};
 
@@ -10,7 +10,7 @@ use tracing_subscriber::fmt::{format::Writer, time::FormatTime};
 #[derive(Debug, Clone)]
 pub(crate) struct FluxCapacitor {
     start: Instant,
-    now: Arc<Mutex<(Instant, DateTime<Utc>)>>,
+    now: Arc<Mutex<(Instant, DateTime<Utc>, SystemTime)>>,
 }
 
 impl FormatTime for FluxCapacitor {
@@ -24,10 +24,11 @@ impl Default for FluxCapacitor {
     fn default() -> Self {
         let start = Instant::now();
         let utc_start = Utc::now();
+        let system_start = SystemTime::now();
 
         Self {
             start,
-            now: Arc::new(Mutex::new((start, utc_start))),
+            now: Arc::new(Mutex::new((start, utc_start, system_start))),
         }
     }
 }
@@ -41,9 +42,9 @@ impl FluxCapacitor {
     where
         T: PickNow,
     {
-        let (now, utc_now) = *self.now.lock().unwrap();
+        let (now, utc_now, system_now) = *self.now.lock().unwrap();
 
-        T::pick_now(now, utc_now)
+        T::pick_now(now, utc_now, system_now)
     }
 
     pub(crate) fn small_tick(&self) {
@@ -73,17 +74,23 @@ impl FluxCapacitor {
 }
 
 trait PickNow {
-    fn pick_now(now: Instant, utc_now: DateTime<Utc>) -> Self;
+    fn pick_now(now: Instant, utc_now: DateTime<Utc>, system_now: SystemTime) -> Self;
 }
 
 impl PickNow for Instant {
-    fn pick_now(now: Instant, _: DateTime<Utc>) -> Self {
+    fn pick_now(now: Instant, _: DateTime<Utc>, _: SystemTime) -> Self {
         now
     }
 }
 
 impl PickNow for DateTime<Utc> {
-    fn pick_now(_: Instant, utc_now: DateTime<Utc>) -> Self {
+    fn pick_now(_: Instant, utc_now: DateTime<Utc>, _: SystemTime) -> Self {
         utc_now
+    }
+}
+
+impl PickNow for SystemTime {
+    fn pick_now(_: Instant, _: DateTime<Utc>, system_now: SystemTime) -> Self {
+        system_now
     }
 }

@@ -127,7 +127,7 @@ where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
-    pub fn new(private_key: StaticSecret, seed: [u8; 32]) -> Self {
+    pub fn new(private_key: StaticSecret, seed: [u8; 32], now: Instant) -> Self {
         let public_key = &(&private_key).into();
         Self {
             rng: StdRng::from_seed(seed), // TODO: Use this seed for private key too. Requires refactoring of how we generate the login-url because that one needs to know the public key.
@@ -136,7 +136,7 @@ where
             public_key: *public_key,
             marker: Default::default(),
             index: IndexLfsr::default(),
-            rate_limiter: Arc::new(RateLimiter::new(public_key, HANDSHAKE_RATE_LIMIT)),
+            rate_limiter: Arc::new(RateLimiter::new(public_key, HANDSHAKE_RATE_LIMIT, now)),
             host_candidates: Default::default(),
             buffered_transmits: VecDeque::default(),
             next_rate_limiter_reset: None,
@@ -186,9 +186,9 @@ where
         self.public_key
     }
 
-    pub fn connection_id(&self, key: PublicKey) -> Option<TId> {
+    pub fn connection_id(&self, key: PublicKey, now: Instant) -> Option<TId> {
         self.connections.iter_established().find_map(|(id, c)| {
-            (c.remote_pub_key == key && c.tunnel.time_since_last_handshake().is_some())
+            (c.remote_pub_key == key && c.tunnel.time_since_last_handshake(now).is_some())
                 .then_some(id)
         })
     }
@@ -446,7 +446,7 @@ where
         let next_reset = *self.next_rate_limiter_reset.get_or_insert(now);
 
         if now >= next_reset {
-            self.rate_limiter.reset_count();
+            self.rate_limiter.reset_count(now);
             self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
         }
 
@@ -571,6 +571,7 @@ where
                 WG_KEEP_ALIVE,
                 self.index.next(),
                 Some(self.rate_limiter.clone()),
+                now,
             ),
             next_timer_update: now,
             stats: Default::default(),
@@ -727,7 +728,7 @@ where
                 continue;
             }
 
-            let handshake_complete_before_decapsulate = conn.wg_handshake_complete();
+            let handshake_complete_before_decapsulate = conn.wg_handshake_complete(now);
 
             let control_flow = conn.decapsulate(
                 packet,
@@ -737,7 +738,7 @@ where
                 now,
             );
 
-            let handshake_complete_after_decapsulate = conn.wg_handshake_complete();
+            let handshake_complete_after_decapsulate = conn.wg_handshake_complete(now);
 
             // I can't think of a better way to detect this ...
             if !handshake_complete_before_decapsulate && handshake_complete_after_decapsulate {
@@ -1435,8 +1436,8 @@ where
         }
     }
 
-    fn wg_handshake_complete(&self) -> bool {
-        self.tunnel.time_since_last_handshake().is_some()
+    fn wg_handshake_complete(&self, now: Instant) -> bool {
+        self.tunnel.time_since_last_handshake(now).is_some()
     }
 
     fn duration_since_intent(&self, now: Instant) -> Duration {
@@ -1514,7 +1515,7 @@ where
 
             let mut buf = [0u8; MAX_SCRATCH_SPACE];
 
-            match self.tunnel.update_timers(&mut buf) {
+            match self.tunnel.update_timers(&mut buf, now) {
                 TunnResult::Done => {}
                 TunnResult::Err(WireGuardError::ConnectionExpired) => {
                     tracing::info!("Connection failed (wireguard tunnel expired)");
@@ -1650,7 +1651,7 @@ where
         buffer: &'b mut [u8],
         now: Instant,
     ) -> Result<Option<&'b [u8]>, Error> {
-        let len = match self.tunnel.encapsulate(packet, buffer) {
+        let len = match self.tunnel.encapsulate(packet, buffer, now) {
             TunnResult::Done => return Ok(None),
             TunnResult::Err(e) => return Err(Error::Encapsulate(e)),
             TunnResult::WriteToNetwork(packet) => packet.len(),
@@ -1673,7 +1674,10 @@ where
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, MutableIpPacket<'b>> {
-        let control_flow = match self.tunnel.decapsulate(None, packet, &mut buffer[20..]) {
+        let control_flow = match self
+            .tunnel
+            .decapsulate(None, packet, &mut buffer[20..], now)
+        {
             TunnResult::Done => ControlFlow::Break(Ok(())),
             TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
 
@@ -1713,7 +1717,8 @@ where
                         buffered.push(bytes.to_owned());
 
                         while let TunnResult::WriteToNetwork(packet) =
-                            self.tunnel.decapsulate(None, &[], self.buffer.as_mut())
+                            self.tunnel
+                                .decapsulate(None, &[], self.buffer.as_mut(), now)
                         {
                             buffered.push(packet.to_owned());
                         }
@@ -1727,7 +1732,8 @@ where
                         ));
 
                         while let TunnResult::WriteToNetwork(packet) =
-                            self.tunnel.decapsulate(None, &[], self.buffer.as_mut())
+                            self.tunnel
+                                .decapsulate(None, &[], self.buffer.as_mut(), now)
                         {
                             transmits.extend(make_owned_transmit(
                                 *peer_socket,
@@ -1766,8 +1772,9 @@ where
 
         let mut buf = [0u8; MAX_SCRATCH_SPACE];
 
-        let TunnResult::WriteToNetwork(bytes) =
-            self.tunnel.format_handshake_initiation(&mut buf, false)
+        let TunnResult::WriteToNetwork(bytes) = self
+            .tunnel
+            .format_handshake_initiation(&mut buf, false, now)
         else {
             return;
         };

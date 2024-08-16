@@ -52,19 +52,19 @@ pub struct RateLimiter {
 }
 
 impl RateLimiter {
-    pub fn new(public_key: &crate::x25519::PublicKey, limit: u64) -> Self {
+    pub fn new(public_key: &crate::x25519::PublicKey, limit: u64, now: Instant) -> Self {
         let mut secret_key = [0u8; 16];
         OsRng.fill_bytes(&mut secret_key);
         RateLimiter {
             nonce_key: Self::rand_bytes(),
             secret_key,
-            start_time: Instant::now(),
+            start_time: now,
             nonce_ctr: AtomicU64::new(0),
             mac1_key: b2s_hash(LABEL_MAC1, public_key.as_bytes()),
             cookie_key: b2s_hash(LABEL_COOKIE, public_key.as_bytes()).into(),
             limit,
             count: AtomicU64::new(0),
-            last_reset: Mutex::new(Instant::now()),
+            last_reset: Mutex::new(now),
         }
     }
 
@@ -75,9 +75,9 @@ impl RateLimiter {
     }
 
     /// Reset packet count (ideally should be called with a period of 1 second)
-    pub fn reset_count(&self) {
+    pub fn reset_count(&self, now: Instant) {
         // The rate limiter is not very accurate, but at the scale we care about it doesn't matter much
-        let current_time = Instant::now();
+        let current_time = now;
         let mut last_reset_time = self.last_reset.lock();
         if current_time.duration_since(*last_reset_time).as_secs() >= RESET_PERIOD {
             self.count.store(0, Ordering::SeqCst);
@@ -86,7 +86,7 @@ impl RateLimiter {
     }
 
     /// Compute the correct cookie value based on the current secret value and the source IP
-    fn current_cookie(&self, addr: IpAddr) -> Cookie {
+    fn current_cookie(&self, addr: IpAddr, now: Instant) -> Cookie {
         let mut addr_bytes = [0u8; 16];
 
         match addr {
@@ -96,7 +96,7 @@ impl RateLimiter {
 
         // The current cookie for a given IP is the MAC(responder.changing_secret_every_two_minutes, initiator.ip_address)
         // First we derive the secret from the current time, the value of cur_counter would change with time.
-        let cur_counter = Instant::now().duration_since(self.start_time).as_secs() / COOKIE_REFRESH;
+        let cur_counter = now.duration_since(self.start_time).as_secs() / COOKIE_REFRESH;
 
         // Next we derive the cookie
         b2s_keyed_mac_16_2(&self.secret_key, &cur_counter.to_le_bytes(), &addr_bytes)
@@ -155,6 +155,7 @@ impl RateLimiter {
         src_addr: Option<IpAddr>,
         src: &'a [u8],
         dst: &'b mut [u8],
+        now: Instant,
     ) -> Result<Packet<'a>, TunnResult<'b>> {
         let packet = Tunn::parse_incoming_packet(src)?;
 
@@ -176,7 +177,7 @@ impl RateLimiter {
                 };
 
                 // Only given an address can we validate mac2
-                let cookie = self.current_cookie(addr);
+                let cookie = self.current_cookie(addr, now);
                 let computed_mac2 = b2s_keyed_mac_16_2(&cookie, msg, mac1);
 
                 if verify_slices_are_equal(&computed_mac2[..16], mac2).is_err() {

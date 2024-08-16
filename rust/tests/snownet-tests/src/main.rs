@@ -82,7 +82,7 @@ async fn main() -> Result<()> {
 
     match role {
         Role::Dialer => {
-            let mut node = ClientNode::<u64, u64>::new(private_key, rand::random());
+            let mut node = ClientNode::<u64, u64>::new(private_key, rand::random(), Instant::now());
             node.update_relays(BTreeSet::new(), &relays, Instant::now());
 
             let offer = node.new_connection(1, Instant::now(), Instant::now());
@@ -162,7 +162,7 @@ async fn main() -> Result<()> {
             }
         }
         Role::Listener => {
-            let mut node = ServerNode::<u64, u64>::new(private_key, rand::random());
+            let mut node = ServerNode::<u64, u64>::new(private_key, rand::random(), Instant::now());
             node.update_relays(BTreeSet::new(), &relays, Instant::now());
 
             let offer = redis_connection

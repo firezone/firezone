@@ -66,10 +66,10 @@ pub struct Timers {
 }
 
 impl Timers {
-    pub(super) fn new(persistent_keepalive: Option<u16>, reset_rr: bool) -> Timers {
+    pub(super) fn new(persistent_keepalive: Option<u16>, reset_rr: bool, now: Instant) -> Timers {
         Timers {
             is_initiator: false,
-            time_started: Instant::now(),
+            time_started: now,
             timers: Default::default(),
             session_timers: Default::default(),
             want_keepalive: Default::default(),
@@ -85,8 +85,8 @@ impl Timers {
 
     // We don't really clear the timers, but we set them to the current time to
     // so the reference time frame is the same
-    pub(super) fn clear(&mut self) {
-        let now = Instant::now().duration_since(self.time_started);
+    pub(super) fn clear(&mut self, now: Instant) {
+        let now = now.duration_since(self.time_started);
         for t in &mut self.timers[..] {
             *t = now;
         }
@@ -139,14 +139,14 @@ impl Tunn {
 
     // We don't really clear the timers, but we set them to the current time to
     // so the reference time frame is the same
-    fn clear_all(&mut self) {
+    fn clear_all(&mut self, now: Instant) {
         for session in &mut self.sessions {
             *session = None;
         }
 
         self.packet_queue.clear();
 
-        self.timers.clear();
+        self.timers.clear(now);
     }
 
     fn update_session_timers(&mut self, time_now: Duration) {
@@ -165,14 +165,14 @@ impl Tunn {
         }
     }
 
-    pub fn update_timers<'a>(&mut self, dst: &'a mut [u8]) -> TunnResult<'a> {
+    pub fn update_timers<'a>(&mut self, dst: &'a mut [u8], now: Instant) -> TunnResult<'a> {
         let mut handshake_initiation_required = false;
         let mut keepalive_required = false;
 
-        let time = Instant::now();
+        let time = now;
 
         if self.timers.should_reset_rr {
-            self.rate_limiter.reset_count();
+            self.rate_limiter.reset_count(now);
         }
 
         // All the times are counted from tunnel initiation, for efficiency our timers are rounded
@@ -208,7 +208,7 @@ impl Tunn {
             if now - session_established >= REJECT_AFTER_TIME * 3 {
                 tracing::error!("CONNECTION_EXPIRED(REJECT_AFTER_TIME * 3)");
                 self.handshake.set_expired();
-                self.clear_all();
+                self.clear_all(time);
                 return TunnResult::Err(WireGuardError::ConnectionExpired);
             }
 
@@ -221,7 +221,7 @@ impl Tunn {
                     // this timer is reset.
                     tracing::error!("CONNECTION_EXPIRED(REKEY_ATTEMPT_TIME)");
                     self.handshake.set_expired();
-                    self.clear_all();
+                    self.clear_all(time);
                     return TunnResult::Err(WireGuardError::ConnectionExpired);
                 }
 
@@ -301,20 +301,20 @@ impl Tunn {
         }
 
         if handshake_initiation_required {
-            return self.format_handshake_initiation(dst, true);
+            return self.format_handshake_initiation(dst, true, time);
         }
 
         if keepalive_required {
-            return self.encapsulate(&[], dst);
+            return self.encapsulate(&[], dst, time);
         }
 
         TunnResult::Done
     }
 
-    pub fn time_since_last_handshake(&self) -> Option<Duration> {
+    pub fn time_since_last_handshake(&self, now: Instant) -> Option<Duration> {
         let current_session = self.current;
         if self.sessions[current_session % super::N_SESSIONS].is_some() {
-            let duration_since_tun_start = Instant::now().duration_since(self.timers.time_started);
+            let duration_since_tun_start = now.duration_since(self.timers.time_started);
             let duration_since_session_established = self.timers[TimeSessionEstablished];
 
             Some(duration_since_tun_start - duration_since_session_established)
