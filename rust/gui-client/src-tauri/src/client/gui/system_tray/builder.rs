@@ -149,16 +149,6 @@ impl Menu {
         self
     }
 
-    /// Appends a selected menu item
-    pub(crate) fn selected_item<E: Into<Option<Event>>, S: Into<String>>(
-        mut self,
-        id: E,
-        title: S,
-    ) -> Self {
-        self.add_item(item(id, title).selected());
-        self
-    }
-
     /// Appends a separator
     pub(crate) fn separator(mut self) -> Self {
         self.add_separator();

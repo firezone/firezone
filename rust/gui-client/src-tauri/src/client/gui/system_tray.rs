@@ -289,6 +289,18 @@ mod tests {
     use anyhow::Result;
     use std::str::FromStr as _;
 
+    impl Menu {
+        /// Appends a elected menu item
+        pub(crate) fn selected_item<E: Into<Option<Event>>, S: Into<String>>(
+            mut self,
+            id: E,
+            title: S,
+        ) -> Self {
+            self.add_item(item(id, title).selected());
+            self
+        }
+    }
+
     fn resources() -> Vec<ResourceDescription> {
         let s = r#"[
             {
