@@ -653,7 +653,7 @@ public final class MenuBar: NSObject, ObservableObject {
   func favoritesChanged() {
     // When the user clicks to add or remove a favorite, the menu will close anyway, so just recreate the whole menu.
     // This avoids complex logic when changing in and out of the "nothing is favorited" special case
-    // self.populateResourceMenus([])
+    self.populateResourceMenus([])
     self.populateResourceMenus(resources)
   }
 
