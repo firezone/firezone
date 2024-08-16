@@ -122,7 +122,7 @@ export default function CustomerTestimonials() {
 
         <div
           ref={scrollRef}
-          className="sm:fade-side flex gap-12 px-8 sm:px-0 w-full snap-x snap-mandatory pb-24 sm:pb-12 overflow-x-auto"
+          className="sm:fade-side flex gap-12 px-8 sm:px-0 w-full snap-x snap-mandatory pb-24 sm:pb-12 overflow-x-auto dark-scroll"
         >
           {customerData.map((item, index) => (
             <TestimonialBox
