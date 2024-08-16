@@ -115,6 +115,7 @@ pub struct PacketData<'a> {
 }
 
 /// Describes a packet from network
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug)]
 pub enum Packet<'a> {
     HandshakeInit(HandshakeInit<'a>),
@@ -153,7 +154,7 @@ impl Tunn {
                 nonce: &src[8..32],
                 encrypted_cookie: &src[32..64],
             }),
-            (DATA, DATA_OVERHEAD_SZ..=std::usize::MAX) => Packet::PacketData(PacketData {
+            (DATA, DATA_OVERHEAD_SZ..=usize::MAX) => Packet::PacketData(PacketData {
                 receiver_idx: u32::from_le_bytes(src[4..8].try_into().unwrap()),
                 counter: u64::from_le_bytes(src[8..16].try_into().unwrap()),
                 encrypted_encapsulated_packet: &src[16..],

@@ -8,57 +8,27 @@ authors = [
     "Jeff Hiner <jhiner@cloudflare.com>",
 ]
 license = "BSD-3-Clause"
-repository = "https://github.com/cloudflare/boringtun"
-documentation = "https://docs.rs/boringtun/0.5.2/boringtun/"
+repository = "https://github.com/firezone/firezone"
 edition = "2018"
 
-[features]
-default = []
-device = ["socket2", "thiserror"]
-jni-bindings = ["ffi-bindings", "jni"]
-ffi-bindings = ["tracing-subscriber"]
-# mocks std::time::Instant with mock_instant
-mock-instant = ["mock_instant"]
-
 [dependencies]
-base64 = "0.13"
-hex = "0.4"
-untrusted = "0.9.0"
+aead = "0.5.0-pre.2"
+blake2 = "0.10"
+chacha20poly1305 = "0.10.0-pre.1"
+hmac = "0.12"
 libc = "0.2"
 parking_lot = "0.12"
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3", features = ["fmt"], optional = true }
-ip_network = "0.4.1"
-ip_network_table = "0.2.0"
+rand_core = { version = "0.6.4", features = ["getrandom"] }
 ring = "0.17"
+tracing = "0.1.40"
+untrusted = "0.9.0"
 x25519-dalek = { version = "2.0.0", features = [
     "reusable_secrets",
     "static_secrets",
 ] }
-rand_core = { version = "0.6.4", features = ["getrandom"] }
-chacha20poly1305 = "0.10.0-pre.1"
-aead = "0.5.0-pre.2"
-blake2 = "0.10"
-hmac = "0.12"
-jni = { version = "0.19.0", optional = true }
-mock_instant = { version = "0.3", optional = true }
-socket2 = { version = "0.4.7", features = ["all"], optional = true }
-thiserror = { version = "1", optional = true }
-
-[target.'cfg(unix)'.dependencies]
-nix = { version = "0.25", default-features = false, features = [
-    "time",
-    "user",
-] }
 
 [dev-dependencies]
-etherparse = "0.13"
-tracing-subscriber = "0.3"
-criterion = { version = "0.3.5", features = ["html_reports"] }
+etherparse = "0.15"
 
 [lib]
 crate-type = ["staticlib", "cdylib", "rlib"]
-
-[[bench]]
-name = "crypto_benches"
-harness = false
