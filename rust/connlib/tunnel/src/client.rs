@@ -1185,7 +1185,7 @@ fn effective_dns_servers(
         .peekable();
 
     if dns_servers.peek().is_none() {
-        tracing::error!("No system default DNS servers available! Can't initialize resolver. DNS interception will be disabled.");
+        tracing::warn!("No system default DNS servers available! Can't initialize resolver. DNS interception will be disabled.");
         return Vec::new();
     }
 

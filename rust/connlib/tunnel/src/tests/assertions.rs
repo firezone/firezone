@@ -283,13 +283,15 @@ fn find_unexpected_entries<'a, E, K, V>(
 pub(crate) struct PanicOnErrorEvents<S> {
     subscriber: PhantomData<S>,
     has_seen_error: AtomicBool,
+    index: u32,
 }
 
-impl<S> Default for PanicOnErrorEvents<S> {
-    fn default() -> Self {
+impl<S> PanicOnErrorEvents<S> {
+    pub(crate) fn new(index: u32) -> Self {
         Self {
-            subscriber: Default::default(),
+            subscriber: PhantomData,
             has_seen_error: Default::default(),
+            index,
         }
     }
 }
@@ -297,7 +299,7 @@ impl<S> Default for PanicOnErrorEvents<S> {
 impl<S> Drop for PanicOnErrorEvents<S> {
     fn drop(&mut self) {
         if self.has_seen_error.load(Ordering::SeqCst) {
-            panic!("At least one assertion failed");
+            panic!("Testcase {} failed", self.index);
         }
     }
 }
