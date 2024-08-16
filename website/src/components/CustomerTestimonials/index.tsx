@@ -1,4 +1,6 @@
-import Carousel from "@/components/Carousel";
+"use client";
+
+import { useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { HiArrowLeft, HiArrowRight } from "react-icons/hi2";
@@ -56,25 +58,23 @@ const TestimonialBox = ({
   authorTitle,
 }: TestimonialBoxProps) => {
   return (
-    <div className="px-8 md:px-12 py-8 md:py-12 max-w-[750px] ">
-      <div className="flex flex-col justify-between p-8 bg-[#1B1B1D] min-h-[420px] md:min-h-[352px] h-full rounded-2xl">
-        <div className="">
-          <p className="text-md md:text-lg tracking-wide font-light mb-2 md:mb-6 break-keep italic">
-            "{desc}"
+    <div className="first:sm:ml-48 last:sm:mr-48 shrink-0 px-8 md:px-12 py-8 md:py-12 bg-[#1B1B1D] snap-center flex flex-col rounded-2xl justify-between w-fit max-w-[540px] h-84">
+      <p className="text-md md:text-lg tracking-wide font-light mb-2 md:mb-6 break-keep italic text-neutral-50">
+        "{desc}"
+      </p>
+      <div className="flex gap-4 items-center">
+        <Image
+          src={authorImage}
+          alt="author portrait"
+          width={128}
+          height={128}
+          className="w-10 h-10 sm:h-12 sm:h-12 md:h-16 md:w-16 rounded-full"
+        />
+        <div>
+          <p className="text-md md:text-lg text-neutral-50">{authorName}</p>
+          <p className="text-sm md:text-md font-light text-neutral-50">
+            {authorTitle}
           </p>
-        </div>
-        <div className="flex gap-4 items-center">
-          <Image
-            src={authorImage}
-            alt="author portrait"
-            width={128}
-            height={128}
-            className="w-10 h-10 sm:h-12 md:h-16 md:w-16 rounded-full"
-          />
-          <div>
-            <p className="text-md md:text-lg">{authorName}</p>
-            <p className="text-sm md:text-md font-light">{authorTitle}</p>
-          </div>
         </div>
       </div>
     </div>
@@ -82,22 +82,48 @@ const TestimonialBox = ({
 };
 
 export default function CustomerTestimonials() {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollLeft = () => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollBy({
+        left: -540,
+        behavior: "smooth",
+      });
+    }
+  };
+
+  const scrollRight = () => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollBy({
+        left: 540,
+        behavior: "smooth",
+      });
+    }
+  };
+
   return (
     <section className="bg-neutral-950 py-24">
-      <div className="mx-auto max-w-screen-lg">
-        <div className="px-8 sm:px-16 md:px-24 ">
-          <h3
-            className={`text-white text-3xl leading-5 md:text-4xl lg:text-5xl tracking-tight font-medium inline-block text-left mb-2 ${manrope.className}`}
-          >
-            Customers{" "}
-            <FaHeart className="text-red-500 w-12 h-12 mx-1 inline-block" /> us,
-          </h3>
-          <p className="text-neutral-500 text-2xl md:text-3xl font-medium mb-8 ">
-            and we love them back.
-          </p>
+      <div className="relative mx-auto max-w-screen-lg">
+        <div className="px-8 sm:px-16 md:px-24 mb-12 md:mb-16">
+          <div>
+            <h3
+              className={`text-white text-3xl leading-5 md:text-4xl lg:text-5xl tracking-tight font-medium inline-block text-left mb-2 ${manrope.className}`}
+            >
+              Customers{" "}
+              <FaHeart className="text-red-500 w-12 h-12 mx-1 inline-block" />{" "}
+              us,
+            </h3>
+            <p className="text-neutral-500 text-2xl md:text-3xl font-medium">
+              and we love them back.
+            </p>
+          </div>
         </div>
 
-        <Carousel>
+        <div
+          ref={scrollRef}
+          className="sm:fade-side flex gap-12 px-8 sm:px-0 w-full snap-x snap-mandatory pb-24 sm:pb-12 overflow-x-auto"
+        >
           {customerData.map((item, index) => (
             <TestimonialBox
               key={index}
@@ -107,7 +133,15 @@ export default function CustomerTestimonials() {
               authorName={item.authorName}
             />
           ))}
-        </Carousel>
+        </div>
+        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 sm:left-auto sm:translate-x-0 sm:bottom-auto sm:right-16 sm:top-8 flex items-center gap-16">
+          <button onClick={scrollLeft}>
+            <HiArrowLeft className="hover:bg-[#1b1b1d] cursor-pointer rounded-full border p-1.5 text-neutral-50 w-8 h-8" />
+          </button>
+          <button onClick={scrollRight}>
+            <HiArrowRight className="hover:bg-[#1b1b1d] cursor-pointer rounded-full border p-1.5 text-neutral-50 w-8 h-8" />
+          </button>
+        </div>
       </div>
     </section>
   );
