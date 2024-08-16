@@ -57,7 +57,7 @@ const TestimonialBox = ({
 }: TestimonialBoxProps) => {
   return (
     <div className="px-8 md:px-12 py-8 md:py-12 max-w-[750px] ">
-      <div className="flex flex-col justify-between p-8 bg-[#1B1B1D] min-h-[352px] h-full rounded-2xl">
+      <div className="flex flex-col justify-between p-8 bg-[#1B1B1D] min-h-[420px] md:min-h-[352px] h-full rounded-2xl">
         <div className="">
           <p className="text-md md:text-lg tracking-wide font-light mb-2 md:mb-6 break-keep italic">
             "{desc}"
