@@ -29,7 +29,7 @@ struct iOSNavigationView<Content: View>: View {
         .navigationBarItems(trailing: SettingsButton)
     }
     .sheet(isPresented: $isSettingsPresented) {
-      SettingsView(model: SettingsViewModel(store: model.store))
+      SettingsView(favorites: model.favorites, model: SettingsViewModel(store: model.store))
     }
     .navigationViewStyle(StackNavigationViewStyle())
   }
