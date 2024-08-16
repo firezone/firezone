@@ -3,11 +3,11 @@ import { Carousel as FlowbiteCarousel } from "flowbite-react";
 
 const theme: CustomFlowbiteTheme["carousel"] = {
   root: {
-    base: "relative h-full w-full",
+    base: "h-full flex justify-center w-full",
     leftControl:
-      "absolute left-0 bottom-4 flex items-end justify-center px-4 focus:outline-none",
+      "absolute md:left-16 sm:left-8 left-4 bottom-4 flex items-end justify-center px-4 focus:outline-none",
     rightControl:
-      "absolute right-0 bottom-4 flex items-end justify-center px-4 focus:outline-none",
+      "absolute md:right-16 sm:right-8 right-4 bottom-4 flex items-end justify-center px-4 focus:outline-none",
   },
   indicators: {
     active: {
@@ -21,7 +21,7 @@ const theme: CustomFlowbiteTheme["carousel"] = {
     base: "absolute left-1/2 block w-full -translate-x-1/2",
     wrapper: {
       off: "w-full flex-shrink-0 transform cursor-default snap-center",
-      on: "w-full flex-shrink-0 transform cursor-grab snap-center",
+      on: "w-full last:-mr-0 -mr-16 md:-mr-24 lg:-mr-32 flex-shrink-0 transform cursor-grab snap-center",
     },
   },
   control: {
@@ -29,15 +29,15 @@ const theme: CustomFlowbiteTheme["carousel"] = {
     icon: "h-5 w-5 text-white dark:text-gray-800 sm:h-6 sm:w-6",
   },
   scrollContainer: {
-    base: "flex h-full snap-mandatory overflow-y-hidden overflow-x-scroll scroll-smooth rounded-lg",
+    base: "absolute w-full md:w-[80%] mx-auto gap-4 flex h-full snap-mandatory overflow-y-hidden overflow-x-scroll scroll-smooth rounded-lg",
     snap: "snap-x",
   },
 };
 
 export default function Carousel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="h-96 rounded-2xl text-neutral-50 bg-[#1B1B1D]">
-      <FlowbiteCarousel slideInterval={10000} pauseOnHover theme={theme}>
+    <div className="relative h-[540px] md:h-[520px] lg:h-[500px] rounded-2xl text-neutral-50">
+      <FlowbiteCarousel slideInterval={10000} pauseOnHover theme={theme} >
         {children}
       </FlowbiteCarousel>
     </div>

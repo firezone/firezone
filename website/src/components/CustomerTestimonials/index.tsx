@@ -56,23 +56,25 @@ const TestimonialBox = ({
   authorTitle,
 }: TestimonialBoxProps) => {
   return (
-    <div className="h-full px-8 md:px-16 py-8 md:py-12">
-      <div className="mb-4 md:mb-8">
-        <p className="text-md md:text-lg tracking-wide font-light mb-2 md:mb-6 break-keep italic">
-          "{desc}"
-        </p>
-      </div>
-      <div className="flex gap-4 items-center">
-        <Image
-          src={authorImage}
-          alt="author portrait"
-          width={128}
-          height={128}
-          className="w-10 h-10 sm:h-12 sm:h-12 md:h-16 md:w-16 rounded-full"
-        />
-        <div>
-          <p className="text-md md:text-lg">{authorName}</p>
-          <p className="text-sm md:text-md font-light">{authorTitle}</p>
+    <div className="px-8 md:px-12 py-8 md:py-12 max-w-[750px] ">
+      <div className="flex flex-col justify-between p-8 bg-[#1B1B1D] min-h-[352px] h-full rounded-2xl">
+        <div className="">
+          <p className="text-md md:text-lg tracking-wide font-light mb-2 md:mb-6 break-keep italic">
+            "{desc}"
+          </p>
+        </div>
+        <div className="flex gap-4 items-center">
+          <Image
+            src={authorImage}
+            alt="author portrait"
+            width={128}
+            height={128}
+            className="w-10 h-10 sm:h-12 md:h-16 md:w-16 rounded-full"
+          />
+          <div>
+            <p className="text-md md:text-lg">{authorName}</p>
+            <p className="text-sm md:text-md font-light">{authorTitle}</p>
+          </div>
         </div>
       </div>
     </div>
@@ -81,17 +83,20 @@ const TestimonialBox = ({
 
 export default function CustomerTestimonials() {
   return (
-    <section className="bg-neutral-950 py-24 px-8 md:px-0">
-      <div className="max-w-screen-md mx-auto">
-        <h3
-          className={`text-white text-3xl leading-5 md:text-4xl lg:text-5xl tracking-tight font-medium inline-block text-left mb-4 ${manrope.className}`}
-        >
-          Customers{" "}
-          <FaHeart className="text-red-500 w-12 h-12 mx-1 inline-block" /> us
-        </h3>
-        <p className="text-neutral-500 text-sm md:text-md font-light mb-8">
-          (and we love them back)
-        </p>
+    <section className="bg-neutral-950 py-24">
+      <div className="max-w-screen-lg mx-auto">
+        <div className="px-4 sm:px-8 md:px-16">
+          <h3
+            className={`text-white text-3xl leading-5 md:text-4xl lg:text-5xl tracking-tight font-medium inline-block text-left mb-2 ${manrope.className}`}
+          >
+            Customers{" "}
+            <FaHeart className="text-red-500 w-12 h-12 mx-1 inline-block" /> us,
+          </h3>
+          <p className="text-neutral-500 text-2xl md:text-3xl font-medium mb-8">
+            and we love them back.
+          </p>
+        </div>
+
         <Carousel>
           {customerData.map((item, index) => (
             <TestimonialBox
