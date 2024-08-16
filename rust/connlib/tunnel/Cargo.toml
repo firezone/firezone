@@ -12,7 +12,6 @@ chrono = { workspace = true }
 connlib-shared = { workspace = true }
 divan = { version = "0.1.14", optional = true }
 domain = { workspace = true }
-firezone-logging = { workspace = true }
 futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
 glob = "0.3.1"
@@ -37,7 +36,6 @@ uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
 
 [dev-dependencies]
 derivative = "2.2.0"
-firezone-logging = { workspace = true }
 firezone-relay = { workspace = true, features = ["proptest"] }
 ip-packet = { workspace = true, features = ["proptest"] }
 proptest-state-machine = "0.3"
@@ -45,7 +43,6 @@ rand = "0.8"
 serde_json = "1.0"
 test-case = "3.3.1"
 test-strategy = "0.3.1"
-tracing-appender = "0.2.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [[bench]]

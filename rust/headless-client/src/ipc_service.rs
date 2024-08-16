@@ -14,7 +14,7 @@ use futures::{
     task::{Context, Poll},
     Future as _, SinkExt as _, Stream as _,
 };
-use std::{collections::HashSet, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
+use std::{collections::BTreeSet, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
 use tokio::{sync::mpsc, time::Instant};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
@@ -76,7 +76,7 @@ pub enum ClientMsg {
     Disconnect,
     Reset,
     SetDns(Vec<IpAddr>),
-    SetDisabledResources(HashSet<ResourceId>),
+    SetDisabledResources(BTreeSet<ResourceId>),
 }
 
 /// Only called from the GUI Client's build of the IPC service
