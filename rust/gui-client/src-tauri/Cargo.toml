@@ -51,6 +51,7 @@ tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 url = { version = "2.5.2", features = ["serde"] }
 uuid = { version = "1.10.0", features = ["v4"] }
 zip = { version = "2", features = ["deflate", "time"], default-features = false }
+floem = { git = "https://github.com/lapce/floem", branch = "main" }
 
 [dependencies.keyring]
 version = "3.0.4"

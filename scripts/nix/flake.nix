@@ -33,6 +33,13 @@
             openssl_3
             librsvg
             libappindicator-gtk3
+            wayland
+            libxkbcommon
+            vulkan-headers
+            vulkan-loader
+            vulkan-tools
+            vulkan-tools-lunarg
+            vulkan-extension-layer
           ];
 
           packages = with pkgs; [
