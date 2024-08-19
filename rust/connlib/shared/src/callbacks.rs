@@ -70,6 +70,14 @@ impl ResourceDescription {
             ResourceDescription::Internet(r) => &r.sites,
         }
     }
+
+    pub fn can_toggle(&self) -> bool {
+        match self {
+            ResourceDescription::Dns(r) => r.can_toggle,
+            ResourceDescription::Cidr(r) => r.can_toggle,
+            ResourceDescription::Internet(r) => r.can_toggle,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]

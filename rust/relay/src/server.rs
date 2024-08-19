@@ -18,7 +18,7 @@ use opentelemetry::KeyValue;
 use rand::Rng;
 use secrecy::SecretString;
 use smallvec::SmallVec;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
 use std::ops::RangeInclusive;
@@ -68,7 +68,7 @@ pub struct Server<R> {
     ports: RangeInclusive<u16>,
 
     /// Channel numbers are unique by client, thus indexed by both.
-    channels_by_client_and_number: HashMap<(ClientSocket, ChannelNumber), Channel>,
+    channels_by_client_and_number: BTreeMap<(ClientSocket, ChannelNumber), Channel>,
     /// Channel numbers are unique between clients and peers, thus indexed by both.
     channel_numbers_by_client_and_peer: HashMap<(ClientSocket, PeerSocket), ChannelNumber>,
 
@@ -671,6 +671,12 @@ where
             // Binding requests for existing channels act as a refresh for the binding.
 
             channel.refresh(now);
+
+            // Update the fast-path map in case the binding expired in the cooldown period and got removed.
+            self.channel_and_client_by_port_and_peer.insert(
+                (channel.allocation, channel.peer_address),
+                (sender, requested_channel),
+            );
 
             tracing::info!(target: "relay", "Refreshed channel binding");
 

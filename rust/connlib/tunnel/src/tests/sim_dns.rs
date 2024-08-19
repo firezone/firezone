@@ -18,7 +18,7 @@ use proptest::{
 use snownet::Transmit;
 use std::{
     borrow::Cow,
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     fmt,
     net::{IpAddr, SocketAddr},
     time::Instant,
@@ -50,7 +50,7 @@ pub(crate) struct SimDns {}
 impl SimDns {
     pub(crate) fn receive(
         &mut self,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
         transmit: Transmit,
         _now: Instant,
     ) -> Option<Transmit<'static>> {
