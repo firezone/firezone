@@ -426,8 +426,7 @@ impl ClientState {
         now: Instant,
     ) -> Option<snownet::Transmit<'s>> {
         let (packet, dst) = match self.try_handle_dns_query(packet, now) {
-            Ok(response) => {
-                self.buffered_packets.push_back(response?.to_owned());
+            Ok(()) => {
                 return None;
             }
             Err(non_dns_packet) => non_dns_packet,
@@ -624,14 +623,18 @@ impl ClientState {
         &mut self,
         packet: MutableIpPacket<'a>,
         now: Instant,
-    ) -> Result<Option<IpPacket<'a>>, (MutableIpPacket<'a>, IpAddr)> {
+    ) -> Result<(), (MutableIpPacket<'a>, IpAddr)> {
         match self.stub_resolver.handle(&self.dns_mapping, packet, |ip| {
             self.interface_config
                 .as_ref()
                 .is_some_and(|i| !i.upstream_dns.is_empty())
                 && self.active_cidr_resources.longest_match(ip).is_some()
         }) {
-            ControlFlow::Break(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
+            ControlFlow::Break(dns::ResolveStrategy::LocalResponse(query)) => {
+                self.buffered_packets.push_back(query);
+
+                Ok(())
+            }
             ControlFlow::Break(dns::ResolveStrategy::ForwardQuery {
                 upstream: server,
                 query_id,
@@ -648,7 +651,7 @@ impl ClientState {
                     payload: Cow::Owned(payload),
                 });
 
-                Ok(None)
+                Ok(())
             }
             ControlFlow::Continue(packet) => {
                 let dest = packet.destination();
