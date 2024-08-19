@@ -1067,7 +1067,7 @@ impl ClientState {
             ResourceDescription::Dns(_) => self.stub_resolver.remove_resource(id),
             ResourceDescription::Cidr(_) => self.active_cidr_resources.retain(|_, r| r.id != id),
             ResourceDescription::Internet(_) => {
-                if self.internet_resource.is_some_and(|r_id| r == id) {
+                if self.internet_resource.is_some_and(|r_id| r_id == id) {
                     self.internet_resource.take();
                 }
             }
