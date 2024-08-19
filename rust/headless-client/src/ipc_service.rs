@@ -1,6 +1,6 @@
 use crate::{
     device_id, dns_control::DnsController, known_dirs, signals, CallbackHandler, CliCommon,
-    ConnlibMsg, IpcServerMsg,
+    ConnlibMsg, IpcServerMsg, LogFilterReloader,
 };
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
@@ -15,7 +15,7 @@ use futures::{
     Future as _, SinkExt as _, Stream as _,
 };
 use std::{collections::BTreeSet, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
-use tokio::{sync::mpsc, time::Instant};
+use tokio::{sync::mpsc, task::spawn_blocking, time::Instant};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
 use url::Url;
@@ -74,6 +74,7 @@ pub enum ClientMsg {
     ClearLogs,
     Connect { api_url: String, token: String },
     Disconnect,
+    ReloadLogFilter,
     Reset,
     SetDns(Vec<IpAddr>),
     SetDisabledResources(BTreeSet<ResourceId>),
@@ -101,7 +102,7 @@ pub fn run_only_ipc_service() -> Result<()> {
 }
 
 fn run_debug_ipc_service(cli: Cli) -> Result<()> {
-    crate::setup_stdout_logging()?;
+    let log_filter_reloader = crate::setup_stdout_logging()?;
     tracing::info!(
         arch = std::env::consts::ARCH,
         git_version = firezone_bin_shared::git_version!("gui-client-*"),
@@ -114,7 +115,11 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
-    rt.block_on(ipc_listen(cli.common.dns_control, &mut signals))
+    rt.block_on(ipc_listen(
+        cli.common.dns_control,
+        &log_filter_reloader,
+        &mut signals,
+    ))
 }
 
 #[cfg(not(debug_assertions))]
@@ -127,7 +132,7 @@ fn run_smoke_test() -> Result<()> {
 /// This makes the timing neater in case the GUI starts up slowly.
 #[cfg(debug_assertions)]
 fn run_smoke_test() -> Result<()> {
-    crate::setup_stdout_logging()?;
+    let log_filter_reloader = crate::setup_stdout_logging()?;
     if !platform::elevation_check()? {
         bail!("IPC service failed its elevation check, try running as admin / root");
     }
@@ -145,7 +150,7 @@ fn run_smoke_test() -> Result<()> {
     rt.block_on(async {
         device_id::get_or_create().context("Failed to read / create device ID")?;
         let mut server = IpcServer::new(ServiceId::Prod).await?;
-        let _ = Handler::new(&mut server, &mut dns_controller)
+        let _ = Handler::new(&mut server, &mut dns_controller, &log_filter_reloader)
             .await?
             .run(&mut signals)
             .await;
@@ -159,6 +164,7 @@ fn run_smoke_test() -> Result<()> {
 /// client a hint about that before we exit.
 async fn ipc_listen(
     dns_control_method: DnsControlMethod,
+    log_filter_reloader: &LogFilterReloader,
     signals: &mut signals::Terminate,
 ) -> Result<()> {
     // Create the device ID and IPC service config dir if needed
@@ -167,7 +173,11 @@ async fn ipc_listen(
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     let mut dns_controller = DnsController { dns_control_method };
     loop {
-        let mut handler_fut = pin!(Handler::new(&mut server, &mut dns_controller));
+        let mut handler_fut = pin!(Handler::new(
+            &mut server,
+            &mut dns_controller,
+            log_filter_reloader
+        ));
         let Some(handler) = poll_fn(|cx| {
             if let Poll::Ready(()) = signals.poll_recv(cx) {
                 Poll::Ready(None)
@@ -199,6 +209,7 @@ struct Handler<'a> {
     ipc_rx: ipc::ServerRead,
     ipc_tx: ipc::ServerWrite,
     last_connlib_start_instant: Option<Instant>,
+    log_filter_reloader: &'a LogFilterReloader,
     tun_device: TunDeviceManager,
 }
 
@@ -220,7 +231,11 @@ enum HandlerOk {
 }
 
 impl<'a> Handler<'a> {
-    async fn new(server: &mut IpcServer, dns_controller: &'a mut DnsController) -> Result<Self> {
+    async fn new(
+        server: &mut IpcServer,
+        dns_controller: &'a mut DnsController,
+        log_filter_reloader: &'a LogFilterReloader,
+    ) -> Result<Self> {
         dns_controller.deactivate()?;
         let (ipc_rx, ipc_tx) = server
             .next_client_split()
@@ -237,6 +252,7 @@ impl<'a> Handler<'a> {
             ipc_rx,
             ipc_tx,
             last_connlib_start_instant: None,
+            log_filter_reloader,
             tun_device,
         })
     }
@@ -416,6 +432,10 @@ impl<'a> Handler<'a> {
                     tracing::error!("Error - Got Disconnect when we're already not connected");
                 }
             }
+            ClientMsg::ReloadLogFilter => {
+                let filter = spawn_blocking(get_log_filter).await??;
+                self.log_filter_reloader.reload(filter)?;
+            }
             ClientMsg::Reset => self.connlib.as_mut().context("No connlib session")?.reset(),
             ClientMsg::SetDns(v) => self
                 .connlib
@@ -437,7 +457,9 @@ impl<'a> Handler<'a> {
 ///
 /// Returns: A `Handle` that must be kept alive. Dropping it stops logging
 /// and flushes the log file.
-fn setup_logging(log_dir: Option<PathBuf>) -> Result<firezone_logging::file::Handle> {
+fn setup_logging(
+    log_dir: Option<PathBuf>,
+) -> Result<(firezone_logging::file::Handle, LogFilterReloader)> {
     // If `log_dir` is Some, use that. Else call `ipc_service_logs`
     let log_dir = log_dir.map_or_else(
         || known_dirs::ipc_service_logs().context("Should be able to compute IPC service logs dir"),
@@ -447,7 +469,8 @@ fn setup_logging(log_dir: Option<PathBuf>) -> Result<firezone_logging::file::Han
         .context("We should have permissions to create our log dir")?;
     let (layer, handle) = firezone_logging::file::layer(&log_dir);
     let directives = get_log_filter().context("Couldn't read log filter")?;
-    let filter = firezone_logging::try_filter(&directives)?;
+    let (filter, reloader) =
+        tracing_subscriber::reload::Layer::new(firezone_logging::try_filter(&directives)?);
     let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber).context("`set_global_default` should always work)")?;
     tracing::info!(
@@ -456,7 +479,7 @@ fn setup_logging(log_dir: Option<PathBuf>) -> Result<firezone_logging::file::Han
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
         ?directives
     );
-    Ok(handle)
+    Ok((handle, reloader))
 }
 
 /// Reads the log filter for the IPC service or for debug commands
