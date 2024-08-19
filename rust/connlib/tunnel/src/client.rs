@@ -626,6 +626,18 @@ impl ClientState {
         !interface.upstream_dns.is_empty()
     }
 
+    /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
+    ///
+    /// We only want to do this if the upstream DNS server is set by the portal, otherwise, the server might be a local IP.
+    fn should_forward_dns_query_to_gateway(&self, dns_server: IpAddr) -> bool {
+        self.is_upstream_set_by_the_portal()
+            && (self.internet_resource.is_some()
+                || self
+                    .active_cidr_resources
+                    .longest_match(dns_server)
+                    .is_some())
+    }
+
     /// Attempt to handle the given packet as a DNS query packet.
     ///
     /// Returns `Ok` if the packet is in fact a DNS query with an optional response to send back.
@@ -648,11 +660,7 @@ impl ClientState {
             }) => {
                 let ip = server.ip();
 
-                // In case the DNS server is a CIDR resource, it needs to go through the tunnel.
-                if self.is_upstream_set_by_the_portal()
-                    && (self.internet_resource.is_some()
-                        || self.active_cidr_resources.longest_match(ip).is_some())
-                {
+                if self.should_forward_dns_query_to_gateway(ip) {
                     return Err((packet, ip));
                 }
 
