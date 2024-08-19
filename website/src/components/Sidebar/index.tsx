@@ -107,7 +107,7 @@ export function SidebarItem({
   href,
   children,
 }: {
-  href?: Route<string>;
+  href?: URL | Route<string>;
   children: React.ReactNode;
 }) {
   const p = usePathname();

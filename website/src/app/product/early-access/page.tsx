@@ -22,7 +22,9 @@ export default function EarlyAccess() {
               </h1>
               <p className="flex flex-wrap mb-4 text-lg text-neutral-800 sm:text-xl sm:justify-start justify-center">
                 The early access program has ended.
-                <ActionLink href="/blog/firezone-1-0">Sign up now</ActionLink>
+                <ActionLink size="lg" href="/blog/firezone-1-0">
+                  Sign up now
+                </ActionLink>
               </p>
             </div>
           </div>

@@ -29,7 +29,7 @@ export default function FeatureCards() {
             Seamlessly manage thousands of lightweight tunnels to whatever
             resources you need, whenever.
           </p>
-          <ActionLink href="/kb/deploy/resources">
+          <ActionLink size="lg" href="/kb/deploy/resources" border={false}>
             Protect your resources
           </ActionLink>
         </div>

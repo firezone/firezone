@@ -107,15 +107,12 @@ export default function ElevatorPitch() {
           ))}
         </div>
       </div>
-      <div className="w-full h-auto lg:max-w-[600px] overflow-hidden flex justify-center items-center rounded-xl lg:h-[600px] lg:w-[40%] bg-gradient-to-b from-[#FFF5ED] to-[#F2EEFE]">
-        <Image
-          src="/images/simple-demonstration.png"
-          className="max-w-[600px] w-full lg:max-h-[400px] lg:object-cover rounded-lg"
-          width={600}
-          height={400}
-          alt="Elevator pitch graphic"
-        />
-      </div>
+      <Image
+        src="/images/elevator-pitch.png"
+        width={563}
+        height={594}
+        alt="Elevator pitch graphic"
+      />
     </div>
   );
 }

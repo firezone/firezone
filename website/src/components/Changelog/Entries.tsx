@@ -1,5 +1,4 @@
 import React from "react";
-import { Route } from "next";
 import Entry from "./Entry";
 import Link from "next/link";
 

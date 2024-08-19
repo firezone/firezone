@@ -7,7 +7,7 @@ export default function NextStep({
   href,
 }: {
   children: React.ReactNode;
-  href: Route<string>;
+  href: URL | Route<string>;
 }) {
   return (
     <div className="flex justify-end">
