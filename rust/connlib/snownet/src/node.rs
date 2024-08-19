@@ -1636,8 +1636,6 @@ where
                     };
 
                     tracing::info!(?old, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
-
-                    self.force_handshake(allocations, transmits, now);
                 }
                 IceAgentEvent::IceRestart(_) | IceAgentEvent::IceConnectionStateChange(_) => {}
             }
@@ -1783,34 +1781,6 @@ where
         }
 
         control_flow
-    }
-
-    fn force_handshake(
-        &mut self,
-        allocations: &mut BTreeMap<RId, Allocation>,
-        transmits: &mut VecDeque<Transmit<'static>>,
-        now: Instant,
-    ) where
-        RId: Copy,
-    {
-        /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
-        ///
-        /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
-        const MAX_SCRATCH_SPACE: usize = 148;
-
-        let mut buf = [0u8; MAX_SCRATCH_SPACE];
-
-        let TunnResult::WriteToNetwork(bytes) =
-            self.tunnel.format_handshake_initiation(&mut buf, false)
-        else {
-            return;
-        };
-
-        let socket = self
-            .socket()
-            .expect("cannot force handshake while not connected");
-
-        transmits.extend(make_owned_transmit(socket, bytes, allocations, now));
     }
 
     fn socket(&self) -> Option<PeerSocket<RId>> {
