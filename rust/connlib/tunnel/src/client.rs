@@ -20,10 +20,8 @@ use itertools::Itertools;
 use crate::peer::GatewayOnClient;
 use crate::utils::{self, earliest, turn};
 use crate::{ClientEvent, ClientTunnel, Tun};
-use domain::base::Message;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, RelaySocket, Transmit};
-use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
@@ -61,7 +59,7 @@ pub(crate) const DNS_SENTINELS_V6: Ipv6Network = match Ipv6Network::new(
 
 // The max time a dns request can be configured to live in resolvconf
 // is 30 seconds. See resolvconf(5) timeout.
-const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
+pub(crate) const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
 impl ClientTunnel {
     pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
@@ -261,18 +259,6 @@ pub struct ClientState {
     ///
     /// The [`Instant`] tracks when the DNS query expires.
     mangled_dns_queries: HashMap<u16, Instant>,
-    /// DNS queries that were forwarded to an upstream server, indexed by the DNS query ID + the server we sent it to.
-    ///
-    /// The value is a tuple of:
-    ///
-    /// - The [`SocketAddr`] is the original source IP.
-    /// - The [`Instant`] tracks when the DNS query expires.
-    ///
-    /// We store an explicit expiry to avoid a memory leak in case of a non-responding DNS server.
-    ///
-    /// DNS query IDs don't appear to be unique across servers they are being sent to on some operating systems (looking at you, Windows).
-    /// Hence, we need to index by ID + socket of the DNS server.
-    forwarded_dns_queries: HashMap<(u16, SocketAddr), (SocketAddr, Instant)>,
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
 
@@ -315,7 +301,6 @@ impl ClientState {
             sites_status: Default::default(),
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
-            forwarded_dns_queries: Default::default(),
             stub_resolver: StubResolver::new(known_hosts),
             disabled_resources: Default::default(),
             buffered_transmits: Default::default(),
@@ -484,14 +469,13 @@ impl ClientState {
         now: Instant,
         buffer: &'b mut [u8],
     ) -> Option<IpPacket<'b>> {
-        match self.stub_resolver.try_handle_network_inbound(from, packet) {
+        match self
+            .stub_resolver
+            .try_handle_network_inbound(&self.dns_mapping, from, packet)
+        {
             ControlFlow::Continue(()) => {}
-            ControlFlow::Break(()) => return None,
+            ControlFlow::Break(packet) => return Some(packet),
         }
-
-        if let Some(response) = self.try_handle_forwarded_dns_response(from, packet) {
-            return Some(response);
-        };
 
         let (gid, packet) = self.node.decapsulate(
             local,
@@ -629,34 +613,24 @@ impl ClientState {
         packet: MutableIpPacket<'a>,
         now: Instant,
     ) -> Result<(), (MutableIpPacket<'a>, IpAddr)> {
-        match self
-            .stub_resolver
-            .try_handle_tun_inbound(&self.dns_mapping, packet, |ip| {
+        match self.stub_resolver.try_handle_tun_inbound(
+            &self.dns_mapping,
+            packet,
+            |ip| {
                 self.interface_config
                     .as_ref()
                     .is_some_and(|i| !i.upstream_dns.is_empty())
                     && self.active_cidr_resources.longest_match(ip).is_some()
-            }) {
+            },
+            now,
+        ) {
             ControlFlow::Break(dns::ResolveStrategy::LocalResponse(query)) => {
                 self.buffered_packets.push_back(query);
 
                 Ok(())
             }
-            ControlFlow::Break(dns::ResolveStrategy::ForwardQuery {
-                upstream: server,
-                query_id,
-                payload,
-                original_src,
-            }) => {
-                tracing::trace!(%server, %query_id, "Forwarding DNS query");
-
-                self.forwarded_dns_queries
-                    .insert((query_id, server), (original_src, now + IDS_EXPIRE));
-                self.buffered_transmits.push_back(Transmit {
-                    src: None,
-                    dst: server,
-                    payload: Cow::Owned(payload),
-                });
+            ControlFlow::Break(dns::ResolveStrategy::ForwardQuery(transmit)) => {
+                self.buffered_transmits.push_back(transmit);
 
                 Ok(())
             }
@@ -665,32 +639,6 @@ impl ClientState {
                 Err((packet, dest))
             }
         }
-    }
-
-    fn try_handle_forwarded_dns_response<'a>(
-        &mut self,
-        from: SocketAddr,
-        packet: &[u8],
-    ) -> Option<IpPacket<'a>> {
-        // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
-        let saddr = *self.dns_mapping.get_by_right(&DnsServer::from(from))?;
-        let sport = DNS_PORT;
-
-        let message = Message::from_slice(packet).ok()?;
-        let query_id = message.header().id();
-
-        let (destination, _) = self.forwarded_dns_queries.remove(&(query_id, from))?;
-
-        tracing::trace!(server = %from, %query_id, "Received forwarded DNS response");
-
-        let daddr = destination.ip();
-        let dport = destination.port();
-
-        let ip_packet = ip_packet::make::udp_packet(saddr, daddr, sport, dport, packet.to_vec())
-            .inspect_err(|_| tracing::warn!("Failed to find original dst for DNS response"))
-            .ok()?;
-
-        Some(ip_packet.into_immutable())
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
@@ -856,8 +804,8 @@ impl ClientState {
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
+        self.stub_resolver.handle_timeout(now);
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
-        self.forwarded_dns_queries.retain(|_, (_, exp)| now < *exp);
 
         self.drain_node_events();
     }

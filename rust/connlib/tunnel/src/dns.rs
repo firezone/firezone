@@ -1,4 +1,4 @@
-use crate::client::IpProvider;
+use crate::client::{IpProvider, IDS_EXPIRE};
 use connlib_shared::messages::{DnsServer, ResourceId};
 use connlib_shared::DomainName;
 use domain::base::{
@@ -10,9 +10,12 @@ use ip_packet::Packet as _;
 use ip_packet::{IpPacket, MutableIpPacket};
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
+use snownet::Transmit;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::ControlFlow;
+use std::time::Instant;
 
 const DNS_TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
@@ -28,6 +31,19 @@ pub struct StubResolver {
     dns_resources: HashMap<Pattern, ResourceId>,
     /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
     known_hosts: KnownHosts,
+
+    /// DNS queries that were forwarded to an upstream server, indexed by the DNS query ID + the server we sent it to.
+    ///
+    /// The value is a tuple of:
+    ///
+    /// - The [`SocketAddr`] is the original source IP.
+    /// - The [`Instant`] tracks when the DNS query expires.
+    ///
+    /// We store an explicit expiry to avoid a memory leak in case of a non-responding DNS server.
+    ///
+    /// DNS query IDs don't appear to be unique across servers they are being sent to on some operating systems (looking at you, Windows).
+    /// Hence, we need to index by ID + socket of the DNS server.
+    forwarded_dns_queries: HashMap<(u16, SocketAddr), (SocketAddr, Instant)>,
 }
 
 /// Tells the Client how to reply to a single DNS query
@@ -36,12 +52,7 @@ pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
     LocalResponse(IpPacket<'static>),
     /// The query is for a non-Resource, forward it to an upstream or system resolver.
-    ForwardQuery {
-        upstream: SocketAddr,
-        original_src: SocketAddr,
-        query_id: u16,
-        payload: Vec<u8>,
-    },
+    ForwardQuery(Transmit<'static>),
 }
 
 struct KnownHosts {
@@ -95,6 +106,7 @@ impl StubResolver {
             ip_provider: IpProvider::for_resources(),
             dns_resources: Default::default(),
             known_hosts: KnownHosts::new(known_hosts),
+            forwarded_dns_queries: Default::default(),
         }
     }
 
@@ -208,6 +220,7 @@ impl StubResolver {
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
         packet: MutableIpPacket<'p>,
         forward_query_through_tunnel: impl Fn(IpAddr) -> bool,
+        now: Instant,
     ) -> ControlFlow<ResolveStrategy, MutableIpPacket<'p>> {
         let Some(upstream) = dns_mapping
             .get_by_left(&packet.destination())
@@ -285,12 +298,20 @@ impl StubResolver {
                     return ControlFlow::Continue(packet);
                 }
 
-                return ControlFlow::Break(ResolveStrategy::ForwardQuery {
-                    upstream,
-                    query_id: message.header().id(),
-                    payload: message.into_octets().to_vec(),
-                    original_src: SocketAddr::new(packet.source(), datagram.get_source()),
-                });
+                let server = upstream;
+                let query_id = message.header().id();
+                let original_src = SocketAddr::new(packet.source(), datagram.get_source());
+
+                self.forwarded_dns_queries
+                    .insert((query_id, server), (original_src, now + IDS_EXPIRE));
+
+                tracing::trace!(%server, %query_id, "Forwarding DNS query");
+
+                return ControlFlow::Break(ResolveStrategy::ForwardQuery(Transmit {
+                    src: None,
+                    dst: server,
+                    payload: Cow::Owned(message.into_octets().to_vec()),
+                }));
             }
         };
 
@@ -312,10 +333,43 @@ impl StubResolver {
 
     pub(crate) fn try_handle_network_inbound(
         &mut self,
-        _from: SocketAddr,
-        _packet: &[u8],
-    ) -> ControlFlow<(), ()> {
-        ControlFlow::Continue(())
+        dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
+        from: SocketAddr,
+        packet: &[u8],
+    ) -> ControlFlow<IpPacket<'static>, ()> {
+        // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
+        let Some(saddr) = dns_mapping.get_by_right(&DnsServer::from(from)) else {
+            return ControlFlow::Continue(());
+        };
+        let sport = DNS_PORT;
+
+        let Ok(message) = Message::from_slice(packet) else {
+            return ControlFlow::Continue(());
+        };
+        let query_id = message.header().id();
+
+        let Some((destination, _)) = self.forwarded_dns_queries.remove(&(query_id, from)) else {
+            return ControlFlow::Continue(());
+        };
+
+        tracing::trace!(server = %from, %query_id, "Received forwarded DNS response");
+
+        let daddr = destination.ip();
+        let dport = destination.port();
+
+        let Some(ip_packet) =
+            ip_packet::make::udp_packet(*saddr, daddr, sport, dport, packet.to_vec())
+                .inspect_err(|_| tracing::warn!("Failed to find original dst for DNS response"))
+                .ok()
+        else {
+            return ControlFlow::Continue(());
+        };
+
+        ControlFlow::Break(ip_packet.into_immutable())
+    }
+
+    pub(crate) fn handle_timeout(&mut self, now: Instant) {
+        self.forwarded_dns_queries.retain(|_, (_, exp)| now < *exp);
     }
 }
 
