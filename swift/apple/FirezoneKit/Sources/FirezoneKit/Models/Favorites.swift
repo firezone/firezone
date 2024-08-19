@@ -13,16 +13,19 @@ public class Favorites: ObservableObject {
   }
 
   func reset() {
+    objectWillChange.send()
     ids = Set()
     save()
   }
 
   func add(_ id: String) {
+    objectWillChange.send()
     ids.insert(id)
     save()
   }
 
   func remove(_ id: String) {
+    objectWillChange.send()
     ids.remove(id)
     save()
   }
@@ -31,8 +34,6 @@ public class Favorites: ObservableObject {
     // It's a run-time exception if we pass the `Set` directly here
     let ids = Array(ids)
     UserDefaults.standard.set(ids, forKey: Favorites.key)
-    // Trigger reactive updates
-    self.ids = self.ids
   }
 
   private static func load() -> Set<String> {
