@@ -496,6 +496,8 @@ impl StubResolver {
             &effective_dns_servers,
             self.dns_sentinels().map(Into::into).collect_vec(),
         );
+        self.mangled_dns_queries.clear();
+        self.forwarded_dns_queries.clear();
 
         true
     }
