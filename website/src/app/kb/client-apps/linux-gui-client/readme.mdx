@@ -192,6 +192,15 @@ restarting the tunnel service. Quit the Firezone GUI, then run:
 sudo systemctl restart firezone-client-ipc
 ```
 
+### Viewing logs
+
+The Firezone Client is split into 2 main processes: An IPC service which runs
+the tunnel, and a GUI which allows the user to control Firezone.
+
+- IPC service logs are stored at `/var/log/dev.firezone.client/`
+- GUI logs are stored at `$HOME/.cache/dev.firezone.client/data/logs/`, where
+  `$HOME` is, e.g. `/home/username/`
+
 ## Known issues
 
 - **DNS Resources**: Web browsers that enable "Secure DNS" or DNS-over-HTTPS by

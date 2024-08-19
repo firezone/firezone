@@ -6,7 +6,7 @@ use anyhow::{bail, Result};
 ///
 /// Linux uses the CLI args from here, Windows does not
 pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
-    let _handle = super::setup_logging(cli.log_dir)?;
+    let (_handle, log_filter_reloader) = super::setup_logging(cli.log_dir)?;
     if !elevation_check()? {
         bail!("IPC service failed its elevation check, try running as admin / root");
     }
@@ -14,7 +14,11 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
-    rt.block_on(super::ipc_listen(cli.dns_control, &mut signals))
+    rt.block_on(super::ipc_listen(
+        cli.dns_control,
+        &log_filter_reloader,
+        &mut signals,
+    ))
 }
 
 /// Returns true if the IPC service can run properly

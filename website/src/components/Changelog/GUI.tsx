@@ -25,6 +25,9 @@ export default function GUI({ title }: { title: string }) {
           <ChangeItem enable={title === "Windows"} pull="6308">
             Fixes a bug where the GUI could not run if the user is Administrator
           </ChangeItem>
+          <ChangeItem pull="6351">
+            The log filter on the IPC service is now reloaded immediately when you change the setting in the GUI.
+          </ChangeItem>
         </ul>
       </Entry>
       */}
