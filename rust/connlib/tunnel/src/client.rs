@@ -630,12 +630,16 @@ impl ClientState {
     ///
     /// We only want to do this if the upstream DNS server is set by the portal, otherwise, the server might be a local IP.
     fn should_forward_dns_query_to_gateway(&self, dns_server: IpAddr) -> bool {
-        self.is_upstream_set_by_the_portal()
-            && (self.internet_resource.is_some()
-                || self
-                    .active_cidr_resources
-                    .longest_match(dns_server)
-                    .is_some())
+        if !self.is_upstream_set_by_the_portal() {
+            return false;
+        }
+        if self.internet_resource.is_some() {
+            return true;
+        }
+
+        self.active_cidr_resources
+            .longest_match(dns_server)
+            .is_some()
     }
 
     /// Attempt to handle the given packet as a DNS query packet.
