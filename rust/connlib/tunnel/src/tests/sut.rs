@@ -607,6 +607,8 @@ impl TunnelTest {
     ) {
         let now = self.flux_capacitor.now();
 
+        tracing::debug!("Handling ClientEvent::{event:?}");
+
         match event {
             ClientEvent::AddedIceCandidates {
                 candidates,
@@ -752,6 +754,8 @@ fn on_gateway_event(
     client: &mut Host<SimClient>,
     now: Instant,
 ) {
+    tracing::debug!("Handling GatewayEvent::{event:?}");
+
     match event {
         GatewayEvent::AddedIceCandidates { candidates, .. } => client.exec_mut(|c| {
             for candidate in candidates {
