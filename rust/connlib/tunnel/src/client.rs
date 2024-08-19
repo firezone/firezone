@@ -484,6 +484,11 @@ impl ClientState {
         now: Instant,
         buffer: &'b mut [u8],
     ) -> Option<IpPacket<'b>> {
+        match self.stub_resolver.try_handle_network_inbound(from, packet) {
+            ControlFlow::Continue(()) => {}
+            ControlFlow::Break(()) => return None,
+        }
+
         if let Some(response) = self.try_handle_forwarded_dns_response(from, packet) {
             return Some(response);
         };
@@ -624,12 +629,14 @@ impl ClientState {
         packet: MutableIpPacket<'a>,
         now: Instant,
     ) -> Result<(), (MutableIpPacket<'a>, IpAddr)> {
-        match self.stub_resolver.handle(&self.dns_mapping, packet, |ip| {
-            self.interface_config
-                .as_ref()
-                .is_some_and(|i| !i.upstream_dns.is_empty())
-                && self.active_cidr_resources.longest_match(ip).is_some()
-        }) {
+        match self
+            .stub_resolver
+            .try_handle_tun_inbound(&self.dns_mapping, packet, |ip| {
+                self.interface_config
+                    .as_ref()
+                    .is_some_and(|i| !i.upstream_dns.is_empty())
+                    && self.active_cidr_resources.longest_match(ip).is_some()
+            }) {
             ControlFlow::Break(dns::ResolveStrategy::LocalResponse(query)) => {
                 self.buffered_packets.push_back(query);
 

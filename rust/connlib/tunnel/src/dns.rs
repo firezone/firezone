@@ -203,7 +203,7 @@ impl StubResolver {
     /// Returns:
     /// - `None` if the packet is not a valid DNS query destined for one of our sentinel resolvers
     /// - Otherwise, a strategy for responding to the query
-    pub(crate) fn handle<'p>(
+    pub(crate) fn try_handle_tun_inbound<'p>(
         &mut self,
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
         packet: MutableIpPacket<'p>,
@@ -308,6 +308,14 @@ impl StubResolver {
         .into_immutable();
 
         ControlFlow::Break(ResolveStrategy::LocalResponse(packet))
+    }
+
+    pub(crate) fn try_handle_network_inbound(
+        &mut self,
+        _from: SocketAddr,
+        _packet: &[u8],
+    ) -> ControlFlow<(), ()> {
+        ControlFlow::Continue(())
     }
 }
 
