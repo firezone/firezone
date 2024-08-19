@@ -2,14 +2,13 @@ use crate::dns;
 use crate::dns::StubResolver;
 use crate::peer_store::PeerStore;
 use anyhow::Context;
-use bimap::BiMap;
 use connlib_shared::callbacks::Status;
 use connlib_shared::messages::client::{Site, SiteId};
 use connlib_shared::messages::ResolveRequest;
 use connlib_shared::messages::{
-    client::ResourceDescription, client::ResourceDescriptionCidr, Answer, ClientPayload, DnsServer,
-    GatewayId, Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId,
-    RequestConnection, ResourceId, ReuseConnection,
+    client::ResourceDescription, client::ResourceDescriptionCidr, Answer, ClientPayload, GatewayId,
+    Interface as InterfaceConfig, Key, Offer, Relay, RelayId, RequestConnection, ResourceId,
+    ReuseConnection,
 };
 use connlib_shared::{callbacks, DomainName, PublicKey, StaticSecret};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -41,8 +40,6 @@ pub(crate) const IPV6_RESOURCES: Ipv6Network = match Ipv6Network::new(
     Ok(n) => n,
     Err(_) => unreachable!(),
 };
-
-const DNS_PORT: u16 = 53;
 
 pub(crate) const DNS_SENTINELS_V4: Ipv4Network =
     match Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24) {
@@ -250,11 +247,6 @@ pub struct ClientState {
     /// All resources indexed by their ID.
     resources_by_id: HashMap<ResourceId, ResourceDescription>,
 
-    /// The DNS resolvers configured on the system outside of connlib.
-    system_resolvers: Vec<IpAddr>,
-
-    /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
-    dns_mapping: BiMap<IpAddr, DnsServer>,
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
 
@@ -288,12 +280,10 @@ impl ClientState {
             active_cidr_resources: IpNetworkTable::new(),
             resources_by_id: Default::default(),
             peers: Default::default(),
-            dns_mapping: Default::default(),
             buffered_events: Default::default(),
             interface_config: Default::default(),
             buffered_packets: Default::default(),
             node: ClientNode::new(private_key.into(), seed),
-            system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
             stub_resolver: StubResolver::new(known_hosts),
@@ -406,7 +396,6 @@ impl ClientState {
         now: Instant,
     ) -> Option<snownet::Transmit<'s>> {
         let packet = match self.stub_resolver.try_handle_tun_inbound(
-            &self.dns_mapping,
             packet,
             |ip| {
                 self.interface_config
@@ -475,10 +464,7 @@ impl ClientState {
         now: Instant,
         buffer: &'b mut [u8],
     ) -> Option<IpPacket<'b>> {
-        match self
-            .stub_resolver
-            .try_handle_network_inbound(&self.dns_mapping, from, packet)
-        {
+        match self.stub_resolver.try_handle_network_inbound(from, packet) {
             ControlFlow::Continue(()) => {}
             ControlFlow::Break(packet) => return Some(packet),
         }
@@ -503,9 +489,7 @@ impl ClientState {
             .inspect_err(|e| tracing::debug!(%gid, %local, %from, "{e}"))
             .ok()?;
 
-        let packet = self
-            .stub_resolver
-            .try_handle_tunnel_inbound(&self.dns_mapping, packet, now);
+        let packet = self.stub_resolver.try_handle_tunnel_inbound(packet, now);
 
         Some(packet.into_immutable())
     }
@@ -679,13 +663,6 @@ impl ClientState {
         self.resources_gateways.get(resource).copied()
     }
 
-    fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, DnsServer>) {
-        tracing::debug!(mapping = ?new_mapping, "Updating DNS servers");
-
-        self.dns_mapping = new_mapping;
-        // self.mangled_dns_queries.clear(); TODO: Clear in `StubResolver`
-    }
-
     pub fn set_disabled_resource(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
         let current_disabled_resources = self.disabled_resources.clone();
 
@@ -705,10 +682,6 @@ impl ClientState {
         }
     }
 
-    pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
-        self.dns_mapping.clone()
-    }
-
     #[tracing::instrument(level = "debug", skip_all, fields(gateway = %gateway_id))]
     pub fn cleanup_connected_gateway(&mut self, gateway_id: &GatewayId) {
         self.update_site_status_by_gateway(gateway_id, Status::Unknown);
@@ -722,7 +695,7 @@ impl ClientState {
             .map(|(ip, _)| ip)
             .chain(iter::once(IPV4_RESOURCES.into()))
             .chain(iter::once(IPV6_RESOURCES.into()))
-            .chain(self.dns_mapping.left_values().copied().map(Into::into))
+            .chain(self.stub_resolver.dns_sentinels().map(Into::into))
     }
 
     fn is_resource_enabled(&self, resource: &ResourceId) -> bool {
@@ -744,15 +717,50 @@ impl ClientState {
     }
 
     pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
-        self.system_resolvers = new_dns;
+        let dns_changed = self.stub_resolver.update_system_resolvers(new_dns);
 
-        self.update_dns_mapping()
+        if !dns_changed {
+            return;
+        }
+
+        let Some(config) = self.interface_config.as_ref() else {
+            return;
+        };
+
+        self.buffered_events.extend([
+            ClientEvent::TunInterfaceUpdated {
+                ip4: config.ipv4,
+                ip6: config.ipv6,
+                dns_by_sentinel: self.stub_resolver.dns_by_sentinel(),
+            },
+            ClientEvent::TunRoutesUpdated {
+                ip4: self.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.routes().filter_map(utils::ipv6).collect(),
+            },
+        ]);
     }
 
     pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) {
-        self.interface_config = Some(config);
+        self.interface_config = Some(config.clone());
+        let dns_changed = self
+            .stub_resolver
+            .update_upstream_resolvers(config.upstream_dns);
 
-        self.update_dns_mapping()
+        if !dns_changed {
+            return;
+        }
+
+        self.buffered_events.extend([
+            ClientEvent::TunInterfaceUpdated {
+                ip4: config.ipv4,
+                ip6: config.ipv6,
+                dns_by_sentinel: self.stub_resolver.dns_by_sentinel(),
+            },
+            ClientEvent::TunRoutesUpdated {
+                ip4: self.routes().filter_map(utils::ipv4).collect(),
+                ip6: self.routes().filter_map(utils::ipv6).collect(),
+            },
+        ]);
     }
 
     pub fn poll_packets(&mut self) -> Option<IpPacket<'static>> {
@@ -983,55 +991,6 @@ impl ClientState {
         self.resources_gateways.remove(&id);
     }
 
-    fn update_dns_mapping(&mut self) {
-        let Some(config) = &self.interface_config else {
-            tracing::debug!("Unable to update DNS servesr without interface configuration");
-
-            return;
-        };
-
-        let effective_dns_servers =
-            effective_dns_servers(config.upstream_dns.clone(), self.system_resolvers.clone());
-
-        if HashSet::<&DnsServer>::from_iter(effective_dns_servers.iter())
-            == HashSet::from_iter(self.dns_mapping.right_values())
-        {
-            tracing::debug!("Effective DNS servers are unchanged");
-
-            return;
-        }
-
-        let dns_mapping = sentinel_dns_mapping(
-            &effective_dns_servers,
-            self.dns_mapping()
-                .left_values()
-                .copied()
-                .map(Into::into)
-                .collect_vec(),
-        );
-
-        let ip4 = config.ipv4;
-        let ip6 = config.ipv6;
-
-        self.set_dns_mapping(dns_mapping);
-
-        self.buffered_events
-            .push_back(ClientEvent::TunInterfaceUpdated {
-                ip4,
-                ip6,
-                dns_by_sentinel: self
-                    .dns_mapping
-                    .iter()
-                    .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
-                    .collect(),
-            });
-        self.buffered_events
-            .push_back(ClientEvent::TunRoutesUpdated {
-                ip4: self.routes().filter_map(utils::ipv4).collect(),
-                ip6: self.routes().filter_map(utils::ipv6).collect(),
-            });
-    }
-
     pub fn update_relays(
         &mut self,
         to_remove: BTreeSet<RelayId>,
@@ -1072,58 +1031,6 @@ fn get_addresses_for_awaiting_resource(
     }
 }
 
-fn effective_dns_servers(
-    upstream_dns: Vec<DnsServer>,
-    default_resolvers: Vec<IpAddr>,
-) -> Vec<DnsServer> {
-    let mut upstream_dns = upstream_dns.into_iter().filter_map(not_sentinel).peekable();
-    if upstream_dns.peek().is_some() {
-        return upstream_dns.collect();
-    }
-
-    let mut dns_servers = default_resolvers
-        .into_iter()
-        .map(|ip| {
-            DnsServer::IpPort(IpDnsServer {
-                address: (ip, DNS_PORT).into(),
-            })
-        })
-        .filter_map(not_sentinel)
-        .peekable();
-
-    if dns_servers.peek().is_none() {
-        tracing::warn!("No system default DNS servers available! Can't initialize resolver. DNS interception will be disabled.");
-        return Vec::new();
-    }
-
-    dns_servers.collect()
-}
-
-fn not_sentinel(srv: DnsServer) -> Option<DnsServer> {
-    let is_v4_dns = IpNetwork::V4(DNS_SENTINELS_V4).contains(srv.ip());
-    let is_v6_dns = IpNetwork::V6(DNS_SENTINELS_V6).contains(srv.ip());
-
-    (!is_v4_dns && !is_v6_dns).then_some(srv)
-}
-
-fn sentinel_dns_mapping(
-    dns: &[DnsServer],
-    old_sentinels: Vec<IpNetwork>,
-) -> BiMap<IpAddr, DnsServer> {
-    let mut ip_provider = IpProvider::for_stub_dns_servers(old_sentinels);
-
-    dns.iter()
-        .cloned()
-        .map(|i| {
-            (
-                ip_provider
-                    .get_proxy_ip_for(&i.ip())
-                    .expect("We only support up to 256 IPv4 DNS servers and 256 IPv6 DNS servers"),
-                i,
-            )
-        })
-        .collect()
-}
 /// Compares the given [`IpAddr`] against a static set of ignored IPs that are definitely not resources.
 fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
     /// Source: https://en.wikipedia.org/wiki/Multicast_address#Notable_IPv4_multicast_addresses
@@ -1211,7 +1118,6 @@ impl IpProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::rngs::OsRng;
 
     #[test]
     fn ignores_ip4_igmp_multicast() {
@@ -1221,68 +1127,6 @@ mod tests {
     #[test]
     fn ignores_ip6_multicast_all_routers() {
         assert!(is_definitely_not_a_resource(ip("ff02::2")))
-    }
-
-    #[test]
-    fn sentinel_dns_works() {
-        let servers = dns_list();
-        let sentinel_dns = sentinel_dns_mapping(&servers, vec![]);
-
-        for server in servers {
-            assert!(sentinel_dns
-                .get_by_right(&server)
-                .is_some_and(|s| sentinel_ranges().iter().any(|e| e.contains(*s))))
-        }
-    }
-
-    #[test]
-    fn sentinel_dns_excludes_old_ones() {
-        let servers = dns_list();
-        let sentinel_dns_old = sentinel_dns_mapping(&servers, vec![]);
-        let sentinel_dns_new = sentinel_dns_mapping(
-            &servers,
-            sentinel_dns_old
-                .left_values()
-                .copied()
-                .map(Into::into)
-                .collect_vec(),
-        );
-
-        assert!(
-            HashSet::<&IpAddr>::from_iter(sentinel_dns_old.left_values())
-                .is_disjoint(&HashSet::from_iter(sentinel_dns_new.left_values()))
-        )
-    }
-
-    impl ClientState {
-        pub fn for_test() -> ClientState {
-            ClientState::new(
-                StaticSecret::random_from_rng(OsRng),
-                BTreeMap::new(),
-                rand::random(),
-            )
-        }
-    }
-
-    fn sentinel_ranges() -> Vec<IpNetwork> {
-        vec![
-            IpNetwork::V4(DNS_SENTINELS_V4),
-            IpNetwork::V6(DNS_SENTINELS_V6),
-        ]
-    }
-
-    fn dns_list() -> Vec<DnsServer> {
-        vec![
-            dns("1.1.1.1:53"),
-            dns("1.0.0.1:53"),
-            dns("[2606:4700:4700::1111]:53"),
-        ]
-    }
-
-    fn dns(address: &str) -> DnsServer {
-        DnsServer::IpPort(IpDnsServer {
-            address: address.parse().unwrap(),
-        })
     }
 
     fn ip(addr: &str) -> IpAddr {
@@ -1297,6 +1141,17 @@ mod proptests {
     use connlib_shared::messages::client::ResourceDescriptionDns;
     use prop::collection;
     use proptest::prelude::*;
+    use rand::rngs::OsRng;
+
+    impl ClientState {
+        pub fn for_test() -> ClientState {
+            ClientState::new(
+                StaticSecret::random_from_rng(OsRng),
+                BTreeMap::new(),
+                rand::random(),
+            )
+        }
+    }
 
     #[test_strategy::proptest]
     fn cidr_resources_are_turned_into_routes(

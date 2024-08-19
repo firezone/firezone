@@ -1,4 +1,5 @@
-use crate::client::{IpProvider, IDS_EXPIRE};
+use crate::client::{IpProvider, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IDS_EXPIRE};
+use bimap::BiMap;
 use connlib_shared::messages::{DnsServer, ResourceId};
 use connlib_shared::DomainName;
 use domain::base::{
@@ -6,13 +7,14 @@ use domain::base::{
     Message, MessageBuilder, ToName,
 };
 use domain::rdata::AllRecordData;
+use ip_network::IpNetwork;
 use ip_packet::Packet as _;
 use ip_packet::{IpPacket, MutableIpPacket};
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use snownet::Transmit;
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::ControlFlow;
 use std::time::Instant;
@@ -31,6 +33,15 @@ pub struct StubResolver {
     dns_resources: HashMap<Pattern, ResourceId>,
     /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
     known_hosts: KnownHosts,
+
+    /// The DNS resolvers configured on the system outside of connlib.
+    system_resolvers: Vec<IpAddr>,
+
+    /// The DNS resolvers configured upstream in the Firezone account.
+    upstream_resolvers: Vec<DnsServer>,
+
+    /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
+    pub(crate) dns_mapping: BiMap<IpAddr, DnsServer>,
 
     /// DNS queries that had their destination IP mangled because they are forwarded through the tunnel.
     ///
@@ -113,6 +124,9 @@ impl StubResolver {
             known_hosts: KnownHosts::new(known_hosts),
             forwarded_dns_queries: Default::default(),
             mangled_dns_queries: Default::default(),
+            system_resolvers: Default::default(),
+            upstream_resolvers: Default::default(),
+            dns_mapping: Default::default(),
         }
     }
 
@@ -222,12 +236,12 @@ impl StubResolver {
     /// Otherwise, we continue with processing the packet.
     pub(crate) fn try_handle_tun_inbound<'p>(
         &mut self,
-        dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
         mut packet: MutableIpPacket<'p>,
         forward_query_through_tunnel: impl Fn(IpAddr) -> bool,
         now: Instant,
     ) -> ControlFlow<ResolveStrategy, MutableIpPacket<'p>> {
-        let Some(upstream) = dns_mapping
+        let Some(upstream) = self
+            .dns_mapping
             .get_by_left(&packet.destination())
             .map(|s| s.address())
         else {
@@ -343,12 +357,11 @@ impl StubResolver {
 
     pub(crate) fn try_handle_network_inbound(
         &mut self,
-        dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
         from: SocketAddr,
         packet: &[u8],
     ) -> ControlFlow<IpPacket<'static>, ()> {
         // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
-        let Some(saddr) = dns_mapping.get_by_right(&DnsServer::from(from)) else {
+        let Some(saddr) = self.dns_mapping.get_by_right(&DnsServer::from(from)) else {
             return ControlFlow::Continue(());
         };
         let sport = DNS_PORT;
@@ -380,7 +393,6 @@ impl StubResolver {
 
     pub(crate) fn try_handle_tunnel_inbound<'p>(
         &mut self,
-        dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
         mut packet: MutableIpPacket<'p>,
         now: Instant,
     ) -> MutableIpPacket<'p> {
@@ -392,7 +404,10 @@ impl StubResolver {
 
         let src_port = udp.get_source();
 
-        let Some(sentinel) = dns_mapping.get_by_right(&DnsServer::from((src_ip, src_port))) else {
+        let Some(sentinel) = self
+            .dns_mapping
+            .get_by_right(&DnsServer::from((src_ip, src_port)))
+        else {
             return packet;
         };
 
@@ -437,6 +452,102 @@ impl StubResolver {
 
         next_dns_query_expiry
     }
+
+    #[must_use]
+    pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> bool {
+        self.system_resolvers = new_dns;
+
+        self.recompute_effective_dns()
+    }
+
+    #[must_use]
+    pub(crate) fn update_upstream_resolvers(&mut self, upstream_dns: Vec<DnsServer>) -> bool {
+        self.upstream_resolvers = upstream_dns;
+
+        self.recompute_effective_dns()
+    }
+
+    pub(crate) fn dns_sentinels(&self) -> impl Iterator<Item = IpAddr> + '_ {
+        self.dns_mapping.left_values().copied()
+    }
+
+    pub(crate) fn dns_by_sentinel(&self) -> BiMap<IpAddr, SocketAddr> {
+        self.dns_mapping
+            .iter()
+            .map(|(sentinel, effective)| (*sentinel, effective.address()))
+            .collect()
+    }
+
+    fn recompute_effective_dns(&mut self) -> bool {
+        let effective_dns_servers = effective_dns_servers(
+            self.upstream_resolvers.clone(),
+            self.system_resolvers.clone(),
+        );
+
+        if HashSet::<&DnsServer>::from_iter(effective_dns_servers.iter())
+            == HashSet::from_iter(self.dns_mapping.right_values())
+        {
+            tracing::debug!("Effective DNS servers are unchanged");
+
+            return false;
+        }
+
+        self.dns_mapping = sentinel_dns_mapping(
+            &effective_dns_servers,
+            self.dns_sentinels().map(Into::into).collect_vec(),
+        );
+
+        true
+    }
+}
+
+fn effective_dns_servers(
+    upstream_dns: Vec<DnsServer>,
+    default_resolvers: Vec<IpAddr>,
+) -> Vec<DnsServer> {
+    let mut upstream_dns = upstream_dns.into_iter().filter_map(not_sentinel).peekable();
+    if upstream_dns.peek().is_some() {
+        return upstream_dns.collect();
+    }
+
+    let mut dns_servers = default_resolvers
+        .into_iter()
+        .map(|ip| DnsServer::from((ip, DNS_PORT)))
+        .filter_map(not_sentinel)
+        .peekable();
+
+    if dns_servers.peek().is_none() {
+        tracing::warn!("No system default DNS servers available! Can't initialize resolver. DNS interception will be disabled.");
+        return Vec::new();
+    }
+
+    dns_servers.collect()
+}
+
+fn not_sentinel(srv: DnsServer) -> Option<DnsServer> {
+    let is_v4_dns = IpNetwork::V4(DNS_SENTINELS_V4).contains(srv.ip());
+    let is_v6_dns = IpNetwork::V6(DNS_SENTINELS_V6).contains(srv.ip());
+
+    (!is_v4_dns && !is_v6_dns).then_some(srv)
+}
+
+fn sentinel_dns_mapping(
+    dns: &[DnsServer],
+    old_sentinels: Vec<IpNetwork>,
+) -> BiMap<IpAddr, DnsServer> {
+    let mut ip_provider = IpProvider::for_stub_dns_servers(old_sentinels);
+
+    dns.iter()
+        .cloned()
+        .map(|i| {
+            (
+                ip_provider
+                    .get_proxy_ip_for(&i.ip())
+                    .expect("We only support up to 256 IPv4 DNS servers and 256 IPv6 DNS servers"),
+                i,
+            )
+        })
+        .collect()
 }
 
 fn to_a_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
@@ -721,6 +832,56 @@ mod tests {
         let matches = pattern.matches(&candidate);
 
         assert!(!matches);
+    }
+
+    #[test]
+    fn sentinel_dns_works() {
+        let servers = dns_list();
+        let sentinel_dns = sentinel_dns_mapping(&servers, vec![]);
+
+        for server in servers {
+            assert!(sentinel_dns
+                .get_by_right(&server)
+                .is_some_and(|s| sentinel_ranges().iter().any(|e| e.contains(*s))))
+        }
+    }
+
+    #[test]
+    fn sentinel_dns_excludes_old_ones() {
+        let servers = dns_list();
+        let sentinel_dns_old = sentinel_dns_mapping(&servers, vec![]);
+        let sentinel_dns_new = sentinel_dns_mapping(
+            &servers,
+            sentinel_dns_old
+                .left_values()
+                .copied()
+                .map(Into::into)
+                .collect_vec(),
+        );
+
+        assert!(
+            HashSet::<&IpAddr>::from_iter(sentinel_dns_old.left_values())
+                .is_disjoint(&HashSet::from_iter(sentinel_dns_new.left_values()))
+        )
+    }
+
+    fn sentinel_ranges() -> Vec<IpNetwork> {
+        vec![
+            IpNetwork::V4(DNS_SENTINELS_V4),
+            IpNetwork::V6(DNS_SENTINELS_V6),
+        ]
+    }
+
+    fn dns_list() -> Vec<DnsServer> {
+        vec![
+            dns("1.1.1.1:53"),
+            dns("1.0.0.1:53"),
+            dns("[2606:4700:4700::1111]:53"),
+        ]
+    }
+
+    fn dns(address: &str) -> DnsServer {
+        DnsServer::from(address.parse::<SocketAddr>().unwrap())
     }
 }
 
