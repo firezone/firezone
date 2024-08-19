@@ -456,17 +456,15 @@ impl ClientState {
             return None;
         };
 
+        let gid = peer.id();
+
         // Allowed IPs will track the IPs that we have sent to the gateway along with a list of ResourceIds
         // for DNS resource we will send the IP one at a time.
         if is_dns_resource && peer.allowed_ips.exact_match(dst).is_none() {
-            let gateway_id = peer.id();
             tracing::debug!("Packet is for a DNS resource but we haven't sent the proxy IPs yet");
 
-            self.request_access(&dst, resource, gateway_id);
-            return None;
+            self.request_access(&dst, resource, gid);
         }
-
-        let gid = peer.id();
 
         let transmit = self
             .node

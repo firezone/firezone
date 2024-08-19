@@ -310,54 +310,9 @@ impl ReferenceStateMachine for ReferenceState {
             }
             Transition::DisableResources(resources) => state.client.exec_mut(|client| {
                 client.disabled_resources.clone_from(resources);
-
-                for id in resources {
-                    client.disconnect_resource(id)
-                }
             }),
             Transition::SendDnsQueries(queries) => {
-                let mut pending_connections = HashSet::new();
-
                 for query in queries {
-                    // Some queries get answered locally.
-                    if state
-                        .client
-                        .inner()
-                        .is_locally_answered_query(&query.domain)
-                    {
-                        tracing::debug!("Expecting locally answered query");
-
-                        state.client.exec_mut(|client| client.on_dns_query(query));
-                        continue;
-                    }
-
-                    // Check if the DNS server is defined as a resource.
-                    let Some(resource) = state.client.inner().dns_query_via_resource(query) else {
-                        // Not a resource, process normally.
-                        state.client.exec_mut(|client| client.on_dns_query(query));
-                        continue;
-                    };
-
-                    tracing::debug!("Expecting DNS query via resource");
-
-                    if pending_connections.contains(&resource) {
-                        // DNS server is a CIDR resource and a previous query of this batch is already triggering a connection.
-                        // That connection isn't ready yet so further queries to the same resource are dropped until then.
-                        continue;
-                    }
-
-                    if !state
-                        .client
-                        .inner()
-                        .is_connected_to_internet_or_cidr(resource)
-                    {
-                        state.client.exec_mut(|client| {
-                            client.connect_to_internet_or_cidr_resource(resource)
-                        });
-                        pending_connections.insert(resource);
-                        continue;
-                    }
-
                     state.client.exec_mut(|client| client.on_dns_query(query));
                 }
             }
@@ -424,9 +379,6 @@ impl ReferenceStateMachine for ReferenceState {
                 debug_assert!(state
                     .network
                     .add_host(state.client.inner().id, &state.client));
-
-                // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
-                state.client.exec_mut(|client| client.reset_connections());
             }
             Transition::ReconnectPortal => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
@@ -444,20 +396,9 @@ impl ReferenceStateMachine for ReferenceState {
                     state.relays.insert(*rid, new_relay.clone());
                     debug_assert!(state.network.add_host(*rid, new_relay));
                 }
-
-                // In case we were using the relays, all connections will be cut and require us to make a new one.
-                if state.drop_direct_client_traffic {
-                    state.client.exec_mut(|client| client.reset_connections());
-                }
             }
-            Transition::Idle => {
-                state.client.exec_mut(|client| client.reset_connections());
-            }
-            Transition::PartitionRelaysFromPortal => {
-                if state.drop_direct_client_traffic {
-                    state.client.exec_mut(|client| client.reset_connections());
-                }
-            }
+            Transition::Idle => {}
+            Transition::PartitionRelaysFromPortal => {}
         };
 
         state
