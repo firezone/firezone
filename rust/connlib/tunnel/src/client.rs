@@ -1037,7 +1037,7 @@ impl ClientState {
                 }
             }
             ResourceDescription::Internet(resource) => {
-                self.internet_resource.replace(resource.id).is_none()
+                self.internet_resource.replace(resource.id) != Some(resource.id)
             }
         };
 
