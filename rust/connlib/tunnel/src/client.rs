@@ -17,7 +17,7 @@ use ip_packet::{IpPacket, MutableIpPacket};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
-use crate::utils::{self, earliest, turn};
+use crate::utils::{self, turn};
 use crate::{ClientEvent, ClientTunnel, Tun};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, RelaySocket, Transmit};
@@ -767,10 +767,7 @@ impl ClientState {
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
-        let next_node_timeout = self.node.poll_timeout();
-        let next_stub_resolver_timeout = self.stub_resolver.poll_timeout();
-
-        earliest(next_stub_resolver_timeout, next_node_timeout)
+        self.node.poll_timeout()
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
