@@ -3532,9 +3532,9 @@ dependencies = [
 
 [[package]]
 name = "minidumper"
-version = "0.8.2"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b99697a8483221ca2d163aedcbee44f3851c4f5916ab0e96ae6397fb6b6deb2"
+checksum = "9b4ebc9d1f8847ec1d078f78b35ed598e0ebefa1f242d5f83cd8d7f03960a7d1"
 dependencies = [
  "cfg-if",
  "crash-context",
