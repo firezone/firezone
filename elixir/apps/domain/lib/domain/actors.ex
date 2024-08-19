@@ -352,6 +352,13 @@ defmodule Domain.Actors do
     |> Repo.aggregate(:count)
   end
 
+  def count_synced_actors_for_provider(%Auth.Provider{} = provider) do
+    Actor.Query.not_deleted()
+    |> Actor.Query.by_provider_id(provider.id)
+    |> Actor.Query.by_stale_for_provider(provider.id)
+    |> Repo.aggregate(:count)
+  end
+
   def fetch_actor_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
          true <- Repo.valid_uuid?(id) do
@@ -566,6 +573,22 @@ defmodule Domain.Actors do
           end
         end
       )
+    end
+  end
+
+  def delete_stale_synced_actors_for_provider(
+        %Auth.Provider{} = provider,
+        %Auth.Subject{} = subject
+      ) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      Actor.Query.not_deleted()
+      |> Authorizer.for_subject(subject)
+      |> Actor.Query.by_provider_id(provider.id)
+      |> Actor.Query.by_stale_for_provider(provider.id)
+      |> Repo.all()
+      |> Enum.each(fn actor ->
+        {:ok, _actor} = delete_actor(actor, subject)
+      end)
     end
   end
 

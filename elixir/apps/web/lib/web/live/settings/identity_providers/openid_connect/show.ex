@@ -1,16 +1,22 @@
 defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
   use Web, :live_view
   import Web.Settings.IdentityProviders.Components
-  alias Domain.Auth
+  alias Domain.{Auth, Actors}
 
   def mount(%{"provider_id" => provider_id}, _session, socket) do
     with {:ok, provider} <-
            Auth.fetch_provider_by_id(provider_id, socket.assigns.subject,
              preload: [created_by_identity: [:actor]]
            ) do
+      safe_to_delete_actors_count =
+        if not is_nil(provider.deleted_at),
+          do: Actors.count_synced_actors_for_provider(provider),
+          else: 0
+
       socket =
         assign(socket,
           provider: provider,
+          safe_to_delete_actors_count: safe_to_delete_actors_count,
           page_title: "Identity Provider #{provider.name}"
         )
 
@@ -103,6 +109,32 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
         </.header>
         <.flash_group flash={@flash} />
 
+        <.flash
+          :if={not is_nil(@provider.deleted_at) and @safe_to_delete_actors_count > 0}
+          kind={:warning}
+        >
+          You have <%= @safe_to_delete_actors_count %> Actor(s) that were synced from this provider and do not have any other identities.
+          <.button_with_confirmation
+            id="delete_stale_actors"
+            style="danger"
+            icon="hero-trash-solid"
+            on_confirm="delete_stale_actors"
+            class="mt-4"
+          >
+            <:dialog_title>Delete Stale Actors</:dialog_title>
+            <:dialog_content>
+              Are you sure you want to delete all Actors that were synced synced from this provider and do not have any other identities?
+            </:dialog_content>
+            <:dialog_confirm_button>
+              Delete Actors
+            </:dialog_confirm_button>
+            <:dialog_cancel_button>
+              Cancel
+            </:dialog_cancel_button>
+            Delete Actors
+          </.button_with_confirmation>
+        </.flash>
+
         <div class="bg-white overflow-hidden">
           <.vertical_table id="provider">
             <.vertical_table_row>
@@ -165,7 +197,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
           <:dialog_title>Delete Identity Provider</:dialog_title>
           <:dialog_content>
             Are you sure you want to delete this provider? This will remove <strong>all</strong>
-            Actors and Groups associated with this provider.
+            Identities, Groups and Policies associated with this provider.
           </:dialog_content>
           <:dialog_confirm_button>
             Delete Identity Provider
@@ -181,10 +213,19 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    {:ok, _provider} = Auth.delete_provider(socket.assigns.provider, socket.assigns.subject)
+    {:ok, provider} = Auth.delete_provider(socket.assigns.provider, socket.assigns.subject)
+    {:noreply, push_navigate(socket, to: view_provider(socket.assigns.account, provider))}
+  end
+
+  def handle_event("delete_stale_actors", _params, socket) do
+    :ok =
+      Actors.delete_stale_synced_actors_for_provider(
+        socket.assigns.provider,
+        socket.assigns.subject
+      )
 
     {:noreply,
-     push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/identity_providers")}
+     push_navigate(socket, to: view_provider(socket.assigns.account, socket.assigns.provider))}
   end
 
   def handle_event("enable", _params, socket) do
