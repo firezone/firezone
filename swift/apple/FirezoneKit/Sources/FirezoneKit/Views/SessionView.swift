@@ -12,6 +12,8 @@ import SwiftUI
 @MainActor
 public final class SessionViewModel: ObservableObject {
   @Published private(set) var actorName: String? = nil
+  /// Should be nil until the Portal tells us the Resources list
+  /// Nil is distinct from an empty list
   @Published private(set) var resources: [Resource]? = nil
   @Published private(set) var status: NEVPNStatus? = nil
 
