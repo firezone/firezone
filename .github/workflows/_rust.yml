@@ -88,7 +88,9 @@ jobs:
       - uses: ./.github/actions/setup-rust
         id: setup-rust
       - uses: ./.github/actions/setup-tauri
-      - uses: taiki-e/install-action@ripgrep
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: ripgrep
       - name: "cargo test"
         shell: bash
         run: |
@@ -99,6 +101,7 @@ jobs:
           # Assert that we sample certain transitions
           rg SendICMPPacketToCidrResource $TESTCASES_DIR
           rg SendICMPPacketToDnsResource $TESTCASES_DIR
+          rg SendDnsQueries $TESTCASES_DIR
 
           # Backup dumped state and transition samples
           mv $TESTCASES_DIR $TESTCASES_BACKUP_DIR
