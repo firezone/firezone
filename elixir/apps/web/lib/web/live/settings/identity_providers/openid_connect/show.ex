@@ -9,9 +9,9 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
              preload: [created_by_identity: [:actor]]
            ) do
       safe_to_delete_actors_count =
-        if not is_nil(provider.deleted_at),
-          do: Actors.count_synced_actors_for_provider(provider),
-          else: 0
+        if is_nil(provider.deleted_at),
+          do: 0,
+          else: Actors.count_synced_actors_for_provider(provider)
 
       socket =
         assign(socket,
