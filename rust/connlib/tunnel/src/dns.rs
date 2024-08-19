@@ -237,7 +237,7 @@ impl StubResolver {
     pub(crate) fn try_handle_tun_inbound<'p>(
         &mut self,
         mut packet: MutableIpPacket<'p>,
-        forward_query_through_tunnel: impl Fn(IpAddr) -> bool,
+        is_cidr_resource: impl Fn(IpAddr) -> bool,
         now: Instant,
     ) -> ControlFlow<ResolveStrategy, MutableIpPacket<'p>> {
         let Some(upstream) = self
@@ -313,7 +313,7 @@ impl StubResolver {
             _ => {
                 let query_id = message.header().id();
 
-                if forward_query_through_tunnel(upstream.ip()) {
+                if !self.upstream_resolvers.is_empty() && is_cidr_resource(upstream.ip()) {
                     tracing::trace!(old_dst = %packet.destination(), new_dst = %upstream.ip(), "Mangling DNS query to be sent through tunnel");
 
                     self.mangled_dns_queries.insert(query_id, now + IDS_EXPIRE);

@@ -397,12 +397,7 @@ impl ClientState {
     ) -> Option<snownet::Transmit<'s>> {
         let packet = match self.stub_resolver.try_handle_tun_inbound(
             packet,
-            |ip| {
-                self.interface_config
-                    .as_ref()
-                    .is_some_and(|i| !i.upstream_dns.is_empty())
-                    && self.active_cidr_resources.longest_match(ip).is_some()
-            },
+            |ip| self.active_cidr_resources.longest_match(ip).is_some(),
             now,
         ) {
             ControlFlow::Break(dns::ResolveStrategy::LocalResponse(query)) => {
