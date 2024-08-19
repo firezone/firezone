@@ -561,6 +561,9 @@ impl ClientState {
             .context("Unknown resource")?;
 
         if self.node.is_expecting_answer(gateway_id) {
+            // TODO: Should we queue more packets in `InitialConnection` here?
+            // We would have to clear `AwaitingConnectionDetails` and establish the resource <> gateway mapping.
+
             return Ok(());
         }
 
