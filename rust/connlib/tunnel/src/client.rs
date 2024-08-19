@@ -392,6 +392,8 @@ impl ClientState {
         gateway_id: GatewayId,
     ) {
         let Some((fqdn, ips)) = self.stub_resolver.get_fqdn(resource_ip) else {
+            tracing::debug!(%resource_ip, "Unknown DNS resource");
+
             return;
         };
         self.peers.add_ips_with_resource(
@@ -458,6 +460,8 @@ impl ClientState {
         // for DNS resource we will send the IP one at a time.
         if is_dns_resource && peer.allowed_ips.exact_match(dst).is_none() {
             let gateway_id = peer.id();
+            tracing::debug!("Packet is for a DNS resource but we haven't sent the proxy IPs yet");
+
             self.request_access(&dst, resource, gateway_id);
             return None;
         }
