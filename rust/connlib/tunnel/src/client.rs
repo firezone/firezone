@@ -737,9 +737,13 @@ impl ClientState {
 
     pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) {
         self.interface_config = Some(config.clone());
-        let dns_changed = self
-            .stub_resolver
-            .update_upstream_resolvers(config.upstream_dns);
+        let dns_changed = self.stub_resolver.update_upstream_resolvers(
+            config
+                .upstream_dns
+                .into_iter()
+                .map(|d| d.address())
+                .collect(),
+        );
 
         if !dns_changed {
             return;

@@ -1,6 +1,6 @@
 use crate::client::{IpProvider, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IDS_EXPIRE};
 use bimap::BiMap;
-use connlib_shared::messages::{DnsServer, ResourceId};
+use connlib_shared::messages::ResourceId;
 use connlib_shared::DomainName;
 use domain::base::{
     iana::{Class, Rcode, Rtype},
@@ -38,10 +38,10 @@ pub struct StubResolver {
     system_resolvers: Vec<IpAddr>,
 
     /// The DNS resolvers configured upstream in the Firezone account.
-    upstream_resolvers: Vec<DnsServer>,
+    upstream_resolvers: Vec<SocketAddr>,
 
     /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
-    dns_mapping: BiMap<IpAddr, DnsServer>,
+    dns_mapping: BiMap<IpAddr, SocketAddr>,
 
     /// DNS queries that had their destination IP mangled because they are forwarded through the tunnel.
     ///
@@ -240,11 +240,7 @@ impl StubResolver {
         is_cidr_resource: impl Fn(IpAddr) -> bool,
         now: Instant,
     ) -> ControlFlow<ResolveStrategy, MutableIpPacket<'p>> {
-        let Some(upstream) = self
-            .dns_mapping
-            .get_by_left(&packet.destination())
-            .map(|s| s.address())
-        else {
+        let Some(upstream) = self.dns_mapping.get_by_left(&packet.destination()).copied() else {
             return ControlFlow::Continue(packet);
         };
 
@@ -361,7 +357,7 @@ impl StubResolver {
         packet: &[u8],
     ) -> ControlFlow<IpPacket<'static>, ()> {
         // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
-        let Some(saddr) = self.dns_mapping.get_by_right(&DnsServer::from(from)) else {
+        let Some(saddr) = self.dns_mapping.get_by_right(&from) else {
             return ControlFlow::Continue(());
         };
         let sport = DNS_PORT;
@@ -406,7 +402,7 @@ impl StubResolver {
 
         let Some(sentinel) = self
             .dns_mapping
-            .get_by_right(&DnsServer::from((src_ip, src_port)))
+            .get_by_right(&SocketAddr::from((src_ip, src_port)))
         else {
             return packet;
         };
@@ -461,7 +457,7 @@ impl StubResolver {
     }
 
     #[must_use]
-    pub(crate) fn update_upstream_resolvers(&mut self, upstream_dns: Vec<DnsServer>) -> bool {
+    pub(crate) fn update_upstream_resolvers(&mut self, upstream_dns: Vec<SocketAddr>) -> bool {
         self.upstream_resolvers = upstream_dns;
 
         self.recompute_effective_dns()
@@ -472,10 +468,7 @@ impl StubResolver {
     }
 
     pub(crate) fn dns_by_sentinel(&self) -> BiMap<IpAddr, SocketAddr> {
-        self.dns_mapping
-            .iter()
-            .map(|(sentinel, effective)| (*sentinel, effective.address()))
-            .collect()
+        self.dns_mapping.clone()
     }
 
     fn recompute_effective_dns(&mut self) -> bool {
@@ -484,7 +477,7 @@ impl StubResolver {
             self.system_resolvers.clone(),
         );
 
-        if HashSet::<&DnsServer>::from_iter(effective_dns_servers.iter())
+        if HashSet::<&SocketAddr>::from_iter(effective_dns_servers.iter())
             == HashSet::from_iter(self.dns_mapping.right_values())
         {
             tracing::debug!("Effective DNS servers are unchanged");
@@ -504,9 +497,9 @@ impl StubResolver {
 }
 
 fn effective_dns_servers(
-    upstream_dns: Vec<DnsServer>,
+    upstream_dns: Vec<SocketAddr>,
     default_resolvers: Vec<IpAddr>,
-) -> Vec<DnsServer> {
+) -> Vec<SocketAddr> {
     let mut upstream_dns = upstream_dns.into_iter().filter_map(not_sentinel).peekable();
     if upstream_dns.peek().is_some() {
         return upstream_dns.collect();
@@ -514,7 +507,7 @@ fn effective_dns_servers(
 
     let mut dns_servers = default_resolvers
         .into_iter()
-        .map(|ip| DnsServer::from((ip, DNS_PORT)))
+        .map(|ip| SocketAddr::from((ip, DNS_PORT)))
         .filter_map(not_sentinel)
         .peekable();
 
@@ -526,7 +519,7 @@ fn effective_dns_servers(
     dns_servers.collect()
 }
 
-fn not_sentinel(srv: DnsServer) -> Option<DnsServer> {
+fn not_sentinel(srv: SocketAddr) -> Option<SocketAddr> {
     let is_v4_dns = IpNetwork::V4(DNS_SENTINELS_V4).contains(srv.ip());
     let is_v6_dns = IpNetwork::V6(DNS_SENTINELS_V6).contains(srv.ip());
 
@@ -534,9 +527,9 @@ fn not_sentinel(srv: DnsServer) -> Option<DnsServer> {
 }
 
 fn sentinel_dns_mapping(
-    dns: &[DnsServer],
+    dns: &[SocketAddr],
     old_sentinels: Vec<IpNetwork>,
-) -> BiMap<IpAddr, DnsServer> {
+) -> BiMap<IpAddr, SocketAddr> {
     let mut ip_provider = IpProvider::for_stub_dns_servers(old_sentinels);
 
     dns.iter()
@@ -874,7 +867,7 @@ mod tests {
         ]
     }
 
-    fn dns_list() -> Vec<DnsServer> {
+    fn dns_list() -> Vec<SocketAddr> {
         vec![
             dns("1.1.1.1:53"),
             dns("1.0.0.1:53"),
@@ -882,8 +875,8 @@ mod tests {
         ]
     }
 
-    fn dns(address: &str) -> DnsServer {
-        DnsServer::from(address.parse::<SocketAddr>().unwrap())
+    fn dns(address: &str) -> SocketAddr {
+        address.parse::<SocketAddr>().unwrap()
     }
 }
 
