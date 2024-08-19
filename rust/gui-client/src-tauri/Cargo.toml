@@ -25,7 +25,7 @@ firezone-headless-client = { path = "../../headless-client" }
 firezone-logging = { workspace = true }
 futures = { version = "0.3", default-features = false }
 hex = "0.4.3"
-minidumper = "0.8.2"
+minidumper = "0.8.3"
 native-dialog = "0.7.0"
 output_vt100 = "0.1"
 rand = "0.8.5"
