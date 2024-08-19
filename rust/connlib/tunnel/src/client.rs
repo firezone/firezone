@@ -846,17 +846,18 @@ impl ClientState {
     }
 
     fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
+        // We need to filter disabled resources because we never remove resources from the stub_resolver
         let maybe_dns_resource_id = self
             .stub_resolver
             .resolve_resource_by_ip(&destination)
             .filter(|resource| self.is_resource_enabled(resource));
 
+        // We don't need to filter from here because resources are removed from the active_cidr_resources as soon as they are disabled.
         let maybe_cidr_resource_id = self
             .active_cidr_resources
             .longest_match(destination)
             .map(|(_, res)| res.id);
 
-        // We need to filter disabled resources because we never remove resources from the stub_resolver
         maybe_dns_resource_id
             .or(maybe_cidr_resource_id)
             .or(self.internet_resource)
