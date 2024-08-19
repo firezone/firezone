@@ -137,7 +137,35 @@ export default function Page() {
         }
       />
 
-      <CustomerTestimonials />
+      <FeatureSection
+        titleCaption="Stay compliant"
+        title={
+          <span>
+            <span className="text-primary-450">More control </span> over your
+            network
+          </span>
+        }
+        description={
+          <p className="text-lg text-pretty text-neutral-800">
+            Restrict access based on access-time conditions like device
+            location, time of day, and more, and audit every connection attempt
+            with detailed logs.
+          </p>
+        }
+        image={
+          <Image
+            src="/images/policy-conditions.png"
+            width={598}
+            height={553}
+            alt="Policy conditions"
+          />
+        }
+        cta={
+          <ActionLink border={false} size="lg" href="/kb/deploy/policies">
+            See all policy conditions
+          </ActionLink>
+        }
+      />
 
       {/* Feature section: Open source for transparency and trust. */}
       <section className="py-16">
@@ -172,10 +200,10 @@ export default function Page() {
         </div>
         <div className="flex flex-col justify-center items-center px-4">
           <div className="w-full flex flex-wrap max-w-screen-sm justify-between mt-8">
-            <div className="mx-auto w-64 mb-8 inline-flex justify-center">
+            <div className="mx-auto md:mx-0 min-w-48 w-auto mb-8 flex justify-center items-center">
               <RunaCap />
             </div>
-            <div className="mx-auto w-64 mb-8 inline-flex justify-center">
+            <div className="mx-auto md:mx-0 min-w-48 w-auto mb-8 flex justify-center items-center">
               <ActionLink
                 border={false}
                 size="lg"
@@ -187,6 +215,8 @@ export default function Page() {
           </div>
         </div>
       </section>
+
+      <CustomerTestimonials />
 
       {/* Use cases */}
       <section className="py-16">
