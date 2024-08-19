@@ -336,9 +336,6 @@ where
             .get_established_mut(&connection)
             .ok_or(Error::NotConnected)?;
 
-        // Must bail early if we don't have a socket yet to avoid running into WG timeouts.
-        let socket = conn.socket().ok_or(Error::NotConnected)?;
-
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
             .encapsulate(packet.packet(), &mut self.buffer[4..], now)?
@@ -350,6 +347,20 @@ where
 
         let packet_start = 4;
         let packet_end = 4 + packet_len;
+
+        let socket = match conn.state {
+            ConnectionState::Connected { peer_socket, .. } => peer_socket,
+            ConnectionState::Connecting {
+                ref mut buffered, ..
+            } => {
+                tracing::debug!("No socket has been nominated yet, buffering packet");
+
+                buffered.push(self.buffer[packet_start..packet_end].to_vec());
+
+                return Ok(None);
+            }
+            ConnectionState::Idle | ConnectionState::Failed => return Err(Error::NotConnected),
+        };
 
         match socket {
             PeerSocket::Direct {
@@ -800,7 +811,12 @@ where
     /// The returned [`Offer`] must be passed to the remote via a signalling channel.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     #[must_use]
-    pub fn new_connection(&mut self, cid: TId, intent_sent_at: Instant, now: Instant) -> Offer {
+    pub fn new_connection(
+        &mut self,
+        cid: TId,
+        intent_sent_at: Instant,
+        now: Instant,
+    ) -> (Offer, &mut InitialConnection<RId>) {
         if self.connections.initial.remove(&cid).is_some() {
             tracing::info!("Replacing existing initial connection");
         };
@@ -830,6 +846,7 @@ where
             intent_sent_at,
             relay: self.sample_relay(),
             is_failed: false,
+            buffered_packets: RingBuffer::new(10),
         };
         let duration_since_intent = initial_connection.duration_since_intent(now);
 
@@ -838,7 +855,7 @@ where
 
         tracing::info!(?duration_since_intent, "Establishing new connection");
 
-        params
+        (params, self.connections.initial.get_mut(&cid).unwrap())
     }
 
     /// Whether we have sent an [`Offer`] for this connection and are currently expecting an [`Answer`].
@@ -875,6 +892,15 @@ where
         let duration_since_intent = connection.duration_since_intent(now);
 
         let existing = self.connections.established.insert(cid, connection);
+
+        for buffered in initial.buffered_packets.into_iter() {
+            let maybe_transmit = self.encapsulate(cid, buffered, now).unwrap();
+
+            debug_assert!(
+                maybe_transmit.is_none(),
+                "initial packets should always be buffered internally"
+            );
+        }
 
         tracing::info!(?duration_since_intent, remote = %hex::encode(remote.as_bytes()), "Signalling protocol completed");
 
@@ -1281,7 +1307,7 @@ pub(crate) enum CandidateEvent {
     Invalid(Candidate),
 }
 
-struct InitialConnection<RId> {
+pub struct InitialConnection<RId> {
     agent: IceAgent,
     session_key: Secret<[u8; 32]>,
 
@@ -1293,10 +1319,16 @@ struct InitialConnection<RId> {
     created_at: Instant,
     intent_sent_at: Instant,
 
+    buffered_packets: RingBuffer<IpPacket<'static>>,
+
     is_failed: bool,
 }
 
 impl<RId> InitialConnection<RId> {
+    pub fn queue_packet(&mut self, packet: IpPacket<'static>) {
+        self.buffered_packets.push(packet);
+    }
+
     #[tracing::instrument(level = "debug", skip_all, fields(%cid))]
     fn handle_timeout<TId>(&mut self, cid: TId, now: Instant)
     where
@@ -1564,6 +1596,10 @@ where
                             buffered,
                             ..
                         } => {
+                            if !buffered.is_empty() {
+                                tracing::debug!(num_packets = %buffered.len(), "Flushing buffered packets")
+                            }
+
                             transmits.extend(buffered.into_iter().flat_map(|packet| {
                                 make_owned_transmit(remote_socket, &packet, allocations, now)
                             }));

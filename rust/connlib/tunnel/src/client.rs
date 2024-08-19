@@ -282,10 +282,12 @@ pub struct ClientState {
     buffered_transmits: VecDeque<Transmit<'static>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 struct AwaitingConnectionDetails {
     last_intent_sent_at: Instant,
     domain: Option<ResolveRequest>,
+    /// The IP packet that triggered the last connection intent.
+    packet: IpPacket<'static>,
 }
 
 impl ClientState {
@@ -441,7 +443,7 @@ impl ClientState {
 
         let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
         else {
-            self.on_not_connected_resource(resource, &dst, now);
+            self.on_not_connected_resource(resource, &dst, packet.as_immutable(), now);
             return None;
         };
 
@@ -581,6 +583,13 @@ impl ClientState {
             self.peers
                 .add_ips_with_resource(&gateway_id, &ips, &resource_id);
 
+            if let Some(transmit) =
+                self.node
+                    .encapsulate(gateway_id, awaiting_connection_details.packet, now)?
+            {
+                self.buffered_transmits.push_back(transmit.into_owned())
+            }
+
             self.buffered_events.push_back(ClientEvent::RequestAccess {
                 resource_id,
                 gateway_id,
@@ -596,11 +605,12 @@ impl ClientState {
         self.peers
             .add_ips_with_resource(&gateway_id, &ips, &resource_id);
 
-        let offer = self.node.new_connection(
+        let (offer, initial_connection) = self.node.new_connection(
             gateway_id,
             awaiting_connection_details.last_intent_sent_at,
             now,
         );
+        initial_connection.queue_packet(awaiting_connection_details.packet);
 
         self.buffered_events
             .push_back(ClientEvent::RequestConnection {
@@ -722,6 +732,7 @@ impl ClientState {
         &mut self,
         resource: ResourceId,
         destination: &IpAddr,
+        packet: IpPacket,
         now: Instant,
     ) {
         debug_assert!(self.resources_by_id.contains_key(&resource));
@@ -746,6 +757,7 @@ impl ClientState {
                 }
 
                 occupied.get_mut().last_intent_sent_at = now;
+                occupied.get_mut().packet = packet.to_owned();
             }
             Entry::Vacant(vacant) => {
                 vacant.insert(AwaitingConnectionDetails {
@@ -760,6 +772,7 @@ impl ClientState {
                             proxy_ips: ips.clone(),
                         }
                     }),
+                    packet: packet.to_owned(),
                 });
             }
         }

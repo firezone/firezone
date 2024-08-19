@@ -13,8 +13,9 @@ impl<T: PartialEq> RingBuffer<T> {
     }
 
     pub fn push(&mut self, item: T) {
-        if self.buffer.len() == self.buffer.capacity() {
-            // Remove the oldest element (at the beginning) if at capacity
+        let capacity = self.buffer.capacity();
+        if self.buffer.len() == capacity {
+            tracing::debug!("Reached capacity ({capacity}), dropping oldest item");
             self.buffer.remove(0);
         }
         self.buffer.push_back(item);
@@ -34,6 +35,14 @@ impl<T: PartialEq> RingBuffer<T> {
 
     pub fn into_iter(self) -> impl Iterator<Item = T> {
         self.buffer.into_iter()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.buffer.len()
     }
 
     #[cfg(test)]

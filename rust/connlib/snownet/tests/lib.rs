@@ -86,7 +86,7 @@ fn only_generate_candidate_event_after_answer() {
         rand::random(),
     );
 
-    let offer = alice.new_connection(1, Instant::now(), Instant::now());
+    let (offer, _) = alice.new_connection(1, Instant::now(), Instant::now());
 
     assert_eq!(
         alice.poll_event(),
@@ -127,7 +127,7 @@ fn send_offer(
     bob: &mut ServerNode<u64, u64>,
     now: Instant,
 ) -> Answer {
-    let offer = alice.new_connection(1, Instant::now(), now);
+    let (offer, _) = alice.new_connection(1, Instant::now(), now);
 
     bob.accept_connection(1, offer, alice.public_key(), now)
 }
