@@ -30,10 +30,6 @@ import {
   FadeIn,
 } from "@/components/Animations";
 import ElevatorPitch from "@/components/ElevatorPitch";
-import SpeedChart from "@/components/Animations/SpeedChart";
-import UpgradeDiagram from "@/components/Animations/UpgradeDiagram";
-import ComplianceDiagram from "@/components/Animations/ComplianceDiagram";
-import SimpleArchitecture from "@/components/Animations/SimpleArchitecture";
 import { manrope } from "@/lib/fonts";
 import "@/styles/hero.css";
 import CustomerTestimonials from "@/components/CustomerTestimonials";
