@@ -129,8 +129,9 @@ windows_service::define_windows_service!(ffi_service_run, service_run);
 fn service_run(arguments: Vec<OsString>) {
     // `arguments` doesn't seem to work right when running as a Windows service
     // (even though it's meant for that) so just use the default log dir.
-    let handle = super::setup_logging(None).expect("Should be able to set up logging");
-    if let Err(error) = fallible_service_run(arguments, handle) {
+    let (handle, log_filter_reloader) =
+        super::setup_logging(None).expect("Should be able to set up logging");
+    if let Err(error) = fallible_service_run(arguments, handle, log_filter_reloader) {
         tracing::error!(?error, "`fallible_windows_service_run` returned an error");
     }
 }
@@ -143,6 +144,7 @@ fn service_run(arguments: Vec<OsString>) {
 fn fallible_service_run(
     arguments: Vec<OsString>,
     logging_handle: firezone_logging::file::Handle,
+    log_filter_reloader: crate::LogFilterReloader,
 ) -> Result<()> {
     tracing::info!(?arguments, "fallible_windows_service_run");
     if !elevation_check()? {
@@ -204,7 +206,7 @@ fn fallible_service_run(
     // Add new features in `service_run_async` if possible.
     // We don't want to bail out of `fallible_service_run` and forget to tell
     // Windows that we're shutting down.
-    let result = rt.block_on(service_run_async(shutdown_rx));
+    let result = rt.block_on(service_run_async(log_filter_reloader, shutdown_rx));
     if let Err(error) = &result {
         tracing::error!(?error);
     }
@@ -244,11 +246,18 @@ fn fallible_service_run(
 /// out of its caller.
 ///
 /// Logging must already be set up before calling this.
-async fn service_run_async(mut shutdown_rx: mpsc::Receiver<()>) -> Result<()> {
+async fn service_run_async(
+    log_filter_reloader: &crate::LogFilterReloader,
+    mut shutdown_rx: mpsc::Receiver<()>,
+) -> Result<()> {
     // Useless - Windows will never send us Ctrl+C when running as a service
     // This just keeps the signatures simpler
     let mut signals = crate::signals::Terminate::new()?;
-    let listen_fut = pin!(super::ipc_listen(DnsControlMethod::Nrpt, &mut signals));
+    let listen_fut = pin!(super::ipc_listen(
+        DnsControlMethod::Nrpt,
+        log_filter_reloader,
+        &mut signals
+    ));
     match future::select(listen_fut, pin!(shutdown_rx.recv())).await {
         Either::Left((Err(error), _)) => Err(error).context("`ipc_listen` threw an error"),
         Either::Left((Ok(()), _)) => {
