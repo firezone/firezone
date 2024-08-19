@@ -83,7 +83,7 @@ public class TunnelManager {
   // Cache resources on this side of the IPC barrier so we can
   // return them to callers when they haven't changed.
   // Make this `nil` when Resources are still being loaded.
-  private var resourcesListCache: [Resource]? = nil
+  private var resourcesListCache: ResourceList = ResourceList.loading
 
   // Persists our tunnel settings
   private var manager: NETunnelProviderManager?
@@ -273,7 +273,7 @@ public class TunnelManager {
     updateDisabledResources()
   }
 
-  func fetchResources(callback: @escaping ([Resource]?) -> Void) {
+  func fetchResources(callback: @escaping (ResourceList) -> Void) {
     guard session().status == .connected else { return }
 
     do {
@@ -282,7 +282,7 @@ public class TunnelManager {
           self.resourceListHash = Data(SHA256.hash(data: data))
           let decoder = JSONDecoder()
           decoder.keyDecodingStrategy = .convertFromSnakeCase
-          self.resourcesListCache = (try? decoder.decode([Resource].self, from: data))
+          self.resourcesListCache = ResourceList.loaded(try! decoder.decode([Resource].self, from: data))
         }
 
         callback(self.resourcesListCache)
@@ -324,7 +324,7 @@ public class TunnelManager {
           if session.status == .disconnected {
             // Reset resource list on disconnect
             resourceListHash = Data()
-            resourcesListCache = nil
+            resourcesListCache = ResourceList.loading
           }
 
           await statusChangeHandler?(session.status)

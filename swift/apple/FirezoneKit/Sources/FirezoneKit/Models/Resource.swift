@@ -8,6 +8,20 @@
 
 import Foundation
 
+public enum ResourceList {
+  case loading
+  case loaded([Resource])
+
+  public func asArray() -> [Resource] {
+    switch self {
+    case .loading:
+      []
+    case .loaded(let x):
+      x
+    }
+  }
+}
+
 public struct Resource: Decodable, Identifiable, Equatable {
   public let id: String
   public var name: String
