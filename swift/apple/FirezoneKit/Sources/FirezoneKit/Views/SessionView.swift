@@ -81,17 +81,27 @@ struct SessionView: View {
           Text("No Resources. Contact your admin to be granted access.")
         } else {
           List {
-            ResourceSection(
-              title: "Favorites",
-              resources: resources.filter { model.favorites.contains($0.id) },
-              model: model
-            )
+            let hasAnyFavorites = resources.contains { model.favorites.contains($0.id) }
+            if hasAnyFavorites {
+              Section("Favorites") {
+                ResourceSection(
+                  resources: resources.filter { model.favorites.contains($0.id) },
+                  model: model
+                )
+              }
 
-            ResourceSection(
-              title: "Other Resources",
-              resources: resources.filter { !model.favorites.contains($0.id) },
-              model: model
-            )
+              Section("Other Resources") {
+                ResourceSection(
+                  resources: resources.filter { !model.favorites.contains($0.id) },
+                  model: model
+                )
+              }
+            } else {
+              ResourceSection(
+                resources: resources,
+                model: model
+              )
+            }
           }
 
           .listStyle(GroupedListStyle())
@@ -116,31 +126,28 @@ struct SessionView: View {
 }
 
 struct ResourceSection: View {
-  let title: String
   let resources: [Resource]
   @ObservedObject var model: SessionViewModel
 
   var body: some View {
-    Section(header: Text(title)) {
-      ForEach(resources) { resource in
+    ForEach(resources) { resource in
+      HStack {
+        NavigationLink { ResourceView(model: model, resource: resource) }
+      label: {
         HStack {
-          NavigationLink { ResourceView(model: model, resource: resource).id(resource.id) }
-        label: {
-          HStack {
-            Text(resource.name)
-            if resource.canToggle {
-              Spacer()
-              Toggle("Enabled", isOn: Binding<Bool>(
-                get: { model.isResourceEnabled(resource.id) },
-                set: { newValue in
-                  model.store.toggleResourceDisabled(resource: resource.id, enabled: newValue)
-                }
-              )).labelsHidden()
-            }
+          Text(resource.name)
+          if resource.canToggle {
+            Spacer()
+            Toggle("Enabled", isOn: Binding<Bool>(
+              get: { model.isResourceEnabled(resource.id) },
+              set: { newValue in
+                model.store.toggleResourceDisabled(resource: resource.id, enabled: newValue)
+              }
+            )).labelsHidden()
           }
         }
-        .navigationTitle("All Resources")
-        }
+      }
+      .navigationTitle("All Resources")
       }
     }
   }
