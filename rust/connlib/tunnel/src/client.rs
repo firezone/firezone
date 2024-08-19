@@ -441,18 +441,18 @@ impl ClientState {
         // We read this here to prevent problems with the borrow checker
         let is_dns_resource = self.is_dns_resource(&resource);
 
-        let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
-        else {
-            self.on_not_connected_resource(resource, &dst, packet.as_immutable(), now);
-            return None;
-        };
-
         let packet = maybe_mangle_dns_query_to_cidr_resource(
             packet,
             &self.dns_mapping,
             &mut self.mangled_dns_queries,
             now,
         );
+
+        let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
+        else {
+            self.on_not_connected_resource(resource, &dst, packet.as_immutable(), now);
+            return None;
+        };
 
         // Allowed IPs will track the IPs that we have sent to the gateway along with a list of ResourceIds
         // for DNS resource we will send the IP one at a time.
