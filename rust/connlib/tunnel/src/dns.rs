@@ -197,10 +197,6 @@ impl StubResolver {
         Some(domain.clone())
     }
 
-    fn knows_resource(&self, resource: &ResourceId) -> bool {
-        self.dns_resources.values().contains(resource)
-    }
-
     /// Parses an incoming packet as a DNS query and decides how to respond to it
     ///
     /// Returns:
@@ -251,18 +247,10 @@ impl StubResolver {
             return Some(ResolveStrategy::LocalResponse(packet));
         }
 
-        // `match_resource` is `O(N)` which we deem fine for DNS queries.
+        // `match_resource_linear` is `O(N)` which we deem fine for DNS queries.
         let maybe_resource = self.match_resource_linear(&domain);
 
         let resource_records = match (qtype, maybe_resource) {
-            (_, Some(resource)) if !self.knows_resource(&resource) => {
-                return Some(ResolveStrategy::ForwardQuery {
-                    upstream,
-                    query_id: message.header().id(),
-                    payload: message.into_octets().to_vec(),
-                    original_src: SocketAddr::new(packet.source(), datagram.get_source()),
-                })
-            }
             (Rtype::A, Some(resource)) => self.get_or_assign_a_records(domain.clone(), resource),
             (Rtype::AAAA, Some(resource)) => {
                 self.get_or_assign_aaaa_records(domain.clone(), resource)
