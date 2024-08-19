@@ -39,12 +39,14 @@ export default function ActionLink({
   transitionColor?: string;
   border?: boolean;
 }) {
+  // XXX: There seems to be a Tailwind bug where the border color is not
+  // being applied below. The CSS checks out but the color defaults to gray.
   const linkClasses = `
     group inline-flex justify-center items-center py-2 font-semibold duration-50
     transform transition tracking-tight font-medium
     text-${color}
     ${Size[size].link}
-    ${border && `${Size[size].border} border-b-${color}`}
+    ${border && `${Size[size].border} border-${color}`}
     ${(transitionColor && `hover:text-${transitionColor}`) || ""}
     ${(border && transitionColor && `hover:border-${transitionColor}`) || ""}
   `;

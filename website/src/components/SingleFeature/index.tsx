@@ -43,7 +43,9 @@ export default function SingleFeature({
           >
             {desc}
           </p>
-          <ActionLink href={link}>{buttonDesc}</ActionLink>
+          <ActionLink border={false} size="lg" href={link}>
+            {buttonDesc}
+          </ActionLink>
         </div>
       </div>
     </div>
