@@ -248,7 +248,7 @@ pub struct ClientState {
 
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
     active_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
-    /// When it's Some it indicates that the Internet resource was enabled
+    /// `Some` if the Internet resource is enabled.
     internet_resource: Option<ResourceId>,
     /// All resources indexed by their ID.
     resources_by_id: HashMap<ResourceId, ResourceDescription>,
