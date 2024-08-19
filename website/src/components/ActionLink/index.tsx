@@ -34,7 +34,7 @@ export default function ActionLink({
 }: {
   size?: SizeKey;
   children: React.ReactNode;
-  href: Route<string>;
+  href: URL | Route<string>;
   color?: string;
   transitionColor?: string;
   border?: boolean;

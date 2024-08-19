@@ -54,7 +54,7 @@ const customerData = [
 ];
 
 interface TestimonialBoxProps {
-  href: Route<string>;
+  href: URL | Route<string>;
   desc: string;
   authorImage: string;
   authorName: string;

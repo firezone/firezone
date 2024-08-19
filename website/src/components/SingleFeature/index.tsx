@@ -11,7 +11,7 @@ interface SingleFeatureProps {
   title: string;
   boldedTitle?: string;
   desc: string;
-  link: Route<string>;
+  link: URL | Route<string>;
   buttonDesc: string;
   children: React.ReactNode;
 }
