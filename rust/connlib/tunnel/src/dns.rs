@@ -351,6 +351,7 @@ impl StubResolver {
         ControlFlow::Break(ResolveStrategy::LocalResponse(packet))
     }
 
+    /// Tries to handle a packet arriving at the network interface, effectively intercepting DNS queries forwarded to upstream resolvers.
     pub(crate) fn try_handle_network_inbound(
         &mut self,
         from: SocketAddr,
@@ -387,6 +388,7 @@ impl StubResolver {
         ControlFlow::Break(ip_packet.into_immutable())
     }
 
+    /// Tries to handle a packet arriving at the tunnel interface.
     pub(crate) fn try_handle_tunnel_inbound<'p>(
         &mut self,
         mut packet: MutableIpPacket<'p>,
