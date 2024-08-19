@@ -46,7 +46,7 @@ pub struct StubResolver {
     /// DNS queries that had their destination IP mangled because they are forwarded through the tunnel.
     ///
     /// The [`Instant`] tracks when the DNS query expires.
-    mangled_dns_queries: HashMap<u16, Instant>,
+    mangled_dns_queries: HashMap<(SocketAddr, u16), Instant>,
 
     /// DNS queries that were forwarded to an upstream server, indexed by the DNS query ID + the server we sent it to.
     ///
@@ -312,7 +312,8 @@ impl StubResolver {
                 if !self.upstream_resolvers.is_empty() && is_cidr_resource(upstream.ip()) {
                     tracing::trace!(old_dst = %packet.destination(), new_dst = %upstream.ip(), "Mangling DNS query to be sent through tunnel");
 
-                    self.mangled_dns_queries.insert(query_id, now + IDS_EXPIRE);
+                    self.mangled_dns_queries
+                        .insert((upstream, query_id), now + IDS_EXPIRE);
                     packet.set_dst(upstream.ip());
                     packet.update_checksum();
 
@@ -402,10 +403,9 @@ impl StubResolver {
 
         let src_port = udp.get_source();
 
-        let Some(sentinel) = self
-            .dns_mapping
-            .get_by_right(&SocketAddr::from((src_ip, src_port)))
-        else {
+        let upstream = SocketAddr::from((src_ip, src_port));
+
+        let Some(sentinel) = self.dns_mapping.get_by_right(&upstream) else {
             return packet;
         };
 
@@ -415,7 +415,7 @@ impl StubResolver {
 
         let Some(query_sent_at) = self
             .mangled_dns_queries
-            .remove(&message.header().id())
+            .remove(&(upstream, message.header().id()))
             .map(|expires_at| expires_at - IDS_EXPIRE)
         else {
             return packet;
