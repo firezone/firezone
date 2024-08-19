@@ -49,7 +49,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-neutral-950 bg-hero pt-28 xl:pt-32">
+      <section className="bg-neutral-950 bg-hero pt-28 mb-16 xl:pt-32">
         <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
           <h1
             className={
@@ -106,17 +106,7 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="bg-white px-4 sm:px-8 md:px-16 py-20 md:py-16">
-        <div className="py-8 md:py-12 flex justify-center">
-          <ElevatorPitch />
-        </div>
-        <div className="py-8 md:py-12">
-          <BattleCard />
-        </div>
-        <div className="py-8 md:py-12">
-          <FeatureCards />
-        </div>
-      </section>
+      <ElevatorPitch />
 
       <FeatureSection
         reverse
@@ -149,292 +139,8 @@ export default function Page() {
 
       <CustomerTestimonials />
 
-      {/* Feature section 2: Achieve compliance in minutes, not weeks. */}
-      <section className="bg-white py-20 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
-          <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2 place-content-center">
-            Security
-          </h6>
-          <h3
-            className={` tracking-tight font-bold inline-block ${manrope.className}`}
-          >
-            Achieve compliance{" "}
-            <span className="text-primary-450">without </span>
-            the headache.
-          </h3>
-        </div>
-
-        <div className="mx-auto px-4 max-w-screen-md ">
-          <p className={`text-lg text-center text-pretty text-neutral-800`}>
-            Connections are directly established and end-to-end encrypted with
-            keys that rotate daily, so we can never see your data. Firezone's
-            advanced Policy Engine logs who accessed what and when and can be
-            configured to allow access only from certain countries, IPs, and
-            timeframes, so you can easily demonstrate compliance with internal
-            and external security audits.
-          </p>
-        </div>
-
-        <div className="flex justify-center items-center px-4 md:px-0 mx-auto mt-8 md:mt-16 max-w-screen-lg">
-          <ComplianceDiagram />
-        </div>
-
-        <div className="flex justify-center mt-8 md:mt-16">
-          <ActionLink border={false} size="lg" href="/kb/architecture">
-            Read about Firezone's architecture
-          </ActionLink>
-        </div>
-      </section>
-
-      {/* Feature section 3: Add 2FA to WireGuard. */}
-      <section className="bg-neutral-50 py-20 md:py-16">
-        <div
-          className={`sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center ${manrope.className}`}
-        >
-          <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2 place-content-center">
-            Authentication
-          </h6>
-          <h3 className=" tracking-tight font-bold inline-block">
-            Add <span className="text-primary-450">two-factor </span>
-            auth to WireGuard.
-          </h3>
-        </div>
-
-        <div className="mx-auto px-4 max-w-screen-md">
-          <p className={`text-lg text-center  text-pretty text-neutral-800`}>
-            Looking for 2FA for WireGuard? Look no further. Firezone integrates
-            with any OIDC-compatible identity provider to consistently enforce
-            multi-factor authentication across your workforce.
-          </p>
-        </div>
-
-        <div className="flex justify-center mt-8 md:mt-16">
-          <SlideIn direction="top" delay={0.35} duration={1}>
-            <Image
-              width={1024}
-              height={800}
-              alt="Auth diagram"
-              src="/images/auth.png"
-              className="mx-auto px-4 md:px-0"
-            />
-          </SlideIn>
-        </div>
-
-        <div className="flex justify-center mt-8 md:mt-16">
-          <ActionLink border={false} size="lg" href="/kb/authenticate">
-            Connect your identity provider
-          </ActionLink>
-        </div>
-      </section>
-
-      {/* Feature section 4: Say goodbye to bandwidth problems. */}
-      <section className="bg-neutral-950 text-neutral-50 py-20 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
-          <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2 place-content-center">
-            Lightweight
-          </h6>
-          <h3
-            className={`tracking-tight font-bold inline-block ${manrope.className}`}
-          >
-            <Strike>Bandwidth problems.</Strike>
-          </h3>
-        </div>
-
-        <div className="mx-auto mt-8 px-4 max-w-screen-md">
-          <p
-            className={`text-lg text-neutral-300 text-center text-pretty -mt-3`}
-          >
-            Eliminate throughput bottlenecks that plague other VPNs. Firezone's
-            load-balancing architecture scales horizontally to handle an
-            unlimited number of connections to even the most bandwidth-intensive
-            services. Need more speed? Just add more Gateways.
-          </p>
-        </div>
-
-        <div className="flex justify-center max-w-screen-sm mx-auto mt-12 px-4 md:px-0">
-          <SpeedChart />
-        </div>
-
-        <div className="flex justify-center mt-4 md:mt-16">
-          <ActionLink
-            size="lg"
-            href="/kb/use-cases/scale-vpc-access"
-            transitionColor="primary-450"
-            color="white"
-          >
-            Scale access to your VPCs
-          </ActionLink>
-        </div>
-      </section>
-
-      {/* Feature section 5: No more open firewall ports. */}
-      <section className="bg-white py-20 md:py-16">
-        <div
-          className={`sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center ${manrope.className}`}
-        >
-          <h6 className="uppercase text-sm font-semibold text-primary-450 place-content-center tracking-wide mb-2">
-            setup
-          </h6>
-          <h3 className="tracking-tight font-bold inline-block">
-            Say <span className="text-primary-450">goodbye</span> to firewall
-            configuration.
-          </h3>
-        </div>
-
-        <div className="mx-auto px-4 max-w-screen-md -mt-3">
-          <p className={`text-lg text-center text-pretty text-neutral-800 `}>
-            Firezone securely punches through firewalls with ease, so keep those
-            ports closed. Connections pick the shortest path and your attack
-            surface is minimized, keeping your most sensitive resources
-            invisible to attackers.
-          </p>
-        </div>
-
-        <div className="flex justify-center items-center px-4 md:px-0 mx-auto mt-8 md:mt-16 max-w-screen-lg">
-          <SimpleArchitecture />
-        </div>
-
-        <div className="flex justify-center mt-8">
-          <ActionLink border={false} size="lg" href="/kb/deploy">
-            Make your resources invisible
-          </ActionLink>
-        </div>
-      </section>
-
-      {/* Feature section 6: Runs everywhere your business does. */}
-      <section className="bg-neutral-50 py-20 md:py-16">
-        <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
-          <h6 className="uppercase text-sm font-semibold text-primary-450 place-content-center tracking-wide mb-2">
-            Firezone everywhere
-          </h6>
-          <h3
-            className={`tracking-tight font-bold inline-block ${manrope.className}`}
-          >
-            Runs <span className="text-primary-450">everywhere </span>
-            your business does.
-          </h3>
-        </div>
-
-        <div className="mx-auto px-4 mt-8 max-w-screen-lg grid sm:grid-cols-2 gap-8 lg:gap-16">
-          <div className="flex flex-col p-4">
-            <div className="mb-12 grid grid-cols-2 gap-4">
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
-                <AppleIcon size={12} href="/kb/client-apps/macos-client">
-                  <span className="inline-block pt-4 w-full text-center">
-                    macOS
-                  </span>
-                </AppleIcon>
-              </div>
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
-                <WindowsIcon size={12} href="/kb/client-apps/windows-client">
-                  <span className="inline-block pt-4 w-full text-center">
-                    Windows
-                  </span>
-                </WindowsIcon>
-              </div>
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
-                <LinuxIcon size={12} href="/kb/client-apps/linux-client">
-                  <span className="inline-block pt-4 w-full text-center">
-                    Linux
-                  </span>
-                </LinuxIcon>
-              </div>
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
-                <AndroidIcon size={12} href="/kb/client-apps/android-client">
-                  <span className="inline-block pt-4 w-full text-center">
-                    Android
-                  </span>
-                </AndroidIcon>
-              </div>
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
-                <ChromeIcon size={12} href="/kb/client-apps/android-client">
-                  <span className="inline-block pt-4 w-full text-center">
-                    ChromeOS
-                  </span>
-                </ChromeIcon>
-              </div>
-              <div className="p-4 flex items-center justify-center bg-white rounded-lg border-2 border-neutral-200">
-                <AppleIcon size={12} href="/kb/client-apps/ios-client">
-                  <span className="inline-block pt-4 w-full text-center">
-                    iOS
-                  </span>
-                </AppleIcon>
-              </div>
-            </div>
-            <div className="mt-auto">
-              <p className="text-lg text-neutral-800">
-                Clients are available for every major platform, require no
-                configuration, and stay connected even when switching WiFi
-                networks.
-              </p>
-              <p className="mt-4">
-                <ActionLink border={false} size="lg" href="/kb/client-apps">
-                  Download Client apps
-                </ActionLink>
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-col p-4">
-            <div className="mb-12">
-              <div className="py-0.5 flex flex-col justify-between space-y-8 md:space-y-12">
-                <div className="mx-8 md:mx-16 flex justify-start">
-                  <Image
-                    width={200}
-                    height={200}
-                    alt="Gateway"
-                    src="/images/docker.svg"
-                  />
-                </div>
-                <div className="mx-8 md:mx-16 flex justify-end">
-                  <Image
-                    width={200}
-                    height={200}
-                    alt="Gateway"
-                    src="/images/terraform.svg"
-                  />
-                </div>
-                <div className="mx-8 md:mx-16 flex justify-start">
-                  <Image
-                    width={200}
-                    height={200}
-                    alt="Gateway"
-                    src="/images/kubernetes.svg"
-                  />
-                </div>
-                <div className="mx-8 md:mx-16 flex justify-end">
-                  <Image
-                    width={200}
-                    height={200}
-                    alt="Gateway"
-                    src="/images/pulumi.svg"
-                  />
-                </div>
-              </div>
-              <pre className="mt-4 md:mt-8 text-xs p-2 bg-neutral-950 rounded shadow text-neutral-50 text-wrap">
-                <code>
-                  <strong>FIREZONE_TOKEN</strong>=&lt;your-token&gt; \<br /> ./
-                  <strong>firezone-gateway</strong>
-                </code>
-              </pre>
-            </div>
-            <div className="mt-auto">
-              <p className="text-lg text-neutral-800">
-                Gateways are lightweight Linux binaries you deploy anywhere you
-                need access. Just configure a token with your preferred tool and
-                you're done.
-              </p>
-              <p className="mt-4">
-                <ActionLink border={false} size="lg" href="/kb/deploy/gateways">
-                  Deploy your first Gateway
-                </ActionLink>
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Feature section 7: Open source for transparency and trust. */}
-      <section className="bg-white py-20 md:py-16">
+      {/* Feature section: Open source for transparency and trust. */}
+      <section className="py-16">
         <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
           <h6 className="uppercase text-sm font-semibold place-content-center text-primary-450 tracking-wide mb-2">
             Open source
@@ -483,7 +189,7 @@ export default function Page() {
       </section>
 
       {/* Use cases */}
-      <section className="border-t border-neutral-200 py-20 md:py-16 bg-neutral-100">
+      <section className="py-16">
         <div className="mx-auto max-w-screen-lg">
           <div className={`px-4 flex flex-wrap ${manrope.className}`}>
             <h3 className="mb-2 text-2xl md:text-4xl tracking-tight font-bold mr-1">
@@ -684,6 +390,8 @@ export default function Page() {
           </div>
         </div>
       </section>
+
+      <BattleCard />
     </>
   );
 }

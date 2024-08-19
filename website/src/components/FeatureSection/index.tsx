@@ -21,7 +21,7 @@ export default function FeatureSection({
         {titleCaption}
       </h6>
       <h3
-        className={`mb-2 text-3xl md:text-4xl lg:text-5xl leading-8 text-pretty tracking-tight font-bold inline-block ${manrope.className}`}
+        className={`mb-4 text-3xl md:text-4xl lg:text-5xl leading-8 text-pretty tracking-tight font-bold inline-block ${manrope.className}`}
       >
         {title}
       </h3>
@@ -34,7 +34,7 @@ export default function FeatureSection({
   );
 
   return (
-    <section className="py-20 md:py-16">
+    <section className="py-16">
       <div
         className={`max-w-screen-xl mx-auto flex justify-between items-center ${reverse ? "flex-wrap-reverse" : "flex-wrap"}`}
       >
