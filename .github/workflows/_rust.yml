@@ -88,12 +88,17 @@ jobs:
       - uses: ./.github/actions/setup-rust
         id: setup-rust
       - uses: ./.github/actions/setup-tauri
+      - uses: taiki-e/install-action@ripgrep
       - name: "cargo test"
         shell: bash
         run: |
 
           # First, run all tests.
           cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored --nocapture
+
+          # Assert that we sample certain transitions
+          rg SendICMPPacketToCidrResource $TESTCASES_DIR
+          rg SendICMPPacketToDnsResource $TESTCASES_DIR
 
           # Backup dumped state and transition samples
           mv $TESTCASES_DIR $TESTCASES_BACKUP_DIR
