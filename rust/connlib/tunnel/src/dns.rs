@@ -32,6 +32,11 @@ pub struct StubResolver {
     /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
     known_hosts: KnownHosts,
 
+    /// DNS queries that had their destination IP mangled because they are forwarded through the tunnel.
+    ///
+    /// The [`Instant`] tracks when the DNS query expires.
+    mangled_dns_queries: HashMap<u16, Instant>,
+
     /// DNS queries that were forwarded to an upstream server, indexed by the DNS query ID + the server we sent it to.
     ///
     /// The value is a tuple of:
@@ -107,6 +112,7 @@ impl StubResolver {
             dns_resources: Default::default(),
             known_hosts: KnownHosts::new(known_hosts),
             forwarded_dns_queries: Default::default(),
+            mangled_dns_queries: Default::default(),
         }
     }
 
@@ -218,7 +224,7 @@ impl StubResolver {
     pub(crate) fn try_handle_tun_inbound<'p>(
         &mut self,
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
-        packet: MutableIpPacket<'p>,
+        mut packet: MutableIpPacket<'p>,
         forward_query_through_tunnel: impl Fn(IpAddr) -> bool,
         now: Instant,
     ) -> ControlFlow<ResolveStrategy, MutableIpPacket<'p>> {
@@ -228,8 +234,6 @@ impl StubResolver {
         else {
             return ControlFlow::Continue(packet);
         };
-
-        // TODO: Mangle packet here.
 
         let Some(datagram) = packet.as_immutable_udp() else {
             return ControlFlow::Continue(packet);
@@ -294,12 +298,19 @@ impl StubResolver {
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
             }
             _ => {
+                let query_id = message.header().id();
+
                 if forward_query_through_tunnel(upstream.ip()) {
+                    tracing::trace!(old_dst = %packet.destination(), new_dst = %upstream.ip(), "Mangling DNS query to be sent through tunnel");
+
+                    self.mangled_dns_queries.insert(query_id, now + IDS_EXPIRE);
+                    packet.set_dst(upstream.ip());
+                    packet.update_checksum();
+
                     return ControlFlow::Continue(packet);
                 }
 
                 let server = upstream;
-                let query_id = message.header().id();
                 let original_src = SocketAddr::new(packet.source(), datagram.get_source());
 
                 self.forwarded_dns_queries
@@ -368,8 +379,64 @@ impl StubResolver {
         ControlFlow::Break(ip_packet.into_immutable())
     }
 
+    pub(crate) fn try_handle_tunnel_inbound<'p>(
+        &mut self,
+        dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
+        mut packet: MutableIpPacket<'p>,
+        now: Instant,
+    ) -> MutableIpPacket<'p> {
+        let src_ip = packet.source();
+
+        let Some(udp) = packet.as_udp() else {
+            return packet;
+        };
+
+        let src_port = udp.get_source();
+
+        let Some(sentinel) = dns_mapping.get_by_right(&DnsServer::from((src_ip, src_port))) else {
+            return packet;
+        };
+
+        let Ok(message) = domain::base::Message::from_slice(udp.payload()) else {
+            return packet;
+        };
+
+        let Some(query_sent_at) = self
+            .mangled_dns_queries
+            .remove(&message.header().id())
+            .map(|expires_at| expires_at - IDS_EXPIRE)
+        else {
+            return packet;
+        };
+
+        let rtt = now.duration_since(query_sent_at);
+
+        let domains = message
+            .question()
+            .filter_map(|q| Some(q.ok()?.into_qname()))
+            .join(",");
+
+        tracing::trace!(old_src = %src_ip, new_src = %sentinel, ?rtt, %domains, "Mangling DNS response from CIDR resource");
+
+        packet.set_src(*sentinel);
+        packet.update_checksum();
+
+        packet
+    }
+
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         self.forwarded_dns_queries.retain(|_, (_, exp)| now < *exp);
+        self.mangled_dns_queries.retain(|_, exp| now < *exp);
+    }
+
+    pub(crate) fn poll_timeout(&self) -> Option<Instant> {
+        // The number of mangled DNS queries is expected to be fairly small because we only track them whilst connecting to a CIDR resource that is a DNS server.
+        // Thus, sorting these values on-demand even within `poll_timeout` is expected to be performant enough.
+        let next_dns_query_expiry = self.mangled_dns_queries.values().min().copied();
+
+        // TODO: Also include forwarded DNS queries here.
+
+        next_dns_query_expiry
     }
 }
 

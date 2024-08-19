@@ -14,7 +14,7 @@ use connlib_shared::messages::{
 use connlib_shared::{callbacks, DomainName, PublicKey, StaticSecret};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
+use ip_packet::{IpPacket, MutableIpPacket};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
@@ -255,10 +255,6 @@ pub struct ClientState {
 
     /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
     dns_mapping: BiMap<IpAddr, DnsServer>,
-    /// DNS queries that had their destination IP mangled because the servers is a CIDR resource.
-    ///
-    /// The [`Instant`] tracks when the DNS query expires.
-    mangled_dns_queries: HashMap<u16, Instant>,
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
 
@@ -300,7 +296,6 @@ impl ClientState {
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
-            mangled_dns_queries: Default::default(),
             stub_resolver: StubResolver::new(known_hosts),
             disabled_resources: Default::default(),
             buffered_transmits: Default::default(),
@@ -435,13 +430,6 @@ impl ClientState {
             return None;
         };
 
-        let packet = maybe_mangle_dns_query_to_cidr_resource(
-            packet,
-            &self.dns_mapping,
-            &mut self.mangled_dns_queries,
-            now,
-        );
-
         // Allowed IPs will track the IPs that we have sent to the gateway along with a list of ResourceIds
         // for DNS resource we will send the IP one at a time.
         if is_dns_resource && peer.allowed_ips.exact_match(dst).is_none() {
@@ -497,12 +485,9 @@ impl ClientState {
             .inspect_err(|e| tracing::debug!(%gid, %local, %from, "{e}"))
             .ok()?;
 
-        let packet = maybe_mangle_dns_response_from_cidr_resource(
-            packet,
-            &self.dns_mapping,
-            &mut self.mangled_dns_queries,
-            now,
-        );
+        let packet = self
+            .stub_resolver
+            .try_handle_tunnel_inbound(&self.dns_mapping, packet, now);
 
         Some(packet.into_immutable())
     }
@@ -717,7 +702,7 @@ impl ClientState {
         tracing::debug!(mapping = ?new_mapping, "Updating DNS servers");
 
         self.dns_mapping = new_mapping;
-        self.mangled_dns_queries.clear();
+        // self.mangled_dns_queries.clear(); TODO: Clear in `StubResolver`
     }
 
     pub fn set_disabled_resource(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
@@ -794,18 +779,15 @@ impl ClientState {
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
-        // The number of mangled DNS queries is expected to be fairly small because we only track them whilst connecting to a CIDR resource that is a DNS server.
-        // Thus, sorting these values on-demand even within `poll_timeout` is expected to be performant enough.
-        let next_dns_query_expiry = self.mangled_dns_queries.values().min().copied();
         let next_node_timeout = self.node.poll_timeout();
+        let next_stub_resolver_timeout = self.stub_resolver.poll_timeout();
 
-        earliest(next_dns_query_expiry, next_node_timeout)
+        earliest(next_stub_resolver_timeout, next_node_timeout)
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
         self.stub_resolver.handle_timeout(now);
-        self.mangled_dns_queries.retain(|_, exp| now < *exp);
 
         self.drain_node_events();
     }
@@ -1183,80 +1165,6 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
     }
 
     false
-}
-
-/// In case the given packet is a DNS query, change its source IP to that of the actual DNS server.
-fn maybe_mangle_dns_query_to_cidr_resource<'p>(
-    mut packet: MutableIpPacket<'p>,
-    dns_mapping: &BiMap<IpAddr, DnsServer>,
-    mangeled_dns_queries: &mut HashMap<u16, Instant>,
-    now: Instant,
-) -> MutableIpPacket<'p> {
-    let dst = packet.destination();
-
-    let Some(srv) = dns_mapping.get_by_left(&dst) else {
-        return packet;
-    };
-
-    let Some(dgm) = packet.as_udp() else {
-        return packet;
-    };
-
-    let Ok(message) = domain::base::Message::from_slice(dgm.payload()) else {
-        return packet;
-    };
-
-    tracing::trace!(old_dst = %dst, new_dst = %srv.ip(), "Mangling DNS query to CIDR resource");
-
-    mangeled_dns_queries.insert(message.header().id(), now + IDS_EXPIRE);
-    packet.set_dst(srv.ip());
-    packet.update_checksum();
-
-    packet
-}
-
-fn maybe_mangle_dns_response_from_cidr_resource<'p>(
-    mut packet: MutableIpPacket<'p>,
-    dns_mapping: &BiMap<IpAddr, DnsServer>,
-    mangeled_dns_queries: &mut HashMap<u16, Instant>,
-    now: Instant,
-) -> MutableIpPacket<'p> {
-    let src_ip = packet.source();
-
-    let Some(udp) = packet.as_udp() else {
-        return packet;
-    };
-
-    let src_port = udp.get_source();
-
-    let Some(sentinel) = dns_mapping.get_by_right(&DnsServer::from((src_ip, src_port))) else {
-        return packet;
-    };
-
-    let Ok(message) = domain::base::Message::from_slice(udp.payload()) else {
-        return packet;
-    };
-
-    let Some(query_sent_at) = mangeled_dns_queries
-        .remove(&message.header().id())
-        .map(|expires_at| expires_at - IDS_EXPIRE)
-    else {
-        return packet;
-    };
-
-    let rtt = now.duration_since(query_sent_at);
-
-    let domains = message
-        .question()
-        .filter_map(|q| Some(q.ok()?.into_qname()))
-        .join(",");
-
-    tracing::trace!(old_src = %src_ip, new_src = %sentinel, ?rtt, %domains, "Mangling DNS response from CIDR resource");
-
-    packet.set_src(*sentinel);
-    packet.update_checksum();
-
-    packet
 }
 
 pub struct IpProvider {
