@@ -405,12 +405,30 @@ impl ClientState {
         packet: MutableIpPacket<'_>,
         now: Instant,
     ) -> Option<snownet::Transmit<'s>> {
-        let (packet, dst) = match self.try_handle_dns_query(packet, now) {
-            Ok(()) => {
+        let packet = match self.stub_resolver.try_handle_tun_inbound(
+            &self.dns_mapping,
+            packet,
+            |ip| {
+                self.interface_config
+                    .as_ref()
+                    .is_some_and(|i| !i.upstream_dns.is_empty())
+                    && self.active_cidr_resources.longest_match(ip).is_some()
+            },
+            now,
+        ) {
+            ControlFlow::Break(dns::ResolveStrategy::LocalResponse(query)) => {
+                self.buffered_packets.push_back(query);
+
                 return None;
             }
-            Err(non_dns_packet) => non_dns_packet,
+            ControlFlow::Break(dns::ResolveStrategy::ForwardQuery(transmit)) => {
+                self.buffered_transmits.push_back(transmit);
+
+                return None;
+            }
+            ControlFlow::Continue(packet) => packet,
         };
+        let dst = packet.destination();
 
         if is_definitely_not_a_resource(dst) {
             return None;
@@ -587,43 +605,6 @@ impl ClientState {
                 domain: awaiting_connection_details.domain,
             },
         })));
-    }
-
-    /// Attempt to handle the given packet as a DNS query packet.
-    ///
-    /// Returns `Ok` if the packet is in fact a DNS query with an optional response to send back.
-    /// Returns `Err` if the packet is not a DNS query.
-    fn try_handle_dns_query<'a>(
-        &mut self,
-        packet: MutableIpPacket<'a>,
-        now: Instant,
-    ) -> Result<(), (MutableIpPacket<'a>, IpAddr)> {
-        match self.stub_resolver.try_handle_tun_inbound(
-            &self.dns_mapping,
-            packet,
-            |ip| {
-                self.interface_config
-                    .as_ref()
-                    .is_some_and(|i| !i.upstream_dns.is_empty())
-                    && self.active_cidr_resources.longest_match(ip).is_some()
-            },
-            now,
-        ) {
-            ControlFlow::Break(dns::ResolveStrategy::LocalResponse(query)) => {
-                self.buffered_packets.push_back(query);
-
-                Ok(())
-            }
-            ControlFlow::Break(dns::ResolveStrategy::ForwardQuery(transmit)) => {
-                self.buffered_transmits.push_back(transmit);
-
-                Ok(())
-            }
-            ControlFlow::Continue(packet) => {
-                let dest = packet.destination();
-                Err((packet, dest))
-            }
-        }
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
