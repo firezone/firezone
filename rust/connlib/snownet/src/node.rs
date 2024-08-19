@@ -1603,7 +1603,9 @@ where
 
                     tracing::info!(?old, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
 
-                    self.force_handshake(allocations, transmits, now);
+                    if self.is_client() {
+                        self.force_handshake(allocations, transmits, now);
+                    }
                 }
                 IceAgentEvent::IceRestart(_) | IceAgentEvent::IceConnectionStateChange(_) => {}
             }
@@ -1794,6 +1796,10 @@ where
 
     fn is_idle(&self) -> bool {
         matches!(self.state, ConnectionState::Idle)
+    }
+
+    fn is_client(&self) -> bool {
+        self.agent.controlling()
     }
 }
 
