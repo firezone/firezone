@@ -216,11 +216,10 @@ impl StubResolver {
         Some(domain.clone())
     }
 
-    /// Parses an incoming packet as a DNS query and decides how to respond to it
+    /// Tries to handle a packet arriving on the TUN interface.
     ///
-    /// Returns:
-    /// - `None` if the packet is not a valid DNS query destined for one of our sentinel resolvers
-    /// - Otherwise, a strategy for responding to the query
+    /// If the packet is a DNS query, we compute a [`ResolveStrategy`].
+    /// Otherwise, we continue with processing the packet.
     pub(crate) fn try_handle_tun_inbound<'p>(
         &mut self,
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
