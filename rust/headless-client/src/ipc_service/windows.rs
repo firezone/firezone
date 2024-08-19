@@ -206,7 +206,7 @@ fn fallible_service_run(
     // Add new features in `service_run_async` if possible.
     // We don't want to bail out of `fallible_service_run` and forget to tell
     // Windows that we're shutting down.
-    let result = rt.block_on(service_run_async(log_filter_reloader, shutdown_rx));
+    let result = rt.block_on(service_run_async(&log_filter_reloader, shutdown_rx));
     if let Err(error) = &result {
         tracing::error!(?error);
     }
