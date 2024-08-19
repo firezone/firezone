@@ -28,6 +28,7 @@ use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
 pub(crate) const IPV4_RESOURCES: Ipv4Network =
@@ -615,14 +616,6 @@ impl ClientState {
         })));
     }
 
-    fn is_upstream_set_by_the_portal(&self) -> bool {
-        let Some(interface) = &self.interface_config else {
-            return false;
-        };
-
-        !interface.upstream_dns.is_empty()
-    }
-
     /// Attempt to handle the given packet as a DNS query packet.
     ///
     /// Returns `Ok` if the packet is in fact a DNS query with an optional response to send back.
@@ -632,26 +625,19 @@ impl ClientState {
         packet: MutableIpPacket<'a>,
         now: Instant,
     ) -> Result<Option<IpPacket<'a>>, (MutableIpPacket<'a>, IpAddr)> {
-        match self
-            .stub_resolver
-            .handle(&self.dns_mapping, packet.as_immutable())
-        {
-            Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
-            Some(dns::ResolveStrategy::ForwardQuery {
+        match self.stub_resolver.handle(&self.dns_mapping, packet, |ip| {
+            self.interface_config
+                .as_ref()
+                .is_some_and(|i| !i.upstream_dns.is_empty())
+                && self.active_cidr_resources.longest_match(ip).is_some()
+        }) {
+            ControlFlow::Break(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
+            ControlFlow::Break(dns::ResolveStrategy::ForwardQuery {
                 upstream: server,
                 query_id,
                 payload,
                 original_src,
             }) => {
-                let ip = server.ip();
-
-                // In case the DNS server is a CIDR resource, it needs to go through the tunnel.
-                if self.is_upstream_set_by_the_portal()
-                    && self.active_cidr_resources.longest_match(ip).is_some()
-                {
-                    return Err((packet, ip));
-                }
-
                 tracing::trace!(%server, %query_id, "Forwarding DNS query");
 
                 self.forwarded_dns_queries
@@ -664,7 +650,7 @@ impl ClientState {
 
                 Ok(None)
             }
-            None => {
+            ControlFlow::Continue(packet) => {
                 let dest = packet.destination();
                 Err((packet, dest))
             }

@@ -6,12 +6,13 @@ use domain::base::{
     Message, MessageBuilder, ToName,
 };
 use domain::rdata::AllRecordData;
-use ip_packet::IpPacket;
 use ip_packet::Packet as _;
+use ip_packet::{IpPacket, MutableIpPacket};
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::collections::{BTreeMap, HashMap};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::ops::ControlFlow;
 
 const DNS_TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
@@ -202,23 +203,36 @@ impl StubResolver {
     /// Returns:
     /// - `None` if the packet is not a valid DNS query destined for one of our sentinel resolvers
     /// - Otherwise, a strategy for responding to the query
-    pub(crate) fn handle(
+    pub(crate) fn handle<'p>(
         &mut self,
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
-        packet: IpPacket,
-    ) -> Option<ResolveStrategy> {
-        let upstream = dns_mapping.get_by_left(&packet.destination())?.address();
-        let datagram = packet.as_udp()?;
+        packet: MutableIpPacket<'p>,
+        forward_query_through_tunnel: impl Fn(IpAddr) -> bool,
+    ) -> ControlFlow<ResolveStrategy, MutableIpPacket<'p>> {
+        let Some(upstream) = dns_mapping
+            .get_by_left(&packet.destination())
+            .map(|s| s.address())
+        else {
+            return ControlFlow::Continue(packet);
+        };
+
+        // TODO: Mangle packet here.
+
+        let Some(datagram) = packet.as_immutable_udp() else {
+            return ControlFlow::Continue(packet);
+        };
 
         // We only support DNS on port 53.
         if datagram.get_destination() != DNS_PORT {
-            return None;
+            return ControlFlow::Continue(packet);
         }
 
-        let message = Message::from_octets(datagram.payload()).ok()?;
+        let Ok(message) = Message::from_octets(datagram.payload()) else {
+            return ControlFlow::Continue(packet);
+        };
 
         if message.header().qr() {
-            return None;
+            return ControlFlow::Continue(packet);
         }
 
         // We don't need to support multiple questions/qname in a single query because
@@ -226,14 +240,18 @@ impl StubResolver {
         // as we can therefore we won't do it.
         //
         // See: https://stackoverflow.com/a/55093896
-        let question = message.first_question()?;
+        let Some(question) = message.first_question() else {
+            return ControlFlow::Continue(packet);
+        };
         let domain = question.qname().to_vec();
         let qtype = question.qtype();
 
         tracing::trace!("Parsed packet as DNS query: '{qtype} {domain}'");
 
         if let Some(records) = self.known_hosts.get_records(qtype, &domain) {
-            let response = build_dns_with_answer(message, domain, records)?;
+            let Some(response) = build_dns_with_answer(message, domain, records) else {
+                return ControlFlow::Continue(packet);
+            };
             let packet = ip_packet::make::udp_packet(
                 packet.destination(),
                 packet.source(),
@@ -244,7 +262,7 @@ impl StubResolver {
             .expect("src and dst come from the same packet")
             .into_immutable();
 
-            return Some(ResolveStrategy::LocalResponse(packet));
+            return ControlFlow::Break(ResolveStrategy::LocalResponse(packet));
         }
 
         // `match_resource_linear` is `O(N)` which we deem fine for DNS queries.
@@ -256,21 +274,29 @@ impl StubResolver {
                 self.get_or_assign_aaaa_records(domain.clone(), resource)
             }
             (Rtype::PTR, _) => {
-                let fqdn = self.resource_address_name_by_reservse_dns(&domain)?;
+                let Some(fqdn) = self.resource_address_name_by_reservse_dns(&domain) else {
+                    return ControlFlow::Continue(packet);
+                };
 
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
             }
             _ => {
-                return Some(ResolveStrategy::ForwardQuery {
+                if forward_query_through_tunnel(upstream.ip()) {
+                    return ControlFlow::Continue(packet);
+                }
+
+                return ControlFlow::Break(ResolveStrategy::ForwardQuery {
                     upstream,
                     query_id: message.header().id(),
                     payload: message.into_octets().to_vec(),
                     original_src: SocketAddr::new(packet.source(), datagram.get_source()),
-                })
+                });
             }
         };
 
-        let response = build_dns_with_answer(message, domain, resource_records)?;
+        let Some(response) = build_dns_with_answer(message, domain, resource_records) else {
+            return ControlFlow::Continue(packet);
+        };
         let packet = ip_packet::make::udp_packet(
             packet.destination(),
             packet.source(),
@@ -281,7 +307,7 @@ impl StubResolver {
         .expect("src and dst come from the same packet")
         .into_immutable();
 
-        Some(ResolveStrategy::LocalResponse(packet))
+        ControlFlow::Break(ResolveStrategy::LocalResponse(packet))
     }
 }
 
