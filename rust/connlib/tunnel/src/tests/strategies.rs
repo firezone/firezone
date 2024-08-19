@@ -20,15 +20,16 @@ use itertools::Itertools;
 use prop::sample;
 use proptest::{collection, prelude::*};
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Duration,
 };
 
-pub(crate) fn global_dns_records() -> impl Strategy<Value = BTreeMap<DomainName, HashSet<IpAddr>>> {
+pub(crate) fn global_dns_records() -> impl Strategy<Value = BTreeMap<DomainName, BTreeSet<IpAddr>>>
+{
     collection::btree_map(
         domain_name(2..4).prop_map(|d| d.parse().unwrap()),
-        collection::hash_set(any::<IpAddr>(), 1..6),
+        collection::btree_set(any::<IpAddr>(), 1..6),
         0..5,
     )
 }
@@ -56,13 +57,13 @@ pub(crate) fn latency(max: u64) -> impl Strategy<Value = Duration> {
 /// Similar as in production, the portal holds a list of DNS and CIDR resources (those are also sampled from the given sites).
 /// Via this site mapping, these resources are implicitly assigned to a gateway.
 pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
-    collection::hash_set(site(), 1..=3)
+    collection::btree_set(site(), 1..=3)
         .prop_flat_map(|sites| {
-            let cidr_resources = collection::hash_set(
+            let cidr_resources = collection::btree_set(
                 cidr_resource_outside_reserved_ranges(any_site(sites.clone())),
                 1..5,
             );
-            let dns_resources = collection::hash_set(
+            let dns_resources = collection::btree_set(
                 prop_oneof![
                     non_wildcard_dns_resource(any_site(sites.clone())),
                     star_wildcard_dns_resource(any_site(sites.clone())),
@@ -75,9 +76,9 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
             // Assign between 1 and 3 gateways to each site.
             let gateways_by_site = sites
                 .into_iter()
-                .map(|site| (Just(site.id), collection::hash_set(gateway_id(), 1..=3)))
+                .map(|site| (Just(site.id), collection::btree_set(gateway_id(), 1..=3)))
                 .collect::<Vec<_>>()
-                .prop_map(HashMap::from_iter);
+                .prop_map(BTreeMap::from_iter);
 
             let gateway_selector = any::<sample::Selector>();
 
@@ -116,11 +117,11 @@ pub(crate) fn relays() -> impl Strategy<Value = BTreeMap<RelayId, Host<u64>>> {
 ///
 /// We make sure to always have at least 1 IPv4 and 1 IPv6 DNS server.
 pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeMap<DnsServerId, Host<RefDns>>> {
-    let ip4_dns_servers = collection::hash_set(
+    let ip4_dns_servers = collection::btree_set(
         any::<Ipv4Addr>().prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
     );
-    let ip6_dns_servers = collection::hash_set(
+    let ip6_dns_servers = collection::btree_set(
         any::<Ipv6Addr>().prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
     );
@@ -129,7 +130,7 @@ pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeMap<DnsServerId, Host<
         let servers = Vec::from_iter(ip4_dns_servers.into_iter().chain(ip6_dns_servers));
 
         // First, generate a unique number of IDs, one for each DNS server.
-        let ids = collection::hash_set(dns_server_id(), servers.len());
+        let ids = collection::btree_set(dns_server_id(), servers.len());
 
         (ids, Just(servers))
             .prop_flat_map(move |(ids, servers)| {
@@ -144,7 +145,7 @@ pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeMap<DnsServerId, Host<
     })
 }
 
-fn any_site(sites: HashSet<Site>) -> impl Strategy<Value = Site> {
+fn any_site(sites: BTreeSet<Site>) -> impl Strategy<Value = Site> {
     sample::select(Vec::from_iter(sites))
 }
 
@@ -197,8 +198,8 @@ fn double_star_wildcard_dns_resource(
     })
 }
 
-pub(crate) fn resolved_ips() -> impl Strategy<Value = HashSet<IpAddr>> {
-    collection::hash_set(
+pub(crate) fn resolved_ips() -> impl Strategy<Value = BTreeSet<IpAddr>> {
+    collection::btree_set(
         prop_oneof![
             dns_resource_ip4s().prop_map_into(),
             dns_resource_ip6s().prop_map_into()
@@ -211,7 +212,7 @@ pub(crate) fn resolved_ips() -> impl Strategy<Value = HashSet<IpAddr>> {
 pub(crate) fn subdomain_records(
     base: String,
     subdomains: impl Strategy<Value = String>,
-) -> impl Strategy<Value = HashMap<DomainName, HashSet<IpAddr>>> {
+) -> impl Strategy<Value = BTreeMap<DomainName, BTreeSet<IpAddr>>> {
     collection::hash_map(subdomains, resolved_ips(), 1..4).prop_map(move |subdomain_ips| {
         subdomain_ips
             .into_iter()

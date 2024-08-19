@@ -89,7 +89,7 @@ impl From<(Option<Ipv4Addr>, Option<Ipv6Addr>)> for IpStack {
 /// From the [spec](https://www.rfc-editor.org/rfc/rfc8656#section-2-4.4):
 ///
 /// > A STUN client that implements this specification.
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
 pub struct ClientSocket(SocketAddr);
 
 impl ClientSocket {

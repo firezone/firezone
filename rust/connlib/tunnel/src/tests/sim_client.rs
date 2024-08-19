@@ -47,10 +47,10 @@ pub(crate) struct SimClient {
     pub(crate) dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 
     pub(crate) sent_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket<'static>>,
-    pub(crate) received_dns_responses: HashMap<(SocketAddr, QueryId), IpPacket<'static>>,
+    pub(crate) received_dns_responses: BTreeMap<(SocketAddr, QueryId), IpPacket<'static>>,
 
     pub(crate) sent_icmp_requests: HashMap<(u16, u16), IpPacket<'static>>,
-    pub(crate) received_icmp_replies: HashMap<(u16, u16), IpPacket<'static>>,
+    pub(crate) received_icmp_replies: BTreeMap<(u16, u16), IpPacket<'static>>,
 
     buffer: Vec<u8>,
 }
@@ -247,7 +247,7 @@ impl SimClient {
 pub struct RefClient {
     pub(crate) id: ClientId,
     pub(crate) key: PrivateKey,
-    pub(crate) known_hosts: HashMap<String, Vec<IpAddr>>,
+    pub(crate) known_hosts: BTreeMap<String, Vec<IpAddr>>,
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,
 
@@ -270,7 +270,7 @@ pub struct RefClient {
     /// The IPs assigned to a domain by connlib are an implementation detail that we don't want to model in these tests.
     /// Instead, we just remember what _kind_ of records we resolved to be able to sample a matching src IP.
     #[derivative(Debug = "ignore")]
-    pub(crate) dns_records: BTreeMap<DomainName, HashSet<Rtype>>,
+    pub(crate) dns_records: BTreeMap<DomainName, BTreeSet<Rtype>>,
 
     /// Whether we are connected to the gateway serving the Internet resource.
     pub(crate) connected_internet_resources: bool,
@@ -285,14 +285,14 @@ pub struct RefClient {
 
     /// Actively disabled resources by the UI
     #[derivative(Debug = "ignore")]
-    pub(crate) disabled_resources: HashSet<ResourceId>,
+    pub(crate) disabled_resources: BTreeSet<ResourceId>,
 
     /// The expected ICMP handshakes.
     ///
     /// This is indexed by gateway because our assertions rely on the order of the sent packets.
     #[derivative(Debug = "ignore")]
     pub(crate) expected_icmp_handshakes:
-        HashMap<GatewayId, VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>>,
+        BTreeMap<GatewayId, VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>>,
     /// The expected DNS handshakes.
     #[derivative(Debug = "ignore")]
     pub(crate) expected_dns_handshakes: VecDeque<(SocketAddr, QueryId)>,
@@ -491,8 +491,11 @@ impl RefClient {
         self.connected_cidr_resources.contains(&id)
     }
 
-    pub(crate) fn is_known_host(&self, name: &str) -> bool {
-        self.known_hosts.contains_key(name)
+    pub(crate) fn is_locally_answered_query(&self, domain: &DomainName) -> bool {
+        let is_known_host = self.known_hosts.contains_key(&domain.to_string());
+        let is_dns_resource = self.dns_resource_by_domain(domain).is_some();
+
+        is_known_host || is_dns_resource
     }
 
     pub(crate) fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
@@ -505,7 +508,7 @@ impl RefClient {
             .find(|id| !self.disabled_resources.contains(id))
     }
 
-    fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, HashSet<Rtype>)> + '_ {
+    fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, BTreeSet<Rtype>)> + '_ {
         self.dns_records
             .iter()
             .filter(|(domain, _)| self.dns_resource_by_domain(domain).is_some())
@@ -571,7 +574,7 @@ impl RefClient {
 
     pub(crate) fn resolved_ip4_for_non_resources(
         &self,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
     ) -> Vec<Ipv4Addr> {
         self.resolved_ips_for_non_resources(global_dns_records)
             .filter_map(|ip| match ip {
@@ -583,7 +586,7 @@ impl RefClient {
 
     pub(crate) fn resolved_ip6_for_non_resources(
         &self,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
     ) -> Vec<Ipv6Addr> {
         self.resolved_ips_for_non_resources(global_dns_records)
             .filter_map(|ip| match ip {
@@ -595,7 +598,7 @@ impl RefClient {
 
     fn resolved_ips_for_non_resources<'a>(
         &'a self,
-        global_dns_records: &'a BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &'a BTreeMap<DomainName, BTreeSet<IpAddr>>,
     ) -> impl Iterator<Item = IpAddr> + 'a {
         self.dns_records
             .iter()
@@ -666,6 +669,8 @@ impl RefClient {
     }
 }
 
+// This function only works on the tests because we are limited to resources with a single wildcard at the beginning of the resource.
+// This limitation doesn't exists in production.
 fn is_subdomain(name: &str, record: &str) -> bool {
     if name == record {
         return true;
@@ -675,6 +680,12 @@ fn is_subdomain(name: &str, record: &str) -> bool {
     };
     match first {
         "**" => name.ends_with(end) && name.strip_suffix(end).is_some_and(|n| n.ends_with('.')),
+        "*" => {
+            name.ends_with(end)
+                && name
+                    .strip_suffix(end)
+                    .is_some_and(|n| n.ends_with('.') && n.matches('.').count() == 1)
+        }
         _ => false,
     }
 }
@@ -725,8 +736,8 @@ fn ref_client(
         )
 }
 
-fn known_hosts() -> impl Strategy<Value = HashMap<String, Vec<IpAddr>>> {
-    collection::hash_map(
+fn known_hosts() -> impl Strategy<Value = BTreeMap<String, Vec<IpAddr>>> {
+    collection::btree_map(
         domain_name(2..4).prop_map(|d| d.parse().unwrap()),
         collection::vec(any::<IpAddr>(), 1..6),
         0..15,
