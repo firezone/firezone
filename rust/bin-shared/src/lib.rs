@@ -54,9 +54,9 @@ pub use tun_device_manager::TunDeviceManager;
 /// * `-modified` is present if the working dir has any changes from that commit number
 #[macro_export]
 macro_rules! git_version {
-    () => {
+    ($regex:literal) => {
         $crate::__reexport::git_version!(
-            args = ["--always", "--dirty=-modified", "--tags"],
+            args = ["--always", "--dirty=-modified", "--tags", "--match", $regex],
             fallback = "unknown"
         )
     };
