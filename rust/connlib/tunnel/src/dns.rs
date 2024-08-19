@@ -1,4 +1,7 @@
-use crate::client::{IpProvider, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IDS_EXPIRE};
+use crate::{
+    client::{IpProvider, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IDS_EXPIRE},
+    utils::earliest,
+};
 use bimap::BiMap;
 use connlib_shared::messages::ResourceId;
 use connlib_shared::DomainName;
@@ -442,11 +445,10 @@ impl StubResolver {
     pub(crate) fn poll_timeout(&self) -> Option<Instant> {
         // The number of mangled DNS queries is expected to be fairly small because we only track them whilst connecting to a CIDR resource that is a DNS server.
         // Thus, sorting these values on-demand even within `poll_timeout` is expected to be performant enough.
-        let next_dns_query_expiry = self.mangled_dns_queries.values().min().copied();
+        let next_mangled_expiry = self.mangled_dns_queries.values().min().copied();
+        let next_forwared_expiry = self.forwarded_dns_queries.values().map(|(_, i)| *i).min();
 
-        // TODO: Also include forwarded DNS queries here.
-
-        next_dns_query_expiry
+        earliest(next_forwared_expiry, next_mangled_expiry)
     }
 
     #[must_use]
