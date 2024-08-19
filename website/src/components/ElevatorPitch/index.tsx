@@ -76,23 +76,18 @@ export default function ElevatorPitch() {
           <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2">
             Stay Connected
           </h6>
-          <div className="mb-2 text-3xl md:text-4xl lg:text-5xl ">
-            <h3
-              className={`leading-tight text-pretty text-left tracking-tight font-bold inline-block ${manrope.className}`}
-            >
-              Supercharge your workforce
-              <span className="text-primary-450"> in minutes.</span>
-            </h3>
-          </div>
-          <div className="max-w-screen-md">
-            <p className={`text-lg text-left text-pretty text-neutral-800 `}>
-              Firezone secures apps, services, networks and everything in
-              between.
-            </p>
-            <p className="text-lg font-semibold text-left text-pretty text-neutral-800">
-              No ACL hell required.
-            </p>
-          </div>
+          <h3
+            className={`mb-4 text-3xl md:text-4xl lg:text-5xl leading-tight text-pretty tracking-tight font-bold inline-block ${manrope.className}`}
+          >
+            Supercharge your workforce
+            <span className="text-primary-450"> in minutes.</span>
+          </h3>
+          <p className="text-lg text-pretty text-neutral-800">
+            Firezone secures apps, services, networks and everything in between.
+          </p>
+          <p className="text-lg font-semibold text-pretty text-neutral-800">
+            No ACL hell required.
+          </p>
         </div>
 
         <div className="lg:flex grid  grid-cols-1 sm:grid-cols-2 lg:flex-col my-8 lg:mt-16 lg:space-y-8">

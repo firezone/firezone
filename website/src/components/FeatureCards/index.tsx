@@ -1,11 +1,10 @@
 "use client";
 
-import { ReactNode, useState } from "react";
+import { useState } from "react";
 import { HiCloud, HiMiniPuzzlePiece, HiLockClosed } from "react-icons/hi2";
 import { SlideIn } from "@/components/Animations";
 import { manrope } from "@/lib/fonts";
 import ActionLink from "../ActionLink";
-import UpgradeDiagram from "../Animations/UpgradeDiagram";
 
 export default function FeatureCards() {
   return (
@@ -15,14 +14,12 @@ export default function FeatureCards() {
           <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2 lg:mb-4">
             Built for you
           </h6>
-          <div className="mb-4 lg:mb-0 text-3xl md:text-4xl lg:text-5xl">
-            <h3
-              className={` text-pretty text-left leading-tight tracking-tight font-bold inline-block ${manrope.className}`}
-            >
-              Simplify access management
-              <span className="text-primary-450"> with WireGuard.</span>
-            </h3>
-          </div>
+          <h3
+            className={`mb-4 text-3xl md:text-4xl lg:text-5xl leading-tight text-pretty tracking-tight font-bold inline-block ${manrope.className}`}
+          >
+            Simplify access management
+            <span className="text-primary-450"> with WireGuard.</span>
+          </h3>
         </div>
         <div>
           <p className="text-lg mb-6 text-left text-pretty text-neutral-800">

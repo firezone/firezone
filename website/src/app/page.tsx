@@ -3,6 +3,7 @@ import Image from "next/image";
 import ActionLink from "@/components/ActionLink";
 import BattleCard from "@/components/BattleCard";
 import { RunaCap } from "@/components/Badges";
+import FeatureSection from "@/components/FeatureSection";
 import { Metadata } from "next";
 import { CustomerLogosGrayscale } from "@/components/CustomerLogos";
 import {
@@ -116,6 +117,35 @@ export default function Page() {
           <FeatureCards />
         </div>
       </section>
+
+      <FeatureSection
+        reverse
+        titleCaption="Stay secure"
+        title="Syncs with your identity provider"
+        description={
+          <p className="text-lg text-pretty text-neutral-800">
+            Users and groups automatically sync with your identity provider,
+            making onboarding and offboarding a breeze.
+          </p>
+        }
+        image={
+          <Image
+            src="/images/feature-syncs-with-idp.png"
+            width={463}
+            height={437}
+            alt="Syncs with your identity provider"
+          />
+        }
+        cta={
+          <ActionLink
+            border={false}
+            size="lg"
+            href="/kb/authenticate/directory-sync"
+          >
+            Set up directory sync
+          </ActionLink>
+        }
+      />
 
       <CustomerTestimonials />
 
