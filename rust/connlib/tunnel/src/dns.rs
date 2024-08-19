@@ -41,7 +41,7 @@ pub struct StubResolver {
     upstream_resolvers: Vec<DnsServer>,
 
     /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
-    pub(crate) dns_mapping: BiMap<IpAddr, DnsServer>,
+    dns_mapping: BiMap<IpAddr, DnsServer>,
 
     /// DNS queries that had their destination IP mangled because they are forwarded through the tunnel.
     ///
