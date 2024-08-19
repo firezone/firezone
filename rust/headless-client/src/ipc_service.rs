@@ -433,7 +433,7 @@ impl<'a> Handler<'a> {
                 }
             }
             ClientMsg::ReloadLogFilter => {
-                let filter = spawn_blocking(|| get_log_filter()).await??;
+                let filter = spawn_blocking(get_log_filter).await??;
                 self.log_filter_reloader.reload(filter)?;
             }
             ClientMsg::Reset => self.connlib.as_mut().context("No connlib session")?.reset(),
