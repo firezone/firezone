@@ -2,9 +2,11 @@ import Foundation
 
 public class Favorites: ObservableObject {
   private static let key = "favoriteResourceIDs"
-  @Published private(set) var ids: Set<String> = Favorites.load()
+  @Published private(set) var ids: Set<String>
 
-  public init() {}
+  public init() {
+    ids = Favorites.load()
+  }
 
   func contains(_ id: String) -> Bool {
     return ids.contains(id)
@@ -13,24 +15,25 @@ public class Favorites: ObservableObject {
   func reset() {
     objectWillChange.send()
     ids = Set()
-    Favorites.save(ids)
+    save()
   }
 
   func add(_ id: String) {
     objectWillChange.send()
     ids.insert(id)
-    Favorites.save(ids)
+    save()
   }
 
   func remove(_ id: String) {
     objectWillChange.send()
     ids.remove(id)
-    Favorites.save(ids)
+    save()
   }
 
-  private static func save(_ ids: Set<String>) {
+  private func save() {
     // It's a run-time exception if we pass the `Set` directly here
-    UserDefaults.standard.set(Array(ids), forKey: key)
+    let ids = Array(ids)
+    UserDefaults.standard.set(ids, forKey: Favorites.key)
   }
 
   private static func load() -> Set<String> {

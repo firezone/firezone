@@ -70,7 +70,7 @@ struct FirezoneApp: App {
 
     func applicationDidFinishLaunching(_: Notification) {
       if let store = store {
-        menuBar = MenuBar(favorites: favorites, model: SessionViewModel(store: store))
+        menuBar = MenuBar(model: SessionViewModel(favorites: favorites, store: store))
       }
 
       // SwiftUI will show the first window group, so close it on launch
