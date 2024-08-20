@@ -40,8 +40,6 @@ const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long we will at most wait for an [`Answer`] from the remote.
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 
-const MAX_UDP_SIZE: usize = (1 << 16) - 1;
-
 /// Manages a set of wireguard connections for a server.
 pub type ServerNode<TId, RId> = Node<Server, TId, RId>;
 /// Manages a set of wireguard connections for a client.
@@ -96,7 +94,7 @@ pub struct Node<T, TId, RId> {
     connections: Connections<TId, RId>,
     pending_events: VecDeque<Event<TId>>,
 
-    buffer: Box<[u8; MAX_UDP_SIZE]>,
+    buffer: Vec<u8>,
 
     stats: NodeStats,
 
@@ -127,7 +125,7 @@ where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
-    pub fn new(private_key: StaticSecret, seed: [u8; 32]) -> Self {
+    pub fn new(private_key: StaticSecret, buf_size: usize, seed: [u8; 32]) -> Self {
         let public_key = &(&private_key).into();
         Self {
             rng: StdRng::from_seed(seed), // TODO: Use this seed for private key too. Requires refactoring of how we generate the login-url because that one needs to know the public key.
@@ -141,7 +139,7 @@ where
             buffered_transmits: VecDeque::default(),
             next_rate_limiter_reset: None,
             pending_events: VecDeque::default(),
-            buffer: Box::new([0u8; MAX_UDP_SIZE]),
+            buffer: vec![0; buf_size],
             allocations: Default::default(),
             connections: Default::default(),
             stats: Default::default(),
@@ -372,7 +370,7 @@ where
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
-                let packet = &mut self.buffer.as_mut()[..packet_end];
+                let packet = &mut self.buffer[..packet_end];
 
                 let Some(transmit) = allocation.encode_to_borrowed_transmit(peer, packet, now)
                 else {
@@ -574,7 +572,7 @@ where
             ),
             next_timer_update: now,
             stats: Default::default(),
-            buffer: Box::new([0u8; MAX_UDP_SIZE]),
+            buffer: vec![0; self.buffer.capacity()],
             intent_sent_at,
             signalling_completed_at: now,
             remote_pub_key: remote,
@@ -1346,7 +1344,7 @@ struct Connection<RId> {
     intent_sent_at: Instant,
     signalling_completed_at: Instant,
 
-    buffer: Box<[u8; MAX_UDP_SIZE]>,
+    buffer: Vec<u8>,
 
     last_outgoing: Instant,
     last_incoming: Instant,

@@ -1,6 +1,6 @@
-use crate::dns;
 use crate::dns::StubResolver;
 use crate::peer_store::PeerStore;
+use crate::{dns, BUF_SIZE};
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_shared::callbacks::Status;
@@ -309,7 +309,7 @@ impl ClientState {
             buffered_events: Default::default(),
             interface_config: Default::default(),
             buffered_packets: Default::default(),
-            node: ClientNode::new(private_key.into(), seed),
+            node: ClientNode::new(private_key.into(), BUF_SIZE, seed),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),

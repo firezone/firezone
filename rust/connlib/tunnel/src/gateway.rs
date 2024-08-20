@@ -1,7 +1,7 @@
 use crate::peer::ClientOnGateway;
 use crate::peer_store::PeerStore;
 use crate::utils::earliest;
-use crate::{GatewayEvent, GatewayTunnel};
+use crate::{GatewayEvent, GatewayTunnel, BUF_SIZE};
 use anyhow::{bail, Context};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
@@ -146,7 +146,7 @@ impl GatewayState {
     pub(crate) fn new(private_key: impl Into<StaticSecret>, seed: [u8; 32]) -> Self {
         Self {
             peers: Default::default(),
-            node: ServerNode::new(private_key.into(), seed),
+            node: ServerNode::new(private_key.into(), BUF_SIZE, seed),
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
         }
