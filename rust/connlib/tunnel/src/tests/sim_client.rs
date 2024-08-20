@@ -688,13 +688,12 @@ impl RefClient {
             .cloned()
             .map(ResourceDescription::Dns);
 
-        Vec::from_iter(
-            cidr_resources.chain(dns_resources).chain(
-                self.internet_resource
-                    .clone()
-                    .map(ResourceDescription::Internet),
-            ),
-        )
+        let internet_resource = self
+            .internet_resource
+            .clone()
+            .map(ResourceDescription::Internet);
+
+        Vec::from_iter(cidr_resources.chain(dns_resources).chain(internet_resource))
     }
 }
 
