@@ -5554,6 +5554,7 @@ dependencies = [
  "ip-packet",
  "once_cell",
  "rand 0.8.5",
+ "ringbuffer",
  "secrecy",
  "sha2",
  "str0m",

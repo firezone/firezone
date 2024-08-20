@@ -13,6 +13,7 @@ hex-display = "0.3.0"
 ip-packet = { workspace = true }
 once_cell = "1.17.1"
 rand = "0.8"
+ringbuffer = "0.15.0"
 secrecy = { workspace = true }
 sha2 = "0.10.8"
 str0m = { workspace = true }

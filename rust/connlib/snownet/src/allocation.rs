@@ -1,13 +1,13 @@
 use crate::{
     backoff::{self, ExponentialBackoff},
     node::{CandidateEvent, SessionId, Transmit},
-    ringbuffer::RingBuffer,
     utils::earliest,
 };
 use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use hex_display::HexDisplayExt as _;
 use rand::random;
+use ringbuffer::{ConstGenericRingBuffer, RingBuffer as _};
 use std::{
     borrow::Cow,
     collections::{BTreeMap, VecDeque},
@@ -82,7 +82,7 @@ pub struct Allocation {
     >,
 
     channel_bindings: ChannelBindings,
-    buffered_channel_bindings: RingBuffer<SocketAddr>,
+    buffered_channel_bindings: ConstGenericRingBuffer<SocketAddr, 100>,
 
     last_now: Instant,
 
@@ -216,7 +216,7 @@ impl Allocation {
             allocation_lifetime: Default::default(),
             channel_bindings: Default::default(),
             last_now: now,
-            buffered_channel_bindings: RingBuffer::new(100),
+            buffered_channel_bindings: ConstGenericRingBuffer::new(),
             software: Software::new(format!("snownet; session={session_id}")).unwrap(),
         };
 
@@ -507,7 +507,7 @@ impl Allocation {
 
                 self.log_update(now);
 
-                while let Some(peer) = self.buffered_channel_bindings.pop() {
+                while let Some(peer) = self.buffered_channel_bindings.dequeue() {
                     debug_assert!(
                         self.has_allocation(),
                         "We just received a successful allocation response"

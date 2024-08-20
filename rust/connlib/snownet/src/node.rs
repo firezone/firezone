@@ -1,6 +1,5 @@
 use crate::allocation::{Allocation, RelaySocket, Socket};
 use crate::index::IndexLfsr;
-use crate::ringbuffer::RingBuffer;
 use crate::stats::{ConnectionStats, NodeStats};
 use crate::utils::earliest;
 use boringtun::noise::errors::WireGuardError;
@@ -15,6 +14,7 @@ use ip_packet::{
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, SeedableRng};
+use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use secrecy::{ExposeSecret, Secret};
 use sha2::Digest;
 use std::borrow::Cow;
@@ -606,7 +606,7 @@ where
             remote_pub_key: remote,
             state: ConnectionState::Connecting {
                 possible_sockets: BTreeSet::default(),
-                buffered: RingBuffer::new(10),
+                buffered: AllocRingBuffer::new(10),
             },
             relay,
             last_outgoing: now,
@@ -863,7 +863,7 @@ where
             intent_sent_at,
             relay: self.sample_relay(),
             is_failed: false,
-            buffered_packets: RingBuffer::new(MAX_INITIAL_BUFFERED_PACKETS),
+            buffered_packets: AllocRingBuffer::new(MAX_INITIAL_BUFFERED_PACKETS),
         };
         let duration_since_intent = initial_connection.duration_since_intent(now);
 
@@ -1354,7 +1354,7 @@ struct InitialConnection<RId> {
     created_at: Instant,
     intent_sent_at: Instant,
 
-    buffered_packets: RingBuffer<IpPacket<'static>>,
+    buffered_packets: AllocRingBuffer<IpPacket<'static>>,
 
     is_failed: bool,
 }
@@ -1423,7 +1423,7 @@ enum ConnectionState<RId> {
         ///
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
         /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
-        buffered: RingBuffer<Vec<u8>>,
+        buffered: AllocRingBuffer<Vec<u8>>,
     },
     /// A socket has been nominated.
     Connected {
