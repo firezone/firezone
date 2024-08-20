@@ -156,7 +156,6 @@ export function CustomerLogosGrayscale() {
             src="/images/logos/cust-logo-teracloud-gray.svg"
             width={125}
             height={125}
-            className="  "
           />
         </Link>
         <Link
