@@ -44,9 +44,8 @@ export default function ActionLink({
   const linkClasses = `
     group inline-flex justify-center items-center py-2 font-semibold duration-50
     transform transition tracking-tight font-medium
-    text-${color}
     ${Size[size].link}
-    ${border && `${Size[size].border} border-${color}`}
+    ${border && `${Size[size].border} border-current`}
     ${(transitionColor && `hover:text-${transitionColor}`) || ""}
     ${(border && transitionColor && `hover:border-${transitionColor}`) || ""}
   `;
@@ -59,9 +58,11 @@ export default function ActionLink({
   `;
 
   return (
-    <Link href={href} className={linkClasses}>
-      {children}
-      <HiArrowLongRight className={iconClasses} />
-    </Link>
+    <div className={`text-${color}`}>
+      <Link href={href} className={linkClasses}>
+        {children}
+        <HiArrowLongRight className={iconClasses} />
+      </Link>
+    </div>
   );
 }
