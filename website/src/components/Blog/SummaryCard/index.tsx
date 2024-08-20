@@ -44,7 +44,12 @@ export default function SummaryCard({
           />
           <span className="font-medium">{authorName}</span>
         </div>
-        <ActionLink border={false} href={href} size="lg">
+        <ActionLink
+          color="neutral-900"
+          transitionColor="primary-450"
+          href={href}
+          size="lg"
+        >
           Read more
         </ActionLink>
       </div>

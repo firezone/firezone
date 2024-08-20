@@ -17,7 +17,6 @@ members = [
   "socket-factory",
   "tests/gui-smoke-test",
   "tests/http-test-server",
-  "tests/snownet-tests",
   "tun"
 ]
 
