@@ -15,7 +15,7 @@ export default function Apple() {
             Implements glob-like matching of domains for DNS resources.
           </ChangeItem>
           <ChangeItem pull="6186">
-            macOS and iOS: Adds the ability to mark Resources as favorites.
+            Adds the ability to mark Resources as favorites.
           </ChangeItem>
         </ul>
       </Entry> */}
