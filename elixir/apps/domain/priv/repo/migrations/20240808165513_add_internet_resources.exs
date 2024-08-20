@@ -12,7 +12,13 @@ defmodule Domain.Repo.Migrations.AddInternetResources do
     );
     """)
 
-    create(index(:resources, [:account_id, :type], unique: true, where: "type = 'internet'"))
+    create(
+      index(:resources, [:account_id, :type],
+        unique: true,
+        where: "type = 'internet'",
+        name: "unique_internet_resource_per_account"
+      )
+    )
 
     alter table(:policies) do
       add(:options, :map, default: %{})

@@ -1106,24 +1106,10 @@ defmodule API.Client.ChannelTest do
 
     test "does not return gateways that do not support the resource", %{
       account: account,
-      gateway_group: gateway_group,
       dns_resource: dns_resource,
-      actor_group: actor_group,
+      internet_resource: internet_resource,
       socket: socket
     } do
-      internet_resource =
-        Fixtures.Resources.create_resource(
-          type: :internet,
-          account: account,
-          connections: [%{gateway_group_id: gateway_group.id}]
-        )
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group,
-        resource: internet_resource
-      )
-
       gateway = Fixtures.Gateways.create_gateway(account: account)
       :ok = Domain.Gateways.connect_gateway(gateway)
 
@@ -1208,7 +1194,8 @@ defmodule API.Client.ChannelTest do
 
     test "returns gateway that support Internet resources", %{
       account: account,
-      actor_group: actor_group,
+      internet_resource: resource,
+      subject: subject,
       socket: socket
     } do
       account =
@@ -1238,18 +1225,12 @@ defmodule API.Client.ChannelTest do
           }
         )
 
-      resource =
-        Fixtures.Resources.create_resource(
-          type: :internet,
-          account: account,
-          connections: [%{gateway_group_id: gateway_group.id}]
+      {:ok, resource} =
+        Domain.Resources.update_resource(
+          resource,
+          %{connections: [%{gateway_group_id: gateway_group.id}]},
+          subject
         )
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group,
-        resource: resource
-      )
 
       :ok = Domain.Gateways.connect_gateway(gateway)
 
