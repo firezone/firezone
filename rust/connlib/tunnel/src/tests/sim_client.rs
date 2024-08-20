@@ -566,10 +566,13 @@ impl RefClient {
     }
 
     pub(crate) fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
+        // Manually implement `longest_match` because we need to filter disabled resources _before_ we match.
         self.cidr_resources
-            .longest_match(ip)
+            .matches(ip)
+            .filter(|(_, r)| !self.disabled_resources.contains(&r.id))
+            .sorted_by(|(n1, _), (n2, _)| n1.netmask().cmp(&n2.netmask()).reverse()) // Highest netmask is most specific.
+            .next()
             .map(|(_, r)| r.id)
-            .filter(|id| !self.disabled_resources.contains(id))
     }
 
     pub(crate) fn resolved_ip4_for_non_resources(

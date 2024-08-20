@@ -70,49 +70,51 @@ export default function ElevatorPitch() {
   };
 
   return (
-    <div className="flex w-full h-fit lg:flex-row flex-col justify-center gap-6 lg:gap-12 xl:gap-20 items-center max-w-screen-xl ">
-      <div className="flex flex-col w-full h-full justify-between lg:w-[480px] xl:w-[580px]">
-        <div>
-          <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2">
-            Stay Connected
-          </h6>
-          <div className="mb-2 text-3xl md:text-4xl lg:text-5xl ">
-            <h3
-              className={`leading-tight text-pretty text-left tracking-tight font-bold inline-block ${manrope.className}`}
-            >
-              Supercharge your workforce
-              <span className="text-primary-450"> in minutes.</span>
-            </h3>
-          </div>
-          <div className="max-w-screen-md">
-            <p className={`text-lg text-left text-pretty text-neutral-800 `}>
-              Firezone secures apps, services, networks and everything in
-              between.
-            </p>
-            <p className="text-lg font-semibold text-left text-pretty text-neutral-800">
-              No ACL hell required.
-            </p>
-          </div>
-        </div>
+    <section className="px-4 sm:px-8 md:px-16 py-16">
+      <div className="flex justify-center">
+        <div className="flex w-full h-fit lg:flex-row flex-col justify-center gap-6 lg:gap-12 xl:gap-20 items-center max-w-screen-xl ">
+          <div className="flex flex-col w-full h-full justify-between lg:w-[480px] xl:w-[580px]">
+            <div>
+              <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2">
+                Stay Connected
+              </h6>
+              <h3
+                className={`mb-4 text-3xl md:text-4xl lg:text-5xl leading-tight text-pretty tracking-tight font-bold inline-block ${manrope.className}`}
+              >
+                Supercharge your workforce
+                <span className="text-primary-450"> in minutes.</span>
+              </h3>
+              <p className="text-lg text-pretty text-neutral-800">
+                Firezone secures apps, services, networks and everything in
+                between.
+              </p>
+              <p className="text-lg font-semibold text-pretty text-neutral-800">
+                No ACL hell required.
+              </p>
+            </div>
 
-        <div className="lg:flex grid  grid-cols-1 sm:grid-cols-2 lg:flex-col my-8 lg:mt-16 lg:space-y-8">
-          {data.map((item, index) => (
-            <OptionButton
-              key={index}
-              title={item.title}
-              desc={item.desc}
-              icon={item.icon}
-              index={index}
+            <div className="lg:flex grid  grid-cols-1 sm:grid-cols-2 lg:flex-col my-8 lg:mt-16 lg:space-y-8">
+              {data.map((item, index) => (
+                <OptionButton
+                  key={index}
+                  title={item.title}
+                  desc={item.desc}
+                  icon={item.icon}
+                  index={index}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="max-w-1/2">
+            <Image
+              src="/images/elevator-pitch.png"
+              width={563}
+              height={594}
+              alt="Elevator pitch graphic"
             />
-          ))}
+          </div>
         </div>
       </div>
-      <Image
-        src="/images/elevator-pitch.png"
-        width={563}
-        height={594}
-        alt="Elevator pitch graphic"
-      />
-    </div>
+    </section>
   );
 }
