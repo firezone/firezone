@@ -40,6 +40,13 @@ const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long we will at most wait for an [`Answer`] from the remote.
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// How many packets we will at most buffer during the initial connection setup.
+///
+/// The buffer in [`InitialConnection`] might be populated from various sources, i.e. different code path may want to establish a connection to the same server.
+/// Both, IPv4 and IPv6 have a max payload size of 65536.
+/// 50 packets can thus at most occupy 3.125 MB which is acceptable per connection.
+const MAX_INITIAL_BUFFERED_PACKETS: usize = 50;
+
 /// Manages a set of wireguard connections for a server.
 pub type ServerNode<TId, RId> = Node<Server, TId, RId>;
 /// Manages a set of wireguard connections for a client.
@@ -853,7 +860,7 @@ where
             intent_sent_at,
             relay: self.sample_relay(),
             is_failed: false,
-            buffered_packets: RingBuffer::new(10),
+            buffered_packets: RingBuffer::new(MAX_INITIAL_BUFFERED_PACKETS),
         };
         let duration_since_intent = initial_connection.duration_since_intent(now);
 
