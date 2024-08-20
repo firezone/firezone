@@ -82,7 +82,6 @@ public class TunnelManager {
 
   // Cache resources on this side of the IPC barrier so we can
   // return them to callers when they haven't changed.
-  // Make this `nil` when Resources are still being loaded.
   private var resourcesListCache: ResourceList = ResourceList.loading
 
   // Persists our tunnel settings
