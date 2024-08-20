@@ -598,7 +598,7 @@ impl ClientState {
         let offer = self.node.new_connection(
             gateway_id,
             awaiting_connection_details.last_intent_sent_at,
-            Instant::now(),
+            now,
         );
 
         return Ok(Some(Request::NewConnection(RequestConnection {
