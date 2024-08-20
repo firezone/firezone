@@ -71,11 +71,11 @@ impl ResourceDescription {
         }
     }
 
-    pub fn can_disable(&self) -> bool {
+    pub fn can_be_disabled(&self) -> bool {
         match self {
-            ResourceDescription::Dns(r) => r.can_disable,
-            ResourceDescription::Cidr(r) => r.can_disable,
-            ResourceDescription::Internet(r) => r.can_disable,
+            ResourceDescription::Dns(r) => r.can_be_disabled,
+            ResourceDescription::Cidr(r) => r.can_be_disabled,
+            ResourceDescription::Internet(r) => r.can_be_disabled,
         }
     }
 }
@@ -95,7 +95,7 @@ pub struct ResourceDescriptionDns {
     pub sites: Vec<Site>,
 
     pub status: Status,
-    pub can_disable: bool,
+    pub can_be_disabled: bool,
 }
 
 /// Description of a resource that maps to a CIDR.
@@ -114,7 +114,7 @@ pub struct ResourceDescriptionCidr {
     pub sites: Vec<Site>,
 
     pub status: Status,
-    pub can_disable: bool,
+    pub can_be_disabled: bool,
 }
 
 /// Description of an Internet resource
@@ -123,5 +123,5 @@ pub struct ResourceDescriptionInternet {
     pub id: ResourceId,
     pub sites: Vec<Site>,
     pub status: Status,
-    pub can_disable: bool,
+    pub can_be_disabled: bool,
 }

@@ -91,7 +91,7 @@ impl<'a> SignedIn<'a> {
             submenu.add_item(item(Event::AddFavorite(res.id()), ADD_FAVORITE));
         }
 
-        if res.can_disable() {
+        if res.can_be_disabled() {
             submenu.add_separator();
             if self.is_enabled(res) {
                 submenu.add_item(item(Event::DisableResource(res.id()), DISABLE));
@@ -323,7 +323,7 @@ mod tests {
                 "address_description": "cidr resource",
                 "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                 "status": "Unknown",
-                "can_disable": false
+                "can_be_disabled": false
             },
             {
                 "id": "03000143-e25e-45c7-aafb-144990e57dcd",
@@ -333,7 +333,7 @@ mod tests {
                 "address_description": "https://gitlab.mycorp.com",
                 "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                 "status": "Online",
-                "can_disable": false
+                "can_be_disabled": false
             },
             {
                 "id": "1106047c-cd5d-4151-b679-96b93da7383b",
@@ -343,7 +343,7 @@ mod tests {
                 "address_description": "The whole entire Internet",
                 "sites": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
                 "status": "Offline",
-                "can_disable": false
+                "can_be_disabled": false
             }
         ]"#;
 

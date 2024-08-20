@@ -13,7 +13,7 @@ data class ViewResource(
     val name: String,
     val status: StatusEnum,
     var enabled: Boolean = true,
-    var canDisable: Boolean = true,
+    var canBeDisabled: Boolean = true,
 )
 
 fun Resource.toViewResource(enabled: Boolean): ViewResource {
@@ -25,6 +25,6 @@ fun Resource.toViewResource(enabled: Boolean): ViewResource {
         name = this.name,
         status = this.status,
         enabled = enabled,
-        canDisable = this.canDisable,
+        canBeDisabled = this.canBeDisabled,
     )
 }
