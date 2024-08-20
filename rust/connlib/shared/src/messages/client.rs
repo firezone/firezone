@@ -215,6 +215,14 @@ impl ResourceDescription {
             }
         }
     }
+
+    fn is_internet_resource(&self) -> bool {
+        if let ResourceDescription::Internet(_) = self {
+            return true;
+        }
+
+        false
+    }
 }
 
 impl PartialOrd for ResourceDescription {
@@ -225,6 +233,10 @@ impl PartialOrd for ResourceDescription {
 
 impl Ord for ResourceDescription {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        if self.is_internet_resource() {
+            return std::cmp::Ordering::Less;
+        }
+
         (self.name(), self.id()).cmp(&(other.name(), other.id()))
     }
 }

@@ -361,8 +361,7 @@ mod tests {
     use itertools::Itertools;
 
     use super::{
-        client::ResourceDescription,
-        client::{ResourceDescriptionDns, Site},
+        client::{ResourceDescription, ResourceDescriptionDns, ResourceDescriptionInternet, Site},
         ResourceId,
     };
 
@@ -372,6 +371,16 @@ mod tests {
             name: name.to_string(),
             address: "unused.example.com".to_string(),
             address_description: Some("test description".to_string()),
+            sites: vec![Site {
+                name: "test".to_string(),
+                id: "99ba0c1e-5189-4cfc-a4db-fd6cb1c937fd".parse().unwrap(),
+            }],
+        })
+    }
+
+    fn internet_resource(uuid: &str) -> ResourceDescription {
+        ResourceDescription::Internet(ResourceDescriptionInternet {
+            id: ResourceId::from_str(uuid).unwrap(),
             sites: vec![Site {
                 name: "test".to_string(),
                 id: "99ba0c1e-5189-4cfc-a4db-fd6cb1c937fd".parse().unwrap(),
@@ -390,6 +399,7 @@ mod tests {
         let ten = fake_resource("10", "9d1907cc-0693-4063-b388-4d29524e2514");
         let nine = fake_resource("9", "a7b66f28-9cd1-40fc-bdc4-4763ed92ea41");
         let emoji = fake_resource("🫠", "7d08cfca-8737-4c5e-a88e-e92574657217");
+        let internet = internet_resource("cb13bca0-490a-4aae-a039-31a8f93e2281");
 
         let resource_descriptions = vec![
             nine.clone(),
@@ -401,9 +411,11 @@ mod tests {
             cloudflare.clone(),
             metabase_2.clone(),
             metabase_1.clone(),
+            internet.clone(),
         ];
 
         let expected = vec![
+            internet,   // Internet resources are always first
             ten,        // Numbers first
             nine,       // Numbers first
             cloudflare, // Then uppercase, in alphabetical order
