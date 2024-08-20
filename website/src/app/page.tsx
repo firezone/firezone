@@ -45,7 +45,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-neutral-950 bg-hero pt-28 pb-12 mb-16 xl:pt-32">
+      <section className="bg-neutral-950 bg-hero pt-28 mb-16">
         <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
           <h1
             className={
