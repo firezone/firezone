@@ -12,16 +12,25 @@ import SwiftUI
 @MainActor
 public final class SessionViewModel: ObservableObject {
   @Published private(set) var actorName: String? = nil
+  @Published private(set) var favorites: Favorites
   @Published private(set) var resources: ResourceList = ResourceList.loading
   @Published private(set) var status: NEVPNStatus? = nil
-
 
   let store: Store
 
   private var cancellables: Set<AnyCancellable> = []
 
-  public init(store: Store) {
+  public init(favorites: Favorites, store: Store) {
+    self.favorites = favorites
     self.store = store
+
+    favorites.$ids
+      .receive(on: DispatchQueue.main)
+      .sink(receiveValue: { [weak self] ids in
+        guard let self = self else { return }
+        self.objectWillChange.send()
+      })
+      .store(in: &cancellables)
 
     store.$actorName
       .receive(on: DispatchQueue.main)
@@ -72,24 +81,27 @@ struct SessionView: View {
         if resources.isEmpty {
           Text("No Resources. Contact your admin to be granted access.")
         } else {
-          List(resources) { resource in
-            HStack {
-              NavigationLink { ResourceView(resource: resource) }
-                label: {
-                  HStack {
-                    Text(resource.name)
-                    if resource.canBeDisabled {
-                      Spacer()
-                      Toggle("Enabled", isOn: Binding<Bool>(
-                        get: { model.isResourceEnabled(resource.id) },
-                        set: { newValue in
-                          model.store.toggleResourceDisabled(resource: resource.id, enabled: newValue)
-                        }
-                      )).labelsHidden()
-                    }
-                  }
-                }
-                .navigationTitle("All Resources")
+          List {
+            let hasAnyFavorites = resources.contains { model.favorites.contains($0.id) }
+            if hasAnyFavorites {
+              Section("Favorites") {
+                ResourceSection(
+                  resources: resources.filter { model.favorites.contains($0.id) },
+                  model: model
+                )
+              }
+
+              Section("Other Resources") {
+                ResourceSection(
+                  resources: resources.filter { !model.favorites.contains($0.id) },
+                  model: model
+                )
+              }
+            } else {
+              ResourceSection(
+                resources: resources,
+                model: model
+              )
             }
           }
           .listStyle(GroupedListStyle())
@@ -109,6 +121,34 @@ struct SessionView: View {
       Text("Signed out. Please sign in again to connect to Resources.")
     @unknown default:
       Text("Unknown status. Please report this and attach your logs.")
+    }
+  }
+}
+
+struct ResourceSection: View {
+  let resources: [Resource]
+  @ObservedObject var model: SessionViewModel
+
+  var body: some View {
+    ForEach(resources) { resource in
+      HStack {
+        NavigationLink { ResourceView(model: model, resource: resource) }
+      label: {
+        HStack {
+          Text(resource.name)
+          if resource.canBeDisabled {
+            Spacer()
+            Toggle("Enabled", isOn: Binding<Bool>(
+              get: { model.isResourceEnabled(resource.id) },
+              set: { newValue in
+                model.store.toggleResourceDisabled(resource: resource.id, enabled: newValue)
+              }
+            )).labelsHidden()
+          }
+        }
+      }
+      .navigationTitle("All Resources")
+      }
     }
   }
 }
