@@ -107,10 +107,9 @@ impl StubPortal {
                     .cloned()
                     .map(client::ResourceDescription::Dns),
             )
-            // TODO: Enable once we actually implement the Internet resource
-            // .chain(iter::once(client::ResourceDescription::Internet(
-            //     self.internet_resource.clone(),
-            // )))
+            .chain(iter::once(client::ResourceDescription::Internet(
+                self.internet_resource.clone(),
+            )))
             .collect()
     }
 

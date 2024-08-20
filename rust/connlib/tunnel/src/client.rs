@@ -248,6 +248,8 @@ pub struct ClientState {
 
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
     active_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    /// `Some` if the Internet resource is enabled.
+    internet_resource: Option<ResourceId>,
     /// All resources indexed by their ID.
     resources_by_id: HashMap<ResourceId, ResourceDescription>,
 
@@ -318,6 +320,7 @@ impl ClientState {
             stub_resolver: StubResolver::new(known_hosts),
             disabled_resources: Default::default(),
             buffered_transmits: Default::default(),
+            internet_resource: None,
         }
     }
 
@@ -623,6 +626,22 @@ impl ClientState {
         !interface.upstream_dns.is_empty()
     }
 
+    /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
+    ///
+    /// We only want to do this if the upstream DNS server is set by the portal, otherwise, the server might be a local IP.
+    fn should_forward_dns_query_to_gateway(&self, dns_server: IpAddr) -> bool {
+        if !self.is_upstream_set_by_the_portal() {
+            return false;
+        }
+        if self.internet_resource.is_some() {
+            return true;
+        }
+
+        self.active_cidr_resources
+            .longest_match(dns_server)
+            .is_some()
+    }
+
     /// Attempt to handle the given packet as a DNS query packet.
     ///
     /// Returns `Ok` if the packet is in fact a DNS query with an optional response to send back.
@@ -645,10 +664,7 @@ impl ClientState {
             }) => {
                 let ip = server.ip();
 
-                // In case the DNS server is a CIDR resource, it needs to go through the tunnel.
-                if self.is_upstream_set_by_the_portal()
-                    && self.active_cidr_resources.longest_match(ip).is_some()
-                {
+                if self.should_forward_dns_query_to_gateway(ip) {
                     return Err((packet, ip));
                 }
 
@@ -812,6 +828,14 @@ impl ClientState {
             .map(|(ip, _)| ip)
             .chain(iter::once(IPV4_RESOURCES.into()))
             .chain(iter::once(IPV6_RESOURCES.into()))
+            .chain(
+                self.internet_resource
+                    .map(|_| Ipv4Network::DEFAULT_ROUTE.into()),
+            )
+            .chain(
+                self.internet_resource
+                    .map(|_| Ipv6Network::DEFAULT_ROUTE.into()),
+            )
             .chain(self.dns_mapping.left_values().copied().map(Into::into))
     }
 
@@ -820,17 +844,21 @@ impl ClientState {
     }
 
     fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
-        let maybe_dns_resource_id = self.stub_resolver.resolve_resource_by_ip(&destination);
+        // We need to filter disabled resources because we never remove resources from the stub_resolver
+        let maybe_dns_resource_id = self
+            .stub_resolver
+            .resolve_resource_by_ip(&destination)
+            .filter(|resource| self.is_resource_enabled(resource));
 
+        // We don't need to filter from here because resources are removed from the active_cidr_resources as soon as they are disabled.
         let maybe_cidr_resource_id = self
             .active_cidr_resources
             .longest_match(destination)
             .map(|(_, res)| res.id);
 
-        // We need to filter disabled resources because we never remove resources from the stub_resolver
         maybe_dns_resource_id
             .or(maybe_cidr_resource_id)
-            .filter(|resource| self.is_resource_enabled(resource))
+            .or(self.internet_resource)
     }
 
     pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
@@ -1006,7 +1034,9 @@ impl ClientState {
                     None => true,
                 }
             }
-            ResourceDescription::Internet(_) => false, // FIXME: Update with real check once Internet Resources get added.
+            ResourceDescription::Internet(resource) => {
+                self.internet_resource.replace(resource.id) != Some(resource.id)
+            }
         };
 
         if !added {
@@ -1034,7 +1064,11 @@ impl ClientState {
         match resource {
             ResourceDescription::Dns(_) => self.stub_resolver.remove_resource(id),
             ResourceDescription::Cidr(_) => self.active_cidr_resources.retain(|_, r| r.id != id),
-            ResourceDescription::Internet(_) => {}
+            ResourceDescription::Internet(_) => {
+                if self.internet_resource.is_some_and(|r_id| r_id == id) {
+                    self.internet_resource = None;
+                }
+            }
         }
 
         let name = resource.name();
@@ -1161,7 +1195,10 @@ fn get_addresses_for_awaiting_resource(
             .map_into()
             .collect_vec(),
         ResourceDescription::Cidr(r) => vec![r.address],
-        ResourceDescription::Internet(_) => vec![],
+        ResourceDescription::Internet(_) => vec![
+            Ipv4Network::DEFAULT_ROUTE.into(),
+            Ipv6Network::DEFAULT_ROUTE.into(),
+        ],
     }
 }
 
