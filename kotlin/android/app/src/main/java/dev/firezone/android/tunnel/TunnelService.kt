@@ -212,7 +212,7 @@ class TunnelService : VpnService() {
     // UI updates for resources
     fun resourcesUpdated() {
         val newResources = tunnelResources.associateBy { it.id }
-        val currentlyDisabled = disabledResources.filter { newResources[it]?.canToggle ?: false }
+        val currentlyDisabled = disabledResources.filter { newResources[it]?.canBeDisabled ?: false }
 
         connlibSessionPtr?.let {
             ConnlibSession.setDisabledResources(it, Gson().toJson(currentlyDisabled))

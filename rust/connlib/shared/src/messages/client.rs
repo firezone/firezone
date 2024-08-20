@@ -36,7 +36,7 @@ impl ResourceDescriptionDns {
             name: self.name,
             address_description: self.address_description,
             sites: self.sites,
-            can_toggle: false,
+            can_be_disabled: false,
             status,
         }
     }
@@ -67,7 +67,7 @@ impl ResourceDescriptionCidr {
             name: self.name,
             address_description: self.address_description,
             sites: self.sites,
-            can_toggle: false,
+            can_be_disabled: false,
             status,
         }
     }
@@ -88,7 +88,7 @@ impl ResourceDescriptionInternet {
         crate::callbacks::ResourceDescriptionInternet {
             id: self.id,
             sites: self.sites,
-            can_toggle: false,
+            can_be_disabled: false,
             status,
         }
     }

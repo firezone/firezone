@@ -42,10 +42,10 @@ export default function ActionLink({
   // XXX: There seems to be a Tailwind bug where the border color is not
   // being applied below. The CSS checks out but the color defaults to gray.
   const linkClasses = `
-    group inline-flex justify-center items-center py-2 font-semibold
-    text-${color}
+    group inline-flex justify-center items-center py-2 font-semibold duration-50
+    transform transition tracking-tight font-medium
     ${Size[size].link}
-    ${border && `${Size[size].border} border-${color}`}
+    ${border && `${Size[size].border} border-current`}
     ${(transitionColor && `hover:text-${transitionColor}`) || ""}
     ${
       border && transitionColor ? `hover:border-${transitionColor}` : ""
@@ -61,9 +61,11 @@ export default function ActionLink({
   `;
 
   return (
-    <Link href={href} className={linkClasses}>
-      {children}
-      <HiArrowLongRight className={iconClasses} />
-    </Link>
+    <div className={`text-${color}`}>
+      <Link href={href} className={linkClasses}>
+        {children}
+        <HiArrowLongRight className={iconClasses} />
+      </Link>
+    </div>
   );
 }
