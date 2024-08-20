@@ -2121,6 +2121,63 @@ defmodule Domain.ActorsTest do
     end
   end
 
+  describe "count_synced_actors_for_provider/1" do
+    test "returns 0 when there are no actors" do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+      assert count_synced_actors_for_provider(provider) == 0
+    end
+
+    test "returns 0 when there are no synced actors" do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      assert count_synced_actors_for_provider(provider) == 0
+    end
+
+    test "returns count of synced actors owned only by the given provider" do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      actor1 =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account
+        )
+
+      Fixtures.Auth.create_identity(account: account, actor: actor1, provider: provider)
+
+      actor2 =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account
+        )
+
+      Fixtures.Auth.create_identity(account: account, actor: actor2, provider: provider)
+
+      actor3 =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account
+        )
+
+      Fixtures.Auth.create_identity(account: account, actor: actor3)
+
+      actor4 =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account
+        )
+
+      Fixtures.Auth.create_identity(account: account, actor: actor4, provider: provider)
+      Fixtures.Auth.create_identity(account: account, actor: actor4)
+
+      assert count_synced_actors_for_provider(provider) == 2
+    end
+  end
+
   describe "fetch_actor_by_id/3" do
     test "returns error when actor is not found" do
       subject = Fixtures.Auth.create_subject()
@@ -3138,6 +3195,72 @@ defmodule Domain.ActorsTest do
         |> Fixtures.Auth.remove_permissions()
 
       assert delete_actor(actor, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
+    end
+  end
+
+  describe "delete_stale_synced_actors_for_provider/2" do
+    test "deletes actors synced with only the given provider" do
+      account = Fixtures.Accounts.create_account()
+      subject = Fixtures.Auth.create_subject(account: account)
+
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      actor1 =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account
+        )
+
+      Fixtures.Auth.create_identity(account: account, actor: actor1, provider: provider)
+
+      actor2 =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account
+        )
+
+      Fixtures.Auth.create_identity(account: account, actor: actor2, provider: provider)
+
+      actor3 =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account
+        )
+
+      Fixtures.Auth.create_identity(account: account, actor: actor3)
+
+      actor4 =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account
+        )
+
+      Fixtures.Auth.create_identity(account: account, actor: actor4, provider: provider)
+      Fixtures.Auth.create_identity(account: account, actor: actor4)
+
+      assert delete_stale_synced_actors_for_provider(provider, subject) == :ok
+      not_deleted_actors = Repo.all(Actors.Actor.Query.not_deleted())
+      not_deleted_actor_ids = not_deleted_actors |> Enum.map(& &1.id) |> Enum.sort()
+
+      assert not_deleted_actor_ids == Enum.sort([actor4.id, actor3.id, subject.actor.id])
+    end
+
+    test "returns error when subject cannot delete actors" do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      subject =
+        Fixtures.Auth.create_subject(account: account)
+        |> Fixtures.Auth.remove_permissions()
+
+      assert delete_stale_synced_actors_for_provider(provider, subject) ==
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,

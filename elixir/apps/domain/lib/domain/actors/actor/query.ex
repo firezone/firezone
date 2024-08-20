@@ -30,6 +30,28 @@ defmodule Domain.Actors.Actor.Query do
     where(queryable, [actors: actors], actors.account_id == ^account_id)
   end
 
+  def by_provider_id(queryable, provider_id) do
+    queryable
+    |> join(:right, [actors: actors], identities in ^Domain.Auth.Identity.Query.all(),
+      on: identities.actor_id == actors.id,
+      as: :all_identities
+    )
+    |> where(
+      [all_identities: all_identities],
+      all_identities.provider_id == ^provider_id
+    )
+  end
+
+  def by_stale_for_provider(queryable, provider_id) do
+    subquery =
+      Domain.Auth.Identity.Query.all()
+      |> where([identities: identities], identities.actor_id == parent_as(:actors).id)
+      |> where([identities: identities], identities.provider_id != ^provider_id)
+
+    queryable
+    |> where([actors: actors], not exists(subquery))
+  end
+
   def by_type(queryable, {:in, types}) do
     where(queryable, [actors: actors], actors.type in ^types)
   end
