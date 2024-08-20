@@ -124,7 +124,8 @@ export default function Page() {
         }
         cta={
           <ActionLink
-            border={false}
+            color="neutral-900"
+            transitionColor="primary-450"
             size="lg"
             href="/kb/authenticate/directory-sync"
           >
@@ -143,9 +144,9 @@ export default function Page() {
         }
         description={
           <p className="text-lg text-pretty text-neutral-800">
-            Restrict access based on access-time conditions like device
-            location, time of day, and more, and audit every connection attempt
-            with detailed logs.
+            Restrict access based on realtime conditions like device location,
+            time of day, and more, and view every authorized connection by user,
+            Resource, or policy.
           </p>
         }
         image={
@@ -157,8 +158,13 @@ export default function Page() {
           />
         }
         cta={
-          <ActionLink border={false} size="lg" href="/kb/deploy/policies">
-            See all policy conditions
+          <ActionLink
+            color="neutral-900"
+            transitionColor="primary-450"
+            size="lg"
+            href="/kb/deploy/policies#conditional-access-policies"
+          >
+            See supported conditions
           </ActionLink>
         }
       />
@@ -201,7 +207,8 @@ export default function Page() {
             </div>
             <div className="mx-auto md:mx-0 min-w-48 w-auto mb-8 flex justify-center items-center">
               <ActionLink
-                border={false}
+                color="neutral-900"
+                transitionColor="primary-450"
                 size="lg"
                 href="https://www.github.com/firezone/firezone"
               >
@@ -410,7 +417,12 @@ export default function Page() {
             </SlideIn>
           </div>
           <div className="flex justify-center mt-8 md:mt-16">
-            <ActionLink border={false} size="lg" href="/kb/use-cases">
+            <ActionLink
+              color="neutral-900"
+              transitionColor="primary-450"
+              size="lg"
+              href="/kb/use-cases"
+            >
               See more use cases
             </ActionLink>
           </div>

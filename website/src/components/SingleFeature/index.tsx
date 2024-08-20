@@ -43,7 +43,12 @@ export default function SingleFeature({
           >
             {desc}
           </p>
-          <ActionLink border={false} size="lg" href={link}>
+          <ActionLink
+            color="neutral-900"
+            transitionColor="primary-450"
+            size="lg"
+            href={link}
+          >
             {buttonDesc}
           </ActionLink>
         </div>
