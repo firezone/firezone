@@ -137,8 +137,7 @@ jobs:
           # Exclude debug builds for non-amd64 targets since they won't be used.
           - {stage: debug, arch: {platform: linux/arm/v7}}
           - {stage: debug, arch: {platform: linux/arm64}}
-          # Exclude snownet-tests and http-test-server from perf image builds
-          - {image_prefix: perf, name: {package: snownet-tests}}
+          # Exclude http-test-server from perf image builds
           - {image_prefix: perf, name: {package: http-test-server}}
 
         arch:
@@ -169,9 +168,6 @@ jobs:
             release_name: gateway-1.2.0
             # mark:next-gateway-version
             version: 1.2.0
-          - package: snownet-tests
-            artifact: snownet-tests
-            image_name: snownet-tests
           - package: http-test-server
             artifact: http-test-server
             image_name: http-test-server
@@ -343,9 +339,8 @@ jobs:
         image_prefix:
           - ${{ inputs.image_prefix }}
 
-        # Exclude snownet-tests and http-test-server from perf image builds
+        # Exclude http-test-server from perf image builds
         exclude:
-          - {image_prefix: perf, image: {name: snownet-tests}}
           - {image_prefix: perf, image: {name: http-test-server}}
 
         image:
@@ -356,7 +351,6 @@ jobs:
           - name: client
             # mark:next-client-version
             version: 1.0.6
-          - name: snownet-tests
           - name: http-test-server
     steps:
       - uses: actions/checkout@v4
