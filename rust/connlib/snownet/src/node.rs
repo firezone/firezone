@@ -45,6 +45,9 @@ pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 /// The buffer in [`InitialConnection`] might be populated from various sources, i.e. different code path may want to establish a connection to the same server.
 /// Both, IPv4 and IPv6 have a max payload size of 65536.
 /// 50 packets can thus at most occupy 3.125 MB which is acceptable per connection.
+///
+/// Depending on the MTU of the attached network interface, the actual number here might be a lot smaller.
+/// For example, with a common MTU of 1280, the maximum size of these packets is only 64KB.
 const MAX_INITIAL_BUFFERED_PACKETS: usize = 50;
 
 /// Manages a set of wireguard connections for a server.
