@@ -50,8 +50,12 @@ const REALM: &str = "firezone";
 /// Thus, it is chosen as a safe, upper boundary that is not meant to be hit (and thus doesn't affect performance), yet acts as a safe guard, just in case.
 const MAX_EVENTLOOP_ITERS: u32 = 5000;
 
-/// We need an extra 16 bytes on top of the MTU for write_buf since boringtun copies the extra AEAD tag before decrypting it.
-const BUF_SIZE: usize = DEFAULT_MTU + 16 + 20;
+/// Wireguard has a 16-byte overhead (4b message type + 4b receiver idx + 8b packet counter)
+const WG_OVERHEAD: usize = 16;
+/// In order to do NAT46 without copying, we need 20 extra byte in the buffer (IPv6 packets are 20 byte bigger than IPv4).
+const NAT46_OVERHEAD: usize = 20;
+
+const BUF_SIZE: usize = DEFAULT_MTU + WG_OVERHEAD + NAT46_OVERHEAD;
 
 pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
