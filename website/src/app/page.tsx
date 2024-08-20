@@ -45,7 +45,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-neutral-950 bg-hero pt-28 mb-16 xl:pt-32">
+      <section className="bg-neutral-950 bg-hero pt-28 mb-16">
         <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
           <h1
             className={
@@ -55,21 +55,17 @@ export default function Page() {
           >
             Upgrade your VPN to zero-trust access
           </h1>
-          <h3
-            className={
-              manrope.className + "my-4 text-xl text-center text-neutral-400"
-            }
-          >
+          <h3 className={"text-xl text-center text-neutral-400"}>
             Firezone is a fast, flexible VPN replacement built on WireGuard®
             that protects your most valuable resources without tedious
             configuration.
           </h3>
-          <div className="flex sm:flex-row flex-col-reverse items-center justify-center sm:gap-x-6 md:gap-x-12 mt-4 w-full">
+          <div className="flex sm:flex-row flex-col-reverse items-center justify-center sm:gap-x-6 md:gap-x-12 mt-10 w-full">
             <div className="flex items-center my-4 mr-4">
               <ActionLink
                 size="lg"
                 href="https://app.firezone.dev/sign_up"
-                color="white"
+                color="neutral-100"
                 transitionColor="primary-450"
               >
                 Get started for free
@@ -86,7 +82,7 @@ export default function Page() {
             </div>
           </div>
         </div>
-        <div className="pt-16 pb-8 max-w-screen-xl mx-auto">
+        <div className="pt-16 pb-4 max-w-screen-xl mx-auto">
           <div className="text-center text-sm mb-6 font-base text-neutral-600">
             Backed by{" "}
             <Image
