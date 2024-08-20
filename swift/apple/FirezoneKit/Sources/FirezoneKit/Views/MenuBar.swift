@@ -427,11 +427,11 @@ public final class MenuBar: NSObject, ObservableObject {
       []
     }
 
-    populateFavoriteResourcesMenu(newFavorites, hasAnyFavorites)
+    populateFavoriteResourcesMenu(newFavorites)
     populateOtherResourcesMenu(newOthers)
   }
 
-  private func populateFavoriteResourcesMenu(_ newFavorites: [Resource], _ hasAnyFavorites: Bool) {
+  private func populateFavoriteResourcesMenu(_ newFavorites: [Resource]) {
     // Update the menu in place so everything won't vanish if it's open when it updates
     let diff = (newFavorites).difference(
       from: lastShownFavorites,
