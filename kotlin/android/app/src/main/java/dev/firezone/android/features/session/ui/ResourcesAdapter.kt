@@ -52,7 +52,7 @@ internal class ResourcesAdapter(private val activity: SessionActivity) : ListAda
             // Without this the item gets reset when out of view, isn't android wonderful?
             binding.enableSwitch.setOnCheckedChangeListener(null)
             binding.enableSwitch.isChecked = resource.enabled
-            binding.enableSwitch.isVisible = resource.canToggle
+            binding.enableSwitch.isVisible = resource.canDisable
 
             binding.enableSwitch.setOnCheckedChangeListener {
                     _, isChecked ->

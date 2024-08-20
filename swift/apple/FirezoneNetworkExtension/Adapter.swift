@@ -217,7 +217,7 @@ class Adapter {
     let decoder = JSONDecoder()
     decoder.keyDecodingStrategy = .convertFromSnakeCase
 
-    canBeDisabled = Set(resources().filter({ $0.canToggle }).map({ $0.id }))
+    canBeDisabled = Set(resources().filter({ $0.canDisable }).map({ $0.id }))
 
     let disablingResources = disabledResources.filter({ canBeDisabled.contains($0) })
 
