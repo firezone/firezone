@@ -289,8 +289,8 @@ pub struct ClientState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AwaitingConnectionDetails {
-    pub last_intent_sent_at: Instant,
+struct AwaitingConnectionDetails {
+    last_intent_sent_at: Instant,
     domain: Option<ResolveRequest>,
 }
 
