@@ -41,7 +41,7 @@ pub(crate) fn run() -> Result<()> {
             if cli.no_deep_links {
                 return run_gui(cli);
             }
-            match elevation::is_normal_user() {
+            match elevation::gui_check() {
                 // Our elevation is correct (not elevated), just run the GUI
                 Ok(true) => run_gui(cli),
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
@@ -131,7 +131,7 @@ fn start_logging(directives: &str) -> Result<logging::Handles> {
     tracing::info!(
         arch = std::env::consts::ARCH,
         ?directives,
-        git_version = firezone_bin_shared::GIT_VERSION,
+        git_version = firezone_bin_shared::git_version!("gui-client-*"),
         system_uptime_seconds = firezone_headless_client::uptime::get().map(|dur| dur.as_secs()),
         "`gui-client` started logging"
     );

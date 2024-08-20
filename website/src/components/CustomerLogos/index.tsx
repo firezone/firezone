@@ -4,18 +4,15 @@ import Marquee from "react-fast-marquee";
 
 export function CustomerLogosGrayscale() {
   return (
-    <div
-      style={{
-        maskImage:
-          "linear-gradient(to right, rgba(0, 0, 0, 0) 0%, rgb(0, 0, 0) 35%, rgb(0, 0, 0) 65%, rgba(0, 0, 0, 0) 100%)",
-      }}
-      className="inline-block overflow-hidden whitespace-nowrap mx-auto"
-    >
+    <div className="fade-side inline-block overflow-hidden whitespace-nowrap mx-auto">
       <div
         className="inline-flex w-full"
         style={{ animation: "12s slide infinite linear" }}
       >
-        <Link className="h-12 mr-20 place-content-center" href="https://corrdyn.com">
+        <Link
+          className="h-12 mr-20 place-content-center"
+          href="https://corrdyn.com"
+        >
           <Image
             alt="corrdyn logo"
             src="/images/logos/cust-logo-corrdyn-gray.svg"
@@ -23,7 +20,10 @@ export function CustomerLogosGrayscale() {
             height={125}
           />
         </Link>
-        <Link className="h-12 mr-20 place-content-center" href="https://square1.io">
+        <Link
+          className="h-12 mr-20 place-content-center"
+          href="https://square1.io"
+        >
           <Image
             alt="square1 logo"
             src="/images/logos/cust-logo-square1-gray.svg"
@@ -31,7 +31,10 @@ export function CustomerLogosGrayscale() {
             height={100}
           />
         </Link>
-        <Link className="h-12 mr-20 place-content-center" href="https://bunq.com">
+        <Link
+          className="h-12 mr-20 place-content-center"
+          href="https://bunq.com"
+        >
           <Image
             alt="bunq logo"
             src="/images/logos/cust-logo-bunq-gray.svg"
@@ -39,7 +42,10 @@ export function CustomerLogosGrayscale() {
             height={100}
           />
         </Link>
-        <Link className="h-12 mr-20 place-content-center" href="https://wolfram.com">
+        <Link
+          className="h-12 mr-20 place-content-center"
+          href="https://wolfram.com"
+        >
           <Image
             alt="wolfram logo"
             src="/images/logos/cust-logo-wolfram-gray.svg"
@@ -47,7 +53,10 @@ export function CustomerLogosGrayscale() {
             height={75}
           />
         </Link>
-        <Link className="h-12 mr-20 place-content-center" href="https://sebgroup.com">
+        <Link
+          className="h-12 mr-20 place-content-center"
+          href="https://sebgroup.com"
+        >
           <Image
             alt="seb logo"
             src="/images/logos/cust-logo-seb-gray.svg"
@@ -55,7 +64,10 @@ export function CustomerLogosGrayscale() {
             height={75}
           />
         </Link>
-        <Link className="h-12 mr-20 place-content-center" href="https://teracloud.com">
+        <Link
+          className="h-12 mr-20 place-content-center"
+          href="https://teracloud.com"
+        >
           <Image
             alt="teracloud logo"
             src="/images/logos/cust-logo-teracloud-gray.svg"
@@ -64,7 +76,10 @@ export function CustomerLogosGrayscale() {
             className="  "
           />
         </Link>
-        <Link className="h-12 mr-20 place-content-center" href="https://double11.co.uk">
+        <Link
+          className="h-12 mr-20 place-content-center"
+          href="https://double11.co.uk"
+        >
           <Image
             alt="double11 logo"
             src="/images/logos/cust-logo-double11-gray.svg"
@@ -77,7 +92,10 @@ export function CustomerLogosGrayscale() {
         className="inline-flex w-full"
         style={{ animation: "12s slide infinite linear" }}
       >
-        <Link className="h-12 mr-20 place-content-center" href="https://corrdyn.com">
+        <Link
+          className="h-12 mr-20 place-content-center"
+          href="https://corrdyn.com"
+        >
           <Image
             alt="corrdyn logo"
             src="/images/logos/cust-logo-corrdyn-gray.svg"
@@ -85,7 +103,10 @@ export function CustomerLogosGrayscale() {
             height={125}
           />
         </Link>
-        <Link className="h-12 mr-20 place-content-center" href="https://square1.io">
+        <Link
+          className="h-12 mr-20 place-content-center"
+          href="https://square1.io"
+        >
           <Image
             alt="square1 logo"
             src="/images/logos/cust-logo-square1-gray.svg"
@@ -93,7 +114,10 @@ export function CustomerLogosGrayscale() {
             height={100}
           />
         </Link>
-        <Link className="h-12 mr-20 place-content-center" href="https://bunq.com">
+        <Link
+          className="h-12 mr-20 place-content-center"
+          href="https://bunq.com"
+        >
           <Image
             alt="bunq logo"
             src="/images/logos/cust-logo-bunq-gray.svg"
@@ -101,7 +125,10 @@ export function CustomerLogosGrayscale() {
             height={100}
           />
         </Link>
-        <Link className="h-12 mr-20 place-content-center" href="https://wolfram.com">
+        <Link
+          className="h-12 mr-20 place-content-center"
+          href="https://wolfram.com"
+        >
           <Image
             alt="wolfram logo"
             src="/images/logos/cust-logo-wolfram-gray.svg"
@@ -109,7 +136,10 @@ export function CustomerLogosGrayscale() {
             height={75}
           />
         </Link>
-        <Link className="h-12 mr-20 place-content-center" href="https://sebgroup.com">
+        <Link
+          className="h-12 mr-20 place-content-center"
+          href="https://sebgroup.com"
+        >
           <Image
             alt="seb logo"
             src="/images/logos/cust-logo-seb-gray.svg"
@@ -117,7 +147,10 @@ export function CustomerLogosGrayscale() {
             height={75}
           />
         </Link>
-        <Link className="h-12 mr-20 place-content-center" href="https://teracloud.com">
+        <Link
+          className="h-12 mr-20 place-content-center"
+          href="https://teracloud.com"
+        >
           <Image
             alt="teracloud logo"
             src="/images/logos/cust-logo-teracloud-gray.svg"
@@ -126,7 +159,10 @@ export function CustomerLogosGrayscale() {
             className="  "
           />
         </Link>
-        <Link className="h-12 mr-20 place-content-center" href="https://double11.co.uk">
+        <Link
+          className="h-12 mr-20 place-content-center"
+          href="https://double11.co.uk"
+        >
           <Image
             alt="double11 logo"
             src="/images/logos/cust-logo-double11-gray.svg"

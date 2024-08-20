@@ -138,7 +138,7 @@ fn main() -> Result<()> {
 
     tracing::info!(
         arch = std::env::consts::ARCH,
-        git_version = firezone_bin_shared::GIT_VERSION
+        git_version = firezone_bin_shared::git_version!("headless-client-*")
     );
 
     let rt = tokio::runtime::Builder::new_current_thread()

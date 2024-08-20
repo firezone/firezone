@@ -80,7 +80,7 @@ export default function Page() {
             <div className=" flex items-center w-full sm:w-fit">
               <button
                 type="button"
-                className="tracking-tight group shadow-primary-700 md:text-lg text-md sm:w-48 w-full inline-flex shadow-lg justify-center items-center md:py-3 py-2 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
+                className="tracking-tight group shadow-primary-700 text-lg sm:w-48 w-full inline-flex shadow-lg justify-center items-center md:py-3 py-2 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
               >
                 <Link href="/contact/sales">Book a demo</Link>
                 <HiArrowLongRight className="group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-7 h-7" />
@@ -105,7 +105,7 @@ export default function Page() {
       </section>
 
       <section className="bg-white px-4 sm:px-8 md:px-16 py-20 md:py-16">
-        <div className="py-8 md:py-12">
+        <div className="py-8 md:py-12 flex justify-center">
           <ElevatorPitch />
         </div>
         <div className="py-8 md:py-12">
@@ -149,7 +149,7 @@ export default function Page() {
         </div>
 
         <div className="flex justify-center mt-8 md:mt-16">
-          <ActionLink href="/kb/architecture" border>
+          <ActionLink border={false} size="lg" href="/kb/architecture">
             Read about Firezone's architecture
           </ActionLink>
         </div>
@@ -190,7 +190,7 @@ export default function Page() {
         </div>
 
         <div className="flex justify-center mt-8 md:mt-16">
-          <ActionLink href="/kb/authenticate">
+          <ActionLink border={false} size="lg" href="/kb/authenticate">
             Connect your identity provider
           </ActionLink>
         </div>
@@ -226,6 +226,7 @@ export default function Page() {
 
         <div className="flex justify-center mt-4 md:mt-16">
           <ActionLink
+            size="lg"
             href="/kb/use-cases/scale-vpc-access"
             transitionColor="primary-450"
             color="white"
@@ -263,7 +264,7 @@ export default function Page() {
         </div>
 
         <div className="flex justify-center mt-8">
-          <ActionLink href="/kb/deploy">
+          <ActionLink border={false} size="lg" href="/kb/deploy">
             Make your resources invisible
           </ActionLink>
         </div>
@@ -336,7 +337,7 @@ export default function Page() {
                 networks.
               </p>
               <p className="mt-4">
-                <ActionLink href="/kb/client-apps">
+                <ActionLink border={false} size="lg" href="/kb/client-apps">
                   Download Client apps
                 </ActionLink>
               </p>
@@ -392,7 +393,7 @@ export default function Page() {
                 you're done.
               </p>
               <p className="mt-4">
-                <ActionLink href="/kb/deploy/gateways">
+                <ActionLink border={false} size="lg" href="/kb/deploy/gateways">
                   Deploy your first Gateway
                 </ActionLink>
               </p>
@@ -438,7 +439,11 @@ export default function Page() {
               <RunaCap />
             </div>
             <div className="mx-auto w-64 mb-8 inline-flex justify-center">
-              <ActionLink href="https://www.github.com/firezone/firezone">
+              <ActionLink
+                border={false}
+                size="lg"
+                href="https://www.github.com/firezone/firezone"
+              >
                 Leave us a star
               </ActionLink>
             </div>
@@ -642,7 +647,7 @@ export default function Page() {
             </SlideIn>
           </div>
           <div className="flex justify-center mt-8 md:mt-16">
-            <ActionLink size="md" href="/kb/use-cases" color="accent-500">
+            <ActionLink border={false} size="lg" href="/kb/use-cases">
               See more use cases
             </ActionLink>
           </div>

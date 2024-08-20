@@ -13,7 +13,7 @@ use connlib_shared::messages::{
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     net::IpAddr,
     task::{Context, Poll},
 };
@@ -35,7 +35,7 @@ pub enum Command {
     Reset,
     SetDns(Vec<IpAddr>),
     SetTun(Box<dyn Tun>),
-    SetDisabledResources(HashSet<ResourceId>),
+    SetDisabledResources(BTreeSet<ResourceId>),
 }
 
 impl<C: Callbacks> Eventloop<C> {
@@ -348,7 +348,7 @@ where
 
 #[derive(Default)]
 struct SentConnectionIntents {
-    inner: HashMap<OutboundRequestId, ResourceId>,
+    inner: BTreeMap<OutboundRequestId, ResourceId>,
 }
 
 impl SentConnectionIntents {
