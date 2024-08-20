@@ -305,7 +305,7 @@ impl ReferenceStateMachine for ReferenceState {
                         client.cidr_resources.insert(r.address, r.clone());
                     }
                     client::ResourceDescription::Internet(r) => {
-                        client.internet_resource = Some(r.id)
+                        client.internet_resource = Some(r.clone())
                     }
                 });
             }
@@ -338,10 +338,9 @@ impl ReferenceStateMachine for ReferenceState {
                         continue;
                     }
 
-                    // Check if we the DNS server is defined as a CIDR resource.
-                    let Some(resource) = state.client.inner().dns_query_via_cidr_resource(query)
-                    else {
-                        // Not a CIDR resource, process normally.
+                    // Check if the DNS server is defined as a resource.
+                    let Some(resource) = state.client.inner().dns_query_via_resource(query) else {
+                        // Not a resource, process normally.
                         state.client.exec_mut(|client| client.on_dns_query(query));
                         continue;
                     };
@@ -352,10 +351,14 @@ impl ReferenceStateMachine for ReferenceState {
                         continue;
                     }
 
-                    if !state.client.inner().is_connected_to_cidr(resource) {
-                        state
-                            .client
-                            .exec_mut(|client| client.connected_cidr_resources.insert(resource));
+                    if !state
+                        .client
+                        .inner()
+                        .is_connected_to_internet_or_cidr(resource)
+                    {
+                        state.client.exec_mut(|client| {
+                            client.connect_to_internet_or_cidr_resource(resource)
+                        });
                         pending_connections.insert(resource);
                         continue;
                     }
@@ -554,7 +557,7 @@ impl ReferenceStateMachine for ReferenceState {
                     .expected_dns_servers()
                     .contains(&query.dns_server);
                 let gateway_is_present_in_case_dns_server_is_cidr_resource =
-                    match state.client.inner().dns_query_via_cidr_resource(query) {
+                    match state.client.inner().dns_query_via_resource(query) {
                         Some(r) => {
                             let Some(gateway) = state.portal.gateway_for_resource(r) else {
                                 return false;
