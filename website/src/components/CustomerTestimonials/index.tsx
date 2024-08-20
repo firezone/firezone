@@ -6,9 +6,11 @@ import Link from "next/link";
 import { HiArrowLeft, HiArrowRight } from "react-icons/hi2";
 import { FaHeart } from "react-icons/fa";
 import { manrope } from "@/lib/fonts";
+import { Route } from "next";
 
 const customerData = [
   {
+    href: new URL("https://www.nomobo.tv/"),
     desc: `When producing live broadcasts for Fortune 500 companies security is of
       the utmost importance. We therefore selected Firezone for its robust
       WireGuard-based architecture. The flexible policy system and simple &
@@ -16,45 +18,56 @@ const customerData = [
       the market after trying several other solutions like Tailscale, OpenVPN,
       and Nebula.`,
     authorName: "Robert Buisman",
+    companyName: "NOMOBO",
     authorImage: "/images/portrait-robert-buisman.png",
-    authorTitle: "CEO, NOMOBO",
+    authorTitle: "CEO",
   },
   {
+    href: new URL("https://beakon.com.au"),
     desc: `Firezone's easy-to-setup, sleek, and simple interface makes management
       effortless. It perfectly met our zero-trust security needs without the
       complexity found in other products we tested.`,
     authorName: "Mark Sim",
+    companyName: "Beakon",
     authorImage: "/images/portrait-mark-sim.jpg",
-    authorTitle: "Technical Account Manager, Beakon",
+    authorTitle: "Technical Account Manager",
   },
   {
+    href: new URL("https://www.corrdyn.com/"),
     desc: `After comparing Tailscale, we ultimately chose Firezone to secure access
       to our data warehouses. Firezone's ease of configuration and robust
       policy-based access system made it the clear choice for our needs.`,
     authorName: "James Winegar",
+    companyName: "Corrdyn",
     authorImage: "/images/portrait-james-winegar.png",
-    authorTitle: "CEO, Corrdyn",
+    authorTitle: "CEO",
   },
   {
+    href: new URL("https://www.strongcompute.com/"),
     desc: `At Strong Compute, we have been using Firezone for over 3 years and it
       is still the most stable and best VPN solution we tested for remote access.`,
     authorName: "Cian Byrne",
+    companyName: "Strong Compute",
     authorImage: "/images/portrait-cian-byrne.jpg",
-    authorTitle: "Founding Engineer, Strong Compute",
+    authorTitle: "Founding Engineer",
   },
 ];
 
 interface TestimonialBoxProps {
+  href: URL | Route<string>;
   desc: string;
   authorImage: string;
   authorName: string;
+  companyName: string;
   authorTitle: string;
 }
 
 const TestimonialBox = ({
+  href,
   desc,
   authorImage,
   authorName,
+  companyName,
   authorTitle,
 }: TestimonialBoxProps) => {
   return (
@@ -68,12 +81,19 @@ const TestimonialBox = ({
           alt="author portrait"
           width={128}
           height={128}
-          className="w-10 h-10 sm:h-12 sm:h-12 md:h-16 md:w-16 rounded-full"
+          className="w-10 h-10 sm:h-12 md:h-16 md:w-16 rounded-full"
         />
         <div>
           <p className="text-md md:text-lg text-neutral-50">{authorName}</p>
           <p className="text-sm md:text-md font-light text-neutral-50">
-            {authorTitle}
+            {authorTitle},{" "}
+            <Link
+              href={href}
+              className="underline hover:no-underline"
+              target="_blank"
+            >
+              {companyName}
+            </Link>
           </p>
         </div>
       </div>
@@ -103,7 +123,7 @@ export default function CustomerTestimonials() {
   };
 
   return (
-    <section className="bg-neutral-950 py-24">
+    <section className="bg-neutral-950 py-16">
       <div className="relative mx-auto max-w-screen-lg">
         <div className="px-8 sm:px-16 md:px-24 mb-12 md:mb-16">
           <div>
@@ -125,13 +145,7 @@ export default function CustomerTestimonials() {
           className="sm:fade-side flex gap-12 px-8 sm:px-0 w-full snap-x snap-mandatory pb-24 sm:pb-12 overflow-x-auto dark-scroll"
         >
           {customerData.map((item, index) => (
-            <TestimonialBox
-              key={index}
-              authorTitle={item.authorTitle}
-              desc={item.desc}
-              authorImage={item.authorImage}
-              authorName={item.authorName}
-            />
+            <TestimonialBox key={index} {...item} />
           ))}
         </div>
         <div className="absolute bottom-12 left-1/2 -translate-x-1/2 sm:left-auto sm:translate-x-0 sm:bottom-auto sm:right-16 sm:top-8 flex items-center gap-16">

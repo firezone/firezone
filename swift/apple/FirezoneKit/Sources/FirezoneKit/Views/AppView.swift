@@ -85,7 +85,7 @@ public struct AppView: View {
       }
     case (_, _):
       iOSNavigationView(model: model) {
-        SessionView(model: SessionViewModel(store: model.store))
+        SessionView(model: SessionViewModel(favorites: model.favorites, store: model.store))
       }
     }
 #elseif os(macOS)

@@ -43,7 +43,7 @@ const navbarThemeLight: CustomFlowbiteTheme["navbar"] = {
     base: "flex items-center",
   },
   collapse: {
-    base: "w-full md:block md:w-auto shadow md:shadow-none",
+    base: "translate-y-0.5 w-full md:block md:w-auto shadow md:shadow-none",
     list: "mt-4 flex flex-col md:mt-0 md:flex-row md:space-x-8 md:text-md md:font-medium",
     hidden: {
       on: "hidden",
@@ -90,7 +90,7 @@ const navbarThemeDark: CustomFlowbiteTheme["navbar"] = {
     base: "flex items-center",
   },
   collapse: {
-    base: "w-full md:block md:w-auto shadow md:shadow-none",
+    base: "translate-y-0.5 w-full md:block md:w-auto shadow md:shadow-none",
     list: "mt-4 flex flex-col md:mt-0 md:flex-row md:space-x-8 md:text-md md:font-medium",
     hidden: {
       on: "hidden",
@@ -313,7 +313,7 @@ export default function RootNavbar() {
       </NavbarCollapse>
       <div className="hidden md:flex space-x-4 items-center">
         <Link
-          className="block py-2 pl-3 pr-4 md:p-0 font-medium md:border-transparent hover:text-primary-450 md:border-b-2 hover:border-primary-450 duration-50 transition transform"
+          className="md:translate-y-0.5 block py-2 pl-3 pr-4 md:p-0 font-medium md:border-transparent hover:text-primary-450 md:border-b-2 hover:border-primary-450 duration-50 transition transform"
           href="https://app.firezone.dev"
         >
           Sign in

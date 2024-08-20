@@ -2,7 +2,7 @@
 
 use crate::client::gui::{ControllerRequest, CtlrTx, Managed};
 use anyhow::{bail, Context, Result};
-use firezone_headless_client::known_dirs;
+use firezone_headless_client::{known_dirs, LogFilterReloader};
 use serde::Serialize;
 use std::{
     fs,
@@ -12,17 +12,15 @@ use std::{
 use tokio::{sync::oneshot, task::spawn_blocking};
 use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
-use tracing_subscriber::{fmt, layer::SubscriberExt, reload, EnvFilter, Layer, Registry};
+use tracing_subscriber::{fmt, layer::SubscriberExt, reload, Layer, Registry};
 
 /// If you don't store `Handles` in a variable, the file logger handle will drop immediately,
 /// resulting in empty log files.
 #[must_use]
 pub(crate) struct Handles {
     pub logger: firezone_logging::file::Handle,
-    pub reloader: Reloader,
+    pub reloader: LogFilterReloader,
 }
-
-pub(crate) type Reloader = reload::Handle<EnvFilter, Registry>;
 
 struct LogPath {
     /// Where to find the logs on disk

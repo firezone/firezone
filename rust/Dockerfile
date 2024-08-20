@@ -1,5 +1,5 @@
 # Keep synced with `rust-toolchain.toml`
-ARG RUST_VERSION="1.80"
+ARG RUST_VERSION="1.80.1"
 ARG ALPINE_VERSION="3.20"
 ARG CARGO_CHEF_VERSION="0.1.67"
 
@@ -78,10 +78,6 @@ COPY ./docker-init.sh ./docker-init.sh
 
 # HTTP test server specific runtime base image
 FROM runtime_base AS runtime_http-test-server
-COPY ./docker-init.sh ./docker-init.sh
-
-# snownet-tests specific runtime base image
-FROM runtime_base AS runtime_snownet-tests
 COPY ./docker-init.sh ./docker-init.sh
 
 # Funnel package specific base image back into `runtime`

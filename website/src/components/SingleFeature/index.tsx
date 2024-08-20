@@ -11,7 +11,7 @@ interface SingleFeatureProps {
   title: string;
   boldedTitle?: string;
   desc: string;
-  link: Route<string>;
+  link: URL | Route<string>;
   buttonDesc: string;
   children: React.ReactNode;
 }
@@ -43,7 +43,14 @@ export default function SingleFeature({
           >
             {desc}
           </p>
-          <ActionLink href={link}>{buttonDesc}</ActionLink>
+          <ActionLink
+            color="neutral-900"
+            transitionColor="primary-450"
+            size="lg"
+            href={link}
+          >
+            {buttonDesc}
+          </ActionLink>
         </div>
       </div>
     </div>

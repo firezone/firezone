@@ -75,7 +75,7 @@ export function AppleIcon({
 }: {
   size: number;
   children?: React.ReactNode;
-  href: Route<string>;
+  href: URL | Route<string>;
   className?: string;
 }) {
   let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
@@ -102,7 +102,7 @@ export function WindowsIcon({
 }: {
   size: number;
   children?: React.ReactNode;
-  href: Route<string>;
+  href: URL | Route<string>;
   className?: string;
 }) {
   let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
@@ -124,7 +124,7 @@ export function LinuxIcon({
 }: {
   size: number;
   children?: React.ReactNode;
-  href: Route<string>;
+  href: URL | Route<string>;
   className?: string;
 }) {
   let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
@@ -197,7 +197,7 @@ export function AndroidIcon({
 }: {
   size: number;
   children?: React.ReactNode;
-  href: Route<string>;
+  href: URL | Route<string>;
   className?: string;
 }) {
   let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
@@ -239,7 +239,7 @@ export function ChromeIcon({
 }: {
   size: number;
   children?: React.ReactNode;
-  href: Route<string>;
+  href: URL | Route<string>;
   className?: string;
 }) {
   let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
@@ -270,7 +270,7 @@ export function DockerIcon({
 }: {
   size: number;
   children?: React.ReactNode;
-  href: Route<string>;
+  href: URL | Route<string>;
   className?: string;
 }) {
   let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
