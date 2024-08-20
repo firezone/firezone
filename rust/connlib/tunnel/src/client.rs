@@ -830,13 +830,11 @@ impl ClientState {
             .chain(iter::once(IPV6_RESOURCES.into()))
             .chain(
                 self.internet_resource
-                    .is_some()
-                    .then_some(Ipv4Network::DEFAULT_ROUTE.into()),
+                    .map(|_| Ipv4Network::DEFAULT_ROUTE.into()),
             )
             .chain(
                 self.internet_resource
-                    .is_some()
-                    .then_some(Ipv6Network::DEFAULT_ROUTE.into()),
+                    .map(|_| Ipv6Network::DEFAULT_ROUTE.into()),
             )
             .chain(self.dns_mapping.left_values().copied().map(Into::into))
     }
