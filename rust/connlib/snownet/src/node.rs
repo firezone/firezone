@@ -606,7 +606,7 @@ where
             remote_pub_key: remote,
             state: ConnectionState::Connecting {
                 possible_sockets: BTreeSet::default(),
-                buffered: AllocRingBuffer::new(10),
+                buffered: AllocRingBuffer::new(MAX_INITIAL_BUFFERED_PACKETS),
             },
             relay,
             last_outgoing: now,
