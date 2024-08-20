@@ -988,6 +988,7 @@ impl ClientState {
         tracing::info!("Resetting network state");
 
         self.node.reset();
+        self.recently_connected_gateways.clear(); // Ensure we don't have sticky gateways when we roam.
         self.drain_node_events();
     }
 
