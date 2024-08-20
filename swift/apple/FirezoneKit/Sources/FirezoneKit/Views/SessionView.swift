@@ -14,7 +14,7 @@ public final class SessionViewModel: ObservableObject {
   @Published private(set) var actorName: String? = nil
   @Published private(set) var favorites: Favorites
   @Published private(set) var resources: ResourceList = ResourceList.loading
-  @Published private(set) var status: NEVPNStatus? = nil
+  @Published private(set) var status: NEVPNStatus = .disconnected
 
   let store: Store
 
@@ -41,8 +41,6 @@ public final class SessionViewModel: ObservableObject {
       })
       .store(in: &cancellables)
 
-    // MenuBar has its own observer
-#if os(iOS)
     store.$status
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] status in
@@ -55,11 +53,11 @@ public final class SessionViewModel: ObservableObject {
           }
         } else {
           store.endUpdatingResources()
+          self.resources = ResourceList.loading
         }
 
       })
       .store(in: &cancellables)
-#endif
   }
 
   public func isResourceEnabled(_ resource: String) -> Bool {

@@ -60,28 +60,31 @@ public final class MenuBar: NSObject, ObservableObject {
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] ids in
         guard let self = self else { return }
-        favoritesChanged()
+        print("favorites")
+        // When the user clicks to add or remove a favorite, the menu will close anyway, so just recreate the whole menu.
+        // This avoids complex logic when changing in and out of the "nothing is favorited" special case
+        self.populateResourceMenus([])
+        self.populateResourceMenus(model.resources.asArray())
       }).store(in: &cancellables)
 
-    model.store.$status
+    model.$resources
+      .receive(on: DispatchQueue.main)
+      .sink(receiveValue: { [weak self] resources in
+        guard let self = self else { return }
+        print("resources")
+        self.populateResourceMenus(model.resources.asArray())
+        self.handleTunnelStatusOrResourcesChanged()
+        menu.update()
+      }).store(in: &cancellables)
+
+    model.$status
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] status in
         guard let self = self else { return }
-
-        if status == .connected {
-          model.store.beginUpdatingResources { newResources in
-            // Handle resource changes
-            self.populateResourceMenus(newResources.asArray())
-            self.handleTunnelStatusOrResourcesChanged(status: status, resources: newResources)
-          }
-        } else {
-          model.store.endUpdatingResources()
-          populateResourceMenus([])
-        }
-
-        // Handle status changes
-        self.updateStatusItemIcon(status: status)
-        self.handleTunnelStatusOrResourcesChanged(status: status, resources: model.resources)
+        print("status")
+        self.populateResourceMenus(model.resources.asArray())
+        self.handleTunnelStatusOrResourcesChanged()
+        self.updateStatusItemIcon(status: model.status)
       }).store(in: &cancellables)
   }
 
@@ -319,7 +322,9 @@ public final class MenuBar: NSObject, ObservableObject {
     (connectingAnimationImageIndex + 1) % connectingAnimationImages.count
   }
 
-  private func handleTunnelStatusOrResourcesChanged(status: NEVPNStatus, resources: ResourceList) {
+  private func handleTunnelStatusOrResourcesChanged() {
+    let resources = model.resources
+    let status = model.status
     // Update "Sign In" / "Sign Out" menu items
     switch status {
     case .invalid:
@@ -413,7 +418,6 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func populateResourceMenus(_ newResources: [Resource]) {
-    print("populateResourceMenus", newResources.count, model.favorites.ids.count)
     // If we have no favorites, then everything is a favorite
     let hasAnyFavorites = newResources.contains { model.favorites.contains($0.id) }
     let newFavorites = if (hasAnyFavorites) {
@@ -645,14 +649,6 @@ public final class MenuBar: NSObject, ObservableObject {
     } else {
       model.favorites.remove(id)
     }
-    favoritesChanged()
-  }
-
-  func favoritesChanged() {
-    // When the user clicks to add or remove a favorite, the menu will close anyway, so just recreate the whole menu.
-    // This avoids complex logic when changing in and out of the "nothing is favorited" special case
-    self.populateResourceMenus([])
-    self.populateResourceMenus(model.resources.asArray())
   }
 
   private func copyToClipboard(_ string: String) {
