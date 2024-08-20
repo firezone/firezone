@@ -1066,7 +1066,7 @@ impl ClientState {
             ResourceDescription::Cidr(_) => self.active_cidr_resources.retain(|_, r| r.id != id),
             ResourceDescription::Internet(_) => {
                 if self.internet_resource.is_some_and(|r_id| r_id == id) {
-                    self.internet_resource.take();
+                    self.internet_resource = None;
                 }
             }
         }

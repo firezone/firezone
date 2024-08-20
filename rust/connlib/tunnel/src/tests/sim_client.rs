@@ -478,6 +478,7 @@ impl RefClient {
             .is_some_and(|r| r.id == resource)
         {
             self.connected_internet_resources = true;
+            return;
         }
 
         if self.cidr_resources.iter().any(|(_, r)| r.id == resource) {
