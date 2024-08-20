@@ -582,12 +582,12 @@ impl ClientState {
 
         match self.node.encapsulate(gateway_id, intent.clone(), now) {
             Err(snownet::Error::NotConnected) => {
-                let (offer, initial_connection) = self.node.new_connection(
+                let (offer, buffer) = self.node.new_connection(
                     gateway_id,
                     awaiting_connection_details.last_intent_sent_at,
                     now,
                 );
-                initial_connection.queue_packet(intent);
+                buffer.extend(iter::once(intent));
 
                 self.buffered_events
                     .push_back(ClientEvent::RequestConnection {
@@ -729,11 +729,11 @@ impl ClientState {
     ) {
         debug_assert!(self.resources_by_id.contains_key(&resource));
 
-        if let Some(initial) = self
+        if let Some(buffer) = self
             .gateway_by_resource(&resource)
-            .and_then(|gateway_id| self.node.initial_connection_mut(gateway_id))
+            .and_then(|gateway_id| self.node.is_connecting(gateway_id))
         {
-            initial.queue_packet(packet.to_owned());
+            buffer.extend(iter::once(packet.to_owned()));
 
             return;
         }

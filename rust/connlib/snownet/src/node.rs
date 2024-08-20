@@ -823,7 +823,7 @@ where
         cid: TId,
         intent_sent_at: Instant,
         now: Instant,
-    ) -> (Offer, &mut InitialConnection<RId>) {
+    ) -> (Offer, &mut impl Extend<IpPacket<'static>>) {
         if self.connections.initial.remove(&cid).is_some() {
             tracing::info!("Replacing existing initial connection");
         };
@@ -862,11 +862,22 @@ where
 
         tracing::info!(?duration_since_intent, "Establishing new connection");
 
-        (params, self.connections.initial.get_mut(&cid).unwrap())
+        (
+            params,
+            &mut self
+                .connections
+                .initial
+                .get_mut(&cid)
+                .unwrap()
+                .buffered_packets,
+        )
     }
 
-    pub fn initial_connection_mut(&mut self, id: TId) -> Option<&mut InitialConnection<RId>> {
-        self.connections.initial.get_mut(&id)
+    /// Checks if we are currently connecting to the given peer.
+    ///
+    /// If yes, returns a reference to a buffer for packets that will be sent once the connection is established.
+    pub fn is_connecting(&mut self, id: TId) -> Option<&mut impl Extend<IpPacket<'static>>> {
+        Some(&mut self.connections.initial.get_mut(&id)?.buffered_packets)
     }
 
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
@@ -1313,7 +1324,7 @@ pub(crate) enum CandidateEvent {
     Invalid(Candidate),
 }
 
-pub struct InitialConnection<RId> {
+struct InitialConnection<RId> {
     agent: IceAgent,
     session_key: Secret<[u8; 32]>,
 
@@ -1331,10 +1342,6 @@ pub struct InitialConnection<RId> {
 }
 
 impl<RId> InitialConnection<RId> {
-    pub fn queue_packet(&mut self, packet: IpPacket<'static>) {
-        self.buffered_packets.push(packet);
-    }
-
     #[tracing::instrument(level = "debug", skip_all, fields(%cid))]
     fn handle_timeout<TId>(&mut self, cid: TId, now: Instant)
     where
