@@ -325,6 +325,7 @@ impl RefClient {
     pub(crate) fn reset_connections(&mut self) {
         self.connected_cidr_resources.clear();
         self.connected_dns_resources.clear();
+        self.connected_internet_resources = false;
     }
 
     pub(crate) fn is_tunnel_ip(&self, ip: IpAddr) -> bool {
@@ -405,9 +406,7 @@ impl RefClient {
             return;
         };
 
-        if (self.is_connected_to_cidr(rid) || self.is_connected_to_internet(rid))
-            && self.is_tunnel_ip(src)
-        {
+        if self.is_connected_to_internet_or_cidr(rid) && self.is_tunnel_ip(src) {
             tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
             self.expected_icmp_handshakes
                 .entry(gateway)
@@ -418,11 +417,7 @@ impl RefClient {
 
         // If we have a resource, the first packet will initiate a connection to the gateway.
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        if self.internet_resource.as_ref().map(|r| r.id) == Some(rid) {
-            self.connected_internet_resources = true;
-        } else {
-            self.connected_cidr_resources.insert(rid);
-        }
+        self.connect_to_internet_or_cidr_resource(rid);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
@@ -469,6 +464,24 @@ impl RefClient {
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
         if !self.disabled_resources.contains(&resource) {
             self.connected_dns_resources.insert((resource, dst));
+        }
+    }
+
+    pub(crate) fn is_connected_to_internet_or_cidr(&self, resource: ResourceId) -> bool {
+        self.is_connected_to_cidr(resource) || self.is_connected_to_internet(resource)
+    }
+
+    pub(crate) fn connect_to_internet_or_cidr_resource(&mut self, resource: ResourceId) {
+        if self
+            .internet_resource
+            .as_ref()
+            .is_some_and(|r| r.id == resource)
+        {
+            self.connected_internet_resources = true;
+        }
+
+        if self.cidr_resources.iter().any(|(_, r)| r.id == resource) {
+            self.connected_cidr_resources.insert(resource);
         }
     }
 

@@ -338,7 +338,7 @@ impl ReferenceStateMachine for ReferenceState {
                         continue;
                     }
 
-                    // Check if we the DNS server is defined as a resource.
+                    // Check if the DNS server is defined as a resource.
                     let Some(resource) = state.client.inner().dns_query_via_resource(query) else {
                         // Not a resource, process normally.
                         state.client.exec_mut(|client| client.on_dns_query(query));
@@ -351,10 +351,14 @@ impl ReferenceStateMachine for ReferenceState {
                         continue;
                     }
 
-                    if !state.client.inner().is_connected_to_cidr(resource) {
-                        state
-                            .client
-                            .exec_mut(|client| client.connected_cidr_resources.insert(resource));
+                    if !state
+                        .client
+                        .inner()
+                        .is_connected_to_internet_or_cidr(resource)
+                    {
+                        state.client.exec_mut(|client| {
+                            client.connect_to_internet_or_cidr_resource(resource)
+                        });
                         pending_connections.insert(resource);
                         continue;
                     }
