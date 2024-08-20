@@ -81,7 +81,7 @@ const TestimonialBox = ({
           alt="author portrait"
           width={128}
           height={128}
-          className="w-10 h-10 sm:h-12 sm:h-12 md:h-16 md:w-16 rounded-full"
+          className="w-10 h-10 sm:h-12 md:h-16 md:w-16 rounded-full"
         />
         <div>
           <p className="text-md md:text-lg text-neutral-50">{authorName}</p>
