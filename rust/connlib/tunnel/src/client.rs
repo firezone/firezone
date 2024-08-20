@@ -21,6 +21,7 @@ use crate::peer::GatewayOnClient;
 use crate::utils::{self, earliest, turn};
 use crate::{ClientEvent, ClientTunnel, Tun};
 use domain::base::Message;
+use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, RelaySocket, Transmit};
 use std::borrow::Cow;
@@ -28,6 +29,7 @@ use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 
 pub(crate) const IPV4_RESOURCES: Ipv4Network =
@@ -61,6 +63,12 @@ pub(crate) const DNS_SENTINELS_V6: Ipv6Network = match Ipv6Network::new(
 // The max time a dns request can be configured to live in resolvconf
 // is 30 seconds. See resolvconf(5) timeout.
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// How many gateways we at most remember that we connected to.
+///
+/// 100 has been chosen as a pretty arbitrary value.
+/// We only store [`GatewayId`]s so the memory footprint is negligible.
+const MAX_REMEMBERED_GATEWAYS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(100) };
 
 impl ClientTunnel {
     pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
@@ -283,6 +291,11 @@ pub struct ClientState {
     /// Resources that have been disabled by the UI
     disabled_resources: BTreeSet<ResourceId>,
 
+    /// Stores the gateways we recently connected to.
+    ///
+    /// We use this as a hint to the portal to re-connect us to the same gateway for a resource.
+    recently_connected_gateways: LruCache<GatewayId, ()>,
+
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket<'static>>,
     buffered_transmits: VecDeque<Transmit<'static>>,
@@ -320,6 +333,7 @@ impl ClientState {
             disabled_resources: Default::default(),
             buffered_transmits: Default::default(),
             internet_resource: None,
+            recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
         }
     }
 
@@ -578,6 +592,7 @@ impl ClientState {
         }
 
         self.gateways_site.insert(gateway_id, site_id);
+        self.recently_connected_gateways.put(gateway_id, ());
 
         if self.peers.get(&gateway_id).is_some() {
             self.peers
@@ -726,12 +741,6 @@ impl ClientState {
     ) {
         debug_assert!(self.resources_by_id.contains_key(&resource));
 
-        let gateways = self
-            .resources_gateways
-            .values()
-            .copied()
-            .collect::<HashSet<_>>();
-
         if self
             .gateway_by_resource(&resource)
             .is_some_and(|gateway_id| self.node.is_expecting_answer(gateway_id))
@@ -772,10 +781,18 @@ impl ClientState {
 
         tracing::debug!("Sending connection intent");
 
+        // We tell the portal about all gateways we ever connected to, to encourage re-connecting us to the same ones during a session.
+        // The LRU cache visits them in MRU order, meaning a gateway that we recently connected to should still be preferred.
+        let connected_gateway_ids = self
+            .recently_connected_gateways
+            .iter()
+            .map(|(g, _)| *g)
+            .collect();
+
         self.buffered_events
             .push_back(ClientEvent::ConnectionIntent {
                 resource,
-                connected_gateway_ids: gateways,
+                connected_gateway_ids,
             });
     }
 
