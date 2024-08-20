@@ -199,25 +199,10 @@ defmodule Domain.Policies.Policy.Query do
   end
 
   def filter_by_group_or_resource_name(queryable, name) do
-    queryable =
-      queryable
-      |> with_named_binding(:resource, fn queryable, binding ->
-        join(queryable, :inner, [policies: policies], resource in assoc(policies, ^binding),
-          as: ^binding
-        )
-      end)
-      |> with_named_binding(:actor_group, fn queryable, binding ->
-        join(queryable, :inner, [policies: policies], actor_group in assoc(policies, ^binding),
-          as: ^binding
-        )
-      end)
+    {queryable, dynamic_group_filter} = filter_by_actor_group_name(queryable, name)
+    {queryable, dynamic_resource_filter} = filter_by_resource_name(queryable, name)
 
-    {queryable,
-     dynamic(
-       [actor_group: actor_group, resource: resource],
-       ilike(actor_group.name, ^"%#{name}%") or
-         ilike(resource.name, ^"%#{name}%")
-     )}
+    {queryable, dynamic(^dynamic_group_filter or ^dynamic_resource_filter)}
   end
 
   def filter_by_status(queryable, "active") do
