@@ -72,9 +72,7 @@ struct ResourceView: View {
 
         if(model.favorites.ids.contains(resource.id)) {
           Button(action: {
-            print("Removing favorite...")
             model.favorites.remove(resource.id)
-            print("Removed.")
           }) {
             HStack {
               Image(systemName: "star")
@@ -84,9 +82,7 @@ struct ResourceView: View {
           }
         } else {
           Button(action: {
-            print("Adding favorite...")
             model.favorites.add(resource.id)
-            print("Added.")
           }) {
             HStack {
               Image(systemName: "star.fill")
