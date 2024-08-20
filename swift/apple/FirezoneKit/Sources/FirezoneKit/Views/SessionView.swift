@@ -13,7 +13,7 @@ import SwiftUI
 public final class SessionViewModel: ObservableObject {
   @Published private(set) var actorName: String? = nil
   @Published private(set) var favorites: Favorites
-  @Published private(set) var resources: [Resource]? = nil
+  @Published private(set) var resources: ResourceList = ResourceList.loading
   @Published private(set) var status: NEVPNStatus? = nil
 
   let store: Store
@@ -76,7 +76,8 @@ struct SessionView: View {
   var body: some View {
     switch model.status {
     case .connected:
-      if let resources = model.resources {
+      switch model.resources {
+      case .loaded(let resources):
         if resources.isEmpty {
           Text("No Resources. Contact your admin to be granted access.")
         } else {
@@ -103,10 +104,9 @@ struct SessionView: View {
               )
             }
           }
-
           .listStyle(GroupedListStyle())
         }
-      } else {
+      case .loading:
         Text("Loading Resources...")
       }
     case .connecting:
