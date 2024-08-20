@@ -290,7 +290,6 @@ pub struct ClientState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AwaitingConnectionDetails {
-    gateways: HashSet<GatewayId>,
     pub last_intent_sent_at: Instant,
     domain: Option<ResolveRequest>,
 }
@@ -756,7 +755,6 @@ impl ClientState {
             }
             Entry::Vacant(vacant) => {
                 vacant.insert(AwaitingConnectionDetails {
-                    gateways: gateways.clone(),
                     last_intent_sent_at: now,
                     // Note: in case of an overlapping CIDR resource this should be None instead of Some if the resource_id
                     // is for a CIDR resource.
