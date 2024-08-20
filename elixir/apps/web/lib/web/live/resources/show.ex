@@ -31,7 +31,11 @@ defmodule Web.Resources.Show do
         )
         |> assign_live_table("policies",
           query_module: Policies.Policy.Query,
-          hide_filters: [:actor_group_id],
+          hide_filters: [
+            :actor_group_id,
+            :resource_name,
+            :group_or_resource_name
+          ],
           enforce_filters: [
             {:resource_id, resource.id}
           ],
