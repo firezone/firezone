@@ -12,7 +12,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
-    IpcServerMsg,
+    IpcServerMsg, LogFilterReloader,
 };
 use secrecy::{ExposeSecret, SecretString};
 use std::{
@@ -70,7 +70,7 @@ pub(crate) struct Managed {
 pub(crate) fn run(
     cli: client::Cli,
     advanced_settings: settings::AdvancedSettings,
-    reloader: logging::Reloader,
+    reloader: LogFilterReloader,
 ) -> Result<(), Error> {
     // Need to keep this alive so crashes will be handled. Dropping detaches it.
     let _crash_handler = match client::crash_handling::attach_handler() {
@@ -484,7 +484,7 @@ struct Controller {
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
-    log_filter_reloader: logging::Reloader,
+    log_filter_reloader: LogFilterReloader,
     status: Status,
     tray: system_tray::Tray,
     uptime: client::uptime::Tracker,
@@ -537,8 +537,9 @@ impl Controller {
                 self.log_filter_reloader
                     .reload(filter)
                     .context("Couldn't reload log filter")?;
+                self.ipc_client.send_msg(&IpcClientMsg::ReloadLogFilter).await?;
                 tracing::debug!(
-                    "Applied new settings. Log level will take effect immediately for the GUI and later for the IPC service."
+                    "Applied new settings. Log level will take effect immediately."
                 );
                 // Refresh the menu in case the favorites were reset.
                 self.refresh_system_tray_menu()?;
@@ -749,7 +750,7 @@ impl Controller {
 
         let disabled_resources = resources
             .iter()
-            .filter_map(|r| r.can_toggle().then_some(r.id()))
+            .filter_map(|r| r.can_be_disabled().then_some(r.id()))
             .filter(|id| self.advanced_settings.disabled_resources.contains(id))
             .collect();
 
@@ -842,7 +843,7 @@ async fn run_controller(
     ctlr_tx: CtlrTx,
     mut rx: mpsc::Receiver<ControllerRequest>,
     advanced_settings: AdvancedSettings,
-    log_filter_reloader: logging::Reloader,
+    log_filter_reloader: LogFilterReloader,
 ) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");
     let ipc_client = ipc::Client::new(ctlr_tx.clone()).await?;

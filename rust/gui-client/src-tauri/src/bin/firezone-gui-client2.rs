@@ -12,15 +12,17 @@ fn welcome() -> impl View {
                 .style(|s| s.font_size(32.0).flex().justify_center()),
             container(static_label("Sign in below to get started."))
                 .style(|s| s.flex().font_size(16.0).justify_center()),
-            container(img(|| include_bytes!("./logo.png").to_vec()).style(|s| {
-                s.border_radius(PxPct::Pct(50.0))
-                    .width(192.0)
-                    .height(192.0)
-                    .background(Color::WHITE)
-                    // .box_shadow()
-                    .border(2.0)
-                    .border_color(Color::BLACK)
-            }))
+            container(
+                img(|| include_bytes!("../../../src/logo.png").to_vec()).style(|s| {
+                    s.border_radius(PxPct::Pct(50.0))
+                        .width(192.0)
+                        .height(192.0)
+                        .background(Color::WHITE)
+                        // .box_shadow()
+                        .border(2.0)
+                        .border_color(Color::BLACK)
+                }),
+            )
             .style(|s| s.flex().justify_center()),
             container(
                 button(|| "Sign in")

@@ -26,7 +26,7 @@ firezone-logging = { workspace = true }
 floem = { git = "https://github.com/lapce/floem", branch = "main" }
 futures = { version = "0.3", default-features = false }
 hex = "0.4.3"
-minidumper = "0.8.2"
+minidumper = "0.8.3"
 native-dialog = "0.7.0"
 output_vt100 = "0.1"
 rand = "0.8.5"
@@ -54,7 +54,7 @@ uuid = { version = "1.10.0", features = ["v4"] }
 zip = { version = "2", features = ["deflate", "time"], default-features = false }
 
 [dependencies.keyring]
-version = "3.0.4"
+version = "3.2.0"
 features = [
     "crypto-rust", # Don't rely on OpenSSL
     "sync-secret-service", # Can't use Tokio because of <https://github.com/hwchen/keyring-rs/issues/132>
@@ -63,7 +63,7 @@ features = [
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
-nix = { version = "0.28.0", features = ["user"] }
+nix = { version = "0.29.0", features = ["user"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 
