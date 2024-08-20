@@ -18,7 +18,6 @@ import SwiftUI
 // https://developer.apple.com/documentation/swiftui/menubarextra
 public final class MenuBar: NSObject, ObservableObject {
   private var statusItem: NSStatusItem
-  private var resources: [Resource] = []
 
   // Wish these could be `[String]` but diffing between different types is tricky
   private var lastShownFavorites: [Resource] = []
@@ -74,18 +73,15 @@ public final class MenuBar: NSObject, ObservableObject {
               // Handle resource changes
               self.populateResourceMenus(newResources)
               self.handleTunnelStatusOrResourcesChanged(status: status, resources: newResources)
-              self.resources = newResources
           }
         } else {
           model.store.endUpdatingResources()
           populateResourceMenus([])
-          resources = []
         }
 
         // Handle status changes
         self.updateStatusItemIcon(status: status)
-        self.handleTunnelStatusOrResourcesChanged(status: status, resources: resources)
-
+        self.handleTunnelStatusOrResourcesChanged(status: status, resources: model.resources)
       }).store(in: &cancellables)
   }
 
@@ -414,6 +410,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func populateResourceMenus(_ newResources: [Resource]) {
+    print("populateResourceMenus", newResources.count, model.favorites.ids.count)
     // If we have no favorites, then everything is a favorite
     let hasAnyFavorites = newResources.contains { model.favorites.contains($0.id) }
     let newFavorites = if (hasAnyFavorites) {
@@ -652,7 +649,7 @@ public final class MenuBar: NSObject, ObservableObject {
     // When the user clicks to add or remove a favorite, the menu will close anyway, so just recreate the whole menu.
     // This avoids complex logic when changing in and out of the "nothing is favorited" special case
     self.populateResourceMenus([])
-    self.populateResourceMenus(resources)
+    self.populateResourceMenus(model.resources)
   }
 
   private func copyToClipboard(_ string: String) {
