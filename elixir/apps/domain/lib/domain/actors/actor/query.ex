@@ -32,7 +32,7 @@ defmodule Domain.Actors.Actor.Query do
 
   def by_provider_id(queryable, provider_id) do
     queryable
-    |> join(:left, [actors: actors], identities in ^Domain.Auth.Identity.Query.all(),
+    |> join(:right, [actors: actors], identities in ^Domain.Auth.Identity.Query.all(),
       on: identities.actor_id == actors.id,
       as: :all_identities
     )
