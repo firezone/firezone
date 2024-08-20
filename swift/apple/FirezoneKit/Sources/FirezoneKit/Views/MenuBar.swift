@@ -562,7 +562,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
 
     // Resource enable / disable toggle
-    if resource.canToggle {
+    if resource.canBeDisabled {
       subMenu.addItem(NSMenuItem.separator())
       enableToggle.action = #selector(resourceToggle(_:))
       enableToggle.title = resourceTitle(resource.id)
