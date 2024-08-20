@@ -50,6 +50,9 @@ const REALM: &str = "firezone";
 /// Thus, it is chosen as a safe, upper boundary that is not meant to be hit (and thus doesn't affect performance), yet acts as a safe guard, just in case.
 const MAX_EVENTLOOP_ITERS: u32 = 5000;
 
+/// We need an extra 16 bytes on top of the MTU for write_buf since boringtun copies the extra AEAD tag before decrypting it.
+const BUF_SIZE: usize = DEFAULT_MTU + 16 + 20;
+
 pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
 
@@ -73,10 +76,8 @@ pub struct Tunnel<TRoleState> {
     ip4_read_buf: Box<[u8; MAX_UDP_SIZE]>,
     ip6_read_buf: Box<[u8; MAX_UDP_SIZE]>,
 
-    // We need an extra 16 bytes on top of the MTU for write_buf since boringtun copies the extra AEAD tag before decrypting it
-    write_buf: Box<[u8; DEFAULT_MTU + 16 + 20]>,
-    // We have 20 extra bytes to be able to convert between ipv4 and ipv6
-    device_read_buf: Box<[u8; DEFAULT_MTU + 20]>,
+    write_buf: Box<[u8; BUF_SIZE]>,
+    device_read_buf: Box<[u8; BUF_SIZE]>,
 }
 
 impl ClientTunnel {
@@ -89,10 +90,10 @@ impl ClientTunnel {
         Ok(Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory)?,
             role_state: ClientState::new(private_key, known_hosts, rand::random()),
-            write_buf: Box::new([0u8; DEFAULT_MTU + 16 + 20]),
+            write_buf: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            device_read_buf: Box::new([0u8; DEFAULT_MTU + 20]),
+            device_read_buf: Box::new([0u8; BUF_SIZE]),
         })
     }
 
@@ -180,10 +181,10 @@ impl GatewayTunnel {
         Ok(Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory)?,
             role_state: GatewayState::new(private_key, rand::random()),
-            write_buf: Box::new([0u8; DEFAULT_MTU + 20 + 16]),
+            write_buf: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            device_read_buf: Box::new([0u8; DEFAULT_MTU + 20]),
+            device_read_buf: Box::new([0u8; BUF_SIZE]),
         })
     }
 
