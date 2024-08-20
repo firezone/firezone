@@ -28,7 +28,7 @@ public final class SessionViewModel: ObservableObject {
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] ids in
         guard let self = self else { return }
-        // TODO: Refresh menu
+        self.objectWillChange.send()
       })
       .store(in: &cancellables)
 
