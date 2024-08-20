@@ -562,18 +562,12 @@ impl ClientState {
             .get(&resource_id)
             .context("Unknown resource")?;
 
-        if self.node.is_expecting_answer(gateway_id) {
-            // TODO: Should we queue more packets in `InitialConnection` here?
-            // We would have to clear `AwaitingConnectionDetails` and establish the resource <> gateway mapping.
-
-            return Ok(());
-        }
-
         let awaiting_connection_details = self
             .awaiting_connection_details
             .remove(&resource_id)
             .context("No connection details found for resource")?;
         let ips = get_addresses_for_awaiting_resource(desc, &awaiting_connection_details);
+        let intent = awaiting_connection_details.packet;
 
         if let Some(old_gateway_id) = self.resources_gateways.insert(resource_id, gateway_id) {
             if self.peers.get(&old_gateway_id).is_some() {
@@ -583,51 +577,44 @@ impl ClientState {
 
         self.gateways_site.insert(gateway_id, site_id);
         self.recently_connected_gateways.put(gateway_id, ());
-
-        if self.peers.get(&gateway_id).is_some() {
-            self.peers
-                .add_ips_with_resource(&gateway_id, &ips, &resource_id);
-
-            if let Some(transmit) =
-                self.node
-                    .encapsulate(gateway_id, awaiting_connection_details.packet, now)?
-            {
-                self.buffered_transmits.push_back(transmit.into_owned())
-            }
-
-            self.buffered_events.push_back(ClientEvent::RequestAccess {
-                resource_id,
-                gateway_id,
-                maybe_domain: awaiting_connection_details.domain,
-            });
-            return Ok(());
-        };
-
-        self.peers.insert(
-            GatewayOnClient::new(gateway_id, &ips, HashSet::from([resource_id])),
-            &[],
-        );
         self.peers
             .add_ips_with_resource(&gateway_id, &ips, &resource_id);
 
-        let (offer, initial_connection) = self.node.new_connection(
-            gateway_id,
-            awaiting_connection_details.last_intent_sent_at,
-            now,
-        );
-        initial_connection.queue_packet(awaiting_connection_details.packet);
+        match self.node.encapsulate(gateway_id, intent.clone(), now) {
+            Err(snownet::Error::NotConnected) => {
+                let (offer, initial_connection) = self.node.new_connection(
+                    gateway_id,
+                    awaiting_connection_details.last_intent_sent_at,
+                    now,
+                );
+                initial_connection.queue_packet(intent);
 
-        self.buffered_events
-            .push_back(ClientEvent::RequestConnection {
-                gateway_id,
-                offer: Offer {
-                    username: offer.credentials.username,
-                    password: offer.credentials.password,
-                },
-                preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
-                resource_id,
-                maybe_domain: awaiting_connection_details.domain,
-            });
+                self.buffered_events
+                    .push_back(ClientEvent::RequestConnection {
+                        resource_id,
+                        gateway_id,
+                        preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
+                        offer: Offer {
+                            username: offer.credentials.username,
+                            password: offer.credentials.password,
+                        },
+                        maybe_domain: awaiting_connection_details.domain,
+                    });
+
+                return Ok(());
+            }
+            Err(other) => {
+                tracing::debug!("Failed to encapsulate initial intent packet: {other}");
+            }
+            Ok(Some(transmit)) => self.buffered_transmits.push_back(transmit.into_owned()),
+            Ok(None) => {}
+        }
+
+        self.buffered_events.push_back(ClientEvent::RequestAccess {
+            resource_id,
+            gateway_id,
+            maybe_domain: awaiting_connection_details.domain,
+        });
 
         Ok(())
     }
@@ -742,11 +729,11 @@ impl ClientState {
     ) {
         debug_assert!(self.resources_by_id.contains_key(&resource));
 
-        if self
+        if let Some(initial) = self
             .gateway_by_resource(&resource)
-            .is_some_and(|gateway_id| self.node.is_expecting_answer(gateway_id))
+            .and_then(|gateway_id| self.node.initial_connection_mut(gateway_id))
         {
-            tracing::debug!("Already connecting to gateway");
+            initial.queue_packet(packet.to_owned());
 
             return;
         }

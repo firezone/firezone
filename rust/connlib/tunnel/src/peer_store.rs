@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::net::IpAddr;
 
@@ -28,6 +28,14 @@ impl PeerStore<GatewayId, GatewayOnClient> {
         ips: &[IpNetwork],
         resource: &ResourceId,
     ) {
+        if self.get(id).is_none() {
+            self.insert(
+                GatewayOnClient::new(*id, ips, HashSet::from([*resource])),
+                &[],
+            );
+            return;
+        }
+
         for ip in ips {
             let Some(peer) = self.add_ip(id, ip) else {
                 continue;

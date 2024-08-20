@@ -331,6 +331,13 @@ where
         packet: IpPacket<'_>,
         now: Instant,
     ) -> Result<Option<Transmit<'s>>, Error> {
+        if let Some(initial) = self.connections.initial.get_mut(&connection) {
+            tracing::debug!("Awaiting ICE credentials, buffering packet");
+
+            initial.buffered_packets.push(packet.to_owned());
+            return Ok(None);
+        }
+
         let conn = self
             .connections
             .get_established_mut(&connection)
@@ -858,9 +865,8 @@ where
         (params, self.connections.initial.get_mut(&cid).unwrap())
     }
 
-    /// Whether we have sent an [`Offer`] for this connection and are currently expecting an [`Answer`].
-    pub fn is_expecting_answer(&self, id: TId) -> bool {
-        self.connections.initial.contains_key(&id)
+    pub fn initial_connection_mut(&mut self, id: TId) -> Option<&mut InitialConnection<RId>> {
+        self.connections.initial.get_mut(&id)
     }
 
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
