@@ -6,8 +6,8 @@ export function CustomerLogosGrayscale() {
   return (
     <div className="fade-side inline-block overflow-hidden whitespace-nowrap mx-auto">
       <div
-        className="inline-flex w-full"
-        style={{ animation: "12s slide infinite linear" }}
+        className="inline-flex w-fit"
+        style={{ animation: "14s slide infinite linear" }}
       >
         <Link
           className="h-12 mr-20 place-content-center"
@@ -38,8 +38,8 @@ export function CustomerLogosGrayscale() {
           <Image
             alt="bunq logo"
             src="/images/logos/cust-logo-bunq-gray.svg"
-            width={100}
-            height={100}
+            width={80}
+            height={60}
           />
         </Link>
         <Link
@@ -49,7 +49,7 @@ export function CustomerLogosGrayscale() {
           <Image
             alt="wolfram logo"
             src="/images/logos/cust-logo-wolfram-gray.svg"
-            width={75}
+            width={60}
             height={75}
           />
         </Link>
@@ -83,14 +83,14 @@ export function CustomerLogosGrayscale() {
           <Image
             alt="double11 logo"
             src="/images/logos/cust-logo-double11-gray.svg"
-            width={55}
-            height={75}
+            width={50}
+            height={50}
           />
         </Link>
       </div>
       <div
-        className="inline-flex w-full"
-        style={{ animation: "12s slide infinite linear" }}
+        className="inline-flex w-fit whitespace-nowrap"
+        style={{ animation: "14s slide infinite linear" }}
       >
         <Link
           className="h-12 mr-20 place-content-center"
@@ -121,8 +121,8 @@ export function CustomerLogosGrayscale() {
           <Image
             alt="bunq logo"
             src="/images/logos/cust-logo-bunq-gray.svg"
-            width={100}
-            height={100}
+            width={80}
+            height={60}
           />
         </Link>
         <Link
@@ -132,7 +132,7 @@ export function CustomerLogosGrayscale() {
           <Image
             alt="wolfram logo"
             src="/images/logos/cust-logo-wolfram-gray.svg"
-            width={75}
+            width={60}
             height={75}
           />
         </Link>
@@ -166,8 +166,8 @@ export function CustomerLogosGrayscale() {
           <Image
             alt="double11 logo"
             src="/images/logos/cust-logo-double11-gray.svg"
-            width={55}
-            height={75}
+            width={50}
+            height={50}
           />
         </Link>
       </div>
@@ -189,8 +189,8 @@ export function CustomerLogosColored() {
           <Image
             alt="bunq logo"
             src="/images/logos/cust-logo-bunq.svg"
-            width={150}
-            height={150}
+            width={100}
+            height={60}
           />
         </Link>
         <Link
