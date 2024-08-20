@@ -750,7 +750,7 @@ impl Controller {
 
         let disabled_resources = resources
             .iter()
-            .filter_map(|r| r.can_be_disable().then_some(r.id()))
+            .filter_map(|r| r.can_be_disabled().then_some(r.id()))
             .filter(|id| self.advanced_settings.disabled_resources.contains(id))
             .collect();
 
