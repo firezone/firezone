@@ -890,6 +890,14 @@ where
         Some(&mut self.connections.initial.get_mut(&id)?.buffered_packets)
     }
 
+    /// Whether we will accept a packet in [`Node::encapsulate`].
+    ///
+    /// For established connections, packets are directly encapsulated.
+    /// For initial connections, packest will be buffered.
+    pub fn accepts_packet(&self, id: TId) -> bool {
+        self.connections.initial.contains_key(&id) || self.connections.established.contains_key(&id)
+    }
+
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn accept_answer(&mut self, cid: TId, remote: PublicKey, answer: Answer, now: Instant) {

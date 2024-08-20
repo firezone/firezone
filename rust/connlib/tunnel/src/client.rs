@@ -21,6 +21,7 @@ use crate::utils::{self, earliest, turn};
 use crate::{ClientEvent, ClientTunnel, Tun};
 use domain::base::Message;
 use lru::LruCache;
+use ringbuffer::{AllocRingBuffer, RingBuffer};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, RelaySocket, Transmit};
 use std::borrow::Cow;
@@ -68,6 +69,11 @@ const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 /// 100 has been chosen as a pretty arbitrary value.
 /// We only store [`GatewayId`]s so the memory footprint is negligible.
 const MAX_REMEMBERED_GATEWAYS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(100) };
+
+/// How many packets we will at most buffer per resource that we are trying to connect to.
+///
+/// Our MTU is 1280, meaning this will at most occupy 128KB.
+const MAX_BUFFERED_PACKETS_PER_RESOURCE: usize = 100;
 
 impl ClientTunnel {
     pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
@@ -286,8 +292,8 @@ pub struct ClientState {
 struct AwaitingConnectionDetails {
     last_intent_sent_at: Instant,
     domain: Option<ResolveRequest>,
-    /// The IP packet that triggered the last connection intent.
-    packet: IpPacket<'static>,
+    /// IP packets which need to be routed to the resource.
+    packets: AllocRingBuffer<IpPacket<'static>>,
 }
 
 impl ClientState {
@@ -567,7 +573,6 @@ impl ClientState {
             .remove(&resource_id)
             .context("No connection details found for resource")?;
         let ips = get_addresses_for_awaiting_resource(desc, &awaiting_connection_details);
-        let intent = awaiting_connection_details.packet;
 
         if let Some(old_gateway_id) = self.resources_gateways.insert(resource_id, gateway_id) {
             if self.peers.get(&old_gateway_id).is_some() {
@@ -580,34 +585,37 @@ impl ClientState {
         self.peers
             .add_ips_with_resource(&gateway_id, &ips, &resource_id);
 
-        match self.node.encapsulate(gateway_id, intent.clone(), now) {
-            Err(snownet::Error::NotConnected) => {
-                let (offer, buffer) = self.node.new_connection(
+        if !self.node.accepts_packet(gateway_id) {
+            let (offer, buffer) = self.node.new_connection(
+                gateway_id,
+                awaiting_connection_details.last_intent_sent_at,
+                now,
+            );
+            buffer.extend(awaiting_connection_details.packets);
+
+            self.buffered_events
+                .push_back(ClientEvent::RequestConnection {
+                    resource_id,
                     gateway_id,
-                    awaiting_connection_details.last_intent_sent_at,
-                    now,
-                );
-                buffer.extend(iter::once(intent));
+                    preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
+                    offer: Offer {
+                        username: offer.credentials.username,
+                        password: offer.credentials.password,
+                    },
+                    maybe_domain: awaiting_connection_details.domain,
+                });
 
-                self.buffered_events
-                    .push_back(ClientEvent::RequestConnection {
-                        resource_id,
-                        gateway_id,
-                        preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
-                        offer: Offer {
-                            username: offer.credentials.username,
-                            password: offer.credentials.password,
-                        },
-                        maybe_domain: awaiting_connection_details.domain,
-                    });
+            return Ok(());
+        }
 
-                return Ok(());
+        for packet in awaiting_connection_details.packets {
+            match self.node.encapsulate(gateway_id, packet, now) {
+                Ok(Some(transmit)) => self.buffered_transmits.push_back(transmit.into_owned()),
+                Err(other) => {
+                    tracing::debug!("Failed to encapsulate buffered packet: {other}");
+                }
+                Ok(None) => {}
             }
-            Err(other) => {
-                tracing::debug!("Failed to encapsulate initial intent packet: {other}");
-            }
-            Ok(Some(transmit)) => self.buffered_transmits.push_back(transmit.into_owned()),
-            Ok(None) => {}
         }
 
         self.buffered_events.push_back(ClientEvent::RequestAccess {
@@ -742,6 +750,8 @@ impl ClientState {
             Entry::Occupied(mut occupied) => {
                 let time_since_last_intent = now.duration_since(occupied.get().last_intent_sent_at);
 
+                occupied.get_mut().packets.push(packet.to_owned());
+
                 if time_since_last_intent < Duration::from_secs(2) {
                     tracing::trace!(?time_since_last_intent, "Skipping connection intent");
 
@@ -749,9 +759,11 @@ impl ClientState {
                 }
 
                 occupied.get_mut().last_intent_sent_at = now;
-                occupied.get_mut().packet = packet.to_owned();
             }
             Entry::Vacant(vacant) => {
+                let mut packets = AllocRingBuffer::new(MAX_BUFFERED_PACKETS_PER_RESOURCE);
+                packets.push(packet.to_owned());
+
                 vacant.insert(AwaitingConnectionDetails {
                     last_intent_sent_at: now,
                     // Note: in case of an overlapping CIDR resource this should be None instead of Some if the resource_id
@@ -764,7 +776,7 @@ impl ClientState {
                             proxy_ips: ips.clone(),
                         }
                     }),
-                    packet: packet.to_owned(),
+                    packets,
                 });
             }
         }
