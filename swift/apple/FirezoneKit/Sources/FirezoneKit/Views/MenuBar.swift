@@ -70,9 +70,9 @@ public final class MenuBar: NSObject, ObservableObject {
 
         if status == .connected {
           model.store.beginUpdatingResources { newResources in
-              // Handle resource changes
-              self.populateResourceMenus(newResources)
-              self.handleTunnelStatusOrResourcesChanged(status: status, resources: newResources)
+            // Handle resource changes
+            self.populateResourceMenus(newResources.asArray())
+            self.handleTunnelStatusOrResourcesChanged(status: status, resources: newResources)
           }
         } else {
           model.store.endUpdatingResources()
@@ -319,7 +319,7 @@ public final class MenuBar: NSObject, ObservableObject {
     (connectingAnimationImageIndex + 1) % connectingAnimationImages.count
   }
 
-  private func handleTunnelStatusOrResourcesChanged(status: NEVPNStatus, resources: [Resource]?) {
+  private func handleTunnelStatusOrResourcesChanged(status: NEVPNStatus, resources: ResourceList) {
     // Update "Sign In" / "Sign Out" menu items
     switch status {
     case .invalid:
@@ -399,13 +399,16 @@ public final class MenuBar: NSObject, ObservableObject {
     }()
   }
 
-  private func resourceMenuTitle(_ resources: [Resource]?) -> String {
-    guard let resources = resources else { return "Loading Resources..." }
-
-    if resources.isEmpty {
-      return "No Resources"
-    } else {
-      return "Resources"
+  private func resourceMenuTitle(_ resources: ResourceList) -> String {
+    switch resources {
+    case .loading:
+      return "Loading Resources..."
+    case .loaded(let x):
+      if x.isEmpty {
+        return "No Resources"
+      } else {
+        return "Resources"
+      }
     }
   }
 
@@ -649,7 +652,7 @@ public final class MenuBar: NSObject, ObservableObject {
     // When the user clicks to add or remove a favorite, the menu will close anyway, so just recreate the whole menu.
     // This avoids complex logic when changing in and out of the "nothing is favorited" special case
     self.populateResourceMenus([])
-    self.populateResourceMenus(model.resources)
+    self.populateResourceMenus(model.resources.asArray())
   }
 
   private func copyToClipboard(_ string: String) {
