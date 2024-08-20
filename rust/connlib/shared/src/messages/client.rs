@@ -195,6 +195,7 @@ impl ResourceDescription {
             (ResourceDescription::Cidr(cidr_a), ResourceDescription::Cidr(cidr_b)) => {
                 cidr_a.address != cidr_b.address
             }
+            (ResourceDescription::Internet(_), ResourceDescription::Internet(_)) => false,
             _ => true,
         }
     }
