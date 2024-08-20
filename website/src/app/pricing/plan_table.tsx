@@ -548,7 +548,7 @@ export default function PlanTable() {
           </td>
           <td className="gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">99.99%</td>
+          <td className="gmx-1 py-4 text-center">99.5%</td>
         </tr>
         <tr>
           <td
