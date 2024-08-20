@@ -893,7 +893,7 @@ where
     /// Whether we will accept a packet in [`Node::encapsulate`].
     ///
     /// For established connections, packets are directly encapsulated.
-    /// For initial connections, packest will be buffered.
+    /// For initial connections, packets will be buffered.
     pub fn accepts_packet(&self, id: TId) -> bool {
         self.connections.initial.contains_key(&id) || self.connections.established.contains_key(&id)
     }
