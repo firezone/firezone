@@ -74,7 +74,6 @@ public final class MenuBar: NSObject, ObservableObject {
         print("resources")
         self.populateResourceMenus(model.resources.asArray())
         self.handleTunnelStatusOrResourcesChanged()
-        menu.update()
       }).store(in: &cancellables)
 
     model.$status
@@ -82,8 +81,6 @@ public final class MenuBar: NSObject, ObservableObject {
       .sink(receiveValue: { [weak self] status in
         guard let self = self else { return }
         print("status")
-        self.populateResourceMenus(model.resources.asArray())
-        self.handleTunnelStatusOrResourcesChanged()
         self.updateStatusItemIcon(status: model.status)
       }).store(in: &cancellables)
   }
@@ -125,10 +122,9 @@ public final class MenuBar: NSObject, ObservableObject {
     target: self
   )
   private lazy var resourcesSeparatorMenuItem = NSMenuItem.separator()
-  private var otherResourcesMenu: NSMenu = NSMenu()
   private lazy var otherResourcesMenuItem: NSMenuItem = {
     let menuItem = NSMenuItem(title: "Other Resources", action: nil, keyEquivalent: "")
-    menuItem.submenu = otherResourcesMenu
+    menuItem.submenu = NSMenu()
     return menuItem
   }()
   private lazy var otherResourcesSeparatorMenuItem = NSMenuItem.separator()
@@ -207,8 +203,11 @@ public final class MenuBar: NSObject, ObservableObject {
     menu.addItem(resourcesUnavailableMenuItem)
     menu.addItem(resourcesUnavailableReasonMenuItem)
     menu.addItem(resourcesSeparatorMenuItem)
-    menu.addItem(otherResourcesMenuItem)
-    menu.addItem(otherResourcesSeparatorMenuItem)
+
+    if (!model.favorites.ids.isEmpty) {
+      menu.addItem(otherResourcesMenuItem)
+      menu.addItem(otherResourcesSeparatorMenuItem)
+    }
 
     menu.addItem(aboutMenuItem)
     menu.addItem(adminPortalMenuItem)
@@ -455,8 +454,20 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func populateOtherResourcesMenu(_ newOthers: [Resource]) {
-    otherResourcesMenuItem.isHidden = newOthers.isEmpty
-    otherResourcesSeparatorMenuItem.isHidden = newOthers.isEmpty
+    if (newOthers.isEmpty) {
+      // Removing an item that doesn't exist will crash the process, so check for it first.
+      let i1 = menu.index(of: otherResourcesMenuItem)
+      if (i1 != -1) { menu.removeItem(otherResourcesMenuItem) }
+      let i2 = menu.index(of: otherResourcesSeparatorMenuItem)
+      if (i2 != -1) { menu.removeItem(otherResourcesSeparatorMenuItem) }
+    } else {
+      // Adding an item that already exists will crash the process, so check for it first.
+      let i = menu.index(of: aboutMenuItem)
+      let i1 = menu.index(of: otherResourcesMenuItem)
+      if (i1 == -1) { menu.insertItem(otherResourcesMenuItem, at: i) }
+      let i2 = menu.index(of: otherResourcesSeparatorMenuItem)
+      if (i2 == -1) { menu.insertItem(otherResourcesSeparatorMenuItem, at: i+1) }
+    }
 
     // Update the menu in place so everything won't vanish if it's open when it updates
     let diff = (newOthers).difference(
@@ -467,9 +478,9 @@ public final class MenuBar: NSObject, ObservableObject {
       switch change {
       case .insert(let offset, let element, associatedWith: _):
         let menuItem = createResourceMenuItem(resource: element)
-        otherResourcesMenu.insertItem(menuItem, at: offset)
+        otherResourcesMenuItem.submenu?.insertItem(menuItem, at: offset)
       case .remove(let offset, element: _, associatedWith: _):
-        otherResourcesMenu.removeItem(at: offset)
+        otherResourcesMenuItem.submenu?.removeItem(at: offset)
       }
     }
     lastShownOthers = newOthers
