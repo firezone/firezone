@@ -8,8 +8,8 @@ use connlib_shared::messages::client::{Site, SiteId};
 use connlib_shared::messages::ResolveRequest;
 use connlib_shared::messages::{
     client::ResourceDescription, client::ResourceDescriptionCidr, Answer, ClientPayload, DnsServer,
-    GatewayId, Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId,
-    RequestConnection, ResourceId, ReuseConnection,
+    GatewayId, Interface as InterfaceConfig, Key, Offer, Relay, RelayId, RequestConnection,
+    ResourceId, ReuseConnection,
 };
 use connlib_shared::{callbacks, DomainName, PublicKey, StaticSecret};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -1239,60 +1239,57 @@ fn get_addresses_for_awaiting_resource(
 
 fn effective_dns_servers(
     upstream_dns: Vec<DnsServer>,
-    default_resolvers: Vec<IpAddr>,
+    system_dns: Vec<IpAddr>,
     ip_stack: IpStack,
 ) -> Vec<DnsServer> {
-    let mut upstream_dns = upstream_dns
-        .into_iter()
-        .filter_map(not_sentinel)
-        .filter(|s| {
-            let server = s.address();
+    let mut non_sentinel_upstream = upstream_dns.iter().copied().filter(not_sentinel).peekable();
 
-            if !ip_stack.can_send(server.ip()) {
-                tracing::info!(%server, "Ignoring upstream DNS server due to unsupported IP stack");
-                return false;
-            }
+    if non_sentinel_upstream.peek().is_some() {
+        let upstream = non_sentinel_upstream
+            .filter(supported_by_ip_stack(ip_stack))
+            .collect::<Vec<_>>();
 
-            true
-        })
-        .peekable();
-    if upstream_dns.peek().is_some() {
-        return upstream_dns.collect();
+        if upstream.is_empty() {
+            tracing::warn!(?upstream_dns, %ip_stack, "Can't initialise stub resolver: No upstream servers are compatible with IP stack");
+        }
+
+        return upstream;
     }
 
-    let mut dns_servers = default_resolvers
-        .into_iter()
-        .filter(|ip| {
-            let server = *ip;
-
-            if !ip_stack.can_send(server) {
-                tracing::info!(%server, "Ignoring system DNS server due to unsupported IP stack");
-                return false;
-            }
-
-            true
-        })
-        .map(|ip| {
-            DnsServer::IpPort(IpDnsServer {
-                address: (ip, DNS_PORT).into(),
-            })
-        })
-        .filter_map(not_sentinel)
+    let mut dns_servers = system_dns
+        .iter()
+        .copied()
+        .map(|ip| DnsServer::from((ip, DNS_PORT)))
+        .filter(not_sentinel)
+        .filter(supported_by_ip_stack(ip_stack))
         .peekable();
 
     if dns_servers.peek().is_none() {
-        tracing::warn!("No system default DNS servers available! Can't initialize resolver. DNS interception will be disabled.");
+        tracing::warn!(?system_dns, %ip_stack, "Can't initialise stub resolver: No system default DNS servers available");
         return Vec::new();
     }
 
     dns_servers.collect()
 }
 
-fn not_sentinel(srv: DnsServer) -> Option<DnsServer> {
+fn supported_by_ip_stack(ip_stack: IpStack) -> impl Fn(&DnsServer) -> bool {
+    move |server| {
+        let server = server.address();
+
+        if !ip_stack.can_send(server.ip()) {
+            tracing::info!(%server, "Ignoring DNS server due to unsupported IP stack");
+            return false;
+        }
+
+        true
+    }
+}
+
+fn not_sentinel(srv: &DnsServer) -> bool {
     let is_v4_dns = IpNetwork::V4(DNS_SENTINELS_V4).contains(srv.ip());
     let is_v6_dns = IpNetwork::V6(DNS_SENTINELS_V6).contains(srv.ip());
 
-    (!is_v4_dns && !is_v6_dns).then_some(srv)
+    !is_v4_dns && !is_v6_dns
 }
 
 fn sentinel_dns_mapping(
@@ -1474,6 +1471,7 @@ impl IpProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use connlib_shared::messages::IpDnsServer;
     use rand::rngs::OsRng;
 
     #[test]
