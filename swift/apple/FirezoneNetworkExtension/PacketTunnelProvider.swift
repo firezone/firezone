@@ -112,7 +112,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     if case .authenticationCanceled = reason {
       do {
         // This was triggered from onDisconnect, so clear our token
-        Task { try await clearToken() }
+        Task { await clearToken() }
 
         // There's no good way to send data like this from the
         // Network Extension to the GUI, so save it to a file for the GUI to read upon
