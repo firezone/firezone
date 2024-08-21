@@ -17,6 +17,7 @@ use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use itertools::Itertools;
 
+use crate::ip_stack::IpStack;
 use crate::peer::GatewayOnClient;
 use crate::utils::{self, earliest, turn};
 use crate::{ClientEvent, ClientTunnel, Tun};
@@ -288,6 +289,8 @@ pub struct ClientState {
     /// Configuration of the TUN device, when it is up.
     interface_config: Option<InterfaceConfig>,
 
+    ip_stack: IpStack,
+
     /// Resources that have been disabled by the UI
     disabled_resources: BTreeSet<ResourceId>,
 
@@ -334,7 +337,20 @@ impl ClientState {
             buffered_transmits: Default::default(),
             internet_resource: None,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
+            ip_stack: IpStack::None,
         }
+    }
+
+    pub(crate) fn set_ip_stack(&mut self, new: IpStack) {
+        let old = self.ip_stack;
+
+        if old == new {
+            return;
+        }
+
+        tracing::info!(%old, %new, "Updating IP stack");
+        self.ip_stack = new;
+        self.update_dns_mapping();
     }
 
     #[cfg(all(test, feature = "proptest"))]
@@ -1133,8 +1149,11 @@ impl ClientState {
             return;
         };
 
-        let effective_dns_servers =
-            effective_dns_servers(config.upstream_dns.clone(), self.system_resolvers.clone());
+        let effective_dns_servers = effective_dns_servers(
+            config.upstream_dns.clone(),
+            self.system_resolvers.clone(),
+            self.ip_stack,
+        );
 
         if HashSet::<&DnsServer>::from_iter(effective_dns_servers.iter())
             == HashSet::from_iter(self.dns_mapping.right_values())
@@ -1221,14 +1240,38 @@ fn get_addresses_for_awaiting_resource(
 fn effective_dns_servers(
     upstream_dns: Vec<DnsServer>,
     default_resolvers: Vec<IpAddr>,
+    ip_stack: IpStack,
 ) -> Vec<DnsServer> {
-    let mut upstream_dns = upstream_dns.into_iter().filter_map(not_sentinel).peekable();
+    let mut upstream_dns = upstream_dns
+        .into_iter()
+        .filter_map(not_sentinel)
+        .filter(|s| {
+            let server = s.address();
+
+            if !ip_stack.can_send(server.ip()) {
+                tracing::info!(%server, "Ignoring upstream DNS server due to unsupported IP stack");
+                return false;
+            }
+
+            true
+        })
+        .peekable();
     if upstream_dns.peek().is_some() {
         return upstream_dns.collect();
     }
 
     let mut dns_servers = default_resolvers
         .into_iter()
+        .filter(|ip| {
+            let server = *ip;
+
+            if !ip_stack.can_send(server) {
+                tracing::info!(%server, "Ignoring system DNS server due to unsupported IP stack");
+                return false;
+            }
+
+            true
+        })
         .map(|ip| {
             DnsServer::IpPort(IpDnsServer {
                 address: (ip, DNS_PORT).into(),

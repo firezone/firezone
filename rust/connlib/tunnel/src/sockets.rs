@@ -1,3 +1,4 @@
+use crate::ip_stack::IpStack;
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, UdpSocket};
 use std::{
     io,
@@ -43,6 +44,15 @@ impl Sockets {
         }
 
         Poll::Ready(())
+    }
+
+    pub fn ip_stack(&self) -> IpStack {
+        match (self.socket_v4.as_ref(), self.socket_v6.as_ref()) {
+            (None, None) => IpStack::None,
+            (None, Some(_)) => IpStack::V6,
+            (Some(_), None) => IpStack::V4,
+            (Some(_), Some(_)) => IpStack::Dual,
+        }
     }
 
     /// Flushes all buffered data on the sockets.

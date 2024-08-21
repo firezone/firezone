@@ -1,4 +1,4 @@
-use crate::{device_channel::Device, sockets::Sockets, BUF_SIZE};
+use crate::{device_channel::Device, ip_stack::IpStack, sockets::Sockets, BUF_SIZE};
 use futures_util::FutureExt as _;
 use ip_packet::{IpPacket, MutableIpPacket};
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
@@ -118,6 +118,10 @@ impl Io {
         self.device.write(packet)?;
 
         Ok(())
+    }
+
+    pub fn ip_stack(&self) -> IpStack {
+        self.sockets.ip_stack()
     }
 }
 

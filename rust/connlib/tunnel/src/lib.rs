@@ -30,6 +30,7 @@ mod device_channel;
 mod dns;
 mod gateway;
 mod io;
+mod ip_stack;
 mod peer;
 mod peer_store;
 #[cfg(all(test, feature = "proptest"))]
@@ -92,8 +93,10 @@ impl ClientTunnel {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         known_hosts: BTreeMap<String, Vec<IpAddr>>,
     ) -> Self {
+        let io = Io::new(tcp_socket_factory, udp_socket_factory);
+
         Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory),
+            io,
             role_state: ClientState::new(private_key, known_hosts, rand::random()),
             packet_buffer: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
@@ -109,6 +112,7 @@ impl ClientTunnel {
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<ClientEvent>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
+            self.role_state.set_ip_stack(self.io.ip_stack());
 
             if let Some(e) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(e));
