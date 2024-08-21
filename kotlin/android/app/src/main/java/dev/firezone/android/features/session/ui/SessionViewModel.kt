@@ -14,7 +14,6 @@ internal class SessionViewModel
     constructor() : ViewModel() {
         @Inject
         internal lateinit var repo: Repository
-        private val _favoriteResourcesLiveData = MutableLiveData<HashSet<String>>(HashSet())
         private val _serviceStatusLiveData = MutableLiveData<State>()
         private val _resourcesLiveData = MutableLiveData<List<ViewResource>>(emptyList())
         private var showOnlyFavorites: Boolean = false
@@ -38,8 +37,6 @@ internal class SessionViewModel
             val value = favoriteResources
             value.add(id)
             repo.saveFavoritesSync(value)
-            // Update LiveData
-            _favoriteResourcesLiveData.value = value
         }
 
         fun removeFavoriteResource(id: String) {

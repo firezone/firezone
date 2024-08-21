@@ -3,6 +3,7 @@ package dev.firezone.android.core.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.lifecycle.MutableLiveData
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dev.firezone.android.BuildConfig
@@ -15,6 +16,8 @@ import java.security.MessageDigest
 import javax.inject.Inject
 
 internal class Repository
+    private val _favoriteResourcesLiveData = MutableLiveData<HashSet<String>>(HashSet())
+
     @Inject
     constructor(
         private val context: Context,
@@ -65,7 +68,13 @@ internal class Repository
 
         fun getFavoritesSync(): HashSet<String> = HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())
 
-        fun saveFavoritesSync(value: HashSet<String>) = sharedPreferences.edit().putStringSet(FAVORITE_RESOURCES_KEY, value).apply()
+        fun saveFavoritesSync(value: HashSet<String>) = {
+            sharedPreferences.edit().putStringSet(FAVORITE_RESOURCES_KEY, value).apply()
+            // Update LiveData
+            _favoriteResourcesLiveData.value = value
+        }
+
+        fun resetFavoritesSync() = saveFavoritesSync(HashSet())
 
         fun getToken(): Flow<String?> =
             flow {

@@ -143,6 +143,7 @@ internal class SettingsViewModel
         }
 
         fun resetSettingsToDefaults() {
+            repo.resetFavoritesSync()
             config = repo.getDefaultConfigSync()
             onFieldUpdated()
             actionMutableLiveData.postValue(
