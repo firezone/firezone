@@ -147,7 +147,7 @@ export default function Page() {
         }
         image={
           <Image
-            src="/images/policy-conditions.png"
+            src="/images/policy-conditions.svg"
             width={598}
             height={553}
             alt="Policy conditions"
