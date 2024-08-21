@@ -583,6 +583,9 @@ impl RefClient {
     ///
     /// If there are upstream DNS servers configured in the portal, it should use those.
     /// Otherwise it should use whatever was configured on the system prior to connlib starting.
+    ///
+    /// Both of these lists are filtered by the supported IP stack.
+    /// We always respect the upstream DNS set, even if it means that the client ends up with no functional DNS servers.
     pub(crate) fn expected_dns_servers(&self) -> BTreeSet<SocketAddr> {
         if !self.upstream_dns_resolvers.is_empty() {
             return self
