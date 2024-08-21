@@ -19,7 +19,9 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Settings do
     field :client_secret, :string
     field :discovery_document_uri, :string, default: @discovery_document_uri
 
-    embeds_one :service_account_json_key, GoogleServiceAccountKey, primary_key: false do
+    embeds_one :service_account_json_key, GoogleServiceAccountKey,
+      primary_key: false,
+      on_replace: :update do
       field :type, :string
       field :project_id, :string
 

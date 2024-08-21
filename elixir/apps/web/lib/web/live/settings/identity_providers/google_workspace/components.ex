@@ -285,6 +285,9 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
                           struct
                           |> Map.from_struct()
                           |> Jason.encode!()
+
+                        binary when is_binary(binary) ->
+                          binary
                       end
                     }
                     required
