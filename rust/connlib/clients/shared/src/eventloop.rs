@@ -221,15 +221,6 @@ where
                 resources,
                 relays,
             }) => {
-                let mut resources = resources.clone();
-                resources.push(
-                    connlib_shared::messages::client::ResourceDescription::Internet(
-                        ResourceDescriptionInternet {
-                            id: ResourceId::random(),
-                            sites: vec![],
-                        },
-                    ),
-                );
                 self.tunnel.set_new_interface_config(interface);
                 self.tunnel.set_resources(resources);
                 self.tunnel.update_relays(BTreeSet::default(), relays);
