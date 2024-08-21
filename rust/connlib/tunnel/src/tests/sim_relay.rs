@@ -11,7 +11,7 @@ use snownet::{RelaySocket, Transmit};
 use std::{
     borrow::Cow,
     collections::HashSet,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant, SystemTime},
 };
 
@@ -41,9 +41,9 @@ pub(crate) fn map_explode<'a>(
 }
 
 impl SimRelay {
-    pub(crate) fn new(seed: u64, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) -> Self {
+    pub(crate) fn new(seed: u64, ip_stack: IpStack) -> Self {
         let sut = firezone_relay::Server::new(
-            IpStack::from((ip4, ip6)),
+            ip_stack,
             rand::rngs::StdRng::seed_from_u64(seed),
             3478,
             49152..=65535,

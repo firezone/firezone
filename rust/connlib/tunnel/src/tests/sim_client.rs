@@ -253,6 +253,7 @@ pub struct RefClient {
     pub(crate) known_hosts: BTreeMap<String, Vec<IpAddr>>,
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,
+    pub(crate) ip_stack: IpStack,
 
     /// The DNS resolvers configured on the client outside of connlib.
     pub(crate) system_dns_resolvers: Vec<IpAddr>,
@@ -315,6 +316,10 @@ impl RefClient {
         client_state.update_system_resolvers(self.system_dns_resolvers.clone());
 
         SimClient::new(self.id, client_state)
+    }
+
+    pub(crate) fn update_ip_stack(&mut self, new: IpStack) {
+        self.ip_stack = new;
     }
 
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
@@ -583,6 +588,7 @@ impl RefClient {
             return self
                 .upstream_dns_resolvers
                 .iter()
+                .filter(|s| self.ip_stack.can_send(s.ip()))
                 .map(DnsServer::address)
                 .collect();
         }
@@ -590,6 +596,7 @@ impl RefClient {
         self.system_dns_resolvers
             .iter()
             .map(|ip| SocketAddr::new(*ip, 53))
+            .filter(|s| self.ip_stack.can_send(s.ip()))
             .collect()
     }
 
@@ -736,32 +743,47 @@ pub(crate) fn ref_client_host(
     tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
 ) -> impl Strategy<Value = Host<RefClient>> {
-    host(
-        any_ip_stack(),
-        any_port(),
-        ref_client(tunnel_ip4s, tunnel_ip6s),
-        latency(300), // TODO: Increase with #6062.
+    (any_ip_stack(), tunnel_ip4s, tunnel_ip6s).prop_flat_map(
+        |(ip_stack, tunnel_ip4s, tunnel_ip6s)| {
+            host(
+                Just(ip_stack),
+                any_port(),
+                ref_client(
+                    Just(tunnel_ip4s),
+                    Just(tunnel_ip6s),
+                    match ip_stack {
+                        firezone_relay::IpStack::Ip4(_) => IpStack::V4,
+                        firezone_relay::IpStack::Ip6(_) => IpStack::V6,
+                        firezone_relay::IpStack::Dual { .. } => IpStack::Dual,
+                    },
+                ),
+                latency(300), // TODO: Increase with #6062.
+            )
+        },
     )
 }
 
 fn ref_client(
     tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
+    ip_stack: IpStack,
 ) -> impl Strategy<Value = RefClient> {
     (
         tunnel_ip4s,
         tunnel_ip6s,
+        Just(ip_stack),
         client_id(),
         private_key(),
         known_hosts(),
     )
         .prop_map(
-            move |(tunnel_ip4, tunnel_ip6, id, key, known_hosts)| RefClient {
+            move |(tunnel_ip4, tunnel_ip6, ip_stack, id, key, known_hosts)| RefClient {
                 id,
                 key,
                 known_hosts,
                 tunnel_ip4,
                 tunnel_ip6,
+                ip_stack,
                 system_dns_resolvers: Default::default(),
                 upstream_dns_resolvers: Default::default(),
                 internet_resource: Default::default(),

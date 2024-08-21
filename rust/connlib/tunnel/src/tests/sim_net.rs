@@ -63,6 +63,10 @@ impl<T> Host<T> {
         }
     }
 
+    pub(crate) fn ip_stack(&self) -> IpStack {
+        IpStack::from((self.ip4, self.ip6))
+    }
+
     pub(crate) fn inner(&self) -> &T {
         &self.inner
     }
@@ -151,11 +155,16 @@ where
 {
     pub(crate) fn map<U>(
         &self,
-        f: impl FnOnce(T, Option<Ipv4Addr>, Option<Ipv6Addr>) -> U,
+        f: impl FnOnce(T, firezone_relay::IpStack) -> U,
         span: Span,
     ) -> Host<U> {
         Host {
-            inner: span.in_scope(|| f(self.inner.clone(), self.ip4, self.ip6)),
+            inner: span.in_scope(|| {
+                f(
+                    self.inner.clone(),
+                    firezone_relay::IpStack::from((self.ip4, self.ip6)),
+                )
+            }),
             ip4: self.ip4,
             ip6: self.ip6,
             span,

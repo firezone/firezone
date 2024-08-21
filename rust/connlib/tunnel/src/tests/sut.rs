@@ -63,7 +63,7 @@ impl StateMachineTest for TunnelTest {
             .iter()
             .map(|(gid, gateway)| {
                 let gateway = gateway.map(
-                    |ref_gateway, _, _| ref_gateway.init(*gid),
+                    |ref_gateway, _| ref_gateway.init(*gid),
                     debug_span!("gateway", %gid),
                 );
 
@@ -85,7 +85,7 @@ impl StateMachineTest for TunnelTest {
             .dns_servers
             .iter()
             .map(|(did, dns_server)| {
-                let dns_server = dns_server.map(|_, _, _| SimDns {}, debug_span!("dns", %did));
+                let dns_server = dns_server.map(|_, _| SimDns {}, debug_span!("dns", %did));
 
                 (*did, dns_server)
             })
@@ -239,9 +239,11 @@ impl StateMachineTest for TunnelTest {
                 debug_assert!(state
                     .network
                     .add_host(state.client.inner().id, &state.client));
+                let ip_stack = state.client.ip_stack().into();
 
                 state.client.exec_mut(|c| {
                     c.sut.reset();
+                    c.sut.set_ip_stack(ip_stack);
 
                     // In prod, we reconnect to the portal and receive a new `init` message.
                     c.update_relays(iter::empty(), state.relays.iter(), now);

@@ -143,3 +143,13 @@ fn init_logging(ref_state: &ReferenceState, test_index: u32) -> tracing::subscri
         .with(PanicOnErrorEvents::new(test_index))
         .set_default()
 }
+
+impl From<firezone_relay::IpStack> for crate::ip_stack::IpStack {
+    fn from(value: firezone_relay::IpStack) -> Self {
+        match value {
+            firezone_relay::IpStack::Ip4(_) => crate::ip_stack::IpStack::V4,
+            firezone_relay::IpStack::Ip6(_) => crate::ip_stack::IpStack::V6,
+            firezone_relay::IpStack::Dual { .. } => crate::ip_stack::IpStack::Dual,
+        }
+    }
+}
