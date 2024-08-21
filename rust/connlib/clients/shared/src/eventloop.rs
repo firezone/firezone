@@ -8,8 +8,7 @@ use crate::{
 };
 use anyhow::Result;
 use connlib_shared::messages::{
-    client::ResourceDescriptionInternet, ConnectionAccepted, GatewayResponse, RelaysPresence,
-    ResourceAccepted, ResourceId,
+    ConnectionAccepted, GatewayResponse, RelaysPresence, ResourceAccepted, ResourceId,
 };
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
