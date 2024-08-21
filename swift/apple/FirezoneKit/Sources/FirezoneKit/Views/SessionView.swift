@@ -113,7 +113,7 @@ struct SessionView: View {
       Text("Disconnecting...")
     case .reasserting:
       Text("No internet connection. Resources will be displayed when your internet connection resumes.")
-    case .invalid, .none:
+    case .invalid:
       Text("VPN permission doesn't seem to be granted.")
     case .disconnected:
       Text("Signed out. Please sign in again to connect to Resources.")
