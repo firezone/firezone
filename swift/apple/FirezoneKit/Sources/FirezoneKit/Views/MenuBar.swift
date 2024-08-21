@@ -119,9 +119,10 @@ public final class MenuBar: NSObject, ObservableObject {
     target: self
   )
   private lazy var resourcesSeparatorMenuItem = NSMenuItem.separator()
+  private lazy var otherResourcesMenu: NSMenu = NSMenu()
   private lazy var otherResourcesMenuItem: NSMenuItem = {
     let menuItem = NSMenuItem(title: "Other Resources", action: nil, keyEquivalent: "")
-    menuItem.submenu = NSMenu()
+    menuItem.submenu = otherResourcesMenu
     return menuItem
   }()
   private lazy var otherResourcesSeparatorMenuItem = NSMenuItem.separator()
@@ -452,18 +453,12 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private func populateOtherResourcesMenu(_ newOthers: [Resource]) {
     if (newOthers.isEmpty) {
-      // Removing an item that doesn't exist will crash the process, so check for it first.
-      let i1 = menu.index(of: otherResourcesMenuItem)
-      if (i1 != -1) { menu.removeItem(otherResourcesMenuItem) }
-      let i2 = menu.index(of: otherResourcesSeparatorMenuItem)
-      if (i2 != -1) { menu.removeItem(otherResourcesSeparatorMenuItem) }
+      removeItemFromMenu(menu: menu, item: otherResourcesMenuItem)
+      removeItemFromMenu(menu: menu, item: otherResourcesSeparatorMenuItem)
     } else {
-      // Adding an item that already exists will crash the process, so check for it first.
       let i = menu.index(of: aboutMenuItem)
-      let i1 = menu.index(of: otherResourcesMenuItem)
-      if (i1 == -1) { menu.insertItem(otherResourcesMenuItem, at: i) }
-      let i2 = menu.index(of: otherResourcesSeparatorMenuItem)
-      if (i2 == -1) { menu.insertItem(otherResourcesSeparatorMenuItem, at: i+1) }
+      addItemToMenu(menu: menu, item: otherResourcesMenuItem, at: i)
+      addItemToMenu(menu: menu, item: otherResourcesSeparatorMenuItem, at: i + 1)
     }
 
     // Update the menu in place so everything won't vanish if it's open when it updates
@@ -475,12 +470,32 @@ public final class MenuBar: NSObject, ObservableObject {
       switch change {
       case .insert(let offset, let element, associatedWith: _):
         let menuItem = createResourceMenuItem(resource: element)
-        otherResourcesMenuItem.submenu?.insertItem(menuItem, at: offset)
+        otherResourcesMenu.insertItem(menuItem, at: offset)
       case .remove(let offset, element: _, associatedWith: _):
-        otherResourcesMenuItem.submenu?.removeItem(at: offset)
+        otherResourcesMenu.removeItem(at: offset)
       }
     }
     lastShownOthers = newOthers
+  }
+
+  private func addItemToMenu(menu: NSMenu, item: NSMenuItem, at: Int) {
+    // Adding an item that already exists will crash the process, so check for it first.
+    let i = menu.index(of: otherResourcesMenuItem)
+    if (i != -1) {
+      // Item's already in the menu, do nothing
+      return
+    }
+    menu.insertItem(otherResourcesMenuItem, at: at)
+  }
+
+  private func removeItemFromMenu(menu: NSMenu, item: NSMenuItem) {
+    // Removing an item that doesn't exist will crash the process, so check for it first.
+    let i = menu.index(of: item)
+    if (i == -1) {
+      // Item's already not in the menu, do nothing
+      return
+    }
+    menu.removeItem(item)
   }
 
   private func createResourceMenuItem(resource: Resource) -> NSMenuItem {
