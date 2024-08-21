@@ -32,6 +32,41 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
                "IdP sync is not enabled in your subscription plan"
     end
 
+    test "uses service account token when it's available" do
+      bypass = Bypass.open()
+
+      GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+      GoogleWorkspaceDirectory.mock_groups_list_endpoint(bypass, [])
+      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(bypass, [])
+      GoogleWorkspaceDirectory.mock_users_list_endpoint(bypass, [])
+      GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      assert_receive {:bypass_request,
+                      %{req_headers: [{"authorization", "Bearer GOOGLE_0AUTH_ACCESS_TOKEN"} | _]}}
+    end
+
+    test "uses admin user token as a fallback", %{provider: provider} do
+      bypass = Bypass.open()
+
+      GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+      GoogleWorkspaceDirectory.mock_groups_list_endpoint(bypass, [])
+      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(bypass, [])
+      GoogleWorkspaceDirectory.mock_users_list_endpoint(bypass, [])
+
+      provider
+      |> Ecto.Changeset.change(adapter_config: Map.put(provider.adapter_config, "service_account_json_key", nil))
+      |> Repo.update!()
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      assert_receive {:bypass_request,
+                      %{req_headers: [{"authorization", "Bearer OIDC_ACCESS_TOKEN"} | _]}}
+    end
+
     test "syncs IdP data", %{provider: provider} do
       bypass = Bypass.open()
 
@@ -173,6 +208,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       GoogleWorkspaceDirectory.mock_groups_list_endpoint(bypass, groups)
       GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(bypass, organization_units)
       GoogleWorkspaceDirectory.mock_users_list_endpoint(bypass, users)
+      GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
 
       Enum.each(groups, fn group ->
         GoogleWorkspaceDirectory.mock_group_members_list_endpoint(bypass, group["id"], members)
@@ -268,6 +304,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       GoogleWorkspaceDirectory.mock_groups_list_endpoint(bypass, [])
       GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(bypass, [])
       GoogleWorkspaceDirectory.mock_users_list_endpoint(bypass, users)
+      GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
 
       {:ok, pid} = Task.Supervisor.start_link()
       assert execute(%{task_supervisor: pid}) == :ok
@@ -497,6 +534,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       GoogleWorkspaceDirectory.mock_groups_list_endpoint(bypass, groups)
       GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(bypass, organization_units)
       GoogleWorkspaceDirectory.mock_users_list_endpoint(bypass, users)
+      GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
 
       GoogleWorkspaceDirectory.mock_group_members_list_endpoint(bypass, "GROUP_ID1", two_members)
       GoogleWorkspaceDirectory.mock_group_members_list_endpoint(bypass, "GROUP_ID2", one_member)
@@ -621,6 +659,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
 
       bypass = Bypass.open()
       GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+      GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
 
       for path <- [
             "/admin/directory/v1/users",
@@ -668,6 +707,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
     test "disables the sync on 401 response code", %{provider: provider} do
       bypass = Bypass.open()
       GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+      GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
 
       error_message =
         "Admin SDK API has not been used in project XXXX before or it is disabled. " <>

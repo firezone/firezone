@@ -55,7 +55,8 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
       assert errors_on(changeset) == %{
                adapter_config: %{
                  client_id: ["can't be blank"],
-                 client_secret: ["can't be blank"]
+                 client_secret: ["can't be blank"],
+                 service_account_json_key: ["can't be blank"]
                }
              }
     end
@@ -71,7 +72,20 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
           adapter_config: %{
             client_id: "client_id",
             client_secret: "client_secret",
-            discovery_document_uri: discovery_document_url
+            discovery_document_uri: discovery_document_url,
+            service_account_json_key: %{
+              type: "service_account",
+              project_id: "project_id",
+              private_key_id: "private_key_id",
+              private_key: "private_key",
+              client_email: "client_email",
+              client_id: "client_id",
+              auth_uri: "auth_uri",
+              token_uri: "token_uri",
+              auth_provider_x509_cert_url: "auth_provider_x509_cert_url",
+              client_x509_cert_url: "client_x509_cert_url",
+              universe_domain: "universe_domain"
+            }
           }
         )
 
@@ -90,6 +104,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
                      "openid",
                      "email",
                      "profile",
+                     "https://www.googleapis.com/auth/admin.directory.customer.readonly",
                      "https://www.googleapis.com/auth/admin.directory.orgunit.readonly",
                      "https://www.googleapis.com/auth/admin.directory.group.readonly",
                      "https://www.googleapis.com/auth/admin.directory.user.readonly"
@@ -99,7 +114,20 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
                "response_type" => "code",
                "client_id" => "client_id",
                "client_secret" => "client_secret",
-               "discovery_document_uri" => discovery_document_url
+               "discovery_document_uri" => discovery_document_url,
+               "service_account_json_key" => %{
+                 type: "service_account",
+                 client_id: "client_id",
+                 project_id: "project_id",
+                 private_key: "private_key",
+                 private_key_id: "private_key_id",
+                 client_email: "client_email",
+                 auth_uri: "auth_uri",
+                 token_uri: "token_uri",
+                 auth_provider_x509_cert_url: "auth_provider_x509_cert_url",
+                 client_x509_cert_url: "client_x509_cert_url",
+                 universe_domain: "universe_domain"
+               }
              }
     end
   end
@@ -108,6 +136,30 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
     test "does nothing for a provider" do
       {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
       assert ensure_deprovisioned(provider) == {:ok, provider}
+    end
+  end
+
+  describe "fetch_service_account_token/1" do
+    test "generates a valid JWT" do
+      Bypass.open()
+      |> Mocks.GoogleWorkspaceDirectory.mock_token_endpoint()
+
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
+      provider = Repo.get!(Auth.Provider, provider.id)
+
+      assert fetch_service_account_token(provider) == {:ok, "GOOGLE_0AUTH_ACCESS_TOKEN"}
+    end
+
+    test "returns error when API is not available" do
+      Bypass.open()
+      |> Mocks.GoogleWorkspaceDirectory.mock_token_endpoint()
+      |> Bypass.down()
+
+      {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
+      provider = Repo.get!(Auth.Provider, provider.id)
+
+      assert fetch_service_account_token(provider) ==
+               {:error, %Mint.TransportError{reason: :econnrefused}}
     end
   end
 
