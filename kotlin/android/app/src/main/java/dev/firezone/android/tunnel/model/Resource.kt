@@ -29,6 +29,9 @@ enum class TypeEnum {
 
     @Json(name = "cidr")
     CIDR,
+
+    @Json(name = "internet")
+    Internet,
 }
 
 enum class StatusEnum {
