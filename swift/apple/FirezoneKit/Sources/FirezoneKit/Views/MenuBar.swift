@@ -60,7 +60,6 @@ public final class MenuBar: NSObject, ObservableObject {
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] ids in
         guard let self = self else { return }
-        print("favorites")
         // When the user clicks to add or remove a favorite, the menu will close anyway, so just recreate the whole menu.
         // This avoids complex logic when changing in and out of the "nothing is favorited" special case
         self.populateResourceMenus([])
@@ -71,7 +70,6 @@ public final class MenuBar: NSObject, ObservableObject {
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] resources in
         guard let self = self else { return }
-        print("resources")
         self.populateResourceMenus(model.resources.asArray())
         self.handleTunnelStatusOrResourcesChanged()
       }).store(in: &cancellables)
