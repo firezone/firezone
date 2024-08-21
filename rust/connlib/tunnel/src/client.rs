@@ -358,12 +358,12 @@ impl ClientState {
     pub(crate) fn resources(&self) -> Vec<callbacks::ResourceDescription> {
         self.resources_by_id
             .values()
-            .sorted()
             .cloned()
             .map(|r| {
                 let status = self.resource_status(&r);
                 r.with_status(status)
             })
+            .sorted()
             .collect_vec()
     }
 
