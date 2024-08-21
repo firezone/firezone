@@ -63,7 +63,7 @@ impl Sockets {
         let socket = match (dst, self.socket_v4.as_mut(), self.socket_v6.as_mut()) {
             (SocketAddr::V4(_), Some(v4), _) => v4,
             (SocketAddr::V6(_), _, Some(v6)) => v6,
-            (SocketAddr::V4(_), None, _) | (SocketAddr::V6(_), _, None) => {
+            (_, _, _) => {
                 tracing::trace!("Dropping packet: No socket");
                 return Ok(());
             }
