@@ -1,6 +1,7 @@
 use crate::{
     device_channel::Device,
     sockets::{NoInterfaces, Sockets},
+    BUF_SIZE,
 };
 use futures_util::FutureExt as _;
 use ip_packet::{IpPacket, MutableIpPacket};
@@ -54,15 +55,15 @@ impl Io {
         })
     }
 
-    pub fn poll<'b>(
+    pub fn poll<'b1, 'b2>(
         &mut self,
         cx: &mut Context<'_>,
-        ip4_buffer: &'b mut [u8],
-        ip6_bffer: &'b mut [u8],
-        device_buffer: &'b mut [u8],
-    ) -> Poll<io::Result<Input<'b, impl Iterator<Item = DatagramIn<'b>>>>> {
+        ip4_buffer: &'b1 mut [u8],
+        ip6_bffer: &'b1 mut [u8],
+        device_buffer: &'b2 mut [u8],
+    ) -> Poll<io::Result<Input<'b2, impl Iterator<Item = DatagramIn<'b1>>>>> {
         if let Poll::Ready(network) = self.sockets.poll_recv_from(ip4_buffer, ip6_bffer, cx)? {
-            return Poll::Ready(Ok(Input::Network(network)));
+            return Poll::Ready(Ok(Input::Network(network.filter(is_max_wg_packet_size))));
         }
 
         ready!(self.sockets.poll_flush(cx))?;
@@ -120,4 +121,15 @@ impl Io {
 
         Ok(())
     }
+}
+
+fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
+    let len = d.packet.len();
+    if len > BUF_SIZE {
+        tracing::debug!(from = %d.from, %len, "Dropping too large datagram (max allowed: {BUF_SIZE} bytes)");
+
+        return false;
+    }
+
+    true
 }

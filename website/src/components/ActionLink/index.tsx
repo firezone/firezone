@@ -47,14 +47,17 @@ export default function ActionLink({
     ${Size[size].link}
     ${border && `${Size[size].border} border-current`}
     ${(transitionColor && `hover:text-${transitionColor}`) || ""}
-    ${(border && transitionColor && `hover:border-${transitionColor}`) || ""}
+    ${
+      border && transitionColor ? `hover:border-${transitionColor}` : ""
+    } duration-50
+    transform transition
   `;
 
   const iconClasses = `
-    group-hover:translate-x-1 group-hover:scale-110 duration-100 transform
+    group-hover:translate-x-1 group-hover:scale-110 duration-100
     transition
-    ${Size[size].icon}
     ${(transitionColor && `group-hover:text-${transitionColor}`) || ""}
+    ${Size[size].icon}
   `;
 
   return (

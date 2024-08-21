@@ -80,7 +80,6 @@ public final class MenuBar: NSObject, ObservableObject {
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] status in
         guard let self = self else { return }
-        print("status")
         self.updateStatusItemIcon(status: model.status)
       }).store(in: &cancellables)
   }
