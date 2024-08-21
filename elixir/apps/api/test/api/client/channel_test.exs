@@ -289,6 +289,40 @@ defmodule API.Client.ChannelTest do
              }
     end
 
+    test "only sends the same resource once", %{
+      account: account,
+      actor: actor,
+      subject: subject,
+      client: client,
+      dns_resource: resource
+    } do
+      assert_push "init", %{}
+
+      Fixtures.Auth.create_identity(actor: actor, account: account)
+      Fixtures.Auth.create_identity(actor: actor, account: account)
+
+      second_actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: second_actor_group)
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: second_actor_group,
+        resource: resource
+      )
+
+      API.Client.Socket
+      |> socket("client:#{client.id}", %{
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+        client: client,
+        subject: subject
+      })
+      |> subscribe_and_join(API.Client.Channel, "client")
+
+      assert_push "init", %{resources: resources}
+      assert Enum.count(resources, &(&1.address == resource.address)) == 1
+    end
+
     test "sends backwards compatible list of resources if client version is below 1.2", %{
       account: account,
       subject: subject,
