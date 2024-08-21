@@ -34,7 +34,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => &r.name,
             ResourceDescription::Cidr(r) => &r.name,
-            ResourceDescription::Internet(_) => "Internet",
+            ResourceDescription::Internet(r) => &r.name,
         }
     }
 
@@ -120,8 +120,15 @@ pub struct ResourceDescriptionCidr {
 /// Description of an Internet resource
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ResourceDescriptionInternet {
+    /// Name for display always set to "Internet Resource"
+    pub name: String,
+
+    /// Address for display always set to "All internet addresses"
+    pub address: String,
+
     pub id: ResourceId,
     pub sites: Vec<Site>,
+
     pub status: Status,
     pub can_be_disabled: bool,
 }

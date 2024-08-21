@@ -338,9 +338,8 @@ mod tests {
             {
                 "id": "1106047c-cd5d-4151-b679-96b93da7383b",
                 "type": "internet",
-                "name": "internet",
-                "address": "0.0.0.0/0",
-                "address_description": "The whole entire Internet",
+                "name": "Internet Resource",
+                "address": "All internet addresses",
                 "sites": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
                 "status": "Offline",
                 "can_be_disabled": false
@@ -448,12 +447,12 @@ mod tests {
                     .copyable(GATEWAY_CONNECTED),
             )
             .add_submenu(
-                "Internet",
+                "Internet Resource",
                 Menu::default()
                     .copyable("")
                     .separator()
                     .disabled("Resource")
-                    .copyable("Internet")
+                    .copyable("Internet Resource")
                     .copyable("")
                     .item(
                         Event::AddFavorite(
@@ -535,12 +534,12 @@ mod tests {
                             .copyable(NO_ACTIVITY),
                     )
                     .add_submenu(
-                        "Internet",
+                        "Internet Resource",
                         Menu::default()
                             .copyable("")
                             .separator()
                             .disabled("Resource")
-                            .copyable("Internet")
+                            .copyable("Internet Resource")
                             .copyable("")
                             .item(
                                 Event::AddFavorite(ResourceId::from_str(
@@ -622,12 +621,12 @@ mod tests {
                     .copyable(GATEWAY_CONNECTED),
             )
             .add_submenu(
-                "Internet",
+                "Internet Resource",
                 Menu::default()
                     .copyable("")
                     .separator()
                     .disabled("Resource")
-                    .copyable("Internet")
+                    .copyable("Internet Resource")
                     .copyable("")
                     .item(
                         Event::AddFavorite(ResourceId::from_str(

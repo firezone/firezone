@@ -86,6 +86,8 @@ pub struct ResourceDescriptionInternet {
 impl ResourceDescriptionInternet {
     pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionInternet {
         crate::callbacks::ResourceDescriptionInternet {
+            name: "Internet Resource".to_string(),
+            address: "All internet addresses".to_string(),
             id: self.id,
             sites: self.sites,
             can_be_disabled: false,
@@ -195,6 +197,7 @@ impl ResourceDescription {
             (ResourceDescription::Cidr(cidr_a), ResourceDescription::Cidr(cidr_b)) => {
                 cidr_a.address != cidr_b.address
             }
+            (ResourceDescription::Internet(_), ResourceDescription::Internet(_)) => false,
             _ => true,
         }
     }
