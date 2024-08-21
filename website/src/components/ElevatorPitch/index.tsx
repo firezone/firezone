@@ -105,11 +105,11 @@ export default function ElevatorPitch() {
               ))}
             </div>
           </div>
-          <div className="max-w-1/2">
+          <div className="w-fit lg:max-w-[40%]">
             <Image
               src="/images/elevator-pitch.png"
-              width={563}
-              height={594}
+              width={800}
+              height={860}
               alt="Elevator pitch graphic"
             />
           </div>
