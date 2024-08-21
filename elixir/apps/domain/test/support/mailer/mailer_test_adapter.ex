@@ -1,4 +1,4 @@
-defmodule Web.Mailer.TestAdapter do
+defmodule Domain.Mailer.TestAdapter do
   use Swoosh.Adapter
 
   @impl true

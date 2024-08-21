@@ -159,14 +159,14 @@ defmodule Web.AuthController do
     # attacks where you can trick user into logging in into an attacker account.
     fragment = identity.provider_virtual_state.fragment
 
-    Web.Mailer.AuthEmail.sign_in_link_email(
+    Domain.Mailer.AuthEmail.sign_in_link_email(
       identity,
       nonce,
       conn.assigns.user_agent,
       conn.remote_ip,
       redirect_params
     )
-    |> Web.Mailer.deliver_with_rate_limit(
+    |> Domain.Mailer.deliver_with_rate_limit(
       rate_limit_key: {:sign_in_link, identity.id},
       rate_limit: 3,
       rate_limit_interval: :timer.minutes(15)

@@ -616,12 +616,12 @@ defmodule Web.Actors.Show do
   def handle_event("send_welcome_email", %{"id" => id}, socket) do
     {:ok, identity} = Auth.fetch_identity_by_id(id, socket.assigns.subject)
 
-    Web.Mailer.AuthEmail.new_user_email(
+    Domain.Mailer.AuthEmail.new_user_email(
       socket.assigns.account,
       identity,
       socket.assigns.subject
     )
-    |> Web.Mailer.deliver_with_rate_limit(
+    |> Domain.Mailer.deliver_with_rate_limit(
       rate_limit: 3,
       rate_limit_key: {:welcome_email, identity.id},
       rate_limit_interval: :timer.minutes(15)

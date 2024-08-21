@@ -1,6 +1,6 @@
-defmodule Web.Mailer.AuthEmailTest do
+defmodule Domain.Mailer.AuthEmailTest do
   use Web.ConnCase, async: true
-  import Web.Mailer.AuthEmail
+  import Domain.Mailer.AuthEmail
 
   setup do
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)

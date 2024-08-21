@@ -63,6 +63,17 @@ defmodule Domain.MixProject do
       # Erlang Clustering
       {:libcluster, "~> 3.3"},
 
+      # CLDR and unit conversions
+      {:ex_cldr_dates_times, "~> 2.13"},
+      {:ex_cldr_numbers, "~> 2.31"},
+      {:ex_cldr, "~> 2.38"},
+
+      # Mailer deps
+      {:multipart, "~> 0.4.0"},
+      {:phoenix_swoosh, "~> 1.0"},
+      {:gen_smtp, "~> 1.0"},
+      {:phoenix_template, "~> 1.0.4"},
+
       # Observability and Runtime debugging
       {:bandit, "~> 1.0"},
       {:plug, "~> 1.15"},

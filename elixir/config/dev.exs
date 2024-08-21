@@ -69,7 +69,7 @@ config :phoenix_live_reload, :dirs, [
 config :web, Web.Plugs.SecureHeaders,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://api-js.mixpanel.com",
-    "img-src 'self' data: https://www.gravatar.com https://track.hubspot.com",
+    "img-src 'self' data: https://www.gravatar.com https://track.hubspot.com https://www.firezone.dev",
     "style-src 'self' 'unsafe-inline'",
     "script-src 'self' 'unsafe-inline' http://cdn.mxpnl.com http://*.hs-analytics.net https://cdn.tailwindcss.com/"
   ]
@@ -109,7 +109,7 @@ config :phoenix, :stacktrace_depth, 20
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
 
-config :web, Web.Mailer, adapter: Swoosh.Adapters.Local
+config :domain, Domain.Mailer, adapter: Swoosh.Adapters.Local
 
 config :workos, WorkOS.Client,
   api_key: System.get_env("WORKOS_API_KEY"),

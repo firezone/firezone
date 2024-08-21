@@ -1,9 +1,10 @@
-defmodule Web.Mailer.BetaEmail do
-  use Web, :html
+defmodule Domain.Mailer.BetaEmail do
+  use Domain, :html
   import Swoosh.Email
-  import Web.Mailer
+  import Domain.Mailer
+  import Phoenix.Template, only: [embed_templates: 2]
 
-  embed_templates "beta_email/*.text", suffix: "_text"
+  embed_templates("beta_email/*.text", suffix: "_text")
 
   def rest_api_beta_email(
         %Domain.Accounts.Account{} = account,

@@ -995,16 +995,11 @@ defmodule Web.CoreComponents do
   end
 
   def get_identity_email(identity) do
-    provider_email(identity) || identity.provider_identifier
+    Domain.Auth.get_identity_email(identity)
   end
 
   def identity_has_email?(identity) do
-    not is_nil(provider_email(identity)) or identity.provider.adapter == :email or
-      identity.provider_identifier =~ "@"
-  end
-
-  defp provider_email(identity) do
-    get_in(identity.provider_state, ["userinfo", "email"])
+    Domain.Auth.identity_has_email?(identity)
   end
 
   attr :account, :any, required: true
