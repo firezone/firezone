@@ -60,20 +60,37 @@ impl Sockets {
         Poll::Ready(Ok(()))
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(dst = %datagram.dst))]
     pub fn send(&mut self, datagram: DatagramOut) -> io::Result<()> {
-        let socket = match datagram.dst {
-            SocketAddr::V4(dst) => self.socket_v4.as_mut().ok_or(io::Error::new(
-                io::ErrorKind::NotConnected,
-                format!("failed send packet to {dst}: no IPv4 socket"),
-            ))?,
-            SocketAddr::V6(dst) => self.socket_v6.as_mut().ok_or(io::Error::new(
-                io::ErrorKind::NotConnected,
-                format!("failed send packet to {dst}: no IPv6 socket"),
-            ))?,
+        let dst = datagram.dst;
+        let socket = match (dst, self.socket_v4.as_mut(), self.socket_v6.as_mut()) {
+            (SocketAddr::V4(_), Some(v4), _) => v4,
+            (SocketAddr::V6(_), _, Some(v6)) => v6,
+            (SocketAddr::V4(_), None, _) | (SocketAddr::V6(_), _, None) => {
+                tracing::trace!("Dropping packet: No socket");
+                return Ok(());
+            }
         };
-        socket.send(datagram)?;
 
-        Ok(())
+        match socket.send(datagram) {
+            Ok(()) => Ok(()),
+            Err(e) if is_network_unreachable(&e) => {
+                match dst {
+                    SocketAddr::V4(_) => {
+                        tracing::info!("{e}: Discarding IPv4 socket");
+                        self.socket_v4 = None;
+                    }
+                    SocketAddr::V6(_) => {
+                        tracing::info!("{e}: Discarding IPv6 socket");
+
+                        self.socket_v6 = None;
+                    }
+                };
+
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     pub fn poll_recv_from<'b>(
@@ -143,5 +160,21 @@ where
         }
 
         None
+    }
+}
+
+/// Hacky way of detecting `NetworkUnreachable` until <https://github.com/rust-lang/rust/issues/86442> stabilizes.
+fn is_network_unreachable(e: &io::Error) -> bool {
+    format!("{:?}", e.kind()) == "NetworkUnreachable"
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn network_unreachable_works() {
+        let err = std::io::Error::from_raw_os_error(libc::ENETUNREACH); // This is what `std` uses internally to map it.
+
+        assert!(super::is_network_unreachable(&err))
     }
 }

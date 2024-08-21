@@ -2045,6 +2045,7 @@ dependencies = [
  "ip_network",
  "ip_network_table",
  "itertools 0.13.0",
+ "libc",
  "lru",
  "proptest",
  "proptest-state-machine",
@@ -3281,9 +3282,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.155"
+version = "0.2.158"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97b3888a4aecf77e811145cadf6eef5901f4782c53886191b2f693f24761847c"
+checksum = "d8adc4bb1803a324070e64a98ae98f38934d91957a99cfb3a43dcbc01bc56439"
 
 [[package]]
 name = "libdbus-sys"
@@ -4726,7 +4727,7 @@ dependencies = [
  "bytes",
  "pin-project-lite",
  "quinn-proto",
- "quinn-udp",
+ "quinn-udp 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-hash 2.0.0",
  "rustls",
  "socket2",
@@ -4763,6 +4764,18 @@ dependencies = [
  "socket2",
  "tracing",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "quinn-udp"
+version = "0.5.4"
+source = "git+https://github.com/firezone/quinn?branch=main#8db4894a5c126483fab116e042d529de2f5ea470"
+dependencies = [
+ "libc",
+ "once_cell",
+ "socket2",
+ "tracing",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5560,7 +5573,7 @@ dependencies = [
 name = "socket-factory"
 version = "0.1.0"
 dependencies = [
- "quinn-udp",
+ "quinn-udp 0.5.4 (git+https://github.com/firezone/quinn?branch=main)",
  "socket2",
  "tokio",
  "tracing",
