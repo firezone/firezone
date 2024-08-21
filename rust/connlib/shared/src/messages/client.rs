@@ -217,18 +217,6 @@ impl ResourceDescription {
     }
 }
 
-impl PartialOrd for ResourceDescription {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for ResourceDescription {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (self.name(), self.id()).cmp(&(other.name(), other.id()))
-    }
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourceDescription {
