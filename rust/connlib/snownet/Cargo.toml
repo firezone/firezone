@@ -8,6 +8,7 @@ backoff = "0.4.0"
 boringtun = { workspace = true }
 bytecodec = "0.4.15"
 bytes = "1.7.1"
+either = "1.13.0"
 hex = "0.4.0"
 hex-display = "0.3.0"
 ip-packet = { workspace = true }

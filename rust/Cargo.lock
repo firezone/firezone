@@ -5548,6 +5548,7 @@ dependencies = [
  "boringtun",
  "bytecodec",
  "bytes",
+ "either",
  "firezone-logging",
  "hex",
  "hex-display",

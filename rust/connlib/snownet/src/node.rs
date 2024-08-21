@@ -7,6 +7,7 @@ use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
+use either::Either;
 use hex_display::HexDisplayExt;
 use ip_packet::{
     ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, MutableIpPacket, Packet as _,
@@ -341,17 +342,19 @@ where
         packet: IpPacket<'_>,
         now: Instant,
     ) -> Result<Option<Transmit<'s>>, Error> {
-        if let Some(initial) = self.connections.initial.get_mut(&connection) {
-            tracing::debug!("Awaiting ICE credentials, buffering packet");
-
-            initial.buffered_packets.push(packet.to_owned());
-            return Ok(None);
-        }
-
-        let conn = self
+        let conn = match self
             .connections
-            .get_established_mut(&connection)
-            .ok_or(Error::NotConnected)?;
+            .get_mut(&connection)
+            .ok_or(Error::NotConnected)?
+        {
+            Either::Left(initial) => {
+                tracing::debug!("Awaiting ICE credentials, buffering packet");
+
+                initial.buffered_packets.push(packet.to_owned());
+                return Ok(None);
+            }
+            Either::Right(established) => established,
+        };
 
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
@@ -1113,8 +1116,14 @@ where
         initial_agents.chain(negotiated_agents)
     }
 
-    fn get_established_mut(&mut self, id: &TId) -> Option<&mut Connection<RId>> {
-        self.established.get_mut(id)
+    fn get_mut(
+        &mut self,
+        id: &TId,
+    ) -> Option<Either<&mut InitialConnection<RId>, &mut Connection<RId>>> {
+        let left = self.initial.get_mut(id).map(Either::Left);
+        let right = self.established.get_mut(id).map(Either::Right);
+
+        left.or(right)
     }
 
     fn iter_initial_mut(&mut self) -> impl Iterator<Item = (TId, &mut InitialConnection<RId>)> {
