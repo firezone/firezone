@@ -175,19 +175,21 @@ mod tests {
                 id: "99ba0c1e-5189-4cfc-a4db-fd6cb1c937fd".parse().unwrap(),
             }],
             status: Status::Online,
-            can_toggle: false,
+            can_be_disabled: false,
         })
     }
 
     fn internet_resource(uuid: &str) -> ResourceDescription {
         ResourceDescription::Internet(ResourceDescriptionInternet {
+            name: "Internet Resource".to_string(),
+            address: "All internet addresses".to_string(),
             id: ResourceId::from_str(uuid).unwrap(),
             sites: vec![Site {
                 name: "test".to_string(),
                 id: "99ba0c1e-5189-4cfc-a4db-fd6cb1c937fd".parse().unwrap(),
             }],
             status: Status::Offline,
-            can_toggle: true,
+            can_be_disabled: true,
         })
     }
 
