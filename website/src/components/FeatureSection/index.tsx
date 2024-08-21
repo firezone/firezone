@@ -36,10 +36,10 @@ export default function FeatureSection({
   return (
     <section className="py-16">
       <div
-        className={`max-w-screen-xl mx-auto flex justify-between items-center ${
+        className={`max-w-screen-xl mx-auto flex justify-between lg:flex-row items-center ${
           reverse
-            ? "lg:flex-row-reverse flex-col-reverse"
-            : "lg:flex-row flex-col"
+            ? "flex-col-reverse"
+            : "flex-col"
         }`}
       >
         {reverse ? graphic : copy}
