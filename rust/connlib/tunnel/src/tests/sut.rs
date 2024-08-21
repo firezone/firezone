@@ -101,8 +101,14 @@ impl StateMachineTest for TunnelTest {
             });
         }
 
-        let ip_stack = client.ip_stack().into();
-        client.exec_mut(|c| c.sut.set_ip_stack(ip_stack));
+        let client_ip_stack = client.ip_stack().into();
+        client.exec_mut(|c| c.sut.set_ip_stack(client_ip_stack));
+        for gateway in gateways.values_mut() {
+            let gateway_ip_stack = gateway.ip_stack().into();
+            gateway.exec_mut(|g| {
+                g.sut.set_ip_stack(gateway_ip_stack);
+            });
+        }
 
         let mut this = Self {
             flux_capacitor: ref_state.flux_capacitor.clone(),

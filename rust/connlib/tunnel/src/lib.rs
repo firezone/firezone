@@ -65,6 +65,7 @@ pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::{ClientState, Request};
 pub use gateway::{GatewayState, IPV4_PEERS, IPV6_PEERS};
+pub use ip_stack::IpStack;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
@@ -203,6 +204,8 @@ impl GatewayTunnel {
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<GatewayEvent>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
+
+            self.role_state.set_ip_stack(self.io.ip_stack());
 
             if let Some(other) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(other));

@@ -16,7 +16,7 @@ use itertools::Itertools;
 use rangemap::RangeInclusiveSet;
 
 use crate::utils::network_contains_network;
-use crate::GatewayEvent;
+use crate::{GatewayEvent, IpStack};
 
 use anyhow::{bail, Context};
 use nat_table::NatTable;
@@ -162,6 +162,7 @@ impl ClientOnGateway {
         name: DomainName,
         resource_id: ResourceId,
         resolved_ips: Vec<IpAddr>,
+        ip_stack: IpStack,
         now: Instant,
     ) {
         let Some(resource) = self.resources.get_mut(&resource_id) else {
@@ -193,7 +194,7 @@ impl ClientOnGateway {
             })
             .collect_vec();
 
-        self.assign_translations(name, resource_id, &resolved_ips, proxy_ips, now);
+        self.assign_translations(name, resource_id, resolved_ips, proxy_ips, ip_stack, now);
         self.recalculate_filters();
     }
 
@@ -202,12 +203,21 @@ impl ClientOnGateway {
         &mut self,
         name: DomainName,
         resource_id: ResourceId,
-        mapped_ips: &[IpAddr],
+        resolved_ips: Vec<IpAddr>,
         proxy_ips: Vec<IpAddr>,
+        ip_stack: IpStack,
         now: Instant,
     ) {
-        let mapped_ipv4 = mapped_ipv4(mapped_ips);
-        let mapped_ipv6 = mapped_ipv6(mapped_ips);
+        let (usable_ips, ignored_ips) = resolved_ips
+            .into_iter()
+            .partition::<Vec<_>, _>(|ip| ip_stack.can_send(*ip));
+
+        if !ignored_ips.is_empty() {
+            tracing::debug!(?ignored_ips, %ip_stack, %name, resource = %resource_id, "Ignoring some resolved addresses due to incompatible IP stack");
+        }
+
+        let mapped_ipv4 = mapped_ipv4(&usable_ips);
+        let mapped_ipv6 = mapped_ipv6(&usable_ips);
 
         let ipv4_maps = proxy_ips
             .iter()
@@ -235,6 +245,7 @@ impl ClientOnGateway {
         &mut self,
         resource: &ResourceDescription<ResolvedResourceDescriptionDns>,
         domain_ips: Option<(DomainName, Vec<IpAddr>)>,
+        ip_stack: IpStack,
         now: Instant,
     ) -> anyhow::Result<()> {
         match (resource, domain_ips) {
@@ -244,7 +255,14 @@ impl ClientOnGateway {
                     return Ok(());
                 }
 
-                self.assign_translations(name, r.id, &r.addresses, resource_ips, now);
+                self.assign_translations(
+                    name,
+                    r.id,
+                    r.addresses.clone(),
+                    resource_ips,
+                    ip_stack,
+                    now,
+                );
             }
             (ResourceDescription::Dns(_), None) => {
                 bail!("Cannot assign proxy IPs for DNS resource without domain");
@@ -971,11 +989,11 @@ mod tests {
         assert!(state.is_expired(now));
     }
 
-    fn source_v4_addr() -> Ipv4Addr {
+    pub(crate) fn source_v4_addr() -> Ipv4Addr {
         "100.64.0.1".parse().unwrap()
     }
 
-    fn source_v6_addr() -> Ipv6Addr {
+    pub(crate) fn source_v6_addr() -> Ipv6Addr {
         "fd00:2021:1111::1".parse().unwrap()
     }
 
@@ -991,7 +1009,7 @@ mod tests {
         "ed29c148-2acf-4ceb-8db5-d796c2671631".parse().unwrap()
     }
 
-    fn client_id() -> ClientId {
+    pub(crate) fn client_id() -> ClientId {
         "9d4b79f6-1db7-4cb3-a077-712102204d73".parse().unwrap()
     }
 }
@@ -1005,11 +1023,104 @@ mod proptests {
     use proptest::{
         arbitrary::any,
         collection, prop_oneof,
-        sample::select,
+        sample::{select, SizeRange},
         strategy::{Just, Strategy},
     };
     use std::ops::RangeInclusive;
     use test_strategy::Arbitrary;
+
+    #[test_strategy::proptest()]
+    fn skips_resolved_ip6_addresses_in_ip4_only_mode(
+        #[strategy(resolved_ips())] resolved_ips: Vec<IpAddr>,
+        #[strategy(proxy_ips())] proxy_ips: Vec<IpAddr>,
+    ) {
+        let mut state = client_on_gateway();
+        let domain = "example.com".parse().unwrap();
+        let resource = ResourceId::from_u128(0);
+
+        state.assign_translations(
+            domain,
+            resource,
+            resolved_ips,
+            proxy_ips.clone(),
+            IpStack::V4,
+            Instant::now(),
+        );
+
+        for proxy_ip in proxy_ips {
+            let translation_state = state
+                .permanent_translations
+                .get(&proxy_ip)
+                .expect("to have translation state for proxy IP");
+
+            assert!(translation_state.resolved_ip.is_ipv4());
+        }
+    }
+
+    #[test_strategy::proptest()]
+    fn skips_resolved_ip4_addresses_in_ip6_only_mode(
+        #[strategy(resolved_ips())] resolved_ips: Vec<IpAddr>,
+        #[strategy(proxy_ips())] proxy_ips: Vec<IpAddr>,
+    ) {
+        let mut state = client_on_gateway();
+        let domain = "example.com".parse().unwrap();
+        let resource = ResourceId::from_u128(0);
+
+        state.assign_translations(
+            domain,
+            resource,
+            resolved_ips,
+            proxy_ips.clone(),
+            IpStack::V6,
+            Instant::now(),
+        );
+
+        for proxy_ip in proxy_ips {
+            let translation_state = state
+                .permanent_translations
+                .get(&proxy_ip)
+                .expect("to have translation state for proxy IP");
+
+            assert!(translation_state.resolved_ip.is_ipv6());
+        }
+    }
+
+    #[test_strategy::proptest()]
+    fn uses_all_resolved_ips_in_dual_stack(
+        #[strategy(resolved_ips())] resolved_ips: Vec<IpAddr>,
+        #[strategy(proxy_ips())] proxy_ips: Vec<IpAddr>,
+    ) {
+        let mut state = client_on_gateway();
+        let domain = "example.com".parse().unwrap();
+        let resource = ResourceId::from_u128(0);
+
+        state.assign_translations(
+            domain,
+            resource,
+            resolved_ips.clone(),
+            proxy_ips.clone(),
+            IpStack::Dual,
+            Instant::now(),
+        );
+
+        let used_ips = proxy_ips
+            .into_iter()
+            .map(|ip| {
+                state
+                    .permanent_translations
+                    .get(&ip)
+                    .expect("to have translation state for proxy IP")
+                    .resolved_ip
+            })
+            .collect::<Vec<_>>();
+
+        for ip in resolved_ips {
+            assert!(
+                used_ips.contains(&ip),
+                "{ip} has not been used: {used_ips:?}"
+            )
+        }
+    }
 
     #[test_strategy::proptest()]
     fn gateway_accepts_allowed_packet(
@@ -1463,6 +1574,26 @@ mod proptests {
         }
     }
 
+    fn resolved_ips() -> impl Strategy<Value = Vec<IpAddr>> {
+        ips(1..=4, 1..=4)
+    }
+
+    fn proxy_ips() -> impl Strategy<Value = Vec<IpAddr>> {
+        ips(4, 4)
+    }
+
+    fn ips(
+        v4_range: impl Into<SizeRange>,
+        v6_range: impl Into<SizeRange>,
+    ) -> impl Strategy<Value = Vec<IpAddr>> {
+        let ip4 = collection::btree_set(any::<Ipv4Addr>(), v4_range);
+        let ip6 = collection::btree_set(any::<Ipv6Addr>(), v6_range);
+
+        (ip4, ip6).prop_map(|(ip4, ip6)| {
+            Vec::from_iter(ip4.into_iter().map_into().chain(ip6.into_iter().map_into()))
+        })
+    }
+
     #[derive(Debug, Clone, Copy, Arbitrary)]
     enum Protocol {
         Tcp { dport: u16 },
@@ -1509,5 +1640,13 @@ mod proptests {
                 ProtocolKind::Icmp => Filter::Icmp,
             }
         }
+    }
+
+    fn client_on_gateway() -> ClientOnGateway {
+        ClientOnGateway::new(
+            super::tests::client_id(),
+            super::tests::source_v4_addr(),
+            super::tests::source_v6_addr(),
+        )
     }
 }

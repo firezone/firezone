@@ -1,3 +1,4 @@
+use crate::ip_stack::IpStack;
 use crate::peer::ClientOnGateway;
 use crate::peer_store::PeerStore;
 use crate::utils::earliest;
@@ -139,6 +140,8 @@ pub struct GatewayState {
     /// When to next check whether a resource-access policy has expired.
     next_expiry_resources_check: Option<Instant>,
 
+    ip_stack: IpStack,
+
     buffered_events: VecDeque<GatewayEvent>,
 }
 
@@ -149,7 +152,21 @@ impl GatewayState {
             node: ServerNode::new(private_key.into(), BUF_SIZE, seed),
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
+            ip_stack: IpStack::None,
         }
+    }
+
+    pub(crate) fn set_ip_stack(&mut self, new: IpStack) {
+        let old = self.ip_stack;
+
+        if old == new {
+            return;
+        }
+
+        tracing::info!(%old, %new, "Updating IP stack");
+        self.ip_stack = new;
+
+        // TODO: Update all translations?
     }
 
     #[cfg(all(feature = "proptest", test))]
@@ -270,7 +287,7 @@ impl GatewayState {
             domain.clone().map(|(n, _)| n),
         );
 
-        peer.assign_proxies(&resource, domain, now)?;
+        peer.assign_proxies(&resource, domain, self.ip_stack, now)?;
 
         self.peers.insert(peer, &[ipv4.into(), ipv6.into()]);
 
@@ -292,7 +309,7 @@ impl GatewayState {
             return;
         };
 
-        peer.refresh_translation(name, resource_id, resolved_ips, now);
+        peer.refresh_translation(name, resource_id, resolved_ips, self.ip_stack, now);
     }
 
     pub fn allow_access(
@@ -320,7 +337,7 @@ impl GatewayState {
 
         let peer = self.peers.get_mut(&client).context("Unknown client")?;
 
-        peer.assign_proxies(&resource, domain.clone(), now)?;
+        peer.assign_proxies(&resource, domain.clone(), self.ip_stack, now)?;
         peer.add_resource(
             resource.addresses(),
             resource.id(),
