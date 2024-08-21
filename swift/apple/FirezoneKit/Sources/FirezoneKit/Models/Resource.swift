@@ -77,4 +77,5 @@ public enum ResourceType: String, Decodable {
   case dns = "dns"
   case cidr = "cidr"
   case ip = "ip"
+  case internet = "internet"
 }
