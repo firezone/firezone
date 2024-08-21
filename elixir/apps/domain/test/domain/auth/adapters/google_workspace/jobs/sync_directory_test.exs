@@ -57,7 +57,9 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       GoogleWorkspaceDirectory.mock_users_list_endpoint(bypass, [])
 
       provider
-      |> Ecto.Changeset.change(adapter_config: Map.put(provider.adapter_config, "service_account_json_key", nil))
+      |> Ecto.Changeset.change(
+        adapter_config: Map.put(provider.adapter_config, "service_account_json_key", nil)
+      )
       |> Repo.update!()
 
       {:ok, pid} = Task.Supervisor.start_link()

@@ -639,7 +639,11 @@ defmodule Domain.AuthTest do
 
       assert {:error, changeset} = create_provider(account, attrs)
       refute changeset.valid?
-      assert errors_on(changeset) == %{adapter: ["is invalid"], adapter_config: %{service_account_json_key: ["can't be blank"]}}
+
+      assert errors_on(changeset) == %{
+               adapter: ["is invalid"],
+               adapter_config: %{service_account_json_key: ["can't be blank"]}
+             }
     end
 
     test "creates a provider", %{
