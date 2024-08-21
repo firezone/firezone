@@ -20,6 +20,7 @@ ip-packet = { workspace = true }
 ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
 itertools = { version = "0.13", default-features = false, features = ["use_std"] }
+lru = "0.12.4"
 proptest = { version = "1", optional = true }
 rand = "0.8.5"
 rangemap = "1.5.1"

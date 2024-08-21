@@ -16,7 +16,7 @@ use proptest::{
     strategy::{Just, Strategy},
 };
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet},
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
@@ -117,7 +117,7 @@ impl StubPortal {
     pub(crate) fn handle_connection_intent(
         &self,
         resource: ResourceId,
-        _connected_gateway_ids: HashSet<GatewayId>,
+        _connected_gateway_ids: BTreeSet<GatewayId>,
     ) -> (GatewayId, client::SiteId) {
         let site_id = self
             .sites_by_resource

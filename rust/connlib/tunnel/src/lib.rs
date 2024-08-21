@@ -16,7 +16,7 @@ use ip_network::{Ipv4Network, Ipv6Network};
 use rand::rngs::OsRng;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
     task::{Context, Poll},
@@ -275,7 +275,7 @@ pub enum ClientEvent {
     },
     ConnectionIntent {
         resource: ResourceId,
-        connected_gateway_ids: HashSet<GatewayId>,
+        connected_gateway_ids: BTreeSet<GatewayId>,
     },
     SendProxyIps {
         connections: Vec<ReuseConnection>,
