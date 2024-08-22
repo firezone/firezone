@@ -132,7 +132,7 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource) : BottomShe
     private fun refreshButtons() {
         val addToFavoritesBtn: MaterialButton = view.findViewById(R.id.addToFavoritesBtn)
         val removeFromFavoritesBtn: MaterialButton = view.findViewById(R.id.removeFromFavoritesBtn)
-        val isFavorite = viewModel.favoriteResourcesLiveData.value!!.contains(resource.id)
+        val isFavorite = viewModel.repo.favoriteResourcesLiveData.value!!.contains(resource.id)
         addToFavoritesBtn.visibility = if (isFavorite) View.GONE else View.VISIBLE
         removeFromFavoritesBtn.visibility = if (isFavorite) View.VISIBLE else View.GONE
     }

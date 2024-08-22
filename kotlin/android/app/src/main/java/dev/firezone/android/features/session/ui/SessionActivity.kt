@@ -123,11 +123,11 @@ internal class SessionActivity : AppCompatActivity() {
             refreshList()
         }
 
-        viewModel.favoriteResourcesLiveData.observe(this) {
+        viewModel.repo.favoriteResourcesLiveData.observe(this) {
             refreshList()
         }
         viewModel.tabSelected(binding.tabLayout.selectedTabPosition)
-        viewModel.favoriteResourcesLiveData.value = viewModel.repo.getFavoritesSync()
+        viewModel.repo.favoriteResourcesLiveData.value = viewModel.repo.getFavoritesSync()
     }
 
     private fun refreshList() {

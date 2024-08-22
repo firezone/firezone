@@ -11,22 +11,17 @@ import javax.inject.Inject
 @HiltViewModel
 internal class SessionViewModel
     @Inject
-    constructor() : ViewModel() {
-        @Inject
-        internal lateinit var repo: Repository
+    constructor(
+        val repo: Repository,
+    ) : ViewModel() {
         private val _serviceStatusLiveData = MutableLiveData<State>()
         private val _resourcesLiveData = MutableLiveData<List<ViewResource>>(emptyList())
         private var showOnlyFavorites: Boolean = false
 
-        val favoriteResourcesLiveData: MutableLiveData<HashSet<String>>
-            get() = _favoriteResourcesLiveData
         val serviceStatusLiveData: MutableLiveData<State>
             get() = _serviceStatusLiveData
         val resourcesLiveData: MutableLiveData<List<ViewResource>>
             get() = _resourcesLiveData
-
-        private val favoriteResources: HashSet<String>
-            get() = favoriteResourcesLiveData.value!!
 
         // Actor name
         fun clearActorName() = repo.clearActorName()
@@ -34,20 +29,18 @@ internal class SessionViewModel
         fun getActorName() = repo.getActorNameSync()
 
         fun addFavoriteResource(id: String) {
-            val value = favoriteResources
+            val value = repo.favoriteResources
             value.add(id)
             repo.saveFavoritesSync(value)
         }
 
         fun removeFavoriteResource(id: String) {
-            val value = favoriteResources
+            val value = repo.favoriteResources
             value.remove(id)
             repo.saveFavoritesSync(value)
             if (forceAllResourcesTab()) {
                 showOnlyFavorites = false
             }
-            // Update LiveData
-            _favoriteResourcesLiveData.value = value
         }
 
         fun clearToken() = repo.clearToken()
@@ -55,21 +48,21 @@ internal class SessionViewModel
         // The subset of Resources to actually render
         fun resourcesList(): List<ViewResource> {
             val resources = resourcesLiveData.value!!
-            return if (favoriteResources.isEmpty()) {
+            return if (repo.favoriteResources.isEmpty()) {
                 resources
             } else if (showOnlyFavorites) {
-                resources.filter { favoriteResources.contains(it.id) }
+                resources.filter { repo.favoriteResources.contains(it.id) }
             } else {
                 resources
             }
         }
 
         fun forceAllResourcesTab(): Boolean {
-            return favoriteResources.isEmpty()
+            return repo.favoriteResources.isEmpty()
         }
 
         fun showFavoritesTab(): Boolean {
-            return favoriteResources.isNotEmpty()
+            return repo.favoriteResources.isNotEmpty()
         }
 
         fun tabSelected(position: Int) {
