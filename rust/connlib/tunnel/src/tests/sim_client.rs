@@ -6,7 +6,7 @@ use super::{
     transition::DnsQuery,
     IcmpIdentifier, IcmpSeq, QueryId,
 };
-use crate::{proptest::*, ClientState};
+use crate::{ip_stack::IpStack, proptest::*, ClientState};
 use bimap::BiMap;
 use connlib_shared::{
     messages::{

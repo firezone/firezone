@@ -56,7 +56,7 @@ impl StateMachineTest for TunnelTest {
         // Construct client, gateway and relay from the initial state.
         let mut client = ref_state
             .client
-            .map(|ref_client, _, _| ref_client.init(), debug_span!("client"));
+            .map(|ref_client, _| ref_client.init(), debug_span!("client"));
 
         let mut gateways = ref_state
             .gateways
@@ -100,6 +100,9 @@ impl StateMachineTest for TunnelTest {
                 g.update_relays(iter::empty(), relays.iter(), ref_state.flux_capacitor.now())
             });
         }
+
+        let ip_stack = client.ip_stack().into();
+        client.exec_mut(|c| c.sut.set_ip_stack(ip_stack));
 
         let mut this = Self {
             flux_capacitor: ref_state.flux_capacitor.clone(),
