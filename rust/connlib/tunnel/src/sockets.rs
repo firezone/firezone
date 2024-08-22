@@ -57,37 +57,29 @@ impl Sockets {
         Poll::Ready(Ok(()))
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(dst = %datagram.dst))]
     pub fn send(&mut self, datagram: DatagramOut) -> io::Result<()> {
         let dst = datagram.dst;
-        let socket = match (dst, self.socket_v4.as_mut(), self.socket_v6.as_mut()) {
-            (SocketAddr::V4(_), Some(v4), _) => v4,
-            (SocketAddr::V6(_), _, Some(v6)) => v6,
-            (_, _, _) => {
-                tracing::trace!("Dropping packet: No socket");
-                return Ok(());
-            }
+        let maybe_socket = match (dst, &mut self.socket_v4, &mut self.socket_v6) {
+            (SocketAddr::V4(_), v4, _) => v4,
+            (SocketAddr::V6(_), _, v6) => v6,
+        };
+
+        let Some(socket) = maybe_socket else {
+            tracing::trace!(%dst, "Dropping packet: No socket");
+
+            return Ok(());
         };
 
         match socket.send(datagram) {
-            Ok(()) => Ok(()),
+            Ok(()) => {}
             Err(e) if is_network_unreachable(&e) => {
-                match dst {
-                    SocketAddr::V4(_) => {
-                        tracing::info!("{e}: Discarding IPv4 socket");
-                        self.socket_v4 = None;
-                    }
-                    SocketAddr::V6(_) => {
-                        tracing::info!("{e}: Discarding IPv6 socket");
-
-                        self.socket_v6 = None;
-                    }
-                };
-
-                Ok(())
+                tracing::info!(%dst, "{e}: Discarding socket");
+                *maybe_socket = None;
             }
-            Err(e) => Err(e),
-        }
+            Err(e) => return Err(e),
+        };
+
+        Ok(())
     }
 
     pub fn poll_recv_from<'b>(
