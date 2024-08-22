@@ -56,7 +56,9 @@ pub(crate) enum AppState<'a> {
     Loading,
     SignedOut,
     WaitingForBrowser,
-    WaitingForConnlib,
+    WaitingForNetwork,
+    WaitingForPortal,
+    WaitingForTunnel,
     SignedIn(SignedIn<'a>),
 }
 
@@ -163,11 +165,12 @@ impl Tray {
 
     pub(crate) fn update(&mut self, state: AppState) -> Result<()> {
         let new_icon = match &state {
-            AppState::Loading | AppState::WaitingForBrowser | AppState::WaitingForConnlib => {
-                Icon::Busy
-            }
-            AppState::SignedOut => Icon::SignedOut,
+            AppState::Loading
+            | AppState::WaitingForBrowser
+            | AppState::SignedOut
+            | AppState::WaitingForNetwork => Icon::SignedOut,
             AppState::SignedIn { .. } => Icon::SignedIn,
+            AppState::WaitingForPortal | AppState::WaitingForTunnel => Icon::Busy,
         };
 
         self.handle.set_tooltip(TOOLTIP)?;
@@ -214,7 +217,9 @@ impl<'a> AppState<'a> {
                 .item(Event::SignIn, "Sign In")
                 .add_bottom_section(QUIT_TEXT_SIGNED_OUT),
             Self::WaitingForBrowser => signing_in("Waiting for browser..."),
-            Self::WaitingForConnlib => signing_in("Signing In..."),
+            Self::WaitingForNetwork => signing_in("Waiting for Internet access..."),
+            Self::WaitingForPortal => signing_in("Connecting to Firezone Portal..."),
+            Self::WaitingForTunnel => signing_in("Raising tunnel..."),
             Self::SignedIn(x) => signed_in(&x),
         }
     }
