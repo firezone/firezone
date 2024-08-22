@@ -9,15 +9,13 @@ export default function Gateway() {
 
   return (
     <Entries href={href} arches={arches} title="Gateway">
-      {/*
-      <Entry version="1.2.0" date={new Date("2024-XX-XX")}>
+      <Entry version="1.2.0" date={new Date("2024-08-21")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="5901">
             Implements glob-like matching of domains for DNS resources.
           </ChangeItem>
         </ul>
       </Entry>
-      */}
       <Entry version="1.1.5" date={new Date("2024-08-13")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6276">
