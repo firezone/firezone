@@ -78,9 +78,11 @@ impl ResourceDescriptionCidr {
 pub struct ResourceDescriptionInternet {
     /// Resource's id.
     pub id: ResourceId,
-    // TBD
+    /// Sites for the internet resource
     #[serde(rename = "gateway_groups")]
     pub sites: Vec<Site>,
+    /// Whether or not resource can be disabled from UI
+    pub can_be_disabled: Option<bool>,
 }
 
 impl ResourceDescriptionInternet {
@@ -90,7 +92,7 @@ impl ResourceDescriptionInternet {
             address: "All internet addresses".to_string(),
             id: self.id,
             sites: self.sites,
-            can_be_disabled: false,
+            can_be_disabled: self.can_be_disabled.unwrap_or_default(),
             status,
         }
     }
@@ -214,18 +216,6 @@ impl ResourceDescription {
                 crate::callbacks::ResourceDescription::Internet(r.with_status(status))
             }
         }
-    }
-}
-
-impl PartialOrd for ResourceDescription {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for ResourceDescription {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (self.name(), self.id()).cmp(&(other.name(), other.id()))
     }
 }
 

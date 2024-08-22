@@ -19,7 +19,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
     time::Instant,
 };
 use tun::Tun;
@@ -64,7 +64,6 @@ pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::{ClientState, Request};
 pub use gateway::{GatewayState, IPV4_PEERS, IPV6_PEERS};
-pub use sockets::NoInterfaces;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
@@ -92,25 +91,25 @@ impl ClientTunnel {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         known_hosts: BTreeMap<String, Vec<IpAddr>>,
-    ) -> Result<Self, NoInterfaces> {
-        Ok(Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory)?,
+    ) -> Self {
+        Self {
+            io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: ClientState::new(private_key, known_hosts, rand::random()),
             packet_buffer: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-        })
+        }
     }
 
-    pub fn reset(&mut self) -> Result<(), NoInterfaces> {
+    pub fn reset(&mut self) {
         self.role_state.reset();
-        self.io.rebind_sockets()?;
-
-        Ok(())
+        self.io.rebind_sockets();
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<ClientEvent>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
+            ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
+
             if let Some(e) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(e));
             }
@@ -182,14 +181,14 @@ impl GatewayTunnel {
         private_key: StaticSecret,
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    ) -> Result<Self, NoInterfaces> {
-        Ok(Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory)?,
+    ) -> Self {
+        Self {
+            io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: GatewayState::new(private_key, rand::random()),
             packet_buffer: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-        })
+        }
     }
 
     pub fn update_relays(&mut self, to_remove: BTreeSet<RelayId>, to_add: Vec<Relay>) {
@@ -199,6 +198,8 @@ impl GatewayTunnel {
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<GatewayEvent>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
+            ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
+
             if let Some(other) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(other));
             }
