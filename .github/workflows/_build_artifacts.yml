@@ -155,9 +155,9 @@ jobs:
             artifact: firezone-client-headless-linux
             image_name: client
             # mark:next-headless-version
-            release_name: headless-client-1.2.0
+            release_name: headless-client-1.2.1
             # mark:next-headless-version
-            version: 1.2.0
+            version: 1.2.1
           - package: firezone-relay
             artifact: firezone-relay
             image_name: relay
@@ -165,9 +165,9 @@ jobs:
             artifact: firezone-gateway
             image_name: gateway
             # mark:next-gateway-version
-            release_name: gateway-1.2.0
+            release_name: gateway-1.2.1
             # mark:next-gateway-version
-            version: 1.2.0
+            version: 1.2.1
           - package: http-test-server
             artifact: http-test-server
             image_name: http-test-server
@@ -347,7 +347,7 @@ jobs:
           - name: relay
           - name: gateway
             # mark:next-gateway-version
-            version: 1.2.0
+            version: 1.2.1
           - name: client
             # mark:next-client-version
             version: 1.0.6
