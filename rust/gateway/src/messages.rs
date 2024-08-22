@@ -83,15 +83,15 @@ impl ResolveRequest {
     }
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct AllowAccess {
-    pub client_id: ClientId,
     pub resource: ResourceDescription,
     #[serde(with = "ts_seconds_option")]
     pub expires_at: Option<DateTime<Utc>>,
     pub payload: Option<ResolveRequest>,
     #[serde(rename = "ref")]
     pub reference: String,
+    pub client: Client,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]

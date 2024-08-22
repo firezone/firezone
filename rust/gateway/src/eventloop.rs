@@ -265,24 +265,28 @@ impl Eventloop {
             .inspect_err(|e| tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request: {e}"))
             .unwrap_or_default();
 
-        match self.tunnel.accept(
+        let answer = self.tunnel.accept(
             req.client.id,
             req.client.peer.preshared_key,
             req.client.payload.ice_parameters,
             PublicKey::from(req.client.peer.public_key.0),
+        );
+
+        match self.tunnel.allow_access(
+            req.client.id,
             req.client.peer.ipv4,
             req.client.peer.ipv6,
             req.client.payload.domain.as_ref().map(|r| r.as_tuple()),
             req.expires_at,
             req.resource.into_resolved(addresses.clone()),
         ) {
-            Ok(accepted) => {
+            Ok(()) => {
                 self.portal.send(
                     PHOENIX_TOPIC,
                     EgressMessages::ConnectionReady(ConnectionReady {
                         reference: req.reference,
                         gateway_payload: GatewayResponse::ConnectionAccepted(ConnectionAccepted {
-                            ice_parameters: accepted,
+                            ice_parameters: answer,
                             domain_response: req.client.payload.domain.map(|r| {
                                 connlib_shared::messages::DomainResponse {
                                     domain: r.name(),
@@ -306,15 +310,17 @@ impl Eventloop {
 
     pub fn allow_access(&mut self, result: Result<Vec<IpAddr>, Timeout>, req: AllowAccess) {
         let addresses = result
-            .inspect_err(|e| tracing::debug!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request: {e}"))
+            .inspect_err(|e| tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of allow access request: {e}"))
             .unwrap_or_default();
 
         if let (Ok(()), Some(resolve_request)) = (
             self.tunnel.allow_access(
-                req.resource.into_resolved(addresses.clone()),
-                req.client_id,
-                req.expires_at,
+                req.client.id,
+                req.client.peer.ipv4,
+                req.client.peer.ipv6,
                 req.payload.as_ref().map(|r| r.as_tuple()),
+                req.expires_at,
+                req.resource.into_resolved(addresses.clone()),
             ),
             req.payload,
         ) {
