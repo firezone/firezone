@@ -82,7 +82,7 @@ pub fn internet_resource(
         ResourceDescriptionInternet {
             id,
             sites,
-            can_be_disabled,
+            Some(can_be_disabled),
         }
     })
 }
