@@ -256,15 +256,19 @@ pub struct RefClient {
     pub(crate) tunnel_ip6: Ipv6Addr,
 
     /// The DNS resolvers configured on the client outside of connlib.
+    #[derivative(Debug = "ignore")]
     pub(crate) system_dns_resolvers: Vec<IpAddr>,
     /// The upstream DNS resolvers configured in the portal.
+    #[derivative(Debug = "ignore")]
     pub(crate) upstream_dns_resolvers: Vec<DnsServer>,
 
     /// Tracks all resources in the order they have been added in.
     ///
     /// When reconnecting to the portal, we simulate them being re-added in the same order.
+    #[derivative(Debug = "ignore")]
     resources: Vec<ResourceDescription>,
 
+    #[derivative(Debug = "ignore")]
     internet_resource: Option<ResourceId>,
 
     /// The CIDR resources the client is aware of.
@@ -279,6 +283,7 @@ pub struct RefClient {
     pub(crate) dns_records: BTreeMap<DomainName, BTreeSet<Rtype>>,
 
     /// Whether we are connected to the gateway serving the Internet resource.
+    #[derivative(Debug = "ignore")]
     pub(crate) connected_internet_resources: bool,
 
     /// The CIDR resources the client is connected to.
