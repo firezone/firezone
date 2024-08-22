@@ -78,9 +78,11 @@ impl ResourceDescriptionCidr {
 pub struct ResourceDescriptionInternet {
     /// Resource's id.
     pub id: ResourceId,
-    // TBD
+    /// Sites for the internet resource
     #[serde(rename = "gateway_groups")]
     pub sites: Vec<Site>,
+    /// Whether or not resource can be disabled from UI
+    pub can_be_disabled: Option<bool>,
 }
 
 impl ResourceDescriptionInternet {
@@ -90,7 +92,7 @@ impl ResourceDescriptionInternet {
             address: "All internet addresses".to_string(),
             id: self.id,
             sites: self.sites,
-            can_be_disabled: false,
+            can_be_disabled: self.can_be_disabled.unwrap_or_default(),
             status,
         }
     }
