@@ -165,7 +165,7 @@ resource "google_compute_firewall" "relays-ssh-ipv4" {
   target_tags   = module.relays[0].target_tags
 }
 
-# Trigger an alert when more than 20% of relays are down
+# Trigger an alert when more than 50% of relays are down
 resource "google_monitoring_alert_policy" "connected_relays_count" {
   project = module.google-cloud-project.project.project_id
 
@@ -179,10 +179,10 @@ resource "google_monitoring_alert_policy" "connected_relays_count" {
 
     condition_threshold {
       filter     = "resource.type = \"gce_instance\" AND metric.type = \"custom.googleapis.com/elixir/domain/relays/online_relays_count/last_value\""
-      comparison = "COMPARISON_GT"
+      comparison = "COMPARISON_LT"
 
       # at least one relay per region must be always online
-      threshold_value = length(module.relays[0].instances) - 1
+      threshold_value = length(module.relays[0].instances)
       duration        = "0s"
 
       trigger {
