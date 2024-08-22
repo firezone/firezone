@@ -423,6 +423,8 @@ impl ReferenceStateMachine for ReferenceState {
             }
             Transition::ReconnectPortal => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
+                // We do re-add all resources though so depending on the order they are added in, overlapping CIDR resources may change.
+                state.client.exec_mut(|c| c.readd_all_resources());
             }
             Transition::DeployNewRelays(new_relays) => {
                 // Always take down all relays because we can't know which one was sampled for the connection.

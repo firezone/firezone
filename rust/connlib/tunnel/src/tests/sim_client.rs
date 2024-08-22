@@ -31,6 +31,7 @@ use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
+    mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Instant,
 };
@@ -259,16 +260,16 @@ pub struct RefClient {
     /// The upstream DNS resolvers configured in the portal.
     pub(crate) upstream_dns_resolvers: Vec<DnsServer>,
 
-    resources: BTreeMap<ResourceId, ResourceDescription>,
+    /// Tracks all resources in the order they have been added in.
+    ///
+    /// When reconnecting to the portal, we simulate them being re-added in the same order.
+    resources: Vec<ResourceDescription>,
 
     internet_resource: Option<ResourceId>,
 
     /// The CIDR resources the client is aware of.
     #[derivative(Debug = "ignore")]
     cidr_resources: IpNetworkTable<ResourceId>,
-    /// The DNS resources the client is aware of.
-    #[derivative(Debug = "ignore")]
-    dns_resources: BTreeSet<ResourceId>,
 
     /// The client's DNS records.
     ///
@@ -331,12 +332,11 @@ impl RefClient {
         self.disconnect_resource(resource);
 
         self.cidr_resources.retain(|_, r| r != resource);
-        self.dns_resources.remove(resource);
         if self.internet_resource.is_some_and(|r| &r == resource) {
             self.internet_resource = None;
         }
 
-        self.resources.remove(resource);
+        self.resources.retain(|r| r.id() != *resource);
     }
 
     pub(crate) fn reset_connections(&mut self) {
@@ -347,18 +347,30 @@ impl RefClient {
 
     pub(crate) fn add_internet_resource(&mut self, r: ResourceDescriptionInternet) {
         self.internet_resource = Some(r.id);
-        self.resources
-            .insert(r.id, ResourceDescription::Internet(r));
+        self.resources.push(ResourceDescription::Internet(r));
     }
 
     pub(crate) fn add_cidr_resource(&mut self, r: ResourceDescriptionCidr) {
         self.cidr_resources.insert(r.address, r.id);
-        self.resources.insert(r.id, ResourceDescription::Cidr(r));
+        self.resources.push(ResourceDescription::Cidr(r));
     }
 
     pub(crate) fn add_dns_resource(&mut self, r: ResourceDescriptionDns) {
-        self.dns_resources.insert(r.id);
-        self.resources.insert(r.id, ResourceDescription::Dns(r));
+        self.resources.push(ResourceDescription::Dns(r));
+    }
+
+    /// Re-adds all resources in the order they have been initially added.
+    pub(crate) fn readd_all_resources(&mut self) {
+        self.cidr_resources = IpNetworkTable::new();
+        self.internet_resource = None;
+
+        for resource in mem::take(&mut self.resources) {
+            match resource {
+                ResourceDescription::Dns(d) => self.add_dns_resource(d),
+                ResourceDescription::Cidr(c) => self.add_cidr_resource(c),
+                ResourceDescription::Internet(i) => self.add_internet_resource(i),
+            }
+        }
     }
 
     pub(crate) fn is_tunnel_ip(&self, ip: IpAddr) -> bool {
@@ -559,9 +571,10 @@ impl RefClient {
     }
 
     pub(crate) fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
-        self.dns_resources
+        self.resources
             .iter()
-            .map(|id| self.resources.get(id).unwrap().clone().into_dns().unwrap())
+            .cloned()
+            .filter_map(|r| r.into_dns())
             .filter(|r| is_subdomain(&domain.to_string(), &r.address))
             .sorted_by_key(|r| r.address.len())
             .rev()
@@ -697,15 +710,15 @@ impl RefClient {
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
-        self.resources.keys().copied().collect()
+        self.resources.iter().map(|r| r.id()).collect()
     }
 
     pub(crate) fn has_resource(&self, resource_id: ResourceId) -> bool {
-        self.resources.contains_key(&resource_id)
+        self.resources.iter().any(|r| r.id() == resource_id)
     }
 
     pub(crate) fn all_resources(&self) -> Vec<ResourceDescription> {
-        self.resources.values().cloned().collect()
+        self.resources.clone()
     }
 }
 
@@ -764,7 +777,6 @@ fn ref_client(
                 upstream_dns_resolvers: Default::default(),
                 internet_resource: Default::default(),
                 cidr_resources: IpNetworkTable::new(),
-                dns_resources: Default::default(),
                 dns_records: Default::default(),
                 connected_cidr_resources: Default::default(),
                 connected_dns_resources: Default::default(),
