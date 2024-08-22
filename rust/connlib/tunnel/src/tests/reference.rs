@@ -289,7 +289,7 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::ActivateResource(resource) => {
                 state.client.exec_mut(|client| match resource {
                     client::ResourceDescription::Dns(r) => {
-                        client.dns_resources.insert(r.id, r.clone());
+                        client.add_dns_resource(r.clone());
 
                         // TODO: PRODUCTION CODE CANNOT DO THIS.
                         // Remove all prior DNS records.
@@ -301,20 +301,16 @@ impl ReferenceStateMachine for ReferenceState {
                             true
                         });
                     }
-                    client::ResourceDescription::Cidr(r) => {
-                        client.cidr_resources.insert(r.address, r.clone());
-                    }
+                    client::ResourceDescription::Cidr(r) => client.add_cidr_resource(r.clone()),
                     client::ResourceDescription::Internet(r) => {
-                        client.internet_resource = Some(r.clone())
+                        client.add_internet_resource(r.clone())
                     }
                 });
             }
             Transition::DeactivateResource(id) => {
                 state.client.exec_mut(|client| {
-                    client.cidr_resources.retain(|_, r| &r.id != id);
-                    client.dns_resources.remove(id);
-
-                    client.disconnect_resource(id)
+                    client.remove_resource(id);
+                    client.disconnect_resource(id);
                 });
             }
             Transition::DisableResources(resources) => state.client.exec_mut(|client| {
@@ -374,7 +370,7 @@ impl ReferenceStateMachine for ReferenceState {
             } => {
                 state.client.exec_mut(|client| {
                     // If the Internet Resource is active, all packets are expected to be routed.
-                    if client.internet_resource.is_some() {
+                    if client.has_internet_resource() {
                         client.on_icmp_packet_to_internet(*src, *dst, *seq, *identifier, |r| {
                             state.portal.gateway_for_resource(r).copied()
                         })
@@ -479,12 +475,7 @@ impl ReferenceStateMachine for ReferenceState {
             } => {
                 let is_valid_icmp_packet =
                     state.client.inner().is_valid_icmp_packet(seq, identifier);
-                let is_cidr_resource = state
-                    .client
-                    .inner()
-                    .cidr_resources
-                    .longest_match(*dst)
-                    .is_some();
+                let is_cidr_resource = state.client.inner().cidr_resource_by_ip(*dst).is_some();
 
                 is_valid_icmp_packet && !is_cidr_resource
             }

@@ -259,14 +259,14 @@ pub struct RefClient {
     /// The upstream DNS resolvers configured in the portal.
     pub(crate) upstream_dns_resolvers: Vec<DnsServer>,
 
-    pub(crate) internet_resource: Option<ResourceDescriptionInternet>,
+    internet_resource: Option<ResourceDescriptionInternet>,
 
     /// The CIDR resources the client is aware of.
     #[derivative(Debug = "ignore")]
-    pub(crate) cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     /// The DNS resources the client is aware of.
     #[derivative(Debug = "ignore")]
-    pub(crate) dns_resources: BTreeMap<ResourceId, ResourceDescriptionDns>,
+    dns_resources: BTreeMap<ResourceId, ResourceDescriptionDns>,
 
     /// The client's DNS records.
     ///
@@ -322,10 +322,27 @@ impl RefClient {
         self.connected_dns_resources.retain(|(r, _)| r != resource);
     }
 
+    pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
+        self.cidr_resources.retain(|_, r| &r.id != resource);
+        self.dns_resources.remove(resource);
+    }
+
     pub(crate) fn reset_connections(&mut self) {
         self.connected_cidr_resources.clear();
         self.connected_dns_resources.clear();
         self.connected_internet_resources = false;
+    }
+
+    pub(crate) fn add_internet_resource(&mut self, r: ResourceDescriptionInternet) {
+        self.internet_resource = Some(r);
+    }
+
+    pub(crate) fn add_cidr_resource(&mut self, r: ResourceDescriptionCidr) {
+        self.cidr_resources.insert(r.address, r);
+    }
+
+    pub(crate) fn add_dns_resource(&mut self, r: ResourceDescriptionDns) {
+        self.dns_resources.insert(r.id, r);
     }
 
     pub(crate) fn is_tunnel_ip(&self, ip: IpAddr) -> bool {
@@ -517,6 +534,10 @@ impl RefClient {
 
     pub(crate) fn is_connected_to_cidr(&self, id: ResourceId) -> bool {
         self.connected_cidr_resources.contains(&id)
+    }
+
+    pub(crate) fn has_internet_resource(&self) -> bool {
+        self.internet_resource.is_some()
     }
 
     pub(crate) fn is_locally_answered_query(&self, domain: &DomainName) -> bool {
