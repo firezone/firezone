@@ -113,6 +113,7 @@ jobs:
           if [ "${{ matrix.platform }}" = "iOS" ]; then
             # Build archive
             xcodebuild archive \
+              GIT_SHA=${GITHUB_SHA} \
               -skipMacroValidation \
               -archivePath $RUNNER_TEMP/Firezone.xcarchive \
               -configuration Release \
@@ -131,6 +132,7 @@ jobs:
           elif [ "${{ matrix.platform }}" = "macOS" ]; then
             # Build app bundle
             xcodebuild build \
+              GIT_SHA=${GITHUB_SHA} \
               -skipMacroValidation \
               -configuration Release \
               -scheme Firezone \

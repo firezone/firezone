@@ -19,5 +19,7 @@
 	<string>$(APP_GROUP_ID)</string>
   <key>ITSAppUsesNonExemptEncryption</key>
   <false/>
+  <key>GitSha</key>
+  <string>$(GIT_SHA)</string>
 </dict>
 </plist>
