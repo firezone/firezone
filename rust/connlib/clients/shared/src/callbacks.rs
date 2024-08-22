@@ -1,5 +1,4 @@
 use connlib_shared::callbacks::ResourceDescription;
-use firezone_tunnel::NoInterfaces;
 use ip_network::{Ipv4Network, Ipv6Network};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -36,9 +35,6 @@ pub trait Callbacks: Clone + Send + Sync {
 /// Unified error type to use across connlib.
 #[derive(thiserror::Error, Debug)]
 pub enum DisconnectError {
-    /// Failed to bind to interfaces.
-    #[error(transparent)]
-    NoInterfaces(#[from] NoInterfaces),
     /// A panic occurred.
     #[error("Connlib panicked: {0}")]
     Panic(String),
