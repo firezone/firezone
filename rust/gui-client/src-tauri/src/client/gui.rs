@@ -802,7 +802,7 @@ impl Controller {
                 );
                 if first_time {
                     os::show_notification(
-                        "Firezone offline",
+                        "Internet offline",
                         "Firezone will connect automatically when you have Internet.",
                     )?;
                 }
