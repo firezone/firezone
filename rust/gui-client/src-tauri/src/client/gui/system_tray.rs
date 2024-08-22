@@ -12,11 +12,10 @@ use connlib_shared::{
 };
 use std::collections::HashSet;
 use tauri::{SystemTray, SystemTrayHandle};
-use url::Url;
 
 mod builder;
 
-pub(crate) use builder::{copyable, item, Event, Item, Menu, Window};
+pub(crate) use builder::{item, Event, Menu, Window};
 
 // Figma is the source of truth for the tray icons
 // <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=OGFabKWPx7PRUZmq-0>
@@ -39,6 +38,8 @@ const SIGN_OUT: &str = "Sign out";
 const DISCONNECT_AND_QUIT: &str = "Disconnect and quit Firezone";
 const DISABLE: &str = "Disable this resource";
 const ENABLE: &str = "Enable this resource";
+
+pub(crate) const INTERNET_RESOURCE_DESCRIPTION: &str = "All internet traffic";
 
 pub(crate) fn loading() -> SystemTray {
     SystemTray::new()
@@ -75,15 +76,7 @@ impl<'a> SignedIn<'a> {
     /// Builds the submenu that has the resource address, name, desc,
     /// sites online, etc.
     fn resource_submenu(&self, res: &ResourceDescription) -> Menu {
-        let mut submenu = Menu::default();
-
-        submenu.add_item(resource_header(res));
-
-        let mut submenu = submenu
-            .separator()
-            .disabled("Resource")
-            .copyable(res.name())
-            .copyable(res.pastable().as_ref());
+        let mut submenu = Menu::default().resource_description(res);
 
         if self.is_favorite(res) {
             submenu.add_item(item(Event::RemoveFavorite(res.id()), REMOVE_FAVORITE).selected());
@@ -114,29 +107,13 @@ impl<'a> SignedIn<'a> {
                 .copyable(&site.name) // Hope this is okay - The code is simpler if every enabled item sends an `Event` on click
                 .copyable(status)
         } else {
-            submenu
+            submenu.separator()
         }
     }
 
     fn is_enabled(&self, res: &ResourceDescription) -> bool {
         !self.disabled_resources.contains(&res.id())
     }
-}
-
-fn resource_header(res: &ResourceDescription) -> Item {
-    let Some(address_description) = res.address_description() else {
-        return copyable(&res.pastable());
-    };
-
-    if address_description.is_empty() {
-        return copyable(&res.pastable());
-    }
-
-    let Ok(url) = Url::parse(address_description) else {
-        return copyable(address_description);
-    };
-
-    item(Event::Url(url), format!("<{address_description}>"))
 }
 
 #[derive(PartialEq)]
@@ -338,7 +315,7 @@ mod tests {
             {
                 "id": "1106047c-cd5d-4151-b679-96b93da7383b",
                 "type": "internet",
-                "name": "Internet Resource",
+                "name": "🌐 Internet Resource",
                 "address": "All internet addresses",
                 "sites": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
                 "status": "Offline",
@@ -621,12 +598,12 @@ mod tests {
                     .copyable(GATEWAY_CONNECTED),
             )
             .add_submenu(
-                "Internet Resource",
+                "🌐 Internet Resource",
                 Menu::default()
                     .copyable("")
                     .separator()
                     .disabled("Resource")
-                    .copyable("Internet Resource")
+                    .copyable("🌐 Internet Resource")
                     .copyable("")
                     .item(
                         Event::AddFavorite(ResourceId::from_str(

@@ -79,7 +79,7 @@ impl ResourceDescription {
         }
     }
 
-    fn is_internet_resource(&self) -> bool {
+    pub fn is_internet_resource(&self) -> bool {
         matches!(self, ResourceDescription::Internet(_))
     }
 }
@@ -185,7 +185,7 @@ mod tests {
 
     fn internet_resource(uuid: &str) -> ResourceDescription {
         ResourceDescription::Internet(ResourceDescriptionInternet {
-            name: "Internet Resource".to_string(),
+            name: "🌐 Internet Resource".to_string(),
             address: "All internet addresses".to_string(),
             id: ResourceId::from_str(uuid).unwrap(),
             sites: vec![Site {

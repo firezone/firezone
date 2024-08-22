@@ -88,7 +88,7 @@ pub struct ResourceDescriptionInternet {
 impl ResourceDescriptionInternet {
     pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionInternet {
         crate::callbacks::ResourceDescriptionInternet {
-            name: "Internet Resource".to_string(),
+            name: "🌐 Internet Resource".to_string(),
             address: "All internet addresses".to_string(),
             id: self.id,
             sites: self.sites,
