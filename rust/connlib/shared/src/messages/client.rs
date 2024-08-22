@@ -78,7 +78,7 @@ impl ResourceDescriptionCidr {
 pub struct ResourceDescriptionInternet {
     /// Resource's id.
     pub id: ResourceId,
-    // Sites for the internet resource
+    /// Sites for the internet resource
     #[serde(rename = "gateway_groups")]
     pub sites: Vec<Site>,
     /// Whether or not resource can be disabled from UI
