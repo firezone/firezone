@@ -35,7 +35,8 @@ defmodule Web.Settings.DNS do
       </:title>
       <:help>
         Configure the default resolver used by connected Clients.
-        Queries for Resources will <strong>always</strong> use Firezone's internal DNS.
+        Queries for Resources will <strong>always</strong>
+        use Firezone's internal DNS.
         All other queries will use the DNS servers configured here or the Client's
         system resolvers if no servers are configured.
         <p class="mt-2">
@@ -88,7 +89,8 @@ defmodule Web.Settings.DNS do
                 </.inputs_for>
               </div>
               <p class="text-sm text-neutral-500">
-                <strong>Note:</strong> It is highly recommended to to specify <strong>both</strong>
+                <strong>Note:</strong>
+                It is highly recommended to to specify <strong>both</strong>
                 IPv4 and IPv6 addresses when adding custom resolvers. Otherwise, Clients without IPv4
                 or IPv6 connectivity may not be able to resolve DNS queries.
               </p>
