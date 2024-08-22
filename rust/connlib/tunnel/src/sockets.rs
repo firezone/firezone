@@ -2,7 +2,7 @@ use socket_factory::{DatagramIn, DatagramOut, SocketFactory, UdpSocket};
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    task::{ready, Context, Poll},
+    task::{ready, Context, Poll, Waker},
 };
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
@@ -10,39 +10,39 @@ const UNSPECIFIED_V6_SOCKET: SocketAddrV6 = SocketAddrV6::new(Ipv6Addr::UNSPECIF
 
 #[derive(Default)]
 pub(crate) struct Sockets {
+    waker: Option<Waker>,
+
     socket_v4: Option<UdpSocket>,
     socket_v6: Option<UdpSocket>,
 }
 
 impl Sockets {
-    pub fn rebind(
-        &mut self,
-        socket_factory: &dyn SocketFactory<UdpSocket>,
-    ) -> Result<(), NoInterfaces> {
-        let socket_v4 = socket_factory(&SocketAddr::V4(UNSPECIFIED_V4_SOCKET));
-        let socket_v6 = socket_factory(&SocketAddr::V6(UNSPECIFIED_V6_SOCKET));
+    pub fn rebind(&mut self, socket_factory: &dyn SocketFactory<UdpSocket>) {
+        self.socket_v4 = socket_factory(&SocketAddr::V4(UNSPECIFIED_V4_SOCKET))
+            .inspect_err(|e| tracing::warn!("Failed to bind IPv4 socket: {e}"))
+            .ok();
+        self.socket_v6 = socket_factory(&SocketAddr::V6(UNSPECIFIED_V6_SOCKET))
+            .inspect_err(|e| tracing::warn!("Failed to bind IPv6 socket: {e}"))
+            .ok();
 
-        let (socket_v4, socket_v6) = match (socket_v4, socket_v6) {
-            (Err(e), Ok(socket)) => {
-                tracing::warn!("Failed to bind IPv4 socket: {e}");
+        if let Some(waker) = self.waker.take() {
+            waker.wake();
+        }
+    }
 
-                (None, Some(socket))
+    pub fn poll_has_sockets(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+        if self.socket_v4.is_none() && self.socket_v6.is_none() {
+            let previous = self.waker.replace(cx.waker().clone());
+
+            if previous.is_none() {
+                // If we didn't have a waker yet, it means we just lost our sockets. Let the user know everything will be suspended.
+                tracing::error!("No available UDP sockets")
             }
-            (Ok(socket), Err(e)) => {
-                tracing::warn!("Failed to bind IPv6 socket: {e}");
 
-                (Some(socket), None)
-            }
-            (Err(e4), Err(e6)) => {
-                return Err(NoInterfaces { e4, e6 });
-            }
-            (Ok(v4), Ok(v6)) => (Some(v4), Some(v6)),
-        };
+            return Poll::Pending;
+        }
 
-        self.socket_v4 = socket_v4;
-        self.socket_v6 = socket_v6;
-
-        Ok(())
+        Poll::Ready(())
     }
 
     /// Flushes all buffered data on the sockets.
@@ -77,7 +77,7 @@ impl Sockets {
     }
 
     pub fn poll_recv_from<'b>(
-        &self,
+        &mut self,
         ip4_buffer: &'b mut [u8],
         ip6_buffer: &'b mut [u8],
         cx: &mut Context<'_>,
@@ -106,13 +106,6 @@ impl Sockets {
 
         Poll::Ready(Ok(iter))
     }
-}
-
-#[derive(thiserror::Error, Debug)]
-#[error("Failed to bind to interfaces: {e4} | {e6}")]
-pub struct NoInterfaces {
-    e4: io::Error,
-    e6: io::Error,
 }
 
 struct PacketIter<T4, T6> {
