@@ -323,6 +323,8 @@ impl RefClient {
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
+        self.disconnect_resource(resource);
+
         self.cidr_resources.retain(|_, r| &r.id != resource);
         self.dns_resources.remove(resource);
     }

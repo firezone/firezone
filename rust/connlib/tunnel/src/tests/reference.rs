@@ -310,7 +310,6 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::DeactivateResource(id) => {
                 state.client.exec_mut(|client| {
                     client.remove_resource(id);
-                    client.disconnect_resource(id);
                 });
             }
             Transition::DisableResources(resources) => state.client.exec_mut(|client| {
