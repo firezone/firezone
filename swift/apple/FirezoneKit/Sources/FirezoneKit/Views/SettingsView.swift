@@ -368,6 +368,7 @@ public struct SettingsView: View {
         HStack {
           Text("Build: \(AppInfoPlistConstants.gitSha)")
             .textSelection(.enabled)
+            .foregroundColor(.gray)
           Spacer()
         }.padding([.leading, .bottom], 20)
       }
