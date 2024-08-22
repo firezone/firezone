@@ -12,6 +12,10 @@ export default function Android() {
       {/*
       <Entry version="1.2.1" date={new Date(todo)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6335">
+            Optimises connection-setup to transparently buffer and retransmit packets.
+            Websites will now load directly on first access and don't require a reload.
+          </ChangeItem>
           <ChangeItem pull="6424">
             Fixes a bug where packets would be lost when a connection is first
             established to a gateway, due to routes being updated with no actual

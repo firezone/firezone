@@ -9,6 +9,14 @@ export default function Headless() {
 
   return (
     <Entries href={href} arches={arches} title="Linux headless">
+      {/* <Entry version="1.2.1" date={new Date("2024-XX-XX")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6335">
+            Optimises connection-setup to transparently buffer and retransmit packets.
+            Websites will now load directly on first access and don't require a reload.
+          </ChangeItem>
+        </ul>
+      </Entry> */}
       <Entry version="1.2.0" date={new Date("2024-08-21")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="5901">
