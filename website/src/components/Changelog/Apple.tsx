@@ -9,7 +9,7 @@ export default function Apple() {
       href="https://apps.apple.com/us/app/firezone/id6443661826"
       title="macOS / iOS"
     >
-      {/* <Entry version="(TODO)" date={new Date(TODO)}>
+      <Entry version="1.2.0" date={new Date("2024-08-21")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="5901">
             Implements glob-like matching of domains for DNS resources.
@@ -17,8 +17,13 @@ export default function Apple() {
           <ChangeItem pull="6186">
             Adds the ability to mark Resources as favorites.
           </ChangeItem>
+          <ChangeItem pull="6361">
+            Connections to Gateways are now sticky for the duration of the
+            Client's session. This fixes potential issues maintaining long-lived
+            TCP connections to Gateways in a high-availability setup.
+          </ChangeItem>
         </ul>
-      </Entry> */}
+      </Entry>
       <Entry version="1.1.5" date={new Date("2024-08-13")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6276">
