@@ -1293,13 +1293,13 @@ defmodule Web.CoreComponents do
 
   def feature_name(%{feature: :policy_conditions} = assigns) do
     ~H"""
-    Define Policy Conditions
+    Specify access-time conditions when creating policies
     """
   end
 
   def feature_name(%{feature: :multi_site_resources} = assigns) do
     ~H"""
-    Define globally-distributed resources
+    Define globally-distributed Resources
     """
   end
 
@@ -1311,7 +1311,7 @@ defmodule Web.CoreComponents do
 
   def feature_name(%{feature: :self_hosted_relays} = assigns) do
     ~H"""
-    Host your own relays
+    Host your own Relays
     """
   end
 
