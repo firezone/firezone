@@ -238,7 +238,7 @@ defmodule Web.Policies.Components do
         <div>
           <legend class="text-xl mb-2 text-neutral-900">Conditions</legend>
           <p class="my-2 text-sm text-neutral-500">
-            When specified, all conditions below must be met for this policy to be applied.
+            All conditions specified below must be met for this policy to be applied.
           </p>
         </div>
         <%= if @policy_conditions_enabled? == false do %>
