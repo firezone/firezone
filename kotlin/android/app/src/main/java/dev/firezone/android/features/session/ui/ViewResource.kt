@@ -4,9 +4,11 @@ package dev.firezone.android.features.session.ui
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.Site
 import dev.firezone.android.tunnel.model.StatusEnum
+import dev.firezone.android.tunnel.model.TypeEnum
 
 data class ViewResource(
     val id: String,
+    val type: TypeEnum,
     val address: String,
     val addressDescription: String?,
     val sites: List<Site>?,
@@ -19,6 +21,7 @@ data class ViewResource(
 fun Resource.toViewResource(enabled: Boolean): ViewResource {
     return ViewResource(
         id = this.id,
+        type = this.type,
         address = this.address,
         addressDescription = this.addressDescription,
         sites = this.sites,
@@ -27,4 +30,8 @@ fun Resource.toViewResource(enabled: Boolean): ViewResource {
         enabled = enabled,
         canBeDisabled = this.canBeDisabled,
     )
+}
+
+fun ViewResource.isInternetResource() : Boolean {
+    return this.type == TypeEnum.Internet
 }

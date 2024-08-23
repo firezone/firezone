@@ -12,7 +12,7 @@
 		style="@style/AppTheme.Base.Body1"
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
-		app:layout_constraintEnd_toStartOf="@+id/enable_switch"
+		app:layout_constraintEnd_toStartOf="parent"
 		app:layout_constraintStart_toStartOf="parent"
 		app:layout_constraintTop_toTopOf="parent"
 		tools:text="Resource Name" />
@@ -24,25 +24,19 @@
 		android:layout_height="wrap_content"
 		android:textColor="@color/neutral_600"
 		app:layout_constraintBottom_toBottomOf="parent"
-		app:layout_constraintEnd_toStartOf="@+id/enable_switch"
 		app:layout_constraintStart_toStartOf="parent"
 		app:layout_constraintTop_toBottomOf="@id/resourceNameText"
-		app:layout_constraintVertical_bias="0.0"
 		tools:text="Resource Address" />
 
 	<androidx.appcompat.widget.SwitchCompat
 		android:id="@+id/enable_switch"
-		android:layout_width="101dp"
-		android:layout_height="39dp"
+		android:layout_width="114dp"
+		android:layout_height="30dp"
 		android:checked="true"
-		android:minHeight="48dp"
-		android:scaleX="1"
-		android:scaleY="1"
 		android:text="Enabled"
-		android:textAlignment="viewStart"
-		android:textSize="14sp"
-		app:layout_constraintBottom_toBottomOf="parent"
 		app:layout_constraintEnd_toEndOf="parent"
+		app:layout_constraintBottom_toBottomOf="@+id/resourceNameText"
+		android:gravity="center_vertical"
 		app:layout_constraintTop_toTopOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
