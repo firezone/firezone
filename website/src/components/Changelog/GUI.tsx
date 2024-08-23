@@ -13,6 +13,15 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This cannot be done when the issue's PR merges. */}
+      {/*
+      <Entry version="1.2.1" date={new Date("")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6409">
+            Shows an error if there's no Internet at startup
+          </ChangeItem>
+        </ul>
+      </Entry>
+      */}
       <Entry version="1.2.0" date={new Date("2024-08-21")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="5901">
