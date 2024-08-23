@@ -329,6 +329,8 @@ impl ReferenceStateMachine for ReferenceState {
                         .inner()
                         .is_locally_answered_query(&query.domain)
                     {
+                        tracing::debug!("Expecting locally answered query");
+
                         state.client.exec_mut(|client| client.on_dns_query(query));
                         continue;
                     }
@@ -339,6 +341,8 @@ impl ReferenceStateMachine for ReferenceState {
                         state.client.exec_mut(|client| client.on_dns_query(query));
                         continue;
                     };
+
+                    tracing::debug!("Expecting DNS query via resource");
 
                     if pending_connections.contains(&resource) {
                         // DNS server is a CIDR resource and a previous query of this batch is already triggering a connection.
@@ -467,7 +471,13 @@ impl ReferenceStateMachine for ReferenceState {
 
                 true
             }
-            Transition::DisableResources(_) => true,
+            Transition::DisableResources(resources) => {
+                // Don't disabled resources we don't have.
+                // It doesn't hurt but makes the logs of reduced testcases weird.
+                resources
+                    .iter()
+                    .all(|r| state.client.inner().has_resource(*r))
+            }
             Transition::SendICMPPacketToNonResourceIp {
                 dst,
                 seq,
