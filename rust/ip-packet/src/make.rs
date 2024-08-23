@@ -74,6 +74,36 @@ pub fn icmp_reply_packet(
     }
 }
 
+pub fn icmp_network_unreachable(
+    src: IpAddr,
+    dst: IpAddr,
+    payload: &[u8],
+) -> Result<MutableIpPacket<'static>, IpVersionMismatch> {
+    match (src, dst) {
+        (IpAddr::V4(src), IpAddr::V4(dst)) => {
+            let packet = etherparse::PacketBuilder::ipv4(src.octets(), dst.octets(), 10).icmpv4(
+                etherparse::Icmpv4Type::DestinationUnreachable(
+                    etherparse::icmpv4::DestUnreachableHeader::Network,
+                ),
+            );
+
+            let payload = &payload[..12];
+            Ok(build!(packet, payload))
+        }
+        (IpAddr::V6(src), IpAddr::V6(dst)) => {
+            let packet = etherparse::PacketBuilder::ipv6(src.octets(), dst.octets(), 10).icmpv6(
+                etherparse::Icmpv6Type::DestinationUnreachable(
+                    etherparse::icmpv6::DestUnreachableCode::NoRoute,
+                ),
+            );
+
+            let payload = &payload[..24];
+            Ok(build!(packet, payload))
+        }
+        _ => Err(IpVersionMismatch),
+    }
+}
+
 pub fn tcp_packet<IP>(
     saddr: IP,
     daddr: IP,

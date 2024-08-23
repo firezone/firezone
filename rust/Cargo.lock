@@ -2077,6 +2077,7 @@ dependencies = [
  "derivative",
  "divan",
  "domain",
+ "either",
  "firezone-relay",
  "futures",
  "futures-util",

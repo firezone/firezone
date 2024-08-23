@@ -13,6 +13,7 @@ use connlib_shared::{
 };
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
+use ip_packet::Packet;
 use rand::rngs::OsRng;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -127,8 +128,14 @@ impl ClientTunnel {
             }
 
             if let Some(transmit) = self.role_state.poll_transmit() {
-                self.io.send_network(transmit)?;
-                continue;
+                match self.io.send_network(transmit) {
+                    Ok(()) => continue,
+                    Err(e) if is_network_unreachable(&e) => {
+                        // todo!
+                        continue;
+                    }
+                    Err(e) => return Poll::Ready(Err(e)),
+                }
             }
 
             if let Some(timeout) = self.role_state.poll_timeout() {
@@ -154,8 +161,13 @@ impl ClientTunnel {
                         continue;
                     };
 
-                    self.io
-                        .send_encrypted_packet(enc_packet, &self.encrypt_buf)?;
+                    match self.io.send_encrypted_packet(enc_packet, &self.encrypt_buf) {
+                        Ok(()) => {}
+                        Err(e) if is_network_unreachable(&e) => {
+                            // todo!
+                        }
+                        Err(e) => return Poll::Ready(Err(e)),
+                    }
 
                     continue;
                 }
@@ -361,4 +373,20 @@ pub fn keypair() -> (StaticSecret, PublicKey) {
     let public_key = PublicKey::from(&private_key);
 
     (private_key, public_key)
+}
+
+/// Hacky way of detecting `NetworkUnreachable` until <https://github.com/rust-lang/rust/issues/86442> stabilizes.
+fn is_network_unreachable(e: &std::io::Error) -> bool {
+    format!("{:?}", e.kind()) == "NetworkUnreachable"
+}
+
+#[cfg(test)]
+mod unittests {
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn network_unreachable_works() {
+        let err = std::io::Error::from_raw_os_error(libc::ENETUNREACH); // This is what `std` uses internally to map it.
+
+        assert!(super::is_network_unreachable(&err))
+    }
 }
