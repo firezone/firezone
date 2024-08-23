@@ -170,7 +170,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => BTreeSet::from_iter(r.sites.iter()),
             ResourceDescription::Cidr(r) => BTreeSet::from_iter(r.sites.iter()),
-            ResourceDescription::Internet(_) => BTreeSet::default(),
+            ResourceDescription::Internet(r) => BTreeSet::from_iter(r.sites.iter()),
         }
     }
 
