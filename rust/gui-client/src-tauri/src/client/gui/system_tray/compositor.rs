@@ -9,7 +9,7 @@
 //! and the math for compositing RGBA images in a mostly-gamma-correct way
 //! is simple enough to just replicate it here.
 
-use anyhow::{Context as _, ensure, Result};
+use anyhow::{ensure, Context as _, Result};
 
 pub(crate) struct Image {
     width: u32,
@@ -44,7 +44,7 @@ impl Image {
 ///
 /// An `Image` with the same dimensions as the first layer.
 
-pub(crate) fn compose<'a, I: IntoIterator<Item = &'a [u8]>> (layers: I) -> Result<Image> {
+pub(crate) fn compose<'a, I: IntoIterator<Item = &'a [u8]>>(layers: I) -> Result<Image> {
     let mut dst = None;
 
     for layer in layers {

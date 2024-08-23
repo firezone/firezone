@@ -49,7 +49,7 @@ pub fn run(cmd: Cmd) -> Result<()> {
             Ok(())
         }
         Cmd::Icons => {
-            use crate::client::gui::system_tray::compositor::{compose};
+            use crate::client::gui::system_tray::compositor::compose;
             use std::fs::write;
 
             let logo: &[u8] = include_bytes!("../../icons/tray/Logo.png");
@@ -59,19 +59,31 @@ pub fn run(cmd: Cmd) -> Result<()> {
             let signed_out: &[u8] = include_bytes!("../../icons/tray/Signed out layer.png");
             let update_ready: &[u8] = include_bytes!("../../icons/tray/Update ready layer.png");
 
-            write("untracked/Busy.png", &compose([logo_grey, busy])?.save_png()?)?;
+            write(
+                "untracked/Busy.png",
+                &compose([logo_grey, busy])?.save_png()?,
+            )?;
             write("untracked/Signed in.png", &compose([logo])?.save_png()?)?;
-            write("untracked/Signed out.png", &compose([logo_grey, signed_out])?.save_png()?)?;
+            write(
+                "untracked/Signed out.png",
+                &compose([logo_grey, signed_out])?.save_png()?,
+            )?;
 
-            write("untracked/Busy update ready.png", &compose([logo_grey, busy, update_ready])?.save_png()?)?;
-            write("untracked/Signed in update ready.png", &compose([logo, update_ready])?.save_png()?)?;
-            write("untracked/Signed out update ready.png", &compose([logo_grey, signed_out, update_ready])?.save_png()?)?;
+            write(
+                "untracked/Busy update ready.png",
+                &compose([logo_grey, busy, update_ready])?.save_png()?,
+            )?;
+            write(
+                "untracked/Signed in update ready.png",
+                &compose([logo, update_ready])?.save_png()?,
+            )?;
+            write(
+                "untracked/Signed out update ready.png",
+                &compose([logo_grey, signed_out, update_ready])?.save_png()?,
+            )?;
 
             let start_instant = std::time::Instant::now();
-            let _icon = compose([
-                logo,
-                update_ready,
-            ])?;
+            let _icon = compose([logo, update_ready])?;
             println!("Composed in {:?}", start_instant.elapsed());
 
             Ok(())
