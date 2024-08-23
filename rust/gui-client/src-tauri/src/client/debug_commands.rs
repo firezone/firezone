@@ -82,7 +82,10 @@ pub fn run(cmd: Cmd) -> Result<()> {
                 "untracked/Signed out update ready.png",
                 &compose([logo_grey, signed_out, update_ready])?.save_png()?,
             )?;
-            assert!(start_instant.elapsed().as_millis() < 6, "Should be able to compose all 6 icons in 1 ms each");
+            assert!(
+                start_instant.elapsed().as_millis() < 6,
+                "Should be able to compose all 6 icons in 1 ms each"
+            );
 
             Ok(())
         }
