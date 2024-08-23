@@ -36,7 +36,7 @@ fn tunnel_test() {
         ..Default::default()
     };
 
-    static TEST_INDEX: AtomicU32 = AtomicU32::new(0);
+    let test_index = AtomicU32::new(0);
 
     let _ = std::fs::remove_dir_all("testcases");
     let _ = std::fs::create_dir_all("testcases");
@@ -44,7 +44,7 @@ fn tunnel_test() {
     let result = TestRunner::new(config).run(
         &ReferenceState::sequential_strategy(5..15),
         |(mut ref_state, transitions, mut seen_counter)| {
-            let test_index = TEST_INDEX.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let test_index = test_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let _guard = init_logging(&ref_state, test_index);
 
             std::fs::write(
