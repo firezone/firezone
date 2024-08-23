@@ -769,11 +769,13 @@ fn is_subdomain(name: &str, record: &str) -> bool {
 pub(crate) fn ref_client_host(
     tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
+    system_dns: impl Strategy<Value = Vec<IpAddr>>,
+    upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
 ) -> impl Strategy<Value = Host<RefClient>> {
     host(
         any_ip_stack(),
         any_port(),
-        ref_client(tunnel_ip4s, tunnel_ip6s),
+        ref_client(tunnel_ip4s, tunnel_ip6s, system_dns, upstream_dns),
         latency(300), // TODO: Increase with #6062.
     )
 }
@@ -781,33 +783,47 @@ pub(crate) fn ref_client_host(
 fn ref_client(
     tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
+    system_dns: impl Strategy<Value = Vec<IpAddr>>,
+    upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
 ) -> impl Strategy<Value = RefClient> {
     (
         tunnel_ip4s,
         tunnel_ip6s,
+        system_dns,
+        upstream_dns,
         client_id(),
         private_key(),
         known_hosts(),
     )
         .prop_map(
-            move |(tunnel_ip4, tunnel_ip6, id, key, known_hosts)| RefClient {
+            move |(
+                tunnel_ip4,
+                tunnel_ip6,
+                system_dns_resolvers,
+                upstream_dns_resolvers,
                 id,
                 key,
                 known_hosts,
-                tunnel_ip4,
-                tunnel_ip6,
-                system_dns_resolvers: Default::default(),
-                upstream_dns_resolvers: Default::default(),
-                internet_resource: Default::default(),
-                cidr_resources: IpNetworkTable::new(),
-                dns_records: Default::default(),
-                connected_cidr_resources: Default::default(),
-                connected_dns_resources: Default::default(),
-                connected_internet_resource: Default::default(),
-                expected_icmp_handshakes: Default::default(),
-                expected_dns_handshakes: Default::default(),
-                disabled_resources: Default::default(),
-                resources: Default::default(),
+            )| {
+                RefClient {
+                    id,
+                    key,
+                    known_hosts,
+                    tunnel_ip4,
+                    tunnel_ip6,
+                    system_dns_resolvers,
+                    upstream_dns_resolvers,
+                    internet_resource: Default::default(),
+                    cidr_resources: IpNetworkTable::new(),
+                    dns_records: Default::default(),
+                    connected_cidr_resources: Default::default(),
+                    connected_dns_resources: Default::default(),
+                    connected_internet_resource: Default::default(),
+                    expected_icmp_handshakes: Default::default(),
+                    expected_dns_handshakes: Default::default(),
+                    disabled_resources: Default::default(),
+                    resources: Default::default(),
+                }
             },
         )
 }
