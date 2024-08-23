@@ -227,6 +227,22 @@ pub enum ResourceDescription {
     Internet(ResourceDescriptionInternet),
 }
 
+impl ResourceDescription {
+    pub fn into_dns(self) -> Option<ResourceDescriptionDns> {
+        match self {
+            ResourceDescription::Dns(d) => Some(d),
+            ResourceDescription::Cidr(_) | ResourceDescription::Internet(_) => None,
+        }
+    }
+
+    pub fn into_cidr(self) -> Option<ResourceDescriptionCidr> {
+        match self {
+            ResourceDescription::Cidr(c) => Some(c),
+            ResourceDescription::Dns(_) | ResourceDescription::Internet(_) => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

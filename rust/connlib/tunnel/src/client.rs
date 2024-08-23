@@ -89,8 +89,13 @@ impl ClientTunnel {
     }
 
     pub fn set_disabled_resources(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
+        let old_routes = HashSet::<IpNetwork>::from_iter(self.role_state.routes());
         self.role_state
             .set_disabled_resource(new_disabled_resources);
+
+        if HashSet::<IpNetwork>::from_iter(self.role_state.routes()) == old_routes {
+            return;
+        }
 
         self.role_state
             .buffered_events
@@ -259,7 +264,7 @@ pub struct ClientState {
     /// `Some` if the Internet resource is enabled.
     internet_resource: Option<ResourceId>,
     /// All resources indexed by their ID.
-    resources_by_id: HashMap<ResourceId, ResourceDescription>,
+    resources_by_id: BTreeMap<ResourceId, ResourceDescription>,
 
     /// The DNS resolvers configured on the system outside of connlib.
     system_resolvers: Vec<IpAddr>,
@@ -1008,8 +1013,14 @@ impl ClientState {
     /// TODO: Add a test that asserts the above.
     ///       That is tricky because we need to assert on state deleted by [`ClientState::remove_resource`] and check that it did in fact not get deleted.
     pub(crate) fn set_resources(&mut self, new_resources: Vec<ResourceDescription>) {
-        let current_resource_ids = self.resources_by_id.keys().copied().collect::<HashSet<_>>();
+        let current_resource_ids = self
+            .resources_by_id
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>();
         let new_resource_ids = new_resources.iter().map(|r| r.id()).collect();
+
+        tracing::debug!(?current_resource_ids, ?new_resource_ids);
 
         // First, remove all resources that are not present in the new resource list.
         for id in current_resource_ids.difference(&new_resource_ids).copied() {
