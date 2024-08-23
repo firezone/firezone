@@ -76,7 +76,7 @@ pub(crate) fn compose<'a, I: IntoIterator<Item = &'a [u8]>>(layers: I) -> Result
         for (src, dst) in rgba.chunks_exact(4).zip(dst.rgba.chunks_exact_mut(4)) {
             let src_a = src[3] as f32 / 255.0;
 
-            for (src_int, dst_int) in (&src[0..3]).into_iter().zip(&mut dst[0..3]) {
+            for (src_int, dst_int) in (src[0..3]).iter().zip(&mut dst[0..3]) {
                 let src_c = *src_int as f32 / 255.0;
                 let dst_c = *dst_int as f32 / 255.0;
 
@@ -98,5 +98,5 @@ pub(crate) fn compose<'a, I: IntoIterator<Item = &'a [u8]>>(layers: I) -> Result
         }
     }
 
-    Ok(dst.context("No layers")?)
+    dst.context("No layers")
 }

@@ -59,6 +59,7 @@ pub fn run(cmd: Cmd) -> Result<()> {
             let signed_out: &[u8] = include_bytes!("../../icons/tray/Signed out layer.png");
             let update_ready: &[u8] = include_bytes!("../../icons/tray/Update ready layer.png");
 
+            let start_instant = std::time::Instant::now();
             write(
                 "untracked/Busy.png",
                 &compose([logo_grey, busy])?.save_png()?,
@@ -81,10 +82,7 @@ pub fn run(cmd: Cmd) -> Result<()> {
                 "untracked/Signed out update ready.png",
                 &compose([logo_grey, signed_out, update_ready])?.save_png()?,
             )?;
-
-            let start_instant = std::time::Instant::now();
-            let _icon = compose([logo, update_ready])?;
-            println!("Composed in {:?}", start_instant.elapsed());
+            assert!(start_instant.elapsed().as_millis() < 6, "Should be able to compose all 6 icons in 1 ms each");
 
             Ok(())
         }
