@@ -244,6 +244,10 @@ pub struct ClientState {
 
     /// The DNS resolvers configured on the system outside of connlib.
     system_resolvers: Vec<IpAddr>,
+    /// The DNS resolvers configured in the portal.
+    ///
+    /// Has priority over system-configured DNS servers.
+    upstream_dns: Vec<DnsServer>,
 
     /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
     dns_mapping: BiMap<IpAddr, DnsServer>,
@@ -267,7 +271,7 @@ pub struct ClientState {
     stub_resolver: StubResolver,
 
     /// Configuration of the TUN device, when it is up.
-    interface_config: Option<InterfaceConfig>,
+    tun_config: Option<(Ipv4Addr, Ipv6Addr)>,
 
     /// Resources that have been disabled by the UI
     disabled_resources: BTreeSet<ResourceId>,
@@ -302,7 +306,7 @@ impl ClientState {
             peers: Default::default(),
             dns_mapping: Default::default(),
             buffered_events: Default::default(),
-            interface_config: Default::default(),
+            tun_config: Default::default(),
             buffered_packets: Default::default(),
             node: ClientNode::new(private_key.into(), BUF_SIZE, seed),
             system_resolvers: Default::default(),
@@ -315,17 +319,18 @@ impl ClientState {
             buffered_transmits: Default::default(),
             internet_resource: None,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
+            upstream_dns: Default::default(),
         }
     }
 
     #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip4(&self) -> Option<Ipv4Addr> {
-        Some(self.interface_config.as_ref()?.ipv4)
+        Some(self.tun_config.as_ref()?.0)
     }
 
     #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip6(&self) -> Option<Ipv6Addr> {
-        Some(self.interface_config.as_ref()?.ipv6)
+        Some(self.tun_config.as_ref()?.1)
     }
 
     #[cfg(all(test, feature = "proptest"))]
@@ -618,11 +623,7 @@ impl ClientState {
     }
 
     fn is_upstream_set_by_the_portal(&self) -> bool {
-        let Some(interface) = &self.interface_config else {
-            return false;
-        };
-
-        !interface.upstream_dns.is_empty()
+        !self.upstream_dns.is_empty()
     }
 
     /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
@@ -869,7 +870,8 @@ impl ClientState {
     }
 
     pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) {
-        self.interface_config = Some(config);
+        self.tun_config = Some((config.ipv4, config.ipv6));
+        self.upstream_dns = config.upstream_dns;
 
         self.update_dns_mapping()
     }
@@ -1119,7 +1121,7 @@ impl ClientState {
     }
 
     fn update_dns_mapping(&mut self) {
-        let Some(config) = &self.interface_config else {
+        let Some((ip4, ip6)) = self.tun_config else {
             // For the Tauri clients this can happen because it's called immediately after phoenix_channel's connect, before on_set_interface_config
             tracing::debug!("Unable to update DNS servers without interface configuration");
 
@@ -1127,7 +1129,7 @@ impl ClientState {
         };
 
         let effective_dns_servers =
-            effective_dns_servers(config.upstream_dns.clone(), self.system_resolvers.clone());
+            effective_dns_servers(self.upstream_dns.clone(), self.system_resolvers.clone());
 
         if HashSet::<&DnsServer>::from_iter(effective_dns_servers.iter())
             == HashSet::from_iter(self.dns_mapping.right_values())
@@ -1145,9 +1147,6 @@ impl ClientState {
                 .map(Into::into)
                 .collect_vec(),
         );
-
-        let ip4 = config.ipv4;
-        let ip6 = config.ipv6;
 
         self.set_dns_mapping(dns_mapping);
 
