@@ -373,7 +373,7 @@ impl ReferenceStateMachine for ReferenceState {
             } => {
                 state.client.exec_mut(|client| {
                     // If the Internet Resource is active, all packets are expected to be routed.
-                    if client.has_internet_resource() {
+                    if client.active_internet_resource().is_some() {
                         client.on_icmp_packet_to_internet(*src, *dst, *seq, *identifier, |r| {
                             state.portal.gateway_for_resource(r).copied()
                         })

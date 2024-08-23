@@ -404,7 +404,7 @@ impl RefClient {
         tracing::Span::current().record("dst", tracing::field::display(dst));
 
         // Second, if we are not yet connected, check if we have a resource for this IP.
-        let Some(rid) = self.internet_resource else {
+        let Some(rid) = self.active_internet_resource() else {
             tracing::debug!("No internet resource");
             return;
         };
@@ -415,7 +415,7 @@ impl RefClient {
             return;
         };
 
-        if self.connected_internet_resource && self.is_tunnel_ip(src) {
+        if self.is_connected_to_internet(rid) && self.is_tunnel_ip(src) {
             tracing::debug!("Connected to Internet resource, expecting packet to be routed");
             self.expected_icmp_handshakes
                 .entry(gateway)
@@ -557,15 +557,16 @@ impl RefClient {
     }
 
     fn is_connected_to_internet(&self, id: ResourceId) -> bool {
-        self.internet_resource == Some(id) && self.connected_internet_resource
+        self.active_internet_resource() == Some(id) && self.connected_internet_resource
     }
 
     pub(crate) fn is_connected_to_cidr(&self, id: ResourceId) -> bool {
         self.connected_cidr_resources.contains(&id)
     }
 
-    pub(crate) fn has_internet_resource(&self) -> bool {
-        self.internet_resource.is_some()
+    pub(crate) fn active_internet_resource(&self) -> Option<ResourceId> {
+        self.internet_resource
+            .filter(|r| !self.disabled_resources.contains(r))
     }
 
     pub(crate) fn is_locally_answered_query(&self, domain: &DomainName) -> bool {
@@ -711,9 +712,7 @@ impl RefClient {
         }
 
         let maybe_active_cidr_resource = self.cidr_resource_by_ip(query.dns_server.ip());
-        let maybe_active_internet_resource = self
-            .internet_resource
-            .filter(|r| !self.disabled_resources.contains(r));
+        let maybe_active_internet_resource = self.active_internet_resource();
 
         maybe_active_cidr_resource.or(maybe_active_internet_resource)
     }
