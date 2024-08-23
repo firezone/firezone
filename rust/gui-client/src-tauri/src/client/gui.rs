@@ -12,7 +12,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
-    IpcServerMsg, LogFilterReloader,
+    IpcServerMsg, IpcServiceError, LogFilterReloader,
 };
 use secrecy::{ExposeSecret, SecretString};
 use std::{
@@ -509,8 +509,6 @@ impl Controller {
         // Change the status after we begin connecting
         self.status = Status::Connecting { start_instant };
         self.refresh_system_tray_menu()?;
-
-        ran_before::set().await?;
         Ok(())
     }
 
@@ -685,6 +683,16 @@ impl Controller {
                 })?;
                 Ok(())
             }
+            IpcServerMsg::ConnectResult(result) => match result {
+                Ok(()) => Ok(ran_before::set().await?),
+                Err(IpcServiceError::PortalConnection(s)) => Err(Error::PortalConnection(s)),
+                Err(error) => {
+                    tracing::error!(?error, "Failed to connect to Firezone");
+                    Err(Error::Other(anyhow!(
+                        "Failed to connect to Firezone for non-Portal-related reason"
+                    )))
+                }
+            },
             IpcServerMsg::OnDisconnect {
                 error_msg,
                 is_authentication_error,

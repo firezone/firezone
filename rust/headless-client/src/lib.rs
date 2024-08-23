@@ -33,7 +33,10 @@ pub mod uptime;
 
 pub use clear_logs::clear_logs;
 pub use dns_control::DnsController;
-pub use ipc_service::{ipc, run_only_ipc_service, ClientMsg as IpcClientMsg};
+pub use ipc_service::{
+    ipc, run_only_ipc_service, ClientMsg as IpcClientMsg, Error as IpcServiceError,
+    ServerMsg as IpcServerMsg,
+};
 
 use ip_network::{Ipv4Network, Ipv6Network};
 
@@ -84,24 +87,6 @@ pub enum ConnlibMsg {
         ipv4: Vec<Ipv4Network>,
         ipv6: Vec<Ipv6Network>,
     },
-}
-
-/// Messages that end up in the GUI, either from connlib or from the IPC service.
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub enum IpcServerMsg {
-    /// The IPC service finished clearing its log dir.
-    ClearedLogs(Result<(), String>),
-    OnDisconnect {
-        error_msg: String,
-        is_authentication_error: bool,
-    },
-    OnUpdateResources(Vec<callbacks::ResourceDescription>),
-    /// The IPC service is terminating, maybe due to a software update
-    ///
-    /// This is a hint that the Client should exit with a message like,
-    /// "Firezone is updating, please restart the GUI" instead of an error like,
-    /// "IPC connection closed".
-    TerminatingGracefully,
 }
 
 #[derive(Clone)]
