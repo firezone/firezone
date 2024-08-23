@@ -89,8 +89,13 @@ impl ClientTunnel {
     }
 
     pub fn set_disabled_resources(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
+        let old_routes = HashSet::<IpNetwork>::from_iter(self.role_state.routes());
         self.role_state
             .set_disabled_resource(new_disabled_resources);
+
+        if HashSet::<IpNetwork>::from_iter(self.role_state.routes()) == old_routes {
+            return;
+        }
 
         self.role_state
             .buffered_events
