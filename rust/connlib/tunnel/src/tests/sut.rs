@@ -677,6 +677,10 @@ impl TunnelTest {
             ClientEvent::TunInterfaceUpdated {
                 dns_by_sentinel, ..
             } => {
+                if self.client.inner().dns_by_sentinel == dns_by_sentinel {
+                    tracing::error!("Emitted `TunInterfaceUpdated` without changing DNS servers");
+                }
+
                 self.client
                     .exec_mut(|c| c.dns_by_sentinel = dns_by_sentinel);
             }
