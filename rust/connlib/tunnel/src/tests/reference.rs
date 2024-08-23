@@ -410,12 +410,12 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::UpdateSystemDnsServers(servers) => {
                 state
                     .client
-                    .exec_mut(|client| client.system_dns_resolvers.clone_from(servers));
+                    .exec_mut(|client| client.set_system_dns_resolvers(servers));
             }
             Transition::UpdateUpstreamDnsServers(servers) => {
                 state
                     .client
-                    .exec_mut(|client| client.upstream_dns_resolvers.clone_from(servers));
+                    .exec_mut(|client| client.set_upstream_dns_resolvers(servers));
             }
             Transition::RoamClient { ip4, ip6, .. } => {
                 state.network.remove_host(&state.client);

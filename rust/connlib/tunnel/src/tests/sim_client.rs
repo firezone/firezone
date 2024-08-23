@@ -257,10 +257,10 @@ pub struct RefClient {
 
     /// The DNS resolvers configured on the client outside of connlib.
     #[derivative(Debug = "ignore")]
-    pub(crate) system_dns_resolvers: Vec<IpAddr>,
+    system_dns_resolvers: Vec<IpAddr>,
     /// The upstream DNS resolvers configured in the portal.
     #[derivative(Debug = "ignore")]
-    pub(crate) upstream_dns_resolvers: Vec<DnsServer>,
+    upstream_dns_resolvers: Vec<DnsServer>,
 
     /// Tracks all resources in the order they have been added in.
     ///
@@ -730,6 +730,18 @@ impl RefClient {
 
     pub(crate) fn all_resources(&self) -> Vec<ResourceDescription> {
         self.resources.clone()
+    }
+
+    pub(crate) fn set_system_dns_resolvers(&mut self, servers: &Vec<IpAddr>) {
+        self.system_dns_resolvers.clone_from(servers);
+    }
+
+    pub(crate) fn set_upstream_dns_resolvers(&mut self, servers: &Vec<DnsServer>) {
+        self.upstream_dns_resolvers.clone_from(servers);
+    }
+
+    pub(crate) fn upstream_dns_resolvers(&self) -> Vec<DnsServer> {
+        self.upstream_dns_resolvers.clone()
     }
 }
 
