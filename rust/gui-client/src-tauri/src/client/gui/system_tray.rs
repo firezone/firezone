@@ -69,8 +69,16 @@ pub(crate) struct SignedIn<'a> {
 }
 
 impl<'a> SignedIn<'a> {
-    fn is_favorite(&self, res: &ResourceDescription) -> bool {
-        self.favorite_resources.contains(&res.id())
+    fn is_favorite(&self, resource: &ResourceId) -> bool {
+        self.favorite_resources.contains(resource)
+    }
+
+    fn add_favorite_toggle(&self, submenu: &mut Menu, resource: ResourceId) {
+        if self.is_favorite(&resource) {
+            submenu.add_item(item(Event::RemoveFavorite(resource), REMOVE_FAVORITE).selected());
+        } else {
+            submenu.add_item(item(Event::AddFavorite(resource), ADD_FAVORITE));
+        }
     }
 
     /// Builds the submenu that has the resource address, name, desc,
@@ -78,10 +86,8 @@ impl<'a> SignedIn<'a> {
     fn resource_submenu(&self, res: &ResourceDescription) -> Menu {
         let mut submenu = Menu::default().resource_description(res);
 
-        if self.is_favorite(res) {
-            submenu.add_item(item(Event::RemoveFavorite(res.id()), REMOVE_FAVORITE).selected());
-        } else {
-            submenu.add_item(item(Event::AddFavorite(res.id()), ADD_FAVORITE));
+        if !res.is_internet_resource() {
+            self.add_favorite_toggle(&mut submenu, res.id());
         }
 
         if res.can_be_disabled() {
@@ -224,7 +230,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         // Always show Resources in the original order
         for res in resources
             .iter()
-            .filter(|res| favorite_resources.contains(&res.id()))
+            .filter(|res| favorite_resources.contains(&res.id()) || res.is_internet_resource())
         {
             menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
@@ -243,7 +249,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         // Always show Resources in the original order
         for res in resources
             .iter()
-            .filter(|res| !favorite_resources.contains(&res.id()))
+            .filter(|res| !favorite_resources.contains(&res.id()) || !res.is_internet_resource())
         {
             submenu = submenu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
