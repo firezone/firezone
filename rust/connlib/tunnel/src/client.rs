@@ -828,6 +828,8 @@ impl ClientState {
             .map(|(ip, _)| ip)
             .chain(iter::once(IPV4_RESOURCES.into()))
             .chain(iter::once(IPV6_RESOURCES.into()))
+            .chain(iter::once(DNS_SENTINELS_V4.into()))
+            .chain(iter::once(DNS_SENTINELS_V4.into()))
             .chain(
                 self.internet_resource
                     .map(|_| Ipv4Network::DEFAULT_ROUTE.into()),
@@ -836,7 +838,6 @@ impl ClientState {
                 self.internet_resource
                     .map(|_| Ipv6Network::DEFAULT_ROUTE.into()),
             )
-            .chain(self.dns_mapping.left_values().copied().map(Into::into))
     }
 
     fn is_resource_enabled(&self, resource: &ResourceId) -> bool {
@@ -1159,11 +1160,6 @@ impl ClientState {
                     .iter()
                     .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
                     .collect(),
-            });
-        self.buffered_events
-            .push_back(ClientEvent::TunRoutesUpdated {
-                ip4: self.routes().filter_map(utils::ipv4).collect(),
-                ip6: self.routes().filter_map(utils::ipv6).collect(),
             });
     }
 
@@ -1764,7 +1760,9 @@ mod proptests {
             resource_routes
                 .into_iter()
                 .chain(iter::once(IPV4_RESOURCES.into()))
-                .chain(iter::once(IPV6_RESOURCES.into())),
+                .chain(iter::once(IPV6_RESOURCES.into()))
+                .chain(iter::once(DNS_SENTINELS_V4.into()))
+                .chain(iter::once(DNS_SENTINELS_V4.into())),
         )
     }
 
