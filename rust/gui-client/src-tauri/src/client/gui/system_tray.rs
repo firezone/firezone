@@ -15,11 +15,12 @@ use tauri::{SystemTray, SystemTrayHandle};
 use url::Url;
 
 mod builder;
+pub(crate) mod compositor;
 
 pub(crate) use builder::{copyable, item, Event, Item, Menu, Window};
 
 // Figma is the source of truth for the tray icons
-// <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=OGFabKWPx7PRUZmq-0>
+// <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=nHBOzOnSY5Ol4asV-0>
 const BUSY_ICON: &[u8] = include_bytes!("../../../icons/tray/Busy.png");
 const SIGNED_IN_ICON: &[u8] = include_bytes!("../../../icons/tray/Signed in.png");
 const SIGNED_OUT_ICON: &[u8] = include_bytes!("../../../icons/tray/Signed out.png");
