@@ -146,3 +146,7 @@ Given the client is signed in, when you ping...
 # Network changes
 
 Moved to [`network_roaming.md`](network_roaming.md)
+
+# No Internet
+
+Given Firezone is signed in and not running, when you disconnect from the Internet and start Firezone, then Firezone should show an error and quit.
