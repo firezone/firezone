@@ -351,11 +351,7 @@ impl TunnelTest {
         );
         assert_dns_packets_properties(ref_client, sim_client);
         assert_known_hosts_are_valid(ref_client, sim_client);
-        assert_eq!(
-            sim_client.effective_dns_servers(),
-            ref_client.expected_dns_servers(),
-            "Effective DNS servers should match either system or upstream DNS"
-        );
+        assert_dns_servers_are_valid(ref_client, sim_client);
     }
 }
 
