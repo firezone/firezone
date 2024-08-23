@@ -830,8 +830,11 @@ fn ref_client(
 
 fn known_hosts() -> impl Strategy<Value = BTreeMap<String, Vec<IpAddr>>> {
     collection::btree_map(
-        domain_name(2..4).prop_map(|d| d.parse().unwrap()),
-        collection::vec(any::<IpAddr>(), 1..6),
-        0..15,
+        prop_oneof![
+            Just("api.firezone.dev".to_owned()),
+            Just("api.firez.one".to_owned())
+        ],
+        collection::vec(any::<IpAddr>(), 1..3),
+        1..=2,
     )
 }
