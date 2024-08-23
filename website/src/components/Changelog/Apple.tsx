@@ -15,6 +15,11 @@ export default function Apple() {
           <ChangeItem pull="6406">
             Shows the Git SHA corresponding to the build on the Settings -> Advanced screen.
           </ChangeItem>
+          <ChangeItem pull="6424">
+            Fixes a bug where packets would be lost when a connection is first
+            esbalished to a gateway, due to routes being updated with no actual
+            change.
+          </ChangeItem>
         </ul>
       </Entry>
       */}
