@@ -1,6 +1,6 @@
 use crate::dns::StubResolver;
 use crate::peer_store::PeerStore;
-use crate::{dns, BUF_SIZE};
+use crate::{dns, TunConfig, BUF_SIZE};
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_shared::callbacks::Status;
@@ -271,7 +271,7 @@ pub struct ClientState {
     stub_resolver: StubResolver,
 
     /// Configuration of the TUN device, when it is up.
-    tun_config: Option<(Ipv4Addr, Ipv6Addr)>,
+    tun_config: Option<TunConfig>,
 
     /// Resources that have been disabled by the UI
     disabled_resources: BTreeSet<ResourceId>,
@@ -325,12 +325,12 @@ impl ClientState {
 
     #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip4(&self) -> Option<Ipv4Addr> {
-        Some(self.tun_config.as_ref()?.0)
+        Some(self.tun_config.as_ref()?.ip4)
     }
 
     #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip6(&self) -> Option<Ipv6Addr> {
-        Some(self.tun_config.as_ref()?.1)
+        Some(self.tun_config.as_ref()?.ip6)
     }
 
     #[cfg(all(test, feature = "proptest"))]
@@ -870,7 +870,21 @@ impl ClientState {
     }
 
     pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) {
-        self.tun_config = Some((config.ipv4, config.ipv6));
+        match self.tun_config.as_mut() {
+            Some(existing) => {
+                // We don't really expect these to change but let's update them anyway.
+                existing.ip4 = config.ipv4;
+                existing.ip6 = config.ipv6;
+            }
+            None => {
+                self.tun_config = Some(TunConfig {
+                    ip4: config.ipv4,
+                    ip6: config.ipv6,
+                    dns_by_sentinel: Default::default(),
+                })
+            }
+        }
+
         self.upstream_dns = config.upstream_dns;
 
         self.update_dns_mapping()
@@ -1121,7 +1135,7 @@ impl ClientState {
     }
 
     fn update_dns_mapping(&mut self) {
-        let Some((ip4, ip6)) = self.tun_config else {
+        let Some(config) = self.tun_config.clone() else {
             // For the Tauri clients this can happen because it's called immediately after phoenix_channel's connect, before on_set_interface_config
             tracing::debug!("Unable to update DNS servers without interface configuration");
 
@@ -1148,18 +1162,25 @@ impl ClientState {
                 .collect_vec(),
         );
 
+        let new_tun_config = TunConfig {
+            ip4: config.ip4,
+            ip6: config.ip6,
+            dns_by_sentinel: self
+                .dns_mapping
+                .iter()
+                .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
+                .collect::<BiMap<_, _>>(),
+        };
+
         self.set_dns_mapping(dns_mapping);
 
+        if new_tun_config == config {
+            return;
+        }
+
+        self.tun_config = Some(new_tun_config.clone());
         self.buffered_events
-            .push_back(ClientEvent::TunInterfaceUpdated {
-                ip4,
-                ip6,
-                dns_by_sentinel: self
-                    .dns_mapping
-                    .iter()
-                    .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
-                    .collect(),
-            });
+            .push_back(ClientEvent::TunInterfaceUpdated(new_tun_config));
     }
 
     pub fn update_relays(

@@ -670,15 +670,13 @@ impl TunnelTest {
             ClientEvent::ResourcesChanged { .. } => {
                 tracing::warn!("Unimplemented");
             }
-            ClientEvent::TunInterfaceUpdated {
-                dns_by_sentinel, ..
-            } => {
-                if self.client.inner().dns_by_sentinel == dns_by_sentinel {
+            ClientEvent::TunInterfaceUpdated(config) => {
+                if self.client.inner().dns_by_sentinel == config.dns_by_sentinel {
                     tracing::error!("Emitted `TunInterfaceUpdated` without changing DNS servers");
                 }
 
                 self.client
-                    .exec_mut(|c| c.dns_by_sentinel = dns_by_sentinel);
+                    .exec_mut(|c| c.dns_by_sentinel = config.dns_by_sentinel);
             }
             ClientEvent::TunRoutesUpdated { .. } => {}
             ClientEvent::RequestConnection {
