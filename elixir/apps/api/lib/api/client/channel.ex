@@ -74,6 +74,8 @@ defmodule API.Client.Channel do
           ]
         )
 
+      resources = Policies.pre_filter_non_conforming_resources(resources, socket.assigns.client)
+
       # We subscribe for all resource events but only care about update events,
       # where resource might be renamed which should be propagated to the UI.
       :ok = Enum.each(resources, &Resources.subscribe_to_events_for_resource/1)

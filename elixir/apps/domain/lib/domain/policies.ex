@@ -165,6 +165,25 @@ defmodule Domain.Policies do
     {:ok, policies}
   end
 
+  def pre_filter_non_conforming_resources(resources, %Clients.Client{} = client) do
+    resources
+    |> Enum.flat_map(fn resource ->
+      Enum.any?(resource.authorized_by_policies, fn policy ->
+        policy.conditions
+        |> Enum.filter(&Condition.Evaluator.evaluable_on_connect?/1)
+        |> Condition.Evaluator.ensure_conforms(client)
+        |> case do
+          {:ok, _expires_at} -> true
+          {:error, _violated_properties} -> false
+        end
+      end)
+      |> case do
+        true -> [resource]
+        false -> []
+      end
+    end)
+  end
+
   def ensure_client_conforms_policy_conditions(%Clients.Client{} = client, %Policy{} = policy) do
     case Condition.Evaluator.ensure_conforms(policy.conditions, client) do
       {:ok, expires_at} ->
