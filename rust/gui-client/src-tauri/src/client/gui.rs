@@ -461,8 +461,6 @@ enum Status {
     },
     /// Firezone is signing in to the Portal.
     WaitingForPortal {
-        /// True if this is user-initiated and we haven't done any automatic retries yet.
-        first_time: bool,
         /// The instant when we sent our most recent connect request.
         start_instant: Instant,
         /// The token to log in to the Portal, in case we need to retry the connection request.
@@ -498,16 +496,15 @@ struct Controller {
 
 impl Controller {
     async fn start_session(&mut self, token: SecretString) -> Result<(), Error> {
-        let first_time = match self.status {
-            Status::Disconnected => true,
+        match self.status {
+            Status::Disconnected | Status::WaitingForNetwork { .. } => {}
             Status::TunnelReady { .. } => Err(anyhow!(
                 "Can't connect to Firezone, we're already connected."
             ))?,
-            Status::WaitingForNetwork { .. } => false,
             Status::WaitingForPortal { .. } | Status::WaitingForTunnel { .. } => Err(anyhow!(
                 "Can't connect to Firezone, we're already connecting."
             ))?,
-        };
+        }
 
         let api_url = self.advanced_settings.api_url.clone();
         tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
@@ -519,7 +516,6 @@ impl Controller {
             .await?;
         // Change the status after we begin connecting
         self.status = Status::WaitingForPortal {
-            first_time,
             start_instant,
             token,
         };
@@ -767,7 +763,7 @@ impl Controller {
         &mut self,
         result: Result<(), IpcServiceError>,
     ) -> Result<(), Error> {
-        let (first_time, start_instant, token) = match &self.status {
+        let (start_instant, token) = match &self.status {
             Status::Disconnected
             | Status::TunnelReady { .. }
             | Status::WaitingForNetwork { .. }
@@ -776,11 +772,9 @@ impl Controller {
                 return Ok(());
             }
             Status::WaitingForPortal {
-                first_time,
                 start_instant,
                 token,
             } => (
-                *first_time,
                 *start_instant,
                 token.expose_secret().clone().into(),
             ),
@@ -800,12 +794,6 @@ impl Controller {
                     ?error,
                     "Failed to connect to Firezone Portal, will try again when the network changes"
                 );
-                if first_time {
-                    os::show_notification(
-                        "Firezone offline",
-                        "Firezone will connect automatically when you have Internet.",
-                    )?;
-                }
                 self.status = Status::WaitingForNetwork { token };
                 if let Err(error) = self.refresh_system_tray_menu() {
                     tracing::error!(?error, "Failed to refresh menu");

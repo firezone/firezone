@@ -149,4 +149,4 @@ Moved to [`network_roaming.md`](network_roaming.md)
 
 # No Internet
 
-Given Firezone is signed in and not running, when you disconnect from the Internet and start Firezone, then Firezone should show an error and quit.
+Given Firezone is signed in and not running, when you disconnect from the Internet and start Firezone, then Firezone will wait for Internet and retry the connection.
