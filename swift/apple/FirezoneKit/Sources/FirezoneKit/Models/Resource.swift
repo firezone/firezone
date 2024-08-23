@@ -42,6 +42,10 @@ public struct Resource: Decodable, Identifiable, Equatable {
     self.type = type
     self.canBeDisabled = canBeDisabled
   }
+
+  public func isInternetResource() -> Bool {
+    self.type == ResourceType.internet
+  }
 }
 
 public enum ResourceStatus: String, Decodable {
