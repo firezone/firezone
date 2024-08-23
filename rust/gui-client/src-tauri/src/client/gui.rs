@@ -452,13 +452,13 @@ pub(crate) enum ControllerRequest {
 enum Status {
     /// Firezone is disconnected.
     Disconnected,
-    /// Firezone is ready to use.
-    TunnelReady { resources: Vec<ResourceDescription> },
     /// At least one connection request has failed, due to failing to reach the Portal, and we are waiting for a network change before we try again
-    WaitingForNetwork {
+    RetryingConnection {
         /// The token to log in to the Portal, for retrying the connection request.
         token: SecretString,
     },
+    /// Firezone is ready to use.
+    TunnelReady { resources: Vec<ResourceDescription> },
     /// Firezone is signing in to the Portal.
     WaitingForPortal {
         /// The instant when we sent our most recent connect request.
@@ -476,6 +476,18 @@ enum Status {
 impl Default for Status {
     fn default() -> Self {
         Self::Disconnected
+    }
+}
+
+impl Status {
+    /// Returns true if we want to hear about DNS and network changes.
+    fn needs_network_changes(&self) -> bool {
+        match self {
+            Status::Disconnected | Status::RetryingConnection { .. } => false,
+            Status::TunnelReady { .. }
+            | Status::WaitingForPortal { .. }
+            | Status::WaitingForTunnel { .. } => true,
+        }
     }
 }
 
@@ -497,7 +509,7 @@ struct Controller {
 impl Controller {
     async fn start_session(&mut self, token: SecretString) -> Result<(), Error> {
         match self.status {
-            Status::Disconnected | Status::WaitingForNetwork { .. } => {}
+            Status::Disconnected | Status::RetryingConnection { .. } => {}
             Status::TunnelReady { .. } => Err(anyhow!(
                 "Can't connect to Firezone, we're already connected."
             ))?,
@@ -617,7 +629,7 @@ impl Controller {
                 .context("Couldn't copy resource URL or other text to clipboard")?,
             Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn) => {
                 match &self.status {
-                    Status::Disconnected | Status::WaitingForNetwork { .. } | Status::WaitingForPortal { .. } => {
+                    Status::Disconnected | Status::RetryingConnection { .. } | Status::WaitingForPortal { .. } => {
                         tracing::info!("Calling `sign_out` to cancel sign-in");
                         self.sign_out().await?;
                     }
@@ -634,6 +646,7 @@ impl Controller {
                 self.advanced_settings.favorite_resources.remove(&resource_id);
                 self.refresh_favorite_resources().await?;
             }
+            Req::SystemTrayMenu(TrayMenuEvent::RetryPortalConnection) => self.try_retry_connection().await?,
             Req::SystemTrayMenu(TrayMenuEvent::EnableResource(resource_id)) => {
                 self.advanced_settings.disabled_resources.remove(&resource_id);
                 self.update_disabled_resources().await?;
@@ -765,8 +778,8 @@ impl Controller {
     ) -> Result<(), Error> {
         let (start_instant, token) = match &self.status {
             Status::Disconnected
+            | Status::RetryingConnection { .. }
             | Status::TunnelReady { .. }
-            | Status::WaitingForNetwork { .. }
             | Status::WaitingForTunnel { .. } => {
                 tracing::error!("Impossible logic error, received `ConnectResult` when we weren't waiting on the Portal connection.");
                 return Ok(());
@@ -774,10 +787,7 @@ impl Controller {
             Status::WaitingForPortal {
                 start_instant,
                 token,
-            } => (
-                *start_instant,
-                token.expose_secret().clone().into(),
-            ),
+            } => (*start_instant, token.expose_secret().clone().into()),
         };
 
         match result {
@@ -794,7 +804,7 @@ impl Controller {
                     ?error,
                     "Failed to connect to Firezone Portal, will try again when the network changes"
                 );
-                self.status = Status::WaitingForNetwork { token };
+                self.status = Status::RetryingConnection { token };
                 if let Err(error) = self.refresh_system_tray_menu() {
                     tracing::error!(?error, "Failed to refresh menu");
                 }
@@ -847,6 +857,7 @@ impl Controller {
                     tracing::error!("We have an auth session but no connlib session");
                     system_tray::AppState::SignedOut
                 }
+                Status::RetryingConnection { .. } => system_tray::AppState::RetryingConnection,
                 Status::TunnelReady { resources } => {
                     system_tray::AppState::SignedIn(system_tray::SignedIn {
                         actor_name: &auth_session.actor_name,
@@ -855,7 +866,6 @@ impl Controller {
                         resources,
                     })
                 }
-                Status::WaitingForNetwork { .. } => system_tray::AppState::WaitingForNetwork,
                 Status::WaitingForPortal { .. } => system_tray::AppState::WaitingForPortal,
                 Status::WaitingForTunnel { .. } => system_tray::AppState::WaitingForTunnel,
             }
@@ -866,6 +876,21 @@ impl Controller {
             system_tray::AppState::SignedOut
         };
         self.tray.update(menu)?;
+        Ok(())
+    }
+
+    /// If we're in the `RetryingConnection` state, use the token to retry the Portal connection
+    async fn try_retry_connection(&mut self) -> Result<()> {
+        let token = match &self.status {
+            Status::Disconnected
+            | Status::TunnelReady { .. }
+            | Status::WaitingForPortal { .. }
+            | Status::WaitingForTunnel { .. } => return Ok(()),
+            Status::RetryingConnection { token } => token,
+        };
+        tracing::debug!("Retrying Portal connection...");
+        self.start_session(token.expose_secret().clone().into())
+            .await?;
         Ok(())
     }
 
@@ -957,32 +982,20 @@ async fn run_controller(
         tokio::select! {
             result = network_notifier.notified() => {
                 result?;
-                match &controller.status {
-                    Status::Disconnected => {}
-                    Status::TunnelReady { .. } | Status::WaitingForPortal { .. } | Status::WaitingForTunnel { .. } => {
-                        tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
-                        controller.ipc_client.reset().await?
-                    },
-                    Status::WaitingForNetwork { token } => {
-                        tracing::debug!("Internet up/down changed, retrying Portal connection...");
-                        controller.start_session(token.expose_secret().clone().into()).await?;
-                    },
+                if controller.status.needs_network_changes() {
+                    tracing::debug!("Internet up/down changed, calling `Session::reset`");
+                    controller.ipc_client.reset().await?
                 }
+                controller.try_retry_connection().await?
             },
             result = dns_notifier.notified() => {
                 result?;
-                match &controller.status {
-                    Status::Disconnected => {}
-                    Status::TunnelReady { .. } | Status::WaitingForPortal { .. } | Status::WaitingForTunnel { .. } => {
-                        let resolvers = firezone_headless_client::dns_control::system_resolvers_for_gui()?;
+                if controller.status.needs_network_changes() {
+                    let resolvers = firezone_headless_client::dns_control::system_resolvers_for_gui()?;
                     tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
                     controller.ipc_client.set_dns(resolvers).await?;
-                    },
-                    Status::WaitingForNetwork { token } => {
-                        tracing::debug!("New DNS resolvers, retrying Portal connection...");
-                        controller.start_session(token.expose_secret().clone().into()).await?;
-                    },
                 }
+                controller.try_retry_connection().await?
             },
             req = rx.recv() => {
                 let Some(req) = req else {

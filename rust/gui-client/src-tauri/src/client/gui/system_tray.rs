@@ -54,12 +54,12 @@ pub(crate) struct Tray {
 
 pub(crate) enum AppState<'a> {
     Loading,
+    RetryingConnection,
+    SignedIn(SignedIn<'a>),
     SignedOut,
     WaitingForBrowser,
-    WaitingForNetwork,
     WaitingForPortal,
     WaitingForTunnel,
-    SignedIn(SignedIn<'a>),
 }
 
 pub(crate) struct SignedIn<'a> {
@@ -166,9 +166,9 @@ impl Tray {
     pub(crate) fn update(&mut self, state: AppState) -> Result<()> {
         let new_icon = match &state {
             AppState::Loading
-            | AppState::WaitingForBrowser
+            | AppState::RetryingConnection
             | AppState::SignedOut
-            | AppState::WaitingForNetwork => Icon::SignedOut,
+            | AppState::WaitingForBrowser => Icon::SignedOut,
             AppState::SignedIn { .. } => Icon::SignedIn,
             AppState::WaitingForPortal | AppState::WaitingForTunnel => Icon::Busy,
         };
@@ -213,14 +213,14 @@ impl<'a> AppState<'a> {
     fn into_menu(self) -> Menu {
         match self {
             Self::Loading => Menu::default().disabled("Loading..."),
+            Self::RetryingConnection => retrying_sign_in("Waiting for Internet access..."),
+            Self::SignedIn(x) => signed_in(&x),
             Self::SignedOut => Menu::default()
                 .item(Event::SignIn, "Sign In")
                 .add_bottom_section(QUIT_TEXT_SIGNED_OUT),
             Self::WaitingForBrowser => signing_in("Waiting for browser..."),
-            Self::WaitingForNetwork => signing_in("Waiting for Internet access..."),
             Self::WaitingForPortal => signing_in("Connecting to Firezone Portal..."),
             Self::WaitingForTunnel => signing_in("Raising tunnel..."),
-            Self::SignedIn(x) => signed_in(&x),
         }
     }
 }
@@ -279,6 +279,14 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
     }
 
     menu.add_bottom_section(DISCONNECT_AND_QUIT)
+}
+
+fn retrying_sign_in(waiting_message: &str) -> Menu {
+    Menu::default()
+        .disabled(waiting_message)
+        .item(Event::RetryPortalConnection, "Retry sign-in")
+        .item(Event::CancelSignIn, "Cancel sign-in")
+        .add_bottom_section(QUIT_TEXT_SIGNED_OUT)
 }
 
 fn signing_in(waiting_message: &str) -> Menu {
