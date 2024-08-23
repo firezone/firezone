@@ -952,8 +952,6 @@ defmodule Domain.ResourcesTest do
             "app.**.web.**.example.com",
             "app.web.example.com",
             "app.*.example.com",
-            "app.*com",
-            "app?com",
             "google.com",
             "myhost"
           ] do
@@ -969,6 +967,26 @@ defmodule Domain.ResourcesTest do
 
         assert {:ok, _resource} = create_resource(attrs, subject)
       end
+
+      attrs = Fixtures.Resources.resource_attrs(address: "localhost")
+      assert {:error, changeset} = create_resource(attrs, subject)
+      error = "localhost cannot be used, please add a DNS alias to /etc/hosts instead"
+      assert error in errors_on(changeset).address
+
+      attrs = Fixtures.Resources.resource_attrs(address: "a.localhost")
+      assert {:error, changeset} = create_resource(attrs, subject)
+      error = "localhost cannot be used, please add a DNS alias to /etc/hosts instead"
+      assert error in errors_on(changeset).address
+
+      attrs = Fixtures.Resources.resource_attrs(address: "*.com")
+      assert {:error, changeset} = create_resource(attrs, subject)
+      error = "second level domain for IANA TLDs cannot contain wildcards"
+      assert error in errors_on(changeset).address
+
+      attrs = Fixtures.Resources.resource_attrs(address: "foo.*")
+      assert {:error, changeset} = create_resource(attrs, subject)
+      error = "TLD cannot be contain wildcards"
+      assert error in errors_on(changeset).address
     end
 
     test "validates cidr address", %{subject: subject} do
