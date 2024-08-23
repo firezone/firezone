@@ -36,7 +36,13 @@ fn tunnel_test() {
         ..Default::default()
     };
 
-    static TEST_INDEX: AtomicU32 = AtomicU32::new(0);
+    let regression_cases = config
+        .failure_persistence
+        .as_ref()
+        .map(|f| f.load_persisted_failures2(Some(file!())))
+        .map(|c| c.len() as u32)
+        .unwrap_or(0);
+    let max_test_runs = AtomicU32::new(config.cases + regression_cases + config.max_shrink_iters());
 
     let _ = std::fs::remove_dir_all("testcases");
     let _ = std::fs::create_dir_all("testcases");
@@ -44,7 +50,8 @@ fn tunnel_test() {
     let result = TestRunner::new(config).run(
         &ReferenceState::sequential_strategy(5..15),
         |(mut ref_state, transitions, mut seen_counter)| {
-            let test_index = TEST_INDEX.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            // We number testcases from high to low so that lexical ordering puts the last failing one at the top.
+            let test_index = max_test_runs.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
             let _guard = init_logging(&ref_state, test_index);
 
             std::fs::write(
