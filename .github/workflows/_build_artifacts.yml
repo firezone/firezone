@@ -192,6 +192,8 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cross
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build binaries
         run: |
           set -xe
