@@ -755,6 +755,14 @@ defmodule API.Client.ChannelTest do
                ]
              }
     end
+
+    test "does not push resources that can't be access by the client", %{
+      unconforming_resource: resource,
+      socket: socket
+    } do
+      send(socket.channel_pid, {:update_resource, resource.id})
+      refute_push "resource_created_or_updated", %{}
+    end
   end
 
   describe "handle_info/2 :delete_resource" do
