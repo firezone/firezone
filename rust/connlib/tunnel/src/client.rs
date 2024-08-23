@@ -20,6 +20,7 @@ use crate::peer::GatewayOnClient;
 use crate::utils::{self, earliest, turn};
 use crate::{ClientEvent, ClientTunnel, Tun};
 use domain::base::Message;
+use either::Either;
 use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, RelaySocket, Transmit};
@@ -425,10 +426,11 @@ impl ClientState {
         now: Instant,
     ) -> Option<snownet::Transmit<'s>> {
         let (packet, dst) = match self.try_handle_dns_query(packet, now) {
-            Ok(response) => {
-                self.buffered_packets.push_back(response?.to_owned());
+            Ok(Either::Left(response)) => {
+                self.buffered_packets.push_back(response.to_owned());
                 return None;
             }
+            Ok(Either::Right(forward)) => return Some(forward),
             Err(non_dns_packet) => non_dns_packet,
         };
 
@@ -650,12 +652,12 @@ impl ClientState {
         &mut self,
         packet: MutableIpPacket<'a>,
         now: Instant,
-    ) -> Result<Option<IpPacket<'a>>, (MutableIpPacket<'a>, IpAddr)> {
+    ) -> Result<Either<IpPacket<'a>, Transmit<'static>>, (MutableIpPacket<'a>, IpAddr)> {
         match self
             .stub_resolver
             .handle(&self.dns_mapping, packet.as_immutable())
         {
-            Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
+            Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Either::Left(query)),
             Some(dns::ResolveStrategy::ForwardQuery {
                 upstream: server,
                 query_id,
@@ -672,13 +674,11 @@ impl ClientState {
 
                 self.forwarded_dns_queries
                     .insert((query_id, server), (original_src, now + IDS_EXPIRE));
-                self.buffered_transmits.push_back(Transmit {
+                return Ok(Either::Right(Transmit {
                     src: None,
                     dst: server,
                     payload: Cow::Owned(payload),
-                });
-
-                Ok(None)
+                }));
             }
             None => {
                 let dest = packet.destination();

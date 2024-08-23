@@ -73,14 +73,7 @@ impl Sockets {
             return Ok(());
         };
 
-        match socket.send(datagram) {
-            Ok(()) => {}
-            Err(e) if is_network_unreachable(&e) => {
-                tracing::info!(%dst, "{e}: Discarding socket");
-                *maybe_socket = None;
-            }
-            Err(e) => return Err(e),
-        };
+        socket.send(datagram)?;
 
         Ok(())
     }
@@ -152,21 +145,5 @@ where
         }
 
         None
-    }
-}
-
-/// Hacky way of detecting `NetworkUnreachable` until <https://github.com/rust-lang/rust/issues/86442> stabilizes.
-fn is_network_unreachable(e: &io::Error) -> bool {
-    format!("{:?}", e.kind()) == "NetworkUnreachable"
-}
-
-#[cfg(test)]
-mod tests {
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn network_unreachable_works() {
-        let err = std::io::Error::from_raw_os_error(libc::ENETUNREACH); // This is what `std` uses internally to map it.
-
-        assert!(super::is_network_unreachable(&err))
     }
 }

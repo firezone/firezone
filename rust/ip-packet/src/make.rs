@@ -61,6 +61,42 @@ pub fn icmp_response_packet(packet: IpPacket<'static>) -> MutableIpPacket<'stati
     .expect("src and dst come from the same packet")
 }
 
+pub fn icmp_network_unreachable(
+    src: IpAddr,
+    dst: IpAddr,
+) -> Result<IpPacket<'static>, IpVersionMismatch> {
+    let buf =
+        match (src, dst) {
+            (IpAddr::V4(src), IpAddr::V4(dst)) => {
+                let builder = etherparse::PacketBuilder::ipv4(src.octets(), dst.octets(), 10)
+                    .icmpv4(etherparse::Icmpv4Type::DestinationUnreachable(
+                        etherparse::icmpv4::DestUnreachableHeader::Network,
+                    ));
+
+                let size = builder.size(0);
+                let mut buf = vec![0; size];
+                builder.write(&mut buf, &[]).unwrap();
+
+                buf
+            }
+            (IpAddr::V6(src), IpAddr::V6(dst)) => {
+                let builder = etherparse::PacketBuilder::ipv6(src.octets(), dst.octets(), 10)
+                    .icmpv4(etherparse::Icmpv4Type::DestinationUnreachable(
+                        etherparse::icmpv4::DestUnreachableHeader::Network,
+                    ));
+
+                let size = builder.size(0);
+                let mut buf = vec![0; size];
+                builder.write(&mut buf, &[]).unwrap();
+
+                buf
+            }
+            _ => return Err(IpVersionMismatch),
+        };
+
+    Ok(IpPacket::owned(buf).unwrap())
+}
+
 #[cfg_attr(test, derive(Debug, test_strategy::Arbitrary))]
 pub(crate) enum IcmpKind {
     Request,

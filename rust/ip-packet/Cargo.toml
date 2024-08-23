@@ -15,6 +15,7 @@ pnet_packet = { version = "0.35" }
 proptest = { version = "1", optional = true }
 thiserror = "1"
 tracing = "0.1"
+etherparse = "0.15.0"
 
 [dev-dependencies]
 test-strategy = "0.3.1"

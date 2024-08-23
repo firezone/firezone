@@ -139,11 +139,23 @@ impl ClientTunnel {
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
+                    let src = packet.source();
+                    let dst = packet.destination();
+
                     let Some(transmit) = self.role_state.encapsulate(packet, Instant::now()) else {
                         continue;
                     };
 
-                    self.io.send_network(transmit)?;
+                    match self.io.send_network(transmit) {
+                        Ok(()) => {}
+                        Err(e) if is_network_unreachable(&e) => {
+                            let response =
+                                ip_packet::make::icmp_network_unreachable(dst, src).unwrap();
+
+                            self.io.send_device(response)?;
+                        }
+                        Err(e) => return Poll::Ready(Err(e)),
+                    }
 
                     continue;
                 }
@@ -344,4 +356,20 @@ pub fn keypair() -> (StaticSecret, PublicKey) {
     let public_key = PublicKey::from(&private_key);
 
     (private_key, public_key)
+}
+
+/// Hacky way of detecting `NetworkUnreachable` until <https://github.com/rust-lang/rust/issues/86442> stabilizes.
+fn is_network_unreachable(e: &std::io::Error) -> bool {
+    format!("{:?}", e.kind()) == "NetworkUnreachable"
+}
+
+#[cfg(test)]
+mod unittests {
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn network_unreachable_works() {
+        let err = std::io::Error::from_raw_os_error(libc::ENETUNREACH); // This is what `std` uses internally to map it.
+
+        assert!(super::is_network_unreachable(&err))
+    }
 }
