@@ -39,18 +39,18 @@ struct ResourceView: View {
             .font(.system(size: 14))
             .foregroundColor(.secondary)
             .frame(width: 80, alignment: .leading)
-          if let url = URL(string: resource.addressDescription ?? resource.address),
+          if let url = URL(string: resource.addressDescription ?? resource.address!),
              let _ = url.host {
             Button(action: {
               openURL(url)
             }) {
-              Text(resource.addressDescription ?? resource.address)
+              Text(resource.addressDescription ?? resource.address!)
                 .foregroundColor(.blue)
                 .underline()
                 .font(.system(size: 16))
                 .contextMenu {
                   Button(action: {
-                    copyToClipboard(resource.addressDescription ?? resource.address)
+                    copyToClipboard(resource.addressDescription ?? resource.address!)
                   }) {
                     Text("Copy address")
                     Image(systemName: "doc.on.doc")
@@ -58,10 +58,10 @@ struct ResourceView: View {
                 }
             }
           } else {
-            Text(resource.addressDescription ?? resource.address)
+            Text(resource.addressDescription ?? resource.address!)
               .contextMenu {
                 Button(action: {
-                  copyToClipboard(resource.addressDescription ?? resource.address)
+                  copyToClipboard(resource.addressDescription ?? resource.address!)
                 }) {
                   Text("Copy address")
                   Image(systemName: "doc.on.doc")

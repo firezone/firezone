@@ -535,7 +535,7 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     } else {
       // Show Address first if addressDescription is missing
-      resourceAddressDescriptionItem.title = resource.address
+      resourceAddressDescriptionItem.title = resource.address! // Address is none only for non-internet resource
       resourceAddressDescriptionItem.action = #selector(resourceValueTapped(_:))
     }
     resourceAddressDescriptionItem.isEnabled = true
@@ -561,7 +561,7 @@ public final class MenuBar: NSObject, ObservableObject {
     // Resource address
     let resourceAddressItem = NSMenuItem()
     resourceAddressItem.action = #selector(resourceValueTapped(_:))
-    resourceAddressItem.title = resource.address
+    resourceAddressItem.title = resource.address!
     resourceAddressItem.toolTip = "Resource address (click to copy)"
     resourceAddressItem.isEnabled = true
     resourceAddressItem.target = self
