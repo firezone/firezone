@@ -9,7 +9,7 @@ import dev.firezone.android.tunnel.model.TypeEnum
 data class ViewResource(
     val id: String,
     val type: TypeEnum,
-    val address: String,
+    val address: String?,
     val addressDescription: String?,
     val sites: List<Site>?,
     val name: String,

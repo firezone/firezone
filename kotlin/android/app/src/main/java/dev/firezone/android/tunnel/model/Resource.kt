@@ -11,7 +11,7 @@ import kotlinx.parcelize.Parcelize
 data class Resource(
     val type: TypeEnum,
     val id: String,
-    val address: String,
+    val address: String?,
     @Json(name = "address_description") val addressDescription: String?,
     val sites: List<Site>?,
     val name: String,
