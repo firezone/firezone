@@ -80,6 +80,7 @@ pub fn internet_resource(
 ) -> impl Strategy<Value = ResourceDescriptionInternet> {
     (resource_id(), sites, any::<bool>()).prop_map(move |(id, sites, can_be_disabled)| {
         ResourceDescriptionInternet {
+            name: Some("Internet Resource".to_string()),
             id,
             sites,
             can_be_disabled: Some(can_be_disabled),
