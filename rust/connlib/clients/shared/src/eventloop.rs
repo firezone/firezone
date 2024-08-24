@@ -222,6 +222,7 @@ where
                 resources.push(
                     connlib_shared::messages::client::ResourceDescription::Internet(
                         ResourceDescriptionInternet {
+                            name: Some("○ Internet Resource".to_string()),
                             id: ResourceId::random(),
                             sites: vec![],
                             can_be_disabled: Some(true),

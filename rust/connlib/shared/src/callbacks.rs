@@ -182,7 +182,7 @@ mod tests {
 
     fn internet_resource(uuid: &str) -> ResourceDescription {
         ResourceDescription::Internet(ResourceDescriptionInternet {
-            name: "🌐 Internet Resource".to_string(),
+            name: "Internet Resource".to_string(),
             id: ResourceId::from_str(uuid).unwrap(),
             sites: vec![Site {
                 name: "test".to_string(),

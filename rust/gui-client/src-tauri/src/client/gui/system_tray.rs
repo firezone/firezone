@@ -249,7 +249,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         // Always show Resources in the original order
         for res in resources
             .iter()
-            .filter(|res| !favorite_resources.contains(&res.id()) || !res.is_internet_resource())
+            .filter(|res| !favorite_resources.contains(&res.id()) && !res.is_internet_resource())
         {
             submenu = submenu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
@@ -321,7 +321,7 @@ mod tests {
             {
                 "id": "1106047c-cd5d-4151-b679-96b93da7383b",
                 "type": "internet",
-                "name": "🌐 Internet Resource",
+                "name": "Internet Resource",
                 "address": "All internet addresses",
                 "sites": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
                 "status": "Offline",
@@ -432,17 +432,8 @@ mod tests {
             .add_submenu(
                 "Internet Resource",
                 Menu::default()
-                    .copyable("")
                     .separator()
-                    .disabled("Resource")
-                    .copyable("Internet Resource")
-                    .copyable("")
-                    .item(
-                        Event::AddFavorite(
-                            ResourceId::from_str("1106047c-cd5d-4151-b679-96b93da7383b").unwrap(),
-                        ),
-                        ADD_FAVORITE,
-                    )
+                    .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
                     .disabled("Site")
                     .copyable("test")
@@ -493,48 +484,38 @@ mod tests {
                     .copyable("test")
                     .copyable(GATEWAY_CONNECTED),
             )
+            .add_submenu(
+                "Internet Resource",
+                Menu::default()
+                    .separator()
+                    .disabled(INTERNET_RESOURCE_DESCRIPTION)
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable(ALL_GATEWAYS_OFFLINE),
+            )
             .separator()
             .add_submenu(
                 OTHER_RESOURCES,
-                Menu::default()
-                    .add_submenu(
-                        "172.172.0.0/16",
-                        Menu::default()
-                            .copyable("cidr resource")
-                            .separator()
-                            .disabled("Resource")
-                            .copyable("172.172.0.0/16")
-                            .copyable("172.172.0.0/16")
-                            .item(
-                                Event::AddFavorite(ResourceId::from_str(
-                                    "73037362-715d-4a83-a749-f18eadd970e6",
-                                )?),
-                                ADD_FAVORITE,
-                            )
-                            .separator()
-                            .disabled("Site")
-                            .copyable("test")
-                            .copyable(NO_ACTIVITY),
-                    )
-                    .add_submenu(
-                        "Internet Resource",
-                        Menu::default()
-                            .copyable("")
-                            .separator()
-                            .disabled("Resource")
-                            .copyable("Internet Resource")
-                            .copyable("")
-                            .item(
-                                Event::AddFavorite(ResourceId::from_str(
-                                    "1106047c-cd5d-4151-b679-96b93da7383b",
-                                )?),
-                                ADD_FAVORITE,
-                            )
-                            .separator()
-                            .disabled("Site")
-                            .copyable("test")
-                            .copyable(ALL_GATEWAYS_OFFLINE),
-                    ),
+                Menu::default().add_submenu(
+                    "172.172.0.0/16",
+                    Menu::default()
+                        .copyable("cidr resource")
+                        .separator()
+                        .disabled("Resource")
+                        .copyable("172.172.0.0/16")
+                        .copyable("172.172.0.0/16")
+                        .item(
+                            Event::AddFavorite(ResourceId::from_str(
+                                "73037362-715d-4a83-a749-f18eadd970e6",
+                            )?),
+                            ADD_FAVORITE,
+                        )
+                        .separator()
+                        .disabled("Site")
+                        .copyable("test")
+                        .copyable(NO_ACTIVITY),
+                ),
             )
             .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
@@ -604,19 +585,10 @@ mod tests {
                     .copyable(GATEWAY_CONNECTED),
             )
             .add_submenu(
-                "🌐 Internet Resource",
+                "Internet Resource",
                 Menu::default()
-                    .copyable("")
                     .separator()
-                    .disabled("Resource")
-                    .copyable("🌐 Internet Resource")
-                    .copyable("")
-                    .item(
-                        Event::AddFavorite(ResourceId::from_str(
-                            "1106047c-cd5d-4151-b679-96b93da7383b",
-                        )?),
-                        ADD_FAVORITE,
-                    )
+                    .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
                     .disabled("Site")
                     .copyable("test")

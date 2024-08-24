@@ -423,7 +423,7 @@ public final class MenuBar: NSObject, ObservableObject {
       newResources
     }
     let newOthers: [Resource] = if hasAnyFavorites {
-      newResources.filter { !model.favorites.contains($0.id) || !$0.isInternetResource() }
+      newResources.filter { !model.favorites.contains($0.id) && !$0.isInternetResource() }
     } else {
       []
     }
