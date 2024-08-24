@@ -32,6 +32,6 @@ fun Resource.toViewResource(enabled: Boolean): ViewResource {
     )
 }
 
-fun ViewResource.isInternetResource() : Boolean {
+fun ViewResource.isInternetResource(): Boolean {
     return this.type == TypeEnum.Internet
 }

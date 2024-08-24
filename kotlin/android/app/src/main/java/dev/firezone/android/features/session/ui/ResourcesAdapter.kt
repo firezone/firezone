@@ -1,7 +1,6 @@
 /* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -46,7 +45,6 @@ internal class ResourcesAdapter(private val activity: SessionActivity) : ListAda
     private fun onSwitchToggled(resource: ViewResource) {
         activity.onViewResourceToggled(resource)
     }
-
 
     class ViewHolder(private val binding: ListItemResourceBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(
