@@ -418,12 +418,12 @@ public final class MenuBar: NSObject, ObservableObject {
     // If we have no favorites, then everything is a favorite
     let hasAnyFavorites = newResources.contains { model.favorites.contains($0.id) }
     let newFavorites = if (hasAnyFavorites) {
-      newResources.filter { model.favorites.contains($0.id) }
+      newResources.filter { model.favorites.contains($0.id) || $0.isInternetResource() }
     } else {
       newResources
     }
     let newOthers: [Resource] = if hasAnyFavorites {
-      newResources.filter { !model.favorites.contains($0.id) }
+      newResources.filter { !model.favorites.contains($0.id) || !$0.isInternetResource() }
     } else {
       []
     }
@@ -514,13 +514,8 @@ public final class MenuBar: NSObject, ObservableObject {
   private func nonInternetResourceHeader(resource: Resource) -> NSMenu {
     let subMenu = NSMenu()
 
-    let resourceAddressDescriptionItem = NSMenuItem()
-    let resourceSectionItem = NSMenuItem()
-    let resourceNameItem = NSMenuItem()
-    let resourceAddressItem = NSMenuItem()
-    let toggleFavoriteItem = NSMenuItem()
-
     // AddressDescription first -- will be most common action
+    let resourceAddressDescriptionItem = NSMenuItem()
     if let addressDescription = resource.addressDescription {
       resourceAddressDescriptionItem.title = addressDescription
 
@@ -549,11 +544,13 @@ public final class MenuBar: NSObject, ObservableObject {
 
     subMenu.addItem(NSMenuItem.separator())
 
+    let resourceSectionItem = NSMenuItem()
     resourceSectionItem.title = "Resource"
     resourceSectionItem.isEnabled = false
     subMenu.addItem(resourceSectionItem)
 
     // Resource name
+    let resourceNameItem = NSMenuItem()
     resourceNameItem.action = #selector(resourceValueTapped(_:))
     resourceNameItem.title = resource.name
     resourceNameItem.toolTip = "Resource name (click to copy)"
@@ -562,12 +559,15 @@ public final class MenuBar: NSObject, ObservableObject {
     subMenu.addItem(resourceNameItem)
 
     // Resource address
+    let resourceAddressItem = NSMenuItem()
     resourceAddressItem.action = #selector(resourceValueTapped(_:))
     resourceAddressItem.title = resource.address
     resourceAddressItem.toolTip = "Resource address (click to copy)"
     resourceAddressItem.isEnabled = true
     resourceAddressItem.target = self
     subMenu.addItem(resourceAddressItem)
+
+    let toggleFavoriteItem = NSMenuItem()
 
     if model.favorites.contains(resource.id) {
       toggleFavoriteItem.action = #selector(removeFavoriteTapped(_:))
