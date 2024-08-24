@@ -216,20 +216,9 @@ where
             }
             IngressMessages::Init(InitClient {
                 interface,
-                mut resources,
+                resources,
                 relays,
             }) => {
-                resources.push(
-                    connlib_shared::messages::client::ResourceDescription::Internet(
-                        ResourceDescriptionInternet {
-                            name: Some("○ Internet Resource".to_string()),
-                            id: ResourceId::random(),
-                            sites: vec![],
-                            can_be_disabled: Some(true),
-                        },
-                    ),
-                );
-
                 self.tunnel.set_new_interface_config(interface);
                 self.tunnel.set_resources(resources);
                 self.tunnel.update_relays(BTreeSet::default(), relays);
