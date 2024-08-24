@@ -224,6 +224,7 @@ where
                         ResourceDescriptionInternet {
                             id: ResourceId::random(),
                             sites: vec![],
+                            can_be_disabled: Some(true),
                         },
                     ),
                 );
