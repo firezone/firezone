@@ -165,7 +165,7 @@ resource "google_compute_firewall" "relays-ssh-ipv4" {
   target_tags   = module.relays[0].target_tags
 }
 
-# Trigger an alert when more than 50% of relays are down
+# Trigger an alert when there is at least one region without a healthy relay
 resource "google_monitoring_alert_policy" "connected_relays_count" {
   project = module.google-cloud-project.project.project_id
 
