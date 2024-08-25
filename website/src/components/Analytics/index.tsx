@@ -5,7 +5,7 @@ import LinkedInInsights from "./LinkedInInsights";
 export default function Analytics() {
   return (
     <>
-      {/* <Mixpanel /> */}
+      <Mixpanel />
       <GoogleAds />
       <LinkedInInsights />
     </>
