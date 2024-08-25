@@ -131,7 +131,7 @@ defmodule API.Gateway.Channel do
       } do
       :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
 
-      client = Clients.fetch_client_by_id!(client_id, preload: [:actor])
+      client = Clients.fetch_client_by_id!(client_id)
       resource = Resources.fetch_resource_by_id!(resource_id)
 
       case API.Client.Channel.map_or_drop_compatible_resource(
