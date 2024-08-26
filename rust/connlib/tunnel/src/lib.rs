@@ -8,7 +8,7 @@ use boringtun::x25519::StaticSecret;
 use chrono::Utc;
 use connlib_shared::{
     callbacks,
-    messages::{ClientId, GatewayId, Relay, RelayId, ResolveRequest, ResourceId},
+    messages::{ClientId, GatewayId, Offer, Relay, RelayId, ResolveRequest, ResourceId, SecretKey},
     DomainName, PublicKey, DEFAULT_MTU,
 };
 use io::Io;
@@ -62,7 +62,7 @@ const BUF_SIZE: usize = DEFAULT_MTU + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNE
 pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
 
-pub use client::{ClientState, Request};
+pub use client::ClientState;
 pub use gateway::{GatewayState, IPV4_PEERS, IPV6_PEERS};
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
@@ -264,7 +264,7 @@ impl GatewayTunnel {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum ClientEvent {
     AddedIceCandidates {
         conn_id: GatewayId,
@@ -283,6 +283,17 @@ pub enum ClientEvent {
         resource_id: ResourceId,
         /// The gateway we want to access the resource through.
         gateway_id: GatewayId,
+        /// In the case of a DNS resource, its domain and the IPs we assigned to it.
+        maybe_domain: Option<ResolveRequest>,
+    },
+    RequestConnection {
+        /// The gateway we want to establish a connection to.
+        gateway_id: GatewayId,
+        /// The connection "offer". Contains our ICE credentials.
+        offer: Offer,
+        preshared_key: SecretKey,
+        /// The resource we want to access.
+        resource_id: ResourceId,
         /// In the case of a DNS resource, its domain and the IPs we assigned to it.
         maybe_domain: Option<ResolveRequest>,
     },

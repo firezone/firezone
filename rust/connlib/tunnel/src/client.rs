@@ -7,11 +7,10 @@ use connlib_shared::callbacks::Status;
 use connlib_shared::messages::client::{Site, SiteId};
 use connlib_shared::messages::ResolveRequest;
 use connlib_shared::messages::{
-    client::ResourceDescription, client::ResourceDescriptionCidr, Answer, ClientPayload, DnsServer,
-    GatewayId, Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId,
-    RequestConnection, ResourceId, ReuseConnection,
+    client::ResourceDescription, client::ResourceDescriptionCidr, Answer, DnsServer, GatewayId,
+    Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId, ResourceId,
 };
-use connlib_shared::{callbacks, DomainName, PublicKey, StaticSecret};
+use connlib_shared::{callbacks, PublicKey, StaticSecret};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
@@ -184,14 +183,14 @@ impl ClientTunnel {
         self.role_state.remove_ice_candidate(conn_id, ice_candidate);
     }
 
-    pub fn create_or_reuse_connection(
+    pub fn on_routing_details(
         &mut self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
         site_id: SiteId,
-    ) -> anyhow::Result<Option<Request>> {
+    ) -> anyhow::Result<()> {
         self.role_state
-            .create_or_reuse_connection(resource_id, gateway_id, site_id)
+            .on_routing_details(resource_id, gateway_id, site_id)
     }
 
     pub fn received_offer_response(
@@ -213,29 +212,6 @@ impl ClientTunnel {
         )?;
 
         Ok(())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Request {
-    NewConnection(RequestConnection),
-    ReuseConnection(ReuseConnection),
-}
-
-impl Request {
-    pub fn resource_id(&self) -> ResourceId {
-        match self {
-            Request::NewConnection(i) => i.resource_id,
-            Request::ReuseConnection(i) => i.resource_id,
-        }
-    }
-
-    /// The domain that we need to resolve as part of the connection request.
-    pub fn domain_name(&self) -> Option<DomainName> {
-        match self {
-            Request::NewConnection(i) => i.client_payload.domain.as_ref().map(|r| r.name.clone()),
-            Request::ReuseConnection(i) => i.payload.as_ref().map(|r| r.name.clone()),
-        }
     }
 }
 
@@ -564,14 +540,17 @@ impl ClientState {
         Ok(())
     }
 
+    /// Updates the "routing table".
+    ///
+    /// In a nutshell, this tells us which gateway in which site to use for the given resource.
     #[tracing::instrument(level = "debug", skip_all, fields(%resource_id, %gateway_id))]
-    pub fn create_or_reuse_connection(
+    pub fn on_routing_details(
         &mut self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
         site_id: SiteId,
-    ) -> anyhow::Result<Option<Request>> {
-        tracing::trace!("Creating or reusing connection");
+    ) -> anyhow::Result<()> {
+        tracing::trace!("Updating resource routing table");
 
         let desc = self
             .resources_by_id
@@ -579,7 +558,7 @@ impl ClientState {
             .context("Unknown resource")?;
 
         if self.node.is_expecting_answer(gateway_id) {
-            return Ok(None);
+            return Ok(());
         }
 
         let awaiting_connection_details = self
@@ -601,11 +580,12 @@ impl ClientState {
             self.peers
                 .add_ips_with_resource(&gateway_id, &ips, &resource_id);
 
-            return Ok(Some(Request::ReuseConnection(ReuseConnection {
+            self.buffered_events.push_back(ClientEvent::RequestAccess {
                 resource_id,
                 gateway_id,
-                payload: awaiting_connection_details.domain,
-            })));
+                maybe_domain: awaiting_connection_details.domain,
+            });
+            return Ok(());
         };
 
         self.peers.insert(
@@ -621,18 +601,19 @@ impl ClientState {
             Instant::now(),
         );
 
-        return Ok(Some(Request::NewConnection(RequestConnection {
-            resource_id,
-            gateway_id,
-            client_preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
-            client_payload: ClientPayload {
-                ice_parameters: Offer {
+        self.buffered_events
+            .push_back(ClientEvent::RequestConnection {
+                gateway_id,
+                offer: Offer {
                     username: offer.credentials.username,
                     password: offer.credentials.password,
                 },
-                domain: awaiting_connection_details.domain,
-            },
-        })));
+                preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
+                resource_id,
+                maybe_domain: awaiting_connection_details.domain,
+            });
+
+        Ok(())
     }
 
     fn is_upstream_set_by_the_portal(&self) -> bool {

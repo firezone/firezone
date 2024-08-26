@@ -12,7 +12,7 @@ use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
 use crate::utils::earliest;
-use crate::{ClientEvent, GatewayEvent, Request};
+use crate::{ClientEvent, GatewayEvent};
 use connlib_shared::messages::client::ResourceDescription;
 use connlib_shared::{
     messages::{ClientId, GatewayId, Interface, RelayId},
@@ -637,103 +637,9 @@ impl TunnelTest {
                 let (gateway, site) =
                     portal.handle_connection_intent(resource, connected_gateway_ids);
 
-                let request = self
-                    .client
-                    .exec_mut(|c| c.sut.create_or_reuse_connection(resource, gateway, site))
-                    .unwrap()
+                self.client
+                    .exec_mut(|c| c.sut.on_routing_details(resource, gateway, site))
                     .unwrap();
-
-                let resource_id = request.resource_id();
-
-                // Resolve the domain name that we want to talk to to the IP that we generated as part of the Transition for sending a DNS query.
-                let resolved_ips = request
-                    .domain_name()
-                    .into_iter()
-                    .flat_map(|domain| global_dns_records.get(&domain).cloned())
-                    .flatten()
-                    .collect();
-
-                let resource =
-                    portal.map_client_resource_to_gateway_resource(resolved_ips, resource_id);
-
-                match request {
-                    Request::NewConnection(new_connection) => {
-                        let Some(gateway) = self.gateways.get_mut(&new_connection.gateway_id)
-                        else {
-                            tracing::error!("Unknown gateway");
-                            return;
-                        };
-
-                        let answer = gateway
-                            .exec_mut(|g| {
-                                g.sut.accept(
-                                    self.client.inner().id,
-                                    snownet::Offer {
-                                        session_key: new_connection
-                                            .client_preshared_key
-                                            .expose_secret()
-                                            .0
-                                            .into(),
-                                        credentials: snownet::Credentials {
-                                            username: new_connection
-                                                .client_payload
-                                                .ice_parameters
-                                                .username,
-                                            password: new_connection
-                                                .client_payload
-                                                .ice_parameters
-                                                .password,
-                                        },
-                                    },
-                                    self.client.inner().sut.public_key(),
-                                    self.client.inner().sut.tunnel_ip4().unwrap(),
-                                    self.client.inner().sut.tunnel_ip6().unwrap(),
-                                    new_connection
-                                        .client_payload
-                                        .domain
-                                        .map(|r| (r.name, r.proxy_ips)),
-                                    None, // TODO: How to generate expiry?
-                                    resource,
-                                    now,
-                                )
-                            })
-                            .unwrap();
-
-                        self.client
-                            .exec_mut(|c| {
-                                c.sut.accept_answer(
-                                    snownet::Answer {
-                                        credentials: snownet::Credentials {
-                                            username: answer.username,
-                                            password: answer.password,
-                                        },
-                                    },
-                                    resource_id,
-                                    gateway.inner().sut.public_key(),
-                                    now,
-                                )
-                            })
-                            .unwrap();
-                    }
-                    Request::ReuseConnection(reuse_connection) => {
-                        let gateway = self
-                            .gateways
-                            .get_mut(&reuse_connection.gateway_id)
-                            .expect("unknown gateway");
-
-                        gateway
-                            .exec_mut(|g| {
-                                g.sut.allow_access(
-                                    resource,
-                                    self.client.inner().id,
-                                    None,
-                                    reuse_connection.payload.map(|r| (r.name, r.proxy_ips)),
-                                    now,
-                                )
-                            })
-                            .unwrap();
-                    }
-                };
             }
 
             ClientEvent::RequestAccess {
@@ -745,11 +651,8 @@ impl TunnelTest {
 
                 let resolved_ips = maybe_domain
                     .as_ref()
-                    .map(|r| r.name.clone())
-                    .into_iter()
-                    .flat_map(|domain| global_dns_records.get(&domain).cloned().into_iter())
-                    .flatten()
-                    .collect();
+                    .and_then(|r| global_dns_records.get(&r.name).cloned())
+                    .unwrap_or_default();
 
                 let resource =
                     portal.map_client_resource_to_gateway_resource(resolved_ips, resource_id);
@@ -776,6 +679,67 @@ impl TunnelTest {
                     .exec_mut(|c| c.dns_by_sentinel = dns_by_sentinel);
             }
             ClientEvent::TunRoutesUpdated { .. } => {}
+            ClientEvent::RequestConnection {
+                gateway_id,
+                offer,
+                preshared_key,
+                resource_id,
+                maybe_domain,
+            } => {
+                // Resolve the domain name that we want to talk to to the IP that we generated as part of the Transition for sending a DNS query.
+                let resolved_ips = maybe_domain
+                    .as_ref()
+                    .and_then(|r| global_dns_records.get(&r.name).cloned())
+                    .unwrap_or_default();
+
+                let resource =
+                    portal.map_client_resource_to_gateway_resource(resolved_ips, resource_id);
+
+                let Some(gateway) = self.gateways.get_mut(&gateway_id) else {
+                    tracing::error!("Unknown gateway");
+                    return;
+                };
+
+                let answer = gateway
+                    .exec_mut(|g| {
+                        g.sut.accept(
+                            self.client.inner().id,
+                            snownet::Offer {
+                                session_key: preshared_key.expose_secret().0.into(),
+                                credentials: snownet::Credentials {
+                                    username: offer.username,
+                                    password: offer.password,
+                                },
+                            },
+                            self.client.inner().sut.public_key(),
+                            self.client.inner().sut.tunnel_ip4().unwrap(),
+                            self.client.inner().sut.tunnel_ip6().unwrap(),
+                            maybe_domain
+                                .as_ref()
+                                .map(|r| (r.name.clone(), r.proxy_ips.clone())),
+                            None, // TODO: How to generate expiry?
+                            resource,
+                            now,
+                        )
+                    })
+                    .unwrap();
+
+                self.client
+                    .exec_mut(|c| {
+                        c.sut.accept_answer(
+                            snownet::Answer {
+                                credentials: snownet::Credentials {
+                                    username: answer.username,
+                                    password: answer.password,
+                                },
+                            },
+                            resource_id,
+                            gateway.inner().sut.public_key(),
+                            now,
+                        )
+                    })
+                    .unwrap();
+            }
         }
     }
 }
