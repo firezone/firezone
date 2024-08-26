@@ -1,6 +1,6 @@
-use crate::dns;
 use crate::dns::StubResolver;
 use crate::peer_store::PeerStore;
+use crate::{dns, BUF_SIZE};
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_shared::callbacks::Status;
@@ -21,6 +21,7 @@ use crate::peer::GatewayOnClient;
 use crate::utils::{self, earliest, turn};
 use crate::{ClientEvent, ClientTunnel, Tun};
 use domain::base::Message;
+use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, RelaySocket, Transmit};
 use std::borrow::Cow;
@@ -28,6 +29,7 @@ use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 
 pub(crate) const IPV4_RESOURCES: Ipv4Network =
@@ -62,6 +64,12 @@ pub(crate) const DNS_SENTINELS_V6: Ipv6Network = match Ipv6Network::new(
 // is 30 seconds. See resolvconf(5) timeout.
 const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// How many gateways we at most remember that we connected to.
+///
+/// 100 has been chosen as a pretty arbitrary value.
+/// We only store [`GatewayId`]s so the memory footprint is negligible.
+const MAX_REMEMBERED_GATEWAYS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(100) };
+
 impl ClientTunnel {
     pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
         self.role_state.set_resources(resources);
@@ -81,8 +89,13 @@ impl ClientTunnel {
     }
 
     pub fn set_disabled_resources(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
+        let old_routes = HashSet::<IpNetwork>::from_iter(self.role_state.routes());
         self.role_state
             .set_disabled_resource(new_disabled_resources);
+
+        if HashSet::<IpNetwork>::from_iter(self.role_state.routes()) == old_routes {
+            return;
+        }
 
         self.role_state
             .buffered_events
@@ -248,8 +261,10 @@ pub struct ClientState {
 
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
     active_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    /// `Some` if the Internet resource is enabled.
+    internet_resource: Option<ResourceId>,
     /// All resources indexed by their ID.
-    resources_by_id: HashMap<ResourceId, ResourceDescription>,
+    resources_by_id: BTreeMap<ResourceId, ResourceDescription>,
 
     /// The DNS resolvers configured on the system outside of connlib.
     system_resolvers: Vec<IpAddr>,
@@ -281,15 +296,19 @@ pub struct ClientState {
     /// Resources that have been disabled by the UI
     disabled_resources: BTreeSet<ResourceId>,
 
+    /// Stores the gateways we recently connected to.
+    ///
+    /// We use this as a hint to the portal to re-connect us to the same gateway for a resource.
+    recently_connected_gateways: LruCache<GatewayId, ()>,
+
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket<'static>>,
     buffered_transmits: VecDeque<Transmit<'static>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AwaitingConnectionDetails {
-    gateways: HashSet<GatewayId>,
-    pub last_intent_sent_at: Instant,
+struct AwaitingConnectionDetails {
+    last_intent_sent_at: Instant,
     domain: Option<ResolveRequest>,
 }
 
@@ -309,7 +328,7 @@ impl ClientState {
             buffered_events: Default::default(),
             interface_config: Default::default(),
             buffered_packets: Default::default(),
-            node: ClientNode::new(private_key.into(), seed),
+            node: ClientNode::new(private_key.into(), BUF_SIZE, seed),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
@@ -318,6 +337,8 @@ impl ClientState {
             stub_resolver: StubResolver::new(known_hosts),
             disabled_resources: Default::default(),
             buffered_transmits: Default::default(),
+            internet_resource: None,
+            recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
         }
     }
 
@@ -342,12 +363,12 @@ impl ClientState {
     pub(crate) fn resources(&self) -> Vec<callbacks::ResourceDescription> {
         self.resources_by_id
             .values()
-            .sorted()
             .cloned()
             .map(|r| {
                 let status = self.resource_status(&r);
                 r.with_status(status)
             })
+            .sorted()
             .collect_vec()
     }
 
@@ -576,6 +597,7 @@ impl ClientState {
         }
 
         self.gateways_site.insert(gateway_id, site_id);
+        self.recently_connected_gateways.put(gateway_id, ());
 
         if self.peers.get(&gateway_id).is_some() {
             self.peers
@@ -623,6 +645,22 @@ impl ClientState {
         !interface.upstream_dns.is_empty()
     }
 
+    /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
+    ///
+    /// We only want to do this if the upstream DNS server is set by the portal, otherwise, the server might be a local IP.
+    fn should_forward_dns_query_to_gateway(&self, dns_server: IpAddr) -> bool {
+        if !self.is_upstream_set_by_the_portal() {
+            return false;
+        }
+        if self.internet_resource.is_some() {
+            return true;
+        }
+
+        self.active_cidr_resources
+            .longest_match(dns_server)
+            .is_some()
+    }
+
     /// Attempt to handle the given packet as a DNS query packet.
     ///
     /// Returns `Ok` if the packet is in fact a DNS query with an optional response to send back.
@@ -645,10 +683,7 @@ impl ClientState {
             }) => {
                 let ip = server.ip();
 
-                // In case the DNS server is a CIDR resource, it needs to go through the tunnel.
-                if self.is_upstream_set_by_the_portal()
-                    && self.active_cidr_resources.longest_match(ip).is_some()
-                {
+                if self.should_forward_dns_query_to_gateway(ip) {
                     return Err((packet, ip));
                 }
 
@@ -711,12 +746,6 @@ impl ClientState {
     ) {
         debug_assert!(self.resources_by_id.contains_key(&resource));
 
-        let gateways = self
-            .resources_gateways
-            .values()
-            .copied()
-            .collect::<HashSet<_>>();
-
         if self
             .gateway_by_resource(&resource)
             .is_some_and(|gateway_id| self.node.is_expecting_answer(gateway_id))
@@ -740,7 +769,6 @@ impl ClientState {
             }
             Entry::Vacant(vacant) => {
                 vacant.insert(AwaitingConnectionDetails {
-                    gateways: gateways.clone(),
                     last_intent_sent_at: now,
                     // Note: in case of an overlapping CIDR resource this should be None instead of Some if the resource_id
                     // is for a CIDR resource.
@@ -758,10 +786,18 @@ impl ClientState {
 
         tracing::debug!("Sending connection intent");
 
+        // We tell the portal about all gateways we ever connected to, to encourage re-connecting us to the same ones during a session.
+        // The LRU cache visits them in MRU order, meaning a gateway that we recently connected to should still be preferred.
+        let connected_gateway_ids = self
+            .recently_connected_gateways
+            .iter()
+            .map(|(g, _)| *g)
+            .collect();
+
         self.buffered_events
             .push_back(ClientEvent::ConnectionIntent {
                 resource,
-                connected_gateway_ids: gateways,
+                connected_gateway_ids,
             });
     }
 
@@ -812,6 +848,14 @@ impl ClientState {
             .map(|(ip, _)| ip)
             .chain(iter::once(IPV4_RESOURCES.into()))
             .chain(iter::once(IPV6_RESOURCES.into()))
+            .chain(
+                self.internet_resource
+                    .map(|_| Ipv4Network::DEFAULT_ROUTE.into()),
+            )
+            .chain(
+                self.internet_resource
+                    .map(|_| Ipv6Network::DEFAULT_ROUTE.into()),
+            )
             .chain(self.dns_mapping.left_values().copied().map(Into::into))
     }
 
@@ -820,17 +864,21 @@ impl ClientState {
     }
 
     fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
-        let maybe_dns_resource_id = self.stub_resolver.resolve_resource_by_ip(&destination);
+        // We need to filter disabled resources because we never remove resources from the stub_resolver
+        let maybe_dns_resource_id = self
+            .stub_resolver
+            .resolve_resource_by_ip(&destination)
+            .filter(|resource| self.is_resource_enabled(resource));
 
+        // We don't need to filter from here because resources are removed from the active_cidr_resources as soon as they are disabled.
         let maybe_cidr_resource_id = self
             .active_cidr_resources
             .longest_match(destination)
             .map(|(_, res)| res.id);
 
-        // We need to filter disabled resources because we never remove resources from the stub_resolver
         maybe_dns_resource_id
             .or(maybe_cidr_resource_id)
-            .filter(|resource| self.is_resource_enabled(resource))
+            .or(self.internet_resource)
     }
 
     pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
@@ -945,6 +993,7 @@ impl ClientState {
         tracing::info!("Resetting network state");
 
         self.node.reset();
+        self.recently_connected_gateways.clear(); // Ensure we don't have sticky gateways when we roam.
         self.drain_node_events();
     }
 
@@ -964,8 +1013,14 @@ impl ClientState {
     /// TODO: Add a test that asserts the above.
     ///       That is tricky because we need to assert on state deleted by [`ClientState::remove_resource`] and check that it did in fact not get deleted.
     pub(crate) fn set_resources(&mut self, new_resources: Vec<ResourceDescription>) {
-        let current_resource_ids = self.resources_by_id.keys().copied().collect::<HashSet<_>>();
+        let current_resource_ids = self
+            .resources_by_id
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>();
         let new_resource_ids = new_resources.iter().map(|r| r.id()).collect();
+
+        tracing::debug!(?current_resource_ids, ?new_resource_ids);
 
         // First, remove all resources that are not present in the new resource list.
         for id in current_resource_ids.difference(&new_resource_ids).copied() {
@@ -1006,7 +1061,9 @@ impl ClientState {
                     None => true,
                 }
             }
-            ResourceDescription::Internet(_) => false, // FIXME: Update with real check once Internet Resources get added.
+            ResourceDescription::Internet(resource) => {
+                self.internet_resource.replace(resource.id) != Some(resource.id)
+            }
         };
 
         if !added {
@@ -1034,7 +1091,11 @@ impl ClientState {
         match resource {
             ResourceDescription::Dns(_) => self.stub_resolver.remove_resource(id),
             ResourceDescription::Cidr(_) => self.active_cidr_resources.retain(|_, r| r.id != id),
-            ResourceDescription::Internet(_) => {}
+            ResourceDescription::Internet(_) => {
+                if self.internet_resource.is_some_and(|r_id| r_id == id) {
+                    self.internet_resource = None;
+                }
+            }
         }
 
         let name = resource.name();
@@ -1161,7 +1222,10 @@ fn get_addresses_for_awaiting_resource(
             .map_into()
             .collect_vec(),
         ResourceDescription::Cidr(r) => vec![r.address],
-        ResourceDescription::Internet(_) => vec![],
+        ResourceDescription::Internet(_) => vec![
+            Ipv4Network::DEFAULT_ROUTE.into(),
+            Ipv6Network::DEFAULT_ROUTE.into(),
+        ],
     }
 }
 

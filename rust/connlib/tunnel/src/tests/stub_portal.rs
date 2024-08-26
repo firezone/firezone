@@ -16,7 +16,7 @@ use proptest::{
     strategy::{Just, Strategy},
 };
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet},
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
@@ -107,10 +107,9 @@ impl StubPortal {
                     .cloned()
                     .map(client::ResourceDescription::Dns),
             )
-            // TODO: Enable once we actually implement the Internet resource
-            // .chain(iter::once(client::ResourceDescription::Internet(
-            //     self.internet_resource.clone(),
-            // )))
+            .chain(iter::once(client::ResourceDescription::Internet(
+                self.internet_resource.clone(),
+            )))
             .collect()
     }
 
@@ -118,7 +117,7 @@ impl StubPortal {
     pub(crate) fn handle_connection_intent(
         &self,
         resource: ResourceId,
-        _connected_gateway_ids: HashSet<GatewayId>,
+        _connected_gateway_ids: BTreeSet<GatewayId>,
     ) -> (GatewayId, client::SiteId) {
         let site_id = self
             .sites_by_resource

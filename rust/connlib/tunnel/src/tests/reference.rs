@@ -289,7 +289,7 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::ActivateResource(resource) => {
                 state.client.exec_mut(|client| match resource {
                     client::ResourceDescription::Dns(r) => {
-                        client.dns_resources.insert(r.id, r.clone());
+                        client.add_dns_resource(r.clone());
 
                         // TODO: PRODUCTION CODE CANNOT DO THIS.
                         // Remove all prior DNS records.
@@ -301,20 +301,15 @@ impl ReferenceStateMachine for ReferenceState {
                             true
                         });
                     }
-                    client::ResourceDescription::Cidr(r) => {
-                        client.cidr_resources.insert(r.address, r.clone());
-                    }
+                    client::ResourceDescription::Cidr(r) => client.add_cidr_resource(r.clone()),
                     client::ResourceDescription::Internet(r) => {
-                        client.internet_resource = Some(r.id)
+                        client.add_internet_resource(r.clone())
                     }
                 });
             }
             Transition::DeactivateResource(id) => {
                 state.client.exec_mut(|client| {
-                    client.cidr_resources.retain(|_, r| &r.id != id);
-                    client.dns_resources.remove(id);
-
-                    client.disconnect_resource(id)
+                    client.remove_resource(id);
                 });
             }
             Transition::DisableResources(resources) => state.client.exec_mut(|client| {
@@ -334,17 +329,20 @@ impl ReferenceStateMachine for ReferenceState {
                         .inner()
                         .is_locally_answered_query(&query.domain)
                     {
+                        tracing::debug!("Expecting locally answered query");
+
                         state.client.exec_mut(|client| client.on_dns_query(query));
                         continue;
                     }
 
-                    // Check if we the DNS server is defined as a CIDR resource.
-                    let Some(resource) = state.client.inner().dns_query_via_cidr_resource(query)
-                    else {
-                        // Not a CIDR resource, process normally.
+                    // Check if the DNS server is defined as a resource.
+                    let Some(resource) = state.client.inner().dns_query_via_resource(query) else {
+                        // Not a resource, process normally.
                         state.client.exec_mut(|client| client.on_dns_query(query));
                         continue;
                     };
+
+                    tracing::debug!("Expecting DNS query via resource");
 
                     if pending_connections.contains(&resource) {
                         // DNS server is a CIDR resource and a previous query of this batch is already triggering a connection.
@@ -352,10 +350,14 @@ impl ReferenceStateMachine for ReferenceState {
                         continue;
                     }
 
-                    if !state.client.inner().is_connected_to_cidr(resource) {
-                        state
-                            .client
-                            .exec_mut(|client| client.connected_cidr_resources.insert(resource));
+                    if !state
+                        .client
+                        .inner()
+                        .is_connected_to_internet_or_cidr(resource)
+                    {
+                        state.client.exec_mut(|client| {
+                            client.connect_to_internet_or_cidr_resource(resource)
+                        });
                         pending_connections.insert(resource);
                         continue;
                     }
@@ -371,7 +373,7 @@ impl ReferenceStateMachine for ReferenceState {
             } => {
                 state.client.exec_mut(|client| {
                     // If the Internet Resource is active, all packets are expected to be routed.
-                    if client.internet_resource.is_some() {
+                    if client.active_internet_resource().is_some() {
                         client.on_icmp_packet_to_internet(*src, *dst, *seq, *identifier, |r| {
                             state.portal.gateway_for_resource(r).copied()
                         })
@@ -425,6 +427,8 @@ impl ReferenceStateMachine for ReferenceState {
             }
             Transition::ReconnectPortal => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
+                // We do re-add all resources though so depending on the order they are added in, overlapping CIDR resources may change.
+                state.client.exec_mut(|c| c.readd_all_resources());
             }
             Transition::DeployNewRelays(new_relays) => {
                 // Always take down all relays because we can't know which one was sampled for the connection.
@@ -467,7 +471,13 @@ impl ReferenceStateMachine for ReferenceState {
 
                 true
             }
-            Transition::DisableResources(_) => true,
+            Transition::DisableResources(resources) => {
+                // Don't disabled resources we don't have.
+                // It doesn't hurt but makes the logs of reduced testcases weird.
+                resources
+                    .iter()
+                    .all(|r| state.client.inner().has_resource(*r))
+            }
             Transition::SendICMPPacketToNonResourceIp {
                 dst,
                 seq,
@@ -476,12 +486,7 @@ impl ReferenceStateMachine for ReferenceState {
             } => {
                 let is_valid_icmp_packet =
                     state.client.inner().is_valid_icmp_packet(seq, identifier);
-                let is_cidr_resource = state
-                    .client
-                    .inner()
-                    .cidr_resources
-                    .longest_match(*dst)
-                    .is_some();
+                let is_cidr_resource = state.client.inner().cidr_resource_by_ip(*dst).is_some();
 
                 is_valid_icmp_packet && !is_cidr_resource
             }
@@ -554,7 +559,7 @@ impl ReferenceStateMachine for ReferenceState {
                     .expected_dns_servers()
                     .contains(&query.dns_server);
                 let gateway_is_present_in_case_dns_server_is_cidr_resource =
-                    match state.client.inner().dns_query_via_cidr_resource(query) {
+                    match state.client.inner().dns_query_via_resource(query) {
                         Some(r) => {
                             let Some(gateway) = state.portal.gateway_for_resource(r) else {
                                 return false;

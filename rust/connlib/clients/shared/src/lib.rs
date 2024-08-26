@@ -136,7 +136,7 @@ where
         tcp_socket_factory,
         udp_socket_factory,
         BTreeMap::from([(portal.server_host().to_owned(), portal.resolved_addresses())]),
-    )?;
+    );
 
     let mut eventloop = Eventloop::new(tunnel, callbacks, portal, rx);
 
