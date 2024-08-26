@@ -736,39 +736,35 @@ impl TunnelTest {
                 };
             }
 
-            ClientEvent::SendProxyIps { connections } => {
-                for reuse_connection in connections {
-                    let gateway = self
-                        .gateways
-                        .get_mut(&reuse_connection.gateway_id)
-                        .expect("unknown gateway");
+            ClientEvent::SendProxyIps { connection } => {
+                let gateway = self
+                    .gateways
+                    .get_mut(&connection.gateway_id)
+                    .expect("unknown gateway");
 
-                    let resolved_ips = reuse_connection
-                        .payload
-                        .as_ref()
-                        .map(|r| r.name.clone())
-                        .into_iter()
-                        .flat_map(|domain| global_dns_records.get(&domain).cloned().into_iter())
-                        .flatten()
-                        .collect();
+                let resolved_ips = connection
+                    .payload
+                    .as_ref()
+                    .map(|r| r.name.clone())
+                    .into_iter()
+                    .flat_map(|domain| global_dns_records.get(&domain).cloned().into_iter())
+                    .flatten()
+                    .collect();
 
-                    let resource = portal.map_client_resource_to_gateway_resource(
-                        resolved_ips,
-                        reuse_connection.resource_id,
-                    );
+                let resource = portal
+                    .map_client_resource_to_gateway_resource(resolved_ips, connection.resource_id);
 
-                    gateway
-                        .exec_mut(|g| {
-                            g.sut.allow_access(
-                                resource,
-                                self.client.inner().id,
-                                None,
-                                reuse_connection.payload.map(|r| (r.name, r.proxy_ips)),
-                                now,
-                            )
-                        })
-                        .unwrap();
-                }
+                gateway
+                    .exec_mut(|g| {
+                        g.sut.allow_access(
+                            resource,
+                            self.client.inner().id,
+                            None,
+                            connection.payload.map(|r| (r.name, r.proxy_ips)),
+                            now,
+                        )
+                    })
+                    .unwrap();
             }
             ClientEvent::ResourcesChanged { .. } => {
                 tracing::warn!("Unimplemented");

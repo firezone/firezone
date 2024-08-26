@@ -153,11 +153,9 @@ where
                 );
                 self.connection_intents.register_new_intent(id, resource);
             }
-            firezone_tunnel::ClientEvent::SendProxyIps { connections } => {
-                for connection in connections {
-                    self.portal
-                        .send(PHOENIX_TOPIC, EgressMessages::ReuseConnection(connection));
-                }
+            firezone_tunnel::ClientEvent::SendProxyIps { connection } => {
+                self.portal
+                    .send(PHOENIX_TOPIC, EgressMessages::ReuseConnection(connection));
             }
             firezone_tunnel::ClientEvent::ResourcesChanged { resources } => {
                 self.callbacks.on_update_resources(resources)

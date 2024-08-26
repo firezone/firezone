@@ -422,14 +422,14 @@ impl ClientState {
             &resource_id,
         );
         self.buffered_events.push_back(ClientEvent::SendProxyIps {
-            connections: vec![ReuseConnection {
+            connection: ReuseConnection {
                 resource_id,
                 gateway_id,
                 payload: Some(ResolveRequest {
                     name: fqdn.clone(),
                     proxy_ips: ips.clone(),
                 }),
-            }],
+            },
         })
     }
 
