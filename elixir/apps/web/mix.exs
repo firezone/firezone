@@ -71,6 +71,7 @@ defmodule Web.MixProject do
       {:gen_smtp, "~> 1.0"},
 
       # Observability
+      {:opentelemetry_telemetry, "~> 1.1.1", override: true},
       {:opentelemetry_cowboy, "~> 0.3"},
       {:opentelemetry_liveview, "~> 1.0.0-rc.4"},
       {:opentelemetry_phoenix, "~> 1.1"},
