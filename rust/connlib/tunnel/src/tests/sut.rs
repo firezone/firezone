@@ -159,16 +159,23 @@ impl StateMachineTest for TunnelTest {
                 dst,
                 seq,
                 identifier,
+                payload,
             }
             | Transition::SendICMPPacketToCidrResource {
                 src,
                 dst,
                 seq,
                 identifier,
-                ..
+                payload,
             } => {
-                let packet =
-                    ip_packet::make::icmp_request_packet(src, dst, seq, identifier).unwrap();
+                let packet = ip_packet::make::icmp_request_packet(
+                    src,
+                    dst,
+                    seq,
+                    identifier,
+                    &payload.to_be_bytes(),
+                )
+                .unwrap();
 
                 let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
 
@@ -179,6 +186,7 @@ impl StateMachineTest for TunnelTest {
                 dst,
                 seq,
                 identifier,
+                payload,
                 resolved_ip,
                 ..
             } => {
@@ -195,8 +203,14 @@ impl StateMachineTest for TunnelTest {
                     });
                 let dst = *resolved_ip.select(available_ips);
 
-                let packet =
-                    ip_packet::make::icmp_request_packet(src, dst, seq, identifier).unwrap();
+                let packet = ip_packet::make::icmp_request_packet(
+                    src,
+                    dst,
+                    seq,
+                    identifier,
+                    &payload.to_be_bytes(),
+                )
+                .unwrap();
 
                 let transmit = state
                     .client

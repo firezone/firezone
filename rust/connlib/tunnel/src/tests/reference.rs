@@ -370,13 +370,19 @@ impl ReferenceStateMachine for ReferenceState {
                 dst,
                 seq,
                 identifier,
+                payload,
             } => {
                 state.client.exec_mut(|client| {
                     // If the Internet Resource is active, all packets are expected to be routed.
                     if client.active_internet_resource().is_some() {
-                        client.on_icmp_packet_to_internet(*src, *dst, *seq, *identifier, |r| {
-                            state.portal.gateway_for_resource(r).copied()
-                        })
+                        client.on_icmp_packet_to_internet(
+                            *src,
+                            *dst,
+                            *seq,
+                            *identifier,
+                            *payload,
+                            |r| state.portal.gateway_for_resource(r).copied(),
+                        )
                     }
                 });
             }
@@ -385,10 +391,10 @@ impl ReferenceStateMachine for ReferenceState {
                 dst,
                 seq,
                 identifier,
-                ..
+                payload,
             } => {
                 state.client.exec_mut(|client| {
-                    client.on_icmp_packet_to_cidr(*src, *dst, *seq, *identifier, |r| {
+                    client.on_icmp_packet_to_cidr(*src, *dst, *seq, *identifier, *payload, |r| {
                         state.portal.gateway_for_resource(r).copied()
                     })
                 });
@@ -398,9 +404,10 @@ impl ReferenceStateMachine for ReferenceState {
                 dst,
                 seq,
                 identifier,
+                payload,
                 ..
             } => state.client.exec_mut(|client| {
-                client.on_icmp_packet_to_dns(*src, dst.clone(), *seq, *identifier, |r| {
+                client.on_icmp_packet_to_dns(*src, dst.clone(), *seq, *identifier, *payload, |r| {
                     state.portal.gateway_for_resource(r).copied()
                 })
             }),
@@ -482,10 +489,13 @@ impl ReferenceStateMachine for ReferenceState {
                 dst,
                 seq,
                 identifier,
+                payload,
                 ..
             } => {
-                let is_valid_icmp_packet =
-                    state.client.inner().is_valid_icmp_packet(seq, identifier);
+                let is_valid_icmp_packet = state
+                    .client
+                    .inner()
+                    .is_valid_icmp_packet(seq, identifier, payload);
                 let is_cidr_resource = state.client.inner().cidr_resource_by_ip(*dst).is_some();
 
                 is_valid_icmp_packet && !is_cidr_resource
@@ -494,6 +504,7 @@ impl ReferenceStateMachine for ReferenceState {
                 seq,
                 identifier,
                 dst,
+                payload,
                 ..
             } => {
                 let ref_client = state.client.inner();
@@ -504,7 +515,7 @@ impl ReferenceStateMachine for ReferenceState {
                     return false;
                 };
 
-                ref_client.is_valid_icmp_packet(seq, identifier)
+                ref_client.is_valid_icmp_packet(seq, identifier, payload)
                     && state.gateways.contains_key(gateway)
             }
             Transition::SendICMPPacketToDnsResource {
@@ -512,6 +523,7 @@ impl ReferenceStateMachine for ReferenceState {
                 identifier,
                 dst,
                 src,
+                payload,
                 ..
             } => {
                 let ref_client = state.client.inner();
@@ -522,7 +534,7 @@ impl ReferenceStateMachine for ReferenceState {
                     return false;
                 };
 
-                ref_client.is_valid_icmp_packet(seq, identifier)
+                ref_client.is_valid_icmp_packet(seq, identifier, payload)
                     && ref_client.dns_records.get(dst).is_some_and(|r| match src {
                         IpAddr::V4(_) => r.contains(&Rtype::A),
                         IpAddr::V6(_) => r.contains(&Rtype::AAAA),
