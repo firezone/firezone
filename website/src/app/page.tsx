@@ -165,6 +165,147 @@ export default function Page() {
         }
       />
 
+      <section className="py-16">
+        <div className="sm:mx-auto px-4 mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
+          <h6 className="uppercase text-sm font-semibold text-primary-450 place-content-center tracking-wide mb-2">
+            Flexible security
+          </h6>
+          <h3
+            className={`tracking-tight font-bold leading-tight inline-block ${manrope.className}`}
+          >
+            Runs <span className="text-primary-450">everywhere </span>
+            your business does.
+          </h3>
+        </div>
+
+        <div className="mx-auto px-4 mt-8 max-w-screen-lg grid sm:grid-cols-2 gap-8 lg:gap-16">
+          <div className="flex flex-col p-4">
+            <div className="mb-12 grid grid-cols-2 gap-6">
+              <div className="py-5 flex items-center justify-center bg-neutral-200 rounded-lg">
+                <AppleIcon size={12} href="/kb/client-apps/macos-client">
+                  <span className="inline-block pt-4 w-full text-center">
+                    macOS
+                  </span>
+                </AppleIcon>
+              </div>
+              <div className="py-5 flex items-center justify-center bg-neutral-200 rounded-lg">
+                <WindowsIcon size={12} href="/kb/client-apps/windows-client">
+                  <span className="inline-block pt-4 w-full text-center">
+                    Windows
+                  </span>
+                </WindowsIcon>
+              </div>
+              <div className="py-5 flex items-center justify-center bg-neutral-200 rounded-lg">
+                <LinuxIcon size={12} href="/kb/client-apps/linux-client">
+                  <span className="inline-block pt-4 w-full text-center">
+                    Linux
+                  </span>
+                </LinuxIcon>
+              </div>
+              <div className="py-5 flex items-center justify-center bg-neutral-200 rounded-lg">
+                <AndroidIcon size={12} href="/kb/client-apps/android-client">
+                  <span className="inline-block pt-4 w-full text-center">
+                    Android
+                  </span>
+                </AndroidIcon>
+              </div>
+              <div className="py-5 flex items-center justify-center bg-neutral-200 rounded-lg">
+                <ChromeIcon size={12} href="/kb/client-apps/android-client">
+                  <span className="inline-block pt-4 w-full text-center">
+                    ChromeOS
+                  </span>
+                </ChromeIcon>
+              </div>
+              <div className="py-5 flex items-center justify-center bg-neutral-200 rounded-lg">
+                <AppleIcon size={12} href="/kb/client-apps/ios-client">
+                  <span className="inline-block pt-4 w-full text-center">
+                    iOS
+                  </span>
+                </AppleIcon>
+              </div>
+            </div>
+            <div className="text-center md:text-left mt-auto">
+              <p className="text-lg text-neutral-800">
+                Clients are available for every major platform, require no
+                configuration, and stay connected even when switching WiFi
+                networks.
+              </p>
+              <p className="mt-4">
+                <ActionLink
+                  color="neutral-900"
+                  transitionColor="primary-450"
+                  size="lg"
+                  href="/kb/client-apps"
+                >
+                  Download Client apps
+                </ActionLink>
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col p-4">
+            <div className="mb-12">
+              <div className="py-0.5 flex flex-col justify-between space-y-8 md:space-y-12">
+                <div className="mx-8 md:mx-16 flex justify-start">
+                  <Image
+                    width={200}
+                    height={200}
+                    alt="Gateway"
+                    src="/images/docker.svg"
+                  />
+                </div>
+                <div className="mx-8 md:mx-16 flex justify-end">
+                  <Image
+                    width={200}
+                    height={200}
+                    alt="Gateway"
+                    src="/images/terraform.svg"
+                  />
+                </div>
+                <div className="mx-8 md:mx-16 flex justify-start">
+                  <Image
+                    width={200}
+                    height={200}
+                    alt="Gateway"
+                    src="/images/kubernetes.svg"
+                  />
+                </div>
+                <div className="mx-8 md:mx-16 flex justify-end">
+                  <Image
+                    width={200}
+                    height={200}
+                    alt="Gateway"
+                    src="/images/pulumi.svg"
+                  />
+                </div>
+              </div>
+              <pre className="mt-8 text-xs p-2 bg-neutral-950 rounded shadow text-neutral-50 text-wrap">
+                <code>
+                  <strong>FIREZONE_TOKEN</strong>=&lt;your-token&gt; \<br /> ./
+                  <strong>firezone-gateway</strong>
+                </code>
+              </pre>
+            </div>
+            <div className="mt-auto text-center md:text-left">
+              <p className="text-lg text-neutral-800">
+                Gateways are lightweight Linux binaries you deploy anywhere you
+                need access. Just configure a token with your preferred tool and
+                you're done.
+              </p>
+              <p className="mt-4">
+                <ActionLink
+                  color="neutral-900"
+                  transitionColor="primary-450"
+                  size="lg"
+                  href="/kb/deploy/gateways"
+                >
+                  Deploy your first Gateway
+                </ActionLink>
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Feature section: Open source for transparency and trust. */}
       <section className="py-16">
         <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
