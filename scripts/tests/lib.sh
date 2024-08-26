@@ -20,6 +20,7 @@ function bootstrap_browser_test_harness() {
 
 function start_chromium() {
     docker compose exec -d -it client chromium-browser \
+        --disable-gpu \
         --headless \
         --no-sandbox \
         --remote-debugging-port=$CHROMIUM_PORT
