@@ -2,22 +2,20 @@ import { parse } from "ts-command-line-args";
 import puppeteer, { Browser, HTTPResponse } from "puppeteer";
 
 export interface IArgs {
-  debugPort: number;
   url: string;
   retries: number;
 }
 
 export function get_args(): IArgs {
   return parse<IArgs>({
-    debugPort: Number,
     url: String,
     retries: Number,
   });
 }
 
-export async function connectBrowser(args: IArgs): Promise<Browser> {
-  return await puppeteer.connect({
-    browserURL: `http://127.0.0.1:${args.debugPort}`,
+export async function launchBrowser(): Promise<Browser> {
+  return await puppeteer.launch({
+    args: ["--disable-gpu --no-sandbox"],
   });
 }
 

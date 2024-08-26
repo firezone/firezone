@@ -2,8 +2,7 @@
   "name": "browser-tests",
   "version": "1.0.0",
   "scripts": {
-    "load": "npx ts-node src/load.ts",
-    "refresh": "npx ts-node src/refresh.ts"
+    "load": "npx ts-node src/load.ts"
   },
   "dependencies": {
     "puppeteer": "^23.1.1",
