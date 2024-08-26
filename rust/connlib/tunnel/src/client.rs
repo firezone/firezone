@@ -531,7 +531,6 @@ impl ClientState {
         self.node.remove_remote_candidate(conn_id, ice_candidate);
     }
 
-    #[tracing::instrument(level = "trace", skip_all, fields(%resource_id))]
     pub fn accept_answer(
         &mut self,
         answer: snownet::Answer,
@@ -545,6 +544,8 @@ impl ClientState {
             .gateway_by_resource(&resource_id)
             .with_context(|| format!("No gateway associated with resource {resource_id}"))?;
 
+        tracing::Span::current().record("gid", tracing::field::display(gateway_id));
+
         self.node.accept_answer(gateway_id, gateway, answer, now);
 
         let Some(buffered_allow_access_requests) =
@@ -553,14 +554,16 @@ impl ClientState {
             return Ok(());
         };
 
-        self.buffered_events
-            .extend(buffered_allow_access_requests.into_iter().map(
-                |(resource_id, maybe_domain)| ClientEvent::RequestAccess {
+        self.buffered_events.extend(
+            buffered_allow_access_requests
+                .into_iter()
+                .inspect(|(rid, _)| tracing::debug!(%rid, gid = %gateway_id, "Requesting access"))
+                .map(|(resource_id, maybe_domain)| ClientEvent::RequestAccess {
                     resource_id,
                     gateway_id,
                     maybe_domain,
-                },
-            ));
+                }),
+        );
 
         Ok(())
     }
@@ -568,7 +571,7 @@ impl ClientState {
     /// Updates the "routing table".
     ///
     /// In a nutshell, this tells us which gateway in which site to use for the given resource.
-    #[tracing::instrument(level = "debug", skip_all, fields(%resource_id, %gateway_id))]
+    #[tracing::instrument(level = "debug", skip_all, fields(rid = %resource_id, gid = %gateway_id))]
     pub fn on_routing_details(
         &mut self,
         resource_id: ResourceId,
@@ -576,7 +579,7 @@ impl ClientState {
         site_id: SiteId,
         now: Instant,
     ) -> anyhow::Result<()> {
-        tracing::trace!("Updating resource routing table");
+        tracing::debug!("Updating resource routing table");
 
         let desc = self
             .resources_by_id
@@ -636,11 +639,15 @@ impl ClientState {
         // Once most / all gateways can handle out-of-order allow-access request, we can remove this buffering.
         // See <https://github.com/firezone/firezone/pull/6403>.
         if self.node.is_connecting(gateway_id).is_some() {
+            tracing::debug!("Still connecting to gateway, buffering allow access");
+
             self.buffered_access_requests
                 .entry(gateway_id)
                 .or_default()
                 .push((resource_id, awaiting_connection_details.domain))
         } else {
+            tracing::debug!("Requesting access");
+
             self.buffered_events.push_back(ClientEvent::RequestAccess {
                 resource_id,
                 gateway_id,
