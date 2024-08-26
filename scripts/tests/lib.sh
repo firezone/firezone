@@ -15,8 +15,7 @@ function bootstrap_browser_test_harness() {
             client npm clean-install --prefix /bin
     )
 
-    client ls -lR /root
-    client ls -lR /bin
+    client ls -alR /root
 }
 
 function load_page() {
