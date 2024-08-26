@@ -84,7 +84,7 @@ ARG PACKAGE
 ENTRYPOINT ["docker-init.sh"]
 ENV PACKAGE=${PACKAGE}
 
-CMD ["$PACKAGE"]
+CMD $PACKAGE
 
 # used as a base for dev and test
 FROM runtime AS test
