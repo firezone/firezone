@@ -167,7 +167,7 @@ export default function Page() {
 
       <section className="py-16">
         <div className="sm:mx-auto px-4 mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
-          <h6 className="uppercase text-sm font-semibold text-primary-450 place-content-center tracking-wide">
+          <h6 className="uppercase text-sm font-semibold text-primary-450 place-content-center tracking-wide mb-2">
             Flexible security
           </h6>
           <h3
@@ -309,7 +309,7 @@ export default function Page() {
       {/* Feature section: Open source for transparency and trust. */}
       <section className="py-16">
         <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
-          <h6 className="uppercase text-sm font-semibold place-content-center text-primary-450 tracking-wide">
+          <h6 className="uppercase text-sm font-semibold place-content-center text-primary-450 tracking-wide mb-2">
             Open source
           </h6>
           <h3
