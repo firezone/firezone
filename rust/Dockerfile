@@ -107,8 +107,8 @@ COPY ${PACKAGE} .
 
 RUN set -xe \
   && apk add --no-cache nodejs npm
-COPY ./scripts/tests/browser ./scripts/tests/browser
-RUN npm clean-install --prefix scripts/tests/browser
+COPY ../scripts/tests/browser/* .
+RUN npm clean-install
 
 # Build a production image from including a binary compiled on the host
 FROM runtime AS release
