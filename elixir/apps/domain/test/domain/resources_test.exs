@@ -991,7 +991,7 @@ defmodule Domain.ResourcesTest do
 
       attrs = Fixtures.Resources.resource_attrs(address: "foo.*")
       assert {:error, changeset} = create_resource(attrs, subject)
-      error = "TLD cannot be contain wildcards"
+      error = "TLD cannot contain wildcards"
       assert error in errors_on(changeset).address
     end
 
