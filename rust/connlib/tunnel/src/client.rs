@@ -164,10 +164,6 @@ impl ClientTunnel {
         self.role_state.update_interface_config(config);
     }
 
-    pub fn cleanup_connection(&mut self, id: ResourceId) {
-        self.role_state.on_connection_failed(id);
-    }
-
     pub fn set_resource_offline(&mut self, id: ResourceId) {
         self.role_state.set_resource_offline(id);
 
@@ -283,6 +279,9 @@ pub struct ClientState {
     /// We use this as a hint to the portal to re-connect us to the same gateway for a resource.
     recently_connected_gateways: LruCache<GatewayId, ()>,
 
+    /// Whilst we are setting up a connection, we need to buffer access requests until <https://github.com/firezone/firezone/pull/6403> is rolled out to most gatewways.
+    buffered_access_requests: BTreeMap<GatewayId, Vec<(ResourceId, Option<ResolveRequest>)>>,
+
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket<'static>>,
     buffered_transmits: VecDeque<Transmit<'static>>,
@@ -323,6 +322,7 @@ impl ClientState {
             buffered_transmits: Default::default(),
             internet_resource: None,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
+            buffered_access_requests: Default::default(),
         }
     }
 
@@ -547,6 +547,21 @@ impl ClientState {
 
         self.node.accept_answer(gateway_id, gateway, answer, now);
 
+        let Some(buffered_allow_access_requests) =
+            self.buffered_access_requests.remove(&gateway_id)
+        else {
+            return Ok(());
+        };
+
+        self.buffered_events
+            .extend(buffered_allow_access_requests.into_iter().map(
+                |(resource_id, maybe_domain)| ClientEvent::RequestAccess {
+                    resource_id,
+                    gateway_id,
+                    maybe_domain,
+                },
+            ));
+
         Ok(())
     }
 
@@ -618,11 +633,20 @@ impl ClientState {
             }
         }
 
-        self.buffered_events.push_back(ClientEvent::RequestAccess {
-            resource_id,
-            gateway_id,
-            maybe_domain: awaiting_connection_details.domain,
-        });
+        // Once most / all gateways can handle out-of-order allow-access request, we can remove this buffering.
+        // See <https://github.com/firezone/firezone/pull/6403>.
+        if self.node.is_connecting(gateway_id).is_some() {
+            self.buffered_access_requests
+                .entry(gateway_id)
+                .or_default()
+                .push((resource_id, awaiting_connection_details.domain))
+        } else {
+            self.buffered_events.push_back(ClientEvent::RequestAccess {
+                resource_id,
+                gateway_id,
+                maybe_domain: awaiting_connection_details.domain,
+            });
+        }
 
         Ok(())
     }
@@ -725,6 +749,10 @@ impl ClientState {
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
         self.awaiting_connection_details.remove(&resource);
         self.resources_gateways.remove(&resource);
+
+        for requests in self.buffered_access_requests.values_mut() {
+            requests.retain(|(r, _)| r != &resource)
+        }
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%resource))]
