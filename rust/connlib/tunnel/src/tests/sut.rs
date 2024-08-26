@@ -638,7 +638,7 @@ impl TunnelTest {
                     portal.handle_connection_intent(resource, connected_gateway_ids);
 
                 self.client
-                    .exec_mut(|c| c.sut.on_routing_details(resource, gateway, site))
+                    .exec_mut(|c| c.sut.on_routing_details(resource, gateway, site, now))
                     .unwrap();
             }
 

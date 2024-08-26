@@ -190,7 +190,7 @@ impl ClientTunnel {
         site_id: SiteId,
     ) -> anyhow::Result<()> {
         self.role_state
-            .on_routing_details(resource_id, gateway_id, site_id)
+            .on_routing_details(resource_id, gateway_id, site_id, Instant::now())
     }
 
     pub fn received_offer_response(
@@ -549,6 +549,7 @@ impl ClientState {
         resource_id: ResourceId,
         gateway_id: GatewayId,
         site_id: SiteId,
+        now: Instant,
     ) -> anyhow::Result<()> {
         tracing::trace!("Updating resource routing table");
 
@@ -598,7 +599,7 @@ impl ClientState {
         let offer = self.node.new_connection(
             gateway_id,
             awaiting_connection_details.last_intent_sent_at,
-            Instant::now(),
+            now,
         );
 
         self.buffered_events
