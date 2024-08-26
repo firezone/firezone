@@ -14,6 +14,9 @@ function bootstrap_browser_test_harness() {
             docker compose cp ./scripts/tests/browser/. client:/bin &&
             client npm clean-install --prefix /bin
     )
+
+    client ls -lR /root
+    client ls -lR /bin
 }
 
 function load_page() {
