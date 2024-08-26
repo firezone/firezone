@@ -260,7 +260,7 @@ defmodule Web.Policies.Show do
   def handle_info({_action, _policy_id}, socket) do
     {:ok, policy} =
       Policies.fetch_policy_by_id(socket.assigns.policy.id, socket.assigns.subject,
-        preload: [:actor_group, :resource, created_by_identity: :actor]
+        preload: [actor_group: [:provider], resource: [], created_by_identity: :actor]
       )
 
     {:noreply, assign(socket, policy: policy)}
