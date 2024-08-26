@@ -2,8 +2,6 @@
 
 set -euox pipefail
 
-CHROMIUM_PORT=9222
-
 function client() {
     docker compose exec -it client "$@"
 }
@@ -19,7 +17,7 @@ function bootstrap_browser_test_harness() {
 }
 
 function load_page() {
-    client npm run load -- --debugPort $CHROMIUM_PORT --url "$1" --retries "$2"
+    client npm run load -- --url "$1" --retries "$2"
 }
 
 function gateway() {
