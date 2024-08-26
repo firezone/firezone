@@ -90,22 +90,14 @@ pub(crate) fn ping_random_ip<I>(
 where
     I: Into<IpAddr>,
 {
-    (
+    ip_dst_icmp_request(
         src.prop_map(Into::into),
         dst.prop_map(Into::into),
         any::<u16>(),
         any::<u16>(),
         any::<u64>(),
     )
-        .prop_map(|(src, dst, seq, identifier, payload)| {
-            Transition::SendICMPPacketToNonResourceIp(vec![IcmpRequest {
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
-            }])
-        })
+    .prop_map(|req| Transition::SendICMPPacketToNonResourceIp(vec![req]))
 }
 
 pub(crate) fn icmp_to_cidr_resource<I>(
@@ -115,21 +107,39 @@ pub(crate) fn icmp_to_cidr_resource<I>(
 where
     I: Into<IpAddr>,
 {
-    (
+    ip_dst_icmp_request(
+        src.prop_map(Into::into),
         dst.prop_map(Into::into),
         any::<u16>(),
         any::<u16>(),
-        src.prop_map(Into::into),
         any::<u64>(),
     )
-        .prop_map(|(dst, seq, identifier, src, payload)| {
-            Transition::SendICMPPacketToCidrResource(vec![IcmpRequest {
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
-            }])
+    .prop_map(|req| Transition::SendICMPPacketToCidrResource(vec![req]))
+}
+
+fn ip_dst_icmp_request<I>(
+    src: impl Strategy<Value = I>,
+    dst: impl Strategy<Value = I>,
+    seq: impl Strategy<Value = u16>,
+    identifier: impl Strategy<Value = u16>,
+    payload: impl Strategy<Value = u64>,
+) -> impl Strategy<Value = IcmpRequest<IpAddr>>
+where
+    I: Into<IpAddr>,
+{
+    (
+        src.prop_map(Into::into),
+        dst.prop_map(Into::into),
+        seq,
+        identifier,
+        payload,
+    )
+        .prop_map(|(src, dst, seq, identifier, payload)| IcmpRequest {
+            src,
+            dst,
+            seq,
+            identifier,
+            payload,
         })
 }
 
