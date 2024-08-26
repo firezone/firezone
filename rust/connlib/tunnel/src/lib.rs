@@ -8,7 +8,7 @@ use boringtun::x25519::StaticSecret;
 use chrono::Utc;
 use connlib_shared::{
     callbacks,
-    messages::{ClientId, GatewayId, Relay, RelayId, ResourceId, ReuseConnection},
+    messages::{ClientId, GatewayId, Relay, RelayId, ResolveRequest, ResourceId},
     DomainName, PublicKey, DEFAULT_MTU,
 };
 use io::Io;
@@ -279,7 +279,12 @@ pub enum ClientEvent {
         connected_gateway_ids: BTreeSet<GatewayId>,
     },
     RequestAccess {
-        connection: ReuseConnection,
+        /// The resource we want to access.
+        resource_id: ResourceId,
+        /// The gateway we want to access the resource through.
+        gateway_id: GatewayId,
+        /// In the case of a DNS resource, its domain and the IPs we assigned to it.
+        maybe_domain: Option<ResolveRequest>,
     },
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {

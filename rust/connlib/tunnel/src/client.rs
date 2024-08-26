@@ -422,14 +422,12 @@ impl ClientState {
             &resource_id,
         );
         self.buffered_events.push_back(ClientEvent::RequestAccess {
-            connection: ReuseConnection {
-                resource_id,
-                gateway_id,
-                payload: Some(ResolveRequest {
-                    name: fqdn.clone(),
-                    proxy_ips: ips.clone(),
-                }),
-            },
+            resource_id,
+            gateway_id,
+            maybe_domain: Some(ResolveRequest {
+                name: fqdn.clone(),
+                proxy_ips: ips.clone(),
+            }),
         })
     }
 

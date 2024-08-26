@@ -736,14 +736,14 @@ impl TunnelTest {
                 };
             }
 
-            ClientEvent::RequestAccess { connection } => {
-                let gateway = self
-                    .gateways
-                    .get_mut(&connection.gateway_id)
-                    .expect("unknown gateway");
+            ClientEvent::RequestAccess {
+                resource_id,
+                gateway_id,
+                maybe_domain,
+            } => {
+                let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");
 
-                let resolved_ips = connection
-                    .payload
+                let resolved_ips = maybe_domain
                     .as_ref()
                     .map(|r| r.name.clone())
                     .into_iter()
@@ -751,8 +751,8 @@ impl TunnelTest {
                     .flatten()
                     .collect();
 
-                let resource = portal
-                    .map_client_resource_to_gateway_resource(resolved_ips, connection.resource_id);
+                let resource =
+                    portal.map_client_resource_to_gateway_resource(resolved_ips, resource_id);
 
                 gateway
                     .exec_mut(|g| {
@@ -760,7 +760,7 @@ impl TunnelTest {
                             resource,
                             self.client.inner().id,
                             None,
-                            connection.payload.map(|r| (r.name, r.proxy_ips)),
+                            maybe_domain.map(|r| (r.name, r.proxy_ips)),
                             now,
                         )
                     })

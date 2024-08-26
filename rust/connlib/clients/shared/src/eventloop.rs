@@ -9,6 +9,7 @@ use crate::{
 use anyhow::Result;
 use connlib_shared::messages::{
     ConnectionAccepted, GatewayResponse, RelaysPresence, ResourceAccepted, ResourceId,
+    ReuseConnection,
 };
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
@@ -153,9 +154,19 @@ where
                 );
                 self.connection_intents.register_new_intent(id, resource);
             }
-            firezone_tunnel::ClientEvent::RequestAccess { connection } => {
-                self.portal
-                    .send(PHOENIX_TOPIC, EgressMessages::ReuseConnection(connection));
+            firezone_tunnel::ClientEvent::RequestAccess {
+                resource_id,
+                gateway_id,
+                maybe_domain,
+            } => {
+                self.portal.send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::ReuseConnection(ReuseConnection {
+                        resource_id,
+                        gateway_id,
+                        payload: maybe_domain,
+                    }),
+                );
             }
             firezone_tunnel::ClientEvent::ResourcesChanged { resources } => {
                 self.callbacks.on_update_resources(resources)
