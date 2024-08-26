@@ -112,10 +112,31 @@ defmodule Domain.Clients.Client.Query do
         title: "Name",
         type: {:string, :websearch},
         fun: &filter_by_name_fts/2
+      },
+      %Domain.Repo.Filter{
+        name: :client_or_actor_name,
+        title: "Client Name or Actor Name",
+        type: {:string, :websearch},
+        fun: &filter_by_client_or_actor_name/2
       }
     ]
 
   def filter_by_name_fts(queryable, name) do
     {queryable, dynamic([clients: clients], fulltext_search(clients.name, ^name))}
+  end
+
+  def filter_by_client_or_actor_name(queryable, name) do
+    queryable =
+      with_named_binding(queryable, :actor, fn queryable, binding ->
+        join(queryable, :inner, [clients: clients], actor in assoc(clients, ^binding),
+          as: ^binding
+        )
+      end)
+
+    {queryable,
+     dynamic(
+       [clients: clients, actor: actor],
+       fulltext_search(clients.name, ^name) or fulltext_search(actor.name, ^name)
+     )}
   end
 end
