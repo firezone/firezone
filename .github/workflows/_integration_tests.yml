@@ -96,16 +96,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Don't run browser tests on main with the release images because
-        # they don't have chromium installed
-        ref_name:
-          - ${{ github.ref_name }}
-        exclude:
-          - {ref_name: main, test: direct-browser-relay-restart}
-          - {ref_name: main, test: relayed-browser-relay-restart}
-
         test:
-          - name: direct-browser-relay-restart
+          - name: direct-curl-relay-restart
           - name: direct-curl-api-down
           - name: direct-curl-api-relay-down
           - name: direct-curl-api-restart
@@ -118,7 +110,6 @@ jobs:
           - name: dns-failsafe # Uses the default DNS control method
           - name: dns-nm
           - name: relay-graceful-shutdown
-          - name: relayed-browser-relay-restart
           - name: relayed-curl-api-down
           - name: relayed-curl-api-restart
           - name: relayed-curl-relay-restart
