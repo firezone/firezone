@@ -316,13 +316,13 @@ impl ReferenceStateMachine for ReferenceState {
                     state.client.exec_mut(|client| client.on_dns_query(query));
                 }
             }
-            Transition::SendICMPPacketToNonResourceIp {
+            Transition::SendICMPPacketToNonResourceIp(IcmpRequest {
                 src,
                 dst,
                 seq,
                 identifier,
                 payload,
-            } => {
+            }) => {
                 state.client.exec_mut(|client| {
                     // If the Internet Resource is active, all packets are expected to be routed.
                     if client.active_internet_resource().is_some() {
@@ -337,27 +337,27 @@ impl ReferenceStateMachine for ReferenceState {
                     }
                 });
             }
-            Transition::SendICMPPacketToCidrResource {
+            Transition::SendICMPPacketToCidrResource(IcmpRequest {
                 src,
                 dst,
                 seq,
                 identifier,
                 payload,
-            } => {
+            }) => {
                 state.client.exec_mut(|client| {
                     client.on_icmp_packet_to_cidr(*src, *dst, *seq, *identifier, *payload, |r| {
                         state.portal.gateway_for_resource(r).copied()
                     })
                 });
             }
-            Transition::SendICMPPacketToDnsResource {
+            Transition::SendICMPPacketToDnsResource(IcmpRequest {
                 src,
-                dst,
+                dst: (dst, _),
                 seq,
                 identifier,
                 payload,
                 ..
-            } => state.client.exec_mut(|client| {
+            }) => state.client.exec_mut(|client| {
                 client.on_icmp_packet_to_dns(*src, dst.clone(), *seq, *identifier, *payload, |r| {
                     state.portal.gateway_for_resource(r).copied()
                 })
@@ -422,13 +422,13 @@ impl ReferenceStateMachine for ReferenceState {
                     .iter()
                     .all(|r| state.client.inner().has_resource(*r))
             }
-            Transition::SendICMPPacketToNonResourceIp {
+            Transition::SendICMPPacketToNonResourceIp(IcmpRequest {
                 dst,
                 seq,
                 identifier,
                 payload,
                 ..
-            } => {
+            }) => {
                 let is_valid_icmp_packet = state
                     .client
                     .inner()
@@ -437,13 +437,13 @@ impl ReferenceStateMachine for ReferenceState {
 
                 is_valid_icmp_packet && !is_cidr_resource
             }
-            Transition::SendICMPPacketToCidrResource {
+            Transition::SendICMPPacketToCidrResource(IcmpRequest {
                 seq,
                 identifier,
                 dst,
                 payload,
                 ..
-            } => {
+            }) => {
                 let ref_client = state.client.inner();
                 let Some(rid) = ref_client.cidr_resource_by_ip(*dst) else {
                     return false;
@@ -455,14 +455,14 @@ impl ReferenceStateMachine for ReferenceState {
                 ref_client.is_valid_icmp_packet(seq, identifier, payload)
                     && state.gateways.contains_key(gateway)
             }
-            Transition::SendICMPPacketToDnsResource {
+            Transition::SendICMPPacketToDnsResource(IcmpRequest {
                 seq,
                 identifier,
-                dst,
+                dst: (dst, _),
                 src,
                 payload,
                 ..
-            } => {
+            }) => {
                 let ref_client = state.client.inner();
                 let Some(resource) = ref_client.dns_resource_by_domain(dst) else {
                     return false;

@@ -25,33 +25,13 @@ pub(crate) enum Transition {
     DeactivateResource(ResourceId),
     /// Client-side disable resource
     DisableResources(BTreeSet<ResourceId>),
-    /// Send an ICMP packet to non-resource IP.
-    SendICMPPacketToNonResourceIp {
-        src: IpAddr,
-        dst: IpAddr,
-        seq: u16,
-        identifier: u16,
-        payload: u64,
-    },
-    /// Send an ICMP packet to a CIDR resource.
-    SendICMPPacketToCidrResource {
-        src: IpAddr,
-        dst: IpAddr,
-        seq: u16,
-        identifier: u16,
-        payload: u64,
-    },
-    /// Send an ICMP packet to a DNS resource.
-    SendICMPPacketToDnsResource {
-        src: IpAddr,
-        dst: DomainName,
-        #[derivative(Debug = "ignore")]
-        resolved_ip: sample::Selector,
 
-        seq: u16,
-        identifier: u16,
-        payload: u64,
-    },
+    /// Send an ICMP packet to non-resource IP.
+    SendICMPPacketToNonResourceIp(IcmpRequest<IpAddr>),
+    /// Send an ICMP packet to a CIDR resource.
+    SendICMPPacketToCidrResource(IcmpRequest<IpAddr>),
+    /// Send an ICMP packet to a DNS resource.
+    SendICMPPacketToDnsResource(IcmpRequest<(DomainName, sample::Selector)>),
 
     /// Send a DNS query.
     SendDnsQueries(Vec<DnsQuery>),
@@ -94,6 +74,15 @@ pub(crate) struct DnsQuery {
     pub(crate) dns_server: SocketAddr,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct IcmpRequest<TDst> {
+    pub(crate) src: IpAddr,
+    pub(crate) dst: TDst,
+    pub(crate) seq: u16,
+    pub(crate) identifier: u16,
+    pub(crate) payload: u64,
+}
+
 pub(crate) fn ping_random_ip<I>(
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = I>,
@@ -109,13 +98,13 @@ where
         any::<u64>(),
     )
         .prop_map(|(src, dst, seq, identifier, payload)| {
-            Transition::SendICMPPacketToNonResourceIp {
+            Transition::SendICMPPacketToNonResourceIp(IcmpRequest {
                 src,
                 dst,
                 seq,
                 identifier,
                 payload,
-            }
+            })
         })
 }
 
@@ -134,13 +123,13 @@ where
         any::<u64>(),
     )
         .prop_map(|(dst, seq, identifier, src, payload)| {
-            Transition::SendICMPPacketToCidrResource {
+            Transition::SendICMPPacketToCidrResource(IcmpRequest {
                 src,
                 dst,
                 seq,
                 identifier,
                 payload,
-            }
+            })
         })
 }
 
@@ -160,14 +149,13 @@ where
         any::<u64>(),
     )
         .prop_map(|(dst, seq, identifier, src, resolved_ip, payload)| {
-            Transition::SendICMPPacketToDnsResource {
+            Transition::SendICMPPacketToDnsResource(IcmpRequest {
                 src,
-                dst,
-                resolved_ip,
+                dst: (dst, resolved_ip),
                 seq,
                 identifier,
                 payload,
-            }
+            })
         })
 }
 

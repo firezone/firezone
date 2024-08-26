@@ -6,7 +6,7 @@ use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
-use super::transition::DnsQuery;
+use super::transition::{DnsQuery, IcmpRequest};
 use crate::dns::is_subdomain;
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
@@ -145,20 +145,16 @@ impl TunnelTest {
             Transition::DisableResources(resources) => state
                 .client
                 .exec_mut(|c| c.sut.set_disabled_resource(resources)),
-            Transition::SendICMPPacketToNonResourceIp {
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
-            }
-            | Transition::SendICMPPacketToCidrResource {
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
-            } => {
+            Transition::SendICMPPacketToNonResourceIp(request)
+            | Transition::SendICMPPacketToCidrResource(request) => {
+                let IcmpRequest {
+                    src,
+                    dst,
+                    seq,
+                    identifier,
+                    payload,
+                } = request;
+
                 let packet = ip_packet::make::icmp_request_packet(
                     src,
                     dst,
@@ -172,15 +168,13 @@ impl TunnelTest {
 
                 buffered_transmits.push_from(transmit, &state.client, now);
             }
-            Transition::SendICMPPacketToDnsResource {
+            Transition::SendICMPPacketToDnsResource(IcmpRequest {
                 src,
-                dst,
+                dst: (dst, resolved_ip),
                 seq,
                 identifier,
                 payload,
-                resolved_ip,
-                ..
-            } => {
+            }) => {
                 let available_ips = state
                     .client
                     .inner()
