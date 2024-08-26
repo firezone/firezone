@@ -18,7 +18,6 @@ use connlib_shared::{
     messages::{ClientId, GatewayId, Interface, RelayId},
     DomainName,
 };
-use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
 use std::collections::BTreeSet;
@@ -45,14 +44,9 @@ pub(crate) struct TunnelTest {
     network: RoutingTable,
 }
 
-impl StateMachineTest for TunnelTest {
-    type SystemUnderTest = Self;
-    type Reference = ReferenceState;
-
+impl TunnelTest {
     // Initialize the system under test from our reference state.
-    fn init_test(
-        ref_state: &<Self::Reference as ReferenceStateMachine>::State,
-    ) -> Self::SystemUnderTest {
+    pub(crate) fn init_test(ref_state: &ReferenceState, flux_capacitor: FluxCapacitor) -> Self {
         // Construct client, gateway and relay from the initial state.
         let mut client = ref_state
             .client
@@ -92,17 +86,14 @@ impl StateMachineTest for TunnelTest {
             .collect::<BTreeMap<_, _>>();
 
         // Configure client and gateway with the relays.
-        client.exec_mut(|c| {
-            c.update_relays(iter::empty(), relays.iter(), ref_state.flux_capacitor.now())
-        });
+        client.exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
         for gateway in gateways.values_mut() {
-            gateway.exec_mut(|g| {
-                g.update_relays(iter::empty(), relays.iter(), ref_state.flux_capacitor.now())
-            });
+            gateway
+                .exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
         }
 
         let mut this = Self {
-            flux_capacitor: ref_state.flux_capacitor.clone(),
+            flux_capacitor: flux_capacitor.clone(),
             network: ref_state.network.clone(),
             drop_direct_client_traffic: ref_state.drop_direct_client_traffic,
             client,
@@ -118,11 +109,11 @@ impl StateMachineTest for TunnelTest {
     }
 
     /// Apply a generated state transition to our system under test.
-    fn apply(
-        mut state: Self::SystemUnderTest,
-        ref_state: &<Self::Reference as ReferenceStateMachine>::State,
-        transition: <Self::Reference as ReferenceStateMachine>::Transition,
-    ) -> Self::SystemUnderTest {
+    pub(crate) fn apply(
+        mut state: Self,
+        ref_state: &ReferenceState,
+        transition: Transition,
+    ) -> Self {
         let mut buffered_transmits = BufferedTransmits::default();
         let now = state.flux_capacitor.now();
 
@@ -328,10 +319,7 @@ impl StateMachineTest for TunnelTest {
     }
 
     // Assert against the reference state machine.
-    fn check_invariants(
-        state: &Self::SystemUnderTest,
-        ref_state: &<Self::Reference as ReferenceStateMachine>::State,
-    ) {
+    pub(crate) fn check_invariants(state: &Self, ref_state: &ReferenceState) {
         let ref_client = ref_state.client.inner();
         let sim_client = state.client.inner();
         let sim_gateways = state
