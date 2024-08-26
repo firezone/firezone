@@ -148,11 +148,10 @@ pub(crate) fn run(
             let setup_inner = move || {
                 // Check for updates
                 let ctlr_tx_clone = ctlr_tx.clone();
-                let always_show_update_notification = cli.always_show_update_notification;
                 tokio::spawn(async move {
-                    if let Err(error) = check_for_updates(ctlr_tx_clone, always_show_update_notification).await
+                    if let Err(error) = crate::client::updates::checker_task(ctlr_tx_clone).await
                     {
-                        tracing::error!(?error, "Error in check_for_updates");
+                        tracing::error!(?error, "Error in updates::checker_task");
                     }
                 });
 
@@ -361,33 +360,6 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         .context("Failed to send Quit request")?;
 
     Ok::<_, anyhow::Error>(())
-}
-
-async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: bool) -> Result<()> {
-    let release = client::updates::check()
-        .await
-        .context("Error in client::updates::check")?;
-    let latest_version = release.version.clone();
-
-    let our_version = client::updates::current_version()?;
-
-    if always_show_update_notification || (our_version < latest_version) {
-        tracing::info!(?our_version, ?latest_version, "There is a new release");
-        // We don't necessarily need to route through the Controller here, but if we
-        // want a persistent "Click here to download the new MSI" button, this would allow that.
-        ctlr_tx
-            .send(ControllerRequest::UpdateAvailable(release))
-            .await
-            .context("Error while sending UpdateAvailable to Controller")?;
-        return Ok(());
-    }
-
-    tracing::info!(
-        ?our_version,
-        ?latest_version,
-        "Our release is newer than, or the same as, the latest"
-    );
-    Ok(())
 }
 
 /// Worker task to accept deep links from a named pipe forever
