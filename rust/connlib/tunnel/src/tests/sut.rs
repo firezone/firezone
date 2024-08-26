@@ -145,63 +145,67 @@ impl TunnelTest {
             Transition::DisableResources(resources) => state
                 .client
                 .exec_mut(|c| c.sut.set_disabled_resource(resources)),
-            Transition::SendICMPPacketToNonResourceIp(request)
-            | Transition::SendICMPPacketToCidrResource(request) => {
-                let IcmpRequest {
+            Transition::SendICMPPacketToNonResourceIp(requests)
+            | Transition::SendICMPPacketToCidrResource(requests) => {
+                for IcmpRequest {
                     src,
                     dst,
                     seq,
                     identifier,
                     payload,
-                } = request;
+                } in requests
+                {
+                    let packet = ip_packet::make::icmp_request_packet(
+                        src,
+                        dst,
+                        seq,
+                        identifier,
+                        &payload.to_be_bytes(),
+                    )
+                    .unwrap();
 
-                let packet = ip_packet::make::icmp_request_packet(
-                    src,
-                    dst,
-                    seq,
-                    identifier,
-                    &payload.to_be_bytes(),
-                )
-                .unwrap();
+                    let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
 
-                let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
-
-                buffered_transmits.push_from(transmit, &state.client, now);
+                    buffered_transmits.push_from(transmit, &state.client, now);
+                }
             }
-            Transition::SendICMPPacketToDnsResource(IcmpRequest {
-                src,
-                dst: (dst, resolved_ip),
-                seq,
-                identifier,
-                payload,
-            }) => {
-                let available_ips = state
-                    .client
-                    .inner()
-                    .dns_records
-                    .get(&dst)
-                    .unwrap()
-                    .iter()
-                    .filter(|ip| match ip {
-                        IpAddr::V4(_) => src.is_ipv4(),
-                        IpAddr::V6(_) => src.is_ipv6(),
-                    });
-                let dst = *resolved_ip.select(available_ips);
-
-                let packet = ip_packet::make::icmp_request_packet(
+            Transition::SendICMPPacketToDnsResource(requests) => {
+                for IcmpRequest {
                     src,
-                    dst,
+                    dst: (dst, resolved_ip),
                     seq,
                     identifier,
-                    &payload.to_be_bytes(),
-                )
-                .unwrap();
+                    payload,
+                } in requests
+                {
+                    let available_ips = state
+                        .client
+                        .inner()
+                        .dns_records
+                        .get(&dst)
+                        .unwrap()
+                        .iter()
+                        .filter(|ip| match ip {
+                            IpAddr::V4(_) => src.is_ipv4(),
+                            IpAddr::V6(_) => src.is_ipv6(),
+                        });
+                    let dst = *resolved_ip.select(available_ips);
 
-                let transmit = state
-                    .client
-                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?.into_owned()));
+                    let packet = ip_packet::make::icmp_request_packet(
+                        src,
+                        dst,
+                        seq,
+                        identifier,
+                        &payload.to_be_bytes(),
+                    )
+                    .unwrap();
 
-                buffered_transmits.push_from(transmit, &state.client, now);
+                    let transmit = state
+                        .client
+                        .exec_mut(|sim| Some(sim.encapsulate(packet, now)?.into_owned()));
+
+                    buffered_transmits.push_from(transmit, &state.client, now);
+                }
             }
             Transition::SendDnsQueries(queries) => {
                 for DnsQuery {

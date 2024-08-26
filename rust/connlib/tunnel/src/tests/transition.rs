@@ -27,11 +27,11 @@ pub(crate) enum Transition {
     DisableResources(BTreeSet<ResourceId>),
 
     /// Send an ICMP packet to non-resource IP.
-    SendICMPPacketToNonResourceIp(IcmpRequest<IpAddr>),
+    SendICMPPacketToNonResourceIp(Vec<IcmpRequest<IpAddr>>),
     /// Send an ICMP packet to a CIDR resource.
-    SendICMPPacketToCidrResource(IcmpRequest<IpAddr>),
+    SendICMPPacketToCidrResource(Vec<IcmpRequest<IpAddr>>),
     /// Send an ICMP packet to a DNS resource.
-    SendICMPPacketToDnsResource(IcmpRequest<(DomainName, sample::Selector)>),
+    SendICMPPacketToDnsResource(Vec<IcmpRequest<(DomainName, sample::Selector)>>),
 
     /// Send a DNS query.
     SendDnsQueries(Vec<DnsQuery>),
@@ -98,13 +98,13 @@ where
         any::<u64>(),
     )
         .prop_map(|(src, dst, seq, identifier, payload)| {
-            Transition::SendICMPPacketToNonResourceIp(IcmpRequest {
+            Transition::SendICMPPacketToNonResourceIp(vec![IcmpRequest {
                 src,
                 dst,
                 seq,
                 identifier,
                 payload,
-            })
+            }])
         })
 }
 
@@ -123,13 +123,13 @@ where
         any::<u64>(),
     )
         .prop_map(|(dst, seq, identifier, src, payload)| {
-            Transition::SendICMPPacketToCidrResource(IcmpRequest {
+            Transition::SendICMPPacketToCidrResource(vec![IcmpRequest {
                 src,
                 dst,
                 seq,
                 identifier,
                 payload,
-            })
+            }])
         })
 }
 
@@ -149,13 +149,13 @@ where
         any::<u64>(),
     )
         .prop_map(|(dst, seq, identifier, src, resolved_ip, payload)| {
-            Transition::SendICMPPacketToDnsResource(IcmpRequest {
+            Transition::SendICMPPacketToDnsResource(vec![IcmpRequest {
                 src,
                 dst: (dst, resolved_ip),
                 seq,
                 identifier,
                 payload,
-            })
+            }])
         })
 }
 
