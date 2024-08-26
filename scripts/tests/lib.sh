@@ -14,7 +14,7 @@ function bootstrap_browser_test_harness() {
     (
         client apk add --no-cache nodejs npm &&
             docker compose cp ./scripts/tests/browser/. client:/bin &&
-            client npm install --prefix /bin
+            client npm clean-install --prefix /bin
     )
 }
 
