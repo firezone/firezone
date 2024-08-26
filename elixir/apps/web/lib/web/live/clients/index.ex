@@ -15,6 +15,9 @@ defmodule Web.Clients.Index do
         sortable_fields: [
           {:clients, :name}
         ],
+        hide_filters: [
+          :name
+        ],
         callback: &handle_clients_update!/2
       )
 
