@@ -53,7 +53,7 @@ defmodule API.Client.ChannelTest do
         connections: [%{gateway_group_id: gateway_group.id}]
       )
 
-    unconforming_resource =
+    nonconforming_resource =
       Fixtures.Resources.create_resource(
         account: account,
         connections: [%{gateway_group_id: gateway_group.id}]
@@ -81,7 +81,7 @@ defmodule API.Client.ChannelTest do
     Fixtures.Policies.create_policy(
       account: account,
       actor_group: actor_group,
-      resource: unconforming_resource,
+      resource: nonconforming_resource,
       conditions: [
         %{
           property: :remote_ip_location_region,
@@ -119,7 +119,7 @@ defmodule API.Client.ChannelTest do
       cidr_resource: cidr_resource,
       ip_resource: ip_resource,
       unauthorized_resource: unauthorized_resource,
-      unconforming_resource: unconforming_resource,
+      nonconforming_resource: nonconforming_resource,
       dns_resource_policy: dns_resource_policy,
       socket: socket
     }
@@ -229,7 +229,7 @@ defmodule API.Client.ChannelTest do
       dns_resource: dns_resource,
       cidr_resource: cidr_resource,
       ip_resource: ip_resource,
-      unconforming_resource: unconforming_resource
+      nonconforming_resource: nonconforming_resource
     } do
       assert_push "init", %{
         resources: resources,
@@ -300,7 +300,7 @@ defmodule API.Client.ChannelTest do
                ]
              } in resources
 
-      refute Enum.any?(resources, &(&1.id == unconforming_resource.id))
+      refute Enum.any?(resources, &(&1.id == nonconforming_resource.id))
 
       assert interface == %{
                ipv4: client.ipv4,
@@ -757,7 +757,7 @@ defmodule API.Client.ChannelTest do
     end
 
     test "does not push resources that can't be access by the client", %{
-      unconforming_resource: resource,
+      nonconforming_resource: resource,
       socket: socket
     } do
       send(socket.channel_pid, {:update_resource, resource.id})
