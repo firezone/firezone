@@ -1,6 +1,6 @@
 use super::{
-    composite_strategy::CompositeStrategy, flux_capacitor::FluxCapacitor, sim_client::*,
-    sim_dns::*, sim_gateway::*, sim_net::*, strategies::*, stub_portal::StubPortal, transition::*,
+    composite_strategy::CompositeStrategy, sim_client::*, sim_dns::*, sim_gateway::*, sim_net::*,
+    strategies::*, stub_portal::StubPortal, transition::*,
 };
 use crate::dns::is_subdomain;
 use connlib_shared::{
@@ -40,9 +40,6 @@ pub(crate) struct ReferenceState {
     pub(crate) global_dns_records: BTreeMap<DomainName, BTreeSet<IpAddr>>,
 
     pub(crate) network: RoutingTable,
-
-    #[derivative(Debug = "ignore")]
-    pub(crate) flux_capacitor: FluxCapacitor,
 }
 
 #[derive(Debug, Clone)]
@@ -165,7 +162,6 @@ impl ReferenceStateMachine for ReferenceState {
                         global_dns_records,
                         network,
                         drop_direct_client_traffic,
-                        flux_capacitor: FluxCapacitor::default(),
                     }
                 },
             )
