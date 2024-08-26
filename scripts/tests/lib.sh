@@ -6,28 +6,6 @@ function client() {
     docker compose exec -it client "$@"
 }
 
-# Release images (by design) don't include our browser test harness,
-# so install it here again. Essentially a no-op for debug images.
-function bootstrap_browser_test_harness() {
-    # Includes puppeteer dependencies for browser tests
-    client apk add --no-cache \
-        nodejs \
-        npm \
-        nodejs \
-        npm \
-        nss \
-        freetype \
-        harfbuzz \
-        ca-certificates \
-        ttf-freefont
-    docker compose cp ./scripts/tests/browser/. client:/bin
-    client npm clean-install --prefix /bin
-}
-
-function load_page() {
-    client npm run load -- --url "$1" --retries "$2"
-}
-
 function gateway() {
     docker compose exec -it gateway "$@"
 }

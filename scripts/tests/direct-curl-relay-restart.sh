@@ -5,10 +5,8 @@ HTTPBIN=http://dns.httpbin
 
 docker compose stop relay-2
 
-bootstrap_browser_test_harness
-
-echo "# Make sure webpage is loaded once"
-load_page $HTTPBIN 1
+echo "# Load page"
+client_curl_resource $HTTPBIN/get
 
 echo "# Simulate rolling deployment of relays"
 docker compose start relay-2
@@ -17,4 +15,4 @@ docker compose kill relay-1 --signal SIGTERM
 sleep 1
 
 echo "# Load page again"
-load_page $HTTPBIN 10
+client_curl_resource $HTTPBIN/get
