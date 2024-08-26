@@ -16,11 +16,6 @@ export function get_args(): IArgs {
 }
 
 export async function connectBrowser(args: IArgs): Promise<Browser> {
-  await puppeteer.launch({
-    args: ["--disable-gpu"],
-    executablePath: "/usr/bin/chromium",
-  });
-
   return await puppeteer.connect({
     browserURL: `http://127.0.0.1:${args.debugPort}`,
   });
