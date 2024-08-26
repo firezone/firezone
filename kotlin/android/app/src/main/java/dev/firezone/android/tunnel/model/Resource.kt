@@ -9,7 +9,7 @@ import kotlinx.parcelize.Parcelize
 @JsonClass(generateAdapter = true)
 @Parcelize
 data class Resource(
-    val type: TypeEnum,
+    val type: ResourceType,
     val id: String,
     val address: String?,
     @Json(name = "address_description") val addressDescription: String?,
@@ -20,7 +20,7 @@ data class Resource(
     @Json(name = "can_be_disabled") val canBeDisabled: Boolean,
 ) : Parcelable
 
-enum class TypeEnum {
+enum class ResourceType {
     @Json(name = "dns")
     DNS,
 
