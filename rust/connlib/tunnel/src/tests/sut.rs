@@ -736,7 +736,7 @@ impl TunnelTest {
                 };
             }
 
-            ClientEvent::SendProxyIps { connection } => {
+            ClientEvent::RequestAccess { connection } => {
                 let gateway = self
                     .gateways
                     .get_mut(&connection.gateway_id)

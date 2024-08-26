@@ -278,7 +278,7 @@ pub enum ClientEvent {
         resource: ResourceId,
         connected_gateway_ids: BTreeSet<GatewayId>,
     },
-    SendProxyIps {
+    RequestAccess {
         connection: ReuseConnection,
     },
     /// The list of resources has changed and UI clients may have to be updated.

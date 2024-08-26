@@ -153,7 +153,7 @@ where
                 );
                 self.connection_intents.register_new_intent(id, resource);
             }
-            firezone_tunnel::ClientEvent::SendProxyIps { connection } => {
+            firezone_tunnel::ClientEvent::RequestAccess { connection } => {
                 self.portal
                     .send(PHOENIX_TOPIC, EgressMessages::ReuseConnection(connection));
             }

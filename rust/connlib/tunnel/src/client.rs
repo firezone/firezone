@@ -407,7 +407,7 @@ impl ClientState {
         self.node.public_key()
     }
 
-    fn send_proxy_ips(
+    fn request_access(
         &mut self,
         resource_ip: &IpAddr,
         resource_id: ResourceId,
@@ -421,7 +421,7 @@ impl ClientState {
             &ips.iter().copied().map_into().collect_vec(),
             &resource_id,
         );
-        self.buffered_events.push_back(ClientEvent::SendProxyIps {
+        self.buffered_events.push_back(ClientEvent::RequestAccess {
             connection: ReuseConnection {
                 resource_id,
                 gateway_id,
@@ -482,7 +482,7 @@ impl ClientState {
         // for DNS resource we will send the IP one at a time.
         if is_dns_resource && peer.allowed_ips.exact_match(dst).is_none() {
             let gateway_id = peer.id();
-            self.send_proxy_ips(&dst, resource, gateway_id);
+            self.request_access(&dst, resource, gateway_id);
             return None;
         }
 
