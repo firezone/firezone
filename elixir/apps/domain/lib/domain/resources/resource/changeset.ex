@@ -92,10 +92,14 @@ defmodule Domain.Resources.Resource.Changeset do
 
       cond do
         String.contains?(tld, ["*", "?"]) ->
-          [{field, {"TLD cannot be contain wildcards", []}}]
+          [{field, {"TLD cannot contain wildcards", []}}]
 
         tld in @prohibited_tlds ->
-          [{field, {"#{tld} cannot be used, please add a DNS alias to /etc/hosts instead", []}}]
+          [
+            {field,
+             {"#{tld} cannot be used as a TLD. " <>
+                "Try adding a DNS alias to /etc/hosts on the Gateway(s) instead", []}}
+          ]
 
         tld in @common_tlds and String.contains?(domain, ["*", "?"]) ->
           [{field, {"second level domain for IANA TLDs cannot contain wildcards", []}}]
