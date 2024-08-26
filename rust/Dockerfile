@@ -18,8 +18,7 @@ RUN set -xe \
 ## See https://github.com/LukeMathWalker/cargo-chef/issues/231.
 COPY rust-toolchain.toml rust-toolchain.toml
 
-RUN set -xe \
-  && rustup show
+RUN rustup show
 
 WORKDIR /build
 
@@ -89,8 +88,7 @@ CMD $PACKAGE
 # used as a base for dev and test
 FROM runtime AS test
 
-RUN set -xe \
-  && apk add --no-cache iperf3 bind-tools iproute2 jq procps
+RUN apk add --no-cache iperf3 bind-tools iproute2 jq procps
 
 # used for local development
 FROM test AS dev
@@ -105,8 +103,15 @@ FROM test AS debug
 ARG PACKAGE
 COPY ${PACKAGE} .
 
-RUN set -xe \
-  && apk add --no-cache nodejs npm
+# Includes puppeteer dependencies for browser tests
+RUN apk add --no-cache \
+  nodejs \
+  npm \
+  nss \
+  freetype \
+  harfbuzz \
+  ca-certificates \
+  ttf-freefont
 COPY --from=browser-tests . .
 RUN npm clean-install
 
