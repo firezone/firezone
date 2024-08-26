@@ -660,25 +660,6 @@ defmodule Web.Policies.Components do
 
   def options_form(assigns) do
     ~H"""
-    <fieldset class="flex flex-col gap-2 mt-4">
-      <.inputs_for :let={options} field={@form[:options]}>
-        <div class="flex items-center justify-between">
-          <legend class="text-xl mb-2 text-neutral-900">Options</legend>
-        </div>
-
-        <div>
-          <fieldset class="mb-2">
-            <.input
-              type="checkbox"
-              label="Allow users to access the internet outside of Firezone"
-              field={options[:allow_clients_to_bypass]}
-              value="true"
-              checked={options[:allow_clients_to_bypass].value}
-            />
-          </fieldset>
-        </div>
-      </.inputs_for>
-    </fieldset>
     """
   end
 end

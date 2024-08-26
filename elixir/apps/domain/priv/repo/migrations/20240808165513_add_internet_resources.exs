@@ -20,10 +20,6 @@ defmodule Domain.Repo.Migrations.AddInternetResources do
       )
     )
 
-    alter table(:policies) do
-      add(:options, :map, default: %{})
-    end
-
     # Manual migration that needs to be run after deployment
     # Domain.Accounts.Account.Query.not_deleted()
     # |> Domain.Repo.all()

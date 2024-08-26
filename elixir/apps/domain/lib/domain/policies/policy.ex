@@ -6,8 +6,6 @@ defmodule Domain.Policies.Policy do
 
     embeds_many :conditions, Domain.Policies.Condition, on_replace: :delete
 
-    embeds_one :options, Domain.Policies.Options, on_replace: :delete
-
     belongs_to :actor_group, Domain.Actors.Group
     belongs_to :resource, Domain.Resources.Resource
     belongs_to :account, Domain.Accounts.Account

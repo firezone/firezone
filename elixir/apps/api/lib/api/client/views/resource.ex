@@ -11,10 +11,7 @@ defmodule API.Client.Views.Resource do
       id: resource.id,
       type: :internet,
       gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
-      can_be_disabled:
-        Enum.any?(resource.authorized_by_policies, fn policy ->
-          policy.options.allow_clients_to_bypass
-        end)
+      can_be_disabled: true
     }
   end
 

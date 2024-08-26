@@ -161,17 +161,6 @@ defmodule Web.Policies.Show do
               <.conditions providers={@providers} conditions={@policy.conditions} />
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row :if={@policy.resource.type == :internet}>
-            <:label>
-              Options
-            </:label>
-            <:value>
-              Allow users to access the Internet outside of Firezone:
-              <strong>
-                <%= if @policy.options.allow_clients_to_bypass, do: "yes", else: "no" %>
-              </strong>
-            </:value>
-          </.vertical_table_row>
           <.vertical_table_row :if={@policy.description}>
             <:label>
               Description
