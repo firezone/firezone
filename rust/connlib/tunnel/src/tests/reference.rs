@@ -232,7 +232,7 @@ impl ReferenceStateMachine for ReferenceState {
                 |dns_v4_domains| {
                     icmp_requests(
                         packet_source_v4(state.client.inner().tunnel_ip4),
-                        (sample::select(dns_v4_domains), any::<sample::Selector>()),
+                        dns_dst(sample::select(dns_v4_domains)),
                     )
                     .prop_map(Transition::SendICMPPacketToDnsResource)
                 },
@@ -243,7 +243,7 @@ impl ReferenceStateMachine for ReferenceState {
                 |dns_v6_domains| {
                     icmp_requests(
                         packet_source_v6(state.client.inner().tunnel_ip6),
-                        (sample::select(dns_v6_domains), any::<sample::Selector>()),
+                        dns_dst(sample::select(dns_v6_domains)),
                     )
                     .prop_map(Transition::SendICMPPacketToDnsResource)
                 },
@@ -374,7 +374,7 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::SendICMPPacketToDnsResource(requests) => state.client.exec_mut(|client| {
                 for IcmpRequest {
                     src,
-                    dst: (dst, _),
+                    dst,
                     seq,
                     identifier,
                     payload,
@@ -383,7 +383,7 @@ impl ReferenceStateMachine for ReferenceState {
                 {
                     client.on_icmp_packet_to_dns(
                         *src,
-                        dst.clone(),
+                        dst.domain.clone(),
                         *seq,
                         *identifier,
                         *payload,
@@ -492,13 +492,13 @@ impl ReferenceStateMachine for ReferenceState {
                 |IcmpRequest {
                      seq,
                      identifier,
-                     dst: (dst, _),
+                     dst,
                      src,
                      payload,
                      ..
                  }| {
                     let ref_client = state.client.inner();
-                    let Some(resource) = ref_client.dns_resource_by_domain(dst) else {
+                    let Some(resource) = ref_client.dns_resource_by_domain(&dst.domain) else {
                         return false;
                     };
                     let Some(gateway) = state.portal.gateway_for_resource(resource) else {
@@ -506,10 +506,13 @@ impl ReferenceStateMachine for ReferenceState {
                     };
 
                     ref_client.is_valid_icmp_packet(seq, identifier, payload)
-                        && ref_client.dns_records.get(dst).is_some_and(|r| match src {
-                            IpAddr::V4(_) => r.contains(&Rtype::A),
-                            IpAddr::V6(_) => r.contains(&Rtype::AAAA),
-                        })
+                        && ref_client
+                            .dns_records
+                            .get(&dst.domain)
+                            .is_some_and(|r| match src {
+                                IpAddr::V4(_) => r.contains(&Rtype::A),
+                                IpAddr::V6(_) => r.contains(&Rtype::AAAA),
+                            })
                         && state.gateways.contains_key(gateway)
                 },
             ),

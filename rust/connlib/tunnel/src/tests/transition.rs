@@ -32,7 +32,7 @@ pub(crate) enum Transition {
     /// Send an ICMP packet to a CIDR resource.
     SendICMPPacketToCidrResource(Vec<IcmpRequest<IpAddr>>),
     /// Send an ICMP packet to a DNS resource.
-    SendICMPPacketToDnsResource(Vec<IcmpRequest<(DomainName, sample::Selector)>>),
+    SendICMPPacketToDnsResource(Vec<IcmpRequest<DnsDst>>),
 
     /// Send a DNS query.
     SendDnsQueries(Vec<DnsQuery>),
@@ -84,6 +84,18 @@ pub(crate) struct IcmpRequest<TDst> {
     pub(crate) payload: u64,
 }
 
+#[derive(Clone)]
+pub(crate) struct DnsDst {
+    pub(crate) domain: DomainName,
+    pub(crate) ip_selector: sample::Selector,
+}
+
+impl fmt::Debug for DnsDst {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.domain.fmt(f)
+    }
+}
+
 pub(crate) fn icmp_requests<I, TDst>(
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = TDst>,
@@ -111,6 +123,13 @@ where
                 payload,
             })
             .collect()
+    })
+}
+
+pub(crate) fn dns_dst(domains: impl Strategy<Value = DomainName>) -> impl Strategy<Value = DnsDst> {
+    (domains, any::<sample::Selector>()).prop_map(|(domain, ip_selector)| DnsDst {
+        domain,
+        ip_selector,
     })
 }
 

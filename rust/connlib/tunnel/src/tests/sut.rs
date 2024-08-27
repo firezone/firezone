@@ -176,7 +176,7 @@ impl TunnelTest {
 
                 for IcmpRequest {
                     src,
-                    dst: (dst, resolved_ip),
+                    dst,
                     seq,
                     identifier,
                     payload,
@@ -186,14 +186,14 @@ impl TunnelTest {
                         .client
                         .inner()
                         .dns_records
-                        .get(&dst)
+                        .get(&dst.domain)
                         .unwrap()
                         .iter()
                         .filter(|ip| match ip {
                             IpAddr::V4(_) => src.is_ipv4(),
                             IpAddr::V6(_) => src.is_ipv6(),
                         });
-                    let dst = *resolved_ip.select(available_ips);
+                    let dst = *dst.ip_selector.select(available_ips);
 
                     let packet = ip_packet::make::icmp_request_packet(
                         src,
