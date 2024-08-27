@@ -492,8 +492,10 @@ impl<'a> Handler<'a> {
         )
         .map_err(|e| Error::PortalConnection(e.to_string()))?;
 
+        // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
         let new_session = Session::connect(args, portal, tokio::runtime::Handle::current());
+        // Call `set_dns` before `set_tun` so that the tunnel starts up with a valid list of resolvers.
         tracing::debug!(?dns, "Calling `set_dns`...");
         new_session.set_dns(dns);
         let tun = self
