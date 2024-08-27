@@ -132,7 +132,7 @@ impl StubPortal {
 
     pub(crate) fn map_client_resource_to_gateway_resource(
         &self,
-        resolved_ips: Vec<IpAddr>,
+        resolved_ips: BTreeSet<IpAddr>,
         resource_id: ResourceId,
     ) -> gateway::ResourceDescription<gateway::ResolvedResourceDescriptionDns> {
         let cidr_resource = self.cidr_resources.iter().find_map(|(_, r)| {
@@ -151,7 +151,7 @@ impl StubPortal {
                 name: r.name.clone(),
                 filters: Vec::new(),
                 domain: r.address.clone(),
-                addresses: resolved_ips.clone(),
+                addresses: Vec::from_iter(resolved_ips),
             })
         });
         let internet_resource = Some(gateway::ResourceDescription::Internet(
