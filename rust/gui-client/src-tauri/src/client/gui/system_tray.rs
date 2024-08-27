@@ -39,7 +39,7 @@ const DISCONNECT_AND_QUIT: &str = "Disconnect and quit Firezone";
 const DISABLE: &str = "Disable this resource";
 const ENABLE: &str = "Enable this resource";
 
-pub(crate) const INTERNET_RESOURCE_DESCRIPTION: &str = "All internet traffic";
+pub(crate) const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
 
 pub(crate) fn loading() -> SystemTray {
     SystemTray::new()

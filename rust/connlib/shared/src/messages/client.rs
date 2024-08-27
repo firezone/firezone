@@ -73,13 +73,18 @@ impl ResourceDescriptionCidr {
     }
 }
 
+fn internet_resource_name() -> String {
+    "<-> Internet Resource".to_string()
+}
+
 /// Description of an internet resource.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ResourceDescriptionInternet {
     /// Name of the resource.
     ///
     /// Used only for display.
-    pub name: Option<String>,
+    #[serde(default = "internet_resource_name")]
+    pub name: String,
     /// Resource's id.
     pub id: ResourceId,
     /// Sites for the internet resource
@@ -92,7 +97,7 @@ pub struct ResourceDescriptionInternet {
 impl ResourceDescriptionInternet {
     pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionInternet {
         crate::callbacks::ResourceDescriptionInternet {
-            name: self.name.unwrap_or("○ Internet Resource".to_string()),
+            name: self.name,
             id: self.id,
             sites: self.sites,
             can_be_disabled: self.can_be_disabled.unwrap_or_default(),
