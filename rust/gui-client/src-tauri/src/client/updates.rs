@@ -28,17 +28,19 @@ pub(crate) async fn checker_task(ctlr_tx: CtlrTx) -> Result<()> {
 
     loop {
         match fsm.poll() {
-            Event::CheckFile => if let Some(release) = read_latest_release_file().await { fsm.handle_check(release) }
+            Event::CheckFile => {
+                if let Some(release) = read_latest_release_file().await {
+                    fsm.handle_check(release)
+                }
+            }
             Event::WaitRandom => {
                 tokio::time::sleep(Duration::from_secs(rand_time)).await;
                 interval.reset();
             }
-            Event::CheckNetwork => {
-                match check().await {
-                    Ok(release) => fsm.handle_check(release),
-                    Err(error) => tracing::error!(?error, "Couldn't check website for update"),
-                }
-            }
+            Event::CheckNetwork => match check().await {
+                Ok(release) => fsm.handle_check(release),
+                Err(error) => tracing::error!(?error, "Couldn't check website for update"),
+            },
             Event::WaitInterval => {
                 interval.tick().await;
             }
