@@ -397,6 +397,11 @@ impl ClientState {
         gateway_id: GatewayId,
         maybe_domain: Option<ResolveRequest>,
     ) {
+        debug_assert!(
+            self.node.is_connecting(gateway_id).is_none(),
+            "Requesting access whilst we are connecting is a race condition"
+        );
+
         use tracing::field;
 
         let domain = maybe_domain.as_ref().map(|r| field::display(&r.name));
