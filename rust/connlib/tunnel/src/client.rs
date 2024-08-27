@@ -407,6 +407,9 @@ impl ClientState {
             &ips.iter().copied().map_into().collect_vec(),
             &resource_id,
         );
+
+        tracing::debug!(rid = %resource_id, gid = %gateway_id, domain = %fqdn, proxy_ips = ?ips, "Requesting access");
+
         self.buffered_events.push_back(ClientEvent::RequestAccess {
             resource_id,
             gateway_id,
@@ -467,8 +470,6 @@ impl ClientState {
         // Allowed IPs will track the IPs that we have sent to the gateway along with a list of ResourceIds
         // for DNS resource we will send the IP one at a time.
         if is_dns_resource && peer.allowed_ips.exact_match(dst).is_none() {
-            tracing::debug!("Packet is for a DNS resource but we haven't sent the proxy IPs yet");
-
             self.request_access(&dst, resource, gid);
         }
 
