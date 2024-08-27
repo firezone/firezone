@@ -19,6 +19,12 @@ export default function GUI({ title }: { title: string }) {
           <ChangeItem pull="6414">
             Waits for Internet if there's no Internet at startup and you're already signed in
           </ChangeItem>
+          <ChangeItem pull="6455">
+            Fixes a false positive warning about DNS interception being disabled.
+          </ChangeItem>
+          <ChangeItem pull="6458">
+            Fixes a bug where we considered our own startup to be a network change event.
+          </ChangeItem>
         </ul>
       </Entry>
       */}
