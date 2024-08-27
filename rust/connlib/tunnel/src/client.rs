@@ -393,38 +393,22 @@ impl ClientState {
 
     fn request_access(
         &mut self,
-        resource_ip: &IpAddr,
         resource_id: ResourceId,
         gateway_id: GatewayId,
+        maybe_domain: Option<ResolveRequest>,
     ) {
-        let Some((fqdn, ips)) = self.stub_resolver.get_fqdn(resource_ip) else {
-            tracing::debug!(%resource_ip, "Unknown DNS resource");
+        use tracing::field;
 
-            return;
-        };
-        self.peers.add_ips_with_resource(
-            &gateway_id,
-            &ips.iter().copied().map_into().collect_vec(),
-            &resource_id,
-        );
+        let domain = maybe_domain.as_ref().map(|r| field::display(&r.name));
+        let proxy_ips = maybe_domain.as_ref().map(|r| field::debug(&r.proxy_ips));
 
-        tracing::debug!(rid = %resource_id, gid = %gateway_id, domain = %fqdn, proxy_ips = ?ips, "Requesting access");
+        tracing::debug!(rid = %resource_id, gid = %gateway_id, domain, proxy_ips, "Requesting access");
 
         self.buffered_events.push_back(ClientEvent::RequestAccess {
             resource_id,
             gateway_id,
-            maybe_domain: Some(ResolveRequest {
-                name: fqdn.clone(),
-                proxy_ips: ips.clone(),
-            }),
+            maybe_domain,
         })
-    }
-
-    fn is_dns_resource(&self, resource: &ResourceId) -> bool {
-        matches!(
-            self.resources_by_id.get(resource),
-            Some(ResourceDescription::Dns(_))
-        )
     }
 
     pub(crate) fn encapsulate<'s>(
@@ -449,9 +433,6 @@ impl ClientState {
             return None;
         };
 
-        // We read this here to prevent problems with the borrow checker
-        let is_dns_resource = self.is_dns_resource(&resource);
-
         let packet = maybe_mangle_dns_query_to_cidr_resource(
             packet,
             &self.dns_mapping,
@@ -469,8 +450,23 @@ impl ClientState {
 
         // Allowed IPs will track the IPs that we have sent to the gateway along with a list of ResourceIds
         // for DNS resource we will send the IP one at a time.
-        if is_dns_resource && peer.allowed_ips.exact_match(dst).is_none() {
-            self.request_access(&dst, resource, gid);
+        if peer.allowed_ips.exact_match(dst).is_none() {
+            if let Some((fqdn, ips)) = self.stub_resolver.get_fqdn(&dst) {
+                self.peers.add_ips_with_resource(
+                    &gid,
+                    &ips.iter().copied().map_into().collect_vec(),
+                    &resource,
+                );
+
+                self.request_access(
+                    resource,
+                    gid,
+                    Some(ResolveRequest {
+                        name: fqdn.clone(),
+                        proxy_ips: ips.clone(),
+                    }),
+                );
+            }
         }
 
         let transmit = self
@@ -555,16 +551,9 @@ impl ClientState {
             return Ok(());
         };
 
-        self.buffered_events.extend(
-            buffered_allow_access_requests
-                .into_iter()
-                .inspect(|(rid, _)| tracing::debug!(%rid, gid = %gateway_id, "Requesting access"))
-                .map(|(resource_id, maybe_domain)| ClientEvent::RequestAccess {
-                    resource_id,
-                    gateway_id,
-                    maybe_domain,
-                }),
-        );
+        for (resource_id, maybe_domain) in buffered_allow_access_requests {
+            self.request_access(resource_id, gateway_id, maybe_domain)
+        }
 
         Ok(())
     }
@@ -647,13 +636,7 @@ impl ClientState {
                 .or_default()
                 .push((resource_id, awaiting_connection_details.domain))
         } else {
-            tracing::debug!("Requesting access");
-
-            self.buffered_events.push_back(ClientEvent::RequestAccess {
-                resource_id,
-                gateway_id,
-                maybe_domain: awaiting_connection_details.domain,
-            });
+            self.request_access(resource_id, gateway_id, awaiting_connection_details.domain);
         }
 
         Ok(())
