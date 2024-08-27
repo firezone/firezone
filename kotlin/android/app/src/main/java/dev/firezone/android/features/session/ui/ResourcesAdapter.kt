@@ -2,6 +2,7 @@
 package dev.firezone.android.features.session.ui
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
@@ -29,12 +30,15 @@ internal class ResourcesAdapter(private val activity: SessionActivity) : ListAda
     ) {
         val resource = getItem(position)
         holder.bind(resource) { newResource -> onSwitchToggled(newResource) }
-        holder.itemView.setOnClickListener {
-            // Show bottom sheet
-            val isFavorite = favoriteResources.contains(resource.id)
-            val fragmentManager = (holder.itemView.context as AppCompatActivity).supportFragmentManager
-            val bottomSheet = ResourceDetailsBottomSheet(resource)
-            bottomSheet.show(fragmentManager, "ResourceDetailsBottomSheet")
+        if (!resource.isInternetResource()) {
+            holder.itemView.setOnClickListener {
+                // Show bottom sheet
+                val isFavorite = favoriteResources.contains(resource.id)
+                val fragmentManager =
+                    (holder.itemView.context as AppCompatActivity).supportFragmentManager
+                val bottomSheet = ResourceDetailsBottomSheet(resource)
+                bottomSheet.show(fragmentManager, "ResourceDetailsBottomSheet")
+            }
         }
     }
 
@@ -48,7 +52,11 @@ internal class ResourcesAdapter(private val activity: SessionActivity) : ListAda
             onSwitchToggled: (ViewResource) -> Unit,
         ) {
             binding.resourceNameText.text = resource.name
-            binding.addressText.text = resource.address
+            if (resource.isInternetResource()) {
+                binding.addressText.visibility = View.GONE
+            } else {
+                binding.addressText.text = resource.address
+            }
             // Without this the item gets reset when out of view, isn't android wonderful?
             binding.enableSwitch.setOnCheckedChangeListener(null)
             binding.enableSwitch.isChecked = resource.enabled

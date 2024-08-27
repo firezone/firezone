@@ -25,14 +25,14 @@ public enum ResourceList {
 public struct Resource: Decodable, Identifiable, Equatable {
   public let id: String
   public var name: String
-  public var address: String
+  public var address: String?
   public var addressDescription: String?
   public var status: ResourceStatus
   public var sites: [Site]
   public var type: ResourceType
   public var canBeDisabled: Bool
 
-  public init(id: String, name: String, address: String, addressDescription: String?, status: ResourceStatus, sites: [Site], type: ResourceType, canBeDisabled: Bool) {
+  public init(id: String, name: String, address: String?, addressDescription: String?, status: ResourceStatus, sites: [Site], type: ResourceType, canBeDisabled: Bool) {
     self.id = id
     self.name = name
     self.address = address
@@ -41,6 +41,10 @@ public struct Resource: Decodable, Identifiable, Equatable {
     self.sites = sites
     self.type = type
     self.canBeDisabled = canBeDisabled
+  }
+
+  public func isInternetResource() -> Bool {
+    self.type == ResourceType.internet
   }
 }
 

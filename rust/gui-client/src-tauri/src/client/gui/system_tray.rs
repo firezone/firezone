@@ -17,7 +17,7 @@ use url::Url;
 mod builder;
 pub(crate) mod compositor;
 
-pub(crate) use builder::{copyable, item, Event, Item, Menu, Window};
+pub(crate) use builder::{item, Event, Menu, Window};
 
 // Figma is the source of truth for the tray icons
 // <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=nHBOzOnSY5Ol4asV-0>
@@ -40,6 +40,8 @@ const SIGN_OUT: &str = "Sign out";
 const DISCONNECT_AND_QUIT: &str = "Disconnect and quit Firezone";
 const DISABLE: &str = "Disable this resource";
 const ENABLE: &str = "Enable this resource";
+
+pub(crate) const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
 
 pub(crate) fn loading() -> SystemTray {
     let state = AppState {
@@ -64,10 +66,12 @@ pub(crate) struct AppState<'a> {
 
 pub(crate) enum ConnlibState<'a> {
     Loading,
+    RetryingConnection,
+    SignedIn(SignedIn<'a>),
     SignedOut,
     WaitingForBrowser,
-    WaitingForConnlib,
-    SignedIn(SignedIn<'a>),
+    WaitingForPortal,
+    WaitingForTunnel,
 }
 
 pub(crate) struct SignedIn<'a> {
@@ -78,27 +82,25 @@ pub(crate) struct SignedIn<'a> {
 }
 
 impl<'a> SignedIn<'a> {
-    fn is_favorite(&self, res: &ResourceDescription) -> bool {
-        self.favorite_resources.contains(&res.id())
+    fn is_favorite(&self, resource: &ResourceId) -> bool {
+        self.favorite_resources.contains(resource)
+    }
+
+    fn add_favorite_toggle(&self, submenu: &mut Menu, resource: ResourceId) {
+        if self.is_favorite(&resource) {
+            submenu.add_item(item(Event::RemoveFavorite(resource), REMOVE_FAVORITE).selected());
+        } else {
+            submenu.add_item(item(Event::AddFavorite(resource), ADD_FAVORITE));
+        }
     }
 
     /// Builds the submenu that has the resource address, name, desc,
     /// sites online, etc.
     fn resource_submenu(&self, res: &ResourceDescription) -> Menu {
-        let mut submenu = Menu::default();
+        let mut submenu = Menu::default().resource_description(res);
 
-        submenu.add_item(resource_header(res));
-
-        let mut submenu = submenu
-            .separator()
-            .disabled("Resource")
-            .copyable(res.name())
-            .copyable(res.pastable().as_ref());
-
-        if self.is_favorite(res) {
-            submenu.add_item(item(Event::RemoveFavorite(res.id()), REMOVE_FAVORITE).selected());
-        } else {
-            submenu.add_item(item(Event::AddFavorite(res.id()), ADD_FAVORITE));
+        if !res.is_internet_resource() {
+            self.add_favorite_toggle(&mut submenu, res.id());
         }
 
         if res.can_be_disabled() {
@@ -133,22 +135,6 @@ impl<'a> SignedIn<'a> {
     }
 }
 
-fn resource_header(res: &ResourceDescription) -> Item {
-    let Some(address_description) = res.address_description() else {
-        return copyable(&res.pastable());
-    };
-
-    if address_description.is_empty() {
-        return copyable(&res.pastable());
-    }
-
-    let Ok(url) = Url::parse(address_description) else {
-        return copyable(address_description);
-    };
-
-    item(Event::Url(url), format!("<{address_description}>"))
-}
-
 #[derive(PartialEq)]
 pub(crate) enum Icon {
     /// Must be equivalent to the default app icon, since we assume this is set when we start
@@ -174,8 +160,10 @@ impl Tray {
     pub(crate) fn update(&mut self, state: AppState) -> Result<()> {
         let new_icon = match &state.connlib {
             ConnlibState::Loading
+            | ConnlibState::RetryingConnection
             | ConnlibState::WaitingForBrowser
-            | ConnlibState::WaitingForConnlib => Icon::Busy,
+            | ConnlibState::WaitingForPortal
+            | ConnlibState::WaitingForTunnel => Icon::Busy,
             ConnlibState::SignedOut => Icon::SignedOut,
             ConnlibState::SignedIn { .. } => Icon::SignedIn,
         };
@@ -221,17 +209,21 @@ impl<'a> AppState<'a> {
     fn into_menu(self) -> Menu {
         let quit_text = match &self.connlib {
             ConnlibState::Loading
+            | ConnlibState::RetryingConnection
             | ConnlibState::SignedOut
             | ConnlibState::WaitingForBrowser
-            | ConnlibState::WaitingForConnlib => QUIT_TEXT_SIGNED_OUT,
+            | ConnlibState::WaitingForPortal
+            | ConnlibState::WaitingForTunnel => QUIT_TEXT_SIGNED_OUT,
             ConnlibState::SignedIn(_) => DISCONNECT_AND_QUIT,
         };
         let menu = match self.connlib {
             ConnlibState::Loading => Menu::default().disabled("Loading..."),
+            ConnlibState::RetryingConnection => retrying_sign_in("Waiting for Internet access..."),
+            ConnlibState::SignedIn(x) => signed_in(&x),
             ConnlibState::SignedOut => Menu::default().item(Event::SignIn, "Sign In"),
             ConnlibState::WaitingForBrowser => signing_in("Waiting for browser..."),
-            ConnlibState::WaitingForConnlib => signing_in("Signing In..."),
-            ConnlibState::SignedIn(x) => signed_in(&x),
+            ConnlibState::WaitingForPortal => signing_in("Connecting to Firezone Portal..."),
+            ConnlibState::WaitingForTunnel => signing_in("Raising tunnel..."),
         };
         menu.add_bottom_section(self.update_url, quit_text)
     }
@@ -264,7 +256,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         // Always show Resources in the original order
         for res in resources
             .iter()
-            .filter(|res| favorite_resources.contains(&res.id()))
+            .filter(|res| favorite_resources.contains(&res.id()) || res.is_internet_resource())
         {
             menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
@@ -283,7 +275,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         // Always show Resources in the original order
         for res in resources
             .iter()
-            .filter(|res| !favorite_resources.contains(&res.id()))
+            .filter(|res| !favorite_resources.contains(&res.id()) && !res.is_internet_resource())
         {
             submenu = submenu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
@@ -291,6 +283,13 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
     }
 
     menu
+}
+
+fn retrying_sign_in(waiting_message: &str) -> Menu {
+    Menu::default()
+        .disabled(waiting_message)
+        .item(Event::RetryPortalConnection, "Retry sign-in")
+        .item(Event::CancelSignIn, "Cancel sign-in")
 }
 
 fn signing_in(waiting_message: &str) -> Menu {
@@ -468,17 +467,7 @@ mod tests {
             .add_submenu(
                 "Internet Resource",
                 Menu::default()
-                    .copyable("")
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("Internet Resource")
-                    .copyable("")
-                    .item(
-                        Event::AddFavorite(
-                            ResourceId::from_str("1106047c-cd5d-4151-b679-96b93da7383b").unwrap(),
-                        ),
-                        ADD_FAVORITE,
-                    )
+                    .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
                     .disabled("Site")
                     .copyable("test")
@@ -529,48 +518,37 @@ mod tests {
                     .copyable("test")
                     .copyable(GATEWAY_CONNECTED),
             )
+            .add_submenu(
+                "Internet Resource",
+                Menu::default()
+                    .disabled(INTERNET_RESOURCE_DESCRIPTION)
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable(ALL_GATEWAYS_OFFLINE),
+            )
             .separator()
             .add_submenu(
                 OTHER_RESOURCES,
-                Menu::default()
-                    .add_submenu(
-                        "172.172.0.0/16",
-                        Menu::default()
-                            .copyable("cidr resource")
-                            .separator()
-                            .disabled("Resource")
-                            .copyable("172.172.0.0/16")
-                            .copyable("172.172.0.0/16")
-                            .item(
-                                Event::AddFavorite(ResourceId::from_str(
-                                    "73037362-715d-4a83-a749-f18eadd970e6",
-                                )?),
-                                ADD_FAVORITE,
-                            )
-                            .separator()
-                            .disabled("Site")
-                            .copyable("test")
-                            .copyable(NO_ACTIVITY),
-                    )
-                    .add_submenu(
-                        "Internet Resource",
-                        Menu::default()
-                            .copyable("")
-                            .separator()
-                            .disabled("Resource")
-                            .copyable("Internet Resource")
-                            .copyable("")
-                            .item(
-                                Event::AddFavorite(ResourceId::from_str(
-                                    "1106047c-cd5d-4151-b679-96b93da7383b",
-                                )?),
-                                ADD_FAVORITE,
-                            )
-                            .separator()
-                            .disabled("Site")
-                            .copyable("test")
-                            .copyable(ALL_GATEWAYS_OFFLINE),
-                    ),
+                Menu::default().add_submenu(
+                    "172.172.0.0/16",
+                    Menu::default()
+                        .copyable("cidr resource")
+                        .separator()
+                        .disabled("Resource")
+                        .copyable("172.172.0.0/16")
+                        .copyable("172.172.0.0/16")
+                        .item(
+                            Event::AddFavorite(ResourceId::from_str(
+                                "73037362-715d-4a83-a749-f18eadd970e6",
+                            )?),
+                            ADD_FAVORITE,
+                        )
+                        .separator()
+                        .disabled("Site")
+                        .copyable("test")
+                        .copyable(NO_ACTIVITY),
+                ),
             )
             .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
@@ -642,17 +620,7 @@ mod tests {
             .add_submenu(
                 "Internet Resource",
                 Menu::default()
-                    .copyable("")
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("Internet Resource")
-                    .copyable("")
-                    .item(
-                        Event::AddFavorite(ResourceId::from_str(
-                            "1106047c-cd5d-4151-b679-96b93da7383b",
-                        )?),
-                        ADD_FAVORITE,
-                    )
+                    .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
                     .disabled("Site")
                     .copyable("test")

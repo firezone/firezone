@@ -1,6 +1,6 @@
 use crate::{
     device_id, dns_control::DnsController, known_dirs, signals, CallbackHandler, CliCommon,
-    ConnlibMsg, IpcServerMsg, LogFilterReloader,
+    ConnlibMsg, LogFilterReloader,
 };
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
@@ -100,6 +100,8 @@ pub enum ServerMsg {
     /// "Firezone is updating, please restart the GUI" instead of an error like,
     /// "IPC connection closed".
     TerminatingGracefully,
+    /// The interface and tunnel are ready for traffic.
+    TunnelReady,
 }
 
 // All variants are `String` because almost no error type implements `Serialize`
@@ -327,7 +329,7 @@ impl<'a> Handler<'a> {
                         "Caught SIGINT / SIGTERM / Ctrl+C while an IPC client is connected"
                     );
                     self.ipc_tx
-                        .send(&IpcServerMsg::TerminatingGracefully)
+                        .send(&ServerMsg::TerminatingGracefully)
                         .await
                         .unwrap();
                     break HandlerOk::ServiceTerminating;
@@ -370,7 +372,7 @@ impl<'a> Handler<'a> {
                 is_authentication_error,
             } => self
                 .ipc_tx
-                .send(&IpcServerMsg::OnDisconnect {
+                .send(&ServerMsg::OnDisconnect {
                     error_msg,
                     is_authentication_error,
                 })
@@ -382,12 +384,16 @@ impl<'a> Handler<'a> {
                 if let Some(instant) = self.last_connlib_start_instant.take() {
                     tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
                 }
+                self.ipc_tx
+                    .send(&ServerMsg::TunnelReady)
+                    .await
+                    .context("Error while sending IPC message `TunnelReady`")?;
             }
             ConnlibMsg::OnUpdateResources(resources) => {
                 // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                 self.dns_controller.flush()?;
                 self.ipc_tx
-                    .send(&IpcServerMsg::OnUpdateResources(resources))
+                    .send(&ServerMsg::OnUpdateResources(resources))
                     .await
                     .context("Error while sending IPC message `OnUpdateResources`")?;
             }
@@ -399,6 +405,10 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
+    fn tunnel_is_ready(&self) -> bool {
+        self.last_connlib_start_instant.is_none() && self.connlib.is_some()
+    }
+
     async fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
         match msg {
             ClientMsg::ClearLogs => {
@@ -407,9 +417,7 @@ impl<'a> Handler<'a> {
                 )
                 .await;
                 self.ipc_tx
-                    .send(&IpcServerMsg::ClearedLogs(
-                        result.map_err(|e| e.to_string()),
-                    ))
+                    .send(&ServerMsg::ClearedLogs(result.map_err(|e| e.to_string())))
                     .await
                     .context("Error while sending IPC message")?
             }
@@ -417,7 +425,7 @@ impl<'a> Handler<'a> {
                 let token = secrecy::SecretString::from(token);
                 let result = self.connect_to_firezone(&api_url, token);
                 self.ipc_tx
-                    .send(&IpcServerMsg::ConnectResult(result))
+                    .send(&ServerMsg::ConnectResult(result))
                     .await
                     .context("Failed to send `ConnectResult`")?
             }
@@ -433,12 +441,20 @@ impl<'a> Handler<'a> {
                 let filter = spawn_blocking(get_log_filter).await??;
                 self.log_filter_reloader.reload(filter)?;
             }
-            ClientMsg::Reset => self.connlib.as_mut().context("No connlib session")?.reset(),
-            ClientMsg::SetDns(v) => self
-                .connlib
-                .as_mut()
-                .context("No connlib session")?
-                .set_dns(v),
+            ClientMsg::Reset => {
+                if self.tunnel_is_ready() {
+                    self.connlib.as_mut().context("No connlib session")?.reset();
+                } else {
+                    tracing::debug!("Ignoring redundant reset");
+                }
+            }
+            ClientMsg::SetDns(resolvers) => {
+                tracing::debug!(?resolvers);
+                self.connlib
+                    .as_mut()
+                    .context("No connlib session")?
+                    .set_dns(resolvers)
+            }
             ClientMsg::SetDisabledResources(disabled_resources) => {
                 self.connlib
                     .as_mut()
@@ -492,13 +508,17 @@ impl<'a> Handler<'a> {
         )
         .map_err(|e| Error::PortalConnection(e.to_string()))?;
 
+        // Read the resolvers before starting connlib, in case connlib's startup interferes.
+        let dns = self.dns_controller.system_resolvers();
         let new_session = Session::connect(args, portal, tokio::runtime::Handle::current());
+        // Call `set_dns` before `set_tun` so that the tunnel starts up with a valid list of resolvers.
+        tracing::debug!(?dns, "Calling `set_dns`...");
+        new_session.set_dns(dns);
         let tun = self
             .tun_device
             .make_tun()
             .map_err(|e| Error::TunnelDevice(e.to_string()))?;
         new_session.set_tun(Box::new(tun));
-        new_session.set_dns(self.dns_controller.system_resolvers());
         self.connlib = Some(new_session);
 
         Ok(())
