@@ -407,6 +407,10 @@ locals {
       value = true
     },
     {
+      name  = "FEATURE_INTERNET_RESOURCE_ENABLED"
+      value = true
+    },
+    {
       name  = "FEATURE_TEMP_ACCOUNTS"
       value = true
     }

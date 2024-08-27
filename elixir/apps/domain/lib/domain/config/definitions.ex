@@ -685,6 +685,11 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:feature_rest_api_enabled, :boolean, default: false)
 
+  @doc """
+  Boolean flag to turn Internet Resources functionality on/off for all accounts.
+  """
+  defconfig(:feature_internet_resource_enabled, :boolean, default: false)
+
   ##############################################
   ## Analytics
   ##############################################

@@ -226,7 +226,7 @@ defmodule Web.Policies.Components do
   defp condition_operator_option_name(:is_in_cidr), do: "is in"
   defp condition_operator_option_name(:is_not_in_cidr), do: "is not in"
 
-  def condition_form(assigns) do
+  def conditions_form(assigns) do
     assigns =
       assign_new(assigns, :policy_conditions_enabled?, fn ->
         Domain.Accounts.policy_conditions_enabled?(assigns.account)
@@ -656,5 +656,10 @@ defmodule Web.Policies.Components do
   defp condition_operator_options(property) do
     Domain.Policies.Condition.Changeset.valid_operators_for_property(property)
     |> Enum.map(&{condition_operator_option_name(&1), &1})
+  end
+
+  def options_form(assigns) do
+    ~H"""
+    """
   end
 end

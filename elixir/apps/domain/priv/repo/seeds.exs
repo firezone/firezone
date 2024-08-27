@@ -30,7 +30,8 @@ account
     traffic_filters: true,
     self_hosted_relays: true,
     idp_sync: true,
-    rest_api: true
+    rest_api: true,
+    internet_resource: true
   }
 )
 |> Repo.update!()
@@ -71,6 +72,10 @@ for item <- [account, other_account] do
 end
 
 IO.puts("")
+
+for account <- [account, other_account] do
+  Domain.Resources.create_internet_resource(account)
+end
 
 {:ok, everyone_group} =
   Domain.Actors.create_managed_group(account, %{

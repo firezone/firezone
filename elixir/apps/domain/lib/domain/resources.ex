@@ -68,6 +68,7 @@ defmodule Domain.Resources do
   def all_resources!(%Auth.Subject{} = subject) do
     Resource.Query.not_deleted()
     |> Resource.Query.by_account_id(subject.account.id)
+    |> Resource.Query.filter_features(subject.account)
     |> Authorizer.for_subject(Resource, subject)
     |> Repo.all()
   end
@@ -75,6 +76,7 @@ defmodule Domain.Resources do
   def list_resources(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
       Resource.Query.not_deleted()
+      |> Resource.Query.filter_features(subject.account)
       |> Authorizer.for_subject(Resource, subject)
       |> Repo.list(Resource.Query, opts)
     end
@@ -84,6 +86,7 @@ defmodule Domain.Resources do
     {preload, _opts} = Keyword.pop(opts, :preload, [])
 
     Resource.Query.not_deleted()
+    |> Resource.Query.filter_features(subject.account)
     |> Authorizer.for_subject(Resource, subject)
     |> Repo.all()
     |> Repo.preload(preload)
@@ -168,6 +171,16 @@ defmodule Domain.Resources do
     end
   end
 
+  def create_internet_resource(%Accounts.Account{} = account) do
+    attrs = %{type: :internet, name: "Internet"}
+    changeset = Resource.Changeset.create(account, attrs)
+
+    with {:ok, resource} <- Repo.insert(changeset) do
+      :ok = broadcast_resource_events(:create, resource)
+      {:ok, resource}
+    end
+  end
+
   def change_resource(%Resource{} = resource, attrs \\ %{}, %Auth.Subject{} = subject) do
     Resource.Changeset.update(resource, attrs, subject)
   end
@@ -192,6 +205,10 @@ defmodule Domain.Resources do
         end
       )
     end
+  end
+
+  def delete_resource(%Resource{type: :internet}, %Auth.Subject{}) do
+    {:error, :cannot_delete_internet_resource}
   end
 
   def delete_resource(%Resource{} = resource, %Auth.Subject{} = subject) do

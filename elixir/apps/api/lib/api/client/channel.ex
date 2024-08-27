@@ -751,7 +751,11 @@ defmodule API.Client.Channel do
         gateway_version_requirement
 
       :drop ->
-        ">= 1.2.0"
+        if resource.type == :internet do
+          ">= 1.3.0"
+        else
+          ">= 1.2.0"
+        end
     end
   end
 
@@ -776,16 +780,24 @@ defmodule API.Client.Channel do
   end
 
   def map_or_drop_compatible_resource(resource, client_or_gateway_version) do
-    if Version.match?(client_or_gateway_version, ">= 1.2.0") do
-      {:cont, resource}
-    else
-      resource.address
-      |> String.codepoints()
-      |> Resources.map_resource_address()
-      |> case do
-        {:cont, address} -> {:cont, %{resource | address: address}}
-        :drop -> :drop
-      end
+    cond do
+      resource.type == :internet and Version.match?(client_or_gateway_version, ">= 1.3.0") ->
+        {:cont, resource}
+
+      resource.type == :internet ->
+        :drop
+
+      Version.match?(client_or_gateway_version, ">= 1.2.0") ->
+        {:cont, resource}
+
+      true ->
+        resource.address
+        |> String.codepoints()
+        |> Resources.map_resource_address()
+        |> case do
+          {:cont, address} -> {:cont, %{resource | address: address}}
+          :drop -> :drop
+        end
     end
   end
 end

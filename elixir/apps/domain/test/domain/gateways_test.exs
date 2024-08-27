@@ -797,7 +797,7 @@ defmodule Domain.GatewaysTest do
 
       assert gateway.last_seen_remote_ip.address == context.remote_ip
       assert gateway.last_seen_user_agent == context.user_agent
-      assert gateway.last_seen_version == "0.7.412"
+      assert gateway.last_seen_version == "1.3.0"
       assert gateway.last_seen_at
       assert gateway.last_seen_remote_ip_location_region == context.remote_ip_location_region
       assert gateway.last_seen_remote_ip_location_city == context.remote_ip_location_city

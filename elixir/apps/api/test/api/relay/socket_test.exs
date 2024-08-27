@@ -3,7 +3,7 @@ defmodule API.Relay.SocketTest do
   import API.Relay.Socket, except: [connect: 3]
   alias API.Relay.Socket
 
-  @connlib_version "0.1.1"
+  @connlib_version "1.3.0"
 
   @connect_info %{
     user_agent: "iOS/12.7 (iPhone) connlib/#{@connlib_version}",

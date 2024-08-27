@@ -10,5 +10,6 @@ defmodule Domain.Accounts.Features do
     field :self_hosted_relays, :boolean
     field :idp_sync, :boolean
     field :rest_api, :boolean
+    field :internet_resource, :boolean
   end
 end

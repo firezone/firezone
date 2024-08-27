@@ -286,6 +286,8 @@ defmodule Domain.Billing.EventHandler do
               provider_identifier_confirmation: metadata["account_admin_email"] || account_email
             })
 
+          {:ok, _resource} = Domain.Resources.create_internet_resource(account)
+
           :ok
         else
           {:error, %Ecto.Changeset{errors: [{:slug, {"has already been taken", _}} | _]}} ->

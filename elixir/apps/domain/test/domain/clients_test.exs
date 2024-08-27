@@ -452,7 +452,7 @@ defmodule Domain.ClientsTest do
       assert client.last_seen_remote_ip_location_lon == subject.context.remote_ip_location_lon
 
       assert client.last_seen_user_agent == subject.context.user_agent
-      assert client.last_seen_version == "0.7.412"
+      assert client.last_seen_version == "1.3.0"
       assert client.last_seen_at
     end
 

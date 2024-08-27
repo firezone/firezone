@@ -7,7 +7,7 @@ defmodule Domain.Fixtures.Clients do
       external_id: Ecto.UUID.generate(),
       name: "client-#{unique_integer()}",
       public_key: unique_public_key(),
-      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/1.3.0",
       last_seen_remote_ip: Enum.random([unique_ipv4(), unique_ipv6()]),
       last_seen_remote_ip_location_region: "US",
       last_seen_remote_ip_location_city: "San Francisco",

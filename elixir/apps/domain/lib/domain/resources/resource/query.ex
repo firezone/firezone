@@ -10,6 +10,14 @@ defmodule Domain.Resources.Resource.Query do
     |> where([resources: resources], is_nil(resources.deleted_at))
   end
 
+  def filter_features(queryable, %Domain.Accounts.Account{} = account) do
+    if Domain.Accounts.internet_resource_enabled?(account) do
+      queryable
+    else
+      where(queryable, [resources: resources], resources.type != ^:internet)
+    end
+  end
+
   def by_id(queryable, {:in, ids}) do
     where(queryable, [resources: resources], resources.id in ^ids)
   end

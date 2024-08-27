@@ -455,6 +455,12 @@ defmodule Web.SignUp do
       end
     )
     |> Ecto.Multi.run(
+      :internet_resource,
+      fn _repo, %{account: account} ->
+        Domain.Resources.create_internet_resource(account)
+      end
+    )
+    |> Ecto.Multi.run(
       :send_email,
       fn _repo, %{account: account, identity: identity} ->
         Web.Mailer.AuthEmail.sign_up_link_email(

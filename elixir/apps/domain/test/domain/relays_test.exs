@@ -849,7 +849,7 @@ defmodule Domain.RelaysTest do
       assert relay.last_seen_remote_ip_location_lat == context.remote_ip_location_lat
       assert relay.last_seen_remote_ip_location_lon == context.remote_ip_location_lon
       assert relay.last_seen_user_agent == context.user_agent
-      assert relay.last_seen_version == "0.7.412"
+      assert relay.last_seen_version == "1.3.0"
       assert relay.last_seen_at
       assert relay.last_used_token_id == token.id
       assert relay.port == 3478
@@ -931,7 +931,7 @@ defmodule Domain.RelaysTest do
 
       assert updated_relay.last_seen_remote_ip.address == context.remote_ip
       assert updated_relay.last_seen_user_agent == context.user_agent
-      assert updated_relay.last_seen_version == "0.7.412"
+      assert updated_relay.last_seen_version == "1.3.0"
       assert updated_relay.last_seen_at
       assert updated_relay.last_seen_at != relay.last_seen_at
       assert updated_relay.last_used_token_id == token.id

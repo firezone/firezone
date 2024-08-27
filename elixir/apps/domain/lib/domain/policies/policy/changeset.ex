@@ -21,7 +21,6 @@ defmodule Domain.Policies.Policy.Changeset do
     policy
     |> cast(attrs, @update_fields)
     |> validate_required(@required_fields)
-    |> cast_embed(:conditions, with: &Domain.Policies.Condition.Changeset.changeset/3)
     |> changeset()
   end
 
