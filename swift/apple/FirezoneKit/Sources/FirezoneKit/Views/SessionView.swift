@@ -133,10 +133,10 @@ struct ResourceSection: View {
         if !resource.isInternetResource() {
             NavigationLink { ResourceView(model: model, resource: resource) }
           label: {
-            ResourceLable(resource: resource, model: model )
+            ResourceLabel(resource: resource, model: model )
           }
         } else {
-          ResourceLable(resource: resource, model: model)
+          ResourceLabel(resource: resource, model: model)
         }
       }
       .navigationTitle("All Resources")
@@ -144,7 +144,7 @@ struct ResourceSection: View {
   }
 }
 
-struct ResourceLable: View {
+struct ResourceLabel: View {
   let resource: Resource
   @ObservedObject var model: SessionViewModel
 
