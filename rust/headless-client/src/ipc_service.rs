@@ -1,6 +1,6 @@
 use crate::{
     device_id, dns_control::DnsController, known_dirs, signals, CallbackHandler, CliCommon,
-    ConnlibMsg, IpcServerMsg, LogFilterReloader,
+    ConnlibMsg, LogFilterReloader,
 };
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
@@ -100,6 +100,8 @@ pub enum ServerMsg {
     /// "Firezone is updating, please restart the GUI" instead of an error like,
     /// "IPC connection closed".
     TerminatingGracefully,
+    /// The interface and tunnel are ready for traffic.
+    TunnelReady,
 }
 
 // All variants are `String` because almost no error type implements `Serialize`
@@ -327,7 +329,7 @@ impl<'a> Handler<'a> {
                         "Caught SIGINT / SIGTERM / Ctrl+C while an IPC client is connected"
                     );
                     self.ipc_tx
-                        .send(&IpcServerMsg::TerminatingGracefully)
+                        .send(&ServerMsg::TerminatingGracefully)
                         .await
                         .unwrap();
                     break HandlerOk::ServiceTerminating;
@@ -370,7 +372,7 @@ impl<'a> Handler<'a> {
                 is_authentication_error,
             } => self
                 .ipc_tx
-                .send(&IpcServerMsg::OnDisconnect {
+                .send(&ServerMsg::OnDisconnect {
                     error_msg,
                     is_authentication_error,
                 })
@@ -382,12 +384,16 @@ impl<'a> Handler<'a> {
                 if let Some(instant) = self.last_connlib_start_instant.take() {
                     tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
                 }
+                self.ipc_tx
+                    .send(&ServerMsg::TunnelReady)
+                    .await
+                    .context("Error while sending IPC message `TunnelReady`")?;
             }
             ConnlibMsg::OnUpdateResources(resources) => {
                 // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                 self.dns_controller.flush()?;
                 self.ipc_tx
-                    .send(&IpcServerMsg::OnUpdateResources(resources))
+                    .send(&ServerMsg::OnUpdateResources(resources))
                     .await
                     .context("Error while sending IPC message `OnUpdateResources`")?;
             }
@@ -411,9 +417,7 @@ impl<'a> Handler<'a> {
                 )
                 .await;
                 self.ipc_tx
-                    .send(&IpcServerMsg::ClearedLogs(
-                        result.map_err(|e| e.to_string()),
-                    ))
+                    .send(&ServerMsg::ClearedLogs(result.map_err(|e| e.to_string())))
                     .await
                     .context("Error while sending IPC message")?
             }
@@ -421,7 +425,7 @@ impl<'a> Handler<'a> {
                 let token = secrecy::SecretString::from(token);
                 let result = self.connect_to_firezone(&api_url, token);
                 self.ipc_tx
-                    .send(&IpcServerMsg::ConnectResult(result))
+                    .send(&ServerMsg::ConnectResult(result))
                     .await
                     .context("Failed to send `ConnectResult`")?
             }
