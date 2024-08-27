@@ -399,6 +399,10 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
+    fn tunnel_is_ready(&self) -> bool {
+        self.last_connlib_start_instant.is_none() && self.connlib.is_some()
+    }
+
     async fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
         match msg {
             ClientMsg::ClearLogs => {
@@ -433,12 +437,20 @@ impl<'a> Handler<'a> {
                 let filter = spawn_blocking(get_log_filter).await??;
                 self.log_filter_reloader.reload(filter)?;
             }
-            ClientMsg::Reset => self.connlib.as_mut().context("No connlib session")?.reset(),
-            ClientMsg::SetDns(v) => self
-                .connlib
-                .as_mut()
-                .context("No connlib session")?
-                .set_dns(v),
+            ClientMsg::Reset => {
+                if self.tunnel_is_ready() {
+                    self.connlib.as_mut().context("No connlib session")?.reset();
+                } else {
+                    tracing::debug!("Ignoring redundant reset");
+                }
+            }
+            ClientMsg::SetDns(resolvers) => {
+                tracing::debug!(?resolvers);
+                self.connlib
+                    .as_mut()
+                    .context("No connlib session")?
+                    .set_dns(resolvers)
+            }
             ClientMsg::SetDisabledResources(disabled_resources) => {
                 self.connlib
                     .as_mut()
