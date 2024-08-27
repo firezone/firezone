@@ -19,7 +19,7 @@ mod windows;
 #[cfg(target_os = "windows")]
 use windows as platform;
 
-pub use platform::system_resolvers;
+use platform::system_resolvers;
 
 /// Controls system-wide DNS.
 ///

@@ -1119,7 +1119,7 @@ impl ClientState {
 
     fn update_dns_mapping(&mut self) {
         let Some(config) = &self.interface_config else {
-            // This is probably fine
+            // This is probably harmless
             tracing::debug!("Unable to update DNS servers without interface configuration");
 
             return;
