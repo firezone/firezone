@@ -83,29 +83,7 @@ pub(crate) struct IcmpRequest<TDst> {
     pub(crate) payload: u64,
 }
 
-pub(crate) fn ping_random_ip<I>(
-    src: impl Strategy<Value = I>,
-    dst: impl Strategy<Value = I>,
-) -> impl Strategy<Value = Transition>
-where
-    I: Into<IpAddr>,
-{
-    ip_dst_icmp_requests(src.prop_map(Into::into), dst.prop_map(Into::into))
-        .prop_map(Transition::SendICMPPacketToNonResourceIp)
-}
-
-pub(crate) fn icmp_to_cidr_resource<I>(
-    src: impl Strategy<Value = I>,
-    dst: impl Strategy<Value = I>,
-) -> impl Strategy<Value = Transition>
-where
-    I: Into<IpAddr>,
-{
-    ip_dst_icmp_requests(src.prop_map(Into::into), dst.prop_map(Into::into))
-        .prop_map(Transition::SendICMPPacketToCidrResource)
-}
-
-fn ip_dst_icmp_requests<I>(
+pub(crate) fn ip_dst_icmp_requests<I>(
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = I>,
 ) -> impl Strategy<Value = Vec<IcmpRequest<IpAddr>>>

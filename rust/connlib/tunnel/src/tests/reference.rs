@@ -204,20 +204,22 @@ impl ReferenceStateMachine for ReferenceState {
                 10,
                 state.client.inner().ipv4_cidr_resource_dsts(),
                 |ip4_resources| {
-                    icmp_to_cidr_resource(
+                    ip_dst_icmp_requests(
                         packet_source_v4(state.client.inner().tunnel_ip4),
                         sample::select(ip4_resources).prop_flat_map(crate::proptest::host_v4),
                     )
+                    .prop_map(Transition::SendICMPPacketToCidrResource)
                 },
             )
             .with_if_not_empty(
                 10,
                 state.client.inner().ipv6_cidr_resource_dsts(),
                 |ip6_resources| {
-                    icmp_to_cidr_resource(
+                    ip_dst_icmp_requests(
                         packet_source_v6(state.client.inner().tunnel_ip6),
                         sample::select(ip6_resources).prop_flat_map(crate::proptest::host_v6),
                     )
+                    .prop_map(Transition::SendICMPPacketToCidrResource)
                 },
             )
             .with_if_not_empty(
@@ -255,10 +257,11 @@ impl ReferenceStateMachine for ReferenceState {
                     .inner()
                     .resolved_ip4_for_non_resources(&state.global_dns_records),
                 |resolved_non_resource_ip4s| {
-                    ping_random_ip(
+                    ip_dst_icmp_requests(
                         packet_source_v4(state.client.inner().tunnel_ip4),
                         sample::select(resolved_non_resource_ip4s),
                     )
+                    .prop_map(Transition::SendICMPPacketToNonResourceIp)
                 },
             )
             .with_if_not_empty(
@@ -268,10 +271,11 @@ impl ReferenceStateMachine for ReferenceState {
                     .inner()
                     .resolved_ip6_for_non_resources(&state.global_dns_records),
                 |resolved_non_resource_ip6s| {
-                    ping_random_ip(
+                    ip_dst_icmp_requests(
                         packet_source_v6(state.client.inner().tunnel_ip6),
                         sample::select(resolved_non_resource_ip6s),
                     )
+                    .prop_map(Transition::SendICMPPacketToNonResourceIp)
                 },
             )
             .boxed()
