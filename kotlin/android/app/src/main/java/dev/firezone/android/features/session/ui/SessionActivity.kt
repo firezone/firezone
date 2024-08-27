@@ -101,7 +101,11 @@ internal class SessionActivity : AppCompatActivity() {
             object : TabLayout.OnTabSelectedListener {
                 override fun onTabSelected(tab: TabLayout.Tab) {
                     viewModel.tabSelected(tab.position)
-                    refreshList()
+
+                    refreshList {
+                        // TODO: we might want to remember the old position?
+                        binding.rvResourcesList.scrollToPosition(0)
+                    }
                 }
 
                 override fun onTabUnselected(tab: TabLayout.Tab?) {}
@@ -130,7 +134,7 @@ internal class SessionActivity : AppCompatActivity() {
         viewModel.favoriteResourcesLiveData.value = viewModel.repo.getFavoritesSync()
     }
 
-    private fun refreshList() {
+    private fun refreshList(afterLoad: () -> Unit = {}) {
         if (viewModel.forceAllResourcesTab()) {
             binding.tabLayout.selectTab(binding.tabLayout.getTabAt(SessionViewModel.RESOURCES_TAB_ALL), true)
         }
@@ -141,7 +145,9 @@ internal class SessionActivity : AppCompatActivity() {
                 View.GONE
             }
 
-        resourcesAdapter.submitList(viewModel.resourcesList())
+        resourcesAdapter.submitList(viewModel.resourcesList()) {
+            afterLoad()
+        }
     }
 
     companion object {

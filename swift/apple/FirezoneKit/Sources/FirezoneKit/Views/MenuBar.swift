@@ -418,12 +418,12 @@ public final class MenuBar: NSObject, ObservableObject {
     // If we have no favorites, then everything is a favorite
     let hasAnyFavorites = newResources.contains { model.favorites.contains($0.id) }
     let newFavorites = if (hasAnyFavorites) {
-      newResources.filter { model.favorites.contains($0.id) }
+      newResources.filter { model.favorites.contains($0.id) || $0.isInternetResource() }
     } else {
       newResources
     }
     let newOthers: [Resource] = if hasAnyFavorites {
-      newResources.filter { !model.favorites.contains($0.id) }
+      newResources.filter { !model.favorites.contains($0.id) && !$0.isInternetResource() }
     } else {
       []
     }
@@ -511,20 +511,11 @@ public final class MenuBar: NSObject, ObservableObject {
     model.isResourceEnabled(id) ? "Disable this resource" : "Enable this resource"
   }
 
-  private func createSubMenu(resource: Resource) -> NSMenu {
+  private func nonInternetResourceHeader(resource: Resource) -> NSMenu {
     let subMenu = NSMenu()
-    let resourceAddressDescriptionItem = NSMenuItem()
-    let resourceSectionItem = NSMenuItem()
-    let resourceNameItem = NSMenuItem()
-    let resourceAddressItem = NSMenuItem()
-    let siteSectionItem = NSMenuItem()
-    let siteNameItem = NSMenuItem()
-    let siteStatusItem = NSMenuItem()
-    let toggleFavoriteItem = NSMenuItem()
-    let enableToggle = NSMenuItem()
-
 
     // AddressDescription first -- will be most common action
+    let resourceAddressDescriptionItem = NSMenuItem()
     if let addressDescription = resource.addressDescription {
       resourceAddressDescriptionItem.title = addressDescription
 
@@ -544,7 +535,7 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     } else {
       // Show Address first if addressDescription is missing
-      resourceAddressDescriptionItem.title = resource.address
+      resourceAddressDescriptionItem.title = resource.address! // Address is none only for non-internet resource
       resourceAddressDescriptionItem.action = #selector(resourceValueTapped(_:))
     }
     resourceAddressDescriptionItem.isEnabled = true
@@ -553,11 +544,13 @@ public final class MenuBar: NSObject, ObservableObject {
 
     subMenu.addItem(NSMenuItem.separator())
 
+    let resourceSectionItem = NSMenuItem()
     resourceSectionItem.title = "Resource"
     resourceSectionItem.isEnabled = false
     subMenu.addItem(resourceSectionItem)
 
     // Resource name
+    let resourceNameItem = NSMenuItem()
     resourceNameItem.action = #selector(resourceValueTapped(_:))
     resourceNameItem.title = resource.name
     resourceNameItem.toolTip = "Resource name (click to copy)"
@@ -566,12 +559,15 @@ public final class MenuBar: NSObject, ObservableObject {
     subMenu.addItem(resourceNameItem)
 
     // Resource address
+    let resourceAddressItem = NSMenuItem()
     resourceAddressItem.action = #selector(resourceValueTapped(_:))
-    resourceAddressItem.title = resource.address
+    resourceAddressItem.title = resource.address!
     resourceAddressItem.toolTip = "Resource address (click to copy)"
     resourceAddressItem.isEnabled = true
     resourceAddressItem.target = self
     subMenu.addItem(resourceAddressItem)
+
+    let toggleFavoriteItem = NSMenuItem()
 
     if model.favorites.contains(resource.id) {
       toggleFavoriteItem.action = #selector(removeFavoriteTapped(_:))
@@ -587,6 +583,36 @@ public final class MenuBar: NSObject, ObservableObject {
     toggleFavoriteItem.target = self
     subMenu.addItem(toggleFavoriteItem)
 
+    return subMenu
+  }
+
+  private func internetResourceHeader(resource: Resource) -> NSMenu {
+    let subMenu = NSMenu()
+    let description = NSMenuItem()
+
+    description.title = "All network traffic"
+    description.isEnabled = false
+
+    subMenu.addItem(description)
+
+    return subMenu
+  }
+
+  private func resourceHeader(resource: Resource) -> NSMenu {
+    if resource.isInternetResource() {
+      internetResourceHeader(resource: resource)
+    } else {
+      nonInternetResourceHeader(resource: resource)
+    }
+  }
+
+  private func createSubMenu(resource: Resource) -> NSMenu {
+    let siteSectionItem = NSMenuItem()
+    let siteNameItem = NSMenuItem()
+    let siteStatusItem = NSMenuItem()
+    let enableToggle = NSMenuItem()
+
+    let subMenu = resourceHeader(resource: resource)
 
     // Resource enable / disable toggle
     if resource.canBeDisabled {
