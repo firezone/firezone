@@ -118,16 +118,15 @@ defmodule API.Gateway.ChannelTest do
                  %{protocol: :icmp}
                ]
              }
+
       assert payload.client == %{
                id: client.id,
                peer: %{
                  ipv4: client.ipv4,
                  ipv6: client.ipv6,
                  persistent_keepalive: 25,
-                 preshared_key: preshared_key,
                  public_key: client.public_key
-               },
-               payload: client_payload
+               }
              }
 
       assert payload.ref
