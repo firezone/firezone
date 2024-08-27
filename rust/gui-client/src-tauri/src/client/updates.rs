@@ -32,7 +32,6 @@ pub(crate) async fn checker_task(ctlr_tx: CtlrTx) -> Result<()> {
             Event::WaitRandom => {
                 tokio::time::sleep(Duration::from_secs(rand_time)).await;
                 interval.reset();
-                fsm.handle_wake();
             }
             Event::CheckNetwork => {
                 let release = match check().await {
@@ -47,7 +46,6 @@ pub(crate) async fn checker_task(ctlr_tx: CtlrTx) -> Result<()> {
             }
             Event::WaitInterval => {
                 interval.tick().await;
-                fsm.handle_wake();
             }
             Event::Notify(release) => {
                 write_latest_release_file(&release).await?;
@@ -157,18 +155,6 @@ impl Checker {
         }
     }
 
-    /// Call this when we just woke up from sleeping
-    fn handle_wake(&mut self) {
-        match self.state {
-            State::CheckFile | State::CheckNetwork => {
-                panic!("Impossible, got `handle_wake` when update checker was waiting for I/O")
-            }
-            State::WaitRandom | State::WaitInterval => {
-                self.state = State::CheckNetwork
-            }
-        }
-    }
-
     #[must_use]
     fn poll(&mut self) -> Event {
         if let Some(release) = self.notification.take() {
@@ -176,9 +162,15 @@ impl Checker {
         }
         match self.state {
             State::CheckFile => Event::CheckFile,
-            State::WaitRandom => Event::WaitRandom,
+            State::WaitRandom => {
+                self.state = State::CheckNetwork;
+                Event::WaitRandom
+            }
             State::CheckNetwork => Event::CheckNetwork,
-            State::WaitInterval => Event::WaitInterval,
+            State::WaitInterval => {
+                self.state = State::CheckNetwork;
+                Event::WaitInterval
+            }
         }
     }
 }
