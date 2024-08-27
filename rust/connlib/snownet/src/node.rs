@@ -372,7 +372,7 @@ where
             ConnectionState::Connecting {
                 ref mut buffered, ..
             } => {
-                tracing::debug!("No socket has been nominated yet, buffering packet");
+                tracing::debug!(dst = %packet.destination(), len = %packet.packet().len(), "No socket has been nominated yet, buffering packet");
 
                 buffered.push(self.buffer[packet_start..packet_end].to_vec());
 
