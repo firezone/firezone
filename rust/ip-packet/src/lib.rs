@@ -1518,6 +1518,10 @@ impl<'a> IcmpEchoRequest<'a> {
     pub fn identifier(&self) -> u16 {
         for_both!(self, |i| i.get_identifier())
     }
+
+    pub fn payload(&self) -> &[u8] {
+        for_both!(self, |i| i.payload())
+    }
 }
 
 impl<'a> IcmpEchoReply<'a> {

@@ -299,11 +299,9 @@ pub struct RefClient {
     pub(crate) disabled_resources: BTreeSet<ResourceId>,
 
     /// The expected ICMP handshakes.
-    ///
-    /// This is indexed by gateway because our assertions rely on the order of the sent packets.
     #[derivative(Debug = "ignore")]
     pub(crate) expected_icmp_handshakes:
-        BTreeMap<GatewayId, VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>>,
+        BTreeMap<GatewayId, BTreeMap<u64, (ResourceDst, IcmpSeq, IcmpIdentifier)>>,
     /// The expected DNS handshakes.
     #[derivative(Debug = "ignore")]
     pub(crate) expected_dns_handshakes: VecDeque<(SocketAddr, QueryId)>,
@@ -399,6 +397,7 @@ impl RefClient {
         dst: IpAddr,
         seq: u16,
         identifier: u16,
+        payload: u64,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
     ) {
         tracing::Span::current().record("dst", tracing::field::display(dst));
@@ -420,7 +419,7 @@ impl RefClient {
             self.expected_icmp_handshakes
                 .entry(gateway)
                 .or_default()
-                .push_back((ResourceDst::Internet(dst), seq, identifier));
+                .insert(payload, (ResourceDst::Internet(dst), seq, identifier));
             return;
         }
 
@@ -436,6 +435,7 @@ impl RefClient {
         dst: IpAddr,
         seq: u16,
         identifier: u16,
+        payload: u64,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
     ) {
         tracing::Span::current().record("dst", tracing::field::display(dst));
@@ -461,7 +461,7 @@ impl RefClient {
             self.expected_icmp_handshakes
                 .entry(gateway)
                 .or_default()
-                .push_back((ResourceDst::Cidr(dst), seq, identifier));
+                .insert(payload, (ResourceDst::Cidr(dst), seq, identifier));
             return;
         }
 
@@ -477,6 +477,7 @@ impl RefClient {
         dst: DomainName,
         seq: u16,
         identifier: u16,
+        payload: u64,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
     ) {
         tracing::Span::current().record("dst", tracing::field::display(&dst));
@@ -502,7 +503,7 @@ impl RefClient {
             self.expected_icmp_handshakes
                 .entry(gateway)
                 .or_default()
-                .push_back((ResourceDst::Dns(dst), seq, identifier));
+                .insert(payload, (ResourceDst::Dns(dst), seq, identifier));
             return;
         }
 
@@ -595,11 +596,13 @@ impl RefClient {
             .map(|(domain, ips)| (domain.clone(), ips.clone()))
     }
 
-    /// An ICMP packet is valid if we didn't yet send an ICMP packet with the same seq and identifier.
-    pub(crate) fn is_valid_icmp_packet(&self, seq: &u16, identifier: &u16) -> bool {
+    /// An ICMP packet is valid if we didn't yet send an ICMP packet with the same seq, identifier and payload.
+    pub(crate) fn is_valid_icmp_packet(&self, seq: &u16, identifier: &u16, payload: &u64) -> bool {
         self.expected_icmp_handshakes.values().flatten().all(
-            |(_, existing_seq, existing_identifer)| {
-                existing_seq != seq && existing_identifer != identifier
+            |(existig_payload, (_, existing_seq, existing_identifer))| {
+                existing_seq != seq
+                    && existing_identifer != identifier
+                    && existig_payload != payload
             },
         )
     }
