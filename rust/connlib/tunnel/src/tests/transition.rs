@@ -90,14 +90,8 @@ pub(crate) fn ping_random_ip<I>(
 where
     I: Into<IpAddr>,
 {
-    ip_dst_icmp_request(
-        src.prop_map(Into::into),
-        dst.prop_map(Into::into),
-        any::<u16>(),
-        any::<u16>(),
-        any::<u64>(),
-    )
-    .prop_map(|req| Transition::SendICMPPacketToNonResourceIp(vec![req]))
+    ip_dst_icmp_requests(src.prop_map(Into::into), dst.prop_map(Into::into))
+        .prop_map(Transition::SendICMPPacketToNonResourceIp)
 }
 
 pub(crate) fn icmp_to_cidr_resource<I>(
@@ -107,40 +101,38 @@ pub(crate) fn icmp_to_cidr_resource<I>(
 where
     I: Into<IpAddr>,
 {
-    ip_dst_icmp_request(
-        src.prop_map(Into::into),
-        dst.prop_map(Into::into),
-        any::<u16>(),
-        any::<u16>(),
-        any::<u64>(),
-    )
-    .prop_map(|req| Transition::SendICMPPacketToCidrResource(vec![req]))
+    ip_dst_icmp_requests(src.prop_map(Into::into), dst.prop_map(Into::into))
+        .prop_map(Transition::SendICMPPacketToCidrResource)
 }
 
-fn ip_dst_icmp_request<I>(
+fn ip_dst_icmp_requests<I>(
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = I>,
-    seq: impl Strategy<Value = u16>,
-    identifier: impl Strategy<Value = u16>,
-    payload: impl Strategy<Value = u64>,
-) -> impl Strategy<Value = IcmpRequest<IpAddr>>
+) -> impl Strategy<Value = Vec<IcmpRequest<IpAddr>>>
 where
     I: Into<IpAddr>,
 {
-    (
-        src.prop_map(Into::into),
-        dst.prop_map(Into::into),
-        seq,
-        identifier,
-        payload,
-    )
-        .prop_map(|(src, dst, seq, identifier, payload)| IcmpRequest {
-            src,
-            dst,
-            seq,
-            identifier,
-            payload,
-        })
+    let seq_and_identifiers = collection::btree_set((any::<u16>(), any::<u16>()), 1..5); // Must be unique pairs, thus a `BTreeSet`.
+    let src_dst_payload = collection::vec(
+        (src.prop_map_into(), dst.prop_map_into(), any::<u64>()),
+        1..5,
+    ); // Can have duplicates, thus a `Vec`
+
+    (seq_and_identifiers, src_dst_payload).prop_map(|(seq_and_identifiers, src_and_dsts)| {
+        let seq_and_identifiers = seq_and_identifiers.into_iter();
+        let src_and_dsts = src_and_dsts.into_iter();
+
+        seq_and_identifiers
+            .zip(src_and_dsts) // `zip` shortcuts on the shortest iterator. We don't care about that here because the goal is to simply have _some_ cases with more than 1 packet.
+            .map(|((seq, identifier), (src, dst, payload))| IcmpRequest {
+                src,
+                dst,
+                seq,
+                identifier,
+                payload,
+            })
+            .collect()
+    })
 }
 
 pub(crate) fn icmp_to_dns_resource<I>(
