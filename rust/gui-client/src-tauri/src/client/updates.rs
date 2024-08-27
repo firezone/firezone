@@ -28,21 +28,16 @@ pub(crate) async fn checker_task(ctlr_tx: CtlrTx) -> Result<()> {
 
     loop {
         match fsm.poll() {
-            Event::CheckFile => fsm.handle_check(read_latest_release_file().await),
+            Event::CheckFile => if let Some(release) = read_latest_release_file().await { fsm.handle_check(release) }
             Event::WaitRandom => {
                 tokio::time::sleep(Duration::from_secs(rand_time)).await;
                 interval.reset();
             }
             Event::CheckNetwork => {
-                let release = match check().await {
-                    Ok(x) => x,
-                    Err(error) => {
-                        tracing::error!(?error, "Couldn't check website for update");
-                        fsm.handle_check(None);
-                        continue;
-                    }
-                };
-                fsm.handle_check(Some(release));
+                match check().await {
+                    Ok(release) => fsm.handle_check(release),
+                    Err(error) => tracing::error!(?error, "Couldn't check website for update"),
+                }
             }
             Event::WaitInterval => {
                 interval.tick().await;
@@ -128,31 +123,18 @@ impl Checker {
     }
 
     /// Call this when we just checked the network or the file
-    fn handle_check(&mut self, release: Option<Release>) {
-        match self.state {
-            // After startup and checking the file, wait a random amount of time.
-            State::CheckFile => self.state = State::WaitRandom,
-            // Always wait a full interval after a network check
-            State::CheckNetwork => self.state = State::WaitInterval,
-            // If we weren't waiting on an I/O check, something is wrong
-            State::WaitRandom | State::WaitInterval => {
-                panic!("Impossible, got `handle_check` when update checker was waiting for wakeup")
-            }
-        }
-
-        if let Some(release) = release {
-            let newer_than_ours = release.version > self.ours;
-            let different_than_latest_seen = match &self.latest_seen {
-                None => true,
-                Some(latest_seen) => release.version != *latest_seen,
-            };
-            self.latest_seen = Some(release.version.clone());
-            self.notification = if newer_than_ours && different_than_latest_seen {
-                Some(release)
-            } else {
-                None
-            };
-        }
+    fn handle_check(&mut self, release: Release) {
+        let newer_than_ours = release.version > self.ours;
+        let different_than_latest_seen = match &self.latest_seen {
+            None => true,
+            Some(latest_seen) => release.version != *latest_seen,
+        };
+        self.latest_seen = Some(release.version.clone());
+        self.notification = if newer_than_ours && different_than_latest_seen {
+            Some(release)
+        } else {
+            None
+        };
     }
 
     #[must_use]
@@ -161,12 +143,18 @@ impl Checker {
             return Event::Notify(release);
         }
         match self.state {
-            State::CheckFile => Event::CheckFile,
+            State::CheckFile => {
+                self.state = State::WaitRandom;
+                Event::CheckFile
+            }
             State::WaitRandom => {
                 self.state = State::CheckNetwork;
                 Event::WaitRandom
             }
-            State::CheckNetwork => Event::CheckNetwork,
+            State::CheckNetwork => {
+                self.state = State::WaitInterval;
+                Event::CheckNetwork
+            }
             State::WaitInterval => {
                 self.state = State::CheckNetwork;
                 Event::WaitInterval
@@ -257,7 +245,6 @@ mod tests {
         assert!(matches!(fsm.poll(), Event::CheckFile));
 
         // We check the file and there's no file, this is a new system, so do nothing
-        fsm.handle_check(None);
 
         // We don't check the network right at startup, we wait first
         assert!(matches!(fsm.poll(), Event::WaitRandom));
@@ -266,7 +253,6 @@ mod tests {
         assert!(matches!(fsm.poll(), Event::CheckNetwork));
 
         // We check the network and the network's down, so do nothing
-        fsm.handle_check(None);
 
         // After network checks we always sleep a full interval
         assert!(matches!(fsm.poll(), Event::WaitInterval));
@@ -275,23 +261,23 @@ mod tests {
         assert!(matches!(fsm.poll(), Event::CheckNetwork));
 
         // We're on the latest version, so do nothing
-        fsm.handle_check(Some(release(1, 0, 0)));
+        fsm.handle_check(release(1, 0, 0));
         assert!(matches!(fsm.poll(), Event::WaitInterval));
         assert!(matches!(fsm.poll(), Event::CheckNetwork));
 
         // There's a new version, so tell the UI
-        fsm.handle_check(Some(release(1, 0, 1)));
+        fsm.handle_check(release(1, 0, 1));
         assert_eq!(fsm.poll(), Event::Notify(release(1, 0, 1)));
         assert!(matches!(fsm.poll(), Event::WaitInterval));
         assert!(matches!(fsm.poll(), Event::CheckNetwork));
 
         // We already told the UI about this version, don't tell it again.
-        fsm.handle_check(Some(release(1, 0, 1)));
+        fsm.handle_check(release(1, 0, 1));
         assert!(matches!(fsm.poll(), Event::WaitInterval));
         assert!(matches!(fsm.poll(), Event::CheckNetwork));
 
         // There's an even newer version, so tell the UI
-        fsm.handle_check(Some(release(1, 0, 2)));
+        fsm.handle_check(release(1, 0, 2));
         assert_eq!(fsm.poll(), Event::Notify(release(1, 0, 2)));
     }
 
@@ -301,12 +287,12 @@ mod tests {
         assert!(matches!(fsm.poll(), Event::CheckFile));
 
         // We check the file and we're already up to date, so do nothing
-        fsm.handle_check(Some(release(1, 0, 0)));
+        fsm.handle_check(release(1, 0, 0));
         assert!(matches!(fsm.poll(), Event::WaitRandom));
         assert!(matches!(fsm.poll(), Event::CheckNetwork));
 
         // We're on the latest version, so do nothing
-        fsm.handle_check(Some(release(1, 0, 0)));
+        fsm.handle_check(release(1, 0, 0));
         assert!(matches!(fsm.poll(), Event::WaitInterval));
         assert!(matches!(fsm.poll(), Event::CheckNetwork));
     }
@@ -317,18 +303,18 @@ mod tests {
         assert_eq!(fsm.poll(), Event::CheckFile);
 
         // We check the file and Firezone has restarted when we already knew about an update, so immediately notify
-        fsm.handle_check(Some(release(1, 0, 1)));
+        fsm.handle_check(release(1, 0, 1));
         assert_eq!(fsm.poll(), Event::Notify(release(1, 0, 1)));
         assert_eq!(fsm.poll(), Event::WaitRandom);
         assert_eq!(fsm.poll(), Event::CheckNetwork);
 
         // We already notified, don't notify again
-        fsm.handle_check(Some(release(1, 0, 1)));
+        fsm.handle_check(release(1, 0, 1));
         assert_eq!(fsm.poll(), Event::WaitInterval);
         assert_eq!(fsm.poll(), Event::CheckNetwork);
 
         // There's an even newer version, so tell the UI
-        fsm.handle_check(Some(release(1, 0, 2)));
+        fsm.handle_check(release(1, 0, 2));
         assert_eq!(fsm.poll(), Event::Notify(release(1, 0, 2)));
     }
 
@@ -336,24 +322,24 @@ mod tests {
     fn checker_rollback() {
         let mut fsm = Checker::new(Version::new(1, 0, 0));
         assert_eq!(fsm.poll(), Event::CheckFile);
-        fsm.handle_check(Some(release(1, 0, 0)));
+        fsm.handle_check(release(1, 0, 0));
         assert_eq!(fsm.poll(), Event::WaitRandom);
 
         // We first hear about 1.0.2 and notify for that
         assert_eq!(fsm.poll(), Event::CheckNetwork);
-        fsm.handle_check(Some(release(1, 0, 2)));
+        fsm.handle_check(release(1, 0, 2));
         assert_eq!(fsm.poll(), Event::Notify(release(1, 0, 2)));
         assert_eq!(fsm.poll(), Event::WaitInterval);
 
         // Then we hear it's actually just 1.0.1, we still notify so the GUI can update its menu item
         assert_eq!(fsm.poll(), Event::CheckNetwork);
-        fsm.handle_check(Some(release(1, 0, 1)));
+        fsm.handle_check(release(1, 0, 1));
         assert_eq!(fsm.poll(), Event::Notify(release(1, 0, 1)));
         assert_eq!(fsm.poll(), Event::WaitInterval);
 
         // When we hear about 1.0.2 again, we notify again.
         assert_eq!(fsm.poll(), Event::CheckNetwork);
-        fsm.handle_check(Some(release(1, 0, 2)));
+        fsm.handle_check(release(1, 0, 2));
         assert_eq!(fsm.poll(), Event::Notify(release(1, 0, 2)));
         assert_eq!(fsm.poll(), Event::WaitInterval);
     }
