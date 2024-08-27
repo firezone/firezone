@@ -238,6 +238,7 @@ mod test {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
+                        filters: vec![],
                     }),
                     ResourceDescription::Cidr(ResourceDescriptionCidr {
                         id: "73037362-715d-4a83-a749-f18eadd970e7".parse().unwrap(),
@@ -248,6 +249,7 @@ mod test {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
+                        filters: vec![],
                     }),
                     ResourceDescription::Dns(ResourceDescriptionDns {
                         id: "03000143-e25e-45c7-aafb-144990e57dcd".parse().unwrap(),
@@ -258,6 +260,7 @@ mod test {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
+                        filters: vec![],
                     }),
                     ResourceDescription::Dns(ResourceDescriptionDns {
                         id: "03000143-e25e-45c7-aafb-144990e57dce".parse().unwrap(),
@@ -268,6 +271,7 @@ mod test {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
+                        filters: vec![],
                     }),
                 ],
                 relays: vec![],
@@ -346,6 +350,7 @@ mod test {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
+                        filters: vec![],
                     }),
                     ResourceDescription::Dns(ResourceDescriptionDns {
                         id: "03000143-e25e-45c7-aafb-144990e57dcd".parse().unwrap(),
@@ -356,6 +361,7 @@ mod test {
                             name: "test".to_string(),
                             id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
                         }],
+                        filters: vec![],
                     }),
                 ],
                 relays: vec![],

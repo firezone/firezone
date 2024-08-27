@@ -8,11 +8,11 @@ use uuid::Uuid;
 
 use crate::callbacks::Status;
 
-use super::ResourceId;
+use super::{Filters, ResourceId};
 use itertools::Itertools;
 
 /// Description of a resource that maps to a DNS record.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceDescriptionDns {
     /// Resource's id.
     pub id: ResourceId,
@@ -22,6 +22,10 @@ pub struct ResourceDescriptionDns {
     ///
     /// Used only for display.
     pub name: String,
+
+    /// Port filters
+    #[serde(default)]
+    pub filters: Filters,
 
     pub address_description: Option<String>,
     #[serde(rename = "gateway_groups")]
@@ -42,7 +46,7 @@ impl ResourceDescriptionDns {
 }
 
 /// Description of a resource that maps to a CIDR.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceDescriptionCidr {
     /// Resource's id.
     pub id: ResourceId,
@@ -52,6 +56,10 @@ pub struct ResourceDescriptionCidr {
     ///
     /// Used only for display.
     pub name: String,
+
+    /// Port filters
+    #[serde(default)]
+    pub filters: Filters,
 
     pub address_description: Option<String>,
     #[serde(rename = "gateway_groups")]
@@ -76,7 +84,7 @@ fn internet_resource_name() -> String {
 }
 
 /// Description of an internet resource.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceDescriptionInternet {
     /// Name of the resource.
     ///
@@ -88,6 +96,14 @@ pub struct ResourceDescriptionInternet {
     /// Sites for the internet resource
     #[serde(rename = "gateway_groups")]
     pub sites: Vec<Site>,
+<<<<<<< HEAD
+=======
+    /// Whether or not resource can be disabled from UI
+    pub can_be_disabled: Option<bool>,
+    /// Port filters
+    #[serde(default)]
+    pub filters: Filters,
+>>>>>>> 18cebc883 (wip)
 }
 
 impl ResourceDescriptionInternet {
@@ -222,7 +238,7 @@ impl ResourceDescription {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourceDescription {
     Dns(ResourceDescriptionDns),

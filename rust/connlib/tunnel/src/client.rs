@@ -32,6 +32,8 @@ use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
+mod routing_table;
+
 pub(crate) const IPV4_RESOURCES: Ipv4Network =
     match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
         Ok(n) => n,

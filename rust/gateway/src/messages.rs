@@ -142,10 +142,8 @@ pub struct ConnectionReady {
 #[cfg(test)]
 mod test {
     use super::*;
-    use connlib_shared::messages::gateway::Filter;
-    use connlib_shared::messages::gateway::PortRange;
     use connlib_shared::messages::gateway::ResourceDescriptionDns;
-    use connlib_shared::messages::Turn;
+    use connlib_shared::messages::{Filter, PortRange, Turn};
     use phoenix_channel::PhoenixMessage;
 
     #[test]

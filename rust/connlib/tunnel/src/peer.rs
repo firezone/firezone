@@ -4,9 +4,7 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::gateway::{ResolvedResourceDescriptionDns, ResourceDescription};
-use connlib_shared::messages::{
-    gateway::Filter, gateway::Filters, ClientId, GatewayId, ResourceId,
-};
+use connlib_shared::messages::{ClientId, Filter, Filters, GatewayId, ResourceId};
 use connlib_shared::DomainName;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
@@ -627,10 +625,7 @@ mod tests {
     };
 
     use chrono::Utc;
-    use connlib_shared::messages::{
-        gateway::{Filter, PortRange},
-        ClientId, ResourceId,
-    };
+    use connlib_shared::messages::{ClientId, Filter, PortRange, ResourceId};
     use ip_network::Ipv4Network;
 
     use super::{ClientOnGateway, TranslationState};
@@ -993,7 +988,7 @@ mod tests {
 mod proptests {
     use super::*;
     use crate::proptest::*;
-    use connlib_shared::messages::gateway::PortRange;
+    use connlib_shared::messages::PortRange;
     use ip_packet::make::{icmp_request_packet, tcp_packet, udp_packet};
     use proptest::{
         arbitrary::any,
