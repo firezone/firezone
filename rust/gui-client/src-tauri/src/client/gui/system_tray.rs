@@ -113,7 +113,7 @@ impl<'a> SignedIn<'a> {
                 .copyable(&site.name) // Hope this is okay - The code is simpler if every enabled item sends an `Event` on click
                 .copyable(status)
         } else {
-            submenu.separator()
+            submenu
         }
     }
 
@@ -432,7 +432,6 @@ mod tests {
             .add_submenu(
                 "Internet Resource",
                 Menu::default()
-                    .separator()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
                     .disabled("Site")
@@ -487,7 +486,6 @@ mod tests {
             .add_submenu(
                 "Internet Resource",
                 Menu::default()
-                    .separator()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
                     .disabled("Site")
@@ -587,7 +585,6 @@ mod tests {
             .add_submenu(
                 "Internet Resource",
                 Menu::default()
-                    .separator()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
                     .disabled("Site")

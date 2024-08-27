@@ -174,7 +174,7 @@ impl Menu {
     }
 
     fn internet_resource(self) -> Self {
-        self.separator().disabled(INTERNET_RESOURCE_DESCRIPTION)
+        self.disabled(INTERNET_RESOURCE_DESCRIPTION)
     }
 
     fn resource_body(self, resource: &ResourceDescription) -> Self {
