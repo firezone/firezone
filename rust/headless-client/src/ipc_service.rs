@@ -493,14 +493,14 @@ impl<'a> Handler<'a> {
         .map_err(|e| Error::PortalConnection(e.to_string()))?;
 
         let dns = self.dns_controller.system_resolvers();
-        tracing::debug!(?dns);
         let new_session = Session::connect(args, portal, tokio::runtime::Handle::current());
+        tracing::debug!(?dns, "Calling `set_dns`...");
+        new_session.set_dns(dns);
         let tun = self
             .tun_device
             .make_tun()
             .map_err(|e| Error::TunnelDevice(e.to_string()))?;
         new_session.set_tun(Box::new(tun));
-        new_session.set_dns(dns);
         self.connlib = Some(new_session);
 
         Ok(())
