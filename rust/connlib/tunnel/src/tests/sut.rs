@@ -147,6 +147,8 @@ impl TunnelTest {
                 .exec_mut(|c| c.sut.set_disabled_resource(resources)),
             Transition::SendICMPPacketToNonResourceIp(requests)
             | Transition::SendICMPPacketToCidrResource(requests) => {
+                tracing::debug!(num_requests = %requests.len(), "Sending ICMP packets");
+
                 for IcmpRequest {
                     src,
                     dst,
@@ -170,6 +172,8 @@ impl TunnelTest {
                 }
             }
             Transition::SendICMPPacketToDnsResource(requests) => {
+                tracing::debug!(num_requests = %requests.len(), "Sending ICMP packets");
+
                 for IcmpRequest {
                     src,
                     dst: (dst, resolved_ip),
