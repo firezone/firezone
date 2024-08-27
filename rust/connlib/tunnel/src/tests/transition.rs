@@ -90,11 +90,11 @@ pub(crate) fn ip_dst_icmp_requests<I>(
 where
     I: Into<IpAddr>,
 {
+    let src = src.prop_map_into();
+    let dst = dst.prop_map_into();
+
     let seq_and_identifiers = collection::btree_set((any::<u16>(), any::<u16>()), 1..5); // Must be unique pairs, thus a `BTreeSet`.
-    let src_dst_payload = collection::vec(
-        (src.prop_map_into(), dst.prop_map_into(), any::<u64>()),
-        1..5,
-    ); // Can have duplicates, thus a `Vec`
+    let src_dst_payload = collection::vec((src, dst, any::<u64>()), 1..5); // Can have duplicates, thus a `Vec`.
 
     (seq_and_identifiers, src_dst_payload).prop_map(|(seq_and_identifiers, src_and_dsts)| {
         let seq_and_identifiers = seq_and_identifiers.into_iter();
