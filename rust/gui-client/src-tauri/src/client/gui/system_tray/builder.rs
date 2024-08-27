@@ -1,8 +1,10 @@
 //! An abstraction over Tauri's system tray menu structs, that implements `PartialEq` for unit testing
 
-use connlib_shared::messages::ResourceId;
+use connlib_shared::{callbacks::ResourceDescription, messages::ResourceId};
 use serde::{Deserialize, Serialize};
 use url::Url;
+
+use super::INTERNET_RESOURCE_DESCRIPTION;
 
 /// A menu that can either be assigned to the system tray directly or used as a submenu in another menu.
 ///
@@ -75,6 +77,22 @@ pub(crate) enum Event {
 pub(crate) enum Window {
     About,
     Settings,
+}
+
+fn resource_header(res: &ResourceDescription) -> Item {
+    let Some(address_description) = res.address_description() else {
+        return copyable(&res.pastable());
+    };
+
+    if address_description.is_empty() {
+        return copyable(&res.pastable());
+    }
+
+    let Ok(url) = Url::parse(address_description) else {
+        return copyable(address_description);
+    };
+
+    item(Event::Url(url), format!("<{address_description}>"))
 }
 
 impl Menu {
@@ -155,6 +173,26 @@ impl Menu {
     pub(crate) fn separator(mut self) -> Self {
         self.add_separator();
         self
+    }
+
+    fn internet_resource(self) -> Self {
+        self.disabled(INTERNET_RESOURCE_DESCRIPTION)
+    }
+
+    fn resource_body(self, resource: &ResourceDescription) -> Self {
+        self.separator()
+            .disabled("Resource")
+            .copyable(resource.name())
+            .copyable(resource.pastable().as_ref())
+    }
+
+    pub(crate) fn resource_description(mut self, resource: &ResourceDescription) -> Self {
+        if resource.is_internet_resource() {
+            self.internet_resource()
+        } else {
+            self.add_item(resource_header(resource));
+            self.resource_body(resource)
+        }
     }
 }
 

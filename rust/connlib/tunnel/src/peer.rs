@@ -1058,7 +1058,7 @@ mod proptests {
             let packet = match protocol {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, *dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, *dport, payload.clone()),
-                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
+                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
             }
             .unwrap();
             assert!(peer.ensure_allowed_dst(&packet).is_ok());
@@ -1091,7 +1091,7 @@ mod proptests {
             let packet = match protocol {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
-                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
+                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
             }
             .unwrap();
             assert!(peer.ensure_allowed_dst(&packet).is_ok());
@@ -1133,7 +1133,7 @@ mod proptests {
             let packet = match protocol {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
-                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
+                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
             }
             .unwrap();
             assert!(peer.ensure_allowed_dst(&packet).is_ok());
@@ -1148,7 +1148,7 @@ mod proptests {
             let packet = match protocol {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
-                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
+                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
             }
             .unwrap();
             assert!(peer.ensure_allowed_dst(&packet).is_ok());
@@ -1191,7 +1191,7 @@ mod proptests {
             let packet = match protocol {
                 Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
-                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
+                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
             }
             .unwrap();
 
@@ -1222,7 +1222,7 @@ mod proptests {
         let packet = match protocol {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
-            Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
+            Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
         }
         .unwrap();
 
@@ -1260,14 +1260,14 @@ mod proptests {
         let packet_allowed = match protocol_allowed {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
-            Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
+            Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
         }
         .unwrap();
 
         let packet_rejected = match protocol_removed {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
-            Protocol::Icmp => icmp_request_packet(src, dest, 1, 0),
+            Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
         }
         .unwrap();
 

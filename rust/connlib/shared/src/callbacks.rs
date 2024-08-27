@@ -79,7 +79,7 @@ impl ResourceDescription {
         }
     }
 
-    fn is_internet_resource(&self) -> bool {
+    pub fn is_internet_resource(&self) -> bool {
         matches!(self, ResourceDescription::Internet(_))
     }
 }
@@ -126,9 +126,6 @@ pub struct ResourceDescriptionCidr {
 pub struct ResourceDescriptionInternet {
     /// Name for display always set to "Internet Resource"
     pub name: String,
-
-    /// Address for display always set to "All internet addresses"
-    pub address: String,
 
     pub id: ResourceId,
     pub sites: Vec<Site>,
@@ -186,7 +183,6 @@ mod tests {
     fn internet_resource(uuid: &str) -> ResourceDescription {
         ResourceDescription::Internet(ResourceDescriptionInternet {
             name: "Internet Resource".to_string(),
-            address: "All internet addresses".to_string(),
             id: ResourceId::from_str(uuid).unwrap(),
             sites: vec![Site {
                 name: "test".to_string(),
