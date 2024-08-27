@@ -327,7 +327,7 @@ defmodule API.Client.ChannelTest do
                    name: gateway_group.name
                  }
                ],
-               can_be_disabled: false
+               can_be_disabled: true
              } in resources
 
       refute Enum.any?(resources, &(&1.id == nonconforming_resource.id))
@@ -373,7 +373,7 @@ defmodule API.Client.ChannelTest do
       |> subscribe_and_join(API.Client.Channel, "client")
 
       assert_push "init", %{resources: resources}
-      assert Enum.count(resources, &(&1.address == resource.address)) == 1
+      assert Enum.count(resources, &(Map.get(&1, :address) == resource.address)) == 1
     end
 
     test "sends backwards compatible list of resources if client version is below 1.2", %{
