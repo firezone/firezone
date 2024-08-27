@@ -290,7 +290,7 @@ pub struct ClientState {
 #[derive(Debug, Clone, PartialEq)]
 struct AwaitingConnectionDetails {
     last_intent_sent_at: Instant,
-    domain: Option<ResolveRequest>,
+    domain: Option<ResolveRequest>, // TODO: This is outdated now because we may have to send more than one.
     /// IP packets which need to be routed to the resource.
     packets: AllocRingBuffer<IpPacket<'static>>,
 }
