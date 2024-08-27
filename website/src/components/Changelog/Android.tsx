@@ -17,6 +17,9 @@ export default function Android() {
             established to a gateway, due to routes being updated with no actual
             change.
           </ChangeItem>
+          <ChangeItem pull="6405">
+            Shows the Git SHA corresponding to the build on the Settings -> Advanced screen.
+          </ChangeItem>
         </ul>
       </Entry>
       */}
