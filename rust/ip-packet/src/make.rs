@@ -22,8 +22,9 @@ pub fn icmp_request_packet(
     dst: impl Into<IpAddr>,
     seq: u16,
     identifier: u16,
+    payload: &[u8],
 ) -> Result<MutableIpPacket<'static>, IpVersionMismatch> {
-    icmp_packet(src, dst.into(), seq, identifier, IcmpKind::Request)
+    icmp_packet(src, dst.into(), seq, identifier, payload, IcmpKind::Request)
 }
 
 pub fn icmp_reply_packet(
@@ -31,8 +32,16 @@ pub fn icmp_reply_packet(
     dst: impl Into<IpAddr>,
     seq: u16,
     identifier: u16,
+    payload: &[u8],
 ) -> Result<MutableIpPacket<'static>, IpVersionMismatch> {
-    icmp_packet(src, dst.into(), seq, identifier, IcmpKind::Response)
+    icmp_packet(
+        src,
+        dst.into(),
+        seq,
+        identifier,
+        payload,
+        IcmpKind::Response,
+    )
 }
 
 pub fn icmp_response_packet(packet: IpPacket<'static>) -> MutableIpPacket<'static> {
@@ -46,6 +55,7 @@ pub fn icmp_response_packet(packet: IpPacket<'static>) -> MutableIpPacket<'stati
         packet.source(),
         echo_request.sequence(),
         echo_request.identifier(),
+        echo_request.payload(),
         IcmpKind::Response,
     )
     .expect("src and dst come from the same packet")
@@ -62,6 +72,7 @@ pub(crate) fn icmp4_packet_with_options(
     dst: Ipv4Addr,
     seq: u16,
     identifier: u16,
+    payload: &[u8],
     kind: IcmpKind,
     ip_header_length: u8,
 ) -> MutableIpPacket<'static> {
@@ -75,7 +86,7 @@ pub(crate) fn icmp4_packet_with_options(
     };
 
     let ip_header_bytes = ip_header_length * 4;
-    let mut buf = vec![0u8; 60 + ip_header_bytes as usize];
+    let mut buf = vec![0u8; 60 + payload.len() + ip_header_bytes as usize];
 
     ipv4_header(
         src,
@@ -104,6 +115,7 @@ pub(crate) fn icmp4_packet_with_options(
     let mut echo_request_packet = MutableEchoRequestPacket::new(icmp_packet.packet_mut()).unwrap();
     echo_request_packet.set_sequence_number(seq);
     echo_request_packet.set_identifier(identifier);
+    echo_request_packet.set_payload(payload);
 
     let mut result = MutableIpPacket::owned(buf).unwrap();
     result.update_checksum();
@@ -115,11 +127,12 @@ pub(crate) fn icmp_packet(
     dst: IpAddr,
     seq: u16,
     identifier: u16,
+    payload: &[u8],
     kind: IcmpKind,
 ) -> Result<MutableIpPacket<'static>, IpVersionMismatch> {
     match (src, dst) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => Ok(icmp4_packet_with_options(
-            src, dst, seq, identifier, kind, 5,
+            src, dst, seq, identifier, payload, kind, 5,
         )),
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             use crate::{
@@ -131,7 +144,7 @@ pub(crate) fn icmp_packet(
                 MutablePacket as _,
             };
 
-            let mut buf = vec![0u8; 128 + 20];
+            let mut buf = vec![0u8; 128 + 20 + payload.len()];
 
             ipv6_header(src, dst, IpNextHeaderProtocols::Icmpv6, &mut buf[20..]);
 
@@ -153,6 +166,7 @@ pub(crate) fn icmp_packet(
             echo_request_packet.set_identifier(identifier);
             echo_request_packet.set_sequence_number(seq);
             echo_request_packet.set_checksum(0);
+            echo_request_packet.set_payload(payload);
 
             let mut result = MutableIpPacket::owned(buf).unwrap();
             result.update_checksum();

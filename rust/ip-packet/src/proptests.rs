@@ -69,7 +69,7 @@ fn icmp_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
         any::<IcmpKind>(),
     )
         .prop_map(|(src, dst, id, seq, kind)| {
-            icmp_packet(src.into(), dst.into(), id, seq, kind).unwrap()
+            icmp_packet(src.into(), dst.into(), id, seq, &[], kind).unwrap()
         })
 }
 
@@ -83,7 +83,7 @@ fn icmp_packet_v4_header_options() -> impl Strategy<Value = MutableIpPacket<'sta
         (5u8..15),
     )
         .prop_map(|(src, dst, id, seq, kind, header_length)| {
-            icmp4_packet_with_options(src, dst, id, seq, kind, header_length)
+            icmp4_packet_with_options(src, dst, id, seq, &[], kind, header_length)
         })
 }
 
@@ -96,7 +96,7 @@ fn icmp_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
         any::<IcmpKind>(),
     )
         .prop_map(|(src, dst, id, seq, kind)| {
-            icmp_packet(src.into(), dst.into(), id, seq, kind).unwrap()
+            icmp_packet(src.into(), dst.into(), id, seq, &[], kind).unwrap()
         })
 }
 

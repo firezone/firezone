@@ -31,6 +31,7 @@ pub(crate) enum Transition {
         dst: IpAddr,
         seq: u16,
         identifier: u16,
+        payload: u64,
     },
     /// Send an ICMP packet to a CIDR resource.
     SendICMPPacketToCidrResource {
@@ -38,6 +39,7 @@ pub(crate) enum Transition {
         dst: IpAddr,
         seq: u16,
         identifier: u16,
+        payload: u64,
     },
     /// Send an ICMP packet to a DNS resource.
     SendICMPPacketToDnsResource {
@@ -48,6 +50,7 @@ pub(crate) enum Transition {
 
         seq: u16,
         identifier: u16,
+        payload: u64,
     },
 
     /// Send a DNS query.
@@ -103,15 +106,17 @@ where
         dst.prop_map(Into::into),
         any::<u16>(),
         any::<u16>(),
+        any::<u64>(),
     )
-        .prop_map(
-            |(src, dst, seq, identifier)| Transition::SendICMPPacketToNonResourceIp {
+        .prop_map(|(src, dst, seq, identifier, payload)| {
+            Transition::SendICMPPacketToNonResourceIp {
                 src,
                 dst,
                 seq,
                 identifier,
-            },
-        )
+                payload,
+            }
+        })
 }
 
 pub(crate) fn icmp_to_cidr_resource<I>(
@@ -126,15 +131,17 @@ where
         any::<u16>(),
         any::<u16>(),
         src.prop_map(Into::into),
+        any::<u64>(),
     )
-        .prop_map(
-            |(dst, seq, identifier, src)| Transition::SendICMPPacketToCidrResource {
+        .prop_map(|(dst, seq, identifier, src, payload)| {
+            Transition::SendICMPPacketToCidrResource {
                 src,
                 dst,
                 seq,
                 identifier,
-            },
-        )
+                payload,
+            }
+        })
 }
 
 pub(crate) fn icmp_to_dns_resource<I>(
@@ -150,14 +157,16 @@ where
         any::<u16>(),
         src.prop_map(Into::into),
         any::<sample::Selector>(),
+        any::<u64>(),
     )
-        .prop_map(|(dst, seq, identifier, src, resolved_ip)| {
+        .prop_map(|(dst, seq, identifier, src, resolved_ip, payload)| {
             Transition::SendICMPPacketToDnsResource {
                 src,
                 dst,
                 resolved_ip,
                 seq,
                 identifier,
+                payload,
             }
         })
 }

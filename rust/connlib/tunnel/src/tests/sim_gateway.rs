@@ -13,7 +13,7 @@ use ip_packet::IpPacket;
 use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet},
     net::IpAddr,
     time::Instant,
 };
@@ -23,7 +23,8 @@ pub(crate) struct SimGateway {
     id: GatewayId,
     pub(crate) sut: GatewayState,
 
-    pub(crate) received_icmp_requests: VecDeque<IpPacket<'static>>,
+    /// The received ICMP packets, indexed by our custom ICMP payload.
+    pub(crate) received_icmp_requests: BTreeMap<u64, IpPacket<'static>>,
 
     buffer: Vec<u8>,
 }
@@ -69,13 +70,18 @@ impl SimGateway {
 
         // TODO: Instead of handling these things inline, here, should we dispatch them via `RoutingTable`?
 
-        if packet.as_icmp().is_some() {
-            self.received_icmp_requests.push_back(packet.clone());
+        if let Some(icmp) = packet.as_icmp() {
+            if let Some(request) = icmp.as_echo_request() {
+                let payload = u64::from_be_bytes(*request.payload().first_chunk().unwrap());
+                tracing::debug!(%payload, "Received ICMP request");
 
-            let echo_response = ip_packet::make::icmp_response_packet(packet);
-            let transmit = self.sut.encapsulate(echo_response, now)?.into_owned();
+                self.received_icmp_requests.insert(payload, packet.clone());
 
-            return Some(transmit);
+                let echo_response = ip_packet::make::icmp_response_packet(packet);
+                let transmit = self.sut.encapsulate(echo_response, now)?.into_owned();
+
+                return Some(transmit);
+            }
         }
 
         if packet.as_udp().is_some() {
