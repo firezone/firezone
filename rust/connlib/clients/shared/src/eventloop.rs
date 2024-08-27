@@ -8,7 +8,8 @@ use crate::{
 };
 use anyhow::Result;
 use connlib_shared::messages::{
-    ConnectionAccepted, GatewayResponse, RelaysPresence, ResourceAccepted, ResourceId,
+    client::ResourceDescriptionInternet, ConnectionAccepted, GatewayResponse, RelaysPresence,
+    ResourceAccepted, ResourceId,
 };
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
@@ -215,9 +216,20 @@ where
             }
             IngressMessages::Init(InitClient {
                 interface,
-                resources,
+                mut resources,
                 relays,
             }) => {
+                resources.push(
+                    connlib_shared::messages::client::ResourceDescription::Internet(
+                        ResourceDescriptionInternet {
+                            name: "Internet resource".to_string(),
+                            id: ResourceId::random(),
+                            sites: vec![],
+                            can_be_disabled: Some(true),
+                        },
+                    ),
+                );
+
                 self.tunnel.set_new_interface_config(interface);
                 self.tunnel.set_resources(resources);
                 self.tunnel.update_relays(BTreeSet::default(), relays);
