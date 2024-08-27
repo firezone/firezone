@@ -3,7 +3,7 @@ import Image from "next/image";
 import { HiArrowLongRight, HiCheck, HiXMark } from "react-icons/hi2";
 import { manrope } from "@/lib/fonts";
 
-export default function BlobCards() {
+export default function UseCaseCards() {
   return (
     <div className="max-w-screen-xl flex flex-col items-center mx-auto">
       <h3
@@ -37,10 +37,10 @@ export default function BlobCards() {
           </div>
           <Image
             className="absolute bottom-0 translate-y-12 self-center"
-            src="/images/compliance-dashboard.svg"
+            src="/images/resource-list.png"
             width={600}
             height={289}
-            alt="Policy Dashboard"
+            alt="Resource List"
           />
         </div>
         <div className="relative flex justify-center items-end bg-accent-200 rounded-3xl h-[480px] w-5/12 p-8 overflow-hidden max-w-[675px]">
@@ -68,7 +68,7 @@ export default function BlobCards() {
           </div>
           <Image
             className="absolute top-5 self-center"
-            src="/images/two-factor-graphic.svg"
+            src="/images/two-factor-graphic.png"
             width={260}
             height={289}
             alt="Two-Factor Graphic"

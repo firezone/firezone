@@ -35,7 +35,7 @@ import "@/styles/hero.css";
 import CustomerTestimonials from "@/components/CustomerTestimonials";
 import FeatureCards from "@/components/FeatureCards";
 import SingleFeature from "@/components/SingleFeature";
-import BlobCards from "@/components/BlobCards";
+import UseCaseCards from "@/components/UseCaseCards";
 
 export const metadata: Metadata = {
   title: "Firezone: Zero trust access that scales",
