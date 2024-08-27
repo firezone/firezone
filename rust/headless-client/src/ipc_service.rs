@@ -417,11 +417,13 @@ impl<'a> Handler<'a> {
                     Arc::new(tcp_socket_factory),
                 )?;
 
+                let dns = self.dns_controller.system_resolvers();
+                tracing::debug!(?dns);
                 let new_session =
                     Session::connect(args, portal, tokio::runtime::Handle::try_current()?);
                 let tun = self.tun_device.make_tun()?;
                 new_session.set_tun(Box::new(tun));
-                new_session.set_dns(self.dns_controller.system_resolvers());
+                new_session.set_dns(dns);
                 self.connlib = Some(new_session);
             }
             ClientMsg::Disconnect => {

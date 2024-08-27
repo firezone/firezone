@@ -71,7 +71,7 @@ impl DnsController {
     }
 }
 
-pub(crate) fn system_resolvers(_method: DnsControlMethod) -> Result<Vec<IpAddr>> {
+pub fn system_resolvers(_method: DnsControlMethod) -> Result<Vec<IpAddr>> {
     let resolvers = ipconfig::get_adapters()?
         .iter()
         .flat_map(|adapter| adapter.dns_servers())
