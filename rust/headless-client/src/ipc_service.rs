@@ -433,12 +433,12 @@ impl<'a> Handler<'a> {
                 let filter = spawn_blocking(get_log_filter).await??;
                 self.log_filter_reloader.reload(filter)?;
             }
-            ClientMsg::Reset => {} // self.connlib.as_mut().context("No connlib session")?.reset(),
-            ClientMsg::SetDns(v) => {} /* self
-            .connlib
-            .as_mut()
-            .context("No connlib session")?
-            .set_dns(v), */
+            ClientMsg::Reset => self.connlib.as_mut().context("No connlib session")?.reset(),
+            ClientMsg::SetDns(v) => self
+                .connlib
+                .as_mut()
+                .context("No connlib session")?
+                .set_dns(v),
             ClientMsg::SetDisabledResources(disabled_resources) => {
                 self.connlib
                     .as_mut()
