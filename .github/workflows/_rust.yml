@@ -102,10 +102,12 @@ jobs:
           # First, run all tests.
           cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored --nocapture
 
-          # Assert that we sample certain transitions
+          # Assert that we hit certain codepaths
+          # Here, we can simply grep the log directory for whatever we want.
           rg SendICMPPacketToCidrResource $TESTCASES_DIR
           rg SendICMPPacketToDnsResource $TESTCASES_DIR
           rg SendDnsQueries $TESTCASES_DIR
+          rg "Still connecting to gateway, buffering allow access" $TESTCASES_DIR
 
           # Backup dumped state and transition samples
           mv $TESTCASES_DIR $TESTCASES_BACKUP_DIR
