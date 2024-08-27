@@ -30,7 +30,7 @@ use prop::collection;
 use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Instant,
@@ -282,18 +282,6 @@ pub struct RefClient {
     #[derivative(Debug = "ignore")]
     pub(crate) dns_records: BTreeMap<DomainName, BTreeSet<Rtype>>,
 
-    /// Whether we are connected to the gateway serving the Internet resource.
-    #[derivative(Debug = "ignore")]
-    pub(crate) connected_internet_resource: bool,
-
-    /// The CIDR resources the client is connected to.
-    #[derivative(Debug = "ignore")]
-    pub(crate) connected_cidr_resources: HashSet<ResourceId>,
-
-    /// The DNS resources the client is connected to.
-    #[derivative(Debug = "ignore")]
-    pub(crate) connected_dns_resources: HashSet<(ResourceId, DomainName)>,
-
     /// Actively disabled resources by the UI
     #[derivative(Debug = "ignore")]
     pub(crate) disabled_resources: BTreeSet<ResourceId>,
@@ -323,29 +311,13 @@ impl RefClient {
         SimClient::new(self.id, client_state)
     }
 
-    pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
-        self.connected_cidr_resources.remove(resource);
-        self.connected_dns_resources.retain(|(r, _)| r != resource);
-        if self.internet_resource.is_some_and(|r| &r == resource) {
-            self.connected_internet_resource = false;
-        }
-    }
-
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
-        self.disconnect_resource(resource);
-
         self.cidr_resources.retain(|_, r| r != resource);
         if self.internet_resource.is_some_and(|r| &r == resource) {
             self.internet_resource = None;
         }
 
         self.resources.retain(|r| r.id() != *resource);
-    }
-
-    pub(crate) fn reset_connections(&mut self) {
-        self.connected_cidr_resources.clear();
-        self.connected_dns_resources.clear();
-        self.connected_internet_resource = false;
     }
 
     pub(crate) fn add_internet_resource(&mut self, r: ResourceDescriptionInternet) {
@@ -414,18 +386,14 @@ impl RefClient {
             return;
         };
 
-        if self.is_connected_to_internet(rid) && self.is_tunnel_ip(src) {
-            tracing::debug!("Connected to Internet resource, expecting packet to be routed");
-            self.expected_icmp_handshakes
-                .entry(gateway)
-                .or_default()
-                .insert(payload, (ResourceDst::Internet(dst), seq, identifier));
+        if !self.is_tunnel_ip(src) {
             return;
         }
 
-        // If we have a resource, the first packet will initiate a connection to the gateway.
-        tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.connected_internet_resource = true;
+        self.expected_icmp_handshakes
+            .entry(gateway)
+            .or_default()
+            .insert(payload, (ResourceDst::Internet(dst), seq, identifier));
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
@@ -456,18 +424,14 @@ impl RefClient {
             return;
         };
 
-        if self.is_connected_to_internet_or_cidr(rid) && self.is_tunnel_ip(src) {
-            tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
-            self.expected_icmp_handshakes
-                .entry(gateway)
-                .or_default()
-                .insert(payload, (ResourceDst::Cidr(dst), seq, identifier));
+        if !self.is_tunnel_ip(src) {
             return;
         }
 
-        // If we have a resource, the first packet will initiate a connection to the gateway.
-        tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.connect_to_internet_or_cidr_resource(rid);
+        self.expected_icmp_handshakes
+            .entry(gateway)
+            .or_default()
+            .insert(payload, (ResourceDst::Cidr(dst), seq, identifier));
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
@@ -494,43 +458,14 @@ impl RefClient {
             return;
         };
 
-        if self
-            .connected_dns_resources
-            .contains(&(resource, dst.clone()))
-            && self.is_tunnel_ip(src)
-        {
-            tracing::debug!("Connected to DNS resource, expecting packet to be routed");
-            self.expected_icmp_handshakes
-                .entry(gateway)
-                .or_default()
-                .insert(payload, (ResourceDst::Dns(dst), seq, identifier));
+        if !self.is_tunnel_ip(src) {
             return;
         }
 
-        debug_assert!(
-            self.dns_records.iter().any(|(name, _)| name == &dst),
-            "Should only sample ICMPs to domains that we resolved"
-        );
-
-        tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        if !self.disabled_resources.contains(&resource) {
-            self.connected_dns_resources.insert((resource, dst));
-        }
-    }
-
-    pub(crate) fn is_connected_to_internet_or_cidr(&self, resource: ResourceId) -> bool {
-        self.is_connected_to_cidr(resource) || self.is_connected_to_internet(resource)
-    }
-
-    pub(crate) fn connect_to_internet_or_cidr_resource(&mut self, resource: ResourceId) {
-        if self.internet_resource.is_some_and(|r| r == resource) {
-            self.connected_internet_resource = true;
-            return;
-        }
-
-        if self.cidr_resources.iter().any(|(_, r)| *r == resource) {
-            self.connected_cidr_resources.insert(resource);
-        }
+        self.expected_icmp_handshakes
+            .entry(gateway)
+            .or_default()
+            .insert(payload, (ResourceDst::Dns(dst), seq, identifier));
     }
 
     pub(crate) fn on_dns_query(&mut self, query: &DnsQuery) {
@@ -557,24 +492,9 @@ impl RefClient {
             .collect_vec()
     }
 
-    fn is_connected_to_internet(&self, id: ResourceId) -> bool {
-        self.active_internet_resource() == Some(id) && self.connected_internet_resource
-    }
-
-    pub(crate) fn is_connected_to_cidr(&self, id: ResourceId) -> bool {
-        self.connected_cidr_resources.contains(&id)
-    }
-
     pub(crate) fn active_internet_resource(&self) -> Option<ResourceId> {
         self.internet_resource
             .filter(|r| !self.disabled_resources.contains(r))
-    }
-
-    pub(crate) fn is_locally_answered_query(&self, domain: &DomainName) -> bool {
-        let is_known_host = self.known_hosts.contains_key(&domain.to_string());
-        let is_dns_resource = self.dns_resource_by_domain(domain).is_some();
-
-        is_known_host || is_dns_resource
     }
 
     pub(crate) fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
@@ -789,9 +709,6 @@ fn ref_client(
                 internet_resource: Default::default(),
                 cidr_resources: IpNetworkTable::new(),
                 dns_records: Default::default(),
-                connected_cidr_resources: Default::default(),
-                connected_dns_resources: Default::default(),
-                connected_internet_resource: Default::default(),
                 expected_icmp_handshakes: Default::default(),
                 expected_dns_handshakes: Default::default(),
                 disabled_resources: Default::default(),

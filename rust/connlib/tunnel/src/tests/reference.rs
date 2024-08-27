@@ -204,40 +204,48 @@ impl ReferenceStateMachine for ReferenceState {
                 10,
                 state.client.inner().ipv4_cidr_resource_dsts(),
                 |ip4_resources| {
-                    icmp_to_cidr_resource(
+                    icmp_requests(
                         packet_source_v4(state.client.inner().tunnel_ip4),
-                        sample::select(ip4_resources).prop_flat_map(crate::proptest::host_v4),
+                        sample::select(ip4_resources)
+                            .prop_flat_map(crate::proptest::host_v4)
+                            .prop_map_into(),
                     )
+                    .prop_map(Transition::SendICMPPacketToCidrResource)
                 },
             )
             .with_if_not_empty(
                 10,
                 state.client.inner().ipv6_cidr_resource_dsts(),
                 |ip6_resources| {
-                    icmp_to_cidr_resource(
+                    icmp_requests(
                         packet_source_v6(state.client.inner().tunnel_ip6),
-                        sample::select(ip6_resources).prop_flat_map(crate::proptest::host_v6),
+                        sample::select(ip6_resources)
+                            .prop_flat_map(crate::proptest::host_v6)
+                            .prop_map_into(),
                     )
+                    .prop_map(Transition::SendICMPPacketToCidrResource)
                 },
             )
             .with_if_not_empty(
                 10,
                 state.client.inner().resolved_v4_domains(),
                 |dns_v4_domains| {
-                    icmp_to_dns_resource(
+                    icmp_requests(
                         packet_source_v4(state.client.inner().tunnel_ip4),
-                        sample::select(dns_v4_domains),
+                        dns_dst(sample::select(dns_v4_domains)),
                     )
+                    .prop_map(Transition::SendICMPPacketToDnsResource)
                 },
             )
             .with_if_not_empty(
                 10,
                 state.client.inner().resolved_v6_domains(),
                 |dns_v6_domains| {
-                    icmp_to_dns_resource(
+                    icmp_requests(
                         packet_source_v6(state.client.inner().tunnel_ip6),
-                        sample::select(dns_v6_domains),
+                        dns_dst(sample::select(dns_v6_domains)),
                     )
+                    .prop_map(Transition::SendICMPPacketToDnsResource)
                 },
             )
             .with_if_not_empty(
@@ -255,10 +263,11 @@ impl ReferenceStateMachine for ReferenceState {
                     .inner()
                     .resolved_ip4_for_non_resources(&state.global_dns_records),
                 |resolved_non_resource_ip4s| {
-                    ping_random_ip(
+                    icmp_requests(
                         packet_source_v4(state.client.inner().tunnel_ip4),
-                        sample::select(resolved_non_resource_ip4s),
+                        sample::select(resolved_non_resource_ip4s).prop_map_into(),
                     )
+                    .prop_map(Transition::SendICMPPacketToNonResourceIp)
                 },
             )
             .with_if_not_empty(
@@ -268,10 +277,11 @@ impl ReferenceStateMachine for ReferenceState {
                     .inner()
                     .resolved_ip6_for_non_resources(&state.global_dns_records),
                 |resolved_non_resource_ip6s| {
-                    ping_random_ip(
+                    icmp_requests(
                         packet_source_v6(state.client.inner().tunnel_ip6),
-                        sample::select(resolved_non_resource_ip6s),
+                        sample::select(resolved_non_resource_ip6s).prop_map_into(),
                     )
+                    .prop_map(Transition::SendICMPPacketToNonResourceIp)
                 },
             )
             .boxed()
@@ -310,68 +320,47 @@ impl ReferenceStateMachine for ReferenceState {
             }
             Transition::DisableResources(resources) => state.client.exec_mut(|client| {
                 client.disabled_resources.clone_from(resources);
-
-                for id in resources {
-                    client.disconnect_resource(id)
-                }
             }),
             Transition::SendDnsQueries(queries) => {
-                let mut pending_connections = HashSet::new();
-
                 for query in queries {
-                    // Some queries get answered locally.
-                    if state
-                        .client
-                        .inner()
-                        .is_locally_answered_query(&query.domain)
-                    {
-                        tracing::debug!("Expecting locally answered query");
-
-                        state.client.exec_mut(|client| client.on_dns_query(query));
-                        continue;
-                    }
-
-                    // Check if the DNS server is defined as a resource.
-                    let Some(resource) = state.client.inner().dns_query_via_resource(query) else {
-                        // Not a resource, process normally.
-                        state.client.exec_mut(|client| client.on_dns_query(query));
-                        continue;
-                    };
-
-                    tracing::debug!("Expecting DNS query via resource");
-
-                    if pending_connections.contains(&resource) {
-                        // DNS server is a CIDR resource and a previous query of this batch is already triggering a connection.
-                        // That connection isn't ready yet so further queries to the same resource are dropped until then.
-                        continue;
-                    }
-
-                    if !state
-                        .client
-                        .inner()
-                        .is_connected_to_internet_or_cidr(resource)
-                    {
-                        state.client.exec_mut(|client| {
-                            client.connect_to_internet_or_cidr_resource(resource)
-                        });
-                        pending_connections.insert(resource);
-                        continue;
-                    }
-
                     state.client.exec_mut(|client| client.on_dns_query(query));
                 }
             }
-            Transition::SendICMPPacketToNonResourceIp {
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
-            } => {
+            Transition::SendICMPPacketToNonResourceIp(requests) => {
                 state.client.exec_mut(|client| {
-                    // If the Internet Resource is active, all packets are expected to be routed.
-                    if client.active_internet_resource().is_some() {
-                        client.on_icmp_packet_to_internet(
+                    for IcmpRequest {
+                        src,
+                        dst,
+                        seq,
+                        identifier,
+                        payload,
+                    } in requests
+                    {
+                        // If the Internet Resource is active, all packets are expected to be routed.
+                        if client.active_internet_resource().is_some() {
+                            client.on_icmp_packet_to_internet(
+                                *src,
+                                *dst,
+                                *seq,
+                                *identifier,
+                                *payload,
+                                |r| state.portal.gateway_for_resource(r).copied(),
+                            )
+                        }
+                    }
+                });
+            }
+            Transition::SendICMPPacketToCidrResource(requests) => {
+                state.client.exec_mut(|client| {
+                    for IcmpRequest {
+                        src,
+                        dst,
+                        seq,
+                        identifier,
+                        payload,
+                    } in requests
+                    {
+                        client.on_icmp_packet_to_cidr(
                             *src,
                             *dst,
                             *seq,
@@ -382,30 +371,25 @@ impl ReferenceStateMachine for ReferenceState {
                     }
                 });
             }
-            Transition::SendICMPPacketToCidrResource {
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
-            } => {
-                state.client.exec_mut(|client| {
-                    client.on_icmp_packet_to_cidr(*src, *dst, *seq, *identifier, *payload, |r| {
-                        state.portal.gateway_for_resource(r).copied()
-                    })
-                });
-            }
-            Transition::SendICMPPacketToDnsResource {
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
-                ..
-            } => state.client.exec_mut(|client| {
-                client.on_icmp_packet_to_dns(*src, dst.clone(), *seq, *identifier, *payload, |r| {
-                    state.portal.gateway_for_resource(r).copied()
-                })
+            Transition::SendICMPPacketToDnsResource(requests) => state.client.exec_mut(|client| {
+                for IcmpRequest {
+                    src,
+                    dst,
+                    seq,
+                    identifier,
+                    payload,
+                    ..
+                } in requests
+                {
+                    client.on_icmp_packet_to_dns(
+                        *src,
+                        dst.domain.clone(),
+                        *seq,
+                        *identifier,
+                        *payload,
+                        |r| state.portal.gateway_for_resource(r).copied(),
+                    )
+                }
             }),
             Transition::UpdateSystemDnsServers(servers) => {
                 state
@@ -424,9 +408,6 @@ impl ReferenceStateMachine for ReferenceState {
                 debug_assert!(state
                     .network
                     .add_host(state.client.inner().id, &state.client));
-
-                // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
-                state.client.exec_mut(|client| client.reset_connections());
             }
             Transition::ReconnectPortal => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
@@ -444,20 +425,9 @@ impl ReferenceStateMachine for ReferenceState {
                     state.relays.insert(*rid, new_relay.clone());
                     debug_assert!(state.network.add_host(*rid, new_relay));
                 }
-
-                // In case we were using the relays, all connections will be cut and require us to make a new one.
-                if state.drop_direct_client_traffic {
-                    state.client.exec_mut(|client| client.reset_connections());
-                }
             }
-            Transition::Idle => {
-                state.client.exec_mut(|client| client.reset_connections());
-            }
-            Transition::PartitionRelaysFromPortal => {
-                if state.drop_direct_client_traffic {
-                    state.client.exec_mut(|client| client.reset_connections());
-                }
-            }
+            Transition::Idle => {}
+            Transition::PartitionRelaysFromPortal => {}
         };
 
         state
@@ -481,62 +451,71 @@ impl ReferenceStateMachine for ReferenceState {
                     .iter()
                     .all(|r| state.client.inner().has_resource(*r))
             }
-            Transition::SendICMPPacketToNonResourceIp {
-                dst,
-                seq,
-                identifier,
-                payload,
-                ..
-            } => {
-                let is_valid_icmp_packet = state
-                    .client
-                    .inner()
-                    .is_valid_icmp_packet(seq, identifier, payload);
-                let is_cidr_resource = state.client.inner().cidr_resource_by_ip(*dst).is_some();
+            Transition::SendICMPPacketToNonResourceIp(requests) => requests.iter().all(
+                |IcmpRequest {
+                     dst,
+                     seq,
+                     identifier,
+                     payload,
+                     ..
+                 }| {
+                    let is_valid_icmp_packet = state
+                        .client
+                        .inner()
+                        .is_valid_icmp_packet(seq, identifier, payload);
+                    let is_cidr_resource = state.client.inner().cidr_resource_by_ip(*dst).is_some();
 
-                is_valid_icmp_packet && !is_cidr_resource
-            }
-            Transition::SendICMPPacketToCidrResource {
-                seq,
-                identifier,
-                dst,
-                payload,
-                ..
-            } => {
-                let ref_client = state.client.inner();
-                let Some(rid) = ref_client.cidr_resource_by_ip(*dst) else {
-                    return false;
-                };
-                let Some(gateway) = state.portal.gateway_for_resource(rid) else {
-                    return false;
-                };
+                    is_valid_icmp_packet && !is_cidr_resource
+                },
+            ),
+            Transition::SendICMPPacketToCidrResource(requests) => requests.iter().all(
+                |IcmpRequest {
+                     seq,
+                     identifier,
+                     dst,
+                     payload,
+                     ..
+                 }| {
+                    let ref_client = state.client.inner();
+                    let Some(rid) = ref_client.cidr_resource_by_ip(*dst) else {
+                        return false;
+                    };
+                    let Some(gateway) = state.portal.gateway_for_resource(rid) else {
+                        return false;
+                    };
 
-                ref_client.is_valid_icmp_packet(seq, identifier, payload)
-                    && state.gateways.contains_key(gateway)
-            }
-            Transition::SendICMPPacketToDnsResource {
-                seq,
-                identifier,
-                dst,
-                src,
-                payload,
-                ..
-            } => {
-                let ref_client = state.client.inner();
-                let Some(resource) = ref_client.dns_resource_by_domain(dst) else {
-                    return false;
-                };
-                let Some(gateway) = state.portal.gateway_for_resource(resource) else {
-                    return false;
-                };
+                    ref_client.is_valid_icmp_packet(seq, identifier, payload)
+                        && state.gateways.contains_key(gateway)
+                },
+            ),
+            Transition::SendICMPPacketToDnsResource(requests) => requests.iter().all(
+                |IcmpRequest {
+                     seq,
+                     identifier,
+                     dst,
+                     src,
+                     payload,
+                     ..
+                 }| {
+                    let ref_client = state.client.inner();
+                    let Some(resource) = ref_client.dns_resource_by_domain(&dst.domain) else {
+                        return false;
+                    };
+                    let Some(gateway) = state.portal.gateway_for_resource(resource) else {
+                        return false;
+                    };
 
-                ref_client.is_valid_icmp_packet(seq, identifier, payload)
-                    && ref_client.dns_records.get(dst).is_some_and(|r| match src {
-                        IpAddr::V4(_) => r.contains(&Rtype::A),
-                        IpAddr::V6(_) => r.contains(&Rtype::AAAA),
-                    })
-                    && state.gateways.contains_key(gateway)
-            }
+                    ref_client.is_valid_icmp_packet(seq, identifier, payload)
+                        && ref_client
+                            .dns_records
+                            .get(&dst.domain)
+                            .is_some_and(|r| match src {
+                                IpAddr::V4(_) => r.contains(&Rtype::A),
+                                IpAddr::V6(_) => r.contains(&Rtype::AAAA),
+                            })
+                        && state.gateways.contains_key(gateway)
+                },
+            ),
             Transition::UpdateSystemDnsServers(servers) => {
                 if servers.is_empty() {
                     return true; // Clearing is allowed.

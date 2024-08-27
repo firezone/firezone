@@ -6,6 +6,7 @@ use connlib_shared::{
     messages::{client::ResourceDescription, DnsServer, RelayId, ResourceId},
     DomainName,
 };
+use core::fmt;
 use domain::base::Rtype;
 use prop::collection;
 use proptest::{prelude::*, sample};
@@ -25,33 +26,13 @@ pub(crate) enum Transition {
     DeactivateResource(ResourceId),
     /// Client-side disable resource
     DisableResources(BTreeSet<ResourceId>),
-    /// Send an ICMP packet to non-resource IP.
-    SendICMPPacketToNonResourceIp {
-        src: IpAddr,
-        dst: IpAddr,
-        seq: u16,
-        identifier: u16,
-        payload: u64,
-    },
-    /// Send an ICMP packet to a CIDR resource.
-    SendICMPPacketToCidrResource {
-        src: IpAddr,
-        dst: IpAddr,
-        seq: u16,
-        identifier: u16,
-        payload: u64,
-    },
-    /// Send an ICMP packet to a DNS resource.
-    SendICMPPacketToDnsResource {
-        src: IpAddr,
-        dst: DomainName,
-        #[derivative(Debug = "ignore")]
-        resolved_ip: sample::Selector,
 
-        seq: u16,
-        identifier: u16,
-        payload: u64,
-    },
+    /// Send an ICMP packet to non-resource IP.
+    SendICMPPacketToNonResourceIp(Vec<IcmpRequest<IpAddr>>),
+    /// Send an ICMP packet to a CIDR resource.
+    SendICMPPacketToCidrResource(Vec<IcmpRequest<IpAddr>>),
+    /// Send an ICMP packet to a DNS resource.
+    SendICMPPacketToDnsResource(Vec<IcmpRequest<DnsDst>>),
 
     /// Send a DNS query.
     SendDnsQueries(Vec<DnsQuery>),
@@ -94,81 +75,62 @@ pub(crate) struct DnsQuery {
     pub(crate) dns_server: SocketAddr,
 }
 
-pub(crate) fn ping_random_ip<I>(
-    src: impl Strategy<Value = I>,
-    dst: impl Strategy<Value = I>,
-) -> impl Strategy<Value = Transition>
-where
-    I: Into<IpAddr>,
-{
-    (
-        src.prop_map(Into::into),
-        dst.prop_map(Into::into),
-        any::<u16>(),
-        any::<u16>(),
-        any::<u64>(),
-    )
-        .prop_map(|(src, dst, seq, identifier, payload)| {
-            Transition::SendICMPPacketToNonResourceIp {
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
-            }
-        })
+#[derive(Debug, Clone)]
+pub(crate) struct IcmpRequest<TDst> {
+    pub(crate) src: IpAddr,
+    pub(crate) dst: TDst,
+    pub(crate) seq: u16,
+    pub(crate) identifier: u16,
+    pub(crate) payload: u64,
 }
 
-pub(crate) fn icmp_to_cidr_resource<I>(
-    src: impl Strategy<Value = I>,
-    dst: impl Strategy<Value = I>,
-) -> impl Strategy<Value = Transition>
-where
-    I: Into<IpAddr>,
-{
-    (
-        dst.prop_map(Into::into),
-        any::<u16>(),
-        any::<u16>(),
-        src.prop_map(Into::into),
-        any::<u64>(),
-    )
-        .prop_map(|(dst, seq, identifier, src, payload)| {
-            Transition::SendICMPPacketToCidrResource {
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
-            }
-        })
+#[derive(Clone)]
+pub(crate) struct DnsDst {
+    pub(crate) domain: DomainName,
+    pub(crate) ip_selector: sample::Selector,
 }
 
-pub(crate) fn icmp_to_dns_resource<I>(
+impl fmt::Debug for DnsDst {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.domain.fmt(f)
+    }
+}
+
+pub(crate) fn icmp_requests<I, TDst>(
     src: impl Strategy<Value = I>,
-    dst: impl Strategy<Value = DomainName>,
-) -> impl Strategy<Value = Transition>
+    dst: impl Strategy<Value = TDst>,
+) -> impl Strategy<Value = Vec<IcmpRequest<TDst>>>
 where
     I: Into<IpAddr>,
+    TDst: fmt::Debug,
 {
-    (
-        dst,
-        any::<u16>(),
-        any::<u16>(),
-        src.prop_map(Into::into),
-        any::<sample::Selector>(),
-        any::<u64>(),
-    )
-        .prop_map(|(dst, seq, identifier, src, resolved_ip, payload)| {
-            Transition::SendICMPPacketToDnsResource {
+    let src = src.prop_map_into();
+
+    let seq_and_identifiers = collection::btree_set((any::<u16>(), any::<u16>()), 1..5); // Must be unique pairs, thus a `BTreeSet`.
+    let src_dst_payload = collection::vec((src, dst, any::<u64>()), 1..5); // Can have duplicates, thus a `Vec`.
+
+    (seq_and_identifiers, src_dst_payload).prop_map(|(seq_and_identifiers, src_and_dsts)| {
+        let seq_and_identifiers = seq_and_identifiers.into_iter();
+        let src_and_dsts = src_and_dsts.into_iter();
+
+        seq_and_identifiers
+            .zip(src_and_dsts) // `zip` shortcuts on the shortest iterator. We don't care about that here because the goal is to simply have _some_ cases with more than 1 packet.
+            .map(|((seq, identifier), (src, dst, payload))| IcmpRequest {
                 src,
                 dst,
-                resolved_ip,
                 seq,
                 identifier,
                 payload,
-            }
-        })
+            })
+            .collect()
+    })
+}
+
+pub(crate) fn dns_dst(domains: impl Strategy<Value = DomainName>) -> impl Strategy<Value = DnsDst> {
+    (domains, any::<sample::Selector>()).prop_map(|(domain, ip_selector)| DnsDst {
+        domain,
+        ip_selector,
+    })
 }
 
 /// Samples up to 5 DNS queries that will be sent concurrently into connlib.

@@ -21,6 +21,7 @@ use crate::utils::{self, earliest, turn};
 use crate::{ClientEvent, ClientTunnel, Tun};
 use domain::base::Message;
 use lru::LruCache;
+use ringbuffer::{AllocRingBuffer, RingBuffer};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, RelaySocket, Transmit};
 use std::borrow::Cow;
@@ -68,6 +69,11 @@ const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 /// 100 has been chosen as a pretty arbitrary value.
 /// We only store [`GatewayId`]s so the memory footprint is negligible.
 const MAX_REMEMBERED_GATEWAYS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(100) };
+
+/// How many packets we will at most buffer per resource that we are trying to connect to.
+///
+/// Our MTU is 1280, meaning this will at most occupy 128KB.
+const MAX_BUFFERED_PACKETS_PER_RESOURCE: usize = 100;
 
 impl ClientTunnel {
     pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
@@ -156,10 +162,6 @@ impl ClientTunnel {
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn set_new_interface_config(&mut self, config: InterfaceConfig) {
         self.role_state.update_interface_config(config);
-    }
-
-    pub fn cleanup_connection(&mut self, id: ResourceId) {
-        self.role_state.on_connection_failed(id);
     }
 
     pub fn set_resource_offline(&mut self, id: ResourceId) {
@@ -277,15 +279,20 @@ pub struct ClientState {
     /// We use this as a hint to the portal to re-connect us to the same gateway for a resource.
     recently_connected_gateways: LruCache<GatewayId, ()>,
 
+    /// Whilst we are setting up a connection, we need to buffer access requests until <https://github.com/firezone/firezone/pull/6403> is rolled out to most gatewways.
+    buffered_access_requests: BTreeMap<GatewayId, Vec<(ResourceId, Option<ResolveRequest>)>>,
+
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket<'static>>,
     buffered_transmits: VecDeque<Transmit<'static>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 struct AwaitingConnectionDetails {
     last_intent_sent_at: Instant,
-    domain: Option<ResolveRequest>,
+    domain: Option<ResolveRequest>, // TODO: This is outdated now because we may have to send more than one.
+    /// IP packets which need to be routed to the resource.
+    packets: AllocRingBuffer<IpPacket<'static>>,
 }
 
 impl ClientState {
@@ -315,6 +322,7 @@ impl ClientState {
             buffered_transmits: Default::default(),
             internet_resource: None,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
+            buffered_access_requests: Default::default(),
         }
     }
 
@@ -385,33 +393,27 @@ impl ClientState {
 
     fn request_access(
         &mut self,
-        resource_ip: &IpAddr,
         resource_id: ResourceId,
         gateway_id: GatewayId,
+        maybe_domain: Option<ResolveRequest>,
     ) {
-        let Some((fqdn, ips)) = self.stub_resolver.get_fqdn(resource_ip) else {
-            return;
-        };
-        self.peers.add_ips_with_resource(
-            &gateway_id,
-            &ips.iter().copied().map_into().collect_vec(),
-            &resource_id,
+        debug_assert!(
+            self.node.is_connecting(gateway_id).is_none(),
+            "Requesting access whilst we are connecting is a race condition"
         );
+
+        use tracing::field;
+
+        let domain = maybe_domain.as_ref().map(|r| field::display(&r.name));
+        let proxy_ips = maybe_domain.as_ref().map(|r| field::debug(&r.proxy_ips));
+
+        tracing::debug!(rid = %resource_id, gid = %gateway_id, domain, proxy_ips, "Requesting access");
+
         self.buffered_events.push_back(ClientEvent::RequestAccess {
             resource_id,
             gateway_id,
-            maybe_domain: Some(ResolveRequest {
-                name: fqdn.clone(),
-                proxy_ips: ips.clone(),
-            }),
+            maybe_domain,
         })
-    }
-
-    fn is_dns_resource(&self, resource: &ResourceId) -> bool {
-        matches!(
-            self.resources_by_id.get(resource),
-            Some(ResourceDescription::Dns(_))
-        )
     }
 
     pub(crate) fn encapsulate<'s>(
@@ -436,15 +438,6 @@ impl ClientState {
             return None;
         };
 
-        // We read this here to prevent problems with the borrow checker
-        let is_dns_resource = self.is_dns_resource(&resource);
-
-        let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
-        else {
-            self.on_not_connected_resource(resource, &dst, now);
-            return None;
-        };
-
         let packet = maybe_mangle_dns_query_to_cidr_resource(
             packet,
             &self.dns_mapping,
@@ -452,15 +445,34 @@ impl ClientState {
             now,
         );
 
-        // Allowed IPs will track the IPs that we have sent to the gateway along with a list of ResourceIds
-        // for DNS resource we will send the IP one at a time.
-        if is_dns_resource && peer.allowed_ips.exact_match(dst).is_none() {
-            let gateway_id = peer.id();
-            self.request_access(&dst, resource, gateway_id);
+        let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
+        else {
+            self.on_not_connected_resource(resource, &dst, packet.as_immutable(), now);
             return None;
-        }
+        };
 
         let gid = peer.id();
+
+        // Allowed IPs will track the IPs that we have sent to the gateway along with a list of ResourceIds
+        // for DNS resource we will send the IP one at a time.
+        if peer.allowed_ips.exact_match(dst).is_none() {
+            if let Some((fqdn, ips)) = self.stub_resolver.get_fqdn(&dst) {
+                self.peers.add_ips_with_resource(
+                    &gid,
+                    &ips.iter().copied().map_into().collect_vec(),
+                    &resource,
+                );
+
+                self.request_access(
+                    resource,
+                    gid,
+                    Some(ResolveRequest {
+                        name: fqdn.clone(),
+                        proxy_ips: ips.clone(),
+                    }),
+                );
+            }
+        }
 
         let transmit = self
             .node
@@ -521,7 +533,6 @@ impl ClientState {
         self.node.remove_remote_candidate(conn_id, ice_candidate);
     }
 
-    #[tracing::instrument(level = "trace", skip_all, fields(%resource_id))]
     pub fn accept_answer(
         &mut self,
         answer: snownet::Answer,
@@ -537,13 +548,22 @@ impl ClientState {
 
         self.node.accept_answer(gateway_id, gateway, answer, now);
 
+        let Some(buffered_allow_access_requests) =
+            self.buffered_access_requests.remove(&gateway_id)
+        else {
+            return Ok(());
+        };
+
+        for (resource_id, maybe_domain) in buffered_allow_access_requests {
+            self.request_access(resource_id, gateway_id, maybe_domain)
+        }
+
         Ok(())
     }
 
     /// Updates the "routing table".
     ///
     /// In a nutshell, this tells us which gateway in which site to use for the given resource.
-    #[tracing::instrument(level = "debug", skip_all, fields(%resource_id, %gateway_id))]
     pub fn on_routing_details(
         &mut self,
         resource_id: ResourceId,
@@ -551,16 +571,12 @@ impl ClientState {
         site_id: SiteId,
         now: Instant,
     ) -> anyhow::Result<()> {
-        tracing::trace!("Updating resource routing table");
+        tracing::debug!(rid = %resource_id, gid = %gateway_id, "Updating resource routing table");
 
         let desc = self
             .resources_by_id
             .get(&resource_id)
             .context("Unknown resource")?;
-
-        if self.node.is_expecting_answer(gateway_id) {
-            return Ok(());
-        }
 
         let awaiting_connection_details = self
             .awaiting_connection_details
@@ -576,43 +592,54 @@ impl ClientState {
 
         self.gateways_site.insert(gateway_id, site_id);
         self.recently_connected_gateways.put(gateway_id, ());
-
-        if self.peers.get(&gateway_id).is_some() {
-            self.peers
-                .add_ips_with_resource(&gateway_id, &ips, &resource_id);
-
-            self.buffered_events.push_back(ClientEvent::RequestAccess {
-                resource_id,
-                gateway_id,
-                maybe_domain: awaiting_connection_details.domain,
-            });
-            return Ok(());
-        };
-
-        self.peers.insert(
-            GatewayOnClient::new(gateway_id, &ips, HashSet::from([resource_id])),
-            &[],
-        );
         self.peers
             .add_ips_with_resource(&gateway_id, &ips, &resource_id);
 
-        let offer = self.node.new_connection(
-            gateway_id,
-            awaiting_connection_details.last_intent_sent_at,
-            now,
-        );
-
-        self.buffered_events
-            .push_back(ClientEvent::RequestConnection {
+        if !self.node.has_connection(gateway_id) {
+            let (offer, buffer) = self.node.new_connection(
                 gateway_id,
-                offer: Offer {
-                    username: offer.credentials.username,
-                    password: offer.credentials.password,
-                },
-                preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
-                resource_id,
-                maybe_domain: awaiting_connection_details.domain,
-            });
+                awaiting_connection_details.last_intent_sent_at,
+                now,
+            );
+            buffer.extend(awaiting_connection_details.packets);
+
+            self.buffered_events
+                .push_back(ClientEvent::RequestConnection {
+                    resource_id,
+                    gateway_id,
+                    preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
+                    offer: Offer {
+                        username: offer.credentials.username,
+                        password: offer.credentials.password,
+                    },
+                    maybe_domain: awaiting_connection_details.domain,
+                });
+
+            return Ok(());
+        }
+
+        for packet in awaiting_connection_details.packets {
+            match self.node.encapsulate(gateway_id, packet, now) {
+                Ok(Some(transmit)) => self.buffered_transmits.push_back(transmit.into_owned()),
+                Err(other) => {
+                    tracing::debug!("Failed to encapsulate buffered packet: {other}");
+                }
+                Ok(None) => {}
+            }
+        }
+
+        // Once most / all gateways can handle out-of-order allow-access request, we can remove this buffering.
+        // See <https://github.com/firezone/firezone/pull/6403>.
+        if self.node.is_connecting(gateway_id).is_some() {
+            tracing::debug!("Still connecting to gateway, buffering allow access");
+
+            self.buffered_access_requests
+                .entry(gateway_id)
+                .or_default()
+                .push((resource_id, awaiting_connection_details.domain))
+        } else {
+            self.request_access(resource_id, gateway_id, awaiting_connection_details.domain);
+        }
 
         Ok(())
     }
@@ -715,6 +742,10 @@ impl ClientState {
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
         self.awaiting_connection_details.remove(&resource);
         self.resources_gateways.remove(&resource);
+
+        for requests in self.buffered_access_requests.values_mut() {
+            requests.retain(|(r, _)| r != &resource)
+        }
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%resource))]
@@ -722,15 +753,16 @@ impl ClientState {
         &mut self,
         resource: ResourceId,
         destination: &IpAddr,
+        packet: IpPacket,
         now: Instant,
     ) {
         debug_assert!(self.resources_by_id.contains_key(&resource));
 
-        if self
+        if let Some(buffer) = self
             .gateway_by_resource(&resource)
-            .is_some_and(|gateway_id| self.node.is_expecting_answer(gateway_id))
+            .and_then(|gateway_id| self.node.is_connecting(gateway_id))
         {
-            tracing::debug!("Already connecting to gateway");
+            buffer.extend(iter::once(packet.to_owned()));
 
             return;
         }
@@ -738,6 +770,8 @@ impl ClientState {
         match self.awaiting_connection_details.entry(resource) {
             Entry::Occupied(mut occupied) => {
                 let time_since_last_intent = now.duration_since(occupied.get().last_intent_sent_at);
+
+                occupied.get_mut().packets.push(packet.to_owned());
 
                 if time_since_last_intent < Duration::from_secs(2) {
                     tracing::trace!(?time_since_last_intent, "Skipping connection intent");
@@ -748,6 +782,9 @@ impl ClientState {
                 occupied.get_mut().last_intent_sent_at = now;
             }
             Entry::Vacant(vacant) => {
+                let mut packets = AllocRingBuffer::new(MAX_BUFFERED_PACKETS_PER_RESOURCE);
+                packets.push(packet.to_owned());
+
                 vacant.insert(AwaitingConnectionDetails {
                     last_intent_sent_at: now,
                     // Note: in case of an overlapping CIDR resource this should be None instead of Some if the resource_id
@@ -760,6 +797,7 @@ impl ClientState {
                             proxy_ips: ips.clone(),
                         }
                     }),
+                    packets,
                 });
             }
         }

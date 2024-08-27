@@ -1,6 +1,5 @@
 use crate::allocation::{Allocation, RelaySocket, Socket};
 use crate::index::IndexLfsr;
-use crate::ringbuffer::RingBuffer;
 use crate::stats::{ConnectionStats, NodeStats};
 use crate::utils::earliest;
 use boringtun::noise::errors::WireGuardError;
@@ -8,6 +7,7 @@ use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
+use either::Either;
 use hex_display::HexDisplayExt;
 use ip_packet::{
     ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, MutableIpPacket, Packet as _,
@@ -15,6 +15,7 @@ use ip_packet::{
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, SeedableRng};
+use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use secrecy::{ExposeSecret, Secret};
 use sha2::Digest;
 use std::borrow::Cow;
@@ -39,6 +40,15 @@ const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// How long we will at most wait for an [`Answer`] from the remote.
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// How many packets we will at most buffer during the initial connection setup.
+///
+/// The buffer in [`InitialConnection`] might be populated from various sources, i.e. different code path may want to establish a connection to the same server.
+/// Both, IPv4 and IPv6 have a max payload size of 65536.
+/// Thus, the _theoretical_ memory-usage of a 500 packet-buffer is 31.25 MB per connection.
+/// In practice, depending on the MTU of the attached network interface, the actual number here is a lot smaller.
+/// With an MTU of 1280, the maximum size of this buffer is only 640KB.
+const MAX_INITIAL_BUFFERED_PACKETS: usize = 500;
 
 /// Manages a set of wireguard connections for a server.
 pub type ServerNode<TId, RId> = Node<Server, TId, RId>;
@@ -331,13 +341,19 @@ where
         packet: IpPacket<'_>,
         now: Instant,
     ) -> Result<Option<Transmit<'s>>, Error> {
-        let conn = self
+        let conn = match self
             .connections
-            .get_established_mut(&connection)
-            .ok_or(Error::NotConnected)?;
+            .get_mut(&connection)
+            .ok_or(Error::NotConnected)?
+        {
+            Either::Left(initial) => {
+                tracing::debug!("Awaiting ICE credentials, buffering packet");
 
-        // Must bail early if we don't have a socket yet to avoid running into WG timeouts.
-        let socket = conn.socket().ok_or(Error::NotConnected)?;
+                initial.buffered_packets.push(packet.to_owned());
+                return Ok(None);
+            }
+            Either::Right(established) => established,
+        };
 
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
@@ -350,6 +366,20 @@ where
 
         let packet_start = 4;
         let packet_end = 4 + packet_len;
+
+        let socket = match conn.state {
+            ConnectionState::Connected { peer_socket, .. } => peer_socket,
+            ConnectionState::Connecting {
+                ref mut buffered, ..
+            } => {
+                tracing::debug!(dst = %packet.destination(), len = %packet.packet().len(), "No socket has been nominated yet, buffering packet");
+
+                buffered.push(self.buffer[packet_start..packet_end].to_vec());
+
+                return Ok(None);
+            }
+            ConnectionState::Idle | ConnectionState::Failed => return Err(Error::NotConnected),
+        };
 
         match socket {
             PeerSocket::Direct {
@@ -578,7 +608,7 @@ where
             remote_pub_key: remote,
             state: ConnectionState::Connecting {
                 possible_sockets: BTreeSet::default(),
-                buffered: RingBuffer::new(10),
+                buffered: AllocRingBuffer::new(MAX_INITIAL_BUFFERED_PACKETS),
             },
             relay,
             last_outgoing: now,
@@ -800,7 +830,12 @@ where
     /// The returned [`Offer`] must be passed to the remote via a signalling channel.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     #[must_use]
-    pub fn new_connection(&mut self, cid: TId, intent_sent_at: Instant, now: Instant) -> Offer {
+    pub fn new_connection(
+        &mut self,
+        cid: TId,
+        intent_sent_at: Instant,
+        now: Instant,
+    ) -> (Offer, &mut impl Extend<IpPacket<'static>>) {
         if self.connections.initial.remove(&cid).is_some() {
             tracing::info!("Replacing existing initial connection");
         };
@@ -830,6 +865,7 @@ where
             intent_sent_at,
             relay: self.sample_relay(),
             is_failed: false,
+            buffered_packets: AllocRingBuffer::new(MAX_INITIAL_BUFFERED_PACKETS),
         };
         let duration_since_intent = initial_connection.duration_since_intent(now);
 
@@ -838,12 +874,30 @@ where
 
         tracing::info!(?duration_since_intent, "Establishing new connection");
 
-        params
+        (
+            params,
+            &mut self
+                .connections
+                .initial
+                .get_mut(&cid)
+                .unwrap()
+                .buffered_packets,
+        )
     }
 
-    /// Whether we have sent an [`Offer`] for this connection and are currently expecting an [`Answer`].
-    pub fn is_expecting_answer(&self, id: TId) -> bool {
-        self.connections.initial.contains_key(&id)
+    /// Checks if we are currently connecting to the given peer.
+    ///
+    /// If yes, returns a reference to a buffer for packets that will be sent once the connection is established.
+    pub fn is_connecting(&mut self, id: TId) -> Option<&mut impl Extend<IpPacket<'static>>> {
+        Some(&mut self.connections.initial.get_mut(&id)?.buffered_packets)
+    }
+
+    /// Whether we have a connection to the given peer.
+    ///
+    /// For established connections, packets are directly encapsulated.
+    /// For initial connections, packets will be buffered.
+    pub fn has_connection(&self, id: TId) -> bool {
+        self.connections.initial.contains_key(&id) || self.connections.established.contains_key(&id)
     }
 
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
@@ -875,6 +929,15 @@ where
         let duration_since_intent = connection.duration_since_intent(now);
 
         let existing = self.connections.established.insert(cid, connection);
+
+        for buffered in initial.buffered_packets.into_iter() {
+            let maybe_transmit = self.encapsulate(cid, buffered, now).unwrap();
+
+            debug_assert!(
+                maybe_transmit.is_none(),
+                "initial packets should always be buffered internally"
+            );
+        }
 
         tracing::info!(?duration_since_intent, remote = %hex::encode(remote.as_bytes()), "Signalling protocol completed");
 
@@ -1052,8 +1115,14 @@ where
         initial_agents.chain(negotiated_agents)
     }
 
-    fn get_established_mut(&mut self, id: &TId) -> Option<&mut Connection<RId>> {
-        self.established.get_mut(id)
+    fn get_mut(
+        &mut self,
+        id: &TId,
+    ) -> Option<Either<&mut InitialConnection<RId>, &mut Connection<RId>>> {
+        let left = self.initial.get_mut(id).map(Either::Left);
+        let right = self.established.get_mut(id).map(Either::Right);
+
+        left.or(right)
     }
 
     fn iter_initial_mut(&mut self) -> impl Iterator<Item = (TId, &mut InitialConnection<RId>)> {
@@ -1293,6 +1362,8 @@ struct InitialConnection<RId> {
     created_at: Instant,
     intent_sent_at: Instant,
 
+    buffered_packets: AllocRingBuffer<IpPacket<'static>>,
+
     is_failed: bool,
 }
 
@@ -1360,7 +1431,7 @@ enum ConnectionState<RId> {
         ///
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
         /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
-        buffered: RingBuffer<Vec<u8>>,
+        buffered: AllocRingBuffer<Vec<u8>>,
     },
     /// A socket has been nominated.
     Connected {
@@ -1564,6 +1635,10 @@ where
                             buffered,
                             ..
                         } => {
+                            if !buffered.is_empty() {
+                                tracing::debug!(num_packets = %buffered.len(), "Flushing buffered packets")
+                            }
+
                             transmits.extend(buffered.into_iter().flat_map(|packet| {
                                 make_owned_transmit(remote_socket, &packet, allocations, now)
                             }));
@@ -1600,8 +1675,6 @@ where
                     };
 
                     tracing::info!(?old, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
-
-                    self.force_handshake(allocations, transmits, now);
                 }
                 IceAgentEvent::IceRestart(_) | IceAgentEvent::IceConnectionStateChange(_) => {}
             }
@@ -1747,34 +1820,6 @@ where
         }
 
         control_flow
-    }
-
-    fn force_handshake(
-        &mut self,
-        allocations: &mut BTreeMap<RId, Allocation>,
-        transmits: &mut VecDeque<Transmit<'static>>,
-        now: Instant,
-    ) where
-        RId: Copy,
-    {
-        /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
-        ///
-        /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
-        const MAX_SCRATCH_SPACE: usize = 148;
-
-        let mut buf = [0u8; MAX_SCRATCH_SPACE];
-
-        let TunnResult::WriteToNetwork(bytes) =
-            self.tunnel.format_handshake_initiation(&mut buf, false)
-        else {
-            return;
-        };
-
-        let socket = self
-            .socket()
-            .expect("cannot force handshake while not connected");
-
-        transmits.extend(make_owned_transmit(socket, bytes, allocations, now));
     }
 
     fn socket(&self) -> Option<PeerSocket<RId>> {
