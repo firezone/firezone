@@ -561,7 +561,6 @@ impl ClientState {
     /// Updates the "routing table".
     ///
     /// In a nutshell, this tells us which gateway in which site to use for the given resource.
-    #[tracing::instrument(level = "debug", skip_all, fields(rid = %resource_id, gid = %gateway_id))]
     pub fn on_routing_details(
         &mut self,
         resource_id: ResourceId,
@@ -569,7 +568,7 @@ impl ClientState {
         site_id: SiteId,
         now: Instant,
     ) -> anyhow::Result<()> {
-        tracing::debug!("Updating resource routing table");
+        tracing::debug!(rid = %resource_id, gid = %gateway_id, "Updating resource routing table");
 
         let desc = self
             .resources_by_id
