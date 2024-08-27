@@ -541,8 +541,6 @@ impl ClientState {
             .gateway_by_resource(&resource_id)
             .with_context(|| format!("No gateway associated with resource {resource_id}"))?;
 
-        tracing::Span::current().record("gid", tracing::field::display(gateway_id));
-
         self.node.accept_answer(gateway_id, gateway, answer, now);
 
         let Some(buffered_allow_access_requests) =
