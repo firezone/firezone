@@ -59,6 +59,9 @@ android {
         versionName = "1.2.1"
         multiDexEnabled = true
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
+
+        val gitSha = System.getenv("GITHUB_SHA") ?: "unknown"
+        resValue("string", "git_sha", "Build: \"${gitSha.take(8)}\"")
     }
 
     signingConfigs {
