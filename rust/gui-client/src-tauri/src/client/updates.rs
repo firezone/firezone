@@ -262,8 +262,6 @@ mod tests {
         // We don't check the network right at startup, we wait first
         assert!(matches!(fsm.poll(), Event::WaitRandom));
 
-        fsm.handle_wake();
-
         // After waking we always check the network
         assert!(matches!(fsm.poll(), Event::CheckNetwork));
 
@@ -273,29 +271,23 @@ mod tests {
         // After network checks we always sleep a full interval
         assert!(matches!(fsm.poll(), Event::WaitInterval));
 
-        // Tell the checker when we wake up
-        fsm.handle_wake();
-
         // Back to step 1
         assert!(matches!(fsm.poll(), Event::CheckNetwork));
 
         // We're on the latest version, so do nothing
         fsm.handle_check(Some(release(1, 0, 0)));
         assert!(matches!(fsm.poll(), Event::WaitInterval));
-        fsm.handle_wake();
         assert!(matches!(fsm.poll(), Event::CheckNetwork));
 
         // There's a new version, so tell the UI
         fsm.handle_check(Some(release(1, 0, 1)));
         assert_eq!(fsm.poll(), Event::Notify(release(1, 0, 1)));
         assert!(matches!(fsm.poll(), Event::WaitInterval));
-        fsm.handle_wake();
         assert!(matches!(fsm.poll(), Event::CheckNetwork));
 
         // We already told the UI about this version, don't tell it again.
         fsm.handle_check(Some(release(1, 0, 1)));
         assert!(matches!(fsm.poll(), Event::WaitInterval));
-        fsm.handle_wake();
         assert!(matches!(fsm.poll(), Event::CheckNetwork));
 
         // There's an even newer version, so tell the UI
@@ -311,13 +303,11 @@ mod tests {
         // We check the file and we're already up to date, so do nothing
         fsm.handle_check(Some(release(1, 0, 0)));
         assert!(matches!(fsm.poll(), Event::WaitRandom));
-        fsm.handle_wake();
         assert!(matches!(fsm.poll(), Event::CheckNetwork));
 
         // We're on the latest version, so do nothing
         fsm.handle_check(Some(release(1, 0, 0)));
         assert!(matches!(fsm.poll(), Event::WaitInterval));
-        fsm.handle_wake();
         assert!(matches!(fsm.poll(), Event::CheckNetwork));
     }
 
@@ -330,13 +320,11 @@ mod tests {
         fsm.handle_check(Some(release(1, 0, 1)));
         assert_eq!(fsm.poll(), Event::Notify(release(1, 0, 1)));
         assert_eq!(fsm.poll(), Event::WaitRandom);
-        fsm.handle_wake();
         assert_eq!(fsm.poll(), Event::CheckNetwork);
 
         // We already notified, don't notify again
         fsm.handle_check(Some(release(1, 0, 1)));
         assert_eq!(fsm.poll(), Event::WaitInterval);
-        fsm.handle_wake();
         assert_eq!(fsm.poll(), Event::CheckNetwork);
 
         // There's an even newer version, so tell the UI
@@ -350,21 +338,18 @@ mod tests {
         assert_eq!(fsm.poll(), Event::CheckFile);
         fsm.handle_check(Some(release(1, 0, 0)));
         assert_eq!(fsm.poll(), Event::WaitRandom);
-        fsm.handle_wake();
 
         // We first hear about 1.0.2 and notify for that
         assert_eq!(fsm.poll(), Event::CheckNetwork);
         fsm.handle_check(Some(release(1, 0, 2)));
         assert_eq!(fsm.poll(), Event::Notify(release(1, 0, 2)));
         assert_eq!(fsm.poll(), Event::WaitInterval);
-        fsm.handle_wake();
 
         // Then we hear it's actually just 1.0.1, we still notify so the GUI can update its menu item
         assert_eq!(fsm.poll(), Event::CheckNetwork);
         fsm.handle_check(Some(release(1, 0, 1)));
         assert_eq!(fsm.poll(), Event::Notify(release(1, 0, 1)));
         assert_eq!(fsm.poll(), Event::WaitInterval);
-        fsm.handle_wake();
 
         // When we hear about 1.0.2 again, we notify again.
         assert_eq!(fsm.poll(), Event::CheckNetwork);
