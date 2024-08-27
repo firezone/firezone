@@ -204,9 +204,11 @@ impl ReferenceStateMachine for ReferenceState {
                 10,
                 state.client.inner().ipv4_cidr_resource_dsts(),
                 |ip4_resources| {
-                    ip_dst_icmp_requests(
+                    icmp_requests(
                         packet_source_v4(state.client.inner().tunnel_ip4),
-                        sample::select(ip4_resources).prop_flat_map(crate::proptest::host_v4),
+                        sample::select(ip4_resources)
+                            .prop_flat_map(crate::proptest::host_v4)
+                            .prop_map_into(),
                     )
                     .prop_map(Transition::SendICMPPacketToCidrResource)
                 },
@@ -215,9 +217,11 @@ impl ReferenceStateMachine for ReferenceState {
                 10,
                 state.client.inner().ipv6_cidr_resource_dsts(),
                 |ip6_resources| {
-                    ip_dst_icmp_requests(
+                    icmp_requests(
                         packet_source_v6(state.client.inner().tunnel_ip6),
-                        sample::select(ip6_resources).prop_flat_map(crate::proptest::host_v6),
+                        sample::select(ip6_resources)
+                            .prop_flat_map(crate::proptest::host_v6)
+                            .prop_map_into(),
                     )
                     .prop_map(Transition::SendICMPPacketToCidrResource)
                 },
@@ -226,20 +230,22 @@ impl ReferenceStateMachine for ReferenceState {
                 10,
                 state.client.inner().resolved_v4_domains(),
                 |dns_v4_domains| {
-                    icmp_to_dns_resource(
+                    icmp_requests(
                         packet_source_v4(state.client.inner().tunnel_ip4),
-                        sample::select(dns_v4_domains),
+                        (sample::select(dns_v4_domains), any::<sample::Selector>()),
                     )
+                    .prop_map(Transition::SendICMPPacketToDnsResource)
                 },
             )
             .with_if_not_empty(
                 10,
                 state.client.inner().resolved_v6_domains(),
                 |dns_v6_domains| {
-                    icmp_to_dns_resource(
+                    icmp_requests(
                         packet_source_v6(state.client.inner().tunnel_ip6),
-                        sample::select(dns_v6_domains),
+                        (sample::select(dns_v6_domains), any::<sample::Selector>()),
                     )
+                    .prop_map(Transition::SendICMPPacketToDnsResource)
                 },
             )
             .with_if_not_empty(
@@ -257,9 +263,9 @@ impl ReferenceStateMachine for ReferenceState {
                     .inner()
                     .resolved_ip4_for_non_resources(&state.global_dns_records),
                 |resolved_non_resource_ip4s| {
-                    ip_dst_icmp_requests(
+                    icmp_requests(
                         packet_source_v4(state.client.inner().tunnel_ip4),
-                        sample::select(resolved_non_resource_ip4s),
+                        sample::select(resolved_non_resource_ip4s).prop_map_into(),
                     )
                     .prop_map(Transition::SendICMPPacketToNonResourceIp)
                 },
@@ -271,9 +277,9 @@ impl ReferenceStateMachine for ReferenceState {
                     .inner()
                     .resolved_ip6_for_non_resources(&state.global_dns_records),
                 |resolved_non_resource_ip6s| {
-                    ip_dst_icmp_requests(
+                    icmp_requests(
                         packet_source_v6(state.client.inner().tunnel_ip6),
-                        sample::select(resolved_non_resource_ip6s),
+                        sample::select(resolved_non_resource_ip6s).prop_map_into(),
                     )
                     .prop_map(Transition::SendICMPPacketToNonResourceIp)
                 },

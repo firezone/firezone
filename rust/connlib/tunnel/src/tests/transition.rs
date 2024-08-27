@@ -6,6 +6,7 @@ use connlib_shared::{
     messages::{client::ResourceDescription, DnsServer, RelayId, ResourceId},
     DomainName,
 };
+use core::fmt;
 use domain::base::Rtype;
 use prop::collection;
 use proptest::{prelude::*, sample};
@@ -83,15 +84,15 @@ pub(crate) struct IcmpRequest<TDst> {
     pub(crate) payload: u64,
 }
 
-pub(crate) fn ip_dst_icmp_requests<I>(
+pub(crate) fn icmp_requests<I, TDst>(
     src: impl Strategy<Value = I>,
-    dst: impl Strategy<Value = I>,
-) -> impl Strategy<Value = Vec<IcmpRequest<IpAddr>>>
+    dst: impl Strategy<Value = TDst>,
+) -> impl Strategy<Value = Vec<IcmpRequest<TDst>>>
 where
     I: Into<IpAddr>,
+    TDst: fmt::Debug,
 {
     let src = src.prop_map_into();
-    let dst = dst.prop_map_into();
 
     let seq_and_identifiers = collection::btree_set((any::<u16>(), any::<u16>()), 1..5); // Must be unique pairs, thus a `BTreeSet`.
     let src_dst_payload = collection::vec((src, dst, any::<u64>()), 1..5); // Can have duplicates, thus a `Vec`.
@@ -111,32 +112,6 @@ where
             })
             .collect()
     })
-}
-
-pub(crate) fn icmp_to_dns_resource<I>(
-    src: impl Strategy<Value = I>,
-    dst: impl Strategy<Value = DomainName>,
-) -> impl Strategy<Value = Transition>
-where
-    I: Into<IpAddr>,
-{
-    (
-        dst,
-        any::<u16>(),
-        any::<u16>(),
-        src.prop_map(Into::into),
-        any::<sample::Selector>(),
-        any::<u64>(),
-    )
-        .prop_map(|(dst, seq, identifier, src, resolved_ip, payload)| {
-            Transition::SendICMPPacketToDnsResource(vec![IcmpRequest {
-                src,
-                dst: (dst, resolved_ip),
-                seq,
-                identifier,
-                payload,
-            }])
-        })
 }
 
 /// Samples up to 5 DNS queries that will be sent concurrently into connlib.
