@@ -83,7 +83,7 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource) : BottomShe
             }
         } else {
             resourceAddressTextView.setOnClickListener {
-                copyToClipboard(displayAddress)
+                copyToClipboard(displayAddress!!)
                 Toast.makeText(requireContext(), "Address copied to clipboard", Toast.LENGTH_SHORT).show()
             }
         }

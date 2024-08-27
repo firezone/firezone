@@ -8,7 +8,8 @@ use crate::{
 };
 use anyhow::Result;
 use connlib_shared::messages::{
-    ConnectionAccepted, GatewayResponse, RelaysPresence, ResourceAccepted, ResourceId,
+    ClientPayload, ConnectionAccepted, GatewayResponse, RelaysPresence, RequestConnection,
+    ResourceAccepted, ResourceId, ReuseConnection,
 };
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
@@ -78,9 +79,7 @@ where
                 }
                 Poll::Ready(Some(Command::Reset)) => {
                     self.portal.reconnect();
-                    if let Err(e) = self.tunnel.reset() {
-                        tracing::warn!("Failed to reconnect tunnel: {e}");
-                    }
+                    self.tunnel.reset();
 
                     continue;
                 }
@@ -155,11 +154,19 @@ where
                 );
                 self.connection_intents.register_new_intent(id, resource);
             }
-            firezone_tunnel::ClientEvent::SendProxyIps { connections } => {
-                for connection in connections {
-                    self.portal
-                        .send(PHOENIX_TOPIC, EgressMessages::ReuseConnection(connection));
-                }
+            firezone_tunnel::ClientEvent::RequestAccess {
+                resource_id,
+                gateway_id,
+                maybe_domain,
+            } => {
+                self.portal.send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::ReuseConnection(ReuseConnection {
+                        resource_id,
+                        gateway_id,
+                        payload: maybe_domain,
+                    }),
+                );
             }
             firezone_tunnel::ClientEvent::ResourcesChanged { resources } => {
                 self.callbacks.on_update_resources(resources)
@@ -176,6 +183,26 @@ where
             }
             firezone_tunnel::ClientEvent::TunRoutesUpdated { ip4, ip6 } => {
                 self.callbacks.on_update_routes(ip4, ip6);
+            }
+            firezone_tunnel::ClientEvent::RequestConnection {
+                gateway_id,
+                offer,
+                preshared_key,
+                resource_id,
+                maybe_domain,
+            } => {
+                self.portal.send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::RequestConnection(RequestConnection {
+                        gateway_id,
+                        resource_id,
+                        client_preshared_key: preshared_key,
+                        client_payload: ClientPayload {
+                            ice_parameters: offer,
+                            domain: maybe_domain,
+                        },
+                    }),
+                );
             }
         }
     }
@@ -289,25 +316,9 @@ where
 
                 match self
                     .tunnel
-                    .create_or_reuse_connection(resource_id, gateway_id, site_id)
+                    .on_routing_details(resource_id, gateway_id, site_id)
                 {
-                    Ok(Some(firezone_tunnel::Request::NewConnection(connection_request))) => {
-                        // TODO: keep track for the response
-                        let _id = self.portal.send(
-                            PHOENIX_TOPIC,
-                            EgressMessages::RequestConnection(connection_request),
-                        );
-                    }
-                    Ok(Some(firezone_tunnel::Request::ReuseConnection(connection_request))) => {
-                        // TODO: keep track for the response
-                        let _id = self.portal.send(
-                            PHOENIX_TOPIC,
-                            EgressMessages::ReuseConnection(connection_request),
-                        );
-                    }
-                    Ok(None) => {
-                        tracing::debug!(%resource_id, %gateway_id, "Pending connection");
-                    }
+                    Ok(()) => {}
                     Err(e) => {
                         tracing::warn!("Failed to request new connection: {e}");
                     }

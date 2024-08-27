@@ -74,6 +74,8 @@ defmodule API.Client.Channel do
           ]
         )
 
+      resources = Policies.pre_filter_non_conforming_resources(resources, socket.assigns.client)
+
       # We subscribe for all resource events but only care about update events,
       # where resource might be renamed which should be propagated to the UI.
       :ok = Enum.each(resources, &Resources.subscribe_to_events_for_resource/1)
@@ -222,26 +224,34 @@ defmodule API.Client.Channel do
 
     OpenTelemetry.Tracer.with_span "client.resource_updated",
       attributes: %{resource_id: resource_id} do
-      case Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject,
-             preload: [:gateway_groups]
-           ) do
-        {:ok, resource} ->
-          case map_or_drop_compatible_resource(
-                 resource,
-                 socket.assigns.client.last_seen_version
-               ) do
-            {:cont, resource} ->
-              push(
-                socket,
-                "resource_created_or_updated",
-                Views.Resource.render(resource)
-              )
+      with {:ok, resource} <-
+             Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject,
+               preload: [:gateway_groups]
+             ),
+           true <-
+             Policies.client_conforms_any_on_connect?(
+               socket.assigns.client,
+               resource.authorized_by_policies
+             ) do
+        case map_or_drop_compatible_resource(
+               resource,
+               socket.assigns.client.last_seen_version
+             ) do
+          {:cont, resource} ->
+            push(
+              socket,
+              "resource_created_or_updated",
+              Views.Resource.render(resource)
+            )
 
-            :drop ->
-              :ok
-          end
-
+          :drop ->
+            :ok
+        end
+      else
         {:error, _reason} ->
+          :ok
+
+        false ->
           :ok
       end
 

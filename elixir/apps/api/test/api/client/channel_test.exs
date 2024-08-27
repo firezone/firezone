@@ -53,6 +53,12 @@ defmodule API.Client.ChannelTest do
         connections: [%{gateway_group_id: gateway_group.id}]
       )
 
+    nonconforming_resource =
+      Fixtures.Resources.create_resource(
+        account: account,
+        connections: [%{gateway_group_id: gateway_group.id}]
+      )
+
     dns_resource_policy =
       Fixtures.Policies.create_policy(
         account: account,
@@ -70,6 +76,19 @@ defmodule API.Client.ChannelTest do
       account: account,
       actor_group: actor_group,
       resource: ip_resource
+    )
+
+    Fixtures.Policies.create_policy(
+      account: account,
+      actor_group: actor_group,
+      resource: nonconforming_resource,
+      conditions: [
+        %{
+          property: :remote_ip_location_region,
+          operator: :is_not_in,
+          values: [client.last_seen_remote_ip_location_region]
+        }
+      ]
     )
 
     expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -100,6 +119,7 @@ defmodule API.Client.ChannelTest do
       cidr_resource: cidr_resource,
       ip_resource: ip_resource,
       unauthorized_resource: unauthorized_resource,
+      nonconforming_resource: nonconforming_resource,
       dns_resource_policy: dns_resource_policy,
       socket: socket
     }
@@ -203,12 +223,13 @@ defmodule API.Client.ChannelTest do
                {:error, %{reason: :invalid_version}}
     end
 
-    test "sends list of resources after join", %{
+    test "sends list of available resources after join", %{
       client: client,
       gateway_group: gateway_group,
       dns_resource: dns_resource,
       cidr_resource: cidr_resource,
-      ip_resource: ip_resource
+      ip_resource: ip_resource,
+      nonconforming_resource: nonconforming_resource
     } do
       assert_push "init", %{
         resources: resources,
@@ -279,6 +300,8 @@ defmodule API.Client.ChannelTest do
                ]
              } in resources
 
+      refute Enum.any?(resources, &(&1.id == nonconforming_resource.id))
+
       assert interface == %{
                ipv4: client.ipv4,
                ipv6: client.ipv6,
@@ -287,6 +310,40 @@ defmodule API.Client.ChannelTest do
                  %{protocol: :ip_port, address: "8.8.8.8:53"}
                ]
              }
+    end
+
+    test "only sends the same resource once", %{
+      account: account,
+      actor: actor,
+      subject: subject,
+      client: client,
+      dns_resource: resource
+    } do
+      assert_push "init", %{}
+
+      Fixtures.Auth.create_identity(actor: actor, account: account)
+      Fixtures.Auth.create_identity(actor: actor, account: account)
+
+      second_actor_group = Fixtures.Actors.create_group(account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: second_actor_group)
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: second_actor_group,
+        resource: resource
+      )
+
+      API.Client.Socket
+      |> socket("client:#{client.id}", %{
+        opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+        client: client,
+        subject: subject
+      })
+      |> subscribe_and_join(API.Client.Channel, "client")
+
+      assert_push "init", %{resources: resources}
+      assert Enum.count(resources, &(&1.address == resource.address)) == 1
     end
 
     test "sends backwards compatible list of resources if client version is below 1.2", %{
@@ -697,6 +754,14 @@ defmodule API.Client.ChannelTest do
                  %{protocol: :icmp}
                ]
              }
+    end
+
+    test "does not push resources that can't be access by the client", %{
+      nonconforming_resource: resource,
+      socket: socket
+    } do
+      send(socket.channel_pid, {:update_resource, resource.id})
+      refute_push "resource_created_or_updated", %{}
     end
   end
 

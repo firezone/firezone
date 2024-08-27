@@ -5,6 +5,7 @@ use crate::{
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{keypair, ConnectArgs, LoginUrl, Session};
+use connlib_shared::callbacks::ResourceDescription;
 use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
@@ -14,6 +15,8 @@ use futures::{
     task::{Context, Poll},
     Future as _, SinkExt as _, Stream as _,
 };
+use secrecy::SecretString;
+use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
 use tokio::{sync::mpsc, task::spawn_blocking, time::Instant};
 use tracing::subscriber::set_global_default;
@@ -69,7 +72,7 @@ impl Default for Cmd {
     }
 }
 
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub enum ClientMsg {
     ClearLogs,
     Connect { api_url: String, token: String },
@@ -78,6 +81,35 @@ pub enum ClientMsg {
     Reset,
     SetDns(Vec<IpAddr>),
     SetDisabledResources(BTreeSet<ResourceId>),
+}
+
+/// Messages that end up in the GUI, either forwarded from connlib or from the IPC service.
+#[derive(Debug, Deserialize, Serialize)]
+pub enum ServerMsg {
+    /// The IPC service finished clearing its log dir.
+    ClearedLogs(Result<(), String>),
+    ConnectResult(Result<(), Error>),
+    OnDisconnect {
+        error_msg: String,
+        is_authentication_error: bool,
+    },
+    OnUpdateResources(Vec<ResourceDescription>),
+    /// The IPC service is terminating, maybe due to a software update
+    ///
+    /// This is a hint that the Client should exit with a message like,
+    /// "Firezone is updating, please restart the GUI" instead of an error like,
+    /// "IPC connection closed".
+    TerminatingGracefully,
+}
+
+// All variants are `String` because almost no error type implements `Serialize`
+#[derive(Debug, Deserialize, Serialize)]
+pub enum Error {
+    DeviceId(String),
+    LoginUrl(String),
+    PortalConnection(String),
+    TunnelDevice(String),
+    UrlParse(String),
 }
 
 /// Only called from the GUI Client's build of the IPC service
@@ -383,48 +415,11 @@ impl<'a> Handler<'a> {
             }
             ClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);
-                // There isn't an airtight way to implement a "disconnect and reconnect"
-                // right now because `Session::disconnect` is fire-and-forget:
-                // <https://github.com/firezone/firezone/blob/663367b6055ced7432866a40a60f9525db13288b/rust/connlib/clients/shared/src/lib.rs#L98-L103>
-                assert!(self.connlib.is_none());
-                let device_id =
-                    device_id::get_or_create().context("Failed to get / create device ID")?;
-                let (private_key, public_key) = keypair();
-
-                let url = LoginUrl::client(
-                    Url::parse(&api_url)?,
-                    &token,
-                    device_id.id,
-                    None,
-                    public_key.to_bytes(),
-                )?;
-
-                self.last_connlib_start_instant = Some(Instant::now());
-                let args = ConnectArgs {
-                    tcp_socket_factory: Arc::new(tcp_socket_factory),
-                    udp_socket_factory: Arc::new(udp_socket_factory),
-                    private_key,
-                    callbacks: self.callback_handler.clone(),
-                };
-                let portal = PhoenixChannel::connect(
-                    Secret::new(url),
-                    get_user_agent(None, env!("CARGO_PKG_VERSION")),
-                    "client",
-                    (),
-                    ExponentialBackoffBuilder::default()
-                        .with_max_elapsed_time(Some(Duration::from_secs(60 * 60 * 24 * 30)))
-                        .build(),
-                    Arc::new(tcp_socket_factory),
-                )?;
-
-                let dns = self.dns_controller.system_resolvers();
-                tracing::debug!(?dns);
-                let new_session =
-                    Session::connect(args, portal, tokio::runtime::Handle::try_current()?);
-                let tun = self.tun_device.make_tun()?;
-                new_session.set_tun(Box::new(tun));
-                new_session.set_dns(dns);
-                self.connlib = Some(new_session);
+                let result = self.connect_to_firezone(&api_url, token);
+                self.ipc_tx
+                    .send(&IpcServerMsg::ConnectResult(result))
+                    .await
+                    .context("Failed to send `ConnectResult`")?
             }
             ClientMsg::Disconnect => {
                 if let Some(connlib) = self.connlib.take() {
@@ -451,6 +446,63 @@ impl<'a> Handler<'a> {
                     .set_disabled_resources(disabled_resources);
             }
         }
+        Ok(())
+    }
+
+    /// Connects connlib
+    ///
+    /// Panics if there's no Tokio runtime or if connlib is already connected
+    ///
+    /// Throws matchable errors for bad URLs, unable to reach the portal, or unable to create the tunnel device
+    fn connect_to_firezone(&mut self, api_url: &str, token: SecretString) -> Result<(), Error> {
+        // There isn't an airtight way to implement a "disconnect and reconnect"
+        // right now because `Session::disconnect` is fire-and-forget:
+        // <https://github.com/firezone/firezone/blob/663367b6055ced7432866a40a60f9525db13288b/rust/connlib/clients/shared/src/lib.rs#L98-L103>
+        assert!(self.connlib.is_none());
+        let device_id = device_id::get_or_create().map_err(|e| Error::DeviceId(e.to_string()))?;
+        let (private_key, public_key) = keypair();
+
+        let url = LoginUrl::client(
+            Url::parse(api_url).map_err(|e| Error::UrlParse(e.to_string()))?,
+            &token,
+            device_id.id,
+            None,
+            public_key.to_bytes(),
+        )
+        .map_err(|e| Error::LoginUrl(e.to_string()))?;
+
+        self.last_connlib_start_instant = Some(Instant::now());
+        let args = ConnectArgs {
+            tcp_socket_factory: Arc::new(tcp_socket_factory),
+            udp_socket_factory: Arc::new(udp_socket_factory),
+            private_key,
+            callbacks: self.callback_handler.clone(),
+        };
+
+        // Synchronous DNS resolution here
+        let portal = PhoenixChannel::connect(
+            Secret::new(url),
+            get_user_agent(None, env!("CARGO_PKG_VERSION")),
+            "client",
+            (),
+            ExponentialBackoffBuilder::default()
+                .with_max_elapsed_time(Some(Duration::from_secs(60 * 60 * 24 * 30)))
+                .build(),
+            Arc::new(tcp_socket_factory),
+        )
+        .map_err(|e| Error::PortalConnection(e.to_string()))?;
+
+        let dns = self.dns_controller.system_resolvers();
+        tracing::debug!(?dns);
+        let new_session = Session::connect(args, portal, tokio::runtime::Handle::current());
+        let tun = self
+            .tun_device
+            .make_tun()
+            .map_err(|e| Error::TunnelDevice(e.to_string()))?;
+        new_session.set_tun(Box::new(tun));
+        new_session.set_dns(dns);
+        self.connlib = Some(new_session);
+
         Ok(())
     }
 }

@@ -110,7 +110,7 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
         private_key,
         Arc::new(tcp_socket_factory),
         Arc::new(udp_socket_factory),
-    )?;
+    );
     let portal = PhoenixChannel::connect(
         Secret::new(login),
         get_user_agent(None, env!("CARGO_PKG_VERSION")),

@@ -365,6 +365,12 @@ public struct SettingsView: View {
           Spacer()
         }
         Spacer()
+        HStack {
+          Text("Build: \(AppInfoPlistConstants.gitSha)")
+            .textSelection(.enabled)
+            .foregroundColor(.gray)
+          Spacer()
+        }.padding([.leading, .bottom], 20)
       }
     #elseif os(iOS)
       VStack {
@@ -432,6 +438,13 @@ public struct SettingsView: View {
             footer: { Text(FootnoteText.forAdvanced) }
           )
         }
+        Spacer()
+        HStack {
+          Text("Build: \(AppInfoPlistConstants.gitSha)")
+            .textSelection(.enabled)
+            .foregroundColor(.gray)
+          Spacer()
+        }.padding([.leading, .bottom], 20)
       }
     #endif
   }

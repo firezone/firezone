@@ -79,7 +79,7 @@ impl ResourceDescription {
         }
     }
 
-    fn is_internet_resource(&self) -> bool {
+    pub fn is_internet_resource(&self) -> bool {
         matches!(self, ResourceDescription::Internet(_))
     }
 }
@@ -127,9 +127,6 @@ pub struct ResourceDescriptionInternet {
     /// Name for display always set to "Internet Resource"
     pub name: String,
 
-    /// Address for display always set to "All internet addresses"
-    pub address: String,
-
     pub id: ResourceId,
     pub sites: Vec<Site>,
 
@@ -147,6 +144,10 @@ impl Ord for ResourceDescription {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         if self.is_internet_resource() {
             return std::cmp::Ordering::Less;
+        }
+
+        if other.is_internet_resource() {
+            return std::cmp::Ordering::Greater;
         }
 
         (self.name(), self.id()).cmp(&(other.name(), other.id()))
@@ -182,7 +183,6 @@ mod tests {
     fn internet_resource(uuid: &str) -> ResourceDescription {
         ResourceDescription::Internet(ResourceDescriptionInternet {
             name: "Internet Resource".to_string(),
-            address: "All internet addresses".to_string(),
             id: ResourceId::from_str(uuid).unwrap(),
             sites: vec![Site {
                 name: "test".to_string(),
@@ -201,6 +201,7 @@ mod tests {
         let metabase_1 = fake_resource("Metabase", "98ee1682-8192-4f15-b4a6-03178dfa7f95");
         let metabase_2 = fake_resource("Metabase", "e431d1b8-afc2-4f93-95c2-0d15413f5422");
         let ifconfig = fake_resource("ifconfig.net", "6b7188f5-00ac-41dc-9ddd-57e2384f31ef");
+        let wildcard = fake_resource("*.test.net", "6b7188f5-00ac-41dc-9ddd-57e2384f31af");
         let ten = fake_resource("10", "9d1907cc-0693-4063-b388-4d29524e2514");
         let nine = fake_resource("9", "a7b66f28-9cd1-40fc-bdc4-4763ed92ea41");
         let emoji = fake_resource("🫠", "7d08cfca-8737-4c5e-a88e-e92574657217");
@@ -217,10 +218,12 @@ mod tests {
             metabase_2.clone(),
             metabase_1.clone(),
             internet.clone(),
+            wildcard.clone(),
         ];
 
         let expected = vec![
             internet,   // Internet resources are always first
+            wildcard,   // Asterisk before numbers
             ten,        // Numbers before letters
             nine,       // Numbers are sorted lexicographically, not numerically
             cloudflare, // Then uppercase, in alphabetical order

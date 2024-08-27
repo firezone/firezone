@@ -12,11 +12,10 @@ use connlib_shared::{
 };
 use std::collections::HashSet;
 use tauri::{SystemTray, SystemTrayHandle};
-use url::Url;
 
 mod builder;
 
-pub(crate) use builder::{copyable, item, Event, Item, Menu, Window};
+pub(crate) use builder::{item, Event, Menu, Window};
 
 // Figma is the source of truth for the tray icons
 // <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=OGFabKWPx7PRUZmq-0>
@@ -39,6 +38,8 @@ const SIGN_OUT: &str = "Sign out";
 const DISCONNECT_AND_QUIT: &str = "Disconnect and quit Firezone";
 const DISABLE: &str = "Disable this resource";
 const ENABLE: &str = "Enable this resource";
+
+pub(crate) const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
 
 pub(crate) fn loading() -> SystemTray {
     SystemTray::new()
@@ -68,27 +69,25 @@ pub(crate) struct SignedIn<'a> {
 }
 
 impl<'a> SignedIn<'a> {
-    fn is_favorite(&self, res: &ResourceDescription) -> bool {
-        self.favorite_resources.contains(&res.id())
+    fn is_favorite(&self, resource: &ResourceId) -> bool {
+        self.favorite_resources.contains(resource)
+    }
+
+    fn add_favorite_toggle(&self, submenu: &mut Menu, resource: ResourceId) {
+        if self.is_favorite(&resource) {
+            submenu.add_item(item(Event::RemoveFavorite(resource), REMOVE_FAVORITE).selected());
+        } else {
+            submenu.add_item(item(Event::AddFavorite(resource), ADD_FAVORITE));
+        }
     }
 
     /// Builds the submenu that has the resource address, name, desc,
     /// sites online, etc.
     fn resource_submenu(&self, res: &ResourceDescription) -> Menu {
-        let mut submenu = Menu::default();
+        let mut submenu = Menu::default().resource_description(res);
 
-        submenu.add_item(resource_header(res));
-
-        let mut submenu = submenu
-            .separator()
-            .disabled("Resource")
-            .copyable(res.name())
-            .copyable(res.pastable().as_ref());
-
-        if self.is_favorite(res) {
-            submenu.add_item(item(Event::RemoveFavorite(res.id()), REMOVE_FAVORITE).selected());
-        } else {
-            submenu.add_item(item(Event::AddFavorite(res.id()), ADD_FAVORITE));
+        if !res.is_internet_resource() {
+            self.add_favorite_toggle(&mut submenu, res.id());
         }
 
         if res.can_be_disabled() {
@@ -121,22 +120,6 @@ impl<'a> SignedIn<'a> {
     fn is_enabled(&self, res: &ResourceDescription) -> bool {
         !self.disabled_resources.contains(&res.id())
     }
-}
-
-fn resource_header(res: &ResourceDescription) -> Item {
-    let Some(address_description) = res.address_description() else {
-        return copyable(&res.pastable());
-    };
-
-    if address_description.is_empty() {
-        return copyable(&res.pastable());
-    }
-
-    let Ok(url) = Url::parse(address_description) else {
-        return copyable(address_description);
-    };
-
-    item(Event::Url(url), format!("<{address_description}>"))
 }
 
 #[derive(PartialEq)]
@@ -247,7 +230,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         // Always show Resources in the original order
         for res in resources
             .iter()
-            .filter(|res| favorite_resources.contains(&res.id()))
+            .filter(|res| favorite_resources.contains(&res.id()) || res.is_internet_resource())
         {
             menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
@@ -266,7 +249,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         // Always show Resources in the original order
         for res in resources
             .iter()
-            .filter(|res| !favorite_resources.contains(&res.id()))
+            .filter(|res| !favorite_resources.contains(&res.id()) && !res.is_internet_resource())
         {
             submenu = submenu.add_submenu(res.name(), signed_in.resource_submenu(res));
         }
@@ -449,17 +432,7 @@ mod tests {
             .add_submenu(
                 "Internet Resource",
                 Menu::default()
-                    .copyable("")
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("Internet Resource")
-                    .copyable("")
-                    .item(
-                        Event::AddFavorite(
-                            ResourceId::from_str("1106047c-cd5d-4151-b679-96b93da7383b").unwrap(),
-                        ),
-                        ADD_FAVORITE,
-                    )
+                    .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
                     .disabled("Site")
                     .copyable("test")
@@ -510,48 +483,37 @@ mod tests {
                     .copyable("test")
                     .copyable(GATEWAY_CONNECTED),
             )
+            .add_submenu(
+                "Internet Resource",
+                Menu::default()
+                    .disabled(INTERNET_RESOURCE_DESCRIPTION)
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable(ALL_GATEWAYS_OFFLINE),
+            )
             .separator()
             .add_submenu(
                 OTHER_RESOURCES,
-                Menu::default()
-                    .add_submenu(
-                        "172.172.0.0/16",
-                        Menu::default()
-                            .copyable("cidr resource")
-                            .separator()
-                            .disabled("Resource")
-                            .copyable("172.172.0.0/16")
-                            .copyable("172.172.0.0/16")
-                            .item(
-                                Event::AddFavorite(ResourceId::from_str(
-                                    "73037362-715d-4a83-a749-f18eadd970e6",
-                                )?),
-                                ADD_FAVORITE,
-                            )
-                            .separator()
-                            .disabled("Site")
-                            .copyable("test")
-                            .copyable(NO_ACTIVITY),
-                    )
-                    .add_submenu(
-                        "Internet Resource",
-                        Menu::default()
-                            .copyable("")
-                            .separator()
-                            .disabled("Resource")
-                            .copyable("Internet Resource")
-                            .copyable("")
-                            .item(
-                                Event::AddFavorite(ResourceId::from_str(
-                                    "1106047c-cd5d-4151-b679-96b93da7383b",
-                                )?),
-                                ADD_FAVORITE,
-                            )
-                            .separator()
-                            .disabled("Site")
-                            .copyable("test")
-                            .copyable(ALL_GATEWAYS_OFFLINE),
-                    ),
+                Menu::default().add_submenu(
+                    "172.172.0.0/16",
+                    Menu::default()
+                        .copyable("cidr resource")
+                        .separator()
+                        .disabled("Resource")
+                        .copyable("172.172.0.0/16")
+                        .copyable("172.172.0.0/16")
+                        .item(
+                            Event::AddFavorite(ResourceId::from_str(
+                                "73037362-715d-4a83-a749-f18eadd970e6",
+                            )?),
+                            ADD_FAVORITE,
+                        )
+                        .separator()
+                        .disabled("Site")
+                        .copyable("test")
+                        .copyable(NO_ACTIVITY),
+                ),
             )
             .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
@@ -623,17 +585,7 @@ mod tests {
             .add_submenu(
                 "Internet Resource",
                 Menu::default()
-                    .copyable("")
-                    .separator()
-                    .disabled("Resource")
-                    .copyable("Internet Resource")
-                    .copyable("")
-                    .item(
-                        Event::AddFavorite(ResourceId::from_str(
-                            "1106047c-cd5d-4151-b679-96b93da7383b",
-                        )?),
-                        ADD_FAVORITE,
-                    )
+                    .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
                     .disabled("Site")
                     .copyable("test")

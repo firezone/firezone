@@ -1,8 +1,4 @@
-use crate::{
-    device_channel::Device,
-    sockets::{NoInterfaces, Sockets},
-    BUF_SIZE,
-};
+use crate::{device_channel::Device, sockets::Sockets, BUF_SIZE};
 use futures_util::FutureExt as _;
 use ip_packet::{IpPacket, MutableIpPacket};
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
@@ -42,17 +38,21 @@ impl Io {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    ) -> Result<Self, NoInterfaces> {
+    ) -> Self {
         let mut sockets = Sockets::default();
-        sockets.rebind(udp_socket_factory.as_ref())?; // Bind sockets on startup. Must happen within a tokio runtime context.
+        sockets.rebind(udp_socket_factory.as_ref()); // Bind sockets on startup. Must happen within a tokio runtime context.
 
-        Ok(Self {
+        Self {
             device: Device::new(),
             timeout: None,
             sockets,
             _tcp_socket_factory: tcp_socket_factory,
             udp_socket_factory,
-        })
+        }
+    }
+
+    pub fn poll_has_sockets(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+        self.sockets.poll_has_sockets(cx)
     }
 
     pub fn poll<'b1, 'b2>(
@@ -88,10 +88,8 @@ impl Io {
         &mut self.device
     }
 
-    pub fn rebind_sockets(&mut self) -> Result<(), NoInterfaces> {
-        self.sockets.rebind(self.udp_socket_factory.as_ref())?;
-
-        Ok(())
+    pub fn rebind_sockets(&mut self) {
+        self.sockets.rebind(self.udp_socket_factory.as_ref());
     }
 
     pub fn reset_timeout(&mut self, timeout: Instant) {
