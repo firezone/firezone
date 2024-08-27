@@ -315,23 +315,6 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         .map_err(|s| anyhow!(s))
         .context("`ClearLogs` failed")?;
 
-    // Tray icon stress test
-    let num_icon_cycles = 100;
-    for _ in 0..num_icon_cycles {
-        ctlr_tx
-            .send(ControllerRequest::TestTrayIcon(system_tray::Icon::Busy))
-            .await?;
-        ctlr_tx
-            .send(ControllerRequest::TestTrayIcon(system_tray::Icon::SignedIn))
-            .await?;
-        ctlr_tx
-            .send(ControllerRequest::TestTrayIcon(
-                system_tray::Icon::SignedOut,
-            ))
-            .await?;
-    }
-    tracing::debug!(?num_icon_cycles, "Completed tray icon test");
-
     // Give the app some time to export the zip and reach steady state
     tokio::time::sleep_until(quit_time).await;
 
@@ -443,8 +426,6 @@ pub(crate) enum ControllerRequest {
     SchemeRequest(SecretString),
     SignIn,
     SystemTrayMenu(TrayMenuEvent),
-    /// Forces the tray icon to a specific icon to stress-test the tray code
-    TestTrayIcon(system_tray::Icon),
     UpdateAvailable(crate::client::updates::Release),
     UpdateNotificationClicked(Url),
 }
@@ -680,7 +661,6 @@ impl Controller {
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => Err(anyhow!(
                 "Impossible error: `Quit` should be handled before this"
             ))?,
-            Req::TestTrayIcon(icon) => self.tray.set_icon(icon)?,
             Req::UpdateAvailable(release) => {
                 let title = format!("Firezone {} available for download", release.version);
 
@@ -746,7 +726,7 @@ impl Controller {
             }
             IpcServerMsg::TerminatingGracefully => {
                 tracing::info!("Caught TerminatingGracefully");
-                self.tray.set_icon(system_tray::Icon::SignedOut).ok();
+                self.tray.set_icon(system_tray::Icon::terminating()).ok();
                 Err(Error::IpcServiceTerminating)
             }
             IpcServerMsg::TunnelReady => {

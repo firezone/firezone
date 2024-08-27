@@ -19,11 +19,14 @@ pub(crate) mod compositor;
 
 pub(crate) use builder::{item, Event, Menu, Window};
 
-// Figma is the source of truth for the tray icons
+// Figma is the source of truth for the tray icon layers
 // <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=nHBOzOnSY5Ol4asV-0>
-const BUSY_ICON: &[u8] = include_bytes!("../../../icons/tray/Busy.png");
-const SIGNED_IN_ICON: &[u8] = include_bytes!("../../../icons/tray/Signed in.png");
-const SIGNED_OUT_ICON: &[u8] = include_bytes!("../../../icons/tray/Signed out.png");
+const LOGO_BASE: &[u8] = include_bytes!("../../../icons/tray/Logo.png");
+const LOGO_GREY_BASE: &[u8] = include_bytes!("../../../icons/tray/Logo grey.png");
+const BUSY_LAYER: &[u8] = include_bytes!("../../../icons/tray/Busy layer.png");
+const SIGNED_OUT_LAYER: &[u8] = include_bytes!("../../../icons/tray/Signed out layer.png");
+const UPDATE_READY_LAYER: &[u8] = include_bytes!("../../../icons/tray/Update ready layer.png");
+
 const TOOLTIP: &str = "Firezone";
 const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
 
@@ -49,7 +52,7 @@ pub(crate) fn loading() -> SystemTray {
         update_url: None,
     };
     SystemTray::new()
-        .with_icon(tauri::Icon::Raw(BUSY_ICON.into()))
+        .with_icon(Icon::default().tauri_icon())
         .with_menu(state.build())
         .with_tooltip(TOOLTIP)
 }
@@ -136,7 +139,13 @@ impl<'a> SignedIn<'a> {
 }
 
 #[derive(PartialEq)]
-pub(crate) enum Icon {
+pub(crate) struct Icon {
+    base: IconBase,
+    update_ready: bool,
+}
+
+#[derive(PartialEq)]
+enum IconBase {
     /// Must be equivalent to the default app icon, since we assume this is set when we start
     Busy,
     SignedIn,
@@ -145,7 +154,34 @@ pub(crate) enum Icon {
 
 impl Default for Icon {
     fn default() -> Self {
-        Self::Busy
+        Self {
+            base: IconBase::Busy,
+            update_ready: false,
+        }
+    }
+}
+
+impl Icon {
+    fn tauri_icon(&self) -> tauri::Icon {
+        let layers = match self.base {
+            IconBase::Busy => &[LOGO_GREY_BASE, BUSY_LAYER][..],
+            IconBase::SignedIn => &[LOGO_BASE][..],
+            IconBase::SignedOut => &[LOGO_GREY_BASE, SIGNED_OUT_LAYER][..],
+        }
+        .iter()
+        .copied()
+        .chain(self.update_ready.then_some(UPDATE_READY_LAYER));
+        let composed = compositor::compose(layers)
+            .expect("PNG decoding should always succeed for baked-in PNGs");
+        composed.into()
+    }
+
+    /// Generic icon for unusual terminating cases like if the IPC service stops running
+    pub(crate) fn terminating() -> Self {
+        Self {
+            base: IconBase::SignedOut,
+            update_ready: false,
+        }
     }
 }
 
@@ -158,14 +194,18 @@ impl Tray {
     }
 
     pub(crate) fn update(&mut self, state: AppState) -> Result<()> {
-        let new_icon = match &state.connlib {
+        let base = match &state.connlib {
             ConnlibState::Loading
             | ConnlibState::RetryingConnection
             | ConnlibState::WaitingForBrowser
             | ConnlibState::WaitingForPortal
-            | ConnlibState::WaitingForTunnel => Icon::Busy,
-            ConnlibState::SignedOut => Icon::SignedOut,
-            ConnlibState::SignedIn { .. } => Icon::SignedIn,
+            | ConnlibState::WaitingForTunnel => IconBase::Busy,
+            ConnlibState::SignedOut => IconBase::SignedOut,
+            ConnlibState::SignedIn { .. } => IconBase::SignedIn,
+        };
+        let new_icon = Icon {
+            base,
+            update_ready: state.update_url.is_some(),
         };
 
         self.handle.set_tooltip(TOOLTIP)?;
@@ -187,17 +227,6 @@ impl Tray {
             self.last_icon_set = icon;
         }
         Ok(())
-    }
-}
-
-impl Icon {
-    fn tauri_icon(&self) -> tauri::Icon {
-        let bytes = match self {
-            Self::Busy => BUSY_ICON,
-            Self::SignedIn => SIGNED_IN_ICON,
-            Self::SignedOut => SIGNED_OUT_ICON,
-        };
-        tauri::Icon::Raw(bytes.into())
     }
 }
 

@@ -17,18 +17,13 @@ pub(crate) struct Image {
     rgba: Vec<u8>,
 }
 
-impl Image {
-    pub(crate) fn save_png(&self) -> Result<Vec<u8>> {
-        let mut output = vec![];
-        {
-            let mut encoder = png::Encoder::new(&mut output, self.width, self.height);
-            encoder.set_color(png::ColorType::Rgba);
-            encoder.set_depth(png::BitDepth::Eight);
-            encoder.set_source_gamma(png::ScaledFloat::from_scaled(45455));
-            let mut writer = encoder.write_header()?;
-            writer.write_image_data(&self.rgba)?;
+impl From<Image> for tauri::Icon {
+    fn from(val: Image) -> Self {
+        Self::Rgba {
+            rgba: val.rgba,
+            width: val.width,
+            height: val.height,
         }
-        Ok(output)
     }
 }
 
