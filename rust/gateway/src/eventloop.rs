@@ -310,14 +310,14 @@ impl Eventloop {
 
     pub fn allow_access(&mut self, result: Result<Vec<IpAddr>, Timeout>, req: AllowAccess) {
         let addresses = result
-            .inspect_err(|e| tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of allow access request: {e}"))
+            .inspect_err(|e| tracing::debug!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request: {e}"))
             .unwrap_or_default();
 
         if let (Ok(()), Some(resolve_request)) = (
             self.tunnel.allow_access(
-                req.client.id,
-                req.client.peer.ipv4,
-                req.client.peer.ipv6,
+                req.client_id,
+                req.client_ipv4,
+                req.client_ipv6,
                 req.payload.as_ref().map(|r| r.as_tuple()),
                 req.expires_at,
                 req.resource.into_resolved(addresses.clone()),

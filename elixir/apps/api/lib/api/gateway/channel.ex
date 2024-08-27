@@ -152,7 +152,8 @@ defmodule API.Gateway.Channel do
             resource: Views.Resource.render(resource),
             expires_at: DateTime.to_unix(authorization_expires_at, :second),
             payload: payload,
-            client: Views.Client.render(client)
+            client_ipv4: client.ipv4,
+            client_ipv6: client.ipv6
           })
 
           Logger.debug("Awaiting gateway connection_ready message",

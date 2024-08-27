@@ -14,16 +14,4 @@ defmodule API.Gateway.Views.Client do
       }
     }
   end
-
-  def render(%Clients.Client{} = client) do
-    %{
-      id: client.id,
-      peer: %{
-        persistent_keepalive: 25,
-        public_key: client.public_key,
-        ipv4: client.ipv4,
-        ipv6: client.ipv6
-      }
-    }
-  end
 end

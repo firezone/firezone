@@ -119,19 +119,11 @@ defmodule API.Gateway.ChannelTest do
                ]
              }
 
-      assert payload.client == %{
-               id: client.id,
-               peer: %{
-                 ipv4: client.ipv4,
-                 ipv6: client.ipv6,
-                 persistent_keepalive: 25,
-                 public_key: client.public_key
-               }
-             }
-
       assert payload.ref
       assert payload.flow_id == flow_id
       assert payload.client_id == client.id
+      assert payload.client_ipv4 == client.ipv4
+      assert payload.client_ipv6 == client.ipv6
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
     end
 
