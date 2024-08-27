@@ -151,6 +151,7 @@ extension FileManager {
 }
 
 public struct SettingsView: View {
+  @ObservedObject var favorites: Favorites
   @ObservedObject var model: SettingsViewModel
   @Environment(\.dismiss) var dismiss
 
@@ -199,7 +200,8 @@ public struct SettingsView: View {
         """)
   }
 
-  public init(model: SettingsViewModel) {
+  public init(favorites: Favorites, model: SettingsViewModel) {
+    self.favorites = favorites
     self.model = model
   }
 
@@ -352,9 +354,10 @@ public struct SettingsView: View {
                 "Reset to Defaults",
                 action: {
                   model.settings = Settings.defaultValue
+                  favorites.reset()
                 }
               )
-              .disabled(model.settings == Settings.defaultValue)
+              .disabled(favorites.ids.isEmpty && model.settings == Settings.defaultValue)
             }
             .padding(.top, 5)
           }
@@ -362,6 +365,12 @@ public struct SettingsView: View {
           Spacer()
         }
         Spacer()
+        HStack {
+          Text("Build: \(AppInfoPlistConstants.gitSha)")
+            .textSelection(.enabled)
+            .foregroundColor(.gray)
+          Spacer()
+        }.padding([.leading, .bottom], 20)
       }
     #elseif os(iOS)
       VStack {
@@ -429,6 +438,13 @@ public struct SettingsView: View {
             footer: { Text(FootnoteText.forAdvanced) }
           )
         }
+        Spacer()
+        HStack {
+          Text("Build: \(AppInfoPlistConstants.gitSha)")
+            .textSelection(.enabled)
+            .foregroundColor(.gray)
+          Spacer()
+        }.padding([.leading, .bottom], 20)
       }
     #endif
   }

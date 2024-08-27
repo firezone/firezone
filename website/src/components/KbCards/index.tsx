@@ -8,7 +8,7 @@ export function KbCard({
   children,
 }: {
   title: string;
-  href: Route<string>;
+  href: URL | Route<string>;
   logo: React.ReactNode;
   children: React.ReactNode;
 }) {

@@ -2,32 +2,8 @@
 
 set -euox pipefail
 
-CHROMIUM_PORT=9222
-
 function client() {
     docker compose exec -it client "$@"
-}
-
-# Release images (by design) don't include our browser test harness,
-# so install it here if it's not already present.
-function bootstrap_browser_test_harness() {
-    client which chromium-browser || (
-        client apk add --no-cache nodejs npm chromium &&
-            docker compose cp ./scripts/tests/browser/. client:/bin &&
-            client npm install --prefix /bin
-    )
-}
-
-function start_chromium() {
-    docker compose exec -d -it client chromium-browser --headless --no-sandbox --remote-debugging-port=$CHROMIUM_PORT
-}
-
-function load_page() {
-    client npm run load -- --debugPort $CHROMIUM_PORT --url "$1" --retries "$2"
-}
-
-function refresh_page() {
-    client npm run refresh -- --debugPort $CHROMIUM_PORT --url "$1" --retries "$2"
 }
 
 function gateway() {

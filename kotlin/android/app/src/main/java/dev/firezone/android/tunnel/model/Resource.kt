@@ -17,7 +17,7 @@ data class Resource(
     val name: String,
     val status: StatusEnum,
     var enabled: Boolean = true,
-    @Json(name = "can_toggle") val canToggle: Boolean,
+    @Json(name = "can_be_disabled") val canBeDisabled: Boolean,
 ) : Parcelable
 
 enum class TypeEnum {
@@ -29,6 +29,9 @@ enum class TypeEnum {
 
     @Json(name = "cidr")
     CIDR,
+
+    @Json(name = "internet")
+    Internet,
 }
 
 enum class StatusEnum {

@@ -12,7 +12,7 @@ use super::ResourceId;
 use itertools::Itertools;
 
 /// Description of a resource that maps to a DNS record.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ResourceDescriptionDns {
     /// Resource's id.
     pub id: ResourceId,
@@ -36,7 +36,7 @@ impl ResourceDescriptionDns {
             name: self.name,
             address_description: self.address_description,
             sites: self.sites,
-            can_toggle: false,
+            can_be_disabled: false,
             status,
         }
     }
@@ -67,7 +67,7 @@ impl ResourceDescriptionCidr {
             name: self.name,
             address_description: self.address_description,
             sites: self.sites,
-            can_toggle: false,
+            can_be_disabled: false,
             status,
         }
     }
@@ -78,17 +78,21 @@ impl ResourceDescriptionCidr {
 pub struct ResourceDescriptionInternet {
     /// Resource's id.
     pub id: ResourceId,
-    // TBD
+    /// Sites for the internet resource
     #[serde(rename = "gateway_groups")]
     pub sites: Vec<Site>,
+    /// Whether or not resource can be disabled from UI
+    pub can_be_disabled: Option<bool>,
 }
 
 impl ResourceDescriptionInternet {
     pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionInternet {
         crate::callbacks::ResourceDescriptionInternet {
+            name: "Internet Resource".to_string(),
+            address: "All internet addresses".to_string(),
             id: self.id,
             sites: self.sites,
-            can_toggle: false,
+            can_be_disabled: self.can_be_disabled.unwrap_or_default(),
             status,
         }
     }
@@ -166,7 +170,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => BTreeSet::from_iter(r.sites.iter()),
             ResourceDescription::Cidr(r) => BTreeSet::from_iter(r.sites.iter()),
-            ResourceDescription::Internet(_) => BTreeSet::default(),
+            ResourceDescription::Internet(r) => BTreeSet::from_iter(r.sites.iter()),
         }
     }
 
@@ -195,6 +199,7 @@ impl ResourceDescription {
             (ResourceDescription::Cidr(cidr_a), ResourceDescription::Cidr(cidr_b)) => {
                 cidr_a.address != cidr_b.address
             }
+            (ResourceDescription::Internet(_), ResourceDescription::Internet(_)) => false,
             _ => true,
         }
     }
@@ -214,24 +219,28 @@ impl ResourceDescription {
     }
 }
 
-impl PartialOrd for ResourceDescription {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for ResourceDescription {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (self.name(), self.id()).cmp(&(other.name(), other.id()))
-    }
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourceDescription {
     Dns(ResourceDescriptionDns),
     Cidr(ResourceDescriptionCidr),
     Internet(ResourceDescriptionInternet),
+}
+
+impl ResourceDescription {
+    pub fn into_dns(self) -> Option<ResourceDescriptionDns> {
+        match self {
+            ResourceDescription::Dns(d) => Some(d),
+            ResourceDescription::Cidr(_) | ResourceDescription::Internet(_) => None,
+        }
+    }
+
+    pub fn into_cidr(self) -> Option<ResourceDescriptionCidr> {
+        match self {
+            ResourceDescription::Cidr(c) => Some(c),
+            ResourceDescription::Dns(_) | ResourceDescription::Internet(_) => None,
+        }
+    }
 }
 
 #[cfg(test)]

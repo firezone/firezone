@@ -28,6 +28,16 @@
     @apply overflow-x-auto rounded text-sm;
   }
 
+  .fade-side {
+    mask-image: linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0) 0%,
+      rgb(0, 0, 0) 35%,
+      rgb(0, 0, 0) 65%,
+      rgba(0, 0, 0, 0) 100%
+    );
+  }
+
   /* For WebKit browsers (Chrome, Safari) */
   .dark-scroll::-webkit-scrollbar {
     width: 12px; /* Adjust the width of the scrollbar */
@@ -71,5 +81,14 @@
 
   .dark-scroll::-ms-scrollbar-button {
     display: none;
+  }
+
+  @keyframes slide {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-100%);
+    }
   }
 }

@@ -15,7 +15,7 @@ export default function SummaryCard({
 }: {
   children: React.ReactNode;
   date: string;
-  href: Route<string>;
+  href: URL | Route<string>;
   title: string;
   authorName: string;
   authorAvatarSrc: string;
@@ -44,7 +44,14 @@ export default function SummaryCard({
           />
           <span className="font-medium">{authorName}</span>
         </div>
-        <ActionLink href={href}>Read more</ActionLink>
+        <ActionLink
+          color="neutral-900"
+          transitionColor="primary-450"
+          href={href}
+          size="lg"
+        >
+          Read more
+        </ActionLink>
       </div>
     </article>
   );

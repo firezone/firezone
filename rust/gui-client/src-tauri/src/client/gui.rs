@@ -10,7 +10,10 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
-use firezone_headless_client::{IpcClientMsg, IpcServerMsg};
+use firezone_headless_client::{
+    IpcClientMsg::{self, SetDisabledResources},
+    IpcServerMsg, IpcServiceError, LogFilterReloader,
+};
 use secrecy::{ExposeSecret, SecretString};
 use std::{
     path::PathBuf,
@@ -67,7 +70,7 @@ pub(crate) struct Managed {
 pub(crate) fn run(
     cli: client::Cli,
     advanced_settings: settings::AdvancedSettings,
-    reloader: logging::Reloader,
+    reloader: LogFilterReloader,
 ) -> Result<(), Error> {
     // Need to keep this alive so crashes will be handled. Dropping detaches it.
     let _crash_handler = match client::crash_handling::attach_handler() {
@@ -481,7 +484,7 @@ struct Controller {
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
-    log_filter_reloader: logging::Reloader,
+    log_filter_reloader: LogFilterReloader,
     status: Status,
     tray: system_tray::Tray,
     uptime: client::uptime::Tracker,
@@ -506,8 +509,6 @@ impl Controller {
         // Change the status after we begin connecting
         self.status = Status::Connecting { start_instant };
         self.refresh_system_tray_menu()?;
-
-        ran_before::set().await?;
         Ok(())
     }
 
@@ -534,8 +535,9 @@ impl Controller {
                 self.log_filter_reloader
                     .reload(filter)
                     .context("Couldn't reload log filter")?;
+                self.ipc_client.send_msg(&IpcClientMsg::ReloadLogFilter).await?;
                 tracing::debug!(
-                    "Applied new settings. Log level will take effect immediately for the GUI and later for the IPC service."
+                    "Applied new settings. Log level will take effect immediately."
                 );
                 // Refresh the menu in case the favorites were reset.
                 self.refresh_system_tray_menu()?;
@@ -621,6 +623,14 @@ impl Controller {
                 self.advanced_settings.favorite_resources.remove(&resource_id);
                 self.refresh_favorite_resources().await?;
             }
+            Req::SystemTrayMenu(TrayMenuEvent::EnableResource(resource_id)) => {
+                self.advanced_settings.disabled_resources.remove(&resource_id);
+                self.update_disabled_resources().await?;
+            }
+            Req::SystemTrayMenu(TrayMenuEvent::DisableResource(resource_id)) => {
+                self.advanced_settings.disabled_resources.insert(resource_id);
+                self.update_disabled_resources().await?;
+            }
             Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
                 self.show_window(window)?;
                 // When the About or Settings windows are hidden / shown, log the
@@ -673,6 +683,16 @@ impl Controller {
                 })?;
                 Ok(())
             }
+            IpcServerMsg::ConnectResult(result) => match result {
+                Ok(()) => Ok(ran_before::set().await?),
+                Err(IpcServiceError::PortalConnection(s)) => Err(Error::PortalConnection(s)),
+                Err(error) => {
+                    tracing::error!(?error, "Failed to connect to Firezone");
+                    Err(Error::Other(anyhow!(
+                        "Failed to connect to Firezone for non-Portal-related reason"
+                    )))
+                }
+            },
             IpcServerMsg::OnDisconnect {
                 error_msg,
                 is_authentication_error,
@@ -716,6 +736,9 @@ impl Controller {
                 if let Err(error) = self.refresh_system_tray_menu() {
                     tracing::error!(?error, "Failed to refresh Resource list");
                 }
+
+                self.update_disabled_resources().await?;
+
                 Ok(())
             }
             IpcServerMsg::TerminatingGracefully => {
@@ -724,6 +747,27 @@ impl Controller {
                 Err(Error::IpcServiceTerminating)
             }
         }
+    }
+
+    async fn update_disabled_resources(&mut self) -> Result<()> {
+        settings::save(&self.advanced_settings).await?;
+
+        let Status::TunnelReady { resources } = &self.status else {
+            bail!("Tunnel is not ready");
+        };
+
+        let disabled_resources = resources
+            .iter()
+            .filter_map(|r| r.can_be_disabled().then_some(r.id()))
+            .filter(|id| self.advanced_settings.disabled_resources.contains(id))
+            .collect();
+
+        self.ipc_client
+            .send_msg(&SetDisabledResources(disabled_resources))
+            .await?;
+        self.refresh_system_tray_menu()?;
+
+        Ok(())
     }
 
     /// Saves the current settings (including favorites) to disk and refreshes the tray menu
@@ -748,6 +792,7 @@ impl Controller {
                     system_tray::AppState::SignedIn(system_tray::SignedIn {
                         actor_name: &auth_session.actor_name,
                         favorite_resources: &self.advanced_settings.favorite_resources,
+                        disabled_resources: &self.advanced_settings.disabled_resources,
                         resources,
                     })
                 }
@@ -806,7 +851,7 @@ async fn run_controller(
     ctlr_tx: CtlrTx,
     mut rx: mpsc::Receiver<ControllerRequest>,
     advanced_settings: AdvancedSettings,
-    log_filter_reloader: logging::Reloader,
+    log_filter_reloader: LogFilterReloader,
 ) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");
     let ipc_client = ipc::Client::new(ctlr_tx.clone()).await?;

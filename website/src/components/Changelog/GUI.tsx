@@ -14,17 +14,36 @@ export default function GUI({ title }: { title: string }) {
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This cannot be done when the issue's PR merges. */}
       {/*
-      <Entry version="1.2.0" date={new Date("Invalid date")}>
+      <Entry version="1.2.1" date={new Date("")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6409">
+            Shows an error if there's no Internet at startup
+          </ChangeItem>
+        </ul>
+      </Entry>
+      */}
+      <Entry version="1.2.0" date={new Date("2024-08-21")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="5901">
             Implements glob-like matching of domains for DNS resources.
           </ChangeItem>
           <ChangeItem enable={title === "Windows"} pull="6280">
-            Fixes a bug where the "Clear Logs" button did not clear the IPC service logs.
+            Fixes a bug where the "Clear Logs" button did not clear the IPC
+            service logs.
+          </ChangeItem>
+          <ChangeItem enable={title === "Windows"} pull="6308">
+            Fixes a bug where the GUI could not run if the user is Administrator
+          </ChangeItem>
+          <ChangeItem pull="6351">
+            The log filter on the IPC service is now reloaded immediately when
+            you change the setting in the GUI.
+          </ChangeItem>
+          <ChangeItem pull="6361">
+            Connections to Gateways are now sticky for the duration of the
+            Client's session to fix issues with long-lived TCP connections.
           </ChangeItem>
         </ul>
       </Entry>
-      */}
       <Entry version="1.1.12" date={new Date("2024-08-13")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6226">

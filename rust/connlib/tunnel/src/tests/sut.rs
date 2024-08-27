@@ -18,19 +18,16 @@ use connlib_shared::{
     messages::{ClientId, GatewayId, Interface, RelayId},
     DomainName,
 };
-use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
+use std::collections::BTreeSet;
 use std::iter;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     net::IpAddr,
     time::{Duration, Instant},
 };
 use tracing::debug_span;
-use tracing::subscriber::DefaultGuard;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::{util::SubscriberInitExt as _, EnvFilter};
 
 /// The actual system-under-test.
 ///
@@ -45,29 +42,11 @@ pub(crate) struct TunnelTest {
 
     drop_direct_client_traffic: bool,
     network: RoutingTable,
-
-    #[allow(dead_code)]
-    logger: DefaultGuard,
 }
 
-impl StateMachineTest for TunnelTest {
-    type SystemUnderTest = Self;
-    type Reference = ReferenceState;
-
+impl TunnelTest {
     // Initialize the system under test from our reference state.
-    fn init_test(
-        ref_state: &<Self::Reference as ReferenceStateMachine>::State,
-    ) -> Self::SystemUnderTest {
-        let flux_capacitor = FluxCapacitor::default();
-
-        let logger = tracing_subscriber::fmt()
-            .with_test_writer()
-            // .with_writer(crate::tests::run_count_appender::appender()) // Useful for diffing logs between runs.
-            .with_timer(flux_capacitor.clone())
-            .with_env_filter(EnvFilter::from_default_env())
-            .finish()
-            .set_default();
-
+    pub(crate) fn init_test(ref_state: &ReferenceState, flux_capacitor: FluxCapacitor) -> Self {
         // Construct client, gateway and relay from the initial state.
         let mut client = ref_state
             .client
@@ -114,12 +93,11 @@ impl StateMachineTest for TunnelTest {
         }
 
         let mut this = Self {
-            flux_capacitor,
+            flux_capacitor: flux_capacitor.clone(),
             network: ref_state.network.clone(),
             drop_direct_client_traffic: ref_state.drop_direct_client_traffic,
             client,
             gateways,
-            logger,
             relays,
             dns_servers,
         };
@@ -131,11 +109,11 @@ impl StateMachineTest for TunnelTest {
     }
 
     /// Apply a generated state transition to our system under test.
-    fn apply(
-        mut state: Self::SystemUnderTest,
-        ref_state: &<Self::Reference as ReferenceStateMachine>::State,
-        transition: <Self::Reference as ReferenceStateMachine>::Transition,
-    ) -> Self::SystemUnderTest {
+    pub(crate) fn apply(
+        mut state: Self,
+        ref_state: &ReferenceState,
+        transition: Transition,
+    ) -> Self {
         let mut buffered_transmits = BufferedTransmits::default();
         let now = state.flux_capacitor.now();
 
@@ -341,20 +319,7 @@ impl StateMachineTest for TunnelTest {
     }
 
     // Assert against the reference state machine.
-    fn check_invariants(
-        state: &Self::SystemUnderTest,
-        ref_state: &<Self::Reference as ReferenceStateMachine>::State,
-    ) {
-        let _guard = tracing_subscriber::registry()
-            .with(
-                tracing_subscriber::fmt::layer()
-                    .with_test_writer()
-                    .with_timer(state.flux_capacitor.clone()),
-            )
-            .with(PanicOnErrorEvents::default()) // Temporarily install a layer that panics when `_guard` goes out of scope if any of our assertions emitted an error.
-            .with(EnvFilter::from_default_env())
-            .set_default();
-
+    pub(crate) fn check_invariants(state: &Self, ref_state: &ReferenceState) {
         let ref_client = ref_state.client.inner();
         let sim_client = state.client.inner();
         let sim_gateways = state
@@ -495,7 +460,7 @@ impl TunnelTest {
 
     fn handle_timeout(
         &mut self,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
         buffered_transmits: &mut BufferedTransmits,
     ) {
         let now = self.flux_capacitor.now();
@@ -624,7 +589,7 @@ impl TunnelTest {
         src: ClientId,
         event: ClientEvent,
         portal: &StubPortal,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
     ) {
         let now = self.flux_capacitor.now();
 

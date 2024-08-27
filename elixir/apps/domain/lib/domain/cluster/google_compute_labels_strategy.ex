@@ -59,48 +59,56 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
   end
 
   defp load(%State{topology: topology, meta: %Meta{} = meta} = state) do
-    {:ok, nodes, state} = fetch_nodes(state)
-    new_nodes = MapSet.new(nodes)
-    added_nodes = MapSet.difference(new_nodes, meta.nodes)
-    removed_nodes = MapSet.difference(state.meta.nodes, new_nodes)
+    with {:ok, nodes, state} <- fetch_nodes(state) do
+      new_nodes = MapSet.new(nodes)
+      added_nodes = MapSet.difference(new_nodes, meta.nodes)
+      removed_nodes = MapSet.difference(state.meta.nodes, new_nodes)
 
-    new_nodes =
-      case Cluster.Strategy.disconnect_nodes(
-             topology,
-             state.disconnect,
-             state.list_nodes,
-             MapSet.to_list(removed_nodes)
-           ) do
-        :ok ->
-          new_nodes
+      new_nodes =
+        case Cluster.Strategy.disconnect_nodes(
+               topology,
+               state.disconnect,
+               state.list_nodes,
+               MapSet.to_list(removed_nodes)
+             ) do
+          :ok ->
+            new_nodes
 
-        {:error, bad_nodes} ->
-          # Add back the nodes which should have been removed_nodes, but which couldn't be for some reason
-          Enum.reduce(bad_nodes, new_nodes, fn {n, _}, acc ->
-            MapSet.put(acc, n)
-          end)
-      end
+          {:error, bad_nodes} ->
+            # Add back the nodes which should have been removed_nodes, but which couldn't be for some reason
+            Enum.reduce(bad_nodes, new_nodes, fn {n, _}, acc ->
+              MapSet.put(acc, n)
+            end)
+        end
 
-    new_nodes =
-      case Cluster.Strategy.connect_nodes(
-             topology,
-             state.connect,
-             state.list_nodes,
-             MapSet.to_list(added_nodes)
-           ) do
-        :ok ->
-          new_nodes
+      new_nodes =
+        case Cluster.Strategy.connect_nodes(
+               topology,
+               state.connect,
+               state.list_nodes,
+               MapSet.to_list(added_nodes)
+             ) do
+          :ok ->
+            new_nodes
 
-        {:error, bad_nodes} ->
-          # Remove the nodes which should have been added_nodes, but couldn't be for some reason
-          Enum.reduce(bad_nodes, new_nodes, fn {n, _}, acc ->
-            MapSet.delete(acc, n)
-          end)
-      end
+          {:error, bad_nodes} ->
+            # Remove the nodes which should have been added_nodes, but couldn't be for some reason
+            Enum.reduce(bad_nodes, new_nodes, fn {n, _}, acc ->
+              MapSet.delete(acc, n)
+            end)
+        end
 
-    Process.send_after(self(), :load, polling_interval(state))
+      Process.send_after(self(), :load, polling_interval(state))
 
-    %State{state | meta: %{state.meta | nodes: new_nodes}}
+      %State{state | meta: %{state.meta | nodes: new_nodes}}
+    else
+      {:error, reason} ->
+        Logger.error("Can't fetch list of nodes: #{inspect(reason)}",
+          module: __MODULE__
+        )
+
+        state
+    end
   end
 
   @doc false

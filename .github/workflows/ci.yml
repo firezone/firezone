@@ -46,13 +46,13 @@ jobs:
       matrix:
         include:
           # mark:next-gateway-version
-          - release_name: gateway-1.2.0
+          - release_name: gateway-1.2.1
             config_name: release-drafter-gateway.yml
           # mark:next-headless-version
-          - release_name: headless-client-1.2.0
+          - release_name: headless-client-1.2.1
             config_name: release-drafter-headless-client.yml
           # mark:next-gui-version
-          - release_name: gui-client-1.2.0
+          - release_name: gui-client-1.2.1
             config_name: release-drafter-gui-client.yml
     steps:
       - uses: release-drafter/release-drafter@v6
@@ -101,36 +101,6 @@ jobs:
       client_image: ${{ needs.build-artifacts.outputs.client_image }}
       relay_image: ${{ needs.build-artifacts.outputs.relay_image }}
       http_test_server_image: ${{ needs.build-artifacts.outputs.http_test_server_image }}
-
-  snownet-tests:
-    needs: build-artifacts
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
-    name: snownet-tests-${{ matrix.name }}
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: read
-      id-token: write
-      pull-requests: write
-    env:
-      RELAY_TAG: ${{ github.sha }}
-      SNOWNET_TAG: ${{ github.sha }}
-    strategy:
-      fail-fast: false
-      matrix:
-        name:
-          - lan
-          - wan-hp
-          - wan-relay
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/gcp-docker-login
-        id: login
-        with:
-          project: firezone-staging
-      - name: Run docker-compose.${{ matrix.name }}.yml test
-        run: |
-          sudo sysctl -w vm.overcommit_memory=1
-          timeout 600 docker compose -f rust/tests/snownet-tests/docker-compose.${{ matrix.name }}.yml up --exit-code-from dialer --abort-on-container-exit
 
   compatibility-tests:
     strategy:

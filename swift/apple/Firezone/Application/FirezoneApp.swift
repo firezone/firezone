@@ -13,13 +13,16 @@ struct FirezoneApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
   #endif
 
+  @StateObject var favorites: Favorites
   @StateObject var appViewModel: AppViewModel
   @StateObject var store: Store
 
   init() {
+    let favorites = Favorites()
     let store = Store()
+    _favorites = StateObject(wrappedValue: favorites)
     _store = StateObject(wrappedValue: store)
-    _appViewModel = StateObject(wrappedValue: AppViewModel(store: store))
+    _appViewModel = StateObject(wrappedValue: AppViewModel(favorites: favorites, store: store))
 
     #if os(macOS)
       appDelegate.store = store
@@ -49,7 +52,7 @@ struct FirezoneApp: App {
       "Settings",
       id: AppViewModel.WindowDefinition.settings.identifier
     ) {
-      SettingsView(model: SettingsViewModel(store: store))
+      SettingsView(favorites: appDelegate.favorites, model: SettingsViewModel(store: store))
     }
     .handlesExternalEvents(
       matching: [AppViewModel.WindowDefinition.settings.externalEventMatchString]
@@ -61,12 +64,13 @@ struct FirezoneApp: App {
 #if os(macOS)
   @MainActor
   final class AppDelegate: NSObject, NSApplicationDelegate {
+    var favorites: Favorites = Favorites()
     var menuBar: MenuBar?
     public var store: Store?
 
     func applicationDidFinishLaunching(_: Notification) {
       if let store = store {
-        menuBar = MenuBar(model: SessionViewModel(store: store))
+        menuBar = MenuBar(model: SessionViewModel(favorites: favorites, store: store))
       }
 
       // SwiftUI will show the first window group, so close it on launch

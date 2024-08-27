@@ -34,26 +34,27 @@ export default function ActionLink({
 }: {
   size?: SizeKey;
   children: React.ReactNode;
-  href: Route<string>;
+  href: URL | Route<string>;
   color?: string;
   transitionColor?: string;
   border?: boolean;
 }) {
+  // XXX: There seems to be a Tailwind bug where the border color is not
+  // being applied below. The CSS checks out but the color defaults to gray.
   const linkClasses = `
-    group inline-flex justify-center items-center py-2 font-semibold duration-50
-    transform transition tracking-tight font-medium
+    group inline-flex justify-center items-center py-2 font-semibold
+    tracking-tight font-medium
     text-${color}
     ${Size[size].link}
-    ${border && `${Size[size].border} border-b-${color}`}
+    ${border && `${Size[size].border} border-current`}
     ${(transitionColor && `hover:text-${transitionColor}`) || ""}
-    ${(border && transitionColor && `hover:border-${transitionColor}`) || ""}
+    ${border && transitionColor ? `hover:border-${transitionColor}` : ""}
   `;
 
   const iconClasses = `
-    group-hover:translate-x-1 group-hover:scale-110 duration-100 transform
-    transition
-    ${Size[size].icon}
+    group-hover:translate-x-1 group-hover:scale-110 duration-50 transform transition
     ${(transitionColor && `group-hover:text-${transitionColor}`) || ""}
+    ${Size[size].icon}
   `;
 
   return (

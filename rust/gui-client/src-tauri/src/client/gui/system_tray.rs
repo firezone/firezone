@@ -37,6 +37,8 @@ const RESOURCES: &str = "Resources";
 const OTHER_RESOURCES: &str = "Other Resources";
 const SIGN_OUT: &str = "Sign out";
 const DISCONNECT_AND_QUIT: &str = "Disconnect and quit Firezone";
+const DISABLE: &str = "Disable this resource";
+const ENABLE: &str = "Enable this resource";
 
 pub(crate) fn loading() -> SystemTray {
     SystemTray::new()
@@ -62,6 +64,7 @@ pub(crate) struct SignedIn<'a> {
     pub(crate) actor_name: &'a str,
     pub(crate) favorite_resources: &'a HashSet<ResourceId>,
     pub(crate) resources: &'a [ResourceDescription],
+    pub(crate) disabled_resources: &'a HashSet<ResourceId>,
 }
 
 impl<'a> SignedIn<'a> {
@@ -72,19 +75,30 @@ impl<'a> SignedIn<'a> {
     /// Builds the submenu that has the resource address, name, desc,
     /// sites online, etc.
     fn resource_submenu(&self, res: &ResourceDescription) -> Menu {
-        let submenu = Menu::default().add_item(resource_header(res));
+        let mut submenu = Menu::default();
 
-        let submenu = submenu
+        submenu.add_item(resource_header(res));
+
+        let mut submenu = submenu
             .separator()
             .disabled("Resource")
             .copyable(res.name())
             .copyable(res.pastable().as_ref());
 
-        let submenu = if self.is_favorite(res) {
-            submenu.add_item(item(Event::RemoveFavorite(res.id()), REMOVE_FAVORITE).selected())
+        if self.is_favorite(res) {
+            submenu.add_item(item(Event::RemoveFavorite(res.id()), REMOVE_FAVORITE).selected());
         } else {
-            submenu.item(Event::AddFavorite(res.id()), ADD_FAVORITE)
-        };
+            submenu.add_item(item(Event::AddFavorite(res.id()), ADD_FAVORITE));
+        }
+
+        if res.can_be_disabled() {
+            submenu.add_separator();
+            if self.is_enabled(res) {
+                submenu.add_item(item(Event::DisableResource(res.id()), DISABLE));
+            } else {
+                submenu.add_item(item(Event::EnableResource(res.id()), ENABLE));
+            }
+        }
 
         if let Some(site) = res.sites().first() {
             // Emojis may be causing an issue on some Ubuntu desktop environments.
@@ -102,6 +116,10 @@ impl<'a> SignedIn<'a> {
         } else {
             submenu
         }
+    }
+
+    fn is_enabled(&self, res: &ResourceDescription) -> bool {
+        !self.disabled_resources.contains(&res.id())
     }
 }
 
@@ -207,6 +225,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         actor_name,
         favorite_resources,
         resources, // Make sure these are presented in the order we receive them
+        ..
     } = signed_in;
 
     let has_any_favorites = resources
@@ -270,6 +289,30 @@ mod tests {
     use anyhow::Result;
     use std::str::FromStr as _;
 
+    impl Menu {
+        fn selected_item<E: Into<Option<Event>>, S: Into<String>>(
+            mut self,
+            id: E,
+            title: S,
+        ) -> Self {
+            self.add_item(item(id, title).selected());
+            self
+        }
+    }
+
+    fn signed_in<'a>(
+        resources: &'a [ResourceDescription],
+        favorite_resources: &'a HashSet<ResourceId>,
+        disabled_resources: &'a HashSet<ResourceId>,
+    ) -> AppState<'a> {
+        AppState::SignedIn(SignedIn {
+            actor_name: "Jane Doe",
+            favorite_resources,
+            resources,
+            disabled_resources,
+        })
+    }
+
     fn resources() -> Vec<ResourceDescription> {
         let s = r#"[
             {
@@ -280,7 +323,7 @@ mod tests {
                 "address_description": "cidr resource",
                 "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                 "status": "Unknown",
-                "can_toggle": false
+                "can_be_disabled": false
             },
             {
                 "id": "03000143-e25e-45c7-aafb-144990e57dcd",
@@ -290,17 +333,16 @@ mod tests {
                 "address_description": "https://gitlab.mycorp.com",
                 "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                 "status": "Online",
-                "can_toggle": false
+                "can_be_disabled": false
             },
             {
                 "id": "1106047c-cd5d-4151-b679-96b93da7383b",
                 "type": "internet",
-                "name": "internet",
-                "address": "0.0.0.0/0",
-                "address_description": "The whole entire Internet",
+                "name": "Internet Resource",
+                "address": "All internet addresses",
                 "sites": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
                 "status": "Offline",
-                "can_toggle": false
+                "can_be_disabled": false
             }
         ]"#;
 
@@ -311,11 +353,8 @@ mod tests {
     fn no_resources_no_favorites() {
         let resources = vec![];
         let favorites = Default::default();
-        let input = AppState::SignedIn(SignedIn {
-            actor_name: "Jane Doe",
-            favorite_resources: &favorites,
-            resources: &resources,
-        });
+        let disabled_resources = Default::default();
+        let input = signed_in(&resources, &favorites, &disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -336,11 +375,8 @@ mod tests {
     fn no_resources_invalid_favorite() {
         let resources = vec![];
         let favorites = HashSet::from([ResourceId::from_u128(42)]);
-        let input = AppState::SignedIn(SignedIn {
-            actor_name: "Jane Doe",
-            favorite_resources: &favorites,
-            resources: &resources,
-        });
+        let disabled_resources = Default::default();
+        let input = signed_in(&resources, &favorites, &disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -361,11 +397,8 @@ mod tests {
     fn some_resources_no_favorites() {
         let resources = resources();
         let favorites = Default::default();
-        let input = AppState::SignedIn(SignedIn {
-            actor_name: "Jane Doe",
-            favorite_resources: &favorites,
-            resources: &resources,
-        });
+        let disabled_resources = Default::default();
+        let input = signed_in(&resources, &favorites, &disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -414,12 +447,12 @@ mod tests {
                     .copyable(GATEWAY_CONNECTED),
             )
             .add_submenu(
-                "Internet",
+                "Internet Resource",
                 Menu::default()
                     .copyable("")
                     .separator()
                     .disabled("Resource")
-                    .copyable("Internet")
+                    .copyable("Internet Resource")
                     .copyable("")
                     .item(
                         Event::AddFavorite(
@@ -447,11 +480,8 @@ mod tests {
         let favorites = HashSet::from([ResourceId::from_str(
             "03000143-e25e-45c7-aafb-144990e57dcd",
         )?]);
-        let input = AppState::SignedIn(SignedIn {
-            actor_name: "Jane Doe",
-            favorite_resources: &favorites,
-            resources: &resources,
-        });
+        let disabled_resources = Default::default();
+        let input = signed_in(&resources, &favorites, &disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -469,14 +499,11 @@ mod tests {
                     .disabled("Resource")
                     .copyable("MyCorp GitLab")
                     .copyable("gitlab.mycorp.com")
-                    .add_item(
-                        item(
-                            Event::RemoveFavorite(ResourceId::from_str(
-                                "03000143-e25e-45c7-aafb-144990e57dcd",
-                            )?),
-                            REMOVE_FAVORITE,
-                        )
-                        .selected(),
+                    .selected_item(
+                        Event::RemoveFavorite(ResourceId::from_str(
+                            "03000143-e25e-45c7-aafb-144990e57dcd",
+                        )?),
+                        REMOVE_FAVORITE,
                     )
                     .separator()
                     .disabled("Site")
@@ -507,12 +534,12 @@ mod tests {
                             .copyable(NO_ACTIVITY),
                     )
                     .add_submenu(
-                        "Internet",
+                        "Internet Resource",
                         Menu::default()
                             .copyable("")
                             .separator()
                             .disabled("Resource")
-                            .copyable("Internet")
+                            .copyable("Internet Resource")
                             .copyable("")
                             .item(
                                 Event::AddFavorite(ResourceId::from_str(
@@ -544,11 +571,8 @@ mod tests {
         let favorites = HashSet::from([ResourceId::from_str(
             "00000000-0000-0000-0000-000000000000",
         )?]);
-        let input = AppState::SignedIn(SignedIn {
-            actor_name: "Jane Doe",
-            favorite_resources: &favorites,
-            resources: &resources,
-        });
+        let disabled_resources = Default::default();
+        let input = signed_in(&resources, &favorites, &disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -597,12 +621,12 @@ mod tests {
                     .copyable(GATEWAY_CONNECTED),
             )
             .add_submenu(
-                "Internet",
+                "Internet Resource",
                 Menu::default()
                     .copyable("")
                     .separator()
                     .disabled("Resource")
-                    .copyable("Internet")
+                    .copyable("Internet Resource")
                     .copyable("")
                     .item(
                         Event::AddFavorite(ResourceId::from_str(

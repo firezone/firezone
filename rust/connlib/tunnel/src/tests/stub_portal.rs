@@ -16,7 +16,7 @@ use proptest::{
     strategy::{Just, Strategy},
 };
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
@@ -25,12 +25,12 @@ use std::{
 #[derive(Clone, derivative::Derivative)]
 #[derivative(Debug)]
 pub(crate) struct StubPortal {
-    gateways_by_site: HashMap<client::SiteId, HashSet<GatewayId>>,
+    gateways_by_site: BTreeMap<client::SiteId, BTreeSet<GatewayId>>,
 
     #[derivative(Debug = "ignore")]
-    sites_by_resource: HashMap<ResourceId, client::SiteId>,
-    cidr_resources: HashMap<ResourceId, client::ResourceDescriptionCidr>,
-    dns_resources: HashMap<ResourceId, client::ResourceDescriptionDns>,
+    sites_by_resource: BTreeMap<ResourceId, client::SiteId>,
+    cidr_resources: BTreeMap<ResourceId, client::ResourceDescriptionCidr>,
+    dns_resources: BTreeMap<ResourceId, client::ResourceDescriptionDns>,
     internet_resource: client::ResourceDescriptionInternet,
 
     #[derivative(Debug = "ignore")]
@@ -39,20 +39,20 @@ pub(crate) struct StubPortal {
 
 impl StubPortal {
     pub(crate) fn new(
-        gateways_by_site: HashMap<client::SiteId, HashSet<GatewayId>>,
+        gateways_by_site: BTreeMap<client::SiteId, BTreeSet<GatewayId>>,
         gateway_selector: Selector,
-        cidr_resources: HashSet<client::ResourceDescriptionCidr>,
-        dns_resources: HashSet<client::ResourceDescriptionDns>,
+        cidr_resources: BTreeSet<client::ResourceDescriptionCidr>,
+        dns_resources: BTreeSet<client::ResourceDescriptionDns>,
         internet_resource: client::ResourceDescriptionInternet,
     ) -> Self {
         let cidr_resources = cidr_resources
             .into_iter()
             .map(|r| (r.id, r))
-            .collect::<HashMap<_, _>>();
+            .collect::<BTreeMap<_, _>>();
         let dns_resources = dns_resources
             .into_iter()
             .map(|r| (r.id, r))
-            .collect::<HashMap<_, _>>();
+            .collect::<BTreeMap<_, _>>();
 
         let cidr_sites = cidr_resources.iter().map(|(id, r)| {
             (
@@ -87,7 +87,9 @@ impl StubPortal {
         Self {
             gateways_by_site,
             gateway_selector,
-            sites_by_resource: HashMap::from_iter(cidr_sites.chain(dns_sites).chain(internet_site)),
+            sites_by_resource: BTreeMap::from_iter(
+                cidr_sites.chain(dns_sites).chain(internet_site),
+            ),
             cidr_resources,
             dns_resources,
             internet_resource,
@@ -105,10 +107,9 @@ impl StubPortal {
                     .cloned()
                     .map(client::ResourceDescription::Dns),
             )
-            // TODO: Enable once we actually implement the Internet resource
-            // .chain(iter::once(client::ResourceDescription::Internet(
-            //     self.internet_resource.clone(),
-            // )))
+            .chain(iter::once(client::ResourceDescription::Internet(
+                self.internet_resource.clone(),
+            )))
             .collect()
     }
 
@@ -116,7 +117,7 @@ impl StubPortal {
     pub(crate) fn handle_connection_intent(
         &self,
         resource: ResourceId,
-        _connected_gateway_ids: HashSet<GatewayId>,
+        _connected_gateway_ids: BTreeSet<GatewayId>,
     ) -> (GatewayId, client::SiteId) {
         let site_id = self
             .sites_by_resource
@@ -205,7 +206,7 @@ impl StubPortal {
 
     pub(crate) fn dns_resource_records(
         &self,
-    ) -> impl Strategy<Value = HashMap<DomainName, HashSet<IpAddr>>> {
+    ) -> impl Strategy<Value = BTreeMap<DomainName, BTreeSet<IpAddr>>> {
         self.dns_resources
             .values()
             .map(|resource| {
@@ -221,14 +222,14 @@ impl StubPortal {
                     }
                     _ => resolved_ips()
                         .prop_map(move |resolved_ips| {
-                            HashMap::from([(address.parse().unwrap(), resolved_ips)])
+                            BTreeMap::from([(address.parse().unwrap(), resolved_ips)])
                         })
                         .boxed(),
                 }
             })
             .collect::<Vec<_>>()
             .prop_map(|records| {
-                let mut map = HashMap::default();
+                let mut map = BTreeMap::default();
 
                 for record in records {
                     map.extend(record)

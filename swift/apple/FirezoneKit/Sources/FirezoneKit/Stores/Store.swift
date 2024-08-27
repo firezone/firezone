@@ -142,7 +142,7 @@ public final class Store: ObservableObject {
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
   // so we need to periodically ask the tunnel process for them.
-  func beginUpdatingResources(callback: @escaping ([Resource]) -> Void) {
+  func beginUpdatingResources(callback: @escaping (ResourceList) -> Void) {
     Log.app.log("\(#function)")
 
     tunnelManager.fetchResources(callback: callback)

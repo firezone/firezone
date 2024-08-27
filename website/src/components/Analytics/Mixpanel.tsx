@@ -2,17 +2,20 @@
 
 import { useEffect, Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useMixpanel } from "react-mixpanel-browser";
+import mixpanel from "mixpanel-browser";
 import { HubSpotSubmittedFormData } from "./types";
 
 function _Mixpanel() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const mixpanel = useMixpanel();
+  const mpToken = process.env.NEXT_PUBLIC_MIXPANEL_TOKEN || "";
+  const host = "https://t.firez.one";
 
   useEffect(() => {
     if (!pathname) return;
     if (!mixpanel) return;
+
+    mixpanel.init(mpToken, { api_host: host });
 
     let url = window.origin + pathname;
     if (searchParams.toString()) {
