@@ -892,11 +892,11 @@ where
         Some(&mut self.connections.initial.get_mut(&id)?.buffered_packets)
     }
 
-    /// Whether we will accept a packet in [`Node::encapsulate`].
+    /// Whether we have a connection to the given peer.
     ///
     /// For established connections, packets are directly encapsulated.
     /// For initial connections, packets will be buffered.
-    pub fn accepts_packet(&self, id: TId) -> bool {
+    pub fn has_connection(&self, id: TId) -> bool {
         self.connections.initial.contains_key(&id) || self.connections.established.contains_key(&id)
     }
 

@@ -593,7 +593,7 @@ impl ClientState {
         self.peers
             .add_ips_with_resource(&gateway_id, &ips, &resource_id);
 
-        if !self.node.accepts_packet(gateway_id) {
+        if !self.node.has_connection(gateway_id) {
             let (offer, buffer) = self.node.new_connection(
                 gateway_id,
                 awaiting_connection_details.last_intent_sent_at,
