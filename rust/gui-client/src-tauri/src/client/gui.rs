@@ -424,10 +424,25 @@ pub(crate) enum ControllerRequest {
 enum Status {
     /// Firezone is disconnected.
     Disconnected,
-    /// Firezone is signing in and raising the tunnel.
-    Connecting { start_instant: Instant },
+    /// At least one connection request has failed, due to failing to reach the Portal, and we are waiting for a network change before we try again
+    RetryingConnection {
+        /// The token to log in to the Portal, for retrying the connection request.
+        token: SecretString,
+    },
     /// Firezone is ready to use.
     TunnelReady { resources: Vec<ResourceDescription> },
+    /// Firezone is signing in to the Portal.
+    WaitingForPortal {
+        /// The instant when we sent our most recent connect request.
+        start_instant: Instant,
+        /// The token to log in to the Portal, in case we need to retry the connection request.
+        token: SecretString,
+    },
+    /// Firezone has connected to the Portal and is raising the tunnel.
+    WaitingForTunnel {
+        /// The instant when we sent our most recent connect request.
+        start_instant: Instant,
+    },
 }
 
 impl Default for Status {
@@ -437,12 +452,13 @@ impl Default for Status {
 }
 
 impl Status {
-    /// Returns true if connlib has started, even if it's still signing in.
-    fn connlib_is_up(&self) -> bool {
+    /// Returns true if we want to hear about DNS and network changes.
+    fn needs_network_changes(&self) -> bool {
         match self {
-            Self::Disconnected => false,
-            Self::Connecting { .. } => true,
-            Self::TunnelReady { .. } => true,
+            Status::Disconnected | Status::RetryingConnection { .. } => false,
+            Status::TunnelReady { .. }
+            | Status::WaitingForPortal { .. }
+            | Status::WaitingForTunnel { .. } => true,
         }
     }
 }
@@ -464,10 +480,14 @@ struct Controller {
 
 impl Controller {
     async fn start_session(&mut self, token: SecretString) -> Result<(), Error> {
-        if self.status.connlib_is_up() {
-            Err(anyhow::anyhow!(
+        match self.status {
+            Status::Disconnected | Status::RetryingConnection { .. } => {}
+            Status::TunnelReady { .. } => Err(anyhow!(
                 "Can't connect to Firezone, we're already connected."
-            ))?;
+            ))?,
+            Status::WaitingForPortal { .. } | Status::WaitingForTunnel { .. } => Err(anyhow!(
+                "Can't connect to Firezone, we're already connecting."
+            ))?,
         }
 
         let api_url = self.advanced_settings.api_url.clone();
@@ -476,10 +496,13 @@ impl Controller {
         // Count the start instant from before we connect
         let start_instant = Instant::now();
         self.ipc_client
-            .connect_to_firezone(api_url.as_str(), token)
+            .connect_to_firezone(api_url.as_str(), token.expose_secret().clone().into())
             .await?;
         // Change the status after we begin connecting
-        self.status = Status::Connecting { start_instant };
+        self.status = Status::WaitingForPortal {
+            start_instant,
+            token,
+        };
         self.refresh_system_tray_menu()?;
         Ok(())
     }
@@ -578,23 +601,24 @@ impl Controller {
                 .context("Couldn't copy resource URL or other text to clipboard")?,
             Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn) => {
                 match &self.status {
-                    Status::Disconnected => {
+                    Status::Disconnected | Status::RetryingConnection { .. } | Status::WaitingForPortal { .. } => {
                         tracing::info!("Calling `sign_out` to cancel sign-in");
                         self.sign_out().await?;
                     }
-                    Status::Connecting { start_instant: _ } => {
+                    Status::TunnelReady{..} => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
+                    Status::WaitingForTunnel { .. } => {
                         tracing::warn!(
                             "Connlib is already raising the tunnel, calling `sign_out` anyway"
                         );
                         self.sign_out().await?;
                     }
-                    Status::TunnelReady{..} => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
                 }
             }
             Req::SystemTrayMenu(TrayMenuEvent::RemoveFavorite(resource_id)) => {
                 self.advanced_settings.favorite_resources.remove(&resource_id);
                 self.refresh_favorite_resources().await?;
             }
+            Req::SystemTrayMenu(TrayMenuEvent::RetryPortalConnection) => self.try_retry_connection().await?,
             Req::SystemTrayMenu(TrayMenuEvent::EnableResource(resource_id)) => {
                 self.advanced_settings.disabled_resources.remove(&resource_id);
                 self.update_disabled_resources().await?;
@@ -655,16 +679,7 @@ impl Controller {
                 })?;
                 Ok(())
             }
-            IpcServerMsg::ConnectResult(result) => match result {
-                Ok(()) => Ok(ran_before::set().await?),
-                Err(IpcServiceError::PortalConnection(s)) => Err(Error::PortalConnection(s)),
-                Err(error) => {
-                    tracing::error!(?error, "Failed to connect to Firezone");
-                    Err(Error::Other(anyhow!(
-                        "Failed to connect to Firezone for non-Portal-related reason"
-                    )))
-                }
-            },
+            IpcServerMsg::ConnectResult(result) => self.handle_connect_result(result).await,
             IpcServerMsg::OnDisconnect {
                 error_msg,
                 is_authentication_error,
@@ -688,25 +703,10 @@ impl Controller {
                 Ok(())
             }
             IpcServerMsg::OnUpdateResources(resources) => {
-                if self.auth.session().is_none() {
-                    // This could happen if the user cancels the sign-in
-                    // before it completes. This is because the state machine
-                    // between the GUI, the IPC service, and connlib isn't  perfectly synced.
-                    tracing::error!("Got `UpdateResources` while signed out");
-                    return Ok(());
-                }
                 tracing::debug!(len = resources.len(), "Got new Resources");
-                if let Status::Connecting { start_instant } =
-                    std::mem::replace(&mut self.status, Status::TunnelReady { resources })
-                {
-                    tracing::info!(elapsed = ?start_instant.elapsed(), "Tunnel ready");
-                    os::show_notification(
-                        "Firezone connected",
-                        "You are now signed in and able to access resources.",
-                    )?;
-                }
+                self.status = Status::TunnelReady { resources };
                 if let Err(error) = self.refresh_system_tray_menu() {
-                    tracing::error!(?error, "Failed to refresh Resource list");
+                    tracing::error!(?error, "Failed to refresh menu");
                 }
 
                 self.update_disabled_resources().await?;
@@ -717,6 +717,76 @@ impl Controller {
                 tracing::info!("Caught TerminatingGracefully");
                 self.tray.set_icon(system_tray::Icon::SignedOut).ok();
                 Err(Error::IpcServiceTerminating)
+            }
+            IpcServerMsg::TunnelReady => {
+                if self.auth.session().is_none() {
+                    // This could maybe happen if the user cancels the sign-in
+                    // before it completes. This is because the state machine
+                    // between the GUI, the IPC service, and connlib isn't  perfectly synced.
+                    tracing::error!("Got `UpdateResources` while signed out");
+                    return Ok(());
+                }
+                if let Status::WaitingForTunnel { start_instant } =
+                    std::mem::replace(&mut self.status, Status::TunnelReady { resources: vec![] })
+                {
+                    tracing::info!(elapsed = ?start_instant.elapsed(), "Tunnel ready");
+                    os::show_notification(
+                        "Firezone connected",
+                        "You are now signed in and able to access resources.",
+                    )?;
+                }
+                if let Err(error) = self.refresh_system_tray_menu() {
+                    tracing::error!(?error, "Failed to refresh menu");
+                }
+
+                Ok(())
+            }
+        }
+    }
+
+    async fn handle_connect_result(
+        &mut self,
+        result: Result<(), IpcServiceError>,
+    ) -> Result<(), Error> {
+        let (start_instant, token) = match &self.status {
+            Status::Disconnected
+            | Status::RetryingConnection { .. }
+            | Status::TunnelReady { .. }
+            | Status::WaitingForTunnel { .. } => {
+                tracing::error!("Impossible logic error, received `ConnectResult` when we weren't waiting on the Portal connection.");
+                return Ok(());
+            }
+            Status::WaitingForPortal {
+                start_instant,
+                token,
+            } => (*start_instant, token.expose_secret().clone().into()),
+        };
+
+        match result {
+            Ok(()) => {
+                ran_before::set().await?;
+                self.status = Status::WaitingForTunnel { start_instant };
+                if let Err(error) = self.refresh_system_tray_menu() {
+                    tracing::error!(?error, "Failed to refresh menu");
+                }
+                Ok(())
+            }
+            Err(IpcServiceError::PortalConnection(error)) => {
+                tracing::warn!(
+                    ?error,
+                    "Failed to connect to Firezone Portal, will try again when the network changes"
+                );
+                self.status = Status::RetryingConnection { token };
+                if let Err(error) = self.refresh_system_tray_menu() {
+                    tracing::error!(?error, "Failed to refresh menu");
+                }
+                Ok(())
+            }
+            Err(error) => {
+                tracing::error!(?error, "Failed to connect to Firezone");
+                Err(Error::Other(anyhow!(
+                    "Failed to connect to Firezone for non-Portal-related reason"
+                )))
             }
         }
     }
@@ -759,7 +829,7 @@ impl Controller {
                     tracing::error!("We have an auth session but no connlib session");
                     system_tray::AppState::SignedOut
                 }
-                Status::Connecting { start_instant: _ } => system_tray::AppState::WaitingForConnlib,
+                Status::RetryingConnection { .. } => system_tray::AppState::RetryingConnection,
                 Status::TunnelReady { resources } => {
                     system_tray::AppState::SignedIn(system_tray::SignedIn {
                         actor_name: &auth_session.actor_name,
@@ -768,6 +838,8 @@ impl Controller {
                         resources,
                     })
                 }
+                Status::WaitingForPortal { .. } => system_tray::AppState::WaitingForPortal,
+                Status::WaitingForTunnel { .. } => system_tray::AppState::WaitingForTunnel,
             }
         } else if self.auth.ongoing_request().is_ok() {
             // Signing in, waiting on deep link callback
@@ -779,20 +851,29 @@ impl Controller {
         Ok(())
     }
 
+    /// If we're in the `RetryingConnection` state, use the token to retry the Portal connection
+    async fn try_retry_connection(&mut self) -> Result<()> {
+        let token = match &self.status {
+            Status::Disconnected
+            | Status::TunnelReady { .. }
+            | Status::WaitingForPortal { .. }
+            | Status::WaitingForTunnel { .. } => return Ok(()),
+            Status::RetryingConnection { token } => token,
+        };
+        tracing::debug!("Retrying Portal connection...");
+        self.start_session(token.expose_secret().clone().into())
+            .await?;
+        Ok(())
+    }
+
     /// Deletes the auth token, stops connlib, and refreshes the tray menu
     async fn sign_out(&mut self) -> Result<()> {
         self.auth.sign_out()?;
-        if self.status.connlib_is_up() {
-            self.status = Status::Disconnected;
-            tracing::debug!("disconnecting connlib");
-            // This is redundant if the token is expired, in that case
-            // connlib already disconnected itself.
-            self.ipc_client.disconnect_from_firezone().await?;
-        } else {
-            // Might just be because we got a double sign-out or
-            // the user canceled the sign-in or something innocent.
-            tracing::info!("Tried to sign out but connlib is not up, cancelled sign-in");
-        }
+        self.status = Status::Disconnected;
+        tracing::debug!("disconnecting connlib");
+        // This is redundant if the token is expired, in that case
+        // connlib already disconnected itself.
+        self.ipc_client.disconnect_from_firezone().await?;
         self.refresh_system_tray_menu()?;
         Ok(())
     }
@@ -873,18 +954,20 @@ async fn run_controller(
         tokio::select! {
             result = network_notifier.notified() => {
                 result?;
-                if controller.status.connlib_is_up() {
-                    tracing::debug!("Internet up/down changed, calling `Session::reconnect`");
-                    controller.ipc_client.reset().await?;
+                if controller.status.needs_network_changes() {
+                    tracing::debug!("Internet up/down changed, calling `Session::reset`");
+                    controller.ipc_client.reset().await?
                 }
+                controller.try_retry_connection().await?
             },
             result = dns_notifier.notified() => {
                 result?;
-                if controller.status.connlib_is_up() {
+                if controller.status.needs_network_changes() {
                     let resolvers = firezone_headless_client::dns_control::system_resolvers_for_gui()?;
                     tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
                     controller.ipc_client.set_dns(resolvers).await?;
                 }
+                controller.try_retry_connection().await?
             },
             req = rx.recv() => {
                 let Some(req) = req else {
