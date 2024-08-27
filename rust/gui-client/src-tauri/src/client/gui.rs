@@ -487,6 +487,8 @@ struct Controller {
     log_filter_reloader: LogFilterReloader,
     status: Status,
     tray: system_tray::Tray,
+    /// URL of a release that's ready to download
+    update_url: Option<Url>,
     uptime: client::uptime::Tracker,
 }
 
@@ -661,7 +663,8 @@ impl Controller {
                 // We don't need to route through the controller here either, we could
                 // use the `open` crate directly instead of Tauri's wrapper
                 // `tauri::api::shell::open`
-                os::show_update_notification(self.ctlr_tx.clone(), &title, release.download_url)?;
+                os::show_update_notification(self.ctlr_tx.clone(), &title, release.download_url.clone())?;
+                self.update_url = Some(release.download_url);
             }
             Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
@@ -781,15 +784,17 @@ impl Controller {
     fn refresh_system_tray_menu(&mut self) -> Result<()> {
         // TODO: Refactor `Controller` and the auth module so that "Are we logged in?"
         // doesn't require such complicated control flow to answer.
-        let menu = if let Some(auth_session) = self.auth.session() {
+        let connlib = if let Some(auth_session) = self.auth.session() {
             match &self.status {
                 Status::Disconnected => {
                     tracing::error!("We have an auth session but no connlib session");
-                    system_tray::AppState::SignedOut
+                    system_tray::ConnlibState::SignedOut
                 }
-                Status::Connecting { start_instant: _ } => system_tray::AppState::WaitingForConnlib,
+                Status::Connecting { start_instant: _ } => {
+                    system_tray::ConnlibState::WaitingForConnlib
+                }
                 Status::TunnelReady { resources } => {
-                    system_tray::AppState::SignedIn(system_tray::SignedIn {
+                    system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
                         actor_name: &auth_session.actor_name,
                         favorite_resources: &self.advanced_settings.favorite_resources,
                         disabled_resources: &self.advanced_settings.disabled_resources,
@@ -799,11 +804,14 @@ impl Controller {
             }
         } else if self.auth.ongoing_request().is_ok() {
             // Signing in, waiting on deep link callback
-            system_tray::AppState::WaitingForBrowser
+            system_tray::ConnlibState::WaitingForBrowser
         } else {
-            system_tray::AppState::SignedOut
+            system_tray::ConnlibState::SignedOut
         };
-        self.tray.update(menu)?;
+        self.tray.update(system_tray::AppState {
+            connlib,
+            update_url: self.update_url.clone(),
+        })?;
         Ok(())
     }
 
@@ -866,6 +874,7 @@ async fn run_controller(
         log_filter_reloader,
         status: Default::default(),
         tray,
+        update_url: None,
         uptime: Default::default(),
     };
 

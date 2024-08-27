@@ -77,9 +77,13 @@ pub(crate) enum Window {
 
 impl Menu {
     /// Appends things that always show, like About, Settings, Help, Quit, etc.
-    pub(crate) fn add_bottom_section(self, quit_text: &str) -> Self {
-        self.separator()
-            .item(Event::ShowWindow(Window::About), "About Firezone")
+    pub(crate) fn add_bottom_section(mut self, update_url: Option<Url>, quit_text: &str) -> Self {
+        self = self.separator();
+        if let Some(url) = update_url {
+            self = self.item(Event::Url(url), "Download update...")
+        }
+
+        self.item(Event::ShowWindow(Window::About), "About Firezone")
             .item(Event::AdminPortal, "Admin Portal...")
             .add_submenu(
                 "Help",

@@ -42,9 +42,13 @@ const DISABLE: &str = "Disable this resource";
 const ENABLE: &str = "Enable this resource";
 
 pub(crate) fn loading() -> SystemTray {
+    let state = AppState {
+        connlib: ConnlibState::Loading,
+        update_url: None,
+    };
     SystemTray::new()
         .with_icon(tauri::Icon::Raw(BUSY_ICON.into()))
-        .with_menu(AppState::Loading.build())
+        .with_menu(state.build())
         .with_tooltip(TOOLTIP)
 }
 
@@ -53,7 +57,12 @@ pub(crate) struct Tray {
     last_icon_set: Icon,
 }
 
-pub(crate) enum AppState<'a> {
+pub(crate) struct AppState<'a> {
+    pub(crate) connlib: ConnlibState<'a>,
+    pub(crate) update_url: Option<Url>,
+}
+
+pub(crate) enum ConnlibState<'a> {
     Loading,
     SignedOut,
     WaitingForBrowser,
@@ -163,12 +172,12 @@ impl Tray {
     }
 
     pub(crate) fn update(&mut self, state: AppState) -> Result<()> {
-        let new_icon = match &state {
-            AppState::Loading | AppState::WaitingForBrowser | AppState::WaitingForConnlib => {
-                Icon::Busy
-            }
-            AppState::SignedOut => Icon::SignedOut,
-            AppState::SignedIn { .. } => Icon::SignedIn,
+        let new_icon = match &state.connlib {
+            ConnlibState::Loading
+            | ConnlibState::WaitingForBrowser
+            | ConnlibState::WaitingForConnlib => Icon::Busy,
+            ConnlibState::SignedOut => Icon::SignedOut,
+            ConnlibState::SignedIn { .. } => Icon::SignedIn,
         };
 
         self.handle.set_tooltip(TOOLTIP)?;
@@ -178,7 +187,8 @@ impl Tray {
         Ok(())
     }
 
-    // Normally only needed for the stress test
+    // Only needed for the stress test
+    // Otherwise it would be inlined
     pub(crate) fn set_icon(&mut self, icon: Icon) -> Result<()> {
         if icon != self.last_icon_set {
             // Don't call `set_icon` too often. On Linux it writes a PNG to `/run/user/$UID/tao/tray-icon-*.png` every single time.
@@ -209,15 +219,21 @@ impl<'a> AppState<'a> {
     }
 
     fn into_menu(self) -> Menu {
-        match self {
-            Self::Loading => Menu::default().disabled("Loading..."),
-            Self::SignedOut => Menu::default()
-                .item(Event::SignIn, "Sign In")
-                .add_bottom_section(QUIT_TEXT_SIGNED_OUT),
-            Self::WaitingForBrowser => signing_in("Waiting for browser..."),
-            Self::WaitingForConnlib => signing_in("Signing In..."),
-            Self::SignedIn(x) => signed_in(&x),
-        }
+        let quit_text = match &self.connlib {
+            ConnlibState::Loading
+            | ConnlibState::SignedOut
+            | ConnlibState::WaitingForBrowser
+            | ConnlibState::WaitingForConnlib => QUIT_TEXT_SIGNED_OUT,
+            ConnlibState::SignedIn(_) => DISCONNECT_AND_QUIT,
+        };
+        let menu = match self.connlib {
+            ConnlibState::Loading => Menu::default().disabled("Loading..."),
+            ConnlibState::SignedOut => Menu::default().item(Event::SignIn, "Sign In"),
+            ConnlibState::WaitingForBrowser => signing_in("Waiting for browser..."),
+            ConnlibState::WaitingForConnlib => signing_in("Signing In..."),
+            ConnlibState::SignedIn(x) => signed_in(&x),
+        };
+        menu.add_bottom_section(self.update_url, quit_text)
     }
 }
 
@@ -274,14 +290,13 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         menu = menu.separator().add_submenu(OTHER_RESOURCES, submenu);
     }
 
-    menu.add_bottom_section(DISCONNECT_AND_QUIT)
+    menu
 }
 
 fn signing_in(waiting_message: &str) -> Menu {
     Menu::default()
         .disabled(waiting_message)
         .item(Event::CancelSignIn, "Cancel sign-in")
-        .add_bottom_section(QUIT_TEXT_SIGNED_OUT)
 }
 
 #[cfg(test)]
@@ -306,12 +321,15 @@ mod tests {
         favorite_resources: &'a HashSet<ResourceId>,
         disabled_resources: &'a HashSet<ResourceId>,
     ) -> AppState<'a> {
-        AppState::SignedIn(SignedIn {
-            actor_name: "Jane Doe",
-            favorite_resources,
-            resources,
-            disabled_resources,
-        })
+        AppState {
+            connlib: ConnlibState::SignedIn(SignedIn {
+                actor_name: "Jane Doe",
+                favorite_resources,
+                resources,
+                disabled_resources,
+            }),
+            update_url: None,
+        }
     }
 
     fn resources() -> Vec<ResourceDescription> {
@@ -362,7 +380,7 @@ mod tests {
             .item(Event::SignOut, SIGN_OUT)
             .separator()
             .disabled(RESOURCES)
-            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -384,7 +402,7 @@ mod tests {
             .item(Event::SignOut, SIGN_OUT)
             .separator()
             .disabled(RESOURCES)
-            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -466,7 +484,7 @@ mod tests {
                     .copyable("test")
                     .copyable(ALL_GATEWAYS_OFFLINE),
             )
-            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
         assert_eq!(
             actual,
             expected,
@@ -554,7 +572,7 @@ mod tests {
                             .copyable(ALL_GATEWAYS_OFFLINE),
                     ),
             )
-            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -640,7 +658,7 @@ mod tests {
                     .copyable("test")
                     .copyable(ALL_GATEWAYS_OFFLINE),
             )
-            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
