@@ -102,8 +102,8 @@ jobs:
           # First, run all tests.
           cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored --nocapture
 
-          # Assert that we hit certain codepaths
-          # Here, we can simply grep the log directory for whatever we want.
+          # Poor man's coverage testing:
+          # Grep the logs of all test runs to ensure we hit certain codepaths.
           rg SendICMPPacketToCidrResource $TESTCASES_DIR
           rg SendICMPPacketToDnsResource $TESTCASES_DIR
           rg SendDnsQueries $TESTCASES_DIR
