@@ -52,10 +52,10 @@ internal class ResourcesAdapter(private val activity: SessionActivity) : ListAda
             onSwitchToggled: (ViewResource) -> Unit,
         ) {
             binding.resourceNameText.text = resource.name
-            if (!resource.isInternetResource()) {
-                binding.addressText.text = resource.address
-            } else {
+            if (resource.isInternetResource()) {
                 binding.addressText.visibility = View.GONE
+            } else {
+                binding.addressText.text = resource.address
             }
             // Without this the item gets reset when out of view, isn't android wonderful?
             binding.enableSwitch.setOnCheckedChangeListener(null)
