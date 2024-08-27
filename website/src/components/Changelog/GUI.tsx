@@ -22,6 +22,12 @@ export default function GUI({ title }: { title: string }) {
           <ChangeItem pull="6449">
             Checks for updates once a day
           </ChangeItem>
+          <ChangeItem pull="6455">
+            Fixes a false positive warning about DNS interception being disabled.
+          </ChangeItem>
+          <ChangeItem pull="6458">
+            Fixes a bug where we considered our own startup to be a network change event.
+          </ChangeItem>
         </ul>
       </Entry>
       */}
