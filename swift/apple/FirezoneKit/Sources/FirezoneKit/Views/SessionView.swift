@@ -130,36 +130,12 @@ struct ResourceSection: View {
   var body: some View {
     ForEach(resources) { resource in
       HStack {
-        if !resource.isInternetResource() {
-            NavigationLink { ResourceView(model: model, resource: resource) }
+          NavigationLink { ResourceView(model: model, resource: resource) }
           label: {
-            ResourceLabel(resource: resource, model: model )
+            Text(resource.name)
           }
-        } else {
-          ResourceLabel(resource: resource, model: model)
-        }
       }
       .navigationTitle("All Resources")
-    }
-  }
-}
-
-struct ResourceLabel: View {
-  let resource: Resource
-  @ObservedObject var model: SessionViewModel
-
-  var body: some View {
-    HStack {
-      Text(resource.name)
-      if resource.canBeDisabled {
-        Spacer()
-        Toggle("Enabled", isOn: Binding<Bool>(
-          get: { model.isResourceEnabled(resource.id) },
-          set: { newValue in
-            model.store.toggleResourceDisabled(resource: resource.id, enabled: newValue)
-          }
-        )).labelsHidden()
-      }
     }
   }
 }
