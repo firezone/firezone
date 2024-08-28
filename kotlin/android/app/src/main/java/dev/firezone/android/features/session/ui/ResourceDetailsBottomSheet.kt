@@ -109,14 +109,20 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource, private val
         val addToFavoritesBtn: MaterialButton = view.findViewById(R.id.addToFavoritesBtn)
         val removeFromFavoritesBtn: MaterialButton = view.findViewById(R.id.removeFromFavoritesBtn)
         val resourceNameTextView: TextView = view.findViewById(R.id.tvResourceName)
-        val resourceAddressTextView: TextView = view.findViewById(R.id.tvResourceAddress)
-        val resourceAddressDescription: LinearLayout = view.findViewById(R.id.addressSection)
+        val resourceAddress: LinearLayout = view.findViewById(R.id.addressSection)
+        val resourceAddressDescriptionTextView: TextView = view.findViewById(R.id.tvResourceAddressDescription)
+        val resourceDescriptionLayout: LinearLayout = view.findViewById(R.id.resourceDescriptionLayout)
 
         addToFavoritesBtn.visibility = View.GONE
         removeFromFavoritesBtn.visibility = View.GONE
+
         resourceNameTextView.text = resource.name
-        resourceAddressTextView.visibility = View.GONE
-        resourceAddressDescription.visibility = View.GONE
+
+        resourceAddress.visibility = View.GONE
+
+        resourceDescriptionLayout.visibility = View.VISIBLE
+        resourceAddressDescriptionTextView.text = "All network traffic"
+
     }
 
     private fun nonInternetResourceHeader() {
@@ -125,6 +131,8 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource, private val
         val resourceNameTextView: TextView = view.findViewById(R.id.tvResourceName)
         val resourceAddressTextView: TextView = view.findViewById(R.id.tvResourceAddress)
         val resourceAddressDescriptionTextView: TextView = view.findViewById(R.id.tvResourceAddressDescription)
+        val resourceDescriptionLayout: LinearLayout = view.findViewById(R.id.resourceDescriptionLayout)
+
 
         addToFavoritesBtn.setOnClickListener {
             viewModel.addFavoriteResource(resource.id)
@@ -142,7 +150,7 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource, private val
 
         if (!resource.addressDescription.isNullOrEmpty()) {
             resourceAddressDescriptionTextView.text = resource.addressDescription
-            resourceAddressDescriptionTextView.visibility = View.VISIBLE
+            resourceDescriptionLayout.visibility = View.VISIBLE
         }
 
         val addressUri = resource.addressDescription?.let { Uri.parse(it) }
