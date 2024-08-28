@@ -41,6 +41,7 @@ impl DnsController {
                 tracing::error!(?error, "Couldn't delete Group Policy NRPT");
             }
         }
+        refresh_group_policy()?;
         tracing::info!("Deactivated DNS control");
         Ok(())
     }
@@ -131,8 +132,7 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
     if group_policy_key_exists {
         let (key, _) = hklm.create_subkey(group_nrpt_path().join(NRPT_REG_KEY))?;
         set_nrpt_rule(&key, &dns_config_string)?;
-        // SAFETY: No pointers involved, and the docs say nothing about threads.
-        unsafe { RefreshPolicyEx(true, RP_FORCE) }?;
+        refresh_group_policy()?;
     }
 
     tracing::info!("DNS control active.");
@@ -150,6 +150,12 @@ fn local_nrpt_path() -> &'static Path {
 fn group_nrpt_path() -> &'static Path {
     // Must be backslashes.
     Path::new(r"SOFTWARE\Policies\Microsoft\Windows NT\DNSClient\DnsPolicyConfig")
+}
+
+fn refresh_group_policy() -> Result<()> {
+    // SAFETY: No pointers involved, and the docs say nothing about threads.
+    unsafe { RefreshPolicyEx(true, RP_FORCE) }?;
+    Ok(())
 }
 
 /// Returns
