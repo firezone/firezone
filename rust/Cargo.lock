@@ -1892,6 +1892,7 @@ dependencies = [
  "native-dialog",
  "nix 0.29.0",
  "output_vt100",
+ "png",
  "rand 0.8.5",
  "reqwest",
  "rustls",

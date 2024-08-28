@@ -315,23 +315,6 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         .map_err(|s| anyhow!(s))
         .context("`ClearLogs` failed")?;
 
-    // Tray icon stress test
-    let num_icon_cycles = 100;
-    for _ in 0..num_icon_cycles {
-        ctlr_tx
-            .send(ControllerRequest::TestTrayIcon(system_tray::Icon::Busy))
-            .await?;
-        ctlr_tx
-            .send(ControllerRequest::TestTrayIcon(system_tray::Icon::SignedIn))
-            .await?;
-        ctlr_tx
-            .send(ControllerRequest::TestTrayIcon(
-                system_tray::Icon::SignedOut,
-            ))
-            .await?;
-    }
-    tracing::debug!(?num_icon_cycles, "Completed tray icon test");
-
     // Give the app some time to export the zip and reach steady state
     tokio::time::sleep_until(quit_time).await;
 
@@ -443,8 +426,6 @@ pub(crate) enum ControllerRequest {
     SchemeRequest(SecretString),
     SignIn,
     SystemTrayMenu(TrayMenuEvent),
-    /// Forces the tray icon to a specific icon to stress-test the tray code
-    TestTrayIcon(system_tray::Icon),
     UpdateAvailable(crate::client::updates::Release),
     UpdateNotificationClicked(Url),
 }
@@ -503,6 +484,8 @@ struct Controller {
     log_filter_reloader: LogFilterReloader,
     status: Status,
     tray: system_tray::Tray,
+    /// URL of a release that's ready to download
+    update_url: Option<Url>,
     uptime: client::uptime::Tracker,
 }
 
@@ -678,14 +661,14 @@ impl Controller {
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => Err(anyhow!(
                 "Impossible error: `Quit` should be handled before this"
             ))?,
-            Req::TestTrayIcon(icon) => self.tray.set_icon(icon)?,
             Req::UpdateAvailable(release) => {
                 let title = format!("Firezone {} available for download", release.version);
 
                 // We don't need to route through the controller here either, we could
                 // use the `open` crate directly instead of Tauri's wrapper
                 // `tauri::api::shell::open`
-                os::show_update_notification(self.ctlr_tx.clone(), &title, release.download_url)?;
+                os::show_update_notification(self.ctlr_tx.clone(), &title, release.download_url.clone())?;
+                self.update_url = Some(release.download_url);
             }
             Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
@@ -743,7 +726,7 @@ impl Controller {
             }
             IpcServerMsg::TerminatingGracefully => {
                 tracing::info!("Caught TerminatingGracefully");
-                self.tray.set_icon(system_tray::Icon::SignedOut).ok();
+                self.tray.set_icon(system_tray::Icon::terminating()).ok();
                 Err(Error::IpcServiceTerminating)
             }
             IpcServerMsg::TunnelReady => {
@@ -851,31 +834,34 @@ impl Controller {
     fn refresh_system_tray_menu(&mut self) -> Result<()> {
         // TODO: Refactor `Controller` and the auth module so that "Are we logged in?"
         // doesn't require such complicated control flow to answer.
-        let menu = if let Some(auth_session) = self.auth.session() {
+        let connlib = if let Some(auth_session) = self.auth.session() {
             match &self.status {
                 Status::Disconnected => {
                     tracing::error!("We have an auth session but no connlib session");
-                    system_tray::AppState::SignedOut
+                    system_tray::ConnlibState::SignedOut
                 }
-                Status::RetryingConnection { .. } => system_tray::AppState::RetryingConnection,
+                Status::RetryingConnection { .. } => system_tray::ConnlibState::RetryingConnection,
                 Status::TunnelReady { resources } => {
-                    system_tray::AppState::SignedIn(system_tray::SignedIn {
+                    system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
                         actor_name: &auth_session.actor_name,
                         favorite_resources: &self.advanced_settings.favorite_resources,
                         disabled_resources: &self.advanced_settings.disabled_resources,
                         resources,
                     })
                 }
-                Status::WaitingForPortal { .. } => system_tray::AppState::WaitingForPortal,
-                Status::WaitingForTunnel { .. } => system_tray::AppState::WaitingForTunnel,
+                Status::WaitingForPortal { .. } => system_tray::ConnlibState::WaitingForPortal,
+                Status::WaitingForTunnel { .. } => system_tray::ConnlibState::WaitingForTunnel,
             }
         } else if self.auth.ongoing_request().is_ok() {
             // Signing in, waiting on deep link callback
-            system_tray::AppState::WaitingForBrowser
+            system_tray::ConnlibState::WaitingForBrowser
         } else {
-            system_tray::AppState::SignedOut
+            system_tray::ConnlibState::SignedOut
         };
-        self.tray.update(menu)?;
+        self.tray.update(system_tray::AppState {
+            connlib,
+            update_url: self.update_url.clone(),
+        })?;
         Ok(())
     }
 
@@ -947,6 +933,7 @@ async fn run_controller(
         log_filter_reloader,
         status: Default::default(),
         tray,
+        update_url: None,
         uptime: Default::default(),
     };
 
