@@ -50,7 +50,7 @@
       "csp": null
     },
     "systemTray": {
-      "iconPath": "icons/tray/Busy.png",
+      "iconPath": "icons/tray/Busy layer.png",
       "iconAsTemplate": true
     },
     "windows": [

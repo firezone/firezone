@@ -131,6 +131,7 @@ defmodule API.Gateway.Channel do
       } do
       :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
 
+      client = Clients.fetch_client_by_id!(client_id)
       resource = Resources.fetch_resource_by_id!(resource_id)
 
       case API.Client.Channel.map_or_drop_compatible_resource(
@@ -150,7 +151,9 @@ defmodule API.Gateway.Channel do
             flow_id: flow_id,
             resource: Views.Resource.render(resource),
             expires_at: DateTime.to_unix(authorization_expires_at, :second),
-            payload: payload
+            payload: payload,
+            client_ipv4: client.ipv4,
+            client_ipv6: client.ipv6
           })
 
           Logger.debug("Awaiting gateway connection_ready message",

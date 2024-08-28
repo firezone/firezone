@@ -51,6 +51,7 @@ defmodule Web.Resources.Edit do
 
           <.form for={@form} phx-change={:change} phx-submit={:submit} class="space-y-4 lg:space-y-6">
             <.input
+              :if={@resource.type != :internet}
               field={@form[:name]}
               type="text"
               label="Name"
@@ -58,7 +59,7 @@ defmodule Web.Resources.Edit do
               required
             />
 
-            <div>
+            <div :if={@resource.type != :internet}>
               <.input
                 field={@form[:address_description]}
                 type="text"
@@ -70,7 +71,11 @@ defmodule Web.Resources.Edit do
               </p>
             </div>
 
-            <.filters_form account={@account} form={@form[:filters]} />
+            <.filters_form
+              :if={@resource.type != :internet}
+              account={@account}
+              form={@form[:filters]}
+            />
 
             <.connections_form
               :if={is_nil(@params["site_id"])}

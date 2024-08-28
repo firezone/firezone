@@ -12,16 +12,21 @@ use connlib_shared::{
 };
 use std::collections::HashSet;
 use tauri::{SystemTray, SystemTrayHandle};
+use url::Url;
 
 mod builder;
+pub(crate) mod compositor;
 
 pub(crate) use builder::{item, Event, Menu, Window};
 
-// Figma is the source of truth for the tray icons
-// <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=OGFabKWPx7PRUZmq-0>
-const BUSY_ICON: &[u8] = include_bytes!("../../../icons/tray/Busy.png");
-const SIGNED_IN_ICON: &[u8] = include_bytes!("../../../icons/tray/Signed in.png");
-const SIGNED_OUT_ICON: &[u8] = include_bytes!("../../../icons/tray/Signed out.png");
+// Figma is the source of truth for the tray icon layers
+// <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=nHBOzOnSY5Ol4asV-0>
+const LOGO_BASE: &[u8] = include_bytes!("../../../icons/tray/Logo.png");
+const LOGO_GREY_BASE: &[u8] = include_bytes!("../../../icons/tray/Logo grey.png");
+const BUSY_LAYER: &[u8] = include_bytes!("../../../icons/tray/Busy layer.png");
+const SIGNED_OUT_LAYER: &[u8] = include_bytes!("../../../icons/tray/Signed out layer.png");
+const UPDATE_READY_LAYER: &[u8] = include_bytes!("../../../icons/tray/Update ready layer.png");
+
 const TOOLTIP: &str = "Firezone";
 const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
 
@@ -42,9 +47,13 @@ const ENABLE: &str = "Enable this resource";
 pub(crate) const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
 
 pub(crate) fn loading() -> SystemTray {
+    let state = AppState {
+        connlib: ConnlibState::Loading,
+        update_url: None,
+    };
     SystemTray::new()
-        .with_icon(tauri::Icon::Raw(BUSY_ICON.into()))
-        .with_menu(AppState::Loading.build())
+        .with_icon(Icon::default().tauri_icon())
+        .with_menu(state.build())
         .with_tooltip(TOOLTIP)
 }
 
@@ -53,7 +62,12 @@ pub(crate) struct Tray {
     last_icon_set: Icon,
 }
 
-pub(crate) enum AppState<'a> {
+pub(crate) struct AppState<'a> {
+    pub(crate) connlib: ConnlibState<'a>,
+    pub(crate) update_url: Option<Url>,
+}
+
+pub(crate) enum ConnlibState<'a> {
     Loading,
     RetryingConnection,
     SignedIn(SignedIn<'a>),
@@ -125,7 +139,13 @@ impl<'a> SignedIn<'a> {
 }
 
 #[derive(PartialEq)]
-pub(crate) enum Icon {
+pub(crate) struct Icon {
+    base: IconBase,
+    update_ready: bool,
+}
+
+#[derive(PartialEq)]
+enum IconBase {
     /// Must be equivalent to the default app icon, since we assume this is set when we start
     Busy,
     SignedIn,
@@ -134,7 +154,34 @@ pub(crate) enum Icon {
 
 impl Default for Icon {
     fn default() -> Self {
-        Self::Busy
+        Self {
+            base: IconBase::Busy,
+            update_ready: false,
+        }
+    }
+}
+
+impl Icon {
+    fn tauri_icon(&self) -> tauri::Icon {
+        let layers = match self.base {
+            IconBase::Busy => &[LOGO_GREY_BASE, BUSY_LAYER][..],
+            IconBase::SignedIn => &[LOGO_BASE][..],
+            IconBase::SignedOut => &[LOGO_GREY_BASE, SIGNED_OUT_LAYER][..],
+        }
+        .iter()
+        .copied()
+        .chain(self.update_ready.then_some(UPDATE_READY_LAYER));
+        let composed = compositor::compose(layers)
+            .expect("PNG decoding should always succeed for baked-in PNGs");
+        composed.into()
+    }
+
+    /// Generic icon for unusual terminating cases like if the IPC service stops running
+    pub(crate) fn terminating() -> Self {
+        Self {
+            base: IconBase::SignedOut,
+            update_ready: false,
+        }
     }
 }
 
@@ -147,13 +194,18 @@ impl Tray {
     }
 
     pub(crate) fn update(&mut self, state: AppState) -> Result<()> {
-        let new_icon = match &state {
-            AppState::Loading
-            | AppState::RetryingConnection
-            | AppState::SignedOut
-            | AppState::WaitingForBrowser => Icon::SignedOut,
-            AppState::SignedIn { .. } => Icon::SignedIn,
-            AppState::WaitingForPortal | AppState::WaitingForTunnel => Icon::Busy,
+        let base = match &state.connlib {
+            ConnlibState::Loading
+            | ConnlibState::RetryingConnection
+            | ConnlibState::WaitingForBrowser
+            | ConnlibState::WaitingForPortal
+            | ConnlibState::WaitingForTunnel => IconBase::Busy,
+            ConnlibState::SignedOut => IconBase::SignedOut,
+            ConnlibState::SignedIn { .. } => IconBase::SignedIn,
+        };
+        let new_icon = Icon {
+            base,
+            update_ready: state.update_url.is_some(),
         };
 
         self.handle.set_tooltip(TOOLTIP)?;
@@ -163,7 +215,8 @@ impl Tray {
         Ok(())
     }
 
-    // Normally only needed for the stress test
+    // Only needed for the stress test
+    // Otherwise it would be inlined
     pub(crate) fn set_icon(&mut self, icon: Icon) -> Result<()> {
         if icon != self.last_icon_set {
             // Don't call `set_icon` too often. On Linux it writes a PNG to `/run/user/$UID/tao/tray-icon-*.png` every single time.
@@ -177,34 +230,31 @@ impl Tray {
     }
 }
 
-impl Icon {
-    fn tauri_icon(&self) -> tauri::Icon {
-        let bytes = match self {
-            Self::Busy => BUSY_ICON,
-            Self::SignedIn => SIGNED_IN_ICON,
-            Self::SignedOut => SIGNED_OUT_ICON,
-        };
-        tauri::Icon::Raw(bytes.into())
-    }
-}
-
 impl<'a> AppState<'a> {
     fn build(self) -> tauri::SystemTrayMenu {
         self.into_menu().build()
     }
 
     fn into_menu(self) -> Menu {
-        match self {
-            Self::Loading => Menu::default().disabled("Loading..."),
-            Self::RetryingConnection => retrying_sign_in("Waiting for Internet access..."),
-            Self::SignedIn(x) => signed_in(&x),
-            Self::SignedOut => Menu::default()
-                .item(Event::SignIn, "Sign In")
-                .add_bottom_section(QUIT_TEXT_SIGNED_OUT),
-            Self::WaitingForBrowser => signing_in("Waiting for browser..."),
-            Self::WaitingForPortal => signing_in("Connecting to Firezone Portal..."),
-            Self::WaitingForTunnel => signing_in("Raising tunnel..."),
-        }
+        let quit_text = match &self.connlib {
+            ConnlibState::Loading
+            | ConnlibState::RetryingConnection
+            | ConnlibState::SignedOut
+            | ConnlibState::WaitingForBrowser
+            | ConnlibState::WaitingForPortal
+            | ConnlibState::WaitingForTunnel => QUIT_TEXT_SIGNED_OUT,
+            ConnlibState::SignedIn(_) => DISCONNECT_AND_QUIT,
+        };
+        let menu = match self.connlib {
+            ConnlibState::Loading => Menu::default().disabled("Loading..."),
+            ConnlibState::RetryingConnection => retrying_sign_in("Waiting for Internet access..."),
+            ConnlibState::SignedIn(x) => signed_in(&x),
+            ConnlibState::SignedOut => Menu::default().item(Event::SignIn, "Sign In"),
+            ConnlibState::WaitingForBrowser => signing_in("Waiting for browser..."),
+            ConnlibState::WaitingForPortal => signing_in("Connecting to Firezone Portal..."),
+            ConnlibState::WaitingForTunnel => signing_in("Raising tunnel..."),
+        };
+        menu.add_bottom_section(self.update_url, quit_text)
     }
 }
 
@@ -261,7 +311,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         menu = menu.separator().add_submenu(OTHER_RESOURCES, submenu);
     }
 
-    menu.add_bottom_section(DISCONNECT_AND_QUIT)
+    menu
 }
 
 fn retrying_sign_in(waiting_message: &str) -> Menu {
@@ -269,14 +319,12 @@ fn retrying_sign_in(waiting_message: &str) -> Menu {
         .disabled(waiting_message)
         .item(Event::RetryPortalConnection, "Retry sign-in")
         .item(Event::CancelSignIn, "Cancel sign-in")
-        .add_bottom_section(QUIT_TEXT_SIGNED_OUT)
 }
 
 fn signing_in(waiting_message: &str) -> Menu {
     Menu::default()
         .disabled(waiting_message)
         .item(Event::CancelSignIn, "Cancel sign-in")
-        .add_bottom_section(QUIT_TEXT_SIGNED_OUT)
 }
 
 #[cfg(test)]
@@ -301,12 +349,15 @@ mod tests {
         favorite_resources: &'a HashSet<ResourceId>,
         disabled_resources: &'a HashSet<ResourceId>,
     ) -> AppState<'a> {
-        AppState::SignedIn(SignedIn {
-            actor_name: "Jane Doe",
-            favorite_resources,
-            resources,
-            disabled_resources,
-        })
+        AppState {
+            connlib: ConnlibState::SignedIn(SignedIn {
+                actor_name: "Jane Doe",
+                favorite_resources,
+                resources,
+                disabled_resources,
+            }),
+            update_url: None,
+        }
     }
 
     fn resources() -> Vec<ResourceDescription> {
@@ -357,7 +408,7 @@ mod tests {
             .item(Event::SignOut, SIGN_OUT)
             .separator()
             .disabled(RESOURCES)
-            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -379,7 +430,7 @@ mod tests {
             .item(Event::SignOut, SIGN_OUT)
             .separator()
             .disabled(RESOURCES)
-            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -451,7 +502,7 @@ mod tests {
                     .copyable("test")
                     .copyable(ALL_GATEWAYS_OFFLINE),
             )
-            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
         assert_eq!(
             actual,
             expected,
@@ -528,7 +579,7 @@ mod tests {
                         .copyable(NO_ACTIVITY),
                 ),
             )
-            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -604,7 +655,7 @@ mod tests {
                     .copyable("test")
                     .copyable(ALL_GATEWAYS_OFFLINE),
             )
-            .add_bottom_section(DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
