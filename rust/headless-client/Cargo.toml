@@ -69,6 +69,7 @@ features = [
     "Win32_Networking_WinSock",
 
     "Win32_Security", # For named pipe IPC
+    "Win32_System_GroupPolicy", # For NRPT when GPO is used
     "Win32_System_SystemInformation", # For uptime
     "Win32_System_SystemServices",
     "Win32_System_Pipes",
