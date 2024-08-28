@@ -16,6 +16,9 @@ export default function GUI({ title }: { title: string }) {
       {/*
       <Entry version="1.2.2" date={new Date(todo)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6432">
+            Shows an orange dot on the tray icon when an update is ready to download.
+          </ChangeItem>
         </ul>
       </Entry>
       */}
