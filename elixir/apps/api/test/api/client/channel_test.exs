@@ -10,6 +10,9 @@ defmodule API.Client.ChannelTest do
             %{protocol: "ip_port", address: "1.1.1.1"},
             %{protocol: "ip_port", address: "8.8.8.8:53"}
           ]
+        },
+        features: %{
+          internet_resource: true
         }
       )
 
@@ -43,6 +46,13 @@ defmodule API.Client.ChannelTest do
       Fixtures.Resources.create_resource(
         type: :ip,
         address: "192.168.100.1",
+        account: account,
+        connections: [%{gateway_group_id: gateway_group.id}]
+      )
+
+    internet_resource =
+      Fixtures.Resources.create_resource(
+        type: :internet,
         account: account,
         connections: [%{gateway_group_id: gateway_group.id}]
       )
@@ -91,6 +101,12 @@ defmodule API.Client.ChannelTest do
       ]
     )
 
+    Fixtures.Policies.create_policy(
+      account: account,
+      actor_group: actor_group,
+      resource: internet_resource
+    )
+
     expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
 
     subject = %{subject | expires_at: expires_at}
@@ -118,6 +134,7 @@ defmodule API.Client.ChannelTest do
       dns_resource: dns_resource,
       cidr_resource: cidr_resource,
       ip_resource: ip_resource,
+      internet_resource: internet_resource,
       unauthorized_resource: unauthorized_resource,
       nonconforming_resource: nonconforming_resource,
       dns_resource_policy: dns_resource_policy,
@@ -229,7 +246,8 @@ defmodule API.Client.ChannelTest do
       dns_resource: dns_resource,
       cidr_resource: cidr_resource,
       ip_resource: ip_resource,
-      nonconforming_resource: nonconforming_resource
+      nonconforming_resource: nonconforming_resource,
+      internet_resource: internet_resource
     } do
       assert_push "init", %{
         resources: resources,
@@ -237,7 +255,7 @@ defmodule API.Client.ChannelTest do
         relays: relays
       }
 
-      assert length(resources) == 3
+      assert length(resources) == 4
       assert length(relays) == 0
 
       assert %{
@@ -300,6 +318,18 @@ defmodule API.Client.ChannelTest do
                ]
              } in resources
 
+      assert %{
+               id: internet_resource.id,
+               type: :internet,
+               gateway_groups: [
+                 %{
+                   id: gateway_group.id,
+                   name: gateway_group.name
+                 }
+               ],
+               can_be_disabled: true
+             } in resources
+
       refute Enum.any?(resources, &(&1.id == nonconforming_resource.id))
 
       assert interface == %{
@@ -343,7 +373,7 @@ defmodule API.Client.ChannelTest do
       |> subscribe_and_join(API.Client.Channel, "client")
 
       assert_push "init", %{resources: resources}
-      assert Enum.count(resources, &(&1.address == resource.address)) == 1
+      assert Enum.count(resources, &(Map.get(&1, :address) == resource.address)) == 1
     end
 
     test "sends backwards compatible list of resources if client version is below 1.2", %{
@@ -353,6 +383,8 @@ defmodule API.Client.ChannelTest do
       gateway_group: gateway_group,
       actor_group: actor_group
     } do
+      client = %{client | last_seen_version: "1.1.55"}
+
       assert_push "init", %{}
 
       star_mapped_resource =
@@ -417,7 +449,10 @@ defmodule API.Client.ChannelTest do
         resources: resources
       }
 
-      resource_addresses = Enum.map(resources, & &1.address)
+      resource_addresses =
+        resources
+        |> Enum.reject(&(&1.type == :internet))
+        |> Enum.map(& &1.address)
 
       assert "*.glob-example.com" in resource_addresses
       assert "?.question-example.com" in resource_addresses
@@ -1069,15 +1104,19 @@ defmodule API.Client.ChannelTest do
       assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
     end
 
-    test "returns gateways that support the resource version", %{
+    test "does not return gateways that do not support the resource", %{
       account: account,
-      dns_resource: resource,
+      dns_resource: dns_resource,
+      internet_resource: internet_resource,
       socket: socket
     } do
       gateway = Fixtures.Gateways.create_gateway(account: account)
       :ok = Domain.Gateways.connect_gateway(gateway)
 
-      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+      ref = push(socket, "prepare_connection", %{"resource_id" => dns_resource.id})
+      assert_reply ref, :error, %{reason: :offline}
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => internet_resource.id})
       assert_reply ref, :error, %{reason: :offline}
     end
 
@@ -1101,7 +1140,9 @@ defmodule API.Client.ChannelTest do
         Fixtures.Gateways.create_gateway(
           account: account,
           group: gateway_group,
-          last_seen_version: "1.1.0"
+          context: %{
+            user_agent: "iOS/12.5 (iPhone) connlib/1.1.0"
+          }
         )
 
       resource =
@@ -1130,6 +1171,80 @@ defmodule API.Client.ChannelTest do
           group: gateway_group,
           context: %{
             user_agent: "iOS/12.5 (iPhone) connlib/1.2.0"
+          }
+        )
+
+      Fixtures.Relays.update_relay(global_relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+
+      assert_reply ref, :ok, %{
+        gateway_id: gateway_id,
+        gateway_remote_ip: gateway_last_seen_remote_ip,
+        resource_id: ^resource_id
+      }
+
+      assert gateway_id == gateway.id
+      assert gateway_last_seen_remote_ip == gateway.last_seen_remote_ip
+    end
+
+    test "returns gateway that support Internet resources", %{
+      account: account,
+      internet_resource: resource,
+      subject: subject,
+      socket: socket
+    } do
+      account =
+        Fixtures.Accounts.update_account(account,
+          features: %{
+            internet_resource: true
+          }
+        )
+
+      global_relay_group = Fixtures.Relays.create_global_group()
+      global_relay = Fixtures.Relays.create_relay(group: global_relay_group)
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
+
+      Fixtures.Relays.update_relay(global_relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
+      gateway_group = Fixtures.Gateways.create_group(account: account)
+
+      gateway =
+        Fixtures.Gateways.create_gateway(
+          account: account,
+          group: gateway_group,
+          context: %{
+            user_agent: "iOS/12.5 (iPhone) connlib/1.2.0"
+          }
+        )
+
+      {:ok, resource} =
+        Domain.Resources.update_resource(
+          resource,
+          %{connections: [%{gateway_group_id: gateway_group.id}]},
+          subject
+        )
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+      resource_id = resource.id
+
+      assert_reply ref, :error, %{reason: :not_found}
+
+      gateway =
+        Fixtures.Gateways.create_gateway(
+          account: account,
+          group: gateway_group,
+          context: %{
+            user_agent: "iOS/12.5 (iPhone) connlib/1.3.0"
           }
         )
 

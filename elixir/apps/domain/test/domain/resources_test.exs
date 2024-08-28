@@ -891,9 +891,16 @@ defmodule Domain.ResourcesTest do
 
       assert errors_on(changeset) == %{
                name: ["can't be blank"],
-               address: ["can't be blank"],
                type: ["can't be blank"],
                connections: ["can't be blank"]
+             }
+
+      assert {:error, changeset} = create_resource(%{type: :dns}, subject)
+
+      assert errors_on(changeset) == %{
+               name: ["can't be blank"],
+               connections: ["can't be blank"],
+               address: ["can't be blank"]
              }
     end
 
@@ -908,7 +915,6 @@ defmodule Domain.ResourcesTest do
       assert {:error, changeset} = create_resource(attrs, subject)
 
       assert errors_on(changeset) == %{
-               address: ["can't be blank"],
                address_description: ["should be at most 512 character(s)"],
                name: ["should be at most 255 character(s)"],
                type: ["can't be blank"],
@@ -1020,15 +1026,18 @@ defmodule Domain.ResourcesTest do
       assert {:error, changeset} = create_resource(attrs, subject)
       assert "cannot be in the CIDR fd00:2021:1111::/48" in errors_on(changeset).address
 
+      internet_resource_message =
+        "routing all traffic through Firezone is available on paid plans using the Internet Resource"
+
       attrs = %{"address" => "::/0", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
       assert "cannot contain loopback addresses" in errors_on(changeset).address
-      assert "cannot contain all IPv6 addresses" in errors_on(changeset).address
+      assert internet_resource_message in errors_on(changeset).address
 
       attrs = %{"address" => "0.0.0.0/0", "type" => "cidr"}
       assert {:error, changeset} = create_resource(attrs, subject)
       assert "cannot contain loopback addresses" in errors_on(changeset).address
-      assert "cannot contain all IPv4 addresses" in errors_on(changeset).address
+      assert internet_resource_message in errors_on(changeset).address
     end
 
     # We allow names to be duplicate because Resources are split into Sites
