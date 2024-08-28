@@ -16,7 +16,10 @@
 use super::DnsController;
 use anyhow::{Context as _, Result};
 use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW};
-use std::{net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
+use std::{
+    io::ErrorKind, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command,
+};
+use windows::Win32::System::GroupPolicy::{RefreshPolicyEx, RP_FORCE};
 
 // Unique magic number that we can use to delete our well-known NRPT rule.
 // Copied from the deep link schema
@@ -26,16 +29,18 @@ impl DnsController {
     /// Deactivate any control Firezone has over the computer's DNS
     ///
     /// Must be `sync` so we can call it from `Drop`
-    /// TODO: Replace this with manual registry twiddling one day if we feel safe.
     pub fn deactivate(&mut self) -> Result<()> {
-        Command::new("powershell")
-            .creation_flags(CREATE_NO_WINDOW)
-            .args(["-Command", "Get-DnsClientNrptRule", "|"])
-            .args(["where", "Comment", "-eq", FZ_MAGIC, "|"])
-            .args(["foreach", "{"])
-            .args(["Remove-DnsClientNrptRule", "-Name", "$_.Name", "-Force"])
-            .args(["}"])
-            .status()?;
+        let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
+        if let Err(error) = hklm.delete_subkey(local_nrpt_path().join(NRPT_REG_KEY)) {
+            if error.kind() != ErrorKind::NotFound {
+                tracing::error!(?error, "Couldn't delete local NRPT");
+            }
+        }
+        if let Err(error) = hklm.delete_subkey(group_nrpt_path().join(NRPT_REG_KEY)) {
+            if error.kind() != ErrorKind::NotFound {
+                tracing::error!(?error, "Couldn't delete Group Policy NRPT");
+            }
+        }
         tracing::info!("Deactivated DNS control");
         Ok(())
     }
@@ -104,24 +109,53 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
     // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS
     // again unless you let that connection time out:
     // <https://github.com/firezone/firezone/issues/3113#issuecomment-1882096111>
+    tracing::info!("Activating DNS control...");
 
-    tracing::info!("Activating DNS control");
+    let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
+
+    // If this key exists, our local NRPT rules are ignored and we have to stick
+    // them in with group policies for some reason.
+    let group_policy_key_exists = hklm.open_subkey(group_nrpt_path()).is_ok();
+    tracing::debug!(?group_policy_key_exists);
+
     let dns_config_string = dns_config
         .iter()
         .map(|ip| ip.to_string())
         .collect::<Vec<_>>()
         .join(";");
 
-    let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
-    let base = Path::new("SYSTEM")
-        .join("CurrentControlSet")
-        .join("Services")
-        .join("Dnscache")
-        .join("Parameters")
-        .join("DnsPolicyConfig")
-        .join(NRPT_REG_KEY);
+    // It's safe to always set the local rule.
+    let (key, _) = hklm.create_subkey(local_nrpt_path().join(NRPT_REG_KEY))?;
+    set_nrpt_rule(&key, &dns_config_string)?;
 
-    let (key, _) = hkcu.create_subkey(base)?;
+    if group_policy_key_exists {
+        let (key, _) = hklm.create_subkey(group_nrpt_path().join(NRPT_REG_KEY))?;
+        set_nrpt_rule(&key, &dns_config_string)?;
+        // SAFETY: No pointers involved, and the docs say nothing about threads.
+        unsafe { RefreshPolicyEx(true, RP_FORCE) }?;
+    }
+
+    tracing::info!("DNS control active.");
+
+    Ok(())
+}
+
+/// Returns the registry path we can use to set NRPT rules when Group Policy is not in effect.
+fn local_nrpt_path() -> &'static Path {
+    // Must be backslashes.
+    Path::new(r"SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DnsPolicyConfig")
+}
+
+/// Returns the registry path we can use to set NRPT rules when Group Policy is in effect.
+fn group_nrpt_path() -> &'static Path {
+    // Must be backslashes.
+    Path::new(r"SOFTWARE\Policies\Microsoft\Windows NT\DNSClient\DnsPolicyConfig")
+}
+
+/// Returns
+
+/// Given the path of a registry key, sets the parameters of an NRPT rule on it.
+fn set_nrpt_rule(key: &winreg::RegKey, dns_config_string: &str) -> Result<()> {
     key.set_value("Comment", &FZ_MAGIC)?;
     key.set_value("ConfigOptions", &0x8u32)?;
     key.set_value("DisplayName", &"Firezone SplitDNS")?;
@@ -129,6 +163,5 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
     key.set_value("IPSECCARestriction", &"")?;
     key.set_value("Name", &vec!["."])?;
     key.set_value("Version", &0x2u32)?;
-
     Ok(())
 }
