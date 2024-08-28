@@ -2,7 +2,7 @@ use crate::peer::ClientOnGateway;
 use crate::peer_store::PeerStore;
 use crate::utils::earliest;
 use crate::{GatewayEvent, GatewayTunnel, BUF_SIZE};
-use anyhow::{bail, Context};
+use anyhow::bail;
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_shared::messages::{
@@ -37,19 +37,13 @@ impl GatewayTunnel {
     }
 
     /// Accept a connection request from a client.
-    #[allow(clippy::too_many_arguments)]
     pub fn accept(
         &mut self,
         client_id: ClientId,
         key: Secret<Key>,
         offer: Offer,
         client: PublicKey,
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-        domain: Option<(DomainName, Vec<IpAddr>)>,
-        expires_at: Option<DateTime<Utc>>,
-        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
-    ) -> anyhow::Result<Answer> {
+    ) -> Answer {
         self.role_state.accept(
             client_id,
             snownet::Offer {
@@ -60,11 +54,6 @@ impl GatewayTunnel {
                 },
             },
             client,
-            ipv4,
-            ipv6,
-            domain,
-            expires_at,
-            resource,
             Instant::now(),
         )
     }
@@ -75,13 +64,22 @@ impl GatewayTunnel {
 
     pub fn allow_access(
         &mut self,
-        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         client: ClientId,
-        expires_at: Option<DateTime<Utc>>,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
         domain: Option<(DomainName, Vec<IpAddr>)>,
+        expires_at: Option<DateTime<Utc>>,
+        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
     ) -> anyhow::Result<()> {
-        self.role_state
-            .allow_access(resource, client, expires_at, domain, Instant::now())
+        self.role_state.allow_access(
+            client,
+            ipv4,
+            ipv6,
+            domain,
+            expires_at,
+            resource,
+            Instant::now(),
+        )
     }
 
     pub fn refresh_translation(
@@ -230,54 +228,19 @@ impl GatewayState {
     }
 
     /// Accept a connection request from a client.
-    #[allow(clippy::too_many_arguments)]
     pub fn accept(
         &mut self,
         client_id: ClientId,
         offer: snownet::Offer,
         client: PublicKey,
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-        domain: Option<(DomainName, Vec<IpAddr>)>,
-        expires_at: Option<DateTime<Utc>>,
-        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         now: Instant,
-    ) -> anyhow::Result<Answer> {
-        match (&domain, &resource) {
-            (Some((domain, _)), ResourceDescription::Dns(r)) => {
-                if !crate::dns::is_subdomain(domain, &r.domain) {
-                    bail!(
-                        "Requested domain '{domain}' isn't a sub-domain of resource address '{}'",
-                        r.domain
-                    );
-                }
-            }
-            (None, ResourceDescription::Dns(_)) => {
-                bail!("Cannot setup connection for DNS resource without domain")
-            }
-            _ => {}
-        }
-
+    ) -> Answer {
         let answer = self.node.accept_connection(client_id, offer, client, now);
 
-        let mut peer = ClientOnGateway::new(client_id, ipv4, ipv6);
-
-        peer.add_resource(
-            resource.addresses(),
-            resource.id(),
-            resource.filters(),
-            expires_at,
-            domain.clone().map(|(n, _)| n),
-        );
-
-        peer.assign_proxies(&resource, domain, now)?;
-
-        self.peers.insert(peer, &[ipv4.into(), ipv6.into()]);
-
-        Ok(Answer {
+        Answer {
             username: answer.credentials.username,
             password: answer.credentials.password,
-        })
+        }
     }
 
     pub fn refresh_translation(
@@ -295,12 +258,15 @@ impl GatewayState {
         peer.refresh_translation(name, resource_id, resolved_ips, now);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn allow_access(
         &mut self,
-        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         client: ClientId,
-        expires_at: Option<DateTime<Utc>>,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
         domain: Option<(DomainName, Vec<IpAddr>)>,
+        expires_at: Option<DateTime<Utc>>,
+        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
         now: Instant,
     ) -> anyhow::Result<()> {
         match (&domain, &resource) {
@@ -318,7 +284,10 @@ impl GatewayState {
             _ => {}
         }
 
-        let peer = self.peers.get_mut(&client).context("Unknown client")?;
+        let peer = self
+            .peers
+            .entry(client)
+            .or_insert_with(|| ClientOnGateway::new(client, ipv4, ipv6));
 
         peer.assign_proxies(&resource, domain.clone(), now)?;
         peer.add_resource(
@@ -328,6 +297,8 @@ impl GatewayState {
             expires_at,
             domain.map(|(n, _)| n),
         );
+        self.peers.add_ip(&client, &ipv4.into());
+        self.peers.add_ip(&client, &ipv6.into());
 
         tracing::info!(%client, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
         Ok(())

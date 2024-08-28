@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, net::IpAddr};
+use std::{
+    collections::BTreeSet,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+};
 
 use chrono::{serde::ts_seconds_option, DateTime, Utc};
 use connlib_shared::{
@@ -83,7 +86,7 @@ impl ResolveRequest {
     }
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct AllowAccess {
     pub client_id: ClientId,
     pub resource: ResourceDescription,
@@ -92,6 +95,10 @@ pub struct AllowAccess {
     pub payload: Option<ResolveRequest>,
     #[serde(rename = "ref")]
     pub reference: String,
+    /// Tunnel IPv4 address.
+    pub client_ipv4: Ipv4Addr,
+    /// Tunnel IPv6 address.
+    pub client_ipv6: Ipv6Addr,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
