@@ -23,7 +23,7 @@ jobs:
       stage: "debug"
       profile: "debug"
 
-  # Builds debug images with release binaries for compability tests in case the merge_group was skipped.
+  # Builds debug images with release binaries for compatibility tests in case the merge_group was skipped.
   build-test-images:
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
