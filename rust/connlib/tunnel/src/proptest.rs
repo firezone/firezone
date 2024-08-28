@@ -83,7 +83,7 @@ pub fn internet_resource(
             name: "Internet Resource".to_string(),
             id,
             sites,
-            can_be_disabled: can_be_disabled,
+            can_be_disabled,
         }
     })
 }
