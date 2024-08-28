@@ -787,8 +787,6 @@ impl ClientState {
     }
 
     fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, DnsServer>) {
-        tracing::debug!(mapping = ?new_mapping, "Updating DNS servers");
-
         self.dns_mapping = new_mapping;
         self.mangled_dns_queries.clear();
     }
@@ -864,12 +862,16 @@ impl ClientState {
     }
 
     pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
+        tracing::debug!(servers = ?new_dns, "Received system-defined DNS servers");
+
         self.system_resolvers = new_dns;
 
         self.update_dns_mapping()
     }
 
     pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) {
+        tracing::debug!(upstream_dns = ?config.upstream_dns, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
+
         match self.tun_config.as_mut() {
             Some(existing) => {
                 // We don't really expect these to change but let's update them anyway.
@@ -1148,7 +1150,7 @@ impl ClientState {
         if HashSet::<&DnsServer>::from_iter(effective_dns_servers.iter())
             == HashSet::from_iter(self.dns_mapping.right_values())
         {
-            tracing::debug!("Effective DNS servers are unchanged");
+            tracing::debug!(servers = ?effective_dns_servers, "Effective DNS servers are unchanged");
 
             return;
         }
@@ -1174,8 +1176,12 @@ impl ClientState {
         self.set_dns_mapping(dns_mapping);
 
         if new_tun_config == config {
+            tracing::debug!(current = ?config, "TUN device configuration unchanged");
+
             return;
         }
+
+        tracing::info!(config = ?new_tun_config, "Updating TUN device");
 
         self.tun_config = Some(new_tun_config.clone());
         self.buffered_events
