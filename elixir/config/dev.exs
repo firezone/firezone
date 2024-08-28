@@ -39,6 +39,7 @@ config :web, Web.Endpoint,
     tailwind: {Tailwind, :install_and_run, [:web, ~w(--watch)]}
   ],
   live_reload: [
+    web_console_logger: true,
     patterns: [
       ~r"apps/config/.*(exs)$",
       ~r"apps/domain/lib/domain/.*(ex|eex|heex)$",

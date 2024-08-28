@@ -172,12 +172,14 @@ defmodule Web.Live.Resources.EditTest do
     end)
     |> validate_change(%{resource: %{filters: %{tcp: %{ports: "a"}}}}, fn form, _html ->
       assert form_validation_errors(form) == %{
-               "resource[filters][tcp][ports]" => ["is invalid"]
+               "resource[filters][tcp][ports]" => ["bad format"]
              }
     end)
     |> validate_change(%{resource: %{filters: %{tcp: %{ports: "8080-90"}}}}, fn form, _html ->
       assert form_validation_errors(form) == %{
-               "resource[filters][tcp][ports]" => ["is invalid"]
+               "resource[filters][tcp][ports]" => [
+                 "lower value cannot be higher than upper value"
+               ]
              }
     end)
   end

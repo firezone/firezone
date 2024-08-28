@@ -98,7 +98,7 @@ defmodule Web.Documentation.Generator do
   defp type_and_default(type, []),
     do: type_and_default(type, "[]")
 
-  defp type_and_default({:parameterized, Ecto.Enum, opts}, default) do
+  defp type_and_default({:parameterized, {Ecto.Enum, opts}}, default) do
     values =
       opts.mappings
       |> Keyword.keys()

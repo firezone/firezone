@@ -52,6 +52,7 @@ defmodule API.MixProject do
       # Observability deps
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
+      {:opentelemetry_telemetry, "~> 1.1.1", override: true},
       {:opentelemetry_cowboy, "~> 0.3"},
       {:opentelemetry_phoenix, "~> 1.1"},
 
