@@ -870,7 +870,7 @@ impl ClientState {
     }
 
     pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) {
-        tracing::debug!(upstream_dns = ?config.upstream_dns, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
+        tracing::trace!(upstream_dns = ?config.upstream_dns, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
 
         match self.tun_config.as_mut() {
             Some(existing) => {
