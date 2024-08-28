@@ -8,6 +8,7 @@ use crate::{
 };
 use anyhow::Result;
 use connlib_shared::messages::{
+    client::{Site, SiteId},
     ClientPayload, ConnectionAccepted, GatewayResponse, RelaysPresence, RequestConnection,
     ResourceAccepted, ResourceId, ReuseConnection,
 };
@@ -244,9 +245,23 @@ where
             }
             IngressMessages::Init(InitClient {
                 interface,
-                resources,
+                mut resources,
                 relays,
             }) => {
+                resources.push(
+                    connlib_shared::messages::client::ResourceDescription::Internet(
+                        connlib_shared::messages::client::ResourceDescriptionInternet {
+                            name: "<-> Internet Resource".to_string(),
+                            id: ResourceId::random(),
+                            sites: vec![Site {
+                                id: SiteId::from_u128(0),
+                                name: "mock site".to_string(),
+                            }],
+                            can_be_disabled: true,
+                        },
+                    ),
+                );
+
                 self.tunnel.set_new_interface_config(interface);
                 self.tunnel.set_resources(resources);
                 self.tunnel.update_relays(BTreeSet::default(), relays);

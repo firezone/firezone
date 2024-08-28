@@ -23,10 +23,9 @@ import com.google.android.material.button.MaterialButton
 import dev.firezone.android.R
 import dev.firezone.android.tunnel.model.StatusEnum
 
-class ResourceDetailsBottomSheet(private val resource: ViewResource) : BottomSheetDialogFragment() {
+class ResourceDetailsBottomSheet(private val resource: ViewResource, private val activity: SessionActivity) : BottomSheetDialogFragment() {
     private lateinit var view: View
     private val viewModel: SessionViewModel by activityViewModels()
-    private var isFavorite: Boolean = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -43,17 +42,89 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource) : BottomShe
         this.view = view
         super.onViewCreated(view, savedInstanceState)
 
-        val addToFavoritesBtn: MaterialButton = view.findViewById(R.id.addToFavoritesBtn)
-        val removeFromFavoritesBtn: MaterialButton = view.findViewById(R.id.removeFromFavoritesBtn)
-        val resourceNameTextView: TextView = view.findViewById(R.id.tvResourceName)
-        val resourceAddressTextView: TextView = view.findViewById(R.id.tvResourceAddress)
-        val resourceAddressDescriptionTextView: TextView = view.findViewById(R.id.tvResourceAddressDescription)
         val siteNameTextView: TextView = view.findViewById(R.id.tvSiteName)
         val siteStatusTextView: TextView = view.findViewById(R.id.tvSiteStatus)
         val statusIndicatorDot: ImageView = view.findViewById(R.id.statusIndicatorDot)
         val labelSite: TextView = view.findViewById(R.id.labelSite)
         val siteNameLayout: LinearLayout = view.findViewById(R.id.siteNameLayout)
         val siteStatusLayout: LinearLayout = view.findViewById(R.id.siteStatusLayout)
+
+        resourceHeader()
+
+        refreshDisableToggleButton()
+
+        if (!resource.sites.isNullOrEmpty()) {
+            val site = resource.sites.first()
+            siteNameTextView.text = site.name
+            siteNameLayout.visibility = View.VISIBLE
+
+            // Setting site status based on resource status
+            val statusText =
+                when (resource.status) {
+                    StatusEnum.ONLINE -> "Gateway connected"
+                    StatusEnum.OFFLINE -> "All Gateways offline"
+                    StatusEnum.UNKNOWN -> "No activity"
+                }
+            siteStatusTextView.text = statusText
+            siteStatusLayout.visibility = View.VISIBLE
+            labelSite.visibility = View.VISIBLE
+
+            // Set status indicator dot color
+            val dotColor =
+                when (resource.status) {
+                    StatusEnum.ONLINE -> Color.GREEN
+                    StatusEnum.OFFLINE -> Color.RED
+                    StatusEnum.UNKNOWN -> Color.GRAY
+                }
+            val dotDrawable = GradientDrawable()
+            dotDrawable.shape = GradientDrawable.OVAL
+            dotDrawable.setColor(dotColor)
+            statusIndicatorDot.setImageDrawable(dotDrawable)
+            statusIndicatorDot.visibility = View.VISIBLE
+
+            siteNameTextView.setOnClickListener {
+                copyToClipboard(site.name)
+                Toast.makeText(requireContext(), "Site name copied to clipboard", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun resourceToggleText(): String {
+        if (resource.enabled) {
+            return "Disable this resource"
+        } else {
+            return "Enable this resource"
+        }
+    }
+
+    private fun resourceHeader() {
+        if (resource.isInternetResource()) {
+            internetResourceHeader()
+        } else {
+            nonInternetResourceHeader()
+        }
+    }
+
+    private fun internetResourceHeader() {
+        val addToFavoritesBtn: MaterialButton = view.findViewById(R.id.addToFavoritesBtn)
+        val removeFromFavoritesBtn: MaterialButton = view.findViewById(R.id.removeFromFavoritesBtn)
+        val resourceNameTextView: TextView = view.findViewById(R.id.tvResourceName)
+        val resourceAddressTextView: TextView = view.findViewById(R.id.tvResourceAddress)
+        val resourceAddressDescription: LinearLayout = view.findViewById(R.id.addressSection)
+
+        addToFavoritesBtn.visibility = View.GONE
+        removeFromFavoritesBtn.visibility = View.GONE
+        resourceNameTextView.text = resource.name
+        resourceAddressTextView.visibility = View.GONE
+        resourceAddressDescription.visibility = View.GONE
+    }
+
+    private fun nonInternetResourceHeader() {
+        val addToFavoritesBtn: MaterialButton = view.findViewById(R.id.addToFavoritesBtn)
+        val removeFromFavoritesBtn: MaterialButton = view.findViewById(R.id.removeFromFavoritesBtn)
+        val resourceNameTextView: TextView = view.findViewById(R.id.tvResourceName)
+        val resourceAddressTextView: TextView = view.findViewById(R.id.tvResourceAddress)
+        val resourceAddressDescriptionTextView: TextView = view.findViewById(R.id.tvResourceAddressDescription)
 
         addToFavoritesBtn.setOnClickListener {
             viewModel.addFavoriteResource(resource.id)
@@ -92,41 +163,6 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource) : BottomShe
             copyToClipboard(resource.name)
             Toast.makeText(requireContext(), "Name copied to clipboard", Toast.LENGTH_SHORT).show()
         }
-
-        if (!resource.sites.isNullOrEmpty()) {
-            val site = resource.sites.first()
-            siteNameTextView.text = site.name
-            siteNameLayout.visibility = View.VISIBLE
-
-            // Setting site status based on resource status
-            val statusText =
-                when (resource.status) {
-                    StatusEnum.ONLINE -> "Gateway connected"
-                    StatusEnum.OFFLINE -> "All Gateways offline"
-                    StatusEnum.UNKNOWN -> "No activity"
-                }
-            siteStatusTextView.text = statusText
-            siteStatusLayout.visibility = View.VISIBLE
-            labelSite.visibility = View.VISIBLE
-
-            // Set status indicator dot color
-            val dotColor =
-                when (resource.status) {
-                    StatusEnum.ONLINE -> Color.GREEN
-                    StatusEnum.OFFLINE -> Color.RED
-                    StatusEnum.UNKNOWN -> Color.GRAY
-                }
-            val dotDrawable = GradientDrawable()
-            dotDrawable.shape = GradientDrawable.OVAL
-            dotDrawable.setColor(dotColor)
-            statusIndicatorDot.setImageDrawable(dotDrawable)
-            statusIndicatorDot.visibility = View.VISIBLE
-
-            siteNameTextView.setOnClickListener {
-                copyToClipboard(site.name)
-                Toast.makeText(requireContext(), "Site name copied to clipboard", Toast.LENGTH_SHORT).show()
-            }
-        }
     }
 
     private fun refreshButtons() {
@@ -135,6 +171,21 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource) : BottomShe
         val isFavorite = viewModel.favoriteResourcesLiveData.value!!.contains(resource.id)
         addToFavoritesBtn.visibility = if (isFavorite) View.GONE else View.VISIBLE
         removeFromFavoritesBtn.visibility = if (isFavorite) View.VISIBLE else View.GONE
+    }
+
+    private fun refreshDisableToggleButton() {
+        if (resource.canBeDisabled) {
+            val toggleResourceEnabled: MaterialButton = view.findViewById(R.id.toggleResourceEnabled)
+            toggleResourceEnabled.visibility = View.VISIBLE
+            toggleResourceEnabled.text = resourceToggleText()
+            toggleResourceEnabled.setOnClickListener {
+                resource.enabled = !resource.enabled
+
+                activity.onViewResourceToggled(resource)
+
+                refreshDisableToggleButton()
+            }
+        }
     }
 
     private fun copyToClipboard(text: String) {
