@@ -5,7 +5,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -28,19 +27,17 @@ internal class ResourcesAdapter(private val activity: SessionActivity) : ListAda
     ) {
         val resource = getItem(position)
         holder.bind(resource)
-            holder.itemView.setOnClickListener {
-                // Show bottom sheet
-                val fragmentManager =
-                    (holder.itemView.context as AppCompatActivity).supportFragmentManager
-                val bottomSheet = ResourceDetailsBottomSheet(resource, activity)
-                bottomSheet.show(fragmentManager, "ResourceDetailsBottomSheet")
-            }
+        holder.itemView.setOnClickListener {
+            // Show bottom sheet
+            val fragmentManager =
+                (holder.itemView.context as AppCompatActivity).supportFragmentManager
+            val bottomSheet = ResourceDetailsBottomSheet(resource, activity)
+            bottomSheet.show(fragmentManager, "ResourceDetailsBottomSheet")
+        }
     }
 
     class ViewHolder(private val binding: ListItemResourceBinding) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(
-            resource: ViewResource,
-        ) {
+        fun bind(resource: ViewResource) {
             binding.resourceNameText.text = resource.name
             if (resource.isInternetResource()) {
                 binding.addressText.visibility = View.GONE

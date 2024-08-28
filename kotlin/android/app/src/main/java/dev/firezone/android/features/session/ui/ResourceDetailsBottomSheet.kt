@@ -122,7 +122,6 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource, private val
 
         resourceDescriptionLayout.visibility = View.VISIBLE
         resourceAddressDescriptionTextView.text = "All network traffic"
-
     }
 
     private fun nonInternetResourceHeader() {
@@ -132,7 +131,6 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource, private val
         val resourceAddressTextView: TextView = view.findViewById(R.id.tvResourceAddress)
         val resourceAddressDescriptionTextView: TextView = view.findViewById(R.id.tvResourceAddressDescription)
         val resourceDescriptionLayout: LinearLayout = view.findViewById(R.id.resourceDescriptionLayout)
-
 
         addToFavoritesBtn.setOnClickListener {
             viewModel.addFavoriteResource(resource.id)
