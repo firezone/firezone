@@ -1165,8 +1165,7 @@ impl ClientState {
         let new_tun_config = TunConfig {
             ip4: config.ip4,
             ip6: config.ip6,
-            dns_by_sentinel: self
-                .dns_mapping
+            dns_by_sentinel: dns_mapping
                 .iter()
                 .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
                 .collect::<BiMap<_, _>>(),
