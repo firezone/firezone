@@ -37,6 +37,7 @@ let csrfToken = document
   .querySelector("meta[name='csrf-token']")
   .getAttribute("content")
 
+
 let liveSocket = new LiveSocket("/live", Socket, {
   hooks: Hooks,
   params: {
@@ -59,3 +60,10 @@ liveSocket.connect()
 // >> liveSocket.enableLatencySim(1000)  // enabled for duration of browser session
 // >> liveSocket.disableLatencySim()
 window.liveSocket = liveSocket
+
+window.addEventListener("phx:live_reload:attached", ({ detail: reloader }) => {
+  // Enable server log streaming to client.
+  // Disable with reloader.disableServerLogs()
+  reloader.enableServerLogs()
+  window.liveReloader = reloader
+})

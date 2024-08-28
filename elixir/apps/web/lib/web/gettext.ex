@@ -1,3 +1,3 @@
 defmodule Web.Gettext do
-  use Gettext, otp_app: :web
+  use Gettext.Backend, otp_app: :web
 end
