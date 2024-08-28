@@ -129,8 +129,6 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource, private val
         val removeFromFavoritesBtn: MaterialButton = view.findViewById(R.id.removeFromFavoritesBtn)
         val resourceNameTextView: TextView = view.findViewById(R.id.tvResourceName)
         val resourceAddressTextView: TextView = view.findViewById(R.id.tvResourceAddress)
-        val resourceAddressDescriptionTextView: TextView = view.findViewById(R.id.tvResourceAddressDescription)
-        val resourceDescriptionLayout: LinearLayout = view.findViewById(R.id.resourceDescriptionLayout)
 
         addToFavoritesBtn.setOnClickListener {
             viewModel.addFavoriteResource(resource.id)
@@ -145,11 +143,6 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource, private val
         resourceNameTextView.text = resource.name
         val displayAddress = resource.addressDescription ?: resource.address
         resourceAddressTextView.text = displayAddress
-
-        if (!resource.addressDescription.isNullOrEmpty()) {
-            resourceAddressDescriptionTextView.text = resource.addressDescription
-            resourceDescriptionLayout.visibility = View.VISIBLE
-        }
 
         val addressUri = resource.addressDescription?.let { Uri.parse(it) }
         if (addressUri != null && addressUri.scheme != null) {
