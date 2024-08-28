@@ -323,12 +323,11 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(
     :platform_adapter,
-    {:parameterized, Ecto.Enum,
-     Ecto.Enum.init(
-       values: [
-         Elixir.Domain.GoogleCloudPlatform
-       ]
-     )},
+    Ecto.ParameterizedType.init(Ecto.Enum,
+      values: [
+        Elixir.Domain.GoogleCloudPlatform
+      ]
+    ),
     default: nil
   )
 
@@ -349,16 +348,15 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(
     :erlang_cluster_adapter,
-    {:parameterized, Ecto.Enum,
-     Ecto.Enum.init(
-       values: [
-         Elixir.Cluster.Strategy.LocalEpmd,
-         Elixir.Cluster.Strategy.Epmd,
-         Elixir.Cluster.Strategy.Gossip,
-         Elixir.Cluster.Strategy.Kubernetes,
-         Elixir.Domain.Cluster.GoogleComputeLabelsStrategy
-       ]
-     )},
+    Ecto.ParameterizedType.init(Ecto.Enum,
+      values: [
+        Elixir.Cluster.Strategy.LocalEpmd,
+        Elixir.Cluster.Strategy.Epmd,
+        Elixir.Cluster.Strategy.Gossip,
+        Elixir.Cluster.Strategy.Kubernetes,
+        Elixir.Domain.Cluster.GoogleComputeLabelsStrategy
+      ]
+    ),
     default: nil
   )
 
@@ -450,7 +448,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(
     :auth_provider_adapters,
-    {:array, ",", {:parameterized, Ecto.Enum, Ecto.Enum.init(values: ~w[
+    {:array, ",", Ecto.ParameterizedType.init(Ecto.Enum, values: ~w[
       email
       openid_connect
       google_workspace
@@ -459,8 +457,16 @@ defmodule Domain.Config.Definitions do
       jumpcloud
       userpass
       token
-    ]a)}},
-    default: ~w[email openid_connect google_workspace microsoft_entra okta jumpcloud token]a
+    ]a)},
+    default: ~w[
+      email
+      openid_connect
+      google_workspace
+      microsoft_entra
+      okta
+      jumpcloud
+      token
+    ]a
   )
 
   ##############################################
@@ -484,13 +490,12 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(
     :telemetry_metrics_reporter,
-    {:parameterized, Ecto.Enum,
-     Ecto.Enum.init(
-       values: [
-         Telemetry.Metrics.ConsoleReporter,
-         Elixir.Domain.Telemetry.GoogleCloudMetricsReporter
-       ]
-     )},
+    Ecto.ParameterizedType.init(Ecto.Enum,
+      values: [
+        Telemetry.Metrics.ConsoleReporter,
+        Elixir.Domain.Telemetry.GoogleCloudMetricsReporter
+      ]
+    ),
     default: nil
   )
 
@@ -507,14 +512,13 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(
     :logger_formatter,
-    {:parameterized, Ecto.Enum,
-     Ecto.Enum.init(
-       values: [
-         Elixir.LoggerJSON.Formatters.GoogleCloud,
-         Elixir.LoggerJSON.Formatters.Basic,
-         Elixir.LoggerJSON.Formatters.Datadog
-       ]
-     )},
+    Ecto.ParameterizedType.init(Ecto.Enum,
+      values: [
+        Elixir.LoggerJSON.Formatters.GoogleCloud,
+        Elixir.LoggerJSON.Formatters.Basic,
+        Elixir.LoggerJSON.Formatters.Datadog
+      ]
+    ),
     default: nil
   )
 
@@ -567,30 +571,29 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(
     :outbound_email_adapter,
-    {:parameterized, Ecto.Enum,
-     Ecto.Enum.init(
-       values:
-         [
-           Swoosh.Adapters.AmazonSES,
-           Swoosh.Adapters.CustomerIO,
-           Swoosh.Adapters.Dyn,
-           Swoosh.Adapters.ExAwsAmazonSES,
-           Swoosh.Adapters.Gmail,
-           Swoosh.Adapters.MailPace,
-           Swoosh.Adapters.Mailgun,
-           Swoosh.Adapters.Mailjet,
-           Swoosh.Adapters.Mandrill,
-           Swoosh.Adapters.Postmark,
-           Swoosh.Adapters.ProtonBridge,
-           Swoosh.Adapters.SMTP,
-           Swoosh.Adapters.SMTP2GO,
-           Swoosh.Adapters.Sendgrid,
-           Swoosh.Adapters.Sendinblue,
-           Swoosh.Adapters.Sendmail,
-           Swoosh.Adapters.SocketLabs,
-           Swoosh.Adapters.SparkPost
-         ] ++ @local_development_adapters
-     )},
+    Ecto.ParameterizedType.init(Ecto.Enum,
+      values:
+        [
+          Swoosh.Adapters.AmazonSES,
+          Swoosh.Adapters.CustomerIO,
+          Swoosh.Adapters.Dyn,
+          Swoosh.Adapters.ExAwsAmazonSES,
+          Swoosh.Adapters.Gmail,
+          Swoosh.Adapters.MailPace,
+          Swoosh.Adapters.Mailgun,
+          Swoosh.Adapters.Mailjet,
+          Swoosh.Adapters.Mandrill,
+          Swoosh.Adapters.Postmark,
+          Swoosh.Adapters.ProtonBridge,
+          Swoosh.Adapters.SMTP,
+          Swoosh.Adapters.SMTP2GO,
+          Swoosh.Adapters.Sendgrid,
+          Swoosh.Adapters.Sendinblue,
+          Swoosh.Adapters.Sendmail,
+          Swoosh.Adapters.SocketLabs,
+          Swoosh.Adapters.SparkPost
+        ] ++ @local_development_adapters
+    ),
     default: nil
   )
 

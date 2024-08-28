@@ -51,7 +51,7 @@ defmodule Web.MixProject do
       # CLDR and unit conversions
       {:ex_cldr_dates_times, "~> 2.13"},
       {:ex_cldr_numbers, "~> 2.31"},
-      {:ex_cldr, "~> 2.38"},
+      {:ex_cldr, "~> 2.40"},
       {:tzdata, "~> 1.1"},
       {:sizeable, "~> 1.0"},
 
