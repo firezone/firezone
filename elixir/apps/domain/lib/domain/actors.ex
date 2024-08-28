@@ -354,7 +354,12 @@ defmodule Domain.Actors do
 
   def count_synced_actors_for_provider(%Auth.Provider{} = provider) do
     Actor.Query.not_deleted()
-    |> Actor.Query.by_provider_id(provider.id)
+    |> Actor.Query.by_deleted_identity_provider_id(provider.id)
+    |> Actor.Query.by_stale_for_provider(provider.id)
+    |> Repo.all()
+
+    Actor.Query.not_deleted()
+    |> Actor.Query.by_deleted_identity_provider_id(provider.id)
     |> Actor.Query.by_stale_for_provider(provider.id)
     |> Repo.aggregate(:count)
   end
@@ -583,7 +588,7 @@ defmodule Domain.Actors do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       Actor.Query.not_deleted()
       |> Authorizer.for_subject(subject)
-      |> Actor.Query.by_provider_id(provider.id)
+      |> Actor.Query.by_deleted_identity_provider_id(provider.id)
       |> Actor.Query.by_stale_for_provider(provider.id)
       |> Repo.all()
       |> Enum.each(fn actor ->

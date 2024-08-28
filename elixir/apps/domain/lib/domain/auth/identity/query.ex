@@ -10,6 +10,11 @@ defmodule Domain.Auth.Identity.Query do
     |> where([identities: identities], is_nil(identities.deleted_at))
   end
 
+  def deleted do
+    all()
+    |> where([identities: identities], not is_nil(identities.deleted_at))
+  end
+
   def not_disabled(queryable \\ not_deleted()) do
     queryable
     |> with_assoc(:inner, :actor)
