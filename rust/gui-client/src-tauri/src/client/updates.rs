@@ -70,10 +70,13 @@ async fn write_latest_release_file(release: &Release) -> Result<()> {
     // executor thread
     let s = serde_json::to_string(release)?;
     tokio::task::spawn_blocking(move || {
-        let f = atomicwrites::AtomicFile::new(
-            version_file_path()?,
-            atomicwrites::OverwriteBehavior::AllowOverwrite,
-        );
+        let path = version_file_path()?;
+        std::fs::create_dir_all(
+            path.parent()
+                .context("release file path should always have a parent.")?,
+        )?;
+        let f =
+            atomicwrites::AtomicFile::new(&path, atomicwrites::OverwriteBehavior::AllowOverwrite);
         f.write(|f| f.write_all(s.as_bytes()))?;
         Ok::<_, anyhow::Error>(())
     })
