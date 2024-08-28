@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 use std::hash::Hash;
 use std::net::IpAddr;
 
@@ -65,6 +65,10 @@ where
         }
 
         old_peer
+    }
+
+    pub(crate) fn entry(&mut self, id: TId) -> Entry<'_, TId, P> {
+        self.peer_by_id.entry(id)
     }
 
     pub(crate) fn remove(&mut self, id: &TId) -> Option<P> {

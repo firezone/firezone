@@ -103,6 +103,7 @@ jobs:
           - name: direct-curl-api-restart
           - name: direct-dns-api-down
           - name: direct-dns-relay-down
+          - name: direct-dns-two-resources
           - name: direct-dns
           - name: direct-download-roaming-network
             # Too noisy can cause flaky tests due to the amount of data

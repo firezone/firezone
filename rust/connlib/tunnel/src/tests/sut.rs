@@ -662,10 +662,12 @@ impl TunnelTest {
                 gateway
                     .exec_mut(|g| {
                         g.sut.allow_access(
-                            resource,
                             self.client.inner().id,
-                            None,
+                            self.client.inner().sut.tunnel_ip4().unwrap(),
+                            self.client.inner().sut.tunnel_ip6().unwrap(),
                             maybe_domain.map(|r| (r.name, r.proxy_ips)),
+                            None,
+                            resource,
                             now,
                         )
                     })
@@ -702,10 +704,12 @@ impl TunnelTest {
                     return;
                 };
 
+                let client_id = self.client.inner().id;
+
                 let answer = gateway
                     .exec_mut(|g| {
-                        g.sut.accept(
-                            self.client.inner().id,
+                        let answer = g.sut.accept(
+                            client_id,
                             snownet::Offer {
                                 session_key: preshared_key.expose_secret().0.into(),
                                 credentials: snownet::Credentials {
@@ -714,6 +718,10 @@ impl TunnelTest {
                                 },
                             },
                             self.client.inner().sut.public_key(),
+                            now,
+                        );
+                        g.sut.allow_access(
+                            client_id,
                             self.client.inner().sut.tunnel_ip4().unwrap(),
                             self.client.inner().sut.tunnel_ip6().unwrap(),
                             maybe_domain
@@ -722,7 +730,9 @@ impl TunnelTest {
                             None, // TODO: How to generate expiry?
                             resource,
                             now,
-                        )
+                        )?;
+
+                        anyhow::Ok(answer)
                     })
                     .unwrap();
 
