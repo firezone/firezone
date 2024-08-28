@@ -1,6 +1,13 @@
 defmodule API.Gateway.Views.Resource do
   alias Domain.Resources
 
+  def render(%Resources.Resource{type: :internet} = resource) do
+    %{
+      id: resource.id,
+      type: :internet
+    }
+  end
+
   def render(%Resources.Resource{type: :dns} = resource) do
     %{
       id: resource.id,
