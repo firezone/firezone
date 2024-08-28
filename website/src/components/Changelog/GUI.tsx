@@ -19,6 +19,9 @@ export default function GUI({ title }: { title: string }) {
           <ChangeItem pull="6432">
             Shows an orange dot on the tray icon when an update is ready to download.
           </ChangeItem>
+          <ChangeItem enable={title === "Windows"} pull="6472">
+            Fixes DNS control for domain-joined systems
+          </ChangeItem>
         </ul>
       </Entry>
       */}
