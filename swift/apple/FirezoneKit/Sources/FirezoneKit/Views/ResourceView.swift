@@ -200,7 +200,7 @@ struct InternetResourceHeader: View {
           .bold()
           .font(.system(size: 14))
           .foregroundColor(.secondary)
-          .frame(width: 80, alignment: .leading)
+          .frame(alignment: .leading)
 
         Text("All network traffic")
       }
