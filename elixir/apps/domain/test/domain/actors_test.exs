@@ -2148,6 +2148,7 @@ defmodule Domain.ActorsTest do
         )
 
       Fixtures.Auth.create_identity(account: account, actor: actor1, provider: provider)
+      |> Fixtures.Auth.delete_identity()
 
       actor2 =
         Fixtures.Actors.create_actor(
@@ -2156,6 +2157,7 @@ defmodule Domain.ActorsTest do
         )
 
       Fixtures.Auth.create_identity(account: account, actor: actor2, provider: provider)
+      |> Fixtures.Auth.delete_identity()
 
       actor3 =
         Fixtures.Actors.create_actor(
@@ -2164,6 +2166,7 @@ defmodule Domain.ActorsTest do
         )
 
       Fixtures.Auth.create_identity(account: account, actor: actor3)
+      |> Fixtures.Auth.delete_identity()
 
       actor4 =
         Fixtures.Actors.create_actor(
@@ -2172,7 +2175,18 @@ defmodule Domain.ActorsTest do
         )
 
       Fixtures.Auth.create_identity(account: account, actor: actor4, provider: provider)
+      |> Fixtures.Auth.delete_identity()
+
       Fixtures.Auth.create_identity(account: account, actor: actor4)
+      |> Fixtures.Auth.delete_identity()
+
+      actor5 =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account
+        )
+
+      Fixtures.Auth.create_identity(account: account, actor: actor5, provider: provider)
 
       assert count_synced_actors_for_provider(provider) == 2
     end
@@ -3217,6 +3231,7 @@ defmodule Domain.ActorsTest do
         )
 
       Fixtures.Auth.create_identity(account: account, actor: actor1, provider: provider)
+      |> Fixtures.Auth.delete_identity()
 
       actor2 =
         Fixtures.Actors.create_actor(
@@ -3225,6 +3240,7 @@ defmodule Domain.ActorsTest do
         )
 
       Fixtures.Auth.create_identity(account: account, actor: actor2, provider: provider)
+      |> Fixtures.Auth.delete_identity()
 
       actor3 =
         Fixtures.Actors.create_actor(
@@ -3233,6 +3249,7 @@ defmodule Domain.ActorsTest do
         )
 
       Fixtures.Auth.create_identity(account: account, actor: actor3)
+      |> Fixtures.Auth.delete_identity()
 
       actor4 =
         Fixtures.Actors.create_actor(
@@ -3241,7 +3258,10 @@ defmodule Domain.ActorsTest do
         )
 
       Fixtures.Auth.create_identity(account: account, actor: actor4, provider: provider)
+      |> Fixtures.Auth.delete_identity()
+
       Fixtures.Auth.create_identity(account: account, actor: actor4)
+      |> Fixtures.Auth.delete_identity()
 
       assert delete_stale_synced_actors_for_provider(provider, subject) == :ok
       not_deleted_actors = Repo.all(Actors.Actor.Query.not_deleted())
