@@ -641,6 +641,7 @@ impl Controller {
                 // `tauri::api::shell::open`
                 os::show_update_notification(self.ctlr_tx.clone(), &title, release.download_url.clone())?;
                 self.update_url = Some(release.download_url);
+                self.refresh_system_tray_menu()?;
             }
             Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
