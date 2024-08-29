@@ -26,3 +26,6 @@ gha-creds-*.json
 
 # Ignore local `direnv` cache
 .direnv
+
+# Ignore locally set ENV variables
+.env
