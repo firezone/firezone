@@ -14,7 +14,7 @@ data class ViewResource(
     val sites: List<Site>?,
     val name: String,
     val status: StatusEnum,
-    var enabled: Boolean = true,
+    var enabled: Boolean,
     var canBeDisabled: Boolean = true,
 )
 

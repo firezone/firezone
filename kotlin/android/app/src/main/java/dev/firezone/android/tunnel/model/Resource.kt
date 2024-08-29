@@ -16,7 +16,6 @@ data class Resource(
     val sites: List<Site>?,
     val name: String,
     val status: StatusEnum,
-    var enabled: Boolean = true,
     @Json(name = "can_be_disabled") val canBeDisabled: Boolean,
 ) : Parcelable
 

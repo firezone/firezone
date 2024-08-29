@@ -20,7 +20,7 @@ import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
 
 @AndroidEntryPoint
-internal class SessionActivity : AppCompatActivity() {
+class SessionActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySessionBinding
     private var tunnelService: TunnelService? = null
     private var serviceBound = false

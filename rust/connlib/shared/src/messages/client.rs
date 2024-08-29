@@ -91,7 +91,8 @@ pub struct ResourceDescriptionInternet {
     #[serde(rename = "gateway_groups")]
     pub sites: Vec<Site>,
     /// Whether or not resource can be disabled from UI
-    pub can_be_disabled: Option<bool>,
+    #[serde(default)]
+    pub can_be_disabled: bool,
 }
 
 impl ResourceDescriptionInternet {
@@ -100,7 +101,7 @@ impl ResourceDescriptionInternet {
             name: self.name,
             id: self.id,
             sites: self.sites,
-            can_be_disabled: self.can_be_disabled.unwrap_or_default(),
+            can_be_disabled: self.can_be_disabled,
             status,
         }
     }
