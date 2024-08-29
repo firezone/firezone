@@ -44,6 +44,8 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Edit do
   end
 
   def handle_event("change", %{"provider" => attrs}, socket) do
+    attrs = map_provider_form_attrs(attrs)
+
     changeset =
       Auth.change_provider(socket.assigns.provider, attrs)
       |> Map.put(:action, :insert)
@@ -52,6 +54,8 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Edit do
   end
 
   def handle_event("submit", %{"provider" => attrs}, socket) do
+    attrs = map_provider_form_attrs(attrs)
+
     with {:ok, provider} <-
            Auth.update_provider(socket.assigns.provider, attrs, socket.assigns.subject) do
       socket =

@@ -52,7 +52,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.New do
   end
 
   def handle_event("change", %{"provider" => attrs}, socket) do
-    attrs = Map.put(attrs, "adapter", :google_workspace)
+    attrs = map_provider_form_attrs(attrs)
 
     changeset =
       Auth.new_provider(socket.assigns.account, attrs)
@@ -65,7 +65,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.New do
     attrs =
       attrs
       |> Map.put("id", socket.assigns.id)
-      |> Map.put("adapter", :google_workspace)
+      |> map_provider_form_attrs()
       # We create provider in a disabled state because we need to write access token for it first
       |> Map.put("adapter_state", %{status: "pending_access_token"})
       |> Map.put("disabled_at", DateTime.utc_now())

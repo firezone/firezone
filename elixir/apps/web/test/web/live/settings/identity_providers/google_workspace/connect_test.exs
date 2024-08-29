@@ -94,6 +94,7 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
                  "openid " <>
                    "email " <>
                    "profile " <>
+                   "https://www.googleapis.com/auth/admin.directory.customer.readonly " <>
                    "https://www.googleapis.com/auth/admin.directory.orgunit.readonly " <>
                    "https://www.googleapis.com/auth/admin.directory.group.readonly " <>
                    "https://www.googleapis.com/auth/admin.directory.user.readonly",
