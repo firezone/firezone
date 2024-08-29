@@ -171,15 +171,11 @@ where
             firezone_tunnel::ClientEvent::ResourcesChanged { resources } => {
                 self.callbacks.on_update_resources(resources)
             }
-            firezone_tunnel::ClientEvent::TunInterfaceUpdated {
-                ip4,
-                ip6,
-                dns_by_sentinel,
-            } => {
-                let dns_servers = dns_by_sentinel.left_values().copied().collect();
+            firezone_tunnel::ClientEvent::TunInterfaceUpdated(config) => {
+                let dns_servers = config.dns_by_sentinel.left_values().copied().collect();
 
                 self.callbacks
-                    .on_set_interface_config(ip4, ip6, dns_servers);
+                    .on_set_interface_config(config.ip4, config.ip6, dns_servers);
             }
             firezone_tunnel::ClientEvent::TunRoutesUpdated { ip4, ip6 } => {
                 self.callbacks.on_update_routes(ip4, ip6);
