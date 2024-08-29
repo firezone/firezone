@@ -21,22 +21,19 @@ pub(crate) struct Release {
 }
 
 pub(crate) async fn checker_task(ctlr_tx: CtlrTx) -> Result<()> {
-    let mut fsm = Checker::new(current_version()?);
     let interval_in_seconds = 86_400;
     let mut interval = tokio::time::interval(Duration::from_secs(interval_in_seconds));
     let rand_time = thread_rng().gen_range(0..interval_in_seconds);
 
+    // Always check the file first, then wait a random amount of time before entering the loop.
+    let latest_seen = read_latest_release_file()
+        .await
+        .map(|release| release.version);
+    tokio::time::sleep(Duration::from_secs(rand_time)).await;
+    let mut fsm = Checker::new(current_version()?, latest_seen);
+
     loop {
         match fsm.poll() {
-            Event::CheckFile => {
-                if let Some(release) = read_latest_release_file().await {
-                    fsm.handle_check(release)
-                }
-            }
-            Event::WaitRandom => {
-                tokio::time::sleep(Duration::from_secs(rand_time)).await;
-                interval.reset();
-            }
             Event::CheckNetwork => match check().await {
                 Ok(release) => fsm.handle_check(release),
                 Err(error) => tracing::error!(?error, "Couldn't check website for update"),
@@ -54,6 +51,10 @@ pub(crate) async fn checker_task(ctlr_tx: CtlrTx) -> Result<()> {
     }
 }
 
+/// Reads the latest version and download URL we've seen, from disk
+///
+/// The URL is not used but the code was near merging so I didn't
+/// want to remove it and break compat with my dev systems.
 async fn read_latest_release_file() -> Option<Release> {
     tokio::fs::read_to_string(version_file_path().ok()?)
         .await
@@ -93,11 +94,6 @@ struct Checker {
 
 #[derive(Debug, PartialEq)]
 enum Event {
-    /// Check the disk to see what was the latest version we remember seeing.
-    /// This allows us to show the notification quicker without hitting the network right at startup.
-    CheckFile,
-    /// Wait a random amount of time to break up thundering herds.
-    WaitRandom,
     /// Check the latest version from the Firezone website and write it to disk.
     CheckNetwork,
     /// Wait approximately a day using `tokio::time::interval`.
@@ -107,10 +103,6 @@ enum Event {
 }
 
 enum State {
-    /// Just started, need to check the file first.
-    CheckFile,
-    /// Checked the file, need to wait a random amount of time before the first network check.
-    WaitRandom,
     /// Need to check the network.
     CheckNetwork,
     /// Need to wait before the next network check.
@@ -118,16 +110,16 @@ enum State {
 }
 
 impl Checker {
-    fn new(ours: Version) -> Self {
+    fn new(ours: Version, latest_seen: Option<Version>) -> Self {
         Self {
-            latest_seen: None,
+            latest_seen,
             ours,
-            state: State::CheckFile,
+            state: State::CheckNetwork,
             notification: None,
         }
     }
 
-    /// Call this when we just checked the network or the file
+    /// Call this when we just checked the network
     fn handle_check(&mut self, release: Release) {
         let newer_than_ours = release.version > self.ours;
         let different_than_latest_seen = match &self.latest_seen {
@@ -148,14 +140,6 @@ impl Checker {
             return Event::Notify(release);
         }
         match self.state {
-            State::CheckFile => {
-                self.state = State::WaitRandom;
-                Event::CheckFile
-            }
-            State::WaitRandom => {
-                self.state = State::CheckNetwork;
-                Event::WaitRandom
-            }
             State::CheckNetwork => {
                 self.state = State::WaitInterval;
                 Event::CheckNetwork
@@ -246,14 +230,8 @@ mod tests {
 
     #[test]
     fn checker_happy_path() {
-        let mut fsm = Checker::new(Version::new(1, 0, 0));
-        assert!(matches!(fsm.poll(), Event::CheckFile));
-
-        // We check the file and there's no file, this is a new system, so do nothing
-
-        // We don't check the network right at startup, we wait first
-        assert!(matches!(fsm.poll(), Event::WaitRandom));
-
+        // There's no file, this is a new system
+        let mut fsm = Checker::new(Version::new(1, 0, 0), None);
         // After waking we always check the network
         assert!(matches!(fsm.poll(), Event::CheckNetwork));
 
@@ -288,12 +266,8 @@ mod tests {
 
     #[test]
     fn checker_existing_system() {
-        let mut fsm = Checker::new(Version::new(1, 0, 0));
-        assert!(matches!(fsm.poll(), Event::CheckFile));
-
         // We check the file and we're already up to date, so do nothing
-        fsm.handle_check(release(1, 0, 0));
-        assert!(matches!(fsm.poll(), Event::WaitRandom));
+        let mut fsm = Checker::new(Version::new(1, 0, 0), Some(Version::new(1, 0, 0)));
         assert!(matches!(fsm.poll(), Event::CheckNetwork));
 
         // We're on the latest version, so do nothing
@@ -304,16 +278,11 @@ mod tests {
 
     #[test]
     fn checker_ignored_update() {
-        let mut fsm = Checker::new(Version::new(1, 0, 0));
-        assert_eq!(fsm.poll(), Event::CheckFile);
-
-        // We check the file and Firezone has restarted when we already knew about an update, so immediately notify
-        fsm.handle_check(release(1, 0, 1));
-        assert_eq!(fsm.poll(), Event::Notify(release(1, 0, 1)));
-        assert_eq!(fsm.poll(), Event::WaitRandom);
+        // We check the file and Firezone has restarted when we already knew about an update, but we don't notify for that.
+        let mut fsm = Checker::new(Version::new(1, 0, 0), Some(Version::new(1, 0, 1)));
         assert_eq!(fsm.poll(), Event::CheckNetwork);
 
-        // We already notified, don't notify again
+        // We already notified on some previous run, don't notify again
         fsm.handle_check(release(1, 0, 1));
         assert_eq!(fsm.poll(), Event::WaitInterval);
         assert_eq!(fsm.poll(), Event::CheckNetwork);
@@ -325,10 +294,7 @@ mod tests {
 
     #[test]
     fn checker_rollback() {
-        let mut fsm = Checker::new(Version::new(1, 0, 0));
-        assert_eq!(fsm.poll(), Event::CheckFile);
-        fsm.handle_check(release(1, 0, 0));
-        assert_eq!(fsm.poll(), Event::WaitRandom);
+        let mut fsm = Checker::new(Version::new(1, 0, 0), Some(Version::new(1, 0, 0)));
 
         // We first hear about 1.0.2 and notify for that
         assert_eq!(fsm.poll(), Event::CheckNetwork);
