@@ -5,7 +5,7 @@ import android.net.Network
 import dev.firezone.android.tunnel.TunnelService
 
 // None of the TunnelService lifecycle callbacks are called when a user disconnects the VPN
-// from the system settings. This class listens for network changes and disconnects the VPN
+// from the system settings. This class listens for network changes and shuts down the service
 // when the network is lost, which achieves the same effect.
 class DisconnectMonitor(private val tunnelService: TunnelService) : ConnectivityManager.NetworkCallback() {
     private var vpnNetwork: Network? = null
