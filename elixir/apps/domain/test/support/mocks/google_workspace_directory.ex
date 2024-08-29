@@ -7,6 +7,34 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
     Domain.Config.put_env_override(:domain, GoogleWorkspace.APIClient, config)
   end
 
+  def override_token_endpoint(url) do
+    config = Domain.Config.fetch_env!(:domain, GoogleWorkspace.APIClient)
+    config = Keyword.put(config, :token_endpoint, url)
+    Domain.Config.put_env_override(:domain, GoogleWorkspace.APIClient, config)
+  end
+
+  def mock_token_endpoint(bypass) do
+    token_endpoint_path = "/token"
+
+    resp = %{
+      "access_token" => "GOOGLE_0AUTH_ACCESS_TOKEN",
+      "expires_in" => 3599,
+      "token_type" => "Bearer"
+    }
+
+    test_pid = self()
+
+    Bypass.stub(bypass, "POST", token_endpoint_path, fn conn ->
+      conn = Plug.Conn.fetch_query_params(conn)
+      send(test_pid, {:bypass_request, conn})
+      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+    end)
+
+    override_token_endpoint("http://localhost:#{bypass.port}/")
+
+    bypass
+  end
+
   def mock_users_list_endpoint(bypass, users \\ nil) do
     users_list_endpoint_path = "/admin/directory/v1/users"
 
