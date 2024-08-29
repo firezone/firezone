@@ -175,7 +175,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
           <:title>Step 6: Create service account with domain-wide delegation</:title>
           <:content>
             <p class="mb-4">
-              Go the
+              Go to the
               <a
                 href="https://console.cloud.google.com/iam-admin/serviceaccounts"
                 target="_blank"
@@ -186,27 +186,27 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
               page of the Google Cloud Console and click <strong>Create Service Account</strong>.
             </p>
             <p class="mb-4">
-              Click on the created service account, then click <strong>Keys</strong>
+              Click on the created service account, then click the <strong>Keys</strong>
               tab, <strong>Add Key</strong>
               and select <strong>Create new key</strong>. Select <strong>JSON</strong>
-              and click <strong>Create</strong>. The contents of the downloaded JSON will be used for
+              and click <strong>Create</strong>. The contents of the downloaded JSON will be used for the
               <strong>Service Account JSON Key</strong>
               field of the form below.
             </p>
             <p class="mb-4">
-              Go back to <strong>Details</strong>
-              tab and copy <strong>Unique ID</strong>
-              (OAuth 2 Client ID), you will need it for the next step.
+              Go back to the <strong>Details</strong>
+              tab and copy the <strong>Unique ID</strong>
+              (OAuth 2 Client ID). You will need it for the next step.
             </p>
             <p class="mb-4">
-              Sign into the Google Workspace Admin Console and go to <strong>Security</strong>, then <strong>Access and Data Control</strong>, and then <a
+              Sign in to the Google Workspace Admin Console and go to <strong>Security</strong>, then <strong>Access and Data Control</strong>, and then <a
                 href="https://admin.google.com/ac/owl"
                 target="_blank"
                 class={link_style()}
               ><strong>API Controls</strong></a>. Click <strong>Manage Domain Wide Delegation</strong>,
               <strong>Add new</strong>
-              and paste <strong>Unique ID</strong>
-              from previous step to <strong>Client ID</strong>
+              and paste the <strong>Unique ID</strong>
+              from the previous step to the <strong>Client ID</strong>
               field and add the following scopes: <.code_block
                 id="oauth-scopes"
                 class="w-full text-xs mb-4 whitespace-pre-line rounded"
@@ -214,7 +214,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
               ><%= Enum.join(GoogleWorkspace.Settings.scope(), "\n") %></.code_block>
             </p>
             <p class="mb-4">
-              Then click <strong>Authorize</strong>.
+              Finally, click <strong>Authorize</strong>.
             </p>
           </:content>
         </.step>
@@ -247,7 +247,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
                     required
                   />
                   <p class="mt-2 text-xs text-neutral-500">
-                    The Client ID from the Step 5.
+                    The Client ID from Step 5.
                   </p>
                 </div>
 
@@ -259,7 +259,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
                     required
                   />
                   <p class="mt-2 text-xs text-neutral-500">
-                    The Client secret from the Step 5.
+                    The Client secret from Step 5.
                   </p>
                 </div>
 
@@ -293,7 +293,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
                     required
                   />
                   <p class="mt-2 text-xs text-neutral-500">
-                    The Service Account JSON Key from the Step 6.
+                    The Service Account JSON Key from Step 6.
                   </p>
                 </div>
               </.inputs_for>
