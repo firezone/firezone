@@ -40,6 +40,7 @@ jobs:
     secrets: inherit
 
   update-release-draft:
+    name: update-release-draft-${{ matrix.config_name }}
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
