@@ -288,6 +288,8 @@ defmodule Domain.Billing.EventHandler do
 
           {:ok, _resource} = Domain.Resources.create_internet_resource(account)
 
+          {:ok, _gateway_group} = Domain.Gateways.create_group(account, %{name: "Default Site"})
+
           :ok
         else
           {:error, %Ecto.Changeset{errors: [{:slug, {"has already been taken", _}} | _]}} ->

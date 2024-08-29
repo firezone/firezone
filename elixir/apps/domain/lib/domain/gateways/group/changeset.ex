@@ -12,6 +12,13 @@ defmodule Domain.Gateways.Group.Changeset do
     |> put_created_by(subject)
   end
 
+  def create(%Accounts.Account{} = account, attrs) do
+    %Gateways.Group{account: account}
+    |> changeset(attrs)
+    |> put_change(:account_id, account.id)
+    |> put_created_by(:system)
+  end
+
   def update(%Gateways.Group{} = group, attrs, %Auth.Subject{}) do
     changeset(group, attrs)
   end

@@ -139,8 +139,13 @@ defmodule Domain.Repo.Changeset do
     end
   end
 
-  def put_created_by(changset, %Domain.Auth.Subject{identity: nil} = subject) do
-    changset
+  def put_created_by(changeset, :system) do
+    changeset
+    |> put_change(:created_by, :system)
+  end
+
+  def put_created_by(changeset, %Domain.Auth.Subject{identity: nil} = subject) do
+    changeset
     |> put_change(:created_by_actor_id, subject.actor.id)
     |> put_change(:created_by, :actor)
   end

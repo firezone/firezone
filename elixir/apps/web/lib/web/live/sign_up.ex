@@ -461,6 +461,12 @@ defmodule Web.SignUp do
       end
     )
     |> Ecto.Multi.run(
+      :default_site,
+      fn _repo, %{account: account} ->
+        Domain.Gateways.create_group(account, %{name: "Default Site"})
+      end
+    )
+    |> Ecto.Multi.run(
       :send_email,
       fn _repo, %{account: account, identity: identity} ->
         Web.Mailer.AuthEmail.sign_up_link_email(
