@@ -43,8 +43,9 @@ defmodule Web do
         formats: [:html, :json, :xml],
         layouts: [html: Web.Layouts]
 
+      use Gettext, backend: Web.Gettext
+
       import Plug.Conn
-      import Web.Gettext
       import Web.ControllerDocumentation
 
       unquote(verified_routes())
@@ -151,13 +152,13 @@ defmodule Web do
 
   def components do
     quote do
+      use Gettext, backend: Web.Gettext
       import Web.CoreComponents
       import Web.NavigationComponents
       import Web.FormComponents
       import Web.TableComponents
       import Web.PageComponents
       import Web.AnalyticsComponents
-      import Web.Gettext
     end
   end
 

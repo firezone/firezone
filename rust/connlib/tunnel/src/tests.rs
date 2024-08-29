@@ -1,7 +1,7 @@
-use crate::tests::sut::TunnelTest;
+use crate::tests::{flux_capacitor::FluxCapacitor, sut::TunnelTest};
 use assertions::PanicOnErrorEvents;
 use proptest::test_runner::{Config, TestError, TestRunner};
-use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
+use proptest_state_machine::ReferenceStateMachine;
 use reference::ReferenceState;
 use std::sync::atomic::{self, AtomicU32};
 use tracing::level_filters::LevelFilter;
@@ -36,7 +36,7 @@ fn tunnel_test() {
         ..Default::default()
     };
 
-    static TEST_INDEX: AtomicU32 = AtomicU32::new(0);
+    let test_index = AtomicU32::new(0);
 
     let _ = std::fs::remove_dir_all("testcases");
     let _ = std::fs::create_dir_all("testcases");
@@ -44,8 +44,10 @@ fn tunnel_test() {
     let result = TestRunner::new(config).run(
         &ReferenceState::sequential_strategy(5..15),
         |(mut ref_state, transitions, mut seen_counter)| {
-            let test_index = TEST_INDEX.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let _guard = init_logging(&ref_state, test_index);
+            let test_index = test_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let flux_capacitor = FluxCapacitor::default();
+
+            let _guard = init_logging(flux_capacitor.clone(), test_index);
 
             std::fs::write(
                 format!("testcases/{test_index}.state"),
@@ -62,7 +64,7 @@ fn tunnel_test() {
 
             println!("Running test case {test_index:04} with {num_transitions:02} transitions");
 
-            let mut sut = TunnelTest::init_test(&ref_state);
+            let mut sut = TunnelTest::init_test(&ref_state, flux_capacitor);
 
             // Check the invariants on the initial state
             TunnelTest::check_invariants(&sut, &ref_state);
@@ -89,8 +91,6 @@ fn tunnel_test() {
                 // Check the invariants after the transition is applied
                 TunnelTest::check_invariants(&sut, &ref_state);
             }
-
-            TunnelTest::teardown(sut);
 
             Ok(())
         },
@@ -120,18 +120,21 @@ fn tunnel_test() {
 ///
 /// Finally, we install [`PanicOnErrorEvents`] into the registry.
 /// An `ERROR` log is treated as a fatal error and will fail the test.
-fn init_logging(ref_state: &ReferenceState, test_index: u32) -> tracing::subscriber::DefaultGuard {
+fn init_logging(
+    flux_capacitor: FluxCapacitor,
+    test_index: u32,
+) -> tracing::subscriber::DefaultGuard {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
                 .with_test_writer()
-                .with_timer(ref_state.flux_capacitor.clone())
+                .with_timer(flux_capacitor.clone())
                 .with_filter(EnvFilter::from_default_env()),
         )
         .with(
             tracing_subscriber::fmt::layer()
                 .with_writer(std::fs::File::create(format!("testcases/{test_index}.log")).unwrap())
-                .with_timer(ref_state.flux_capacitor.clone())
+                .with_timer(flux_capacitor)
                 .with_ansi(false)
                 .with_filter(
                     EnvFilter::builder()

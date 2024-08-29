@@ -14,7 +14,7 @@ public final class SessionViewModel: ObservableObject {
   @Published private(set) var actorName: String? = nil
   @Published private(set) var favorites: Favorites
   @Published private(set) var resources: ResourceList = ResourceList.loading
-  @Published private(set) var status: NEVPNStatus? = nil
+  @Published private(set) var status: NEVPNStatus = .disconnected
 
   let store: Store
 
@@ -41,8 +41,6 @@ public final class SessionViewModel: ObservableObject {
       })
       .store(in: &cancellables)
 
-    // MenuBar has its own observer
-#if os(iOS)
     store.$status
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] status in
@@ -55,11 +53,11 @@ public final class SessionViewModel: ObservableObject {
           }
         } else {
           store.endUpdatingResources()
+          self.resources = ResourceList.loading
         }
 
       })
       .store(in: &cancellables)
-#endif
   }
 
   public func isResourceEnabled(_ resource: String) -> Bool {
@@ -115,7 +113,7 @@ struct SessionView: View {
       Text("Disconnecting...")
     case .reasserting:
       Text("No internet connection. Resources will be displayed when your internet connection resumes.")
-    case .invalid, .none:
+    case .invalid:
       Text("VPN permission doesn't seem to be granted.")
     case .disconnected:
       Text("Signed out. Please sign in again to connect to Resources.")
@@ -132,23 +130,12 @@ struct ResourceSection: View {
   var body: some View {
     ForEach(resources) { resource in
       HStack {
-        NavigationLink { ResourceView(model: model, resource: resource) }
-      label: {
-        HStack {
-          Text(resource.name)
-          if resource.canBeDisabled {
-            Spacer()
-            Toggle("Enabled", isOn: Binding<Bool>(
-              get: { model.isResourceEnabled(resource.id) },
-              set: { newValue in
-                model.store.toggleResourceDisabled(resource: resource.id, enabled: newValue)
-              }
-            )).labelsHidden()
+          NavigationLink { ResourceView(model: model, resource: resource) }
+          label: {
+            Text(resource.name)
           }
-        }
       }
       .navigationTitle("All Resources")
-      }
     }
   }
 }

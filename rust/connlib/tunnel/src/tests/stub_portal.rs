@@ -6,7 +6,7 @@ use super::{
 };
 use crate::proptest::*;
 use connlib_shared::{
-    messages::{client, gateway, GatewayId, ResourceId},
+    messages::{client, gateway, DnsServer, GatewayId, ResourceId},
     DomainName,
 };
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -16,7 +16,7 @@ use proptest::{
     strategy::{Just, Strategy},
 };
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet},
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
@@ -107,10 +107,9 @@ impl StubPortal {
                     .cloned()
                     .map(client::ResourceDescription::Dns),
             )
-            // TODO: Enable once we actually implement the Internet resource
-            // .chain(iter::once(client::ResourceDescription::Internet(
-            //     self.internet_resource.clone(),
-            // )))
+            .chain(iter::once(client::ResourceDescription::Internet(
+                self.internet_resource.clone(),
+            )))
             .collect()
     }
 
@@ -118,7 +117,7 @@ impl StubPortal {
     pub(crate) fn handle_connection_intent(
         &self,
         resource: ResourceId,
-        _connected_gateway_ids: HashSet<GatewayId>,
+        _connected_gateway_ids: BTreeSet<GatewayId>,
     ) -> (GatewayId, client::SiteId) {
         let site_id = self
             .sites_by_resource
@@ -133,7 +132,7 @@ impl StubPortal {
 
     pub(crate) fn map_client_resource_to_gateway_resource(
         &self,
-        resolved_ips: Vec<IpAddr>,
+        resolved_ips: BTreeSet<IpAddr>,
         resource_id: ResourceId,
     ) -> gateway::ResourceDescription<gateway::ResolvedResourceDescriptionDns> {
         let cidr_resource = self.cidr_resources.iter().find_map(|(_, r)| {
@@ -152,7 +151,7 @@ impl StubPortal {
                 name: r.name.clone(),
                 filters: Vec::new(),
                 domain: r.address.clone(),
-                addresses: resolved_ips.clone(),
+                addresses: Vec::from_iter(resolved_ips),
             })
         });
         let internet_resource = Some(gateway::ResourceDescription::Internet(
@@ -198,11 +197,20 @@ impl StubPortal {
             .prop_map(BTreeMap::from_iter)
     }
 
-    pub(crate) fn client(&self) -> impl Strategy<Value = Host<RefClient>> {
+    pub(crate) fn client(
+        &self,
+        system_dns: impl Strategy<Value = Vec<IpAddr>>,
+        upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
+    ) -> impl Strategy<Value = Host<RefClient>> {
         let client_tunnel_ip4 = tunnel_ip4s().next().unwrap();
         let client_tunnel_ip6 = tunnel_ip6s().next().unwrap();
 
-        ref_client_host(Just(client_tunnel_ip4), Just(client_tunnel_ip6))
+        ref_client_host(
+            Just(client_tunnel_ip4),
+            Just(client_tunnel_ip6),
+            system_dns,
+            upstream_dns,
+        )
     }
 
     pub(crate) fn dns_resource_records(

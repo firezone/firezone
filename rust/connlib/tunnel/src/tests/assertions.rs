@@ -33,7 +33,7 @@ pub(crate) fn assert_icmp_packets_properties(
             .flatten()
             .collect(),
         &sim_client.received_icmp_replies,
-        |(_, seq_a, id_a), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
+        |(_, (_, seq_a, id_a)), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
     );
 
     if !unexpected_icmp_replies.is_empty() {
@@ -61,9 +61,7 @@ pub(crate) fn assert_icmp_packets_properties(
     for (gateway, expected_icmp_handshakes) in &ref_client.expected_icmp_handshakes {
         let received_icmp_requests = &sim_gateways.get(gateway).unwrap().received_icmp_requests;
 
-        for ((resource_dst, seq, identifier), gateway_received_request) in
-            expected_icmp_handshakes.iter().zip(received_icmp_requests)
-        {
+        for (payload, (resource_dst, seq, identifier)) in expected_icmp_handshakes {
             let _guard =
                 tracing::info_span!(target: "assertions", "icmp", %seq, %identifier).entered();
 
@@ -78,8 +76,12 @@ pub(crate) fn assert_icmp_packets_properties(
                 tracing::error!(target: "assertions", "❌ Missing ICMP reply on client");
                 continue;
             };
-
             assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
+
+            let Some(gateway_received_request) = received_icmp_requests.get(payload) else {
+                tracing::error!(target: "assertions", "❌ Missing ICMP request on gateway");
+                continue;
+            };
 
             {
                 let expected = ref_client.tunnel_ip_for(gateway_received_request.source());
@@ -122,6 +124,15 @@ pub(crate) fn assert_known_hosts_are_valid(ref_client: &RefClient, sim_client: &
                 tracing::error!(target: "assertions", ?actual, ?expected, "❌ Unexpected known-hosts");
             }
         }
+    }
+}
+
+pub(crate) fn assert_dns_servers_are_valid(ref_client: &RefClient, sim_client: &SimClient) {
+    let expected = ref_client.expected_dns_servers();
+    let actual = sim_client.effective_dns_servers();
+
+    if actual != expected {
+        tracing::error!(target: "assertions", ?actual, ?expected, "❌ Effective DNS servers are incorrect");
     }
 }
 
@@ -211,7 +222,7 @@ fn assert_destination_is_cdir_resource(gateway_received_request: &IpPacket<'_>, 
     let actual = gateway_received_request.destination();
 
     if actual != *expected {
-        tracing::error!(target: "assertions", %actual, %expected, "❌ Unknown resource IP");
+        tracing::error!(target: "assertions", %actual, %expected, "❌ Incorrect resource destination");
     } else {
         tracing::info!(target: "assertions", ip = %actual, "✅ ICMP request targets correct resource");
     }

@@ -19,7 +19,7 @@ serde = { version = "1.0", default-features = false, features = ["std", "derive"
 socket-factory = { workspace = true }
 thiserror = "1.0.63"
 time = { version = "0.3.36", features = ["formatting"] }
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["rt", "sync"] }
 tracing = { workspace = true, features = ["std", "attributes"] }
 tun = { workspace = true }
 url = { version = "2.4.1", features = ["serde"] }

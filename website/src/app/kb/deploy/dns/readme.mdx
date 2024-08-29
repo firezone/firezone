@@ -95,8 +95,14 @@ resolvers. Firezone Clients will use these servers in the order they are defined
 for any query that doesn't match a Resource the user has access to.
 
 <Alert color="warning">
+  When setting custom upstream resolvers, it is **highly** recommended to
+  configure **both** an IPv4 and IPv6 option. Otherwise, a Client that has only
+  IPv4 or IPv6 connectivity may not be able to resolve DNS queries.
+</Alert>
+
+<Alert color="warning">
   Firezone Clients support only DNS over UDP/53 at this time. DNS-over-TLS and
-  DNS-over-HTTPS upstream servers are not supported yet.
+  DNS-over-HTTPS upstream servers are not yet supported.
 </Alert>
 
 If no custom resolvers are configured, Firezone Clients will fall back to the

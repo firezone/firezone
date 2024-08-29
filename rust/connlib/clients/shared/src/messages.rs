@@ -4,10 +4,7 @@ use connlib_shared::messages::{
     ResourceId, ReuseConnection,
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::{BTreeSet, HashSet},
-    net::IpAddr,
-};
+use std::{collections::BTreeSet, net::IpAddr};
 
 #[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
 pub struct InitClient {
@@ -91,7 +88,7 @@ pub enum ReplyMessages {
 pub enum EgressMessages {
     PrepareConnection {
         resource_id: ResourceId,
-        connected_gateway_ids: HashSet<GatewayId>,
+        connected_gateway_ids: BTreeSet<GatewayId>,
     },
     RequestConnection(RequestConnection),
     ReuseConnection(ReuseConnection),
@@ -548,7 +545,7 @@ mod test {
             "client",
             EgressMessages::PrepareConnection {
                 resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
-                connected_gateway_ids: HashSet::new(),
+                connected_gateway_ids: BTreeSet::new(),
             },
             None,
         );

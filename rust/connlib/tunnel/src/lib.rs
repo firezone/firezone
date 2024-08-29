@@ -8,7 +8,7 @@ use boringtun::x25519::StaticSecret;
 use chrono::Utc;
 use connlib_shared::{
     callbacks,
-    messages::{ClientId, GatewayId, Relay, RelayId, ResourceId, ReuseConnection},
+    messages::{ClientId, GatewayId, Offer, Relay, RelayId, ResolveRequest, ResourceId, SecretKey},
     DomainName, PublicKey, DEFAULT_MTU,
 };
 use io::Io;
@@ -16,10 +16,10 @@ use ip_network::{Ipv4Network, Ipv6Network};
 use rand::rngs::OsRng;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
     time::Instant,
 };
 use tun::Tun;
@@ -50,12 +50,20 @@ const REALM: &str = "firezone";
 /// Thus, it is chosen as a safe, upper boundary that is not meant to be hit (and thus doesn't affect performance), yet acts as a safe guard, just in case.
 const MAX_EVENTLOOP_ITERS: u32 = 5000;
 
+/// Wireguard has a 32-byte overhead (4b message type + 4b receiver idx + 8b packet counter + 16b AEAD tag)
+const WG_OVERHEAD: usize = 32;
+/// In order to do NAT46 without copying, we need 20 extra byte in the buffer (IPv6 packets are 20 byte bigger than IPv4).
+const NAT46_OVERHEAD: usize = 20;
+/// TURN's data channels have a 4 byte overhead.
+const DATA_CHANNEL_OVERHEAD: usize = 4;
+
+const BUF_SIZE: usize = DEFAULT_MTU + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNEL_OVERHEAD;
+
 pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
 
-pub use client::{ClientState, Request};
+pub use client::ClientState;
 pub use gateway::{GatewayState, IPV4_PEERS, IPV6_PEERS};
-pub use sockets::NoInterfaces;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
@@ -73,10 +81,8 @@ pub struct Tunnel<TRoleState> {
     ip4_read_buf: Box<[u8; MAX_UDP_SIZE]>,
     ip6_read_buf: Box<[u8; MAX_UDP_SIZE]>,
 
-    // We need an extra 16 bytes on top of the MTU for write_buf since boringtun copies the extra AEAD tag before decrypting it
-    write_buf: Box<[u8; DEFAULT_MTU + 16 + 20]>,
-    // We have 20 extra bytes to be able to convert between ipv4 and ipv6
-    device_read_buf: Box<[u8; DEFAULT_MTU + 20]>,
+    /// Buffer for processing a single IP packet.
+    packet_buffer: Box<[u8; BUF_SIZE]>,
 }
 
 impl ClientTunnel {
@@ -85,26 +91,25 @@ impl ClientTunnel {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         known_hosts: BTreeMap<String, Vec<IpAddr>>,
-    ) -> Result<Self, NoInterfaces> {
-        Ok(Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory)?,
+    ) -> Self {
+        Self {
+            io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: ClientState::new(private_key, known_hosts, rand::random()),
-            write_buf: Box::new([0u8; DEFAULT_MTU + 16 + 20]),
+            packet_buffer: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            device_read_buf: Box::new([0u8; DEFAULT_MTU + 20]),
-        })
+        }
     }
 
-    pub fn reset(&mut self) -> Result<(), NoInterfaces> {
+    pub fn reset(&mut self) {
         self.role_state.reset();
-        self.io.rebind_sockets()?;
-
-        Ok(())
+        self.io.rebind_sockets();
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<ClientEvent>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
+            ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
+
             if let Some(e) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(e));
             }
@@ -127,7 +132,7 @@ impl ClientTunnel {
                 cx,
                 self.ip4_read_buf.as_mut(),
                 self.ip6_read_buf.as_mut(),
-                self.device_read_buf.as_mut(),
+                self.packet_buffer.as_mut(),
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout);
@@ -149,7 +154,7 @@ impl ClientTunnel {
                             received.from,
                             received.packet,
                             std::time::Instant::now(),
-                            self.write_buf.as_mut(),
+                            self.packet_buffer.as_mut(),
                         ) else {
                             continue;
                         };
@@ -176,15 +181,14 @@ impl GatewayTunnel {
         private_key: StaticSecret,
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    ) -> Result<Self, NoInterfaces> {
-        Ok(Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory)?,
+    ) -> Self {
+        Self {
+            io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: GatewayState::new(private_key, rand::random()),
-            write_buf: Box::new([0u8; DEFAULT_MTU + 20 + 16]),
+            packet_buffer: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            device_read_buf: Box::new([0u8; DEFAULT_MTU + 20]),
-        })
+        }
     }
 
     pub fn update_relays(&mut self, to_remove: BTreeSet<RelayId>, to_add: Vec<Relay>) {
@@ -194,6 +198,8 @@ impl GatewayTunnel {
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<GatewayEvent>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
+            ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
+
             if let Some(other) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(other));
             }
@@ -211,7 +217,7 @@ impl GatewayTunnel {
                 cx,
                 self.ip4_read_buf.as_mut(),
                 self.ip6_read_buf.as_mut(),
-                self.device_read_buf.as_mut(),
+                self.packet_buffer.as_mut(),
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout, Utc::now());
@@ -236,7 +242,7 @@ impl GatewayTunnel {
                             received.from,
                             received.packet,
                             std::time::Instant::now(),
-                            self.write_buf.as_mut(),
+                            self.packet_buffer.as_mut(),
                         ) else {
                             continue;
                         };
@@ -258,7 +264,7 @@ impl GatewayTunnel {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum ClientEvent {
     AddedIceCandidates {
         conn_id: GatewayId,
@@ -270,31 +276,50 @@ pub enum ClientEvent {
     },
     ConnectionIntent {
         resource: ResourceId,
-        connected_gateway_ids: HashSet<GatewayId>,
+        connected_gateway_ids: BTreeSet<GatewayId>,
     },
-    SendProxyIps {
-        connections: Vec<ReuseConnection>,
+    RequestAccess {
+        /// The resource we want to access.
+        resource_id: ResourceId,
+        /// The gateway we want to access the resource through.
+        gateway_id: GatewayId,
+        /// In the case of a DNS resource, its domain and the IPs we assigned to it.
+        maybe_domain: Option<ResolveRequest>,
+    },
+    RequestConnection {
+        /// The gateway we want to establish a connection to.
+        gateway_id: GatewayId,
+        /// The connection "offer". Contains our ICE credentials.
+        offer: Offer,
+        preshared_key: SecretKey,
+        /// The resource we want to access.
+        resource_id: ResourceId,
+        /// In the case of a DNS resource, its domain and the IPs we assigned to it.
+        maybe_domain: Option<ResolveRequest>,
     },
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {
         resources: Vec<callbacks::ResourceDescription>,
     },
     // TODO: Make this more fine-granular.
-    TunInterfaceUpdated {
-        ip4: Ipv4Addr,
-        ip6: Ipv6Addr,
-        /// The map of DNS servers that connlib will use.
-        ///
-        /// - The "left" values are the connlib-assigned, proxy (or "sentinel") IPs.
-        /// - The "right" values are the effective DNS servers.
-        ///   If upstream DNS servers are configured (in the portal), we will use those.
-        ///   Otherwise, we will use the DNS servers configured on the system.
-        dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
-    },
+    TunInterfaceUpdated(TunConfig),
     TunRoutesUpdated {
         ip4: Vec<Ipv4Network>,
         ip6: Vec<Ipv6Network>,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TunConfig {
+    pub ip4: Ipv4Addr,
+    pub ip6: Ipv6Addr,
+    /// The map of DNS servers that connlib will use.
+    ///
+    /// - The "left" values are the connlib-assigned, proxy (or "sentinel") IPs.
+    /// - The "right" values are the effective DNS servers.
+    ///   If upstream DNS servers are configured (in the portal), we will use those.
+    ///   Otherwise, we will use the DNS servers configured on the system.
+    pub dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 }
 
 #[derive(Debug, Clone)]

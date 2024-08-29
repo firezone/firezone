@@ -56,9 +56,12 @@ android {
         targetSdk = 35
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
-        versionName = "1.2.0"
+        versionName = "1.2.1"
         multiDexEnabled = true
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
+
+        val gitSha = System.getenv("GITHUB_SHA") ?: "unknown"
+        resValue("string", "git_sha", "Build: \"${gitSha.take(8)}\"")
     }
 
     signingConfigs {

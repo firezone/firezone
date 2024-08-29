@@ -79,9 +79,12 @@ defmodule Web.Resources.Index do
             </.link>
           </:col>
           <:col :let={resource} field={{:resources, :address}} label="Address">
-            <code class="block text-xs">
+            <code :if={resource.type != :internet} class="block text-xs">
               <%= resource.address %>
             </code>
+            <span :if={resource.type == :internet} class="block text-xs">
+              <code>0.0.0.0/0</code>, <code>::/0 </code>
+            </span>
           </:col>
           <:col :let={resource} label="sites">
             <.link

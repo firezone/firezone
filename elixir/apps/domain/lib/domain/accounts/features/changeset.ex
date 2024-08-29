@@ -10,6 +10,7 @@ defmodule Domain.Accounts.Features.Changeset do
     self_hosted_relays
     idp_sync
     rest_api
+    internet_resource
   ]a
 
   def changeset(features \\ %Features{}, attrs) do
