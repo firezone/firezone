@@ -149,7 +149,7 @@ pub(crate) fn run(
                 // Check for updates
                 let ctlr_tx_clone = ctlr_tx.clone();
                 tokio::spawn(async move {
-                    if let Err(error) = crate::client::updates::checker_task(ctlr_tx_clone).await
+                    if let Err(error) = crate::client::updates::checker_task(ctlr_tx_clone, cli.debug_update_check).await
                     {
                         tracing::error!(?error, "Error in updates::checker_task");
                     }
@@ -398,7 +398,8 @@ pub(crate) enum ControllerRequest {
     SchemeRequest(SecretString),
     SignIn,
     SystemTrayMenu(TrayMenuEvent),
-    UpdateAvailable(crate::client::updates::Release),
+    /// Set (or clear) update notification
+    SetUpdateNotification(Option<crate::client::updates::Notification>),
     UpdateNotificationClicked(Url),
 }
 
@@ -551,6 +552,26 @@ impl Controller {
                     tracing::error!(?error, "`handle_deep_link` failed");
                 }
             }
+            Req::SetUpdateNotification(notification) => {
+                let Some(notification) = notification else {
+                    self.update_url = None;
+                    self.refresh_system_tray_menu()?;
+                    return Ok(());
+                };
+
+                let release = notification.release;
+                self.update_url = Some(release.download_url.clone());
+                self.refresh_system_tray_menu()?;
+
+                if notification.tell_user {
+                    let title = format!("Firezone {} available for download", release.version);
+
+                    // We don't need to route through the controller here either, we could
+                    // use the `open` crate directly instead of Tauri's wrapper
+                    // `tauri::api::shell::open`
+                    os::show_update_notification(self.ctlr_tx.clone(), &title, release.download_url)?;
+                }
+            }
             Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
                 if let Some(req) = self
                     .auth
@@ -633,16 +654,6 @@ impl Controller {
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => Err(anyhow!(
                 "Impossible error: `Quit` should be handled before this"
             ))?,
-            Req::UpdateAvailable(release) => {
-                let title = format!("Firezone {} available for download", release.version);
-
-                // We don't need to route through the controller here either, we could
-                // use the `open` crate directly instead of Tauri's wrapper
-                // `tauri::api::shell::open`
-                os::show_update_notification(self.ctlr_tx.clone(), &title, release.download_url.clone())?;
-                self.update_url = Some(release.download_url);
-                self.refresh_system_tray_menu()?;
-            }
             Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
                 tauri::api::shell::open(&self.app.shell_scope(), download_url, None)
