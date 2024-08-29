@@ -5,6 +5,7 @@
 //! "Notification Area" is Microsoft's official name instead of "System tray":
 //! <https://learn.microsoft.com/en-us/windows/win32/shell/notification-area?redirectedfrom=MSDN#notifications-and-the-notification-area>
 
+use crate::client::updates::Release;
 use anyhow::Result;
 use connlib_shared::{
     callbacks::{ResourceDescription, Status},
@@ -49,7 +50,7 @@ pub(crate) const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
 pub(crate) fn loading() -> SystemTray {
     let state = AppState {
         connlib: ConnlibState::Loading,
-        update_url: None,
+        release: None,
     };
     SystemTray::new()
         .with_icon(Icon::default().tauri_icon())
@@ -64,7 +65,7 @@ pub(crate) struct Tray {
 
 pub(crate) struct AppState<'a> {
     pub(crate) connlib: ConnlibState<'a>,
-    pub(crate) update_url: Option<Url>,
+    pub(crate) release: Option<Release>,
 }
 
 pub(crate) enum ConnlibState<'a> {
@@ -205,7 +206,7 @@ impl Tray {
         };
         let new_icon = Icon {
             base,
-            update_ready: state.update_url.is_some(),
+            update_ready: state.release.is_some(),
         };
 
         self.handle.set_tooltip(TOOLTIP)?;
@@ -254,7 +255,7 @@ impl<'a> AppState<'a> {
             ConnlibState::WaitingForPortal => signing_in("Connecting to Firezone Portal..."),
             ConnlibState::WaitingForTunnel => signing_in("Raising tunnel..."),
         };
-        menu.add_bottom_section(self.update_url, quit_text)
+        menu.add_bottom_section(self.release, quit_text)
     }
 }
 
@@ -327,6 +328,45 @@ fn signing_in(waiting_message: &str) -> Menu {
         .item(Event::CancelSignIn, "Cancel sign-in")
 }
 
+impl Menu {
+    /// Appends things that always show, like About, Settings, Help, Quit, etc.
+    pub(crate) fn add_bottom_section(mut self, release: Option<Release>, quit_text: &str) -> Self {
+        self = self.separator();
+        if let Some(release) = release {
+            self = self.item(
+                Event::Url(release.download_url),
+                format!("Download Firezone {}...", release.version),
+            )
+        }
+
+        self.item(Event::ShowWindow(Window::About), "About Firezone")
+            .item(Event::AdminPortal, "Admin Portal...")
+            .add_submenu(
+                "Help",
+                Menu::default()
+                    .item(
+                        Event::Url(utm_url("https://www.firezone.dev/kb")),
+                        "Documentation...",
+                    )
+                    .item(
+                        Event::Url(utm_url("https://www.firezone.dev/support")),
+                        "Support...",
+                    ),
+            )
+            .item(Event::ShowWindow(Window::Settings), "Settings")
+            .separator()
+            .item(Event::Quit, quit_text)
+    }
+}
+
+pub(crate) fn utm_url(base_url: &str) -> Url {
+    Url::parse(&format!(
+        "{base_url}?utm_source={}-client",
+        std::env::consts::OS
+    ))
+    .expect("Hard-coded URL should always be parsable")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,7 +396,7 @@ mod tests {
                 resources,
                 disabled_resources,
             }),
-            update_url: None,
+            release: None,
         }
     }
 

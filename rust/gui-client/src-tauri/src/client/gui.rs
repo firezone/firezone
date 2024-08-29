@@ -6,6 +6,7 @@
 use crate::client::{
     self, about, deep_link, ipc, logging,
     settings::{self, AdvancedSettings},
+    updates::Release,
     Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
@@ -148,11 +149,10 @@ pub(crate) fn run(
             let setup_inner = move || {
                 // Check for updates
                 let ctlr_tx_clone = ctlr_tx.clone();
-                let always_show_update_notification = cli.always_show_update_notification;
                 tokio::spawn(async move {
-                    if let Err(error) = check_for_updates(ctlr_tx_clone, always_show_update_notification).await
+                    if let Err(error) = crate::client::updates::checker_task(ctlr_tx_clone, cli.debug_update_check).await
                     {
-                        tracing::error!(?error, "Error in check_for_updates");
+                        tracing::error!(?error, "Error in updates::checker_task");
                     }
                 });
 
@@ -346,33 +346,6 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     Ok::<_, anyhow::Error>(())
 }
 
-async fn check_for_updates(ctlr_tx: CtlrTx, always_show_update_notification: bool) -> Result<()> {
-    let release = client::updates::check()
-        .await
-        .context("Error in client::updates::check")?;
-    let latest_version = release.version.clone();
-
-    let our_version = client::updates::current_version()?;
-
-    if always_show_update_notification || (our_version < latest_version) {
-        tracing::info!(?our_version, ?latest_version, "There is a new release");
-        // We don't necessarily need to route through the Controller here, but if we
-        // want a persistent "Click here to download the new MSI" button, this would allow that.
-        ctlr_tx
-            .send(ControllerRequest::UpdateAvailable(release))
-            .await
-            .context("Error while sending UpdateAvailable to Controller")?;
-        return Ok(());
-    }
-
-    tracing::info!(
-        ?our_version,
-        ?latest_version,
-        "Our release is newer than, or the same as, the latest"
-    );
-    Ok(())
-}
-
 /// Worker task to accept deep links from a named pipe forever
 ///
 /// * `server` An initial named pipe server to consume before making new servers. This lets us also use the named pipe to enforce single-instance
@@ -426,7 +399,8 @@ pub(crate) enum ControllerRequest {
     SchemeRequest(SecretString),
     SignIn,
     SystemTrayMenu(TrayMenuEvent),
-    UpdateAvailable(crate::client::updates::Release),
+    /// Set (or clear) update notification
+    SetUpdateNotification(Option<crate::client::updates::Notification>),
     UpdateNotificationClicked(Url),
 }
 
@@ -482,10 +456,10 @@ struct Controller {
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
     log_filter_reloader: LogFilterReloader,
+    /// A release that's ready to download
+    release: Option<Release>,
     status: Status,
     tray: system_tray::Tray,
-    /// URL of a release that's ready to download
-    update_url: Option<Url>,
     uptime: client::uptime::Tracker,
 }
 
@@ -579,6 +553,26 @@ impl Controller {
                     tracing::error!(?error, "`handle_deep_link` failed");
                 }
             }
+            Req::SetUpdateNotification(notification) => {
+                let Some(notification) = notification else {
+                    self.release = None;
+                    self.refresh_system_tray_menu()?;
+                    return Ok(());
+                };
+
+                let release = notification.release;
+                self.release = Some(release.clone());
+                self.refresh_system_tray_menu()?;
+
+                if notification.tell_user {
+                    let title = format!("Firezone {} available for download", release.version);
+
+                    // We don't need to route through the controller here either, we could
+                    // use the `open` crate directly instead of Tauri's wrapper
+                    // `tauri::api::shell::open`
+                    os::show_update_notification(self.ctlr_tx.clone(), &title, release.download_url)?;
+                }
+            }
             Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
                 if let Some(req) = self
                     .auth
@@ -661,15 +655,6 @@ impl Controller {
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => Err(anyhow!(
                 "Impossible error: `Quit` should be handled before this"
             ))?,
-            Req::UpdateAvailable(release) => {
-                let title = format!("Firezone {} available for download", release.version);
-
-                // We don't need to route through the controller here either, we could
-                // use the `open` crate directly instead of Tauri's wrapper
-                // `tauri::api::shell::open`
-                os::show_update_notification(self.ctlr_tx.clone(), &title, release.download_url.clone())?;
-                self.update_url = Some(release.download_url);
-            }
             Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
                 tauri::api::shell::open(&self.app.shell_scope(), download_url, None)
@@ -860,7 +845,7 @@ impl Controller {
         };
         self.tray.update(system_tray::AppState {
             connlib,
-            update_url: self.update_url.clone(),
+            release: self.release.clone(),
         })?;
         Ok(())
     }
@@ -931,9 +916,9 @@ async fn run_controller(
         ctlr_tx,
         ipc_client,
         log_filter_reloader,
+        release: None,
         status: Default::default(),
         tray,
-        update_url: None,
         uptime: Default::default(),
     };
 
