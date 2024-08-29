@@ -153,24 +153,44 @@ defmodule Web.Actors.Show do
         </.edit_button>
       </:action>
       <:action :if={is_nil(@actor.deleted_at) and not Actors.actor_disabled?(@actor)}>
-        <.button
+        <.button_with_confirmation
+          id="disable_actor"
           style="warning"
           icon="hero-lock-closed"
-          phx-click="disable"
-          data-confirm={"Are you sure you want to disable this #{actor_type(@actor.type)} and revoke all its tokens?"}
+          on_confirm="disable"
         >
+          <:dialog_title>Apply changes to Actor Groups</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to disable this <%= String.downcase(actor_type(@actor.type)) %> and revoke all its tokens?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Disable <%= actor_type(@actor.type) %>
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Disable <%= actor_type(@actor.type) %>
-        </.button>
+        </.button_with_confirmation>
       </:action>
       <:action :if={is_nil(@actor.deleted_at) and Actors.actor_disabled?(@actor)}>
-        <.button
+        <.button_with_confirmation
+          id="enable_actor"
           style="warning"
           icon="hero-lock-open"
-          phx-click="enable"
-          data-confirm={"Are you sure you want to enable this #{actor_type(@actor.type)}?"}
+          on_confirm="enable"
         >
+          <:dialog_title>Apply changes to Actor Groups</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to enable this <%= String.downcase(actor_type(@actor.type)) %>?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Enable <%= actor_type(@actor.type) %>
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
           Enable <%= actor_type(@actor.type) %>
-        </.button>
+        </.button_with_confirmation>
       </:action>
       <:content flash={@flash}>
         <.vertical_table id="actor">
