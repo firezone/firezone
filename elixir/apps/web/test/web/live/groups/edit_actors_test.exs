@@ -212,7 +212,7 @@ defmodule Web.Live.Groups.EditActorsTest do
     |> render_click()
 
     lv
-    |> element("button", "Save")
+    |> element("button[type=submit]", "Save")
     |> render_click()
 
     assert_redirected(lv, ~p"/#{account}/groups/#{group}")

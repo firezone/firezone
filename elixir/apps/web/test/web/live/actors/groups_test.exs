@@ -177,7 +177,7 @@ defmodule Web.Live.Actors.GroupsTest do
     |> render_click()
 
     lv
-    |> element("button", "Save")
+    |> element("button[type=submit]", "Save")
     |> render_click()
 
     assert_redirected(lv, ~p"/#{account}/actors/#{actor}")

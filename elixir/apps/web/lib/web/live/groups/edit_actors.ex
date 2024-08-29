@@ -72,80 +72,88 @@ defmodule Web.Groups.EditActors do
         Edit Actors in Group: <code><%= @group.name %></code>
       </:title>
       <:content>
-        <div class="relative overflow-x-auto">
-          <.live_table
-            id="actors"
-            rows={@actors}
-            row_id={&"actor-#{&1.id}"}
-            filters={@filters_by_table_id["actors"]}
-            filter={@filter_form_by_table_id["actors"]}
-            ordered_by={@order_by_table_id["actors"]}
-            metadata={@actors_metadata}
-          >
-            <:col :let={actor} label="actor">
-              <.icon
-                :if={removed?(actor, @removed)}
-                name="hero-minus"
-                class="h-3.5 w-3.5 mr-2 text-red-500"
-              />
-              <.icon
-                :if={added?(actor, @added)}
-                name="hero-plus"
-                class="h-3.5 w-3.5 mr-2 text-green-500"
-              />
+        <.live_table
+          id="actors"
+          rows={@actors}
+          row_id={&"actor-#{&1.id}"}
+          filters={@filters_by_table_id["actors"]}
+          filter={@filter_form_by_table_id["actors"]}
+          ordered_by={@order_by_table_id["actors"]}
+          metadata={@actors_metadata}
+        >
+          <:col :let={actor} label="actor">
+            <.icon
+              :if={removed?(actor, @removed)}
+              name="hero-minus"
+              class="h-3.5 w-3.5 mr-2 text-red-500"
+            />
+            <.icon
+              :if={added?(actor, @added)}
+              name="hero-plus"
+              class="h-3.5 w-3.5 mr-2 text-green-500"
+            />
 
-              <.actor_name_and_role
+            <.actor_name_and_role
+              account={@account}
+              actor={actor}
+              class={
+                cond do
+                  removed?(actor, @removed) -> "text-red-500"
+                  added?(actor, @added) -> "text-green-500"
+                  true -> ""
+                end
+              }
+            />
+          </:col>
+          <:col :let={actor} label="identities">
+            <span class="flex flex-wrap gap-y-2">
+              <.identity_identifier
+                :for={identity <- actor.identities}
                 account={@account}
-                actor={actor}
-                class={
-                  cond do
-                    removed?(actor, @removed) -> "text-red-500"
-                    added?(actor, @added) -> "text-green-500"
-                    true -> ""
-                  end
-                }
+                identity={identity}
               />
-            </:col>
-            <:col :let={actor} label="identities">
-              <span class="flex flex-wrap gap-y-2">
-                <.identity_identifier
-                  :for={identity <- actor.identities}
-                  account={@account}
-                  identity={identity}
-                />
-              </span>
-            </:col>
-            <:col :let={actor} class="w-1/6">
-              <span class="flex justify-end">
-                <.button
-                  :if={member?(@current_member_ids, actor, @added, @removed)}
-                  style="info"
-                  size="xs"
-                  icon="hero-minus"
-                  phx-click={:remove_actor}
-                  phx-value-id={actor.id}
-                >
-                  Remove
-                </.button>
-                <.button
-                  :if={not member?(@current_member_ids, actor, @added, @removed)}
-                  style="info"
-                  size="xs"
-                  icon="hero-plus"
-                  phx-click={:add_actor}
-                  phx-value-id={actor.id}
-                >
-                  Add
-                </.button>
-              </span>
-            </:col>
-          </.live_table>
+            </span>
+          </:col>
+          <:col :let={actor} class="w-1/6">
+            <span class="flex justify-end">
+              <.button
+                :if={member?(@current_member_ids, actor, @added, @removed)}
+                style="info"
+                size="xs"
+                icon="hero-minus"
+                phx-click={:remove_actor}
+                phx-value-id={actor.id}
+              >
+                Remove
+              </.button>
+              <.button
+                :if={not member?(@current_member_ids, actor, @added, @removed)}
+                style="info"
+                size="xs"
+                icon="hero-plus"
+                phx-click={:add_actor}
+                phx-value-id={actor.id}
+              >
+                Add
+              </.button>
+            </span>
+          </:col>
+        </.live_table>
 
-          <div class="flex justify-end">
-            <.button class="m-4" data-confirm={confirm_message(@added, @removed)} phx-click="submit">
+        <div class="flex justify-end">
+          <.button_with_confirmation id="save_changes" style="primary" class="m-4" on_confirm="submit">
+            <:dialog_title>Apply changes to Group Actors</:dialog_title>
+            <:dialog_content>
+              <%= confirm_message(@added, @removed) %>
+            </:dialog_content>
+            <:dialog_confirm_button>
               Save
-            </.button>
-          </div>
+            </:dialog_confirm_button>
+            <:dialog_cancel_button>
+              Cancel
+            </:dialog_cancel_button>
+            Save
+          </.button_with_confirmation>
         </div>
       </:content>
     </.section>

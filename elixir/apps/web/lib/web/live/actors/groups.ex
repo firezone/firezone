@@ -68,82 +68,91 @@ defmodule Web.Actors.EditGroups do
         Add or remove Groups for a given Actor.
       </:help>
       <:content>
-        <div class="max-w-xl px-4 py-8 mx-auto lg:py-16">
-          <.flash kind={:error} flash={@flash} />
-          <.live_table
-            id="groups"
-            rows={@groups}
-            row_id={&"group-#{&1.id}"}
-            filters={@filters_by_table_id["groups"]}
-            filter={@filter_form_by_table_id["groups"]}
-            ordered_by={@order_by_table_id["groups"]}
-            metadata={@groups_metadata}
-          >
-            <:col :let={group} label="group">
-              <.icon
-                :if={removed?(group, @removed)}
-                name="hero-minus"
-                class="h-3.5 w-3.5 mr-2 text-red-500"
-              />
-              <.icon
-                :if={added?(group, @added)}
-                name="hero-plus"
-                class="h-3.5 w-3.5 mr-2 text-green-500"
-              />
+        <.flash kind={:error} flash={@flash} />
+        <.live_table
+          id="groups"
+          rows={@groups}
+          row_id={&"group-#{&1.id}"}
+          filters={@filters_by_table_id["groups"]}
+          filter={@filter_form_by_table_id["groups"]}
+          ordered_by={@order_by_table_id["groups"]}
+          metadata={@groups_metadata}
+        >
+          <:col :let={group} label="group">
+            <.icon
+              :if={removed?(group, @removed)}
+              name="hero-minus"
+              class="h-3.5 w-3.5 mr-2 text-red-500"
+            />
+            <.icon
+              :if={added?(group, @added)}
+              name="hero-plus"
+              class="h-3.5 w-3.5 mr-2 text-green-500"
+            />
 
-              <.link
-                navigate={~p"/#{@account}/groups/#{group}"}
-                class={
-                  cond do
-                    removed?(group, @removed) -> ["text-red-500"]
-                    added?(group, @added) -> ["text-green-500"]
-                    true -> []
-                  end ++ ["text-accent-500", "hover:underline"]
-                }
+            <.link
+              navigate={~p"/#{@account}/groups/#{group}"}
+              class={
+                cond do
+                  removed?(group, @removed) -> ["text-red-500"]
+                  added?(group, @added) -> ["text-green-500"]
+                  true -> []
+                end ++ ["text-accent-500", "hover:underline"]
+              }
+            >
+              <%= group.name %>
+            </.link>
+          </:col>
+          <:col :let={group}>
+            <div class="flex justify-end">
+              <.button
+                :if={member?(@current_group_ids, group, @added, @removed)}
+                size="xs"
+                style="info"
+                icon="hero-minus"
+                phx-click={:remove_group}
+                phx-value-id={group.id}
+                phx-value-name={group.name}
               >
-                <%= group.name %>
-              </.link>
-            </:col>
-            <:col :let={group}>
-              <div class="flex justify-end">
-                <.button
-                  :if={member?(@current_group_ids, group, @added, @removed)}
-                  size="xs"
-                  style="info"
-                  icon="hero-minus"
-                  phx-click={:remove_group}
-                  phx-value-id={group.id}
-                  phx-value-name={group.name}
-                >
-                  Remove
-                </.button>
-                <.button
-                  :if={not member?(@current_group_ids, group, @added, @removed)}
-                  size="xs"
-                  style="info"
-                  icon="hero-plus"
-                  phx-click={:add_group}
-                  phx-value-id={group.id}
-                  phx-value-name={group.name}
-                >
-                  Add
-                </.button>
-              </div>
-            </:col>
-          </.live_table>
-          <div class="flex justify-between items-center">
-            <div>
-              <p
-                :if={@actor.type == :account_user || @actor.type == :account_admin_user}
-                class="px-4 text-sm text-gray-500"
+                Remove
+              </.button>
+              <.button
+                :if={not member?(@current_group_ids, group, @added, @removed)}
+                size="xs"
+                style="info"
+                icon="hero-plus"
+                phx-click={:add_group}
+                phx-value-id={group.id}
+                phx-value-name={group.name}
               >
-                Note: Users always belong to the default <strong>Everyone</strong> group.
-              </p>
+                Add
+              </.button>
             </div>
-            <.button class="m-4" data-confirm={confirm_message(@added, @removed)} phx-click="submit">
-              Save
-            </.button>
+          </:col>
+        </.live_table>
+        <div class="flex justify-between items-center">
+          <div>
+            <p
+              :if={@actor.type == :account_user || @actor.type == :account_admin_user}
+              class="px-4 text-sm text-gray-500"
+            >
+              Note: Users always belong to the default <strong>Everyone</strong> group.
+            </p>
           </div>
+
+          <.button_with_confirmation id="save_changes" style="primary" class="m-4" on_confirm="submit">
+            <:dialog_title>Apply changes to Actor Groups</:dialog_title>
+            <:dialog_content>
+              <%= confirm_message(@added, @removed) %>
+            </:dialog_content>
+            <:dialog_confirm_button>
+              Save
+            </:dialog_confirm_button>
+            <:dialog_cancel_button>
+              Cancel
+            </:dialog_cancel_button>
+            Save
+          </.button_with_confirmation>
         </div>
       </:content>
     </.section>
