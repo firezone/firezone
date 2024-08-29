@@ -123,7 +123,7 @@ export default function CustomerTestimonials() {
   };
 
   return (
-    <section className="bg-neutral-950 py-16">
+    <section className="bg-neutral-950 py-24">
       <div className="relative mx-auto max-w-screen-lg">
         <div className="px-8 sm:px-16 md:px-24 mb-12 md:mb-16">
           <div>
