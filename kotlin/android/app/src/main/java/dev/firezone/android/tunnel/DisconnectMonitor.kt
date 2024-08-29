@@ -19,7 +19,7 @@ class DisconnectMonitor(private val tunnelService: TunnelService) : Connectivity
         val ipv4Found = linkProperties.linkAddresses.find { it.address.hostAddress == tunnelService.tunnelIpv4Address }
         val ipv6Found = linkProperties.linkAddresses.find { it.address.hostAddress == tunnelService.tunnelIpv6Address }
 
-        if (ipv4 != null && ipv6 != null) {
+        if (ipv4Found != null && ipv6Found != null) {
             // Matched both IPv4 and IPv6 addresses, this is our VPN network
             vpnNetwork = network
         }
