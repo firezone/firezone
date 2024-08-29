@@ -25,7 +25,7 @@ defmodule Web.Flows.DownloadActivities do
         window_started_at window_ended_at
         destination
         connectivity_type
-        rx_bytes tx_bytes
+        rx_bytes tx_bytes blocked_tx_bytes
       ]])
 
     {:ok, conn} = chunk(conn, iodata)
@@ -61,7 +61,8 @@ defmodule Web.Flows.DownloadActivities do
           to_string(activity.destination),
           to_string(activity.connectivity_type),
           activity.rx_bytes,
-          activity.tx_bytes
+          activity.tx_bytes,
+          activity.blocked_tx_bytes
         ]
       end)
       |> Web.CSV.dump_to_iodata()

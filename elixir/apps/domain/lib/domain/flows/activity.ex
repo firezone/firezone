@@ -8,6 +8,7 @@ defmodule Domain.Flows.Activity do
     field :destination, Domain.Types.ProtocolIPPort
     field :rx_bytes, :integer
     field :tx_bytes, :integer
+    field :blocked_tx_bytes, :integer
 
     field :connectivity_type, Ecto.Enum, values: [:relayed, :direct]
 

@@ -99,7 +99,8 @@ defmodule Domain.Fixtures.Flows do
       destination: destination,
       connectivity_type: :relayed,
       rx_bytes: 100,
-      tx_bytes: 200
+      tx_bytes: 200,
+      blocked_tx_bytes: 0
     })
   end
 
