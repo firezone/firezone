@@ -40,7 +40,7 @@ defmodule API.Gateway.Socket do
           |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
 
         if auto_join_room do
-          API.Gateway.Channel.join("gateway", %{}, socket)
+          Process.send_after(self(), {:join_channel, %{}}, 0)
         end
 
         {:ok, socket}
@@ -59,6 +59,12 @@ defmodule API.Gateway.Socket do
 
   def connect(_params, _socket, _connect_info) do
     {:error, :missing_token}
+  end
+
+  @impl true
+  def handle_info({:join_channel, %{}}, socket) do
+    API.Gateway.Channel.join("gateway", %{}, socket)
+    {:noreply, socket}
   end
 
   @impl true
