@@ -65,6 +65,12 @@ defmodule Domain.Gateways do
     end
   end
 
+  def create_group(%Accounts.Account{} = account, attrs) do
+    account
+    |> Group.Changeset.create(attrs)
+    |> Repo.insert()
+  end
+
   def change_group(%Group{} = group, attrs \\ %{}) do
     group
     |> Repo.preload(:account)
