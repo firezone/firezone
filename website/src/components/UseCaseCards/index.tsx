@@ -22,7 +22,7 @@ function Card({
   children: React.ReactNode;
 }) {
   const container = `
-    relative flex justify-center rounded-3xl min-h-[440px] p-8 overflow-hidden
+    shadow-lg relative flex justify-center rounded-3xl min-h-[440px] p-8 overflow-hidden
     ${narrow ? "lg:col-span-7 bg-accent-200" : "lg:col-span-9 bg-primary-200"}`;
 
   return <div className={container}>{children}</div>;
@@ -33,7 +33,7 @@ function Button({ text, href }: { text: string; href: Route<string> | URL }) {
     <Link href={href}>
       <button className="group transform transition duration-50 hover:ring-1 hover:ring-neutral-900 inline-flex mt-6 gap-1 items-center bg-neutral-900 rounded-full text-neutral-50 text-sm px-5 py-2.5">
         {text}
-        <HiArrowLongRight className="group-hover:translate-x-1 group-hover:scale-110" />
+        <HiArrowLongRight className="w-5 h-5 group-hover:translate-x-1 group-hover:scale-110 duration-50 transition transform" />
       </button>
     </Link>
   );
@@ -41,26 +41,27 @@ function Button({ text, href }: { text: string; href: Route<string> | URL }) {
 
 export default function UseCaseCards() {
   return (
-    <section className="py-16">
+    <section className="py-24">
       <div className="max-w-[1240px] flex flex-col items-center mx-auto">
         <h3
-          className={`mb-4 text-3xl md:text-4xl lg:text-5xl text-center leading-tight tracking-tight font-bold inline-block ${manrope.className}`}
+          className={`px-4 mb-8 text-3xl md:text-4xl lg:text-5xl text-center leading-tight tracking-tight font-bold inline-block ${manrope.className}`}
         >
-          How our customers are using Firezone
+          One product. Endless possibilities.{" "}
+          <span className="text-primary-450">Zero </span>hassle.
         </h3>
         <div className="grid lg:grid-cols-16 gap-6 mt-8 mx-6">
           <Card>
             <div>
-              <CardHeading>Scale access to VPC Resources.</CardHeading>
+              <CardHeading>Scale access to cloud Resources.</CardHeading>
               <p>
-                Firezone's advanced policy engine can be configured to allow
-                access only from certain countries, IPs, and timeframes, so you
-                can easily demonstrate compliance with internal and external
-                security audits.
+                Eliminate throughput bottlenecks that plague other VPNs.
+                Firezone's load-balancing architecture scales horizontally to
+                handle an unlimited number of connections to even the most
+                bandwidth-intensive services.
               </p>
               <Button
-                text="Read about Firezone's architecture"
-                href="/kb/architecture"
+                text="Scale your security"
+                href="/kb/use-cases/scale-vpc-access"
               />
             </div>
             <Image
@@ -101,80 +102,80 @@ export default function UseCaseCards() {
               height={241}
               alt="Manage access to SaaS graphic"
             />
-            <div className="absolute left-5 bottom-5">
-              <CardHeading>Manage access to a SaaS app</CardHeading>
-              <p>Manage access to a SaaS app like HubSpot or GitHub.</p>
-              <Button
-                text="Connect your identity provider"
-                href="/kb/authenticate"
-              />
+            <div className="w-full flex items-end">
+              <div>
+                <CardHeading>Manage access to a SaaS app</CardHeading>
+                <p>
+                  Manage access to a third-party SaaS app like HubSpot or
+                  GitHub.
+                </p>
+                <Button
+                  text="Configure your app"
+                  href="/kb/use-cases/saas-app-access"
+                />
+              </div>
             </div>
           </Card>
           <Card>
-            <div>
-              <CardHeading>Access an on-prem network</CardHeading>
-              <p>
-                Firezone's advanced policy engine can be configured to allow
-                access only from certain countries, IPs, and timeframes, so you
-                can easily demonstrate compliance with internal and external
-                security audits.
-              </p>
-              <Button
-                text="Read about Firezone's architecture"
-                href="/kb/architecture"
-              />
-            </div>
             <Image
-              className="absolute bottom-0 translate-y-10 mx-auto px-4"
+              className="absolute md:top-8 top-4"
               src="/images/access-onprem-network.png"
-              width={297}
-              height={178}
-              alt="Resource List"
+              width={300}
+              height={225}
+              alt="Access on-prem network graphic"
             />
+            <div className="flex items-end">
+              <div>
+                <CardHeading>Access an on-prem network</CardHeading>
+                <p>
+                  Firezone securely punches through firewalls with ease, so keep
+                  those ports closed. Connections pick the shortest path and
+                  your attack surface is minimized, keeping your most sensitive
+                  resources invisible to attackers.
+                </p>
+                <Button
+                  text="Set up secure access"
+                  href="/kb/use-cases/private-network-access"
+                />
+              </div>
+            </div>
           </Card>
           <Card>
             <div>
-              <CardHeading>Scale access to VPC Resources.</CardHeading>
+              <CardHeading>Block malicious DNS</CardHeading>
               <p>
-                Firezone's advanced policy engine can be configured to allow
-                access only from certain countries, IPs, and timeframes, so you
-                can easily demonstrate compliance with internal and external
-                security audits.
+                Use Firezone to improve your team's Internet security by
+                blocking DNS queries to known malicious domains.
               </p>
-              <Button
-                text="Read about Firezone's architecture"
-                href="/kb/architecture"
-              />
+              <Button text="Secure your DNS" href="/kb/use-cases/secure-dns" />
             </div>
             <Image
-              className="absolute bottom-0 translate-y-10 mx-auto px-4"
-              src="/images/resource-list.png"
-              width={700}
-              height={350}
-              alt="Resource List"
+              className="absolute -bottom-5 px-4"
+              src="/images/block-malicious-dns.png"
+              width={577}
+              height={266}
+              alt="Block Malicious DNS"
             />
           </Card>
           <Card narrow>
-            <div className="flex flex-col items-center text-center max-w-[420px] text-pretty">
-              <CardHeading>Add two-factor auth to WireGuard.</CardHeading>
+            <div className="text-center text-pretty">
+              <Image
+                className="mx-auto mb-8"
+                src="/images/access-private-web-app.png"
+                width={377}
+                height={231}
+                alt="Private web app graphic"
+              />
+              <CardHeading>Access a private web app</CardHeading>
               <p>
-                Looking for 2FA for WireGuard? Look no further. Firezone
-                integrates with any OIDC-compatible identity provider to
-                consistently enforce multi-factor authentication across your
-                workforce.
+                Secure access to a privately hosted web application like GitLab
+                or Metabase.
               </p>
               <Button
-                text="Connect your identity provider"
-                href="/kb/authenticate"
+                text="Secure your web app"
+                href="/kb/use-cases/web-app-access"
               />
             </div>
-            <Image
-              className="absolute top-5 self-center"
-              src="/images/two-factor-graphic.png"
-              width={260}
-              height={289}
-              alt="Two-Factor Graphic"
-            />
           </Card>
         </div>
       </div>
