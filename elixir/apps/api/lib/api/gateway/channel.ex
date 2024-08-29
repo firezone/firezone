@@ -493,7 +493,8 @@ defmodule API.Gateway.Channel do
             "destination" => destination,
             "connectivity_type" => connectivity_type,
             "rx_bytes" => rx_bytes,
-            "tx_bytes" => tx_bytes
+            "tx_bytes" => tx_bytes,
+            "blocked_tx_bytes" => blocked_tx_bytes
           } = metric
 
           %{
@@ -504,7 +505,8 @@ defmodule API.Gateway.Channel do
             connectivity_type: String.to_existing_atom(connectivity_type),
             destination: destination,
             rx_bytes: rx_bytes,
-            tx_bytes: tx_bytes
+            tx_bytes: tx_bytes,
+            blocked_tx_bytes: blocked_tx_bytes
           }
         end)
 

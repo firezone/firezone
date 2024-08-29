@@ -851,7 +851,8 @@ defmodule API.Gateway.ChannelTest do
             "destination" => destination,
             "connectivity_type" => "direct",
             "rx_bytes" => 100,
-            "tx_bytes" => 200
+            "tx_bytes" => 200,
+            "blocked_tx_bytes" => 0
           }
         ]
       }

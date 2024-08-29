@@ -600,6 +600,7 @@ defmodule Domain.FlowsTest do
         destination: destination,
         rx_bytes: 100,
         tx_bytes: 200,
+        blocked_tx_bytes: 0,
         connectivity_type: :direct,
         flow_id: flow.id,
         account_id: account.id

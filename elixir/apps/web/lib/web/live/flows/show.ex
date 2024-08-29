@@ -173,6 +173,9 @@ defmodule Web.Flows.Show do
           <:col :let={activity} label="tx">
             <%= Sizeable.filesize(activity.tx_bytes) %>
           </:col>
+          <:col :let={activity} label="blocked tx">
+            <%= Sizeable.filesize(activity.blocked_tx_bytes) %>
+          </:col>
           <:empty>
             <div class="text-center text-neutral-500 p-4">No metrics to display.</div>
           </:empty>
