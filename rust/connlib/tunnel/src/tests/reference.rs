@@ -59,15 +59,17 @@ impl ReferenceStateMachine for ReferenceState {
     type Transition = Transition;
 
     fn init_state() -> BoxedStrategy<Self::State> {
-        stub_portal()
-            .prop_flat_map(|portal| {
+        (stub_portal(), dns_servers())
+            .prop_flat_map(|(portal, dns_servers)| {
                 let gateways = portal.gateways();
                 let dns_resource_records = portal.dns_resource_records();
-                let client = portal.client();
+                let client = portal.client(
+                    system_dns_servers(dns_servers.values().cloned().collect()),
+                    upstream_dns_servers(dns_servers.values().cloned().collect()),
+                );
                 let relays = relays();
                 let global_dns_records = global_dns_records(); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
                 let drop_direct_client_traffic = any::<bool>();
-                let dns_servers = dns_servers();
 
                 (
                     client,
@@ -77,7 +79,7 @@ impl ReferenceStateMachine for ReferenceState {
                     relays,
                     global_dns_records,
                     drop_direct_client_traffic,
-                    dns_servers,
+                    Just(dns_servers),
                 )
             })
             .prop_filter_map(
@@ -176,11 +178,13 @@ impl ReferenceStateMachine for ReferenceState {
         CompositeStrategy::default()
             .with(
                 1,
-                update_system_dns_servers(state.dns_servers.values().cloned().collect()),
+                system_dns_servers(state.dns_servers.values().cloned().collect())
+                    .prop_map(Transition::UpdateSystemDnsServers),
             )
             .with(
                 1,
-                update_upstream_dns_servers(state.dns_servers.values().cloned().collect()),
+                upstream_dns_servers(state.dns_servers.values().cloned().collect())
+                    .prop_map(Transition::UpdateUpstreamDnsServers),
             )
             .with_if_not_empty(
                 5,
@@ -410,12 +414,12 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::UpdateSystemDnsServers(servers) => {
                 state
                     .client
-                    .exec_mut(|client| client.system_dns_resolvers.clone_from(servers));
+                    .exec_mut(|client| client.set_system_dns_resolvers(servers));
             }
             Transition::UpdateUpstreamDnsServers(servers) => {
                 state
                     .client
-                    .exec_mut(|client| client.upstream_dns_resolvers.clone_from(servers));
+                    .exec_mut(|client| client.set_upstream_dns_resolvers(servers));
             }
             Transition::RoamClient { ip4, ip6, .. } => {
                 state.network.remove_host(&state.client);

@@ -302,21 +302,24 @@ pub enum ClientEvent {
         resources: Vec<callbacks::ResourceDescription>,
     },
     // TODO: Make this more fine-granular.
-    TunInterfaceUpdated {
-        ip4: Ipv4Addr,
-        ip6: Ipv6Addr,
-        /// The map of DNS servers that connlib will use.
-        ///
-        /// - The "left" values are the connlib-assigned, proxy (or "sentinel") IPs.
-        /// - The "right" values are the effective DNS servers.
-        ///   If upstream DNS servers are configured (in the portal), we will use those.
-        ///   Otherwise, we will use the DNS servers configured on the system.
-        dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
-    },
+    TunInterfaceUpdated(TunConfig),
     TunRoutesUpdated {
         ip4: Vec<Ipv4Network>,
         ip6: Vec<Ipv6Network>,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TunConfig {
+    pub ip4: Ipv4Addr,
+    pub ip6: Ipv6Addr,
+    /// The map of DNS servers that connlib will use.
+    ///
+    /// - The "left" values are the connlib-assigned, proxy (or "sentinel") IPs.
+    /// - The "right" values are the effective DNS servers.
+    ///   If upstream DNS servers are configured (in the portal), we will use those.
+    ///   Otherwise, we will use the DNS servers configured on the system.
+    pub dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 }
 
 #[derive(Debug, Clone)]

@@ -127,6 +127,15 @@ pub(crate) fn assert_known_hosts_are_valid(ref_client: &RefClient, sim_client: &
     }
 }
 
+pub(crate) fn assert_dns_servers_are_valid(ref_client: &RefClient, sim_client: &SimClient) {
+    let expected = ref_client.expected_dns_servers();
+    let actual = sim_client.effective_dns_servers();
+
+    if actual != expected {
+        tracing::error!(target: "assertions", ?actual, ?expected, "❌ Effective DNS servers are incorrect");
+    }
+}
+
 pub(crate) fn assert_dns_packets_properties(ref_client: &RefClient, sim_client: &SimClient) {
     let unexpected_dns_replies = find_unexpected_entries(
         &ref_client.expected_dns_handshakes,

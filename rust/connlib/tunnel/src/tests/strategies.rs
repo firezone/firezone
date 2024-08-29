@@ -11,7 +11,7 @@ use connlib_shared::{
         client::{
             ResourceDescriptionCidr, ResourceDescriptionDns, ResourceDescriptionInternet, Site,
         },
-        RelayId,
+        DnsServer, RelayId,
     },
     DomainName,
 };
@@ -259,4 +259,22 @@ pub(crate) fn documentation_ip6s(subnet: u16, num_ips: usize) -> impl Strategy<V
     .collect_vec();
 
     sample::select(ips)
+}
+
+pub(crate) fn system_dns_servers(
+    dns_servers: Vec<Host<RefDns>>,
+) -> impl Strategy<Value = Vec<IpAddr>> {
+    let max = dns_servers.len();
+
+    sample::subsequence(dns_servers, ..=max)
+        .prop_map(|seq| seq.into_iter().map(|h| h.single_socket().ip()).collect())
+}
+
+pub(crate) fn upstream_dns_servers(
+    dns_servers: Vec<Host<RefDns>>,
+) -> impl Strategy<Value = Vec<DnsServer>> {
+    let max = dns_servers.len();
+
+    sample::subsequence(dns_servers, ..=max)
+        .prop_map(|seq| seq.into_iter().map(|h| h.single_socket().into()).collect())
 }
