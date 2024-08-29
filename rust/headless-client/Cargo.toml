@@ -21,7 +21,7 @@ ip_network = { version = "0.4", default-features = false }
 phoenix-channel = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }
-serde = { version = "1.0.204", features = ["derive"] }
+serde = { version = "1.0.209", features = ["derive"] }
 serde_json = "1.0.125"
 thiserror = { version = "1.0", default-features = false }
 # This actually relies on many other features in Tokio, so this will probably
@@ -69,6 +69,7 @@ features = [
     "Win32_Networking_WinSock",
 
     "Win32_Security", # For named pipe IPC
+    "Win32_System_GroupPolicy", # For NRPT when GPO is used
     "Win32_System_SystemInformation", # For uptime
     "Win32_System_SystemServices",
     "Win32_System_Pipes",

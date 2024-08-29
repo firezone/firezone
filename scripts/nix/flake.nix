@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-23.11";
+    nixpkgs.url = "nixpkgs/nixos-24.05";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
   };
@@ -49,6 +49,8 @@
             gnome.zenity
             desktop-file-utils
             android-tools
+            erlang_27
+            elixir
           ];
 
           mkShellWithRustVersion = rustVersion: pkgs.mkShell {

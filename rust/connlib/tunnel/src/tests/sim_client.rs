@@ -257,10 +257,10 @@ pub struct RefClient {
 
     /// The DNS resolvers configured on the client outside of connlib.
     #[derivative(Debug = "ignore")]
-    pub(crate) system_dns_resolvers: Vec<IpAddr>,
+    system_dns_resolvers: Vec<IpAddr>,
     /// The upstream DNS resolvers configured in the portal.
     #[derivative(Debug = "ignore")]
-    pub(crate) upstream_dns_resolvers: Vec<DnsServer>,
+    upstream_dns_resolvers: Vec<DnsServer>,
 
     /// Tracks all resources in the order they have been added in.
     ///
@@ -299,11 +299,9 @@ pub struct RefClient {
     pub(crate) disabled_resources: BTreeSet<ResourceId>,
 
     /// The expected ICMP handshakes.
-    ///
-    /// This is indexed by gateway because our assertions rely on the order of the sent packets.
     #[derivative(Debug = "ignore")]
     pub(crate) expected_icmp_handshakes:
-        BTreeMap<GatewayId, VecDeque<(ResourceDst, IcmpSeq, IcmpIdentifier)>>,
+        BTreeMap<GatewayId, BTreeMap<u64, (ResourceDst, IcmpSeq, IcmpIdentifier)>>,
     /// The expected DNS handshakes.
     #[derivative(Debug = "ignore")]
     pub(crate) expected_dns_handshakes: VecDeque<(SocketAddr, QueryId)>,
@@ -399,6 +397,7 @@ impl RefClient {
         dst: IpAddr,
         seq: u16,
         identifier: u16,
+        payload: u64,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
     ) {
         tracing::Span::current().record("dst", tracing::field::display(dst));
@@ -420,7 +419,7 @@ impl RefClient {
             self.expected_icmp_handshakes
                 .entry(gateway)
                 .or_default()
-                .push_back((ResourceDst::Internet(dst), seq, identifier));
+                .insert(payload, (ResourceDst::Internet(dst), seq, identifier));
             return;
         }
 
@@ -436,6 +435,7 @@ impl RefClient {
         dst: IpAddr,
         seq: u16,
         identifier: u16,
+        payload: u64,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
     ) {
         tracing::Span::current().record("dst", tracing::field::display(dst));
@@ -461,7 +461,7 @@ impl RefClient {
             self.expected_icmp_handshakes
                 .entry(gateway)
                 .or_default()
-                .push_back((ResourceDst::Cidr(dst), seq, identifier));
+                .insert(payload, (ResourceDst::Cidr(dst), seq, identifier));
             return;
         }
 
@@ -477,6 +477,7 @@ impl RefClient {
         dst: DomainName,
         seq: u16,
         identifier: u16,
+        payload: u64,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
     ) {
         tracing::Span::current().record("dst", tracing::field::display(&dst));
@@ -502,7 +503,7 @@ impl RefClient {
             self.expected_icmp_handshakes
                 .entry(gateway)
                 .or_default()
-                .push_back((ResourceDst::Dns(dst), seq, identifier));
+                .insert(payload, (ResourceDst::Dns(dst), seq, identifier));
             return;
         }
 
@@ -595,11 +596,13 @@ impl RefClient {
             .map(|(domain, ips)| (domain.clone(), ips.clone()))
     }
 
-    /// An ICMP packet is valid if we didn't yet send an ICMP packet with the same seq and identifier.
-    pub(crate) fn is_valid_icmp_packet(&self, seq: &u16, identifier: &u16) -> bool {
+    /// An ICMP packet is valid if we didn't yet send an ICMP packet with the same seq, identifier and payload.
+    pub(crate) fn is_valid_icmp_packet(&self, seq: &u16, identifier: &u16, payload: &u64) -> bool {
         self.expected_icmp_handshakes.values().flatten().all(
-            |(_, existing_seq, existing_identifer)| {
-                existing_seq != seq && existing_identifer != identifier
+            |(existig_payload, (_, existing_seq, existing_identifer))| {
+                existing_seq != seq
+                    && existing_identifer != identifier
+                    && existig_payload != payload
             },
         )
     }
@@ -728,6 +731,18 @@ impl RefClient {
     pub(crate) fn all_resources(&self) -> Vec<ResourceDescription> {
         self.resources.clone()
     }
+
+    pub(crate) fn set_system_dns_resolvers(&mut self, servers: &Vec<IpAddr>) {
+        self.system_dns_resolvers.clone_from(servers);
+    }
+
+    pub(crate) fn set_upstream_dns_resolvers(&mut self, servers: &Vec<DnsServer>) {
+        self.upstream_dns_resolvers.clone_from(servers);
+    }
+
+    pub(crate) fn upstream_dns_resolvers(&self) -> Vec<DnsServer> {
+        self.upstream_dns_resolvers.clone()
+    }
 }
 
 // This function only works on the tests because we are limited to resources with a single wildcard at the beginning of the resource.
@@ -754,11 +769,13 @@ fn is_subdomain(name: &str, record: &str) -> bool {
 pub(crate) fn ref_client_host(
     tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
+    system_dns: impl Strategy<Value = Vec<IpAddr>>,
+    upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
 ) -> impl Strategy<Value = Host<RefClient>> {
     host(
         any_ip_stack(),
         any_port(),
-        ref_client(tunnel_ip4s, tunnel_ip6s),
+        ref_client(tunnel_ip4s, tunnel_ip6s, system_dns, upstream_dns),
         latency(300), // TODO: Increase with #6062.
     )
 }
@@ -766,41 +783,58 @@ pub(crate) fn ref_client_host(
 fn ref_client(
     tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
+    system_dns: impl Strategy<Value = Vec<IpAddr>>,
+    upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
 ) -> impl Strategy<Value = RefClient> {
     (
         tunnel_ip4s,
         tunnel_ip6s,
+        system_dns,
+        upstream_dns,
         client_id(),
         private_key(),
         known_hosts(),
     )
         .prop_map(
-            move |(tunnel_ip4, tunnel_ip6, id, key, known_hosts)| RefClient {
+            move |(
+                tunnel_ip4,
+                tunnel_ip6,
+                system_dns_resolvers,
+                upstream_dns_resolvers,
                 id,
                 key,
                 known_hosts,
-                tunnel_ip4,
-                tunnel_ip6,
-                system_dns_resolvers: Default::default(),
-                upstream_dns_resolvers: Default::default(),
-                internet_resource: Default::default(),
-                cidr_resources: IpNetworkTable::new(),
-                dns_records: Default::default(),
-                connected_cidr_resources: Default::default(),
-                connected_dns_resources: Default::default(),
-                connected_internet_resource: Default::default(),
-                expected_icmp_handshakes: Default::default(),
-                expected_dns_handshakes: Default::default(),
-                disabled_resources: Default::default(),
-                resources: Default::default(),
+            )| {
+                RefClient {
+                    id,
+                    key,
+                    known_hosts,
+                    tunnel_ip4,
+                    tunnel_ip6,
+                    system_dns_resolvers,
+                    upstream_dns_resolvers,
+                    internet_resource: Default::default(),
+                    cidr_resources: IpNetworkTable::new(),
+                    dns_records: Default::default(),
+                    connected_cidr_resources: Default::default(),
+                    connected_dns_resources: Default::default(),
+                    connected_internet_resource: Default::default(),
+                    expected_icmp_handshakes: Default::default(),
+                    expected_dns_handshakes: Default::default(),
+                    disabled_resources: Default::default(),
+                    resources: Default::default(),
+                }
             },
         )
 }
 
 fn known_hosts() -> impl Strategy<Value = BTreeMap<String, Vec<IpAddr>>> {
     collection::btree_map(
-        domain_name(2..4).prop_map(|d| d.parse().unwrap()),
-        collection::vec(any::<IpAddr>(), 1..6),
-        0..15,
+        prop_oneof![
+            Just("api.firezone.dev".to_owned()),
+            Just("api.firez.one".to_owned())
+        ],
+        collection::vec(any::<IpAddr>(), 1..3),
+        1..=2,
     )
 }

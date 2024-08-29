@@ -140,7 +140,6 @@ defmodule API.ResourceControllerTest do
                  "error" => %{
                    "reason" => "Unprocessable Entity",
                    "validation_errors" => %{
-                     "address" => ["can't be blank"],
                      "connections" => ["can't be blank"],
                      "name" => ["can't be blank"],
                      "type" => ["can't be blank"]

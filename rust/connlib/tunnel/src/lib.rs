@@ -8,7 +8,7 @@ use boringtun::x25519::StaticSecret;
 use chrono::Utc;
 use connlib_shared::{
     callbacks,
-    messages::{ClientId, GatewayId, Relay, RelayId, ResourceId, ReuseConnection},
+    messages::{ClientId, GatewayId, Offer, Relay, RelayId, ResolveRequest, ResourceId, SecretKey},
     DomainName, PublicKey, DEFAULT_MTU,
 };
 use io::Io;
@@ -62,7 +62,7 @@ const BUF_SIZE: usize = DEFAULT_MTU + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNE
 pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
 
-pub use client::{ClientState, Request};
+pub use client::ClientState;
 pub use gateway::{GatewayState, IPV4_PEERS, IPV6_PEERS};
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
@@ -264,7 +264,7 @@ impl GatewayTunnel {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum ClientEvent {
     AddedIceCandidates {
         conn_id: GatewayId,
@@ -278,29 +278,48 @@ pub enum ClientEvent {
         resource: ResourceId,
         connected_gateway_ids: BTreeSet<GatewayId>,
     },
-    SendProxyIps {
-        connections: Vec<ReuseConnection>,
+    RequestAccess {
+        /// The resource we want to access.
+        resource_id: ResourceId,
+        /// The gateway we want to access the resource through.
+        gateway_id: GatewayId,
+        /// In the case of a DNS resource, its domain and the IPs we assigned to it.
+        maybe_domain: Option<ResolveRequest>,
+    },
+    RequestConnection {
+        /// The gateway we want to establish a connection to.
+        gateway_id: GatewayId,
+        /// The connection "offer". Contains our ICE credentials.
+        offer: Offer,
+        preshared_key: SecretKey,
+        /// The resource we want to access.
+        resource_id: ResourceId,
+        /// In the case of a DNS resource, its domain and the IPs we assigned to it.
+        maybe_domain: Option<ResolveRequest>,
     },
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {
         resources: Vec<callbacks::ResourceDescription>,
     },
     // TODO: Make this more fine-granular.
-    TunInterfaceUpdated {
-        ip4: Ipv4Addr,
-        ip6: Ipv6Addr,
-        /// The map of DNS servers that connlib will use.
-        ///
-        /// - The "left" values are the connlib-assigned, proxy (or "sentinel") IPs.
-        /// - The "right" values are the effective DNS servers.
-        ///   If upstream DNS servers are configured (in the portal), we will use those.
-        ///   Otherwise, we will use the DNS servers configured on the system.
-        dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
-    },
+    TunInterfaceUpdated(TunConfig),
     TunRoutesUpdated {
         ip4: Vec<Ipv4Network>,
         ip6: Vec<Ipv6Network>,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TunConfig {
+    pub ip4: Ipv4Addr,
+    pub ip6: Ipv6Addr,
+    /// The map of DNS servers that connlib will use.
+    ///
+    /// - The "left" values are the connlib-assigned, proxy (or "sentinel") IPs.
+    /// - The "right" values are the effective DNS servers.
+    ///   If upstream DNS servers are configured (in the portal), we will use those.
+    ///   Otherwise, we will use the DNS servers configured on the system.
+    pub dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 }
 
 #[derive(Debug, Clone)]

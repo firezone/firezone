@@ -59,15 +59,17 @@ impl ReferenceStateMachine for ReferenceState {
     type Transition = Transition;
 
     fn init_state() -> BoxedStrategy<Self::State> {
-        stub_portal()
-            .prop_flat_map(|portal| {
+        (stub_portal(), dns_servers())
+            .prop_flat_map(|(portal, dns_servers)| {
                 let gateways = portal.gateways();
                 let dns_resource_records = portal.dns_resource_records();
-                let client = portal.client();
+                let client = portal.client(
+                    system_dns_servers(dns_servers.values().cloned().collect()),
+                    upstream_dns_servers(dns_servers.values().cloned().collect()),
+                );
                 let relays = relays();
                 let global_dns_records = global_dns_records(); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
                 let drop_direct_client_traffic = any::<bool>();
-                let dns_servers = dns_servers();
 
                 (
                     client,
@@ -77,7 +79,7 @@ impl ReferenceStateMachine for ReferenceState {
                     relays,
                     global_dns_records,
                     drop_direct_client_traffic,
-                    dns_servers,
+                    Just(dns_servers),
                 )
             })
             .prop_filter_map(
@@ -176,11 +178,13 @@ impl ReferenceStateMachine for ReferenceState {
         CompositeStrategy::default()
             .with(
                 1,
-                update_system_dns_servers(state.dns_servers.values().cloned().collect()),
+                system_dns_servers(state.dns_servers.values().cloned().collect())
+                    .prop_map(Transition::UpdateSystemDnsServers),
             )
             .with(
                 1,
-                update_upstream_dns_servers(state.dns_servers.values().cloned().collect()),
+                upstream_dns_servers(state.dns_servers.values().cloned().collect())
+                    .prop_map(Transition::UpdateUpstreamDnsServers),
             )
             .with_if_not_empty(
                 5,
@@ -366,13 +370,19 @@ impl ReferenceStateMachine for ReferenceState {
                 dst,
                 seq,
                 identifier,
+                payload,
             } => {
                 state.client.exec_mut(|client| {
                     // If the Internet Resource is active, all packets are expected to be routed.
                     if client.active_internet_resource().is_some() {
-                        client.on_icmp_packet_to_internet(*src, *dst, *seq, *identifier, |r| {
-                            state.portal.gateway_for_resource(r).copied()
-                        })
+                        client.on_icmp_packet_to_internet(
+                            *src,
+                            *dst,
+                            *seq,
+                            *identifier,
+                            *payload,
+                            |r| state.portal.gateway_for_resource(r).copied(),
+                        )
                     }
                 });
             }
@@ -381,10 +391,10 @@ impl ReferenceStateMachine for ReferenceState {
                 dst,
                 seq,
                 identifier,
-                ..
+                payload,
             } => {
                 state.client.exec_mut(|client| {
-                    client.on_icmp_packet_to_cidr(*src, *dst, *seq, *identifier, |r| {
+                    client.on_icmp_packet_to_cidr(*src, *dst, *seq, *identifier, *payload, |r| {
                         state.portal.gateway_for_resource(r).copied()
                     })
                 });
@@ -394,21 +404,22 @@ impl ReferenceStateMachine for ReferenceState {
                 dst,
                 seq,
                 identifier,
+                payload,
                 ..
             } => state.client.exec_mut(|client| {
-                client.on_icmp_packet_to_dns(*src, dst.clone(), *seq, *identifier, |r| {
+                client.on_icmp_packet_to_dns(*src, dst.clone(), *seq, *identifier, *payload, |r| {
                     state.portal.gateway_for_resource(r).copied()
                 })
             }),
             Transition::UpdateSystemDnsServers(servers) => {
                 state
                     .client
-                    .exec_mut(|client| client.system_dns_resolvers.clone_from(servers));
+                    .exec_mut(|client| client.set_system_dns_resolvers(servers));
             }
             Transition::UpdateUpstreamDnsServers(servers) => {
                 state
                     .client
-                    .exec_mut(|client| client.upstream_dns_resolvers.clone_from(servers));
+                    .exec_mut(|client| client.set_upstream_dns_resolvers(servers));
             }
             Transition::RoamClient { ip4, ip6, .. } => {
                 state.network.remove_host(&state.client);
@@ -478,10 +489,13 @@ impl ReferenceStateMachine for ReferenceState {
                 dst,
                 seq,
                 identifier,
+                payload,
                 ..
             } => {
-                let is_valid_icmp_packet =
-                    state.client.inner().is_valid_icmp_packet(seq, identifier);
+                let is_valid_icmp_packet = state
+                    .client
+                    .inner()
+                    .is_valid_icmp_packet(seq, identifier, payload);
                 let is_cidr_resource = state.client.inner().cidr_resource_by_ip(*dst).is_some();
 
                 is_valid_icmp_packet && !is_cidr_resource
@@ -490,6 +504,7 @@ impl ReferenceStateMachine for ReferenceState {
                 seq,
                 identifier,
                 dst,
+                payload,
                 ..
             } => {
                 let ref_client = state.client.inner();
@@ -500,7 +515,7 @@ impl ReferenceStateMachine for ReferenceState {
                     return false;
                 };
 
-                ref_client.is_valid_icmp_packet(seq, identifier)
+                ref_client.is_valid_icmp_packet(seq, identifier, payload)
                     && state.gateways.contains_key(gateway)
             }
             Transition::SendICMPPacketToDnsResource {
@@ -508,6 +523,7 @@ impl ReferenceStateMachine for ReferenceState {
                 identifier,
                 dst,
                 src,
+                payload,
                 ..
             } => {
                 let ref_client = state.client.inner();
@@ -518,7 +534,7 @@ impl ReferenceStateMachine for ReferenceState {
                     return false;
                 };
 
-                ref_client.is_valid_icmp_packet(seq, identifier)
+                ref_client.is_valid_icmp_packet(seq, identifier, payload)
                     && ref_client.dns_records.get(dst).is_some_and(|r| match src {
                         IpAddr::V4(_) => r.contains(&Rtype::A),
                         IpAddr::V6(_) => r.contains(&Rtype::AAAA),
