@@ -25,7 +25,7 @@ export default function GUI({ title }: { title: string }) {
             Shows an orange dot on the tray icon when an update is ready to download.
           </ChangeItem>
           <ChangeItem enable={title === "Windows"} pull="6472">
-            Fixes DNS control for domain-joined systems
+            Fixes an issue where Split DNS didn't work for domain-joined Windows machines
           </ChangeItem>
         </ul>
       </Entry>
