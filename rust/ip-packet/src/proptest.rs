@@ -27,10 +27,10 @@ pub fn tcp_packet() -> impl Strategy<Value = MutableIpPacket<'static>> {
 pub fn icmp_request_packet() -> impl Strategy<Value = MutableIpPacket<'static>> {
     prop_oneof![
         (ip4_tuple(), any::<u16>(), any::<u16>()).prop_map(|((saddr, daddr), sport, dport)| {
-            crate::make::icmp_request_packet(IpAddr::V4(saddr), daddr, sport, dport).unwrap()
+            crate::make::icmp_request_packet(IpAddr::V4(saddr), daddr, sport, dport, &[]).unwrap()
         }),
         (ip6_tuple(), any::<u16>(), any::<u16>()).prop_map(|((saddr, daddr), sport, dport)| {
-            crate::make::icmp_request_packet(IpAddr::V6(saddr), daddr, sport, dport).unwrap()
+            crate::make::icmp_request_packet(IpAddr::V6(saddr), daddr, sport, dport, &[]).unwrap()
         }),
     ]
 }

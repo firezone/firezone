@@ -1,7 +1,4 @@
-use super::{
-    sim_dns::RefDns,
-    sim_net::{any_ip_stack, any_port, Host},
-};
+use super::sim_net::{any_ip_stack, any_port, Host};
 use connlib_shared::{
     messages::{client::ResourceDescription, DnsServer, RelayId, ResourceId},
     DomainName,
@@ -31,6 +28,7 @@ pub(crate) enum Transition {
         dst: IpAddr,
         seq: u16,
         identifier: u16,
+        payload: u64,
     },
     /// Send an ICMP packet to a CIDR resource.
     SendICMPPacketToCidrResource {
@@ -38,6 +36,7 @@ pub(crate) enum Transition {
         dst: IpAddr,
         seq: u16,
         identifier: u16,
+        payload: u64,
     },
     /// Send an ICMP packet to a DNS resource.
     SendICMPPacketToDnsResource {
@@ -48,6 +47,7 @@ pub(crate) enum Transition {
 
         seq: u16,
         identifier: u16,
+        payload: u64,
     },
 
     /// Send a DNS query.
@@ -103,15 +103,17 @@ where
         dst.prop_map(Into::into),
         any::<u16>(),
         any::<u16>(),
+        any::<u64>(),
     )
-        .prop_map(
-            |(src, dst, seq, identifier)| Transition::SendICMPPacketToNonResourceIp {
+        .prop_map(|(src, dst, seq, identifier, payload)| {
+            Transition::SendICMPPacketToNonResourceIp {
                 src,
                 dst,
                 seq,
                 identifier,
-            },
-        )
+                payload,
+            }
+        })
 }
 
 pub(crate) fn icmp_to_cidr_resource<I>(
@@ -126,15 +128,17 @@ where
         any::<u16>(),
         any::<u16>(),
         src.prop_map(Into::into),
+        any::<u64>(),
     )
-        .prop_map(
-            |(dst, seq, identifier, src)| Transition::SendICMPPacketToCidrResource {
+        .prop_map(|(dst, seq, identifier, src, payload)| {
+            Transition::SendICMPPacketToCidrResource {
                 src,
                 dst,
                 seq,
                 identifier,
-            },
-        )
+                payload,
+            }
+        })
 }
 
 pub(crate) fn icmp_to_dns_resource<I>(
@@ -150,14 +154,16 @@ where
         any::<u16>(),
         src.prop_map(Into::into),
         any::<sample::Selector>(),
+        any::<u64>(),
     )
-        .prop_map(|(dst, seq, identifier, src, resolved_ip)| {
+        .prop_map(|(dst, seq, identifier, src, resolved_ip, payload)| {
             Transition::SendICMPPacketToDnsResource {
                 src,
                 dst,
                 resolved_ip,
                 seq,
                 identifier,
+                payload,
             }
         })
 }
@@ -209,29 +215,5 @@ pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {
         ip4: ip_stack.as_v4().copied(),
         ip6: ip_stack.as_v6().copied(),
         port,
-    })
-}
-
-pub(crate) fn update_system_dns_servers(
-    dns_servers: Vec<Host<RefDns>>,
-) -> impl Strategy<Value = Transition> {
-    let max = dns_servers.len();
-
-    sample::subsequence(dns_servers, ..=max).prop_map(|seq| {
-        Transition::UpdateSystemDnsServers(
-            seq.into_iter().map(|h| h.single_socket().ip()).collect(),
-        )
-    })
-}
-
-pub(crate) fn update_upstream_dns_servers(
-    dns_servers: Vec<Host<RefDns>>,
-) -> impl Strategy<Value = Transition> {
-    let max = dns_servers.len();
-
-    sample::subsequence(dns_servers, ..=max).prop_map(|seq| {
-        Transition::UpdateUpstreamDnsServers(
-            seq.into_iter().map(|h| h.single_socket().into()).collect(),
-        )
     })
 }

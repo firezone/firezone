@@ -23,10 +23,9 @@ import com.google.android.material.button.MaterialButton
 import dev.firezone.android.R
 import dev.firezone.android.tunnel.model.StatusEnum
 
-class ResourceDetailsBottomSheet(private val resource: ViewResource) : BottomSheetDialogFragment() {
+class ResourceDetailsBottomSheet(private val resource: ViewResource, private val activity: SessionActivity) : BottomSheetDialogFragment() {
     private lateinit var view: View
     private val viewModel: SessionViewModel by activityViewModels()
-    private var isFavorite: Boolean = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -43,11 +42,6 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource) : BottomShe
         this.view = view
         super.onViewCreated(view, savedInstanceState)
 
-        val addToFavoritesBtn: MaterialButton = view.findViewById(R.id.addToFavoritesBtn)
-        val removeFromFavoritesBtn: MaterialButton = view.findViewById(R.id.removeFromFavoritesBtn)
-        val resourceNameTextView: TextView = view.findViewById(R.id.tvResourceName)
-        val resourceAddressTextView: TextView = view.findViewById(R.id.tvResourceAddress)
-        val resourceAddressDescriptionTextView: TextView = view.findViewById(R.id.tvResourceAddressDescription)
         val siteNameTextView: TextView = view.findViewById(R.id.tvSiteName)
         val siteStatusTextView: TextView = view.findViewById(R.id.tvSiteStatus)
         val statusIndicatorDot: ImageView = view.findViewById(R.id.statusIndicatorDot)
@@ -55,43 +49,9 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource) : BottomShe
         val siteNameLayout: LinearLayout = view.findViewById(R.id.siteNameLayout)
         val siteStatusLayout: LinearLayout = view.findViewById(R.id.siteStatusLayout)
 
-        addToFavoritesBtn.setOnClickListener {
-            viewModel.addFavoriteResource(resource.id)
-            refreshButtons()
-        }
-        removeFromFavoritesBtn.setOnClickListener {
-            viewModel.removeFavoriteResource(resource.id)
-            refreshButtons()
-        }
-        refreshButtons()
+        resourceHeader()
 
-        resourceNameTextView.text = resource.name
-        val displayAddress = resource.addressDescription ?: resource.address
-        resourceAddressTextView.text = displayAddress
-
-        if (!resource.addressDescription.isNullOrEmpty()) {
-            resourceAddressDescriptionTextView.text = resource.addressDescription
-            resourceAddressDescriptionTextView.visibility = View.VISIBLE
-        }
-
-        val addressUri = resource.addressDescription?.let { Uri.parse(it) }
-        if (addressUri != null && addressUri.scheme != null) {
-            resourceAddressTextView.setTextColor(Color.BLUE)
-            resourceAddressTextView.setTypeface(null, Typeface.ITALIC)
-            resourceAddressTextView.setOnClickListener {
-                openUrl(resource.addressDescription!!)
-            }
-        } else {
-            resourceAddressTextView.setOnClickListener {
-                copyToClipboard(displayAddress)
-                Toast.makeText(requireContext(), "Address copied to clipboard", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        resourceNameTextView.setOnClickListener {
-            copyToClipboard(resource.name)
-            Toast.makeText(requireContext(), "Name copied to clipboard", Toast.LENGTH_SHORT).show()
-        }
+        refreshDisableToggleButton()
 
         if (!resource.sites.isNullOrEmpty()) {
             val site = resource.sites.first()
@@ -129,12 +89,102 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource) : BottomShe
         }
     }
 
+    private fun resourceToggleText(): String {
+        if (resource.enabled) {
+            return "Disable this resource"
+        } else {
+            return "Enable this resource"
+        }
+    }
+
+    private fun resourceHeader() {
+        if (resource.isInternetResource()) {
+            internetResourceHeader()
+        } else {
+            nonInternetResourceHeader()
+        }
+    }
+
+    private fun internetResourceHeader() {
+        val addToFavoritesBtn: MaterialButton = view.findViewById(R.id.addToFavoritesBtn)
+        val removeFromFavoritesBtn: MaterialButton = view.findViewById(R.id.removeFromFavoritesBtn)
+        val resourceNameTextView: TextView = view.findViewById(R.id.tvResourceName)
+        val resourceAddress: LinearLayout = view.findViewById(R.id.addressSection)
+        val resourceAddressDescriptionTextView: TextView = view.findViewById(R.id.tvResourceAddressDescription)
+        val resourceDescriptionLayout: LinearLayout = view.findViewById(R.id.resourceDescriptionLayout)
+
+        addToFavoritesBtn.visibility = View.GONE
+        removeFromFavoritesBtn.visibility = View.GONE
+
+        resourceNameTextView.text = resource.name
+
+        resourceAddress.visibility = View.GONE
+
+        resourceDescriptionLayout.visibility = View.VISIBLE
+        resourceAddressDescriptionTextView.text = "All network traffic"
+    }
+
+    private fun nonInternetResourceHeader() {
+        val addToFavoritesBtn: MaterialButton = view.findViewById(R.id.addToFavoritesBtn)
+        val removeFromFavoritesBtn: MaterialButton = view.findViewById(R.id.removeFromFavoritesBtn)
+        val resourceNameTextView: TextView = view.findViewById(R.id.tvResourceName)
+        val resourceAddressTextView: TextView = view.findViewById(R.id.tvResourceAddress)
+
+        addToFavoritesBtn.setOnClickListener {
+            viewModel.addFavoriteResource(resource.id)
+            refreshButtons()
+        }
+        removeFromFavoritesBtn.setOnClickListener {
+            viewModel.removeFavoriteResource(resource.id)
+            refreshButtons()
+        }
+        refreshButtons()
+
+        resourceNameTextView.text = resource.name
+        val displayAddress = resource.addressDescription ?: resource.address
+        resourceAddressTextView.text = displayAddress
+
+        val addressUri = resource.addressDescription?.let { Uri.parse(it) }
+        if (addressUri != null && addressUri.scheme != null) {
+            resourceAddressTextView.setTextColor(Color.BLUE)
+            resourceAddressTextView.setTypeface(null, Typeface.ITALIC)
+            resourceAddressTextView.setOnClickListener {
+                openUrl(resource.addressDescription!!)
+            }
+        } else {
+            resourceAddressTextView.setOnClickListener {
+                copyToClipboard(displayAddress!!)
+                Toast.makeText(requireContext(), "Address copied to clipboard", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        resourceNameTextView.setOnClickListener {
+            copyToClipboard(resource.name)
+            Toast.makeText(requireContext(), "Name copied to clipboard", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun refreshButtons() {
         val addToFavoritesBtn: MaterialButton = view.findViewById(R.id.addToFavoritesBtn)
         val removeFromFavoritesBtn: MaterialButton = view.findViewById(R.id.removeFromFavoritesBtn)
         val isFavorite = viewModel.favoriteResourcesLiveData.value!!.contains(resource.id)
         addToFavoritesBtn.visibility = if (isFavorite) View.GONE else View.VISIBLE
         removeFromFavoritesBtn.visibility = if (isFavorite) View.VISIBLE else View.GONE
+    }
+
+    private fun refreshDisableToggleButton() {
+        if (resource.canBeDisabled) {
+            val toggleResourceEnabled: MaterialButton = view.findViewById(R.id.toggleResourceEnabled)
+            toggleResourceEnabled.visibility = View.VISIBLE
+            toggleResourceEnabled.text = resourceToggleText()
+            toggleResourceEnabled.setOnClickListener {
+                resource.enabled = !resource.enabled
+
+                activity.onViewResourceToggled(resource)
+
+                refreshDisableToggleButton()
+            }
+        }
     }
 
     private fun copyToClipboard(text: String) {

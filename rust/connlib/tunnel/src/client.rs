@@ -1,17 +1,16 @@
 use crate::dns::StubResolver;
 use crate::peer_store::PeerStore;
-use crate::{dns, BUF_SIZE};
+use crate::{dns, TunConfig, BUF_SIZE};
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_shared::callbacks::Status;
 use connlib_shared::messages::client::{Site, SiteId};
 use connlib_shared::messages::ResolveRequest;
 use connlib_shared::messages::{
-    client::ResourceDescription, client::ResourceDescriptionCidr, Answer, ClientPayload, DnsServer,
-    GatewayId, Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId,
-    RequestConnection, ResourceId, ReuseConnection,
+    client::ResourceDescription, client::ResourceDescriptionCidr, Answer, DnsServer, GatewayId,
+    Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId, ResourceId,
 };
-use connlib_shared::{callbacks, DomainName, PublicKey, StaticSecret};
+use connlib_shared::{callbacks, PublicKey, StaticSecret};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
@@ -89,8 +88,13 @@ impl ClientTunnel {
     }
 
     pub fn set_disabled_resources(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
+        let old_routes = HashSet::<IpNetwork>::from_iter(self.role_state.routes());
         self.role_state
             .set_disabled_resource(new_disabled_resources);
+
+        if HashSet::<IpNetwork>::from_iter(self.role_state.routes()) == old_routes {
+            return;
+        }
 
         self.role_state
             .buffered_events
@@ -179,14 +183,14 @@ impl ClientTunnel {
         self.role_state.remove_ice_candidate(conn_id, ice_candidate);
     }
 
-    pub fn create_or_reuse_connection(
+    pub fn on_routing_details(
         &mut self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
         site_id: SiteId,
-    ) -> anyhow::Result<Option<Request>> {
+    ) -> anyhow::Result<()> {
         self.role_state
-            .create_or_reuse_connection(resource_id, gateway_id, site_id)
+            .on_routing_details(resource_id, gateway_id, site_id, Instant::now())
     }
 
     pub fn received_offer_response(
@@ -208,29 +212,6 @@ impl ClientTunnel {
         )?;
 
         Ok(())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Request {
-    NewConnection(RequestConnection),
-    ReuseConnection(ReuseConnection),
-}
-
-impl Request {
-    pub fn resource_id(&self) -> ResourceId {
-        match self {
-            Request::NewConnection(i) => i.resource_id,
-            Request::ReuseConnection(i) => i.resource_id,
-        }
-    }
-
-    /// The domain that we need to resolve as part of the connection request.
-    pub fn domain_name(&self) -> Option<DomainName> {
-        match self {
-            Request::NewConnection(i) => i.client_payload.domain.as_ref().map(|r| r.name.clone()),
-            Request::ReuseConnection(i) => i.payload.as_ref().map(|r| r.name.clone()),
-        }
     }
 }
 
@@ -259,10 +240,14 @@ pub struct ClientState {
     /// `Some` if the Internet resource is enabled.
     internet_resource: Option<ResourceId>,
     /// All resources indexed by their ID.
-    resources_by_id: HashMap<ResourceId, ResourceDescription>,
+    resources_by_id: BTreeMap<ResourceId, ResourceDescription>,
 
     /// The DNS resolvers configured on the system outside of connlib.
     system_resolvers: Vec<IpAddr>,
+    /// The DNS resolvers configured in the portal.
+    ///
+    /// Has priority over system-configured DNS servers.
+    upstream_dns: Vec<DnsServer>,
 
     /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
     dns_mapping: BiMap<IpAddr, DnsServer>,
@@ -286,7 +271,7 @@ pub struct ClientState {
     stub_resolver: StubResolver,
 
     /// Configuration of the TUN device, when it is up.
-    interface_config: Option<InterfaceConfig>,
+    tun_config: Option<TunConfig>,
 
     /// Resources that have been disabled by the UI
     disabled_resources: BTreeSet<ResourceId>,
@@ -321,7 +306,7 @@ impl ClientState {
             peers: Default::default(),
             dns_mapping: Default::default(),
             buffered_events: Default::default(),
-            interface_config: Default::default(),
+            tun_config: Default::default(),
             buffered_packets: Default::default(),
             node: ClientNode::new(private_key.into(), BUF_SIZE, seed),
             system_resolvers: Default::default(),
@@ -334,17 +319,18 @@ impl ClientState {
             buffered_transmits: Default::default(),
             internet_resource: None,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
+            upstream_dns: Default::default(),
         }
     }
 
     #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip4(&self) -> Option<Ipv4Addr> {
-        Some(self.interface_config.as_ref()?.ipv4)
+        Some(self.tun_config.as_ref()?.ip4)
     }
 
     #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip6(&self) -> Option<Ipv6Addr> {
-        Some(self.interface_config.as_ref()?.ipv6)
+        Some(self.tun_config.as_ref()?.ip6)
     }
 
     #[cfg(all(test, feature = "proptest"))]
@@ -358,12 +344,12 @@ impl ClientState {
     pub(crate) fn resources(&self) -> Vec<callbacks::ResourceDescription> {
         self.resources_by_id
             .values()
-            .sorted()
             .cloned()
             .map(|r| {
                 let status = self.resource_status(&r);
                 r.with_status(status)
             })
+            .sorted()
             .collect_vec()
     }
 
@@ -402,7 +388,7 @@ impl ClientState {
         self.node.public_key()
     }
 
-    fn send_proxy_ips(
+    fn request_access(
         &mut self,
         resource_ip: &IpAddr,
         resource_id: ResourceId,
@@ -416,15 +402,13 @@ impl ClientState {
             &ips.iter().copied().map_into().collect_vec(),
             &resource_id,
         );
-        self.buffered_events.push_back(ClientEvent::SendProxyIps {
-            connections: vec![ReuseConnection {
-                resource_id,
-                gateway_id,
-                payload: Some(ResolveRequest {
-                    name: fqdn.clone(),
-                    proxy_ips: ips.clone(),
-                }),
-            }],
+        self.buffered_events.push_back(ClientEvent::RequestAccess {
+            resource_id,
+            gateway_id,
+            maybe_domain: Some(ResolveRequest {
+                name: fqdn.clone(),
+                proxy_ips: ips.clone(),
+            }),
         })
     }
 
@@ -477,7 +461,7 @@ impl ClientState {
         // for DNS resource we will send the IP one at a time.
         if is_dns_resource && peer.allowed_ips.exact_match(dst).is_none() {
             let gateway_id = peer.id();
-            self.send_proxy_ips(&dst, resource, gateway_id);
+            self.request_access(&dst, resource, gateway_id);
             return None;
         }
 
@@ -561,14 +545,18 @@ impl ClientState {
         Ok(())
     }
 
+    /// Updates the "routing table".
+    ///
+    /// In a nutshell, this tells us which gateway in which site to use for the given resource.
     #[tracing::instrument(level = "debug", skip_all, fields(%resource_id, %gateway_id))]
-    pub fn create_or_reuse_connection(
+    pub fn on_routing_details(
         &mut self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
         site_id: SiteId,
-    ) -> anyhow::Result<Option<Request>> {
-        tracing::trace!("Creating or reusing connection");
+        now: Instant,
+    ) -> anyhow::Result<()> {
+        tracing::trace!("Updating resource routing table");
 
         let desc = self
             .resources_by_id
@@ -576,7 +564,7 @@ impl ClientState {
             .context("Unknown resource")?;
 
         if self.node.is_expecting_answer(gateway_id) {
-            return Ok(None);
+            return Ok(());
         }
 
         let awaiting_connection_details = self
@@ -598,11 +586,12 @@ impl ClientState {
             self.peers
                 .add_ips_with_resource(&gateway_id, &ips, &resource_id);
 
-            return Ok(Some(Request::ReuseConnection(ReuseConnection {
+            self.buffered_events.push_back(ClientEvent::RequestAccess {
                 resource_id,
                 gateway_id,
-                payload: awaiting_connection_details.domain,
-            })));
+                maybe_domain: awaiting_connection_details.domain,
+            });
+            return Ok(());
         };
 
         self.peers.insert(
@@ -615,29 +604,26 @@ impl ClientState {
         let offer = self.node.new_connection(
             gateway_id,
             awaiting_connection_details.last_intent_sent_at,
-            Instant::now(),
+            now,
         );
 
-        return Ok(Some(Request::NewConnection(RequestConnection {
-            resource_id,
-            gateway_id,
-            client_preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
-            client_payload: ClientPayload {
-                ice_parameters: Offer {
+        self.buffered_events
+            .push_back(ClientEvent::RequestConnection {
+                gateway_id,
+                offer: Offer {
                     username: offer.credentials.username,
                     password: offer.credentials.password,
                 },
-                domain: awaiting_connection_details.domain,
-            },
-        })));
+                preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
+                resource_id,
+                maybe_domain: awaiting_connection_details.domain,
+            });
+
+        Ok(())
     }
 
     fn is_upstream_set_by_the_portal(&self) -> bool {
-        let Some(interface) = &self.interface_config else {
-            return false;
-        };
-
-        !interface.upstream_dns.is_empty()
+        !self.upstream_dns.is_empty()
     }
 
     /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
@@ -801,8 +787,6 @@ impl ClientState {
     }
 
     fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, DnsServer>) {
-        tracing::debug!(mapping = ?new_mapping, "Updating DNS servers");
-
         self.dns_mapping = new_mapping;
         self.mangled_dns_queries.clear();
     }
@@ -843,6 +827,8 @@ impl ClientState {
             .map(|(ip, _)| ip)
             .chain(iter::once(IPV4_RESOURCES.into()))
             .chain(iter::once(IPV6_RESOURCES.into()))
+            .chain(iter::once(DNS_SENTINELS_V4.into()))
+            .chain(iter::once(DNS_SENTINELS_V6.into()))
             .chain(
                 self.internet_resource
                     .map(|_| Ipv4Network::DEFAULT_ROUTE.into()),
@@ -851,7 +837,6 @@ impl ClientState {
                 self.internet_resource
                     .map(|_| Ipv6Network::DEFAULT_ROUTE.into()),
             )
-            .chain(self.dns_mapping.left_values().copied().map(Into::into))
     }
 
     fn is_resource_enabled(&self, resource: &ResourceId) -> bool {
@@ -877,13 +862,32 @@ impl ClientState {
     }
 
     pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
+        tracing::debug!(servers = ?new_dns, "Received system-defined DNS servers");
+
         self.system_resolvers = new_dns;
 
         self.update_dns_mapping()
     }
 
     pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) {
-        self.interface_config = Some(config);
+        tracing::trace!(upstream_dns = ?config.upstream_dns, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
+
+        match self.tun_config.as_mut() {
+            Some(existing) => {
+                // We don't really expect these to change but let's update them anyway.
+                existing.ip4 = config.ipv4;
+                existing.ip6 = config.ipv6;
+            }
+            None => {
+                self.tun_config = Some(TunConfig {
+                    ip4: config.ipv4,
+                    ip6: config.ipv6,
+                    dns_by_sentinel: Default::default(),
+                })
+            }
+        }
+
+        self.upstream_dns = config.upstream_dns;
 
         self.update_dns_mapping()
     }
@@ -1008,8 +1012,14 @@ impl ClientState {
     /// TODO: Add a test that asserts the above.
     ///       That is tricky because we need to assert on state deleted by [`ClientState::remove_resource`] and check that it did in fact not get deleted.
     pub(crate) fn set_resources(&mut self, new_resources: Vec<ResourceDescription>) {
-        let current_resource_ids = self.resources_by_id.keys().copied().collect::<HashSet<_>>();
+        let current_resource_ids = self
+            .resources_by_id
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>();
         let new_resource_ids = new_resources.iter().map(|r| r.id()).collect();
+
+        tracing::debug!(?current_resource_ids, ?new_resource_ids);
 
         // First, remove all resources that are not present in the new resource list.
         for id in current_resource_ids.difference(&new_resource_ids).copied() {
@@ -1127,19 +1137,20 @@ impl ClientState {
     }
 
     fn update_dns_mapping(&mut self) {
-        let Some(config) = &self.interface_config else {
-            tracing::debug!("Unable to update DNS servesr without interface configuration");
+        let Some(config) = self.tun_config.clone() else {
+            // For the Tauri clients this can happen because it's called immediately after phoenix_channel's connect, before on_set_interface_config
+            tracing::debug!("Unable to update DNS servers without interface configuration");
 
             return;
         };
 
         let effective_dns_servers =
-            effective_dns_servers(config.upstream_dns.clone(), self.system_resolvers.clone());
+            effective_dns_servers(self.upstream_dns.clone(), self.system_resolvers.clone());
 
         if HashSet::<&DnsServer>::from_iter(effective_dns_servers.iter())
             == HashSet::from_iter(self.dns_mapping.right_values())
         {
-            tracing::debug!("Effective DNS servers are unchanged");
+            tracing::debug!(servers = ?effective_dns_servers, "Effective DNS servers are unchanged");
 
             return;
         }
@@ -1153,26 +1164,28 @@ impl ClientState {
                 .collect_vec(),
         );
 
-        let ip4 = config.ipv4;
-        let ip6 = config.ipv6;
+        let new_tun_config = TunConfig {
+            ip4: config.ip4,
+            ip6: config.ip6,
+            dns_by_sentinel: dns_mapping
+                .iter()
+                .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
+                .collect::<BiMap<_, _>>(),
+        };
 
         self.set_dns_mapping(dns_mapping);
 
+        if new_tun_config == config {
+            tracing::debug!(current = ?config, "TUN device configuration unchanged");
+
+            return;
+        }
+
+        tracing::info!(config = ?new_tun_config, "Updating TUN device");
+
+        self.tun_config = Some(new_tun_config.clone());
         self.buffered_events
-            .push_back(ClientEvent::TunInterfaceUpdated {
-                ip4,
-                ip6,
-                dns_by_sentinel: self
-                    .dns_mapping
-                    .iter()
-                    .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
-                    .collect(),
-            });
-        self.buffered_events
-            .push_back(ClientEvent::TunRoutesUpdated {
-                ip4: self.routes().filter_map(utils::ipv4).collect(),
-                ip6: self.routes().filter_map(utils::ipv6).collect(),
-            });
+            .push_back(ClientEvent::TunInterfaceUpdated(new_tun_config));
     }
 
     pub fn update_relays(
@@ -1772,7 +1785,9 @@ mod proptests {
             resource_routes
                 .into_iter()
                 .chain(iter::once(IPV4_RESOURCES.into()))
-                .chain(iter::once(IPV6_RESOURCES.into())),
+                .chain(iter::once(IPV6_RESOURCES.into()))
+                .chain(iter::once(DNS_SENTINELS_V4.into()))
+                .chain(iter::once(DNS_SENTINELS_V6.into())),
         )
     }
 

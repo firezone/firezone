@@ -226,7 +226,7 @@ defmodule Web.Policies.Components do
   defp condition_operator_option_name(:is_in_cidr), do: "is in"
   defp condition_operator_option_name(:is_not_in_cidr), do: "is not in"
 
-  def condition_form(assigns) do
+  def conditions_form(assigns) do
     assigns =
       assign_new(assigns, :policy_conditions_enabled?, fn ->
         Domain.Accounts.policy_conditions_enabled?(assigns.account)
@@ -235,7 +235,12 @@ defmodule Web.Policies.Components do
     ~H"""
     <fieldset class="flex flex-col gap-2 mt-4">
       <div class="flex items-center justify-between">
-        <legend class="text-xl mb-2 text-neutral-900">Conditions</legend>
+        <div>
+          <legend class="text-xl mb-2 text-neutral-900">Conditions</legend>
+          <p class="my-2 text-sm text-neutral-500">
+            All conditions specified below must be met for this policy to be applied.
+          </p>
+        </div>
         <%= if @policy_conditions_enabled? == false do %>
           <.link navigate={~p"/#{@account}/settings/billing"} class="text-sm text-primary-500">
             <.badge type="primary" title="Feature available on a higher pricing plan">
@@ -296,7 +301,7 @@ defmodule Web.Policies.Components do
       >
         <legend class="flex justify-between items-center text-neutral-700">
           <span class="flex items-center">
-            <.icon name="hero-globe-americas" class="w-5 h-5 mr-2" /> Client location
+            <.icon name="hero-map-pin" class="w-5 h-5 mr-2" /> Client location
           </span>
           <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
@@ -315,8 +320,8 @@ defmodule Web.Policies.Components do
           condition_values_empty?(condition_form) && "hidden"
         ]}
       >
-        <p class="text-sm text-neutral-500 mb-2">
-          Restrict access based on the location of the Client.
+        <p class="text-sm text-neutral-500 mb-4">
+          Allow access when the location of the Client meets the criteria specified below.
         </p>
         <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
           <.input
@@ -398,8 +403,8 @@ defmodule Web.Policies.Components do
           condition_values_empty?(condition_form) && "hidden"
         ]}
       >
-        <p class="text-sm text-neutral-500 mb-2">
-          Restrict access based on the Client's IP address or CIDR range.
+        <p class="text-sm text-neutral-500 mb-4">
+          Allow access when the IP of the Client meets the criteria specified below.
         </p>
         <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
           <.input
@@ -485,8 +490,8 @@ defmodule Web.Policies.Components do
           condition_values_empty?(condition_form) && "hidden"
         ]}
       >
-        <p class="text-sm text-neutral-500 mb-2">
-          Restrict access based on the identity provider that was used to sign in.
+        <p class="text-sm text-neutral-500 mb-4">
+          Allow access when the IdP used to sign in meets the criteria specified below.
         </p>
         <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
           <.input
@@ -582,8 +587,8 @@ defmodule Web.Policies.Components do
           condition_values_empty?(condition_form) && "hidden"
         ]}
       >
-        <p class="text-sm text-neutral-500 mb-2">
-          Restrict access based on the current time of the day in 24hr format. Multiple time ranges per day are supported.
+        <p class="text-sm text-neutral-500 mb-4">
+          Allow access during the time windows specified below. 24hr format and multiple time ranges per day are supported.
         </p>
         <div class="space-y-2">
           <.input
@@ -651,5 +656,10 @@ defmodule Web.Policies.Components do
   defp condition_operator_options(property) do
     Domain.Policies.Condition.Changeset.valid_operators_for_property(property)
     |> Enum.map(&{condition_operator_option_name(&1), &1})
+  end
+
+  def options_form(assigns) do
+    ~H"""
+    """
   end
 end

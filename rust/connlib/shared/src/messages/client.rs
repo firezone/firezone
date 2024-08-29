@@ -73,24 +73,35 @@ impl ResourceDescriptionCidr {
     }
 }
 
+fn internet_resource_name() -> String {
+    "<-> Internet Resource".to_string()
+}
+
 /// Description of an internet resource.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ResourceDescriptionInternet {
+    /// Name of the resource.
+    ///
+    /// Used only for display.
+    #[serde(default = "internet_resource_name")]
+    pub name: String,
     /// Resource's id.
     pub id: ResourceId,
-    // TBD
+    /// Sites for the internet resource
     #[serde(rename = "gateway_groups")]
     pub sites: Vec<Site>,
+    /// Whether or not resource can be disabled from UI
+    #[serde(default)]
+    pub can_be_disabled: bool,
 }
 
 impl ResourceDescriptionInternet {
     pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionInternet {
         crate::callbacks::ResourceDescriptionInternet {
-            name: "Internet Resource".to_string(),
-            address: "All internet addresses".to_string(),
+            name: self.name,
             id: self.id,
             sites: self.sites,
-            can_be_disabled: false,
+            can_be_disabled: self.can_be_disabled,
             status,
         }
     }
@@ -168,7 +179,7 @@ impl ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => BTreeSet::from_iter(r.sites.iter()),
             ResourceDescription::Cidr(r) => BTreeSet::from_iter(r.sites.iter()),
-            ResourceDescription::Internet(_) => BTreeSet::default(),
+            ResourceDescription::Internet(r) => BTreeSet::from_iter(r.sites.iter()),
         }
     }
 
@@ -217,24 +228,28 @@ impl ResourceDescription {
     }
 }
 
-impl PartialOrd for ResourceDescription {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for ResourceDescription {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (self.name(), self.id()).cmp(&(other.name(), other.id()))
-    }
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourceDescription {
     Dns(ResourceDescriptionDns),
     Cidr(ResourceDescriptionCidr),
     Internet(ResourceDescriptionInternet),
+}
+
+impl ResourceDescription {
+    pub fn into_dns(self) -> Option<ResourceDescriptionDns> {
+        match self {
+            ResourceDescription::Dns(d) => Some(d),
+            ResourceDescription::Cidr(_) | ResourceDescription::Internet(_) => None,
+        }
+    }
+
+    pub fn into_cidr(self) -> Option<ResourceDescriptionCidr> {
+        match self {
+            ResourceDescription::Cidr(c) => Some(c),
+            ResourceDescription::Dns(_) | ResourceDescription::Internet(_) => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -263,6 +278,7 @@ mod tests {
             {
                 "id": "1106047c-cd5d-4151-b679-96b93da7383b",
                 "type": "internet",
+                "name": "Internet Resource",
                 "gateway_groups": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
                 "not": "relevant",
                 "some_other": [

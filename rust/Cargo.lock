@@ -1249,7 +1249,7 @@ checksum = "baf0a07a401f374238ab8e2f11a104d2851bf9ce711ec69804834de8af45c7af"
 
 [[package]]
 name = "connlib-client-android"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "android_log-sys",
  "backoff",
@@ -1276,7 +1276,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.2.0"
+version = "1.2.2"
 dependencies = [
  "anyhow",
  "backoff",
@@ -2252,7 +2252,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2288,7 +2288,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.2.0"
+version = "1.2.3"
 dependencies = [
  "anyhow",
  "arboard",
@@ -2310,6 +2310,7 @@ dependencies = [
  "native-dialog",
  "nix 0.29.0",
  "output_vt100",
+ "png",
  "rand 0.8.5",
  "reqwest",
  "rustls",
@@ -2342,7 +2343,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -6579,9 +6580,9 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.204"
+version = "1.0.209"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc76f558e0cbb2a839d37354c575f1dc3fdc6546b5be373ba43d95f231bf7c12"
+checksum = "99fce0ffe7310761ca6bf9faf5115afbc19688edd00171d81b1bb1b116c63e09"
 dependencies = [
  "serde_derive",
 ]
@@ -6606,9 +6607,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.204"
+version = "1.0.209"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0cd7e117be63d3c3678776753929474f3b04a43a080c744d6b0ae2a8c28e222"
+checksum = "a5831b979fd7b5439637af1752d535ff49f4860c0f341d1baeb6faf0f4242170"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7230,9 +7231,9 @@ dependencies = [
 
 [[package]]
 name = "swift-bridge"
-version = "0.1.55"
+version = "0.1.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6180c668892926e0bc19d75a81b0ee2fdce3ab15ff062a61b3ce9b4d562eac1b"
+checksum = "dca240710850bfee64549b2f86cd2c6fbbb3de64ce5f3da764cb1ecec5c6cc37"
 dependencies = [
  "swift-bridge-build",
  "swift-bridge-macro",
@@ -7240,9 +7241,9 @@ dependencies = [
 
 [[package]]
 name = "swift-bridge-build"
-version = "0.1.55"
+version = "0.1.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b8256d2d8c35795afeab117528f5e42b2706ca29b20f768929d458c7f245fdd"
+checksum = "0d0ea3c38460a65d975df382b71edbc0e22942d937710d63144267d6609ce738"
 dependencies = [
  "proc-macro2",
  "swift-bridge-ir",
@@ -7252,9 +7253,9 @@ dependencies = [
 
 [[package]]
 name = "swift-bridge-ir"
-version = "0.1.55"
+version = "0.1.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a28407ee88b57fac3e8c9314a0eefb1f63a3743cb0beef4b8d93189d5d8ce0f1"
+checksum = "e5ea2dcd83a40a918fb26a1bb90187691aa0ae8f2c96e8ea5e6963207bc65676"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7263,9 +7264,9 @@ dependencies = [
 
 [[package]]
 name = "swift-bridge-macro"
-version = "0.1.55"
+version = "0.1.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e69ec9898b591cfcf473a584e98b54517400dcc67b0d3f8fdf2a099ce7971e3a"
+checksum = "9c9b93285ca24a3fd596ecd316b217c4a0fd78c629e09efb1b4990fab1478183"
 dependencies = [
  "proc-macro2",
  "quote",

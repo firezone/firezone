@@ -55,6 +55,8 @@ jobs:
       - uses: ./.github/actions/setup-tauri
         timeout-minutes: 5
       - uses: taiki-e/install-action@cargo-udeps
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: |
           rustup install --no-self-update nightly-2024-06-01 --profile minimal # The exact nightly version doesn't matter, just pin a random one.
           cargo +nightly-2024-06-01 udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
@@ -89,6 +91,8 @@ jobs:
         id: setup-rust
       - uses: ./.github/actions/setup-tauri
       - uses: taiki-e/install-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tool: ripgrep
       - name: "cargo test"
@@ -176,6 +180,8 @@ jobs:
       - name: Build client
         run: cargo build -p firezone-gui-client --all-targets
       - uses: taiki-e/install-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tool: dump_syms,minidump-stackwalk
       - name: Run smoke test

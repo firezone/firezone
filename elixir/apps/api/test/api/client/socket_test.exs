@@ -10,7 +10,7 @@ defmodule API.Client.SocketTest do
   ]
 
   @connect_info %{
-    user_agent: "iOS/12.7 (iPhone) connlib/0.1.1",
+    user_agent: "iOS/12.7 (iPhone) connlib/1.3.0",
     peer_data: %{address: {189, 172, 73, 001}},
     x_headers:
       [
@@ -68,7 +68,7 @@ defmodule API.Client.SocketTest do
       assert client.last_seen_remote_ip_location_city == "Kyiv"
       assert client.last_seen_remote_ip_location_lat == 50.4333
       assert client.last_seen_remote_ip_location_lon == 30.5167
-      assert client.last_seen_version == "0.7.412"
+      assert client.last_seen_version == "1.3.0"
     end
 
     test "creates a new client for service account identity" do
@@ -95,7 +95,7 @@ defmodule API.Client.SocketTest do
       assert client.last_seen_remote_ip_location_city == "Kyiv"
       assert client.last_seen_remote_ip_location_lat == 50.4333
       assert client.last_seen_remote_ip_location_lon == 30.5167
-      assert client.last_seen_version == "0.7.412"
+      assert client.last_seen_version == "1.3.0"
     end
 
     test "propagates trace context" do

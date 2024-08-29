@@ -4,7 +4,7 @@ defmodule Web.TableComponents do
   """
   use Phoenix.Component
   use Web, :verified_routes
-  import Web.Gettext
+  use Gettext, backend: Web.Gettext
   import Web.CoreComponents
 
   attr :table_id, :string, required: true, doc: "id of the parent table"

@@ -34,12 +34,12 @@ defmodule Web.Settings.DNS do
         DNS
       </:title>
       <:help>
-        Configure the default resolver used by connected Clients in your Firezone account.
-        Queries for defined Resources will <strong>always</strong>
+        Configure the default resolver used by connected Clients.
+        Queries for Resources will <strong>always</strong>
         use Firezone's internal DNS.
-        All other queries will use the resolver below if configured.
-        If no resolver is configured, the client's default system resolver will be used.
-        <p class="mt-3">
+        All other queries will use the DNS servers configured here or the Client's
+        system resolvers if no servers are configured.
+        <p class="mt-2">
           <.website_link path="/kb/deploy/dns">
             Read more about configuring DNS in Firezone.
           </.website_link>
@@ -88,6 +88,12 @@ defmodule Web.Settings.DNS do
                   </.error>
                 </.inputs_for>
               </div>
+              <p class="text-sm text-neutral-500">
+                <strong>Note:</strong>
+                It is highly recommended to to specify <strong>both</strong>
+                IPv4 and IPv6 addresses when adding custom resolvers. Otherwise, Clients without IPv4
+                or IPv6 connectivity may not be able to resolve DNS queries.
+              </p>
               <.submit_button>
                 Save
               </.submit_button>

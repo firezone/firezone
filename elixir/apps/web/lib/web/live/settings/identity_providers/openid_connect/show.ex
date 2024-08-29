@@ -8,10 +8,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
            Auth.fetch_provider_by_id(provider_id, socket.assigns.subject,
              preload: [created_by_identity: [:actor]]
            ) do
-      safe_to_delete_actors_count =
-        if is_nil(provider.deleted_at),
-          do: 0,
-          else: Actors.count_synced_actors_for_provider(provider)
+      safe_to_delete_actors_count = Actors.count_synced_actors_for_provider(provider)
 
       socket =
         assign(socket,
@@ -109,10 +106,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
         </.header>
         <.flash_group flash={@flash} />
 
-        <.flash
-          :if={not is_nil(@provider.deleted_at) and @safe_to_delete_actors_count > 0}
-          kind={:warning}
-        >
+        <.flash :if={@safe_to_delete_actors_count > 0} kind={:warning}>
           You have <%= @safe_to_delete_actors_count %> Actor(s) that were synced from this provider and do not have any other identities.
           <.button_with_confirmation
             id="delete_stale_actors"
