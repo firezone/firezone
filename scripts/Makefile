@@ -16,7 +16,7 @@
 current-apple-version = 1.2.1
 current-android-version = 1.2.0
 current-gateway-version = 1.2.0
-current-gui-version = 1.2.1
+current-gui-version = 1.2.2
 current-headless-version = 1.2.0
 
 # Tracks the next version to release for each platform

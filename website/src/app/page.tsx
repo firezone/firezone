@@ -35,6 +35,7 @@ import "@/styles/hero.css";
 import CustomerTestimonials from "@/components/CustomerTestimonials";
 import FeatureCards from "@/components/FeatureCards";
 import SingleFeature from "@/components/SingleFeature";
+import UseCaseCards from "@/components/UseCaseCards";
 
 export const metadata: Metadata = {
   title: "Firezone: Zero trust access that scales",
@@ -86,7 +87,7 @@ export default function Page() {
           <div className="text-center text-sm mb-6 font-base text-neutral-600">
             Backed by{" "}
             <Image
-              src="/images/yc-logo-gray.svg"
+              src="/images/yc-logo-gray.png"
               alt="yc logo gray"
               width={100}
               height={40}
@@ -165,13 +166,13 @@ export default function Page() {
         }
       />
 
-      <section className="py-16">
+      <section className="py-24">
         <div className="sm:mx-auto px-4 mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
           <h6 className="uppercase text-sm font-semibold text-primary-450 place-content-center tracking-wide mb-2">
             Flexible security
           </h6>
           <h3
-            className={`tracking-tight font-bold leading-tight inline-block ${manrope.className}`}
+            className={`mb-4 tracking-tight font-bold leading-tight inline-block ${manrope.className}`}
           >
             Runs <span className="text-primary-450">everywhere </span>
             your business does
@@ -307,13 +308,13 @@ export default function Page() {
       </section>
 
       {/* Feature section: Open source for transparency and trust. */}
-      <section className="py-16">
+      <section className="py-24">
         <div className="sm:mx-auto px-4 mb-4 md:mb-8 text-3xl md:text-4xl lg:text-5xl text-pretty text-center">
           <h6 className="uppercase text-sm font-semibold place-content-center text-primary-450 tracking-wide mb-2">
             Open source
           </h6>
           <h3
-            className={`tracking-tight font-bold inline-block ${manrope.className}`}
+            className={`mb-4 tracking-tight font-bold inline-block ${manrope.className}`}
           >
             <span className="text-primary-450">Open source</span> for
             transparency and trust
@@ -358,213 +359,7 @@ export default function Page() {
 
       <CustomerTestimonials />
 
-      {/* Use cases */}
-      <section className="py-16">
-        <div className="mx-auto max-w-screen-lg">
-          <div className={`px-4 flex flex-wrap ${manrope.className}`}>
-            <h3 className="mb-2 text-2xl md:text-4xl tracking-tight font-bold mr-1">
-              Yes, you can use Firezone to{" "}
-            </h3>
-            <h3 className="mb-2 text-2xl md:text-4xl tracking-tight font-bold">
-              <RotatingWords
-                className="underline text-primary-450 mx-0.5 sm:mx-1 inline-flex"
-                words={[
-                  "secure DNS for your workforce",
-                  "securely access GitLab",
-                  "scale access to your VPC",
-                  "access your homelab",
-                  "route through a public IP",
-                  "access your Postgres DB",
-                  "tunnel IPv6 over IPv4",
-                  "restrict access to GitHub",
-                  "tunnel to a remote host",
-                ]}
-              />
-            </h3>
-          </div>
-          <div className="px-4 flex flex-wrap mt-4">
-            <h3 className="mb-2 text-xl md:text-2xl tracking-tight font-semibold">
-              Here are just a few ways customers are using Firezone:
-            </h3>
-          </div>
-          <div className="gap-4 items-center pt-8 px-4 mx-auto md:grid md:grid-cols-2 xl:gap-8 sm:pt-12 lg:px-6">
-            <SlideIn delay={0.5} direction="right">
-              <div className="bg-neutral-50 p-8 mt-4 md:mt-0 border border-neutral-200">
-                <div className="flex items-center space-x-2.5">
-                  <HiShieldCheck className=" lex-shrink-0 w-6 h-6 text-accent-600" />
-                  <h4 className="text-xl tracking-tight font-bold text-neutral-900">
-                    VPN Replacement
-                  </h4>
-                </div>
-                <p className="mt-8 text-neutral-900 text-xl">
-                  Remote employees can securely access office networks, cloud
-                  VPCs, and other private subnets and resources from anywhere in
-                  the world, on any device.
-                </p>
-                <ul role="list" className="my-6 lg:mb-0 space-y-4">
-                  <li className="flex space-x-2.5">
-                    <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                    <span className="leading-tight text-lg text-neutral-900 ">
-                      Easy to use, no training required
-                    </span>
-                  </li>
-                  <li className="flex space-x-2.5">
-                    <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                    <span className="leading-tight text-lg text-neutral-900 ">
-                      Authenticate with virtually any IdP
-                    </span>
-                  </li>
-                  <li className="flex space-x-2.5">
-                    <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                    <span className="leading-tight text-lg text-neutral-900 ">
-                      Highly available Gateways
-                    </span>
-                  </li>
-                  <li className="flex space-x-2.5">
-                    <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                    <span className="leading-tight text-lg text-neutral-900 ">
-                      Modern encryption and authentication
-                    </span>
-                  </li>
-                </ul>
-              </div>
-            </SlideIn>
-            <SlideIn delay={0.5} direction="left">
-              <div className="bg-neutral-50 p-8 mt-4 md:mt-0 border border-neutral-200">
-                <div className="flex items-center space-x-2.5">
-                  <HiRocketLaunch className="flex-shrink-0 w-6 h-6 text-accent-600" />
-                  <h4 className="text-xl tracking-tight font-bold text-neutral-900 ">
-                    Infrastructure Access
-                  </h4>
-                </div>
-                <p className="mt-8 text-neutral-900 text-xl">
-                  Empower engineers and DevOps to manage their team’s access to
-                  technical resources like test/prod servers both on-prem and in
-                  the cloud.
-                </p>
-                <ul role="list" className="my-6 lg:mb-0 space-y-4">
-                  <li className="flex space-x-2.5">
-                    <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                    <span className="leading-tight text-lg text-neutral-900 ">
-                      Service accounts and headless clients
-                    </span>
-                  </li>
-                  <li className="flex space-x-2.5">
-                    <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                    <span className="leading-tight text-lg text-neutral-900 ">
-                      Multiple admins per account
-                    </span>
-                  </li>
-                  <li className="flex space-x-2.5">
-                    <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                    <span className="leading-tight text-lg text-neutral-900 ">
-                      Docker and Terraform integrations
-                    </span>
-                  </li>
-                  <li className="flex space-x-2.5">
-                    <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                    <span className="leading-tight text-lg text-neutral-900 ">
-                      Automatically sync users and groups from your IdP
-                    </span>
-                  </li>
-                </ul>
-              </div>
-            </SlideIn>
-            <SlideIn delay={0.5} direction="right">
-              <div className="bg-neutral-50 p-8 mt-4 md:mt-0 border border-neutral-200">
-                <div className="flex items-center space-x-2.5">
-                  <HiGlobeAlt className=" lex-shrink-0 w-6 h-6 text-accent-600" />
-                  <h4 className="text-xl tracking-tight font-bold text-neutral-900 ">
-                    Internet Security
-                  </h4>
-                </div>
-                <p className="mt-8 text-neutral-900 text-xl">
-                  Route sensitive internet traffic through a trusted gateway to
-                  keep remote employees more secure, even when they’re traveling
-                  or using public WiFi.
-                </p>
-                <ul role="list" className="my-6 lg:mb-0 space-y-4">
-                  <li className="flex space-x-2.5">
-                    <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                    <span className="leading-tight text-lg text-neutral-900 ">
-                      Native clients for all major platforms
-                    </span>
-                  </li>
-                  <li className="flex space-x-2.5">
-                    <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                    <span className="leading-tight text-lg text-neutral-900 ">
-                      Enforce MFA / 2FA
-                    </span>
-                  </li>
-                  <li className="flex space-x-2.5">
-                    <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                    <span className="leading-tight text-lg text-neutral-900 ">
-                      Filter malicious or unwanted DNS requests
-                    </span>
-                  </li>
-                  <li className="flex space-x-2.5">
-                    <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                    <span className="leading-tight text-lg text-neutral-900 ">
-                      Monitor and audit each attempted connection
-                    </span>
-                  </li>
-                </ul>
-              </div>
-            </SlideIn>
-            <SlideIn delay={0.5} direction="left">
-              <div className="bg-neutral-50 p-8 mt-4 md:mt-0 border border-neutral-200">
-                <div className="flex items-center space-x-2.5">
-                  <HiHome className="flex-shrink-0 w-6 h-6 text-accent-600" />
-                  <h4 className="text-xl tracking-tight font-bold text-neutral-900 ">
-                    Homelab Access
-                  </h4>
-                </div>
-                <p className="mt-8 text-neutral-900 text-xl">
-                  Securely access your home network, and services like Plex,
-                  security cameras, a Raspberry Pi, and other self-hosted apps
-                  when you’re away from home.
-                </p>
-                <ul role="list" className="my-6 lg:mb-0 space-y-4">
-                  <li className="flex space-x-2.5">
-                    <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                    <span className="leading-tight text-lg text-neutral-900 ">
-                      Easy to setup and simple to manage
-                    </span>
-                  </li>
-                  <li className="flex space-x-2.5">
-                    <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                    <span className="leading-tight text-lg text-neutral-900 ">
-                      Authenticate with Email OTP or OIDC
-                    </span>
-                  </li>
-                  <li className="flex space-x-2.5">
-                    <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                    <span className="leading-tight text-lg text-neutral-900 ">
-                      Reliable NAT traversal
-                    </span>
-                  </li>
-                  <li className="flex space-x-2.5">
-                    <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
-                    <span className="leading-tight text-lg text-neutral-900 ">
-                      Invite friends and family to your private network
-                    </span>
-                  </li>
-                </ul>
-              </div>
-            </SlideIn>
-          </div>
-          <div className="flex justify-center mt-8 md:mt-16">
-            <ActionLink
-              color="neutral-900"
-              transitionColor="primary-450"
-              size="lg"
-              href="/kb/use-cases"
-            >
-              See more use cases
-            </ActionLink>
-          </div>
-        </div>
-      </section>
+      <UseCaseCards />
 
       <BattleCard />
     </>

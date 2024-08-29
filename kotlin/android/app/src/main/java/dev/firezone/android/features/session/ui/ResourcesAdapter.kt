@@ -5,7 +5,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -14,8 +13,6 @@ import dev.firezone.android.databinding.ListItemResourceBinding
 internal class ResourcesAdapter(private val activity: SessionActivity) : ListAdapter<ViewResource, ResourcesAdapter.ViewHolder>(
     ResourceDiffCallback(),
 ) {
-    private var favoriteResources: HashSet<String> = HashSet()
-
     override fun onCreateViewHolder(
         parent: ViewGroup,
         viewType: Int,
@@ -29,44 +26,23 @@ internal class ResourcesAdapter(private val activity: SessionActivity) : ListAda
         position: Int,
     ) {
         val resource = getItem(position)
-        holder.bind(resource) { newResource -> onSwitchToggled(newResource) }
-        if (!resource.isInternetResource()) {
-            holder.itemView.setOnClickListener {
-                // Show bottom sheet
-                val isFavorite = favoriteResources.contains(resource.id)
-                val fragmentManager =
-                    (holder.itemView.context as AppCompatActivity).supportFragmentManager
-                val bottomSheet = ResourceDetailsBottomSheet(resource)
-                bottomSheet.show(fragmentManager, "ResourceDetailsBottomSheet")
-            }
+        holder.bind(resource)
+        holder.itemView.setOnClickListener {
+            // Show bottom sheet
+            val fragmentManager =
+                (holder.itemView.context as AppCompatActivity).supportFragmentManager
+            val bottomSheet = ResourceDetailsBottomSheet(resource, activity)
+            bottomSheet.show(fragmentManager, "ResourceDetailsBottomSheet")
         }
     }
 
-    private fun onSwitchToggled(resource: ViewResource) {
-        activity.onViewResourceToggled(resource)
-    }
-
     class ViewHolder(private val binding: ListItemResourceBinding) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(
-            resource: ViewResource,
-            onSwitchToggled: (ViewResource) -> Unit,
-        ) {
+        fun bind(resource: ViewResource) {
             binding.resourceNameText.text = resource.name
             if (resource.isInternetResource()) {
                 binding.addressText.visibility = View.GONE
             } else {
                 binding.addressText.text = resource.address
-            }
-            // Without this the item gets reset when out of view, isn't android wonderful?
-            binding.enableSwitch.setOnCheckedChangeListener(null)
-            binding.enableSwitch.isChecked = resource.enabled
-            binding.enableSwitch.isVisible = resource.canBeDisabled
-
-            binding.enableSwitch.setOnCheckedChangeListener {
-                    _, isChecked ->
-                resource.enabled = isChecked
-
-                onSwitchToggled(resource)
             }
         }
     }
