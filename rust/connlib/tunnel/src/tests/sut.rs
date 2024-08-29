@@ -257,7 +257,7 @@ impl TunnelTest {
             Transition::ReconnectPortal => {
                 let ipv4 = state.client.inner().sut.tunnel_ip4().unwrap();
                 let ipv6 = state.client.inner().sut.tunnel_ip6().unwrap();
-                let upstream_dns = ref_state.client.inner().upstream_dns_resolvers.clone();
+                let upstream_dns = ref_state.client.inner().upstream_dns_resolvers();
                 let all_resources = ref_state.client.inner().all_resources();
 
                 // Simulate receiving `init`.
@@ -351,11 +351,7 @@ impl TunnelTest {
         );
         assert_dns_packets_properties(ref_client, sim_client);
         assert_known_hosts_are_valid(ref_client, sim_client);
-        assert_eq!(
-            sim_client.effective_dns_servers(),
-            ref_client.expected_dns_servers(),
-            "Effective DNS servers should match either system or upstream DNS"
-        );
+        assert_dns_servers_are_valid(ref_client, sim_client);
     }
 }
 
@@ -676,11 +672,13 @@ impl TunnelTest {
             ClientEvent::ResourcesChanged { .. } => {
                 tracing::warn!("Unimplemented");
             }
-            ClientEvent::TunInterfaceUpdated {
-                dns_by_sentinel, ..
-            } => {
+            ClientEvent::TunInterfaceUpdated(config) => {
+                if self.client.inner().dns_by_sentinel == config.dns_by_sentinel {
+                    tracing::error!("Emitted `TunInterfaceUpdated` without changing DNS servers");
+                }
+
                 self.client
-                    .exec_mut(|c| c.dns_by_sentinel = dns_by_sentinel);
+                    .exec_mut(|c| c.dns_by_sentinel = config.dns_by_sentinel);
             }
             ClientEvent::TunRoutesUpdated { .. } => {}
             ClientEvent::RequestConnection {

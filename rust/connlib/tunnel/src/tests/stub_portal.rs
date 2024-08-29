@@ -6,7 +6,7 @@ use super::{
 };
 use crate::proptest::*;
 use connlib_shared::{
-    messages::{client, gateway, GatewayId, ResourceId},
+    messages::{client, gateway, DnsServer, GatewayId, ResourceId},
     DomainName,
 };
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -197,11 +197,20 @@ impl StubPortal {
             .prop_map(BTreeMap::from_iter)
     }
 
-    pub(crate) fn client(&self) -> impl Strategy<Value = Host<RefClient>> {
+    pub(crate) fn client(
+        &self,
+        system_dns: impl Strategy<Value = Vec<IpAddr>>,
+        upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
+    ) -> impl Strategy<Value = Host<RefClient>> {
         let client_tunnel_ip4 = tunnel_ip4s().next().unwrap();
         let client_tunnel_ip6 = tunnel_ip6s().next().unwrap();
 
-        ref_client_host(Just(client_tunnel_ip4), Just(client_tunnel_ip6))
+        ref_client_host(
+            Just(client_tunnel_ip4),
+            Just(client_tunnel_ip6),
+            system_dns,
+            upstream_dns,
+        )
     }
 
     pub(crate) fn dns_resource_records(

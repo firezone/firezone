@@ -22,6 +22,9 @@ export default function GUI({ title }: { title: string }) {
           <ChangeItem pull="6449">
             Checks for updates once a day
           </ChangeItem>
+          <ChangeItem enable={title === "Windows"} pull="6472">
+            Fixes DNS control for domain-joined systems
+          </ChangeItem>
         </ul>
       </Entry>
       */}

@@ -8,6 +8,11 @@
 import SwiftUI
 
 #if os(iOS)
+private func copyToClipboard(_ value: String) {
+  let pasteboard = UIPasteboard.general
+  pasteboard.string = value
+}
+
 struct ResourceView: View {
   @ObservedObject var model: SessionViewModel
   var resource: Resource
@@ -15,82 +20,10 @@ struct ResourceView: View {
 
   var body: some View {
     List {
-      Section(header: Text("Resource")) {
-        HStack {
-          Text("NAME")
-            .bold()
-            .font(.system(size: 14))
-            .foregroundColor(.secondary)
-            .frame(width: 80, alignment: .leading)
-          Text(resource.name)
-        }
-        .contextMenu {
-          Button(action: {
-            copyToClipboard(resource.name)
-          }) {
-            Text("Copy name")
-            Image(systemName: "doc.on.doc")
-          }
-        }
-
-        HStack {
-          Text("ADDRESS")
-            .bold()
-            .font(.system(size: 14))
-            .foregroundColor(.secondary)
-            .frame(width: 80, alignment: .leading)
-          if let url = URL(string: resource.addressDescription ?? resource.address!),
-             let _ = url.host {
-            Button(action: {
-              openURL(url)
-            }) {
-              Text(resource.addressDescription ?? resource.address!)
-                .foregroundColor(.blue)
-                .underline()
-                .font(.system(size: 16))
-                .contextMenu {
-                  Button(action: {
-                    copyToClipboard(resource.addressDescription ?? resource.address!)
-                  }) {
-                    Text("Copy address")
-                    Image(systemName: "doc.on.doc")
-                  }
-                }
-            }
-          } else {
-            Text(resource.addressDescription ?? resource.address!)
-              .contextMenu {
-                Button(action: {
-                  copyToClipboard(resource.addressDescription ?? resource.address!)
-                }) {
-                  Text("Copy address")
-                  Image(systemName: "doc.on.doc")
-                }
-              }
-          }
-        }
-
-        if(model.favorites.ids.contains(resource.id)) {
-          Button(action: {
-            model.favorites.remove(resource.id)
-          }) {
-            HStack {
-              Image(systemName: "star")
-              Text("Remove from favorites")
-              Spacer()
-            }
-          }
-        } else {
-          Button(action: {
-            model.favorites.add(resource.id)
-          }) {
-            HStack {
-              Image(systemName: "star.fill")
-              Text("Add to favorites")
-              Spacer()
-            }
-          }
-        }
+      if resource.isInternetResource() {
+        InternetResourceHeader(model: model, resource: resource)
+      } else {
+        NonInternetResourceHeader(model: model, resource: resource)
       }
 
       if let site = resource.sites.first {
@@ -156,10 +89,150 @@ struct ResourceView: View {
       return .gray
     }
   }
+}
 
-  private func copyToClipboard(_ value: String) {
-    let pasteboard = UIPasteboard.general
-    pasteboard.string = value
+struct NonInternetResourceHeader: View {
+  @ObservedObject var model: SessionViewModel
+  var resource: Resource
+  @Environment(\.openURL) var openURL
+
+  var body: some View {
+    Section(header: Text("Resource")) {
+      HStack {
+        Text("NAME")
+          .bold()
+          .font(.system(size: 14))
+          .foregroundColor(.secondary)
+          .frame(width: 80, alignment: .leading)
+        Text(resource.name)
+      }
+      .contextMenu {
+        Button(action: {
+          copyToClipboard(resource.name)
+        }) {
+          Text("Copy name")
+          Image(systemName: "doc.on.doc")
+        }
+      }
+
+      HStack {
+        Text("ADDRESS")
+          .bold()
+          .font(.system(size: 14))
+          .foregroundColor(.secondary)
+          .frame(width: 80, alignment: .leading)
+        if let url = URL(string: resource.addressDescription ?? resource.address!),
+           let _ = url.host {
+          Button(action: {
+            openURL(url)
+          }) {
+            Text(resource.addressDescription ?? resource.address!)
+              .foregroundColor(.blue)
+              .underline()
+              .font(.system(size: 16))
+              .contextMenu {
+                Button(action: {
+                  copyToClipboard(resource.addressDescription ?? resource.address!)
+                }) {
+                  Text("Copy address")
+                  Image(systemName: "doc.on.doc")
+                }
+              }
+          }
+        } else {
+          Text(resource.addressDescription ?? resource.address!)
+            .contextMenu {
+              Button(action: {
+                copyToClipboard(resource.addressDescription ?? resource.address!)
+              }) {
+                Text("Copy address")
+                Image(systemName: "doc.on.doc")
+              }
+            }
+        }
+      }
+
+      if(model.favorites.ids.contains(resource.id)) {
+        Button(action: {
+          model.favorites.remove(resource.id)
+        }) {
+          HStack {
+            Image(systemName: "star")
+            Text("Remove from favorites")
+            Spacer()
+          }
+        }
+      } else {
+        Button(action: {
+          model.favorites.add(resource.id)
+        }) {
+          HStack {
+            Image(systemName: "star.fill")
+            Text("Add to favorites")
+            Spacer()
+          }
+        }
+      }
+
+      ToggleResourceEnabledButton(resource: resource, model: model)
+
+    }
   }
 }
+
+struct InternetResourceHeader: View {
+  @ObservedObject var model: SessionViewModel
+  var resource: Resource
+
+  var body: some View {
+    Section(header: Text("Resource")) {
+      HStack {
+        Text("NAME")
+          .bold()
+          .font(.system(size: 14))
+          .foregroundColor(.secondary)
+          .frame(width: 80, alignment: .leading)
+        Text(resource.name)
+      }
+
+      HStack {
+        Text("DESCRIPTION")
+          .bold()
+          .font(.system(size: 14))
+          .foregroundColor(.secondary)
+          .frame(alignment: .leading)
+
+        Text("All network traffic")
+      }
+      ToggleResourceEnabledButton(resource: resource, model: model)
+    }
+  }
+}
+
+struct ToggleResourceEnabledButton: View {
+  var resource: Resource
+  @ObservedObject var model: SessionViewModel
+
+  private func toggleResourceEnabledText() -> String {
+    if model.isResourceEnabled(resource.id) {
+      "Disable this resource"
+    } else {
+      "Enable this resource"
+    }
+  }
+
+  var body: some View {
+    if resource.canBeDisabled {
+      Button(action: {
+        model.store.toggleResourceDisabled(resource: resource.id, enabled: !model.isResourceEnabled(resource.id))
+      }) {
+        HStack {
+          Text(toggleResourceEnabledText())
+          Spacer()
+        }
+      }
+    }
+  }
+}
+
 #endif

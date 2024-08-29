@@ -79,7 +79,7 @@ export default function ElevatorPitch() {
                 Stay Connected
               </h6>
               <h3
-                className={`mb-4 text-3xl md:text-4xl lg:text-5xl leading-tight text-pretty tracking-tight font-bold inline-block ${manrope.className}`}
+                className={`mb-4 text-3xl md:text-4xl lg:text-5xl leading-tight tracking-tight font-bold inline-block ${manrope.className}`}
               >
                 Supercharge your workforce
                 <span className="text-primary-450"> in minutes.</span>
