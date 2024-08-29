@@ -6,6 +6,8 @@ use tokio::fs;
 
 /// Returns true if the flag is set
 pub(crate) async fn get() -> Result<bool> {
+    // Just check if the file exists. We don't use `atomicwrites` to write it,
+    // so the content itself may be corrupt.
     Ok(fs::try_exists(path()?).await?)
 }
 
