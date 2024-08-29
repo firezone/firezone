@@ -2,6 +2,8 @@
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
+import com.google.firebase.crashlytics.ktx.crashlytics
+import com.google.firebase.ktx.Firebase
 import com.google.gson.Gson
 import dev.firezone.android.tunnel.ConnlibSession
 import dev.firezone.android.tunnel.TunnelService
@@ -27,13 +29,20 @@ class NetworkMonitor(private val tunnelService: TunnelService) : ConnectivityMan
                 lastDns = linkProperties.dnsServers
 
                 // Strip the scope id from IPv6 addresses. See https://github.com/firezone/firezone/issues/5781
-                val dnsList = linkProperties.dnsServers.map { it.hostAddress!!.split("%")[0] }
-                ConnlibSession.setDns(tunnelService.connlibSessionPtr!!, Gson().toJson(dnsList))
+                val dnsList =
+                    linkProperties.dnsServers.mapNotNull {
+                        it.hostAddress?.split("%")?.getOrNull(0)
+                    }
+                tunnelService.connlibSessionPtr?.let {
+                    ConnlibSession.setDns(it, Gson().toJson(dnsList))
+                } ?: Firebase.crashlytics.recordException(NullPointerException("connlibSessionPtr is null"))
             }
 
             if (lastNetwork != network) {
                 lastNetwork = network
-                ConnlibSession.reset(tunnelService.connlibSessionPtr!!)
+                tunnelService.connlibSessionPtr?.let {
+                    ConnlibSession.reset(it)
+                } ?: Firebase.crashlytics.recordException(NullPointerException("connlibSessionPtr is null"))
             }
 
             // Release mutex lock
