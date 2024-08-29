@@ -67,7 +67,6 @@ defmodule Web.MixProject do
 
       # Mailer deps
       {:multipart, "~> 0.4.0"},
-      # {:phoenix_swoosh, "~> 1.0"},
       {:gen_smtp, "~> 1.0"},
 
       # Observability
