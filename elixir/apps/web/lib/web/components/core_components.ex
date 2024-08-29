@@ -284,7 +284,7 @@ defmodule Web.CoreComponents do
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
       id={@id}
       class={[
-        "p-4 text-sm flash-#{@kind}",
+        "w-fit p-4 text-sm flash-#{@kind}",
         @kind == :success && "text-green-800 bg-green-100",
         @kind == :info && "text-blue-800 bg-blue-100",
         @kind == :warning && "text-yellow-800 bg-yellow-100",
