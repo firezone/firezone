@@ -36,21 +36,32 @@ pub(crate) async fn checker_task(ctlr_tx: CtlrTx, debug_mode: bool) -> Result<()
 
     // Always check the file first, then wait a random amount of time before entering the loop.
     let latest_seen = read_latest_release_file().await;
-    let rand_time = thread_rng().gen_range(0..interval_in_seconds);
-    tokio::time::sleep(Duration::from_secs(rand_time)).await;
     let mut fsm = Checker::new(current_version, latest_seen);
     let mut interval = tokio::time::interval(Duration::from_secs(interval_in_seconds));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
         match fsm.poll() {
-            Event::CheckNetwork => match check().await {
-                Ok(release) => fsm.handle_check(release),
-                Err(error) => tracing::error!(?error, "Couldn't check website for update"),
-            },
+            Event::CheckNetwork => {
+                tracing::debug!("CheckNetwork");
+                match check().await {
+                    Ok(release) => fsm.handle_check(release),
+                    Err(error) => tracing::error!(?error, "Couldn't check website for update"),
+                }
+            }
             Event::WaitInterval => {
+                tracing::debug!("WaitInterval");
                 interval.tick().await;
             }
+            Event::WaitRandom => {
+                tracing::debug!("WaitRandom");
+                let rand_time = thread_rng().gen_range(0..interval_in_seconds);
+                tokio::time::sleep(Duration::from_secs(rand_time)).await;
+                // Discard the first interval, which always elapses instantly
+                interval.reset();
+            }
             Event::Notify(notification) => {
+                tracing::debug!("Notify");
                 write_latest_release_file(notification.as_ref().map(|n| &n.release)).await?;
                 ctlr_tx
                     .send(ControllerRequest::SetUpdateNotification(notification))
@@ -114,6 +125,8 @@ enum Event {
     CheckNetwork,
     /// Wait approximately a day using `tokio::time::interval`.
     WaitInterval,
+    /// Wait a random amount of time up to the full interval, to avoid the thundering herd problem. This is only used at startup.
+    WaitRandom,
     /// Set / clear a GUI notification.
     Notify(Option<Notification>),
 }
@@ -123,6 +136,8 @@ enum State {
     CheckNetwork,
     /// Need to wait before the next network check.
     WaitInterval,
+    /// Need to wait a random time before the first network check
+    WaitRandom,
 }
 
 impl Checker {
@@ -142,7 +157,7 @@ impl Checker {
 
         Self {
             ours,
-            state: State::CheckNetwork,
+            state: State::WaitRandom,
             notification,
             notification_dirty,
         }
@@ -182,6 +197,10 @@ impl Checker {
             State::WaitInterval => {
                 self.state = State::CheckNetwork;
                 Event::WaitInterval
+            }
+            State::WaitRandom => {
+                self.state = State::CheckNetwork;
+                Event::WaitRandom
             }
         }
     }
@@ -267,7 +286,8 @@ mod tests {
     fn checker_happy_path() {
         // There's no file, this is a new system
         let mut fsm = Checker::new(Version::new(1, 0, 0), None);
-        // After waking we always check the network
+        // After our initial random sleep we always check the network
+        assert_eq!(fsm.poll(), Event::WaitRandom);
         assert_eq!(fsm.poll(), Event::CheckNetwork);
 
         // We check the network and the network's down, so do nothing
@@ -303,6 +323,7 @@ mod tests {
     fn checker_existing_system() {
         // We check the file and we're already up to date, so do nothing
         let mut fsm = Checker::new(Version::new(1, 0, 0), Some(release(1, 0, 0)));
+        assert_eq!(fsm.poll(), Event::WaitRandom);
         assert_eq!(fsm.poll(), Event::CheckNetwork);
 
         // We're on the latest version, so do nothing
@@ -322,14 +343,15 @@ mod tests {
                 tell_user: false,
             }))
         );
+        assert_eq!(fsm.poll(), Event::WaitRandom);
         assert_eq!(fsm.poll(), Event::CheckNetwork);
 
-        // We already notified on some previous run, don't notify again
+        // Don't notify since we already have the dot up.
         fsm.handle_check(release(1, 0, 1));
         assert_eq!(fsm.poll(), Event::WaitInterval);
         assert_eq!(fsm.poll(), Event::CheckNetwork);
 
-        // There's an even newer version, so tell the UI
+        // There's an even newer version, so tell the user
         fsm.handle_check(release(1, 0, 2));
         assert_eq!(fsm.poll(), Event::Notify(Some(notification(1, 0, 2))));
     }
@@ -337,6 +359,7 @@ mod tests {
     #[test]
     fn checker_rollback() {
         let mut fsm = Checker::new(Version::new(1, 0, 0), Some(release(1, 0, 0)));
+        assert_eq!(fsm.poll(), Event::WaitRandom);
 
         // We first hear about 1.0.2 and notify for that
         assert_eq!(fsm.poll(), Event::CheckNetwork);

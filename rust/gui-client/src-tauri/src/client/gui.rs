@@ -6,6 +6,7 @@
 use crate::client::{
     self, about, deep_link, ipc, logging,
     settings::{self, AdvancedSettings},
+    updates::Release,
     Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
@@ -455,10 +456,10 @@ struct Controller {
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
     log_filter_reloader: LogFilterReloader,
+    /// A release that's ready to download
+    release: Option<Release>,
     status: Status,
     tray: system_tray::Tray,
-    /// URL of a release that's ready to download
-    update_url: Option<Url>,
     uptime: client::uptime::Tracker,
 }
 
@@ -554,13 +555,13 @@ impl Controller {
             }
             Req::SetUpdateNotification(notification) => {
                 let Some(notification) = notification else {
-                    self.update_url = None;
+                    self.release = None;
                     self.refresh_system_tray_menu()?;
                     return Ok(());
                 };
 
                 let release = notification.release;
-                self.update_url = Some(release.download_url.clone());
+                self.release = Some(release.clone());
                 self.refresh_system_tray_menu()?;
 
                 if notification.tell_user {
@@ -844,7 +845,7 @@ impl Controller {
         };
         self.tray.update(system_tray::AppState {
             connlib,
-            update_url: self.update_url.clone(),
+            release: self.release.clone(),
         })?;
         Ok(())
     }
@@ -915,9 +916,9 @@ async fn run_controller(
         ctlr_tx,
         ipc_client,
         log_filter_reloader,
+        release: None,
         status: Default::default(),
         tray,
-        update_url: None,
         uptime: Default::default(),
     };
 
