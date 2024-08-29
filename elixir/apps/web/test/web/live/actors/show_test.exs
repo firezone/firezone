@@ -842,7 +842,7 @@ defmodule Web.Live.Actors.ShowTest do
       refute has_element?(lv, "button", "Enable User")
 
       assert lv
-             |> element("button", "Disable User")
+             |> element("button[type=submit]", "Disable User")
              |> render_click()
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was disabled."
@@ -862,7 +862,7 @@ defmodule Web.Live.Actors.ShowTest do
         |> live(~p"/#{account}/actors/#{actor}")
 
       assert lv
-             |> element("button", "Disable User")
+             |> element("button[type=submit]", "Disable User")
              |> render_click()
              |> Floki.find(".flash-error")
              |> element_to_text() =~ "You can't disable the last admin of an account."
@@ -886,7 +886,7 @@ defmodule Web.Live.Actors.ShowTest do
       refute has_element?(lv, "button", "Disable User")
 
       assert lv
-             |> element("button", "Enable User")
+             |> element("button[type=submit]", "Enable User")
              |> render_click()
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was enabled."
@@ -1024,7 +1024,7 @@ defmodule Web.Live.Actors.ShowTest do
       refute has_element?(lv, "button", "Enable Service Account")
 
       assert lv
-             |> element("button", "Disable Service Account")
+             |> element("button[type=submit]", "Disable Service Account")
              |> render_click()
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was disabled."
@@ -1048,7 +1048,7 @@ defmodule Web.Live.Actors.ShowTest do
       refute has_element?(lv, "button", "Disable Service Account")
 
       assert lv
-             |> element("button", "Enable Service Account")
+             |> element("button[type=submit]", "Enable Service Account")
              |> render_click()
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was enabled."
