@@ -11,7 +11,11 @@ defmodule API.Gateway.Socket do
   ## Authentication
 
   @impl true
-  def connect(%{"token" => encoded_token} = attrs, socket, connect_info) do
+  def connect(
+        %{"token" => encoded_token, "auto_join_room" => auto_join_room} = attrs,
+        socket,
+        connect_info
+      ) do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
     OpenTelemetry.Tracer.with_span "gateway.connect" do
@@ -35,7 +39,9 @@ defmodule API.Gateway.Socket do
           |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
           |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
 
-        API.Gateway.Channel.join("gateway", %{}, socket)
+        if auto_join_room do
+          API.Gateway.Channel.join("gateway", %{}, socket)
+        end
 
         {:ok, socket}
       else

@@ -202,9 +202,11 @@ fn get_websocket_path<E>(
     }
 
     {
-        let mut query_pairs = api_url.query_pairs_mut();
+        let mut query_pairs: url::form_urlencoded::Serializer<url::UrlQuery> =
+            api_url.query_pairs_mut();
         query_pairs.clear();
         query_pairs.append_pair("token", token.expose_secret());
+        query_pairs.append_pair("auto_join_room", "true");
 
         if let Some(public_key) = public_key {
             query_pairs.append_pair("public_key", &STANDARD.encode(public_key));

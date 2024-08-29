@@ -11,7 +11,11 @@ defmodule API.Client.Socket do
   ## Authentication
 
   @impl true
-  def connect(%{"token" => token} = attrs, socket, connect_info) do
+  def connect(
+        %{"token" => token, "auto_join_room" => auto_join_room} = attrs,
+        socket,
+        connect_info
+      ) do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
     OpenTelemetry.Tracer.with_span "client.connect" do
@@ -35,7 +39,9 @@ defmodule API.Client.Socket do
           |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
           |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
 
-        API.Client.Channel.join("client", %{}, socket)
+        if auto_join_room do
+          API.Client.Channel.join("client", %{}, socket)
+        end
 
         {:ok, socket}
       else
