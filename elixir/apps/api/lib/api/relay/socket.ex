@@ -43,7 +43,17 @@ defmodule API.Relay.Socket do
           |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
 
         if auto_join_room do
-          Process.send_after(self(), {:join_channel, %{stamp_secret: stamp_secret}}, 0)
+          Process.send_after(
+            self(),
+            %{
+              event: "phx_join",
+              topic: "client",
+              payload: %{
+                stamp_secret: stamp_secret
+              }
+            },
+            0
+          )
         end
 
         {:ok, socket}
@@ -62,12 +72,6 @@ defmodule API.Relay.Socket do
 
   def connect(_params, _socket, _connect_info) do
     {:error, :missing_token}
-  end
-
-  @impl true
-  def handle_info({:join_channel, %{stamp_secret}}, socket) do
-    API.Relay.Channel.join("relay", %{"stamp_secret" => stamp_secret}, socket)
-    {:noreply, socket}
   end
 
   @impl true
