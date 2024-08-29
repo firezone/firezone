@@ -117,26 +117,30 @@ export default function UseCaseCards() {
             </div>
           </Card>
           <Card>
-            <Image
-              className="absolute md:top-8 top-4"
-              src="/images/access-onprem-network.png"
-              width={300}
-              height={225}
-              alt="Access on-prem network graphic"
-            />
-            <div className="flex items-end">
-              <div>
-                <CardHeading>Access an on-prem network</CardHeading>
-                <p>
-                  Firezone securely punches through firewalls with ease, so keep
-                  those ports closed. Connections pick the shortest path and
-                  your attack surface is minimized, keeping your most sensitive
-                  resources invisible to attackers.
-                </p>
-                <Button
-                  text="Set up secure access"
-                  href="/kb/use-cases/private-network-access"
+            <div>
+              <div className="text-center">
+                <Image
+                  className="mx-auto mb-8"
+                  src="/images/access-onprem-network.png"
+                  width={300}
+                  height={225}
+                  alt="Access on-prem network graphic"
                 />
+              </div>
+              <div className="w-full flex items-end">
+                <div>
+                  <CardHeading>Access an on-prem network</CardHeading>
+                  <p>
+                    Firezone securely punches through firewalls with ease, so
+                    keep those ports closed. Connections pick the shortest path
+                    and your attack surface is minimized, keeping your most
+                    sensitive resources invisible to attackers.
+                  </p>
+                  <Button
+                    text="Set up secure access"
+                    href="/kb/use-cases/private-network-access"
+                  />
+                </div>
               </div>
             </div>
           </Card>
