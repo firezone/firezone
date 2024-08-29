@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="INSTALLDIR">
+        <Component Id="FirezoneGuiClient2" Guid="c38cf1d3-e1e1-4402-94a0-2ef57bddfca7">
+          <File Id="FirezoneGuiClient2Exe" Name="firezone-gui-client2.exe" Source="../../firezone-gui-client2.exe" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>

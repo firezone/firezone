@@ -1,0 +1,20 @@
+{
+  "scripts": {
+    "build": "run-script-os",
+    "build:win32": "call build.bat",
+    "build:darwin:linux": "./build.sh",
+    "build-debug": "run-script-os",
+    "build-debug:win32": "call build-debug.bat",
+    "dev": "run-script-os",
+    "dev:win32": "call dev.bat",
+    "dev:darwin:linux": "./dev.sh",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^1.6",
+    "@tauri-apps/cli": "^1.6"
+  },
+  "devDependencies": {
+    "run-script-os": "^1.1.6"
+  }
+}

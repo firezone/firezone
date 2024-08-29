@@ -8,7 +8,7 @@ members = [
   "connlib/snownet",
   "connlib/tunnel",
   "gateway",
-  "gui-client/src-tauri",
+  "gui-client-2/src-tauri",
   "headless-client",
   "ip-packet",
   "logging",
