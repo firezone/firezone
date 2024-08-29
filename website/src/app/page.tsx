@@ -87,7 +87,7 @@ export default function Page() {
           <div className="text-center text-sm mb-6 font-base text-neutral-600">
             Backed by{" "}
             <Image
-              src="/images/yc-logo-gray.svg"
+              src="/images/yc-logo-gray.png"
               alt="yc logo gray"
               width={100}
               height={40}
