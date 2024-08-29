@@ -100,9 +100,9 @@ async fn write_latest_release_file(release: Option<&Release>) -> Result<()> {
 }
 
 struct Checker {
-    latest_seen: Option<Version>,
     ours: Version,
     state: State,
+    /// The last notification we pushed to the GUI
     notification: Option<Notification>,
     /// Have we changed our desired notification since we last told the GUI about it?
     notification_dirty: bool,
@@ -141,7 +141,6 @@ impl Checker {
         let notification_dirty = notification.is_some();
 
         Self {
-            latest_seen: latest_seen.map(|release| release.version),
             ours,
             state: State::CheckNetwork,
             notification,
@@ -155,7 +154,6 @@ impl Checker {
             None => release.version != self.ours,
             Some(notification) => release.version != notification.release.version,
         };
-        self.latest_seen = Some(release.version.clone());
 
         if different_than_latest_notified {
             self.notification_dirty = true;
