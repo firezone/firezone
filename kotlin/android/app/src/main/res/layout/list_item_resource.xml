@@ -28,14 +28,4 @@
 		app:layout_constraintTop_toBottomOf="@id/resourceNameText"
 		tools:text="Resource Address" />
 
-	<androidx.appcompat.widget.SwitchCompat
-		android:id="@+id/enable_switch"
-		android:layout_height="wrap_content"
-		android:layout_width="wrap_content"
-		android:checked="true"
-		android:gravity="center_vertical"
-		app:layout_constraintBottom_toBottomOf="@+id/resourceNameText"
-		app:layout_constraintEnd_toEndOf="parent"
-		app:layout_constraintTop_toTopOf="parent" />
-
 </androidx.constraintlayout.widget.ConstraintLayout>
