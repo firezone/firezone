@@ -958,6 +958,7 @@ activities =
       connectivity_type: :direct,
       rx_bytes: random_integer.(),
       tx_bytes: random_integer.(),
+      blocked_tx_bytes: 0,
       flow_id: flow.id,
       account_id: account.id
     }

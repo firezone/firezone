@@ -145,9 +145,9 @@ fn start_logging(directives: &str) -> Result<logging::Handles> {
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// If true, always show the update notification at startup, even if our version is newer than Github's
+    /// If true, check for updates every 30 seconds and pretend our current version is 1.0.0, so we'll always show the notification dot.
     #[arg(long, hide = true)]
-    always_show_update_notification: bool,
+    debug_update_check: bool,
     #[command(subcommand)]
     command: Option<Cmd>,
 
