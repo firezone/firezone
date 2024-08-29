@@ -305,12 +305,12 @@ mod tests {
     fn checker_existing_system() {
         // We check the file and we're already up to date, so do nothing
         let mut fsm = Checker::new(Version::new(1, 0, 0), Some(release(1, 0, 0)));
-        assert!(matches!(fsm.poll(), Event::CheckNetwork));
+        assert_eq!(fsm.poll(), Event::CheckNetwork);
 
         // We're on the latest version, so do nothing
         fsm.handle_check(release(1, 0, 0));
-        assert!(matches!(fsm.poll(), Event::WaitInterval));
-        assert!(matches!(fsm.poll(), Event::CheckNetwork));
+        assert_eq!(fsm.poll(), Event::WaitInterval);
+        assert_eq!(fsm.poll(), Event::CheckNetwork);
     }
 
     #[test]
