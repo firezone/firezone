@@ -1,4 +1,4 @@
-use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
+use crate::eventloop::Eventloop;
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
@@ -114,8 +114,6 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
     let portal = PhoenixChannel::connect(
         Secret::new(login),
         get_user_agent(None, env!("CARGO_PKG_VERSION")),
-        PHOENIX_TOPIC,
-        (),
         ExponentialBackoffBuilder::default()
             .with_max_elapsed_time(None)
             .build(),

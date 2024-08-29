@@ -40,7 +40,7 @@ enum ResolveTrigger {
 
 pub struct Eventloop {
     tunnel: GatewayTunnel,
-    portal: PhoenixChannel<(), IngressMessages, ()>,
+    portal: PhoenixChannel<IngressMessages, ()>,
     tun_device_channel: mpsc::Sender<Interface>,
 
     resolve_tasks: futures_bounded::FuturesTupleSet<Vec<IpAddr>, ResolveTrigger>,
@@ -49,7 +49,7 @@ pub struct Eventloop {
 impl Eventloop {
     pub(crate) fn new(
         tunnel: GatewayTunnel,
-        portal: PhoenixChannel<(), IngressMessages, ()>,
+        portal: PhoenixChannel<IngressMessages, ()>,
         tun_device_channel: mpsc::Sender<Interface>,
     ) -> Self {
         Self {

@@ -11,7 +11,11 @@ defmodule API.Relay.Socket do
   ## Authentication
 
   @impl true
-  def connect(%{"token" => encoded_token} = attrs, socket, connect_info) do
+  def connect(
+        %{"token" => encoded_token, "stamp_secret" => stamp_secret} = attrs,
+        socket,
+        connect_info
+      ) do
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
 
     OpenTelemetry.Tracer.with_span "relay.connect" do
@@ -33,6 +37,8 @@ defmodule API.Relay.Socket do
           |> assign(:relay, relay)
           |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
           |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
+
+        API.Relay.Channel.join("relay", %{stamp_secret: stamp_secret}, socket)
 
         {:ok, socket}
       else

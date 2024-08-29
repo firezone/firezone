@@ -48,7 +48,7 @@ impl Session {
     /// This connects to the portal a specified using [`LoginUrl`] and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
         args: ConnectArgs<CB>,
-        portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+        portal: PhoenixChannel<IngressMessages, ReplyMessages>,
         handle: tokio::runtime::Handle,
     ) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -118,7 +118,7 @@ impl Session {
 /// When this function exits, the tunnel failed unrecoverably and you need to call it again.
 async fn connect<CB>(
     args: ConnectArgs<CB>,
-    portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+    portal: PhoenixChannel<IngressMessages, ReplyMessages>,
     rx: UnboundedReceiver<Command>,
 ) -> Result<(), DisconnectError>
 where

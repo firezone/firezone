@@ -24,7 +24,7 @@ pub struct Eventloop<C: Callbacks> {
     tunnel: ClientTunnel,
     callbacks: C,
 
-    portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+    portal: PhoenixChannel<IngressMessages, ReplyMessages>,
     rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
 
     connection_intents: SentConnectionIntents,
@@ -43,7 +43,7 @@ impl<C: Callbacks> Eventloop<C> {
     pub(crate) fn new(
         tunnel: ClientTunnel,
         callbacks: C,
-        portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+        portal: PhoenixChannel<IngressMessages, ReplyMessages>,
         rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
     ) -> Self {
         Self {

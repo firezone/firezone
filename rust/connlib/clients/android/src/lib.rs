@@ -377,8 +377,6 @@ fn connect(
     let portal = PhoenixChannel::connect(
         Secret::new(url),
         get_user_agent(Some(os_version), env!("CARGO_PKG_VERSION")),
-        "client",
-        (),
         ExponentialBackoffBuilder::default()
             .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
             .build(),

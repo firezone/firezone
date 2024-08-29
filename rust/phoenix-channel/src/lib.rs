@@ -30,7 +30,7 @@ use url::{Host, Url};
 
 pub use login_url::{LoginUrl, LoginUrlError};
 
-pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
+pub struct PhoenixChannel<TInboundMsg, TOutboundRes> {
     state: State,
     waker: Option<Waker>,
     pending_messages: VecDeque<String>,
@@ -49,9 +49,6 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     reconnect_backoff: ExponentialBackoff,
 
     resolved_addresses: Vec<IpAddr>,
-
-    login: &'static str,
-    init_req: TInitReq,
 }
 
 enum State {
@@ -213,9 +210,8 @@ impl fmt::Display for OutboundRequestId {
 #[error("Cannot close websocket while we are connecting")]
 pub struct Connecting;
 
-impl<TInitReq, TInboundMsg, TOutboundRes> PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes>
+impl<TInboundMsg, TOutboundRes> PhoenixChannel<TInboundMsg, TOutboundRes>
 where
-    TInitReq: Serialize + Clone,
     TInboundMsg: DeserializeOwned,
     TOutboundRes: DeserializeOwned,
 {
@@ -226,8 +222,6 @@ where
     pub fn connect(
         url: Secret<LoginUrl>,
         user_agent: String,
-        login: &'static str,
-        init_req: TInitReq,
         reconnect_backoff: ExponentialBackoff,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> io::Result<Self> {
@@ -262,8 +256,6 @@ where
             ),
             next_request_id,
             pending_join_requests: Default::default(),
-            login,
-            init_req,
             resolved_addresses,
         })
     }
@@ -360,7 +352,6 @@ where
                         let host = self.url.expose_secret().host();
 
                         tracing::info!(%host, "Connected to portal");
-                        self.join(self.login, self.init_req.clone());
 
                         continue;
                     }
@@ -470,12 +461,6 @@ where
                             continue;
                         }
                         (Payload::Reply(Reply::Error { reason }), Some(req_id)) => {
-                            if message.topic == self.login
-                                && self.pending_join_requests.contains(&req_id)
-                            {
-                                return Poll::Ready(Err(Error::LoginFailed(reason)));
-                            }
-
                             return Poll::Ready(Ok(Event::ErrorResponse {
                                 topic: message.topic,
                                 req_id,

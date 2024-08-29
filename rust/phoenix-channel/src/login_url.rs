@@ -60,6 +60,7 @@ impl LoginUrl {
             None,
             None,
             None,
+            None,
         )?;
 
         Ok(LoginUrl {
@@ -90,6 +91,7 @@ impl LoginUrl {
             None,
             None,
             None,
+            None,
         )?;
 
         Ok(LoginUrl {
@@ -105,6 +107,7 @@ impl LoginUrl {
         listen_port: u16,
         ipv4_address: Option<Ipv4Addr>,
         ipv6_address: Option<Ipv6Addr>,
+        stamp_secret: &SecretString,
     ) -> Result<Self, LoginUrlError<E>> {
         let url = get_websocket_path(
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
@@ -116,6 +119,7 @@ impl LoginUrl {
             Some(listen_port),
             ipv4_address,
             ipv6_address,
+            Some(stamp_secret),
         )?;
 
         Ok(LoginUrl {
@@ -183,6 +187,7 @@ fn get_websocket_path<E>(
     port: Option<u16>,
     ipv4_address: Option<Ipv4Addr>,
     ipv6_address: Option<Ipv6Addr>,
+    stamp_secret: Option<&SecretString>,
 ) -> Result<Url, LoginUrlError<E>> {
     set_ws_scheme(&mut api_url)?;
 
@@ -218,6 +223,9 @@ fn get_websocket_path<E>(
         }
         if let Some(port) = port {
             query_pairs.append_pair("port", &port.to_string());
+        }
+        if let Some(stamp_secret) = stamp_secret {
+            query_pairs.append_pair("stamp_secret", &stamp_secret.expose_secret().to_string());
         }
     }
 

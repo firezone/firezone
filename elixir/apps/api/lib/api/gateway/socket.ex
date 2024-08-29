@@ -35,6 +35,8 @@ defmodule API.Gateway.Socket do
           |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
           |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
 
+        API.Gateway.Channel.join("gateway", %{}, socket)
+
         {:ok, socket}
       else
         {:error, :unauthorized} ->

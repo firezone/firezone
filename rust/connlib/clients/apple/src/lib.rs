@@ -214,8 +214,6 @@ impl WrappedSession {
         let portal = PhoenixChannel::connect(
             Secret::new(url),
             get_user_agent(os_version_override, env!("CARGO_PKG_VERSION")),
-            "client",
-            (),
             ExponentialBackoffBuilder::default()
                 .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
                 .build(),

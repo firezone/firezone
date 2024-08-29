@@ -128,8 +128,6 @@ async fn main() -> Result<()> {
     ));
 
     let channel = if let Some(token) = args.token.as_ref() {
-        use secrecy::ExposeSecret;
-
         let login = LoginUrl::relay(
             args.api_url.clone(),
             token,
@@ -137,15 +135,12 @@ async fn main() -> Result<()> {
             args.listen_port,
             args.public_ip4_addr,
             args.public_ip6_addr,
+            server.auth_secret(),
         )?;
 
         Some(PhoenixChannel::connect(
             Secret::new(login),
             format!("relay/{}", env!("CARGO_PKG_VERSION")),
-            "relay",
-            JoinMessage {
-                stamp_secret: server.auth_secret().expose_secret().to_string(),
-            },
             ExponentialBackoffBuilder::default()
                 .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
                 .build(),
@@ -284,11 +279,6 @@ enum IngressMessage {
 #[derive(serde::Deserialize, Debug)]
 struct Init {}
 
-#[derive(serde::Serialize, PartialEq, Debug, Clone)]
-struct JoinMessage {
-    stamp_secret: String,
-}
-
 fn make_rng(seed: Option<u64>) -> StdRng {
     let Some(seed) = seed else {
         return StdRng::from_entropy();
@@ -305,7 +295,7 @@ struct Eventloop<R> {
     sockets: Sockets,
 
     server: Server<R>,
-    channel: Option<PhoenixChannel<JoinMessage, IngressMessage, ()>>,
+    channel: Option<PhoenixChannel<IngressMessage, ()>>,
     sleep: Sleep,
 
     sigterm: unix::Signal,
@@ -325,7 +315,7 @@ where
 {
     fn new(
         server: Server<R>,
-        channel: Option<PhoenixChannel<JoinMessage, IngressMessage, ()>>,
+        channel: Option<PhoenixChannel<IngressMessage, ()>>,
         public_address: IpStack,
         last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
     ) -> Result<Self> {
