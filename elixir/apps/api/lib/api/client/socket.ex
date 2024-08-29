@@ -12,7 +12,7 @@ defmodule API.Client.Socket do
 
   @impl true
   def connect(
-        %{"token" => token, "auto_join_room" => auto_join_room} = attrs,
+        %{"token" => token} = attrs,
         socket,
         connect_info
       ) do
@@ -39,7 +39,7 @@ defmodule API.Client.Socket do
           |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
           |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
 
-        if auto_join_room do
+        if Map.get(attrs, "auto_join_room", false) do
           Process.send_after(
             self(),
             %{event: "phx_join", topic: "client"},

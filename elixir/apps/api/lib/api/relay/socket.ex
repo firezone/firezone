@@ -13,9 +13,7 @@ defmodule API.Relay.Socket do
   @impl true
   def connect(
         %{
-          "token" => encoded_token,
-          "stamp_secret" => stamp_secret,
-          "auto_join_room" => auto_join_room
+          "token" => encoded_token
         } = attrs,
         socket,
         connect_info
@@ -42,18 +40,20 @@ defmodule API.Relay.Socket do
           |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
           |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
 
-        if auto_join_room do
-          Process.send_after(
-            self(),
-            %{
-              event: "phx_join",
-              topic: "client",
-              payload: %{
-                stamp_secret: stamp_secret
-              }
-            },
-            0
-          )
+        if Map.get(attrs, "auto_join_room", false) do
+          with {:ok, stamp_secret} <- Map.fetch(attrs, "stamp_secret") do
+            Process.send_after(
+              self(),
+              %{
+                event: "phx_join",
+                topic: "relay",
+                payload: %{
+                  stamp_secret: stamp_secret
+                }
+              },
+              0
+            )
+          end
         end
 
         {:ok, socket}
