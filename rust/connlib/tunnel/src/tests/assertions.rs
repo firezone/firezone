@@ -169,6 +169,15 @@ pub(crate) fn assert_dns_packets_properties(ref_client: &RefClient, sim_client: 
     }
 }
 
+pub(crate) fn assert_icmp_errors(ref_client: &RefClient, sim_client: &SimClient) {
+    let expected = &ref_client.expected_icmp_errors;
+    let actual = &sim_client.received_icmp_errors;
+
+    if actual != expected {
+        tracing::error!(target: "assertions", ?actual, ?expected, "❌ ICMP errors don't match");
+    }
+}
+
 fn assert_correct_src_and_dst_ips(
     client_sent_request: &IpPacket<'_>,
     client_received_reply: &IpPacket<'_>,

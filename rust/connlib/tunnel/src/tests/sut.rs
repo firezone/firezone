@@ -349,6 +349,7 @@ impl TunnelTest {
             sim_gateways,
             &ref_state.global_dns_records,
         );
+        assert_icmp_errors(ref_client, sim_client);
         assert_dns_packets_properties(ref_client, sim_client);
         assert_known_hosts_are_valid(ref_client, sim_client);
         assert_dns_servers_are_valid(ref_client, sim_client);

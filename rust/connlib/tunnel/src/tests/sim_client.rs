@@ -56,6 +56,8 @@ pub(crate) struct SimClient {
     pub(crate) sent_icmp_requests: HashMap<(u16, u16), IpPacket<'static>>,
     pub(crate) received_icmp_replies: BTreeMap<(u16, u16), IpPacket<'static>>,
 
+    pub(crate) received_icmp_errors: VecDeque<IpPacket<'static>>,
+
     buffer: Vec<u8>,
 }
 
@@ -71,6 +73,7 @@ impl SimClient {
             sent_icmp_requests: Default::default(),
             received_icmp_replies: Default::default(),
             buffer: vec![0u8; (1 << 16) - 1],
+            received_icmp_errors: Default::default(),
         }
     }
 
@@ -302,6 +305,9 @@ pub struct RefClient {
     #[derivative(Debug = "ignore")]
     pub(crate) expected_icmp_handshakes:
         BTreeMap<GatewayId, BTreeMap<u64, (ResourceDst, IcmpSeq, IcmpIdentifier)>>,
+    /// The expected ICMP errors that we are emitting.
+    #[derivative(Debug = "ignore")]
+    pub(crate) expected_icmp_errors: VecDeque<IpPacket<'static>>,
     /// The expected DNS handshakes.
     #[derivative(Debug = "ignore")]
     pub(crate) expected_dns_handshakes: VecDeque<(SocketAddr, QueryId)>,
@@ -823,6 +829,7 @@ fn ref_client(
                     expected_dns_handshakes: Default::default(),
                     disabled_resources: Default::default(),
                     resources: Default::default(),
+                    expected_icmp_errors: Default::default(),
                 }
             },
         )
