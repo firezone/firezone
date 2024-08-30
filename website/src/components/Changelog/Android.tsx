@@ -20,6 +20,10 @@ export default function Android() {
           <ChangeItem pull="6405">
             Shows the Git SHA corresponding to the build on the Settings -> Advanced screen.
           </ChangeItem>
+          <ChangeItem pull="6495">
+          Fixes a bug where the Firezone tunnel wasn't shutdown properly if you disconnect
+          the VPN in system settings.
+          </ChangeItem>
         </ul>
       </Entry>
       */}

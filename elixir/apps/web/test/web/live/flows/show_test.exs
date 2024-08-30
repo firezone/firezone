@@ -172,7 +172,8 @@ defmodule Web.Live.Flows.ShowTest do
                  "destination",
                  "connectivity_type",
                  "rx_bytes",
-                 "tx_bytes"
+                 "tx_bytes",
+                 "blocked_tx_bytes"
                ],
                [
                  to_string(activity.window_started_at),
@@ -180,7 +181,8 @@ defmodule Web.Live.Flows.ShowTest do
                  to_string(activity.destination),
                  to_string(activity.connectivity_type),
                  to_string(activity.rx_bytes),
-                 to_string(activity.tx_bytes)
+                 to_string(activity.tx_bytes),
+                 to_string(activity.blocked_tx_bytes)
                ]
              ]
   end

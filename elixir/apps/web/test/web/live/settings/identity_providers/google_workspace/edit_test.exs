@@ -54,6 +54,7 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.EditTest do
              "provider[adapter_config][_persistent_id]",
              "provider[adapter_config][client_id]",
              "provider[adapter_config][client_secret]",
+             "provider[adapter_config][service_account_json_key]",
              "provider[name]"
            ]
   end
@@ -68,7 +69,23 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.EditTest do
 
     adapter_config_attrs =
       Fixtures.Auth.openid_connect_adapter_config(
-        discovery_document_uri: "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+        discovery_document_uri:
+          "http://localhost:#{bypass.port}/.well-known/openid-configuration",
+        service_account_json_key:
+          Jason.encode!(%{
+            "type" => "service_account",
+            "project_id" => "firezone-test",
+            "private_key_id" => "e1fc5c12b490aaa1602f3de9133551952b749db3",
+            "private_key" => "...",
+            "client_email" => "firezone-idp-sync@firezone-test-391719.iam.gserviceaccount.com",
+            "client_id" => "110986447653011314480",
+            "auth_uri" => "https://accounts.google.com/o/oauth2/auth",
+            "token_uri" => "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url" => "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url" =>
+              "https://www.googleapis.com/robot/v1/metadata/x509/firezone-idp-sync%40firezone-test-111111.iam.gserviceaccount.com",
+            "universe_domain" => "googleapis.com"
+          })
       )
 
     adapter_config_attrs =
@@ -162,7 +179,8 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.EditTest do
     validate_change(form, changed_values, fn form, _html ->
       assert form_validation_errors(form) == %{
                "provider[name]" => ["should be at most 255 character(s)"],
-               "provider[adapter_config][client_id]" => ["can't be blank"]
+               "provider[adapter_config][client_id]" => ["can't be blank"],
+               "provider[adapter_config][service_account_json_key]" => ["is invalid"]
              }
     end)
   end

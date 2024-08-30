@@ -45,6 +45,7 @@ config :domain, Domain.Analytics,
 
 config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
   endpoint: "https://admin.googleapis.com",
+  token_endpoint: "https://oauth2.googleapis.com",
   finch_transport_opts: []
 
 config :domain, Domain.Auth.Adapters.MicrosoftEntra.APIClient,

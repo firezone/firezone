@@ -96,32 +96,6 @@ fn resource_header(res: &ResourceDescription) -> Item {
 }
 
 impl Menu {
-    /// Appends things that always show, like About, Settings, Help, Quit, etc.
-    pub(crate) fn add_bottom_section(mut self, update_url: Option<Url>, quit_text: &str) -> Self {
-        self = self.separator();
-        if let Some(url) = update_url {
-            self = self.item(Event::Url(url), "Download update...")
-        }
-
-        self.item(Event::ShowWindow(Window::About), "About Firezone")
-            .item(Event::AdminPortal, "Admin Portal...")
-            .add_submenu(
-                "Help",
-                Menu::default()
-                    .item(
-                        Event::Url(utm_url("https://www.firezone.dev/kb")),
-                        "Documentation...",
-                    )
-                    .item(
-                        Event::Url(utm_url("https://www.firezone.dev/support")),
-                        "Support...",
-                    ),
-            )
-            .item(Event::ShowWindow(Window::Settings), "Settings")
-            .separator()
-            .item(Event::Quit, quit_text)
-    }
-
     pub(crate) fn add_separator(&mut self) {
         self.entries.push(Entry::Separator);
     }
@@ -241,12 +215,4 @@ pub(crate) fn item<E: Into<Option<Event>>, S: Into<String>>(event: E, title: S) 
         title: title.into(),
         selected: false,
     }
-}
-
-pub(crate) fn utm_url(base_url: &str) -> Url {
-    Url::parse(&format!(
-        "{base_url}?utm_source={}-client",
-        std::env::consts::OS
-    ))
-    .expect("Hard-coded URL should always be parsable")
 }

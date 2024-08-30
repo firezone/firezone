@@ -13,7 +13,7 @@ defmodule Domain.Gateways.Group do
 
     has_many :connections, Domain.Resources.Connection, foreign_key: :gateway_group_id
 
-    field :created_by, Ecto.Enum, values: ~w[actor identity]a
+    field :created_by, Ecto.Enum, values: ~w[actor identity system]a
     belongs_to :created_by_identity, Domain.Auth.Identity
     belongs_to :created_by_actor, Domain.Actors.Actor
 
