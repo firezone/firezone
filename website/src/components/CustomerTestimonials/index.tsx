@@ -85,7 +85,7 @@ const TestimonialBox = ({
       >
         "{desc}"
       </p>
-      <div className="flex gap-4 customerData[1]s-center">
+      <div className="flex gap-4 items-center">
         <Image
           src={authorImage}
           alt="author portrait"
