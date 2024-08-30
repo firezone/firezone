@@ -69,9 +69,10 @@ defmodule Domain.MixProject do
       {:ex_cldr, "~> 2.38"},
 
       # Mailer deps
-      {:multipart, "~> 0.4.0"},
-      {:phoenix_swoosh, "~> 1.0"},
       {:gen_smtp, "~> 1.0"},
+      {:multipart, "~> 0.4.0"},
+      {:phoenix_html, "~> 4.0"},
+      {:phoenix_swoosh, "~> 1.0"},
       {:phoenix_template, "~> 1.0.4"},
 
       # Observability and Runtime debugging

@@ -3,8 +3,8 @@ defmodule Domain.Mailer.SyncEmail do
   import Domain.Mailer
   import Phoenix.Template, only: [embed_templates: 2]
 
-  embed_templates("sync_email/*.html", suffix: "_html")
-  embed_templates("sync_email/*.text", suffix: "_text")
+  embed_templates "sync_email/*.html", suffix: "_html"
+  embed_templates "sync_email/*.text", suffix: "_text"
 
   def sync_error_email(%Domain.Auth.Provider{} = provider, email) do
     default_email()

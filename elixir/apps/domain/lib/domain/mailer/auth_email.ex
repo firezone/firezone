@@ -3,8 +3,8 @@ defmodule Domain.Mailer.AuthEmail do
   import Domain.Mailer
   import Phoenix.Template, only: [embed_templates: 2]
 
-  embed_templates("auth_email/*.html", suffix: "_html")
-  embed_templates("auth_email/*.text", suffix: "_text")
+  embed_templates "auth_email/*.html", suffix: "_html"
+  embed_templates "auth_email/*.text", suffix: "_text"
 
   def sign_up_link_email(
         %Domain.Accounts.Account{} = account,
@@ -80,23 +80,17 @@ defmodule Domain.Mailer.AuthEmail do
 
   def url(path, params \\ %{}) do
     Domain.Config.fetch_env!(:domain, :web_external_url)
-    |> set_path(path)
-    |> set_params(params)
+    |> URI.parse()
+    |> URI.append_path(path)
+    |> maybe_append_query(params)
+    |> URI.to_string()
   end
 
-  defp set_path(url, path) do
-    if String.starts_with?(path, "/") do
-      "#{url}#{path}"
+  def maybe_append_query(uri, params) do
+    if Enum.empty?(params) do
+      uri
     else
-      "#{url}/#{path}"
-    end
-  end
-
-  defp set_params(url, params) do
-    Enum.map_join(params, "&", fn {k, v} -> "#{k}=#{v}" end)
-    |> case do
-      "" -> url
-      str -> "#{url}?#{str}"
+      URI.append_query(uri, URI.encode_query(params))
     end
   end
 end

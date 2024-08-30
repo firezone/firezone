@@ -1,5 +1,5 @@
 defmodule Domain.Mailer.AuthEmailTest do
-  use Web.ConnCase, async: true
+  use Domain.DataCase, async: true
   import Domain.Mailer.AuthEmail
 
   setup do

@@ -732,5 +732,75 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
 
       cancel_bypass_expectations_check(bypass)
     end
+
+    test "sends email on failed directory sync", %{account: account} do
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      _identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+
+      error_message =
+        "Admin SDK API has not been used in project XXXX before or it is disabled. " <>
+          "Enable it by visiting https://console.developers.google.com/apis/api/admin.googleapis.com/overview?project=XXXX " <>
+          "then retry. If you enabled this API recently, wait a few minutes for the action to propagate to our systems and retry."
+
+      response = %{
+        "error" => %{
+          "code" => 403,
+          "message" => error_message,
+          "errors" => [
+            %{
+              "message" => error_message,
+              "domain" => "usageLimits",
+              "reason" => "accessNotConfigured",
+              "extendedHelp" => "https://console.developers.google.com"
+            }
+          ],
+          "status" => "PERMISSION_DENIED",
+          "details" => [
+            %{
+              "@type" => "type.googleapis.com/google.rpc.Help",
+              "links" => [
+                %{
+                  "description" => "Google developers console API activation",
+                  "url" =>
+                    "https://console.developers.google.com/apis/api/admin.googleapis.com/overview?project=100421656358"
+                }
+              ]
+            },
+            %{
+              "@type" => "type.googleapis.com/google.rpc.ErrorInfo",
+              "reason" => "SERVICE_DISABLED",
+              "domain" => "googleapis.com",
+              "metadata" => %{
+                "service" => "admin.googleapis.com",
+                "consumer" => "projects/100421656358"
+              }
+            }
+          ]
+        }
+      }
+
+      bypass = Bypass.open()
+      GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+
+      for path <- [
+            "/admin/directory/v1/users",
+            "/admin/directory/v1/customer/my_customer/orgunits",
+            "/admin/directory/v1/groups"
+          ] do
+        Bypass.stub(bypass, "GET", path, fn conn ->
+          Plug.Conn.send_resp(conn, 403, Jason.encode!(response))
+        end)
+      end
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      assert_email_sent(fn email ->
+        assert email.subject == "Firezone Identity Provider Sync Error"
+        assert email.text_body =~ "failed to sync 1 times"
+      end)
+
+      cancel_bypass_expectations_check(bypass)
+    end
   end
 end

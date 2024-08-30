@@ -48,10 +48,7 @@ defmodule Web.MixProject do
       {:gettext, "~> 0.20"},
       {:remote_ip, "~> 1.0"},
 
-      # CLDR and unit conversions
-      {:ex_cldr_dates_times, "~> 2.13"},
-      {:ex_cldr_numbers, "~> 2.31"},
-      {:ex_cldr, "~> 2.40"},
+      # Unit conversions
       {:tzdata, "~> 1.1"},
       {:sizeable, "~> 1.0"},
 
@@ -64,10 +61,6 @@ defmodule Web.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:recon, "~> 2.5"},
       {:observer_cli, "~> 1.7"},
-
-      # Mailer deps
-      {:multipart, "~> 0.4.0"},
-      {:gen_smtp, "~> 1.0"},
 
       # Observability
       {:opentelemetry_telemetry, "~> 1.1.1", override: true},

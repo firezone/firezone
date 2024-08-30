@@ -209,8 +209,8 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
 
           Auth.Provider.Changeset.sync_requires_manual_intervention(provider, user_message)
           |> Domain.Repo.update!()
+          |> send_sync_error_email()
 
-          maybe_email_sync_error(provider)
           :error
 
         {:error, nil, log_message} ->
@@ -218,7 +218,6 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
 
           log_sync_error(provider, log_message)
 
-          maybe_email_sync_error(provider)
           :error
 
         {:error, user_message, log_message} ->
@@ -226,9 +225,9 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
 
           Auth.Provider.Changeset.sync_failed(provider, user_message)
           |> Domain.Repo.update!()
+          |> send_sync_error_email()
           |> log_sync_error(log_message)
 
-          maybe_email_sync_error(provider)
           :error
       end
     end
@@ -385,25 +384,18 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
     end)
   end
 
-  defp maybe_email_sync_error(provider) do
-    with {:ok, provider} <-
-           Domain.Auth.fetch_active_provider_by_id(provider.id, preload: :account) do
-      send_sync_error_email(provider)
-    else
-      _ ->
-        Logger.warning("Failed to fetch provider while attempting to send sync error email")
-    end
-  end
-
   defp send_sync_error_email(provider) do
+    provider = Repo.preload(provider, :account)
+
     if sync_error_email_sent_today?(provider) do
-      Logger.info("Sync error email already sent today for Provider: #{provider.id}")
+      Logger.debug("Sync error email already sent today")
+
+      provider
     else
-      Domain.Actors.all_admins_for_account!(provider.account)
-      |> Enum.reduce([], fn actor, acc ->
-        acc ++ Domain.Auth.all_identities_for(actor)
+      Domain.Actors.all_admins_for_account!(provider.account, preload: :identities)
+      |> Enum.flat_map(fn actor ->
+        Enum.map(actor.identities, &Domain.Auth.get_identity_email(&1))
       end)
-      |> Enum.map(&Domain.Auth.get_identity_email(&1))
       |> Enum.uniq()
       |> Enum.each(fn email ->
         Domain.Mailer.SyncEmail.sync_error_email(provider, email)
@@ -416,10 +408,11 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
   end
 
   defp sync_error_email_sent_today?(provider) do
-    last_email_time = provider.sync_error_emailed_at || DateTime.from_unix!(0)
-
-    sec_in_day = 60 * 60 * 24
-    DateTime.diff(DateTime.utc_now(), last_email_time) < sec_in_day
+    if last_email_time = provider.sync_error_emailed_at do
+      DateTime.diff(DateTime.utc_now(), last_email_time, :hour) < 24
+    else
+      false
+    end
   end
 
   if Mix.env() == :test do
