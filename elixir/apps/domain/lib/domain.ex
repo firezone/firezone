@@ -34,20 +34,6 @@ defmodule Domain do
     end
   end
 
-  def html do
-    quote do
-      # Include general helpers for rendering HTML
-      unquote(html_helpers())
-    end
-  end
-
-  def html_helpers do
-    quote do
-      # HTML escaping functionality
-      import Phoenix.HTML
-    end
-  end
-
   @doc """
   When used, dispatch to the appropriate schema/context/changeset/query/etc.
   """

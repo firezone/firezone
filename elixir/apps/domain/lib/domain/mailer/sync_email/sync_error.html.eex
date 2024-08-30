@@ -63,16 +63,16 @@
 								<tr>
 									<td class="sm-px-6" style="border-radius: 4px; background-color: #ffffff; padding: 48px; font-size: 16px; color: #4f4f4f; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05)">
 										<h1 class="sm-leading-8" style="margin: 0 0 24px; font-size: 24px; font-weight: 600; color: #000000">
-											Identity Provider Sync Error!
+											<%= @provider.name %> Sync Error!
 										</h1>
 										<p style="margin: 0; line-height: 24px">
-											An Identity Provider setup in Firezone has failed to sync <%= @provider.last_syncs_failed %> times.
+											<%= @provider.name %> has failed to sync <%= @provider.last_syncs_failed %> times.
 										</p>
 										<div role="separator" style="line-height: 16px">&zwj;</div>
 										<p style="margin: 0; line-height: 24px;">
 											Below is the last sync error message:
 											<div>
-												<%= @provider.last_sync_error %>
+											<pre style="margin: 0; white-space: pre; border-radius: 4px; background-color: #000000; padding: 8px 12px; line-height: 24px; color: #e7e7e7"><code><%= @provider.last_sync_error %></code></pre>
 											</div>
 										</p>
 										<div role="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
@@ -99,7 +99,7 @@
 										</table>
 										<p></p>
 										<div role="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0;">&zwj;</div>
-										<p style="margin: 0;">
+										<p style="margin: 0; line-height: 24px;">
 											Please verify that all Identity Provider information entered in to Firezone is correct. If the problem persists, please reach out to Firezone support
 											using Slack or email.
 											<br>

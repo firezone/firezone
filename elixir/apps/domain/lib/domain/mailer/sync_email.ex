@@ -1,5 +1,4 @@
 defmodule Domain.Mailer.SyncEmail do
-  use Domain, :html
   import Swoosh.Email
   import Domain.Mailer
   import Phoenix.Template, only: [embed_templates: 2]
