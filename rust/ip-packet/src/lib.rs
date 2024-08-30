@@ -9,10 +9,11 @@ pub use pnet_packet::*;
 mod proptests;
 
 use domain::base::Message;
+use etherparse::icmpv6::ParameterProblemHeader;
 use pnet_packet::{
     icmp::{
-        destination_unreachable::IcmpCodes, echo_reply::MutableEchoReplyPacket,
-        echo_request::MutableEchoRequestPacket, IcmpCode, IcmpTypes, MutableIcmpPacket,
+        echo_reply::MutableEchoReplyPacket, echo_request::MutableEchoRequestPacket, IcmpTypes,
+        MutableIcmpPacket,
     },
     icmpv6::{Icmpv6Code, Icmpv6Type, Icmpv6Types, MutableIcmpv6Packet},
     ip::{IpNextHeaderProtocol, IpNextHeaderProtocols},
@@ -22,6 +23,7 @@ use pnet_packet::{
     udp::{MutableUdpPacket, UdpPacket},
 };
 use std::{
+    io::Cursor,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::{Deref, DerefMut},
 };
@@ -261,16 +263,16 @@ impl<'a> ConvertibleIpv4Packet<'a> {
         src: Ipv6Addr,
         dst: Ipv6Addr,
     ) -> Option<ConvertibleIpv6Packet<'a>> {
-        // First we store the old values before modifying the old packet
-        let dscp = self.as_ipv4().get_dscp();
-        let total_length = self.as_ipv4().get_total_length();
-        let header_length = self.header_length();
-        let ttl = self.as_ipv4().get_ttl();
-        let next_level_protocol = self.as_ipv4().get_next_level_protocol();
+        use etherparse::{Icmpv4Header, IpNumber, Ipv6FlowLabel, Ipv6Header};
 
-        let mut buf = self.buf.remove_from_head(header_length - 20);
-        buf[0..40].fill(0);
-        let mut pkt = ConvertibleIpv6Packet { buf };
+        let ipv4_packet = &self.buf[20..];
+
+        let (headers, payload) = etherparse::IpHeaders::from_ipv4_slice(ipv4_packet).ok()?;
+        let (ipv4_header, _extensions) = headers.ipv4()?;
+
+        let total_length = ipv4_header.total_len;
+        let header_length = ipv4_header.header_len();
+        let start_of_ip_payload = 20 + header_length;
 
         // TODO:
         /*
@@ -301,80 +303,109 @@ impl<'a> ConvertibleIpv4Packet<'a> {
         */
         // Note the RFC has notes on how to set fragmentation fields.
 
-        // Version:  6
-        pkt.as_ipv6().set_version(6);
+        let ipv6_header = Ipv6Header {
+            // Traffic Class:  By default, copied from the IP Type Of Service (TOS)
+            //    octet.  According to [RFC2474], the semantics of the bits are
+            //    identical in IPv4 and IPv6.  However, in some IPv4 environments
+            //    these fields might be used with the old semantics of "Type Of
+            //    Service and Precedence".  An implementation of a translator SHOULD
+            //    support an administratively configurable option to ignore the IPv4
+            //    TOS and always set the IPv6 traffic class (TC) to zero.  In
+            //    addition, if the translator is at an administrative boundary, the
+            //    filtering and update considerations of [RFC2475] may be
+            //    applicable.
+            // Note: DSCP is the new name for TOS
+            traffic_class: ipv4_header.dscp.value(),
 
-        // Traffic Class:  By default, copied from the IP Type Of Service (TOS)
-        //    octet.  According to [RFC2474], the semantics of the bits are
-        //    identical in IPv4 and IPv6.  However, in some IPv4 environments
-        //    these fields might be used with the old semantics of "Type Of
-        //    Service and Precedence".  An implementation of a translator SHOULD
-        //    support an administratively configurable option to ignore the IPv4
-        //    TOS and always set the IPv6 traffic class (TC) to zero.  In
-        //    addition, if the translator is at an administrative boundary, the
-        //    filtering and update considerations of [RFC2475] may be
-        //    applicable.
-        // Note: DSCP is the new name for TOS
-        pkt.as_ipv6().set_traffic_class(dscp);
+            // Flow Label:  0 (all zero bits)
+            flow_label: Ipv6FlowLabel::ZERO,
 
-        // Flow Label:  0 (all zero bits)
-        pkt.as_ipv6().set_flow_label(0);
+            // Payload Length:  Total length value from the IPv4 header, minus the
+            //    size of the IPv4 header and IPv4 options, if present.
+            payload_length: total_length - (header_length as u16),
 
-        // Payload Length:  Total length value from the IPv4 header, minus the
-        //    size of the IPv4 header and IPv4 options, if present.
-        pkt.as_ipv6()
-            .set_payload_length(total_length - (header_length as u16));
+            // Next Header:  For ICMPv4 (1), it is changed to ICMPv6 (58);
+            //    otherwise, the protocol field MUST be copied from the IPv4 header.
+            next_header: match ipv4_header.protocol {
+                IpNumber::ICMP => IpNumber::IPV6_ICMP,
+                other => other,
+            },
 
-        // Next Header:  For ICMPv4 (1), it is changed to ICMPv6 (58);
-        //    otherwise, the protocol field MUST be copied from the IPv4 header.
-        let mut pkt = if next_level_protocol == IpNextHeaderProtocols::Icmp {
-            let mut pkt = pkt.update_icmpv4_header_to_icmpv6()?;
-            pkt.as_ipv6().set_next_header(IpNextHeaderProtocols::Icmpv6);
-            pkt
-        } else {
-            pkt.as_ipv6().set_next_header(next_level_protocol);
-            pkt
+            // Hop Limit:  The hop limit is derived from the TTL value in the IPv4
+            //    header.  Since the translator is a router, as part of forwarding
+            //    the packet it needs to decrement either the IPv4 TTL (before the
+            //    translation) or the IPv6 Hop Limit (after the translation).  As
+            //    part of decrementing the TTL or Hop Limit, the translator (as any
+            //    router) MUST check for zero and send the ICMPv4 "TTL Exceeded" or
+            //    ICMPv6 "Hop Limit Exceeded" error.
+            // TODO: do we really need to act as a router?
+            // reducing the ttl and having to send back a message makes things much harder
+            hop_limit: ipv4_header.time_to_live,
+
+            // Source Address:  The IPv4-converted address derived from the IPv4
+            //    source address per [RFC6052], Section 2.3.
+            // Note: Rust implements RFC4291 with to_ipv6_mapped but buf RFC6145
+            // recommends the above. The advantage of using RFC6052 are explained in
+            // section 4.2 of that RFC
+
+            //    If the translator gets an illegal source address (e.g., 0.0.0.0,
+            //    127.0.0.1, etc.), the translator SHOULD silently drop the packet
+            //    (as discussed in Section 5.3.7 of [RFC1812]).
+            // TODO: drop illegal source address? I don't think we need to do it
+            source: src.octets(),
+
+            // Destination Address:  In the stateless mode, which is to say that if
+            //    the IPv4 destination address is within a range of configured IPv4
+            //    stateless translation prefix, the IPv6 destination address is the
+            //    IPv4-translatable address derived from the IPv4 destination
+            //    address per [RFC6052], Section 2.3.  A workflow example of
+            //    stateless translation is shown in Appendix A of this document.
+
+            //    In the stateful mode (which is to say that if the IPv4 destination
+            //    address is not within the range of any configured IPv4 stateless
+            //    translation prefix), the IPv6 destination address and
+            //    corresponding transport-layer destination port are derived from
+            //    the Binding Information Bases (BIBs) reflecting current session
+            //    state in the translator as described in [RFC6146].
+            destination: dst.octets(),
         };
 
-        // Hop Limit:  The hop limit is derived from the TTL value in the IPv4
-        //    header.  Since the translator is a router, as part of forwarding
-        //    the packet it needs to decrement either the IPv4 TTL (before the
-        //    translation) or the IPv6 Hop Limit (after the translation).  As
-        //    part of decrementing the TTL or Hop Limit, the translator (as any
-        //    router) MUST check for zero and send the ICMPv4 "TTL Exceeded" or
-        //    ICMPv6 "Hop Limit Exceeded" error.
-        // TODO: do we really need to act as a router?
-        // reducing the ttl and having to send back a message makes things much harder
-        pkt.as_ipv6().set_hop_limit(ttl);
+        tracing::trace!(from = ?ipv4_header, to = ?ipv6_header, "Performed IP-NAT46");
 
-        // Source Address:  The IPv4-converted address derived from the IPv4
-        //    source address per [RFC6052], Section 2.3.
-        // Note: Rust implements RFC4291 with to_ipv6_mapped but buf RFC6145
-        // recommends the above. The advantage of using RFC6052 are explained in
-        // section 4.2 of that RFC
+        if ipv4_header.protocol == IpNumber::ICMP {
+            let (icmpv4_header, icmp_payload) = Icmpv4Header::from_slice(payload.payload).ok()?;
+            let icmpv4_header_length = icmpv4_header.header_len();
 
-        //    If the translator gets an illegal source address (e.g., 0.0.0.0,
-        //    127.0.0.1, etc.), the translator SHOULD silently drop the packet
-        //    (as discussed in Section 5.3.7 of [RFC1812]).
-        // TODO: drop illegal source address? I don't think we need to do it
-        pkt.set_source(src);
+            // Optimisation to only clone when we are actually logging.
+            let icmpv4_header_dbg = tracing::event_enabled!(tracing::Level::TRACE)
+                .then(|| tracing::field::debug(icmpv4_header.clone()));
 
-        // Destination Address:  In the stateless mode, which is to say that if
-        //    the IPv4 destination address is within a range of configured IPv4
-        //    stateless translation prefix, the IPv6 destination address is the
-        //    IPv4-translatable address derived from the IPv4 destination
-        //    address per [RFC6052], Section 2.3.  A workflow example of
-        //    stateless translation is shown in Appendix A of this document.
+            let icmpv6_header =
+                translate_icmpv4_header(src, dst, total_length, icmpv4_header, icmp_payload)?;
+            let icmpv6_header_length = icmpv6_header.header_len();
 
-        //    In the stateful mode (which is to say that if the IPv4 destination
-        //    address is not within the range of any configured IPv4 stateless
-        //    translation prefix), the IPv6 destination address and
-        //    corresponding transport-layer destination port are derived from
-        //    the Binding Information Bases (BIBs) reflecting current session
-        //    state in the translator as described in [RFC6146].
-        pkt.set_destination(dst);
+            tracing::trace!(from = icmpv4_header_dbg, to = ?icmpv6_header, "Performed ICMP-NAT46");
 
-        Some(pkt)
+            // We assume that the sizeof the ICMP header does not change and the payload will be in the correct spot.
+            debug_assert_eq!(
+                icmpv4_header_length, icmpv6_header_length,
+                "Length of ICMPv6 header should be equal to length of ICMPv4 header"
+            );
+
+            let (_ip_header, ip_payload) = self.buf.split_at_mut(start_of_ip_payload);
+
+            icmpv6_header.write(&mut Cursor::new(ip_payload)).ok()?;
+        };
+
+        let start_of_ipv6_header = start_of_ip_payload - Ipv6Header::LEN;
+
+        let (excess_padding, ipv6_header_buf) = self.buf.split_at_mut(start_of_ipv6_header);
+        ipv6_header.write(&mut Cursor::new(ipv6_header_buf)).ok()?;
+
+        let excess_padding_length = excess_padding.len();
+        let buf = self.buf.remove_from_head(excess_padding_length);
+
+        Some(ConvertibleIpv6Packet { buf })
     }
 
     fn update_icmpv6_header_to_icmpv4(mut self) -> Option<ConvertibleIpv4Packet<'a>> {
@@ -498,6 +529,153 @@ impl<'a> ConvertibleIpv4Packet<'a> {
     fn header_length(&self) -> usize {
         self.to_immutable().packet_size() - self.to_immutable().payload().len()
     }
+}
+
+fn translate_icmpv4_header(
+    src: Ipv6Addr,
+    dst: Ipv6Addr,
+    total_length: u16,
+    icmpv4_header: etherparse::Icmpv4Header,
+    icmp_payload: &[u8],
+) -> Option<etherparse::Icmpv6Header> {
+    use etherparse::{icmpv4, icmpv6, Icmpv4Type, Icmpv6Header, Icmpv6Type};
+
+    // Note: we only really need to support reply/request because we need
+    // the identification to do nat anyways as source port.
+    // So the rest of the implementation is not fully made.
+    // Specially some consideration has to be made for ICMP error payload
+    // so we will do it only if needed at a later time
+
+    // ICMPv4 query messages:
+    let icmpv6_type = match icmpv4_header.icmp_type {
+        //  Echo and Echo Reply (Type 8 and Type 0):  Adjust the Type values
+        //    to 128 and 129, respectively, and adjust the ICMP checksum both
+        //    to take the type change into account and to include the ICMPv6
+        //    pseudo-header.
+        Icmpv4Type::EchoRequest(header) => Icmpv6Type::EchoRequest(header),
+        Icmpv4Type::EchoReply(header) => Icmpv6Type::EchoReply(header),
+
+        // Time Exceeded (Type 11):  Set the Type to 3, and adjust the
+        //   ICMP checksum both to take the type change into account and
+        //   to include the ICMPv6 pseudo-header.  The Code is unchanged.
+        Icmpv4Type::TimeExceeded(i) => {
+            Icmpv6Type::TimeExceeded(icmpv6::TimeExceededCode::from_u8(i.code_u8())?)
+        }
+
+        // Destination Unreachable (Type 3):  Translate the Code as
+        // described below, set the Type to 1, and adjust the ICMP
+        // checksum both to take the type/code change into account and
+        // to include the ICMPv6 pseudo-header.
+        Icmpv4Type::DestinationUnreachable(i) => {
+            use icmpv4::DestUnreachableHeader::*;
+            use icmpv6::DestUnreachableCode::*;
+
+            match i {
+                // Code 0, 1 (Net Unreachable, Host Unreachable):  Set the Code
+                //    to 0 (No route to destination).
+                Network | Host => Icmpv6Type::DestinationUnreachable(NoRoute),
+
+                // Code 2 (Protocol Unreachable):  Translate to an ICMPv6
+                //    Parameter Problem (Type 4, Code 1) and make the Pointer
+                //    point to the IPv6 Next Header field.
+                Protocol => Icmpv6Type::ParameterProblem(ParameterProblemHeader {
+                    code: icmpv6::ParameterProblemCode::UnrecognizedNextHeader,
+                    pointer: 6, // The "Next Header" field is always at a fixed offset.
+                }),
+                // Code 3 (Port Unreachable):  Set the Code to 4 (Port
+                //    unreachable).
+                icmpv4::DestUnreachableHeader::Port => {
+                    Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::Port)
+                }
+                // Code 4 (Fragmentation Needed and DF was Set):  Translate to
+                //    an ICMPv6 Packet Too Big message (Type 2) with Code set
+                //    to 0.  The MTU field MUST be adjusted for the difference
+                //    between the IPv4 and IPv6 header sizes, i.e.,
+                //    minimum(advertised MTU+20, MTU_of_IPv6_nexthop,
+                //    (MTU_of_IPv4_nexthop)+20).  Note that if the IPv4 router
+                //    set the MTU field to zero, i.e., the router does not
+                //    implement [RFC1191], then the translator MUST use the
+                //    plateau values specified in [RFC1191] to determine a
+                //    likely path MTU and include that path MTU in the ICMPv6
+                //    packet.  (Use the greatest plateau value that is less
+                //    than the returned Total Length field.)
+
+                //    See also the requirements in Section 6.
+                FragmentationNeeded { next_hop_mtu: 0 } => {
+                    const PLATEAU_VALUES: [u16; 10] =
+                        [68, 296, 508, 1006, 1492, 2002, 4352, 8166, 32000, 65535];
+
+                    let mtu = PLATEAU_VALUES
+                        .into_iter()
+                        .filter(|mtu| *mtu < total_length)
+                        .max()?;
+
+                    Icmpv6Type::PacketTooBig { mtu: mtu as u32 }
+                }
+                FragmentationNeeded { .. } => {
+                    return None; // FIXME: We don't know our IPv4 / IPv6 MTU here so cannot currently implement this.
+                }
+
+                // Code 5 (Source Route Failed):  Set the Code to 0 (No route
+                //    to destination).  Note that this error is unlikely since
+                //    source routes are not translated.
+                SourceRouteFailed => Icmpv6Type::DestinationUnreachable(NoRoute),
+                // Code 6, 7, 8:  Set the Code to 0 (No route to destination).
+                NetworkUnknown | HostUnknown | Isolated => {
+                    Icmpv6Type::DestinationUnreachable(NoRoute)
+                }
+
+                // Code 9, 10 (Communication with Destination Host
+                //     Administratively Prohibited):  Set the Code to 1
+                //     (Communication with destination administratively
+                //     prohibited).
+                NetworkProhibited | HostProhibited => {
+                    Icmpv6Type::DestinationUnreachable(Prohibited)
+                }
+
+                //  Code 11, 12:  Set the Code to 0 (No route to destination).
+                TosNetwork | TosHost => Icmpv6Type::DestinationUnreachable(NoRoute),
+
+                //  Code 13 (Communication Administratively Prohibited):  Set
+                //     the Code to 1 (Communication with destination
+                //     administratively prohibited).
+                FilterProhibited => Icmpv6Type::DestinationUnreachable(Prohibited),
+
+                //  Code 14 (Host Precedence Violation):  Silently drop.
+                HostPrecedenceViolation => return None,
+
+                //  Code 15 (Precedence cutoff in effect):  Set the Code to 1
+                //     (Communication with destination administratively
+                //     prohibited).
+                PrecedenceCutoff => Icmpv6Type::DestinationUnreachable(Prohibited),
+            }
+        }
+        Icmpv4Type::Redirect(_) => return None,
+        Icmpv4Type::ParameterProblem(_) => return None,
+
+        //  Timestamp and Timestamp Reply (Type 13 and Type 14):  Obsoleted in
+        //    ICMPv6.  Silently drop.
+        Icmpv4Type::TimestampRequest(_) | Icmpv4Type::TimestampReply(_) => return None,
+
+        //  Unknown ICMPv4 types:  Silently drop.
+        //  IGMP messages:  While the Multicast Listener Discovery (MLD)
+        //    messages [RFC2710] [RFC3590] [RFC3810] are the logical IPv6
+        //    counterparts for the IPv4 IGMP messages, all the "normal" IGMP
+        //    messages are single-hop messages and SHOULD be silently dropped
+        //    by the translator.  Other IGMP messages might be used by
+        //    multicast routing protocols and, since it would be a
+        //    configuration error to try to have router adjacencies across
+        //    IP/ICMP translators, those packets SHOULD also be silently
+        //    dropped.
+        Icmpv4Type::Unknown { .. } => return None,
+    };
+
+    let mut icmpv6_header = Icmpv6Header::new(icmpv6_type);
+    icmpv6_header
+        .update_checksum(src.octets(), dst.octets(), icmp_payload)
+        .ok()?;
+
+    Some(icmpv6_header)
 }
 
 impl<'a> Packet for ConvertibleIpv4Packet<'a> {
@@ -735,170 +913,6 @@ impl<'a> ConvertibleIpv6Packet<'a> {
         // Segments Left field, SHOULD be returned to the sender.
 
         Some(pkt)
-    }
-
-    fn update_icmpv4_header_to_icmpv6(mut self) -> Option<ConvertibleIpv6Packet<'a>> {
-        let Some(mut icmp) = MutableIcmpPacket::new(self.payload_mut()) else {
-            return Some(self);
-        };
-
-        // Note: we only really need to support reply/request because we need
-        // the identification to do nat anyways as source port.
-        // So the rest of the implementation is not fully made.
-        // Specially some consideration has to be made for ICMP error payload
-        // so we will do it only if needed at a later time
-
-        // ICMPv4 query messages:
-
-        match icmp.get_icmp_type() {
-            //  Echo and Echo Reply (Type 8 and Type 0):  Adjust the Type values
-            //    to 128 and 129, respectively, and adjust the ICMP checksum both
-            //    to take the type change into account and to include the ICMPv6
-            //    pseudo-header.
-            IcmpTypes::EchoRequest => {
-                icmp.set_icmp_type(icmp::IcmpType(128));
-            }
-            IcmpTypes::EchoReply => {
-                icmp.set_icmp_type(icmp::IcmpType(129));
-            }
-            // Time Exceeded (Type 11):  Set the Type to 3, and adjust the
-            //   ICMP checksum both to take the type change into account and
-            //   to include the ICMPv6 pseudo-header.  The Code is unchanged.
-            IcmpTypes::TimeExceeded => {
-                icmp.set_icmp_type(icmp::IcmpType(3));
-            }
-            // Destination Unreachable (Type 3):  Translate the Code as
-            // described below, set the Type to 1, and adjust the ICMP
-            // checksum both to take the type/code change into account and
-            // to include the ICMPv6 pseudo-header.
-            IcmpTypes::DestinationUnreachable => {
-                icmp.set_icmp_type(icmp::IcmpType(1));
-                match icmp.get_icmp_code() {
-                    // Code 0, 1 (Net Unreachable, Host Unreachable):  Set the Code
-                    //    to 0 (No route to destination).
-                    IcmpCodes::DestinationNetworkUnreachable
-                    | IcmpCodes::DestinationHostUnreachable => icmp.set_icmp_code(IcmpCode(0)),
-
-                    // Code 2 (Protocol Unreachable):  Translate to an ICMPv6
-                    //    Parameter Problem (Type 4, Code 1) and make the Pointer
-                    //    point to the IPv6 Next Header field.
-                    IcmpCodes::DestinationProtocolUnreachable => {
-                        // TODO How to set the pointer?
-                        return None;
-                    }
-
-                    // Code 3 (Port Unreachable):  Set the Code to 4 (Port
-                    //    unreachable).
-                    IcmpCodes::DestinationPortUnreachable => icmp.set_icmp_code(IcmpCode(4)),
-                    // Code 4 (Fragmentation Needed and DF was Set):  Translate to
-                    //    an ICMPv6 Packet Too Big message (Type 2) with Code set
-                    //    to 0.  The MTU field MUST be adjusted for the difference
-                    //    between the IPv4 and IPv6 header sizes, i.e.,
-                    //    minimum(advertised MTU+20, MTU_of_IPv6_nexthop,
-                    //    (MTU_of_IPv4_nexthop)+20).  Note that if the IPv4 router
-                    //    set the MTU field to zero, i.e., the router does not
-                    //    implement [RFC1191], then the translator MUST use the
-                    //    plateau values specified in [RFC1191] to determine a
-                    //    likely path MTU and include that path MTU in the ICMPv6
-                    //    packet.  (Use the greatest plateau value that is less
-                    //    than the returned Total Length field.)
-
-                    //    See also the requirements in Section 6.
-                    IcmpCodes::FragmentationRequiredAndDFFlagSet => {
-                        // TODO: Need to update MTU, doing nothing for now before sending wrong packet.
-                        return None;
-                    }
-                    // Code 5 (Source Route Failed):  Set the Code to 0 (No route
-                    //    to destination).  Note that this error is unlikely since
-                    //    source routes are not translated.
-                    IcmpCodes::SourceRouteFailed => icmp.set_icmp_code(IcmpCode(0)),
-
-                    // Code 6, 7, 8:  Set the Code to 0 (No route to destination).
-                    IcmpCode(5..=8) => icmp.set_icmp_code(IcmpCode(0)),
-
-                    // Code 9, 10 (Communication with Destination Host
-                    //     Administratively Prohibited):  Set the Code to 1
-                    //     (Communication with destination administratively
-                    //     prohibited).
-                    IcmpCode(9..=10) => icmp.set_icmp_code(IcmpCode(1)),
-
-                    //  Code 11, 12:  Set the Code to 0 (No route to destination).
-                    IcmpCode(11..=12) => icmp.set_icmp_code(IcmpCode(0)),
-
-                    //  Code 13 (Communication Administratively Prohibited):  Set
-                    //     the Code to 1 (Communication with destination
-                    //     administratively prohibited).
-                    IcmpCodes::CommunicationAdministrativelyProhibited => {
-                        icmp.set_icmp_code(IcmpCode(1))
-                    }
-
-                    //  Code 14 (Host Precedence Violation):  Silently drop.
-                    IcmpCodes::HostPrecedenceViolation => {
-                        return None;
-                    }
-
-                    //  Code 15 (Precedence cutoff in effect):  Set the Code to 1
-                    //     (Communication with destination administratively
-                    //     prohibited).
-                    IcmpCodes::PrecedenceCutoffInEffect => icmp.set_icmp_code(IcmpCode(1)),
-
-                    //  Other Code values:  Silently drop.
-                    _ => return None,
-                }
-            }
-            //  Timestamp and Timestamp Reply (Type 13 and Type 14):  Obsoleted in
-            //    ICMPv6.  Silently drop.
-            icmp::IcmpType(13..=14) => {
-                return None;
-            }
-            //  Information Request/Reply (Type 15 and Type 16):  Obsoleted in
-            //    ICMPv6.  Silently drop.
-            icmp::IcmpType(15..=16) => {
-                return None;
-            }
-            //  Address Mask Request/Reply (Type 17 and Type 18):  Obsoleted in
-            //     ICMPv6.  Silently drop.
-            icmp::IcmpType(17..=18) => {
-                return None;
-            }
-            //  ICMP Router Advertisement (Type 9):  Single-hop message.  Silently
-            //    drop.
-            icmp::IcmpType(9) => {
-                return None;
-            }
-            //  ICMP Router Solicitation (Type 10):  Single-hop message.  Silently
-            //    drop.
-            icmp::IcmpType(10) => {
-                return None;
-            }
-            // Redirect (Type 5):  Single-hop message.  Silently drop.
-            icmp::IcmpType(5) => {
-                return None;
-            }
-            // Alternative Host Address (Type 6):  Silently drop.
-            icmp::IcmpType(6) => {
-                return None;
-            }
-            // Source Quench (Type 4):  Obsoleted in ICMPv6.  Silently drop.
-            icmp::IcmpType(4) => {
-                return None;
-            }
-            //  Unknown ICMPv4 types:  Silently drop.
-            //  IGMP messages:  While the Multicast Listener Discovery (MLD)
-            //    messages [RFC2710] [RFC3590] [RFC3810] are the logical IPv6
-            //    counterparts for the IPv4 IGMP messages, all the "normal" IGMP
-            //    messages are single-hop messages and SHOULD be silently dropped
-            //    by the translator.  Other IGMP messages might be used by
-            //    multicast routing protocols and, since it would be a
-            //    configuration error to try to have router adjacencies across
-            //    IP/ICMP translators, those packets SHOULD also be silently
-            //    dropped.
-            _ => {
-                return None;
-            }
-        }
-
-        Some(self)
     }
 }
 
