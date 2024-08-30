@@ -11,6 +11,7 @@ proptest = ["dep:proptest"]
 
 [dependencies]
 domain = "0.10.1"
+etherparse = "0.15"
 pnet_packet = { version = "0.35" }
 proptest = { version = "1", optional = true }
 thiserror = "1"
