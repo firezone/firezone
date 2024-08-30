@@ -84,38 +84,59 @@ use windows::{
 pub async fn new_dns_notifier(
     tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
-) -> Result<async_dns::DnsNotifier> {
-    async_dns::DnsNotifier::new(tokio_handle)
+) -> Result<Worker> {
+    Worker::new("Firezone DNS monitoring worker", move |tx, stopper_rx| {
+        async_dns::worker_thread(tokio_handle, tx, stopper_rx)?;
+        tracing::debug!("DNS monitoring worker thread shut down gracefully");
+        Ok(())
+    })
 }
 
+// Async on Linux due to `zbus`
+#[allow(clippy::unused_async)]
 pub async fn new_network_notifier(
     _tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
-) -> Result<NetworkNotifier> {
-    NetworkNotifier::new().await
-}
-
-/// Notifies when we change Wi-Fi networks, change between Wi-Fi and Ethernet, or gain / lose Internet
-pub struct NetworkNotifier {
-    inner: Option<WorkerInner>,
-    rx: mpsc::Receiver<()>,
-}
-
-impl NetworkNotifier {
-    // Async on Linux due to `zbus`
-    #[allow(clippy::unused_async)]
-    pub async fn new() -> Result<Self> {
-        let (tx, rx) = mpsc::channel(1);
-        let inner = WorkerInner::new("Firezone COM worker", tx, move |tx, stopper_rx| {
+) -> Result<Worker> {
+    Worker::new(
+        "Firezone network monitoring worker",
+        move |tx, stopper_rx| {
             {
                 let com = ComGuard::new()?;
                 let _network_change_listener = Listener::new(&com, tx)?;
                 stopper_rx.blocking_recv().ok();
             }
-            tracing::debug!("COM worker thread shut down gracefully");
+            tracing::debug!("Network monitoring worker thread shut down gracefully");
             Ok(())
-        })?;
+        },
+    )
+}
 
+/// Container for a worker thread that we can cooperatively stop.
+///
+/// The worker thread emits notifications with no data in them.
+pub struct Worker {
+    inner: Option<WorkerInner>,
+    rx: mpsc::Receiver<()>,
+}
+
+impl Drop for Worker {
+    fn drop(&mut self) {
+        self.close()
+            .expect("should be able to close WorkerInner cleanly");
+    }
+}
+
+impl Worker {
+    fn new<
+        F: FnOnce(mpsc::Sender<()>, oneshot::Receiver<()>) -> Result<()> + Send + 'static,
+        S: Into<String>,
+    >(
+        thread_name: S,
+        func: F,
+    ) -> Result<Self> {
+        let (tx, rx) = mpsc::channel(1);
+        let inner = WorkerInner::new(thread_name, tx, func)?;
         Ok(Self {
             inner: Some(inner),
             rx,
@@ -140,7 +161,10 @@ impl NetworkNotifier {
     // `Result` needed to match Linux
     #[allow(clippy::unnecessary_wraps)]
     pub async fn notified(&mut self) -> Result<()> {
-        self.rx.recv().await;
+        self.rx
+            .recv()
+            .await
+            .context("MPSC receiver from worker thread ended.")?;
         Ok(())
     }
 }
@@ -166,13 +190,6 @@ impl WorkerInner {
             .spawn(move || func(tx, stopper_rx))?;
 
         Ok(Self { stopper, thread })
-    }
-}
-
-impl Drop for NetworkNotifier {
-    fn drop(&mut self) {
-        self.close()
-            .expect("should be able to close WorkerInner cleanly");
     }
 }
 
@@ -350,11 +367,13 @@ impl Drop for Callback {
 }
 
 mod async_dns {
-    use super::WorkerInner;
-    use anyhow::{anyhow, Context as _, Result};
+    use anyhow::{Context as _, Result};
     use futures::FutureExt as _;
     use std::{ffi::c_void, ops::Deref, path::Path, pin::pin};
-    use tokio::{sync::mpsc, task::LocalSet};
+    use tokio::{
+        sync::{mpsc, oneshot},
+        task::LocalSet,
+    };
     use windows::Win32::{
         Foundation::{CloseHandle, BOOLEAN, HANDLE, INVALID_HANDLE_VALUE},
         System::Registry,
@@ -389,78 +408,37 @@ mod async_dns {
         ))
     }
 
-    pub struct DnsNotifier {
-        inner: Option<WorkerInner>,
-        rx: mpsc::Receiver<()>,
-    }
+    pub fn worker_thread(
+        tokio_handle: tokio::runtime::Handle,
+        tx: mpsc::Sender<()>,
+        stopper_rx: oneshot::Receiver<()>,
+    ) -> Result<()> {
+        let local = LocalSet::new();
+        let task = local.spawn_local(async move {
+            let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
+            let mut listener_4 = Listener::new(key_ipv4)?;
+            let mut listener_6 = Listener::new(key_ipv6)?;
 
-    impl DnsNotifier {
-        pub fn new(tokio_handle: tokio::runtime::Handle) -> Result<Self> {
-            let (tx, rx) = mpsc::channel(1);
-            let inner = WorkerInner::new("DNS listener", tx, move |tx, stopper_rx| {
-                let local = LocalSet::new();
-                let task = local.spawn_local(async move {
-                    let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
-                    let mut listener_4 = Listener::new(key_ipv4)?;
-                    let mut listener_6 = Listener::new(key_ipv6)?;
-
-                    let mut stop = pin!(stopper_rx.fuse());
-                    loop {
-                        let mut fut_4 = pin!(listener_4.notified().fuse());
-                        let mut fut_6 = pin!(listener_6.notified().fuse());
-                        futures::select! {
-                            _ = fut_4 => {
-                                tx.try_send(())?;
-                            }
-                            _ = fut_6 => {
-                                tx.try_send(())?;
-                            }
-                            _ = stop => break,
-                        }
+            let mut stop = pin!(stopper_rx.fuse());
+            loop {
+                let mut fut_4 = pin!(listener_4.notified().fuse());
+                let mut fut_6 = pin!(listener_6.notified().fuse());
+                futures::select! {
+                    _ = fut_4 => {
+                        tx.try_send(())?;
                     }
-                    tracing::debug!("DNS listener stopping gracefully");
-
-                    Ok(())
-                });
-
-                tokio_handle.block_on(task)?
-            })?;
-
-            Ok(Self {
-                inner: Some(inner),
-                rx,
-            })
-        }
-
-        /// Same as `drop`, but you can catch errors
-        pub fn close(&mut self) -> Result<()> {
-            if let Some(inner) = self.inner.take() {
-                inner
-                    .stopper
-                    .send(())
-                    .map_err(|_| anyhow!("Couldn't stop `NetworkNotifier` worker thread"))?;
-                match inner.thread.join() {
-                    Err(e) => std::panic::resume_unwind(e),
-                    Ok(x) => x?,
+                    _ = fut_6 => {
+                        tx.try_send(())?;
+                    }
+                    _ = stop => break,
                 }
             }
-            Ok(())
-        }
+            tracing::debug!("DNS listener stopping gracefully");
 
-        pub async fn notified(&mut self) -> Result<()> {
-            self.rx
-                .recv()
-                .await
-                .context("DNS listener worker thread has probably stopped")?;
             Ok(())
-        }
-    }
+        });
 
-    impl Drop for DnsNotifier {
-        fn drop(&mut self) {
-            self.close()
-                .expect("should be able to close WorkerInner cleanly");
-        }
+        tokio_handle.block_on(task)?
     }
 
     /// Listens to one registry key for changes. Callers should await `notified`.
