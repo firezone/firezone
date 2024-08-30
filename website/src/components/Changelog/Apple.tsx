@@ -9,6 +9,15 @@ export default function Apple() {
       href="https://apps.apple.com/us/app/firezone/id6443661826"
       title="macOS / iOS"
     >
+      {/*
+      <Entry version="1.3.0" date={new Date(todo)}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6434">
+          Adds the Internet Resource feature.
+          </ChangeItem>
+        </ul>
+      </Entry>
+      */}
       <Entry version="1.2.1" date={new Date("2024-08-22")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6406">
