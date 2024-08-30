@@ -18,6 +18,7 @@
     </queries>
 
     <application
+        android:enableOnBackInvokedCallback="true"
         android:gwpAsanMode="always"
         android:name=".core.FirezoneApp"
         android:allowBackup="false"

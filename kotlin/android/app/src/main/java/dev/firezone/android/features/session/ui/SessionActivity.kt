@@ -34,9 +34,12 @@ class SessionActivity : AppCompatActivity() {
             ) {
                 val binder = service as TunnelService.LocalBinder
                 tunnelService = binder.getService()
-                serviceBound = true
-                tunnelService?.setServiceStateLiveData(viewModel.serviceStatusLiveData)
-                tunnelService?.setResourcesLiveData(viewModel.resourcesLiveData)
+
+                tunnelService?.let {
+                    serviceBound = true
+                    it.setServiceStateLiveData(viewModel.serviceStatusLiveData)
+                    it.setResourcesLiveData(viewModel.resourcesLiveData)
+                }
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
@@ -60,11 +63,13 @@ class SessionActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         if (serviceBound) {
             unbindService(serviceConnection)
             serviceBound = false
+            tunnelService = null
         }
+
+        super.onDestroy()
     }
 
     fun onViewResourceToggled(resourceToggled: ViewResource) {
