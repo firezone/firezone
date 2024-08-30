@@ -24,11 +24,12 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectory do
 
   def gather_provider_data(provider, task_supervisor_pid) do
     access_token =
-      with json_key when not is_nil(json_key) <-
-             provider.adapter_config["service_account_json_key"],
-           {:ok, access_token} <- GoogleWorkspace.fetch_service_account_token(provider) do
+      with {:ok, access_token} <- GoogleWorkspace.fetch_service_account_token(provider) do
         access_token
       else
+        {:error, :missing_service_account_key} ->
+          provider.adapter_state["access_token"]
+
         {:error, reason} ->
           Logger.error("Failed to fetch service account token",
             reason: inspect(reason),
@@ -38,9 +39,6 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectory do
             provider_adapter: provider.adapter
           )
 
-          {:error, reason}
-
-        _other ->
           provider.adapter_state["access_token"]
       end
 

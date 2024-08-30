@@ -268,24 +268,11 @@ defmodule Domain.Fixtures.Auth do
     update!(provider,
       disabled_at: nil,
       adapter_state: %{
+        "userinfo" => %{"sub" => email()},
         "access_token" => "OIDC_ACCESS_TOKEN",
         "refresh_token" => "OIDC_REFRESH_TOKEN",
         "expires_at" => DateTime.utc_now() |> DateTime.add(1, :day),
-        "claims" => "openid email profile offline_access",
-        "service_account_json_key" => %{
-          "type" => "service_account",
-          "project_id" => "firezone-test",
-          "private_key_id" => "e1fc5c12b490aaa1602f3de9133551952b749db3",
-          "private_key" => @google_workspace_private_key,
-          "client_email" => "firezone-idp-sync@firezone-test-391719.iam.gserviceaccount.com",
-          "client_id" => "110986447653011314480",
-          "auth_uri" => "https://accounts.google.com/o/oauth2/auth",
-          "token_uri" => "https://oauth2.googleapis.com/token",
-          "auth_provider_x509_cert_url" => "https://www.googleapis.com/oauth2/v1/certs",
-          "client_x509_cert_url" =>
-            "https://www.googleapis.com/robot/v1/metadata/x509/firezone-idp-sync%40firezone-test-111111.iam.gserviceaccount.com",
-          "universe_domain" => "googleapis.com"
-        }
+        "claims" => "openid email profile offline_access"
       }
     )
   end
