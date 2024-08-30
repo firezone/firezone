@@ -70,7 +70,7 @@ defmodule Domain.ConfigTest do
 
     defconfig(
       :enum,
-      {:parameterized, Ecto.Enum, Ecto.Enum.init(values: [:value1, :value2, __MODULE__])},
+      Ecto.ParameterizedType.init(Ecto.Enum, values: [:value1, :value2, __MODULE__]),
       default: :value1,
       dump: fn
         :value1 -> :foo

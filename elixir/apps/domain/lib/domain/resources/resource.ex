@@ -6,7 +6,7 @@ defmodule Domain.Resources.Resource do
     field :address_description, :string
     field :name, :string
 
-    field :type, Ecto.Enum, values: [:cidr, :ip, :dns]
+    field :type, Ecto.Enum, values: [:cidr, :ip, :dns, :internet]
 
     embeds_many :filters, Filter, on_replace: :delete, primary_key: false do
       field :protocol, Ecto.Enum, values: [tcp: 6, udp: 17, icmp: 1]
@@ -26,7 +26,7 @@ defmodule Domain.Resources.Resource do
     # because the actual preload query should also use joins and process policy conditions
     has_many :authorized_by_policies, Domain.Policies.Policy, where: [id: {:fragment, "FALSE"}]
 
-    field :created_by, Ecto.Enum, values: ~w[identity actor]a
+    field :created_by, Ecto.Enum, values: ~w[identity actor system]a
     belongs_to :created_by_actor, Domain.Actors.Actor
     belongs_to :created_by_identity, Domain.Auth.Identity
 

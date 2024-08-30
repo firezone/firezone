@@ -12,16 +12,25 @@ import SwiftUI
 @MainActor
 public final class SessionViewModel: ObservableObject {
   @Published private(set) var actorName: String? = nil
-  @Published private(set) var resources: [Resource]? = nil
-  @Published private(set) var status: NEVPNStatus? = nil
-
+  @Published private(set) var favorites: Favorites
+  @Published private(set) var resources: ResourceList = ResourceList.loading
+  @Published private(set) var status: NEVPNStatus = .disconnected
 
   let store: Store
 
   private var cancellables: Set<AnyCancellable> = []
 
-  public init(store: Store) {
+  public init(favorites: Favorites, store: Store) {
+    self.favorites = favorites
     self.store = store
+
+    favorites.$ids
+      .receive(on: DispatchQueue.main)
+      .sink(receiveValue: { [weak self] ids in
+        guard let self = self else { return }
+        self.objectWillChange.send()
+      })
+      .store(in: &cancellables)
 
     store.$actorName
       .receive(on: DispatchQueue.main)
@@ -32,8 +41,6 @@ public final class SessionViewModel: ObservableObject {
       })
       .store(in: &cancellables)
 
-    // MenuBar has its own observer
-#if os(iOS)
     store.$status
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] status in
@@ -46,11 +53,11 @@ public final class SessionViewModel: ObservableObject {
           }
         } else {
           store.endUpdatingResources()
+          self.resources = ResourceList.loading
         }
 
       })
       .store(in: &cancellables)
-#endif
   }
 
   public func isResourceEnabled(_ resource: String) -> Bool {
@@ -67,34 +74,37 @@ struct SessionView: View {
   var body: some View {
     switch model.status {
     case .connected:
-      if let resources = model.resources {
+      switch model.resources {
+      case .loaded(let resources):
         if resources.isEmpty {
           Text("No Resources. Contact your admin to be granted access.")
         } else {
-          List(resources) { resource in
-            HStack {
-              NavigationLink { ResourceView(resource: resource) }
-                label: {
-                  HStack {
-                    Text(resource.name)
-                    if resource.canToggle {
-                      Spacer()
-                      Toggle("Enabled", isOn: Binding<Bool>(
-                        get: { model.isResourceEnabled(resource.id) },
-                        set: { newValue in
-                          model.store.toggleResourceDisabled(resource: resource.id, enabled: newValue)
-                        }
-                      )).labelsHidden()
-                    }
-                  }
-                }
-                .navigationTitle("All Resources")
+          List {
+            let hasAnyFavorites = resources.contains { model.favorites.contains($0.id) }
+            if hasAnyFavorites {
+              Section("Favorites") {
+                ResourceSection(
+                  resources: resources.filter { model.favorites.contains($0.id) },
+                  model: model
+                )
+              }
+
+              Section("Other Resources") {
+                ResourceSection(
+                  resources: resources.filter { !model.favorites.contains($0.id) },
+                  model: model
+                )
+              }
+            } else {
+              ResourceSection(
+                resources: resources,
+                model: model
+              )
             }
           }
-
           .listStyle(GroupedListStyle())
         }
-      } else {
+      case .loading:
         Text("Loading Resources...")
       }
     case .connecting:
@@ -103,12 +113,29 @@ struct SessionView: View {
       Text("Disconnecting...")
     case .reasserting:
       Text("No internet connection. Resources will be displayed when your internet connection resumes.")
-    case .invalid, .none:
+    case .invalid:
       Text("VPN permission doesn't seem to be granted.")
     case .disconnected:
       Text("Signed out. Please sign in again to connect to Resources.")
     @unknown default:
       Text("Unknown status. Please report this and attach your logs.")
+    }
+  }
+}
+
+struct ResourceSection: View {
+  let resources: [Resource]
+  @ObservedObject var model: SessionViewModel
+
+  var body: some View {
+    ForEach(resources) { resource in
+      HStack {
+          NavigationLink { ResourceView(model: model, resource: resource) }
+          label: {
+            Text(resource.name)
+          }
+      }
+      .navigationTitle("All Resources")
     }
   }
 }

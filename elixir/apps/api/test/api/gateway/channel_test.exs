@@ -122,6 +122,57 @@ defmodule API.Gateway.ChannelTest do
       assert payload.ref
       assert payload.flow_id == flow_id
       assert payload.client_id == client.id
+      assert payload.client_ipv4 == client.ipv4
+      assert payload.client_ipv6 == client.ipv6
+      assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
+    end
+
+    test "pushes allow_access message for internet resource", %{
+      account: account,
+      client: client,
+      relay: relay,
+      socket: socket
+    } do
+      resource =
+        Fixtures.Resources.create_resource(
+          type: :internet,
+          account: account
+        )
+
+      channel_pid = self()
+      socket_ref = make_ref()
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
+      flow_id = Ecto.UUID.generate()
+      client_payload = "RTC_SD_or_DNS_Q"
+
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      send(
+        socket.channel_pid,
+        {:allow_access, {channel_pid, socket_ref},
+         %{
+           client_id: client.id,
+           resource_id: resource.id,
+           flow_id: flow_id,
+           authorization_expires_at: expires_at,
+           client_payload: client_payload
+         }, otel_ctx}
+      )
+
+      assert_push "allow_access", payload
+
+      assert payload.resource == %{
+               id: resource.id,
+               type: :internet
+             }
+
+      assert payload.ref
+      assert payload.flow_id == flow_id
+      assert payload.client_id == client.id
+      assert payload.client_ipv4 == client.ipv4
+      assert payload.client_ipv6 == client.ipv6
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
     end
 
@@ -800,7 +851,8 @@ defmodule API.Gateway.ChannelTest do
             "destination" => destination,
             "connectivity_type" => "direct",
             "rx_bytes" => 100,
-            "tx_bytes" => 200
+            "tx_bytes" => 200,
+            "blocked_tx_bytes" => 0
           }
         ]
       }

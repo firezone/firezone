@@ -387,7 +387,7 @@ defmodule Web.FormComponents do
   attr :id, :string, required: true, doc: "The id of the dialog"
   attr :class, :string, default: "", doc: "Custom classes to be added to the button"
   attr :style, :string, default: "danger", doc: "The style of the button"
-  attr :icon, :string, default: "hero-trash-solid", doc: "The icon of the button"
+  attr :icon, :string, default: nil, doc: "The icon of the button"
   attr :size, :string, default: "md", doc: "The size of the button"
   attr :on_confirm, :string, required: true, doc: "The phx event to broadcast on confirm"
 

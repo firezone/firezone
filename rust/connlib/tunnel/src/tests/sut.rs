@@ -12,25 +12,22 @@ use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
 use crate::utils::earliest;
-use crate::{ClientEvent, GatewayEvent, Request};
+use crate::{ClientEvent, GatewayEvent};
 use connlib_shared::messages::client::ResourceDescription;
 use connlib_shared::{
     messages::{ClientId, GatewayId, Interface, RelayId},
     DomainName,
 };
-use proptest_state_machine::{ReferenceStateMachine, StateMachineTest};
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
+use std::collections::BTreeSet;
 use std::iter;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     net::IpAddr,
     time::{Duration, Instant},
 };
 use tracing::debug_span;
-use tracing::subscriber::DefaultGuard;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::{util::SubscriberInitExt as _, EnvFilter};
 
 /// The actual system-under-test.
 ///
@@ -45,29 +42,11 @@ pub(crate) struct TunnelTest {
 
     drop_direct_client_traffic: bool,
     network: RoutingTable,
-
-    #[allow(dead_code)]
-    logger: DefaultGuard,
 }
 
-impl StateMachineTest for TunnelTest {
-    type SystemUnderTest = Self;
-    type Reference = ReferenceState;
-
+impl TunnelTest {
     // Initialize the system under test from our reference state.
-    fn init_test(
-        ref_state: &<Self::Reference as ReferenceStateMachine>::State,
-    ) -> Self::SystemUnderTest {
-        let flux_capacitor = FluxCapacitor::default();
-
-        let logger = tracing_subscriber::fmt()
-            .with_test_writer()
-            // .with_writer(crate::tests::run_count_appender::appender()) // Useful for diffing logs between runs.
-            .with_timer(flux_capacitor.clone())
-            .with_env_filter(EnvFilter::from_default_env())
-            .finish()
-            .set_default();
-
+    pub(crate) fn init_test(ref_state: &ReferenceState, flux_capacitor: FluxCapacitor) -> Self {
         // Construct client, gateway and relay from the initial state.
         let mut client = ref_state
             .client
@@ -114,12 +93,11 @@ impl StateMachineTest for TunnelTest {
         }
 
         let mut this = Self {
-            flux_capacitor,
+            flux_capacitor: flux_capacitor.clone(),
             network: ref_state.network.clone(),
             drop_direct_client_traffic: ref_state.drop_direct_client_traffic,
             client,
             gateways,
-            logger,
             relays,
             dns_servers,
         };
@@ -131,11 +109,11 @@ impl StateMachineTest for TunnelTest {
     }
 
     /// Apply a generated state transition to our system under test.
-    fn apply(
-        mut state: Self::SystemUnderTest,
-        ref_state: &<Self::Reference as ReferenceStateMachine>::State,
-        transition: <Self::Reference as ReferenceStateMachine>::Transition,
-    ) -> Self::SystemUnderTest {
+    pub(crate) fn apply(
+        mut state: Self,
+        ref_state: &ReferenceState,
+        transition: Transition,
+    ) -> Self {
         let mut buffered_transmits = BufferedTransmits::default();
         let now = state.flux_capacitor.now();
 
@@ -172,16 +150,23 @@ impl StateMachineTest for TunnelTest {
                 dst,
                 seq,
                 identifier,
+                payload,
             }
             | Transition::SendICMPPacketToCidrResource {
                 src,
                 dst,
                 seq,
                 identifier,
-                ..
+                payload,
             } => {
-                let packet =
-                    ip_packet::make::icmp_request_packet(src, dst, seq, identifier).unwrap();
+                let packet = ip_packet::make::icmp_request_packet(
+                    src,
+                    dst,
+                    seq,
+                    identifier,
+                    &payload.to_be_bytes(),
+                )
+                .unwrap();
 
                 let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
 
@@ -192,6 +177,7 @@ impl StateMachineTest for TunnelTest {
                 dst,
                 seq,
                 identifier,
+                payload,
                 resolved_ip,
                 ..
             } => {
@@ -208,8 +194,14 @@ impl StateMachineTest for TunnelTest {
                     });
                 let dst = *resolved_ip.select(available_ips);
 
-                let packet =
-                    ip_packet::make::icmp_request_packet(src, dst, seq, identifier).unwrap();
+                let packet = ip_packet::make::icmp_request_packet(
+                    src,
+                    dst,
+                    seq,
+                    identifier,
+                    &payload.to_be_bytes(),
+                )
+                .unwrap();
 
                 let transmit = state
                     .client
@@ -265,7 +257,7 @@ impl StateMachineTest for TunnelTest {
             Transition::ReconnectPortal => {
                 let ipv4 = state.client.inner().sut.tunnel_ip4().unwrap();
                 let ipv6 = state.client.inner().sut.tunnel_ip6().unwrap();
-                let upstream_dns = ref_state.client.inner().upstream_dns_resolvers.clone();
+                let upstream_dns = ref_state.client.inner().upstream_dns_resolvers();
                 let all_resources = ref_state.client.inner().all_resources();
 
                 // Simulate receiving `init`.
@@ -341,20 +333,7 @@ impl StateMachineTest for TunnelTest {
     }
 
     // Assert against the reference state machine.
-    fn check_invariants(
-        state: &Self::SystemUnderTest,
-        ref_state: &<Self::Reference as ReferenceStateMachine>::State,
-    ) {
-        let _guard = tracing_subscriber::registry()
-            .with(
-                tracing_subscriber::fmt::layer()
-                    .with_test_writer()
-                    .with_timer(state.flux_capacitor.clone()),
-            )
-            .with(PanicOnErrorEvents::default()) // Temporarily install a layer that panics when `_guard` goes out of scope if any of our assertions emitted an error.
-            .with(EnvFilter::from_default_env())
-            .set_default();
-
+    pub(crate) fn check_invariants(state: &Self, ref_state: &ReferenceState) {
         let ref_client = ref_state.client.inner();
         let sim_client = state.client.inner();
         let sim_gateways = state
@@ -372,11 +351,7 @@ impl StateMachineTest for TunnelTest {
         );
         assert_dns_packets_properties(ref_client, sim_client);
         assert_known_hosts_are_valid(ref_client, sim_client);
-        assert_eq!(
-            sim_client.effective_dns_servers(),
-            ref_client.expected_dns_servers(),
-            "Effective DNS servers should match either system or upstream DNS"
-        );
+        assert_dns_servers_are_valid(ref_client, sim_client);
     }
 }
 
@@ -495,7 +470,7 @@ impl TunnelTest {
 
     fn handle_timeout(
         &mut self,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
         buffered_transmits: &mut BufferedTransmits,
     ) {
         let now = self.flux_capacitor.now();
@@ -624,7 +599,7 @@ impl TunnelTest {
         src: ClientId,
         event: ClientEvent,
         portal: &StubPortal,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
     ) {
         let now = self.flux_capacitor.now();
 
@@ -660,149 +635,121 @@ impl TunnelTest {
                 let (gateway, site) =
                     portal.handle_connection_intent(resource, connected_gateway_ids);
 
-                let request = self
-                    .client
-                    .exec_mut(|c| c.sut.create_or_reuse_connection(resource, gateway, site))
-                    .unwrap()
+                self.client
+                    .exec_mut(|c| c.sut.on_routing_details(resource, gateway, site, now))
                     .unwrap();
+            }
 
-                let resource_id = request.resource_id();
+            ClientEvent::RequestAccess {
+                resource_id,
+                gateway_id,
+                maybe_domain,
+            } => {
+                let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");
 
-                // Resolve the domain name that we want to talk to to the IP that we generated as part of the Transition for sending a DNS query.
-                let resolved_ips = request
-                    .domain_name()
-                    .into_iter()
-                    .flat_map(|domain| global_dns_records.get(&domain).cloned())
-                    .flatten()
-                    .collect();
+                let resolved_ips = maybe_domain
+                    .as_ref()
+                    .and_then(|r| global_dns_records.get(&r.name).cloned())
+                    .unwrap_or_default();
 
                 let resource =
                     portal.map_client_resource_to_gateway_resource(resolved_ips, resource_id);
 
-                match request {
-                    Request::NewConnection(new_connection) => {
-                        let Some(gateway) = self.gateways.get_mut(&new_connection.gateway_id)
-                        else {
-                            tracing::error!("Unknown gateway");
-                            return;
-                        };
-
-                        let answer = gateway
-                            .exec_mut(|g| {
-                                g.sut.accept(
-                                    self.client.inner().id,
-                                    snownet::Offer {
-                                        session_key: new_connection
-                                            .client_preshared_key
-                                            .expose_secret()
-                                            .0
-                                            .into(),
-                                        credentials: snownet::Credentials {
-                                            username: new_connection
-                                                .client_payload
-                                                .ice_parameters
-                                                .username,
-                                            password: new_connection
-                                                .client_payload
-                                                .ice_parameters
-                                                .password,
-                                        },
-                                    },
-                                    self.client.inner().sut.public_key(),
-                                    self.client.inner().sut.tunnel_ip4().unwrap(),
-                                    self.client.inner().sut.tunnel_ip6().unwrap(),
-                                    new_connection
-                                        .client_payload
-                                        .domain
-                                        .map(|r| (r.name, r.proxy_ips)),
-                                    None, // TODO: How to generate expiry?
-                                    resource,
-                                    now,
-                                )
-                            })
-                            .unwrap();
-
-                        self.client
-                            .exec_mut(|c| {
-                                c.sut.accept_answer(
-                                    snownet::Answer {
-                                        credentials: snownet::Credentials {
-                                            username: answer.username,
-                                            password: answer.password,
-                                        },
-                                    },
-                                    resource_id,
-                                    gateway.inner().sut.public_key(),
-                                    now,
-                                )
-                            })
-                            .unwrap();
-                    }
-                    Request::ReuseConnection(reuse_connection) => {
-                        let gateway = self
-                            .gateways
-                            .get_mut(&reuse_connection.gateway_id)
-                            .expect("unknown gateway");
-
-                        gateway
-                            .exec_mut(|g| {
-                                g.sut.allow_access(
-                                    resource,
-                                    self.client.inner().id,
-                                    None,
-                                    reuse_connection.payload.map(|r| (r.name, r.proxy_ips)),
-                                    now,
-                                )
-                            })
-                            .unwrap();
-                    }
-                };
-            }
-
-            ClientEvent::SendProxyIps { connections } => {
-                for reuse_connection in connections {
-                    let gateway = self
-                        .gateways
-                        .get_mut(&reuse_connection.gateway_id)
-                        .expect("unknown gateway");
-
-                    let resolved_ips = reuse_connection
-                        .payload
-                        .as_ref()
-                        .map(|r| r.name.clone())
-                        .into_iter()
-                        .flat_map(|domain| global_dns_records.get(&domain).cloned().into_iter())
-                        .flatten()
-                        .collect();
-
-                    let resource = portal.map_client_resource_to_gateway_resource(
-                        resolved_ips,
-                        reuse_connection.resource_id,
-                    );
-
-                    gateway
-                        .exec_mut(|g| {
-                            g.sut.allow_access(
-                                resource,
-                                self.client.inner().id,
-                                None,
-                                reuse_connection.payload.map(|r| (r.name, r.proxy_ips)),
-                                now,
-                            )
-                        })
-                        .unwrap();
-                }
+                gateway
+                    .exec_mut(|g| {
+                        g.sut.allow_access(
+                            self.client.inner().id,
+                            self.client.inner().sut.tunnel_ip4().unwrap(),
+                            self.client.inner().sut.tunnel_ip6().unwrap(),
+                            maybe_domain.map(|r| (r.name, r.proxy_ips)),
+                            None,
+                            resource,
+                            now,
+                        )
+                    })
+                    .unwrap();
             }
             ClientEvent::ResourcesChanged { .. } => {
                 tracing::warn!("Unimplemented");
             }
-            ClientEvent::TunInterfaceUpdated {
-                dns_by_sentinel, ..
-            } => {
+            ClientEvent::TunInterfaceUpdated(config) => {
+                if self.client.inner().dns_by_sentinel == config.dns_by_sentinel {
+                    tracing::error!("Emitted `TunInterfaceUpdated` without changing DNS servers");
+                }
+
                 self.client
-                    .exec_mut(|c| c.dns_by_sentinel = dns_by_sentinel);
+                    .exec_mut(|c| c.dns_by_sentinel = config.dns_by_sentinel);
             }
             ClientEvent::TunRoutesUpdated { .. } => {}
+            ClientEvent::RequestConnection {
+                gateway_id,
+                offer,
+                preshared_key,
+                resource_id,
+                maybe_domain,
+            } => {
+                // Resolve the domain name that we want to talk to to the IP that we generated as part of the Transition for sending a DNS query.
+                let resolved_ips = maybe_domain
+                    .as_ref()
+                    .and_then(|r| global_dns_records.get(&r.name).cloned())
+                    .unwrap_or_default();
+
+                let resource =
+                    portal.map_client_resource_to_gateway_resource(resolved_ips, resource_id);
+
+                let Some(gateway) = self.gateways.get_mut(&gateway_id) else {
+                    tracing::error!("Unknown gateway");
+                    return;
+                };
+
+                let client_id = self.client.inner().id;
+
+                let answer = gateway
+                    .exec_mut(|g| {
+                        let answer = g.sut.accept(
+                            client_id,
+                            snownet::Offer {
+                                session_key: preshared_key.expose_secret().0.into(),
+                                credentials: snownet::Credentials {
+                                    username: offer.username,
+                                    password: offer.password,
+                                },
+                            },
+                            self.client.inner().sut.public_key(),
+                            now,
+                        );
+                        g.sut.allow_access(
+                            client_id,
+                            self.client.inner().sut.tunnel_ip4().unwrap(),
+                            self.client.inner().sut.tunnel_ip6().unwrap(),
+                            maybe_domain
+                                .as_ref()
+                                .map(|r| (r.name.clone(), r.proxy_ips.clone())),
+                            None, // TODO: How to generate expiry?
+                            resource,
+                            now,
+                        )?;
+
+                        anyhow::Ok(answer)
+                    })
+                    .unwrap();
+
+                self.client
+                    .exec_mut(|c| {
+                        c.sut.accept_answer(
+                            snownet::Answer {
+                                credentials: snownet::Credentials {
+                                    username: answer.username,
+                                    password: answer.password,
+                                },
+                            },
+                            resource_id,
+                            gateway.inner().sut.public_key(),
+                            now,
+                        )
+                    })
+                    .unwrap();
+            }
         }
     }
 }

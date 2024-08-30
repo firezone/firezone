@@ -18,7 +18,7 @@ use proptest::{
 use snownet::Transmit;
 use std::{
     borrow::Cow,
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     fmt,
     net::{IpAddr, SocketAddr},
     time::Instant,
@@ -50,7 +50,7 @@ pub(crate) struct SimDns {}
 impl SimDns {
     pub(crate) fn receive(
         &mut self,
-        global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
         transmit: Transmit,
         _now: Instant,
     ) -> Option<Transmit<'static>> {
@@ -61,6 +61,7 @@ impl SimDns {
 
         let query = query.sole_question().unwrap();
         let name = query.qname().to_vec();
+        let qtype = query.qtype();
 
         let records = global_dns_records
             .get(&name)
@@ -68,7 +69,7 @@ impl SimDns {
             .flatten()
             .filter(|ip| {
                 #[allow(clippy::wildcard_enum_match_arm)]
-                match query.qtype() {
+                match qtype {
                     Rtype::A => ip.is_ipv4(),
                     Rtype::AAAA => ip.is_ipv6(),
                     _ => todo!(),
@@ -87,7 +88,7 @@ impl SimDns {
 
         let payload = answers.finish();
 
-        tracing::debug!(%name, "Responding to DNS query");
+        tracing::debug!(%name, %qtype, "Responding to DNS query");
 
         Some(Transmit {
             src: Some(transmit.dst),

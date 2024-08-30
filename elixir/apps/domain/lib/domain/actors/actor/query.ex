@@ -30,6 +30,32 @@ defmodule Domain.Actors.Actor.Query do
     where(queryable, [actors: actors], actors.account_id == ^account_id)
   end
 
+  def by_deleted_identity_provider_id(queryable, provider_id) do
+    queryable
+    |> join(:inner, [actors: actors], identities in ^Domain.Auth.Identity.Query.deleted(),
+      on: identities.actor_id == actors.id,
+      as: :deleted_identities
+    )
+    |> where(
+      [deleted_identities: deleted_identities],
+      deleted_identities.provider_id == ^provider_id
+    )
+  end
+
+  def by_stale_for_provider(queryable, provider_id) do
+    subquery =
+      Domain.Auth.Identity.Query.all()
+      |> where(
+        [identities: identities],
+        identities.actor_id == parent_as(:actors).id and
+          (identities.provider_id != ^provider_id or
+             is_nil(identities.deleted_at))
+      )
+
+    queryable
+    |> where([actors: actors], not exists(subquery))
+  end
+
   def by_type(queryable, {:in, types}) do
     where(queryable, [actors: actors], actors.type in ^types)
   end

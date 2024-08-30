@@ -30,7 +30,8 @@ account
     traffic_filters: true,
     self_hosted_relays: true,
     idp_sync: true,
-    rest_api: true
+    rest_api: true,
+    internet_resource: true
   }
 )
 |> Repo.update!()
@@ -71,6 +72,10 @@ for item <- [account, other_account] do
 end
 
 IO.puts("")
+
+for account <- [account, other_account] do
+  Domain.Resources.create_internet_resource(account)
+end
 
 {:ok, everyone_group} =
   Domain.Actors.create_managed_group(account, %{
@@ -134,12 +139,16 @@ admin_actor_email = "firezone@localhost.local"
     name: "Firezone Unprivileged"
   })
 
-for i <- 1..10 do
-  Actors.create_actor(account, %{
-    type: :account_user,
-    name: "Firezone Unprivileged #{i}"
-  })
-end
+other_actors =
+  for i <- 1..10 do
+    {:ok, actor} =
+      Actors.create_actor(account, %{
+        type: :account_user,
+        name: "Firezone Unprivileged #{i}"
+      })
+
+    actor
+  end
 
 {:ok, admin_actor} =
   Actors.create_actor(account, %{
@@ -202,6 +211,25 @@ admin_actor_oidc_identity
   provider_state: %{"claims" => %{"email" => admin_actor_email, "group" => "users"}}
 )
 |> Repo.update!()
+
+for actor <- other_actors do
+  email = "user-#{System.unique_integer([:positive, :monotonic])}@localhost.local"
+
+  {:ok, identity} =
+    Auth.create_identity(actor, oidc_provider, %{
+      provider_identifier: email,
+      provider_identifier_confirmation: email
+    })
+
+  identity
+  |> Ecto.Changeset.change(
+    created_by: :provider,
+    provider_id: oidc_provider.id,
+    provider_identifier: email,
+    provider_state: %{"claims" => %{"email" => email, "group" => "users"}}
+  )
+  |> Repo.update!()
+end
 
 # Other Account Users
 other_unprivileged_actor_email = "other-unprivileged-1@localhost.local"
@@ -930,6 +958,7 @@ activities =
       connectivity_type: :direct,
       rx_bytes: random_integer.(),
       tx_bytes: random_integer.(),
+      blocked_tx_bytes: 0,
       flow_id: flow.id,
       account_id: account.id
     }

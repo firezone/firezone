@@ -47,7 +47,7 @@ android {
 
     // Life is easier if we just match the default NDK on the Ubuntu 22.04 runners
     // https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2204-Readme.md#android
-    ndkVersion = "25.2.9519653"
+    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "dev.firezone.android"
@@ -56,9 +56,12 @@ android {
         targetSdk = 35
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
-        versionName = "1.2.0"
+        versionName = "1.2.1"
         multiDexEnabled = true
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
+
+        val gitSha = System.getenv("GITHUB_SHA") ?: "unknown"
+        resValue("string", "git_sha", "Build: \"${gitSha.take(8)}\"")
     }
 
     signingConfigs {

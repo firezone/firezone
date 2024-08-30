@@ -6,7 +6,7 @@ use crate::tests::reference::ResourceDst;
 use connlib_shared::{messages::GatewayId, DomainName};
 use ip_packet::IpPacket;
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, VecDeque},
     marker::PhantomData,
     net::IpAddr,
     sync::atomic::{AtomicBool, Ordering},
@@ -24,7 +24,7 @@ pub(crate) fn assert_icmp_packets_properties(
     ref_client: &RefClient,
     sim_client: &SimClient,
     sim_gateways: HashMap<GatewayId, &SimGateway>,
-    global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+    global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
 ) {
     let unexpected_icmp_replies = find_unexpected_entries(
         &ref_client
@@ -33,7 +33,7 @@ pub(crate) fn assert_icmp_packets_properties(
             .flatten()
             .collect(),
         &sim_client.received_icmp_replies,
-        |(_, seq_a, id_a), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
+        |(_, (_, seq_a, id_a)), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
     );
 
     if !unexpected_icmp_replies.is_empty() {
@@ -61,9 +61,7 @@ pub(crate) fn assert_icmp_packets_properties(
     for (gateway, expected_icmp_handshakes) in &ref_client.expected_icmp_handshakes {
         let received_icmp_requests = &sim_gateways.get(gateway).unwrap().received_icmp_requests;
 
-        for ((resource_dst, seq, identifier), gateway_received_request) in
-            expected_icmp_handshakes.iter().zip(received_icmp_requests)
-        {
+        for (payload, (resource_dst, seq, identifier)) in expected_icmp_handshakes {
             let _guard =
                 tracing::info_span!(target: "assertions", "icmp", %seq, %identifier).entered();
 
@@ -78,8 +76,12 @@ pub(crate) fn assert_icmp_packets_properties(
                 tracing::error!(target: "assertions", "❌ Missing ICMP reply on client");
                 continue;
             };
-
             assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
+
+            let Some(gateway_received_request) = received_icmp_requests.get(payload) else {
+                tracing::error!(target: "assertions", "❌ Missing ICMP request on gateway");
+                continue;
+            };
 
             {
                 let expected = ref_client.tunnel_ip_for(gateway_received_request.source());
@@ -122,6 +124,15 @@ pub(crate) fn assert_known_hosts_are_valid(ref_client: &RefClient, sim_client: &
                 tracing::error!(target: "assertions", ?actual, ?expected, "❌ Unexpected known-hosts");
             }
         }
+    }
+}
+
+pub(crate) fn assert_dns_servers_are_valid(ref_client: &RefClient, sim_client: &SimClient) {
+    let expected = ref_client.expected_dns_servers();
+    let actual = sim_client.effective_dns_servers();
+
+    if actual != expected {
+        tracing::error!(target: "assertions", ?actual, ?expected, "❌ Effective DNS servers are incorrect");
     }
 }
 
@@ -211,7 +222,7 @@ fn assert_destination_is_cdir_resource(gateway_received_request: &IpPacket<'_>, 
     let actual = gateway_received_request.destination();
 
     if actual != *expected {
-        tracing::error!(target: "assertions", %actual, %expected, "❌ Unknown resource IP");
+        tracing::error!(target: "assertions", %actual, %expected, "❌ Incorrect resource destination");
     } else {
         tracing::info!(target: "assertions", ip = %actual, "✅ ICMP request targets correct resource");
     }
@@ -219,7 +230,7 @@ fn assert_destination_is_cdir_resource(gateway_received_request: &IpPacket<'_>, 
 
 fn assert_destination_is_dns_resource(
     gateway_received_request: &IpPacket<'_>,
-    global_dns_records: &BTreeMap<DomainName, HashSet<IpAddr>>,
+    global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
     domain: &DomainName,
 ) {
     let actual = gateway_received_request.destination();
@@ -269,7 +280,7 @@ fn assert_proxy_ip_mapping_is_stable(
 
 fn find_unexpected_entries<'a, E, K, V>(
     expected: &VecDeque<E>,
-    actual: &'a HashMap<K, V>,
+    actual: &'a BTreeMap<K, V>,
     is_equal: impl Fn(&E, &K) -> bool,
 ) -> Vec<&'a V> {
     actual
@@ -283,13 +294,15 @@ fn find_unexpected_entries<'a, E, K, V>(
 pub(crate) struct PanicOnErrorEvents<S> {
     subscriber: PhantomData<S>,
     has_seen_error: AtomicBool,
+    index: u32,
 }
 
-impl<S> Default for PanicOnErrorEvents<S> {
-    fn default() -> Self {
+impl<S> PanicOnErrorEvents<S> {
+    pub(crate) fn new(index: u32) -> Self {
         Self {
-            subscriber: Default::default(),
+            subscriber: PhantomData,
             has_seen_error: Default::default(),
+            index,
         }
     }
 }
@@ -297,7 +310,7 @@ impl<S> Default for PanicOnErrorEvents<S> {
 impl<S> Drop for PanicOnErrorEvents<S> {
     fn drop(&mut self) {
         if self.has_seen_error.load(Ordering::SeqCst) {
-            panic!("At least one assertion failed");
+            panic!("Testcase {} failed", self.index);
         }
     }
 }

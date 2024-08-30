@@ -1,8 +1,10 @@
 //! An abstraction over Tauri's system tray menu structs, that implements `PartialEq` for unit testing
 
-use connlib_shared::messages::ResourceId;
+use connlib_shared::{callbacks::ResourceDescription, messages::ResourceId};
 use serde::{Deserialize, Serialize};
 use url::Url;
+
+use super::INTERNET_RESOURCE_DESCRIPTION;
 
 /// A menu that can either be assigned to the system tray directly or used as a submenu in another menu.
 ///
@@ -50,6 +52,8 @@ pub(crate) enum Event {
     Copy(String),
     /// Marks this Resource as non-favorite
     RemoveFavorite(ResourceId),
+    /// If a Portal connection has failed, try again immediately
+    RetryPortalConnection,
     /// Starts the sign-in flow
     SignIn,
     /// Signs the user out, without quitting the app
@@ -75,29 +79,23 @@ pub(crate) enum Window {
     Settings,
 }
 
-impl Menu {
-    /// Appends things that always show, like About, Settings, Help, Quit, etc.
-    pub(crate) fn add_bottom_section(self, quit_text: &str) -> Self {
-        self.separator()
-            .item(Event::ShowWindow(Window::About), "About Firezone")
-            .item(Event::AdminPortal, "Admin Portal...")
-            .add_submenu(
-                "Help",
-                Menu::default()
-                    .item(
-                        Event::Url(utm_url("https://www.firezone.dev/kb")),
-                        "Documentation...",
-                    )
-                    .item(
-                        Event::Url(utm_url("https://www.firezone.dev/support")),
-                        "Support...",
-                    ),
-            )
-            .item(Event::ShowWindow(Window::Settings), "Settings")
-            .separator()
-            .item(Event::Quit, quit_text)
+fn resource_header(res: &ResourceDescription) -> Item {
+    let Some(address_description) = res.address_description() else {
+        return copyable(&res.pastable());
+    };
+
+    if address_description.is_empty() {
+        return copyable(&res.pastable());
     }
 
+    let Ok(url) = Url::parse(address_description) else {
+        return copyable(address_description);
+    };
+
+    item(Event::Url(url), format!("<{address_description}>"))
+}
+
+impl Menu {
     pub(crate) fn add_separator(&mut self) {
         self.entries.push(Entry::Separator);
     }
@@ -154,6 +152,26 @@ impl Menu {
         self.add_separator();
         self
     }
+
+    fn internet_resource(self) -> Self {
+        self.disabled(INTERNET_RESOURCE_DESCRIPTION)
+    }
+
+    fn resource_body(self, resource: &ResourceDescription) -> Self {
+        self.separator()
+            .disabled("Resource")
+            .copyable(resource.name())
+            .copyable(resource.pastable().as_ref())
+    }
+
+    pub(crate) fn resource_description(mut self, resource: &ResourceDescription) -> Self {
+        if resource.is_internet_resource() {
+            self.internet_resource()
+        } else {
+            self.add_item(resource_header(resource));
+            self.resource_body(resource)
+        }
+    }
 }
 
 impl Item {
@@ -197,12 +215,4 @@ pub(crate) fn item<E: Into<Option<Event>>, S: Into<String>>(event: E, title: S) 
         title: title.into(),
         selected: false,
     }
-}
-
-pub(crate) fn utm_url(base_url: &str) -> Url {
-    Url::parse(&format!(
-        "{base_url}?utm_source={}-client",
-        std::env::consts::OS
-    ))
-    .expect("Hard-coded URL should always be parsable")
 }

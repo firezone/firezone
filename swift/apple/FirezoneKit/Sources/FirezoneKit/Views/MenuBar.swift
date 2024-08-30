@@ -18,7 +18,10 @@ import SwiftUI
 // https://developer.apple.com/documentation/swiftui/menubarextra
 public final class MenuBar: NSObject, ObservableObject {
   private var statusItem: NSStatusItem
-  private var resources: [Resource]?
+
+  // Wish these could be `[String]` but diffing between different types is tricky
+  private var lastShownFavorites: [Resource] = []
+  private var lastShownOthers: [Resource] = []
   private var cancellables: Set<AnyCancellable> = []
 
   @ObservedObject var model: SessionViewModel
@@ -53,28 +56,29 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func setupObservers() {
-    model.store.$status
+    model.favorites.$ids
+      .receive(on: DispatchQueue.main)
+      .sink(receiveValue: { [weak self] ids in
+        guard let self = self else { return }
+        // When the user clicks to add or remove a favorite, the menu will close anyway, so just recreate the whole menu.
+        // This avoids complex logic when changing in and out of the "nothing is favorited" special case
+        self.populateResourceMenus([])
+        self.populateResourceMenus(model.resources.asArray())
+      }).store(in: &cancellables)
+
+    model.$resources
+      .receive(on: DispatchQueue.main)
+      .sink(receiveValue: { [weak self] resources in
+        guard let self = self else { return }
+        self.populateResourceMenus(model.resources.asArray())
+        self.handleTunnelStatusOrResourcesChanged()
+      }).store(in: &cancellables)
+
+    model.$status
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] status in
         guard let self = self else { return }
-
-        if status == .connected {
-          model.store.beginUpdatingResources { newResources in
-              // Handle resource changes
-              self.populateResourceMenu(newResources)
-              self.handleTunnelStatusOrResourcesChanged(status: status, resources: newResources)
-              self.resources = newResources
-          }
-        } else {
-          model.store.endUpdatingResources()
-          populateResourceMenu(nil)
-          resources = nil
-        }
-
-        // Handle status changes
-        self.updateStatusItemIcon(status: status)
-        self.handleTunnelStatusOrResourcesChanged(status: status, resources: resources)
-
+        self.updateStatusItemIcon(status: model.status)
       }).store(in: &cancellables)
   }
 
@@ -115,6 +119,13 @@ public final class MenuBar: NSObject, ObservableObject {
     target: self
   )
   private lazy var resourcesSeparatorMenuItem = NSMenuItem.separator()
+  private lazy var otherResourcesMenu: NSMenu = NSMenu()
+  private lazy var otherResourcesMenuItem: NSMenuItem = {
+    let menuItem = NSMenuItem(title: "Other Resources", action: nil, keyEquivalent: "")
+    menuItem.submenu = otherResourcesMenu
+    return menuItem
+  }()
+  private lazy var otherResourcesSeparatorMenuItem = NSMenuItem.separator()
   private lazy var aboutMenuItem: NSMenuItem = {
     let menuItem = createMenuItem(
       menu,
@@ -190,6 +201,11 @@ public final class MenuBar: NSObject, ObservableObject {
     menu.addItem(resourcesUnavailableMenuItem)
     menu.addItem(resourcesUnavailableReasonMenuItem)
     menu.addItem(resourcesSeparatorMenuItem)
+
+    if (!model.favorites.ids.isEmpty) {
+      menu.addItem(otherResourcesMenuItem)
+      menu.addItem(otherResourcesSeparatorMenuItem)
+    }
 
     menu.addItem(aboutMenuItem)
     menu.addItem(adminPortalMenuItem)
@@ -303,7 +319,9 @@ public final class MenuBar: NSObject, ObservableObject {
     (connectingAnimationImageIndex + 1) % connectingAnimationImages.count
   }
 
-  private func handleTunnelStatusOrResourcesChanged(status: NEVPNStatus, resources: [Resource]?) {
+  private func handleTunnelStatusOrResourcesChanged() {
+    let resources = model.resources
+    let status = model.status
     // Update "Sign In" / "Sign Out" menu items
     switch status {
     case .invalid:
@@ -383,20 +401,41 @@ public final class MenuBar: NSObject, ObservableObject {
     }()
   }
 
-  private func resourceMenuTitle(_ resources: [Resource]?) -> String {
-    guard let resources = resources else { return "Loading Resources..." }
-
-    if resources.isEmpty {
-      return "No Resources"
-    } else {
-      return "Resources"
+  private func resourceMenuTitle(_ resources: ResourceList) -> String {
+    switch resources {
+    case .loading:
+      return "Loading Resources..."
+    case .loaded(let x):
+      if x.isEmpty {
+        return "No Resources"
+      } else {
+        return "Resources"
+      }
     }
   }
 
-  private func populateResourceMenu(_ newResources: [Resource]?) {
-    // the menu contains other things besides resources, so update it in-place
-    let diff = (newResources ?? []).difference(
-      from: resources ?? [],
+  private func populateResourceMenus(_ newResources: [Resource]) {
+    // If we have no favorites, then everything is a favorite
+    let hasAnyFavorites = newResources.contains { model.favorites.contains($0.id) }
+    let newFavorites = if (hasAnyFavorites) {
+      newResources.filter { model.favorites.contains($0.id) || $0.isInternetResource() }
+    } else {
+      newResources
+    }
+    let newOthers: [Resource] = if hasAnyFavorites {
+      newResources.filter { !model.favorites.contains($0.id) && !$0.isInternetResource() }
+    } else {
+      []
+    }
+
+    populateFavoriteResourcesMenu(newFavorites)
+    populateOtherResourcesMenu(newOthers)
+  }
+
+  private func populateFavoriteResourcesMenu(_ newFavorites: [Resource]) {
+    // Update the menu in place so everything won't vanish if it's open when it updates
+    let diff = (newFavorites).difference(
+      from: lastShownFavorites,
       by: { $0 == $1 }
     )
     let index = menu.index(of: resourcesTitleMenuItem) + 1
@@ -409,6 +448,54 @@ public final class MenuBar: NSObject, ObservableObject {
         menu.removeItem(at: index + offset)
       }
     }
+    lastShownFavorites = newFavorites
+  }
+
+  private func populateOtherResourcesMenu(_ newOthers: [Resource]) {
+    if (newOthers.isEmpty) {
+      removeItemFromMenu(menu: menu, item: otherResourcesMenuItem)
+      removeItemFromMenu(menu: menu, item: otherResourcesSeparatorMenuItem)
+    } else {
+      let i = menu.index(of: aboutMenuItem)
+      addItemToMenu(menu: menu, item: otherResourcesMenuItem, at: i)
+      addItemToMenu(menu: menu, item: otherResourcesSeparatorMenuItem, at: i + 1)
+    }
+
+    // Update the menu in place so everything won't vanish if it's open when it updates
+    let diff = (newOthers).difference(
+      from: lastShownOthers,
+      by: { $0 == $1 }
+    )
+    for change in diff {
+      switch change {
+      case .insert(let offset, let element, associatedWith: _):
+        let menuItem = createResourceMenuItem(resource: element)
+        otherResourcesMenu.insertItem(menuItem, at: offset)
+      case .remove(let offset, element: _, associatedWith: _):
+        otherResourcesMenu.removeItem(at: offset)
+      }
+    }
+    lastShownOthers = newOthers
+  }
+
+  private func addItemToMenu(menu: NSMenu, item: NSMenuItem, at: Int) {
+    // Adding an item that already exists will crash the process, so check for it first.
+    let i = menu.index(of: otherResourcesMenuItem)
+    if (i != -1) {
+      // Item's already in the menu, do nothing
+      return
+    }
+    menu.insertItem(otherResourcesMenuItem, at: at)
+  }
+
+  private func removeItemFromMenu(menu: NSMenu, item: NSMenuItem) {
+    // Removing an item that doesn't exist will crash the process, so check for it first.
+    let i = menu.index(of: item)
+    if (i == -1) {
+      // Item's already not in the menu, do nothing
+      return
+    }
+    menu.removeItem(item)
   }
 
   private func createResourceMenuItem(resource: Resource) -> NSMenuItem {
@@ -424,19 +511,11 @@ public final class MenuBar: NSObject, ObservableObject {
     model.isResourceEnabled(id) ? "Disable this resource" : "Enable this resource"
   }
 
-  private func createSubMenu(resource: Resource) -> NSMenu {
+  private func nonInternetResourceHeader(resource: Resource) -> NSMenu {
     let subMenu = NSMenu()
-    let resourceAddressDescriptionItem = NSMenuItem()
-    let resourceSectionItem = NSMenuItem()
-    let resourceNameItem = NSMenuItem()
-    let resourceAddressItem = NSMenuItem()
-    let siteSectionItem = NSMenuItem()
-    let siteNameItem = NSMenuItem()
-    let siteStatusItem = NSMenuItem()
-    let enableToggle = NSMenuItem()
-
 
     // AddressDescription first -- will be most common action
+    let resourceAddressDescriptionItem = NSMenuItem()
     if let addressDescription = resource.addressDescription {
       resourceAddressDescriptionItem.title = addressDescription
 
@@ -456,7 +535,7 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     } else {
       // Show Address first if addressDescription is missing
-      resourceAddressDescriptionItem.title = resource.address
+      resourceAddressDescriptionItem.title = resource.address! // Address is none only for non-internet resource
       resourceAddressDescriptionItem.action = #selector(resourceValueTapped(_:))
     }
     resourceAddressDescriptionItem.isEnabled = true
@@ -465,11 +544,13 @@ public final class MenuBar: NSObject, ObservableObject {
 
     subMenu.addItem(NSMenuItem.separator())
 
+    let resourceSectionItem = NSMenuItem()
     resourceSectionItem.title = "Resource"
     resourceSectionItem.isEnabled = false
     subMenu.addItem(resourceSectionItem)
 
     // Resource name
+    let resourceNameItem = NSMenuItem()
     resourceNameItem.action = #selector(resourceValueTapped(_:))
     resourceNameItem.title = resource.name
     resourceNameItem.toolTip = "Resource name (click to copy)"
@@ -478,15 +559,63 @@ public final class MenuBar: NSObject, ObservableObject {
     subMenu.addItem(resourceNameItem)
 
     // Resource address
+    let resourceAddressItem = NSMenuItem()
     resourceAddressItem.action = #selector(resourceValueTapped(_:))
-    resourceAddressItem.title = resource.address
+    resourceAddressItem.title = resource.address!
     resourceAddressItem.toolTip = "Resource address (click to copy)"
     resourceAddressItem.isEnabled = true
     resourceAddressItem.target = self
     subMenu.addItem(resourceAddressItem)
 
-    // Resource toggle
-    if resource.canToggle {
+    let toggleFavoriteItem = NSMenuItem()
+
+    if model.favorites.contains(resource.id) {
+      toggleFavoriteItem.action = #selector(removeFavoriteTapped(_:))
+      toggleFavoriteItem.title = "Remove from favorites"
+      toggleFavoriteItem.toolTip = "Click to remove this Resource from Favorites"
+    } else {
+      toggleFavoriteItem.action = #selector(addFavoriteTapped(_:))
+      toggleFavoriteItem.title = "Add to favorites"
+      toggleFavoriteItem.toolTip = "Click to add this Resource to Favorites"
+    }
+    toggleFavoriteItem.isEnabled = true
+    toggleFavoriteItem.representedObject = resource.id
+    toggleFavoriteItem.target = self
+    subMenu.addItem(toggleFavoriteItem)
+
+    return subMenu
+  }
+
+  private func internetResourceHeader(resource: Resource) -> NSMenu {
+    let subMenu = NSMenu()
+    let description = NSMenuItem()
+
+    description.title = "All network traffic"
+    description.isEnabled = false
+
+    subMenu.addItem(description)
+
+    return subMenu
+  }
+
+  private func resourceHeader(resource: Resource) -> NSMenu {
+    if resource.isInternetResource() {
+      internetResourceHeader(resource: resource)
+    } else {
+      nonInternetResourceHeader(resource: resource)
+    }
+  }
+
+  private func createSubMenu(resource: Resource) -> NSMenu {
+    let siteSectionItem = NSMenuItem()
+    let siteNameItem = NSMenuItem()
+    let siteStatusItem = NSMenuItem()
+    let enableToggle = NSMenuItem()
+
+    let subMenu = resourceHeader(resource: resource)
+
+    // Resource enable / disable toggle
+    if resource.canBeDisabled {
       subMenu.addItem(NSMenuItem.separator())
       enableToggle.action = #selector(resourceToggle(_:))
       enableToggle.title = resourceTitle(resource.id)
@@ -550,6 +679,24 @@ public final class MenuBar: NSObject, ObservableObject {
     if let value = (sender as? NSMenuItem)?.title {
       // URL has already been validated
       NSWorkspace.shared.open(URL(string: value)!)
+    }
+  }
+
+  @objc private func addFavoriteTapped(_ sender: NSMenuItem) {
+    let id = sender.representedObject as! String
+    setFavorited(id: id, favorited: true)
+  }
+
+  @objc private func removeFavoriteTapped(_ sender: NSMenuItem) {
+    let id = sender.representedObject as! String
+    setFavorited(id: id, favorited: false)
+  }
+
+  private func setFavorited(id: String, favorited: Bool) {
+    if favorited {
+      model.favorites.add(id)
+    } else {
+      model.favorites.remove(id)
     }
   }
 

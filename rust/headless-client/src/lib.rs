@@ -33,9 +33,14 @@ pub mod uptime;
 
 pub use clear_logs::clear_logs;
 pub use dns_control::DnsController;
-pub use ipc_service::{ipc, run_only_ipc_service, ClientMsg as IpcClientMsg};
+pub use ipc_service::{
+    ipc, run_only_ipc_service, ClientMsg as IpcClientMsg, Error as IpcServiceError,
+    ServerMsg as IpcServerMsg,
+};
 
 use ip_network::{Ipv4Network, Ipv6Network};
+
+pub type LogFilterReloader = tracing_subscriber::reload::Handle<EnvFilter, Registry>;
 
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
@@ -84,24 +89,6 @@ pub enum ConnlibMsg {
     },
 }
 
-/// Messages that end up in the GUI, either from connlib or from the IPC service.
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub enum IpcServerMsg {
-    /// The IPC service finished clearing its log dir.
-    ClearedLogs(Result<(), String>),
-    OnDisconnect {
-        error_msg: String,
-        is_authentication_error: bool,
-    },
-    OnUpdateResources(Vec<callbacks::ResourceDescription>),
-    /// The IPC service is terminating, maybe due to a software update
-    ///
-    /// This is a hint that the Client should exit with a message like,
-    /// "Firezone is updating, please restart the GUI" instead of an error like,
-    /// "IPC connection closed".
-    TerminatingGracefully,
-}
-
 #[derive(Clone)]
 pub struct CallbackHandler {
     pub cb_tx: mpsc::Sender<ConnlibMsg>,
@@ -145,12 +132,14 @@ impl Callbacks for CallbackHandler {
 }
 
 /// Sets up logging for stdout only, with INFO level by default
-pub fn setup_stdout_logging() -> Result<()> {
-    let filter = EnvFilter::new(ipc_service::get_log_filter().context("Can't read log filter")?);
+pub fn setup_stdout_logging() -> Result<LogFilterReloader> {
+    let directives = ipc_service::get_log_filter().context("Can't read log filter")?;
+    let (filter, reloader) =
+        tracing_subscriber::reload::Layer::new(firezone_logging::try_filter(&directives)?);
     let layer = fmt::layer().with_filter(filter);
     let subscriber = Registry::default().with(layer);
     set_global_default(subscriber)?;
-    Ok(())
+    Ok(reloader)
 }
 
 #[cfg(test)]

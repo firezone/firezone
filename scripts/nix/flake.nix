@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-23.11";
+    nixpkgs.url = "nixpkgs/nixos-24.05";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
   };
@@ -49,11 +49,17 @@
             gnome.zenity
             desktop-file-utils
             android-tools
+            erlang_27
+            elixir
           ];
 
           mkShellWithRustVersion = rustVersion: pkgs.mkShell {
             packages = [ pkgs.cargo-tauri pkgs.iptables pkgs.nodePackages.pnpm cargo-udeps pkgs.cargo-sort ];
-            buildInputs = rustVersion ++ packages;
+            buildInputs = packages ++ [
+              (rustVersion.override {
+                targets = [ "x86_64-unknown-linux-musl" ];
+              })
+            ];
             name = "rust-env";
             src = ../../rust;
 
@@ -62,13 +68,8 @@
           };
         in
         {
-          devShells.default = mkShellWithRustVersion [
-            (pkgs.rust-bin.fromRustupToolchainFile ../../rust/rust-toolchain.toml)
-          ];
-
-          devShells.nightly = mkShellWithRustVersion [
-            (pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.default))
-          ];
+          devShells.default = mkShellWithRustVersion (pkgs.rust-bin.fromRustupToolchainFile ../../rust/rust-toolchain.toml);
+          devShells.nightly = mkShellWithRustVersion rust-nightly;
         }
       );
 }

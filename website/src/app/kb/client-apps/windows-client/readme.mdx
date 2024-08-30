@@ -178,6 +178,16 @@ Get-DnsClientNrptRule | where Comment -eq firezone-fd0020211111 | foreach { Remo
 1. Enter the above command and
    [Check if Firezone is controlling DNS](#check-if-firezone-is-controlling-dns)
 
+### Viewing logs
+
+The Firezone Client is split into 2 main processes: An IPC service which runs
+the tunnel, and a GUI which allows the user to control Firezone.
+
+- IPC service logs are stored at `%PROGRAMDATA%\dev.firezone.client\data\logs\`,
+  where `%PROGRAMDATA%` is almost always `C:\ProgramData`
+- GUI logs are stored at `%LOCALAPPDATA%\dev.firezone.client\data\logs`, where
+  `%LOCALAPPDATA%` is, e.g. `C:\Users\username\AppData\Local`
+
 ## Known issues
 
 - **DNS Resources**: Web browsers that enable "Secure DNS" or DNS-over-HTTPS by
@@ -188,7 +198,5 @@ Get-DnsClientNrptRule | where Comment -eq firezone-fd0020211111 | foreach { Remo
   Resources within your browser.
 - Firezone does not register itself with Windows as a VPN
   [#2875](https://github.com/firezone/firezone/issues/2875)
-- Clearing diagnostic logs does not clear logs from the IPC service
-  [#5453](https://github.com/firezone/firezone/issues/5453)
 
 <SupportOptions />

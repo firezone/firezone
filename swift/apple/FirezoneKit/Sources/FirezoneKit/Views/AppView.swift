@@ -20,6 +20,7 @@ import UserNotifications
 
 @MainActor
 public class AppViewModel: ObservableObject {
+  let favorites: Favorites
   let store: Store
 
   @Published private(set) var status: NEVPNStatus?
@@ -27,7 +28,8 @@ public class AppViewModel: ObservableObject {
 
   private var cancellables = Set<AnyCancellable>()
 
-  public init(store: Store) {
+  public init(favorites: Favorites, store: Store) {
+    self.favorites = favorites
     self.store = store
 
     store.$status
@@ -83,7 +85,7 @@ public struct AppView: View {
       }
     case (_, _):
       iOSNavigationView(model: model) {
-        SessionView(model: SessionViewModel(store: model.store))
+        SessionView(model: SessionViewModel(favorites: model.favorites, store: model.store))
       }
     }
 #elseif os(macOS)

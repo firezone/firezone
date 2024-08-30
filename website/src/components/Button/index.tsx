@@ -10,7 +10,7 @@ export default function Button({
   children,
 }: {
   type?: ButtonType;
-  href: Route<string>;
+  href: URL | Route<string>;
   children: React.ReactNode;
 }) {
   switch (type) {

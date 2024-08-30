@@ -14,20 +14,62 @@ export default function GUI({ title }: { title: string }) {
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This cannot be done when the issue's PR merges. */}
       {/*
-      <Entry version="1.2.0" date={new Date("Invalid date")}>
+      <Entry version="1.2.3" date={new Date(todo)}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+        </ul>
+      </Entry>
+      */}
+      <Entry version="1.2.2" date={new Date("2024-08-29")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6432">
+            Shows an orange dot on the tray icon when an update is ready to download.
+          </ChangeItem>
+          <ChangeItem pull="6449">
+            Checks for updates once a day
+          </ChangeItem>
+          <ChangeItem enable={title === "Windows"} pull="6472">
+            Fixes an issue where Split DNS didn't work for domain-joined Windows machines
+          </ChangeItem>
+        </ul>
+      </Entry>
+      <Entry version="1.2.1" date={new Date("2024-08-27")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6414">
+            Waits for Internet to connect to Firezone if there's no Internet at
+            startup and you're already signed in.
+          </ChangeItem>
+          <ChangeItem pull="6455">
+            Fixes a false positive warning log at startup about DNS interception
+            being disabled.
+          </ChangeItem>
+          <ChangeItem pull="6458">
+            Fixes a bug where we considered our own startup to be a network
+            change event, which may interfere with access to DNS Resources.
+          </ChangeItem>
+        </ul>
+      </Entry>
+      <Entry version="1.2.0" date={new Date("2024-08-21")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="5901">
             Implements glob-like matching of domains for DNS resources.
           </ChangeItem>
           <ChangeItem enable={title === "Windows"} pull="6280">
-            Fixes a bug where the "Clear Logs" button did not clear the IPC service logs.
+            Fixes a bug where the "Clear Logs" button did not clear the IPC
+            service logs.
           </ChangeItem>
           <ChangeItem enable={title === "Windows"} pull="6308">
             Fixes a bug where the GUI could not run if the user is Administrator
           </ChangeItem>
+          <ChangeItem pull="6351">
+            The log filter on the IPC service is now reloaded immediately when
+            you change the setting in the GUI.
+          </ChangeItem>
+          <ChangeItem pull="6361">
+            Connections to Gateways are now sticky for the duration of the
+            Client's session to fix issues with long-lived TCP connections.
+          </ChangeItem>
         </ul>
       </Entry>
-      */}
       <Entry version="1.1.12" date={new Date("2024-08-13")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6226">

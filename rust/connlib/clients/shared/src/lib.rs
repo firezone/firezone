@@ -12,7 +12,7 @@ use firezone_tunnel::ClientTunnel;
 use messages::{IngressMessages, ReplyMessages};
 use phoenix_channel::PhoenixChannel;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -94,7 +94,7 @@ impl Session {
         let _ = self.channel.send(Command::SetDns(new_dns));
     }
 
-    pub fn set_disabled_resources(&self, disabled_resources: HashSet<ResourceId>) {
+    pub fn set_disabled_resources(&self, disabled_resources: BTreeSet<ResourceId>) {
         let _ = self
             .channel
             .send(Command::SetDisabledResources(disabled_resources));
@@ -135,8 +135,8 @@ where
         private_key,
         tcp_socket_factory,
         udp_socket_factory,
-        HashMap::from([(portal.server_host().to_owned(), portal.resolved_addresses())]),
-    )?;
+        BTreeMap::from([(portal.server_host().to_owned(), portal.resolved_addresses())]),
+    );
 
     let mut eventloop = Eventloop::new(tunnel, callbacks, portal, rx);
 

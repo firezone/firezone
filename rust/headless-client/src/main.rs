@@ -138,7 +138,7 @@ fn main() -> Result<()> {
 
     tracing::info!(
         arch = std::env::consts::ARCH,
-        git_version = firezone_bin_shared::git_version!()
+        git_version = firezone_bin_shared::git_version!("headless-client-*")
     );
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -186,6 +186,12 @@ fn main() -> Result<()> {
         callbacks,
     };
     let _guard = rt.enter(); // Constructing `PhoenixChannel` requires a runtime context.
+
+    // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
+    // resolve the portal host and fail. This is intentional behavior. The Headless Client should always be running under a manager like `systemd` or Windows' Service Controller,
+    // so when it fails it will be restarted with backoff. `systemd` can additionally make us wait
+    // for an Internet connection if it launches us at startup.
+    // When running interactively, it is useful for the user to see that we can't reach the portal.
     let portal = PhoenixChannel::connect(
         Secret::new(url),
         get_user_agent(None, env!("CARGO_PKG_VERSION")),

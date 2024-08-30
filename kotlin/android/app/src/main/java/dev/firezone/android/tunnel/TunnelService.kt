@@ -1,6 +1,7 @@
 /* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.tunnel
 
+import DisconnectMonitor
 import NetworkMonitor
 import android.app.ActivityManager
 import android.content.BroadcastReceiver
@@ -46,14 +47,20 @@ class TunnelService : VpnService() {
     @Inject
     internal lateinit var moshi: Moshi
 
-    private var tunnelIpv4Address: String? = null
-    private var tunnelIpv6Address: String? = null
+    var tunnelIpv4Address: String? = null
+    var tunnelIpv6Address: String? = null
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
     private var _tunnelResources: List<ViewResource> = emptyList()
     private var _tunnelState: State = State.DOWN
-    private var networkCallback: NetworkMonitor? = null
     private var disabledResources: MutableSet<String> = mutableSetOf()
+
+    // For reacting to changes to the network
+    private var networkCallback: NetworkMonitor? = null
+
+    // For reacting to disconnects of our VPN service, for example when the user disconnects
+    // the VPN from the system settings or MDM disconnects us.
+    private var disconnectCallback: DisconnectMonitor? = null
 
     // General purpose mutex lock for preventing network monitoring from calling connlib
     // during shutdown.
@@ -212,7 +219,7 @@ class TunnelService : VpnService() {
     // UI updates for resources
     fun resourcesUpdated() {
         val newResources = tunnelResources.associateBy { it.id }
-        val currentlyDisabled = disabledResources.filter { newResources[it]?.canToggle ?: false }
+        val currentlyDisabled = disabledResources.filter { newResources[it]?.canBeDisabled ?: false }
 
         connlibSessionPtr?.let {
             ConnlibSession.setDisabledResources(it, Gson().toJson(currentlyDisabled))
@@ -280,13 +287,24 @@ class TunnelService : VpnService() {
 
     private fun startNetworkMonitoring() {
         networkCallback = NetworkMonitor(this)
+        disconnectCallback = DisconnectMonitor(this)
 
-        val networkRequest =
-            NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-                .build()
+        val networkRequest = NetworkRequest.Builder()
+
         val connectivityManager =
             getSystemService(ConnectivityManager::class.java) as ConnectivityManager
-        connectivityManager.requestNetwork(networkRequest, networkCallback!!)
+
+        // Listens for changes *not* including VPN networks
+        connectivityManager.requestNetwork(
+            networkRequest.addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(),
+            networkCallback!!,
+        )
+
+        // Listens for changes for *all* networks
+        connectivityManager.requestNetwork(
+            networkRequest.removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(),
+            disconnectCallback!!,
+        )
     }
 
     private fun stopNetworkMonitoring() {
@@ -296,6 +314,14 @@ class TunnelService : VpnService() {
             connectivityManager.unregisterNetworkCallback(it)
 
             networkCallback = null
+        }
+
+        disconnectCallback?.let {
+            val connectivityManager =
+                getSystemService(ConnectivityManager::class.java) as ConnectivityManager
+            connectivityManager.unregisterNetworkCallback(it)
+
+            disconnectCallback = null
         }
     }
 

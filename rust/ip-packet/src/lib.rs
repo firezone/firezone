@@ -45,7 +45,7 @@ macro_rules! swap_src_dst {
     };
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Protocol {
     /// Contains either the source or destination port.
     Tcp(u16),
@@ -1517,6 +1517,10 @@ impl<'a> IcmpEchoRequest<'a> {
 
     pub fn identifier(&self) -> u16 {
         for_both!(self, |i| i.get_identifier())
+    }
+
+    pub fn payload(&self) -> &[u8] {
+        for_both!(self, |i| i.payload())
     }
 }
 

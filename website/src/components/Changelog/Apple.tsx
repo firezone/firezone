@@ -9,13 +9,34 @@ export default function Apple() {
       href="https://apps.apple.com/us/app/firezone/id6443661826"
       title="macOS / iOS"
     >
-      {/* <Entry version="1.2.0" date={new Date(TODO)}>
+      <Entry version="1.2.1" date={new Date("2024-08-22")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6406">
+            Shows the Git SHA corresponding to the build on the Settings -&gt;
+            Advanced screen.
+          </ChangeItem>
+          <ChangeItem pull="6424">
+            Fixes a bug where packets would be lost when a connection is first
+            established to a Gateway due to routes being updated with no actual
+            change.
+          </ChangeItem>
+        </ul>
+      </Entry>
+      <Entry version="1.2.0" date={new Date("2024-08-21")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="5901">
             Implements glob-like matching of domains for DNS resources.
           </ChangeItem>
+          <ChangeItem pull="6186">
+            Adds the ability to mark Resources as favorites.
+          </ChangeItem>
+          <ChangeItem pull="6361">
+            Connections to Gateways are now sticky for the duration of the
+            Client's session. This fixes potential issues maintaining long-lived
+            TCP connections to Gateways in a high-availability setup.
+          </ChangeItem>
         </ul>
-      </Entry> */}
+      </Entry>
       <Entry version="1.1.5" date={new Date("2024-08-13")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6276">

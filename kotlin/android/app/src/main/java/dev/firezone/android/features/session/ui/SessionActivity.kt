@@ -20,7 +20,7 @@ import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
 
 @AndroidEntryPoint
-internal class SessionActivity : AppCompatActivity() {
+class SessionActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySessionBinding
     private var tunnelService: TunnelService? = null
     private var serviceBound = false
@@ -34,9 +34,12 @@ internal class SessionActivity : AppCompatActivity() {
             ) {
                 val binder = service as TunnelService.LocalBinder
                 tunnelService = binder.getService()
-                serviceBound = true
-                tunnelService?.setServiceStateLiveData(viewModel.serviceStatusLiveData)
-                tunnelService?.setResourcesLiveData(viewModel.resourcesLiveData)
+
+                tunnelService?.let {
+                    serviceBound = true
+                    it.setServiceStateLiveData(viewModel.serviceStatusLiveData)
+                    it.setResourcesLiveData(viewModel.resourcesLiveData)
+                }
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
@@ -60,11 +63,13 @@ internal class SessionActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         if (serviceBound) {
             unbindService(serviceConnection)
             serviceBound = false
+            tunnelService = null
         }
+
+        super.onDestroy()
     }
 
     fun onViewResourceToggled(resourceToggled: ViewResource) {
@@ -101,7 +106,11 @@ internal class SessionActivity : AppCompatActivity() {
             object : TabLayout.OnTabSelectedListener {
                 override fun onTabSelected(tab: TabLayout.Tab) {
                     viewModel.tabSelected(tab.position)
-                    refreshList()
+
+                    refreshList {
+                        // TODO: we might want to remember the old position?
+                        binding.rvResourcesList.scrollToPosition(0)
+                    }
                 }
 
                 override fun onTabUnselected(tab: TabLayout.Tab?) {}
@@ -130,7 +139,7 @@ internal class SessionActivity : AppCompatActivity() {
         viewModel.favoriteResourcesLiveData.value = viewModel.repo.getFavoritesSync()
     }
 
-    private fun refreshList() {
+    private fun refreshList(afterLoad: () -> Unit = {}) {
         if (viewModel.forceAllResourcesTab()) {
             binding.tabLayout.selectTab(binding.tabLayout.getTabAt(SessionViewModel.RESOURCES_TAB_ALL), true)
         }
@@ -141,7 +150,9 @@ internal class SessionActivity : AppCompatActivity() {
                 View.GONE
             }
 
-        resourcesAdapter.submitList(viewModel.resourcesList())
+        resourcesAdapter.submitList(viewModel.resourcesList()) {
+            afterLoad()
+        }
     }
 
     companion object {

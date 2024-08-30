@@ -2,7 +2,7 @@
 
 use std::net::IpAddr;
 
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use serde::Deserialize;
 
@@ -146,7 +146,10 @@ impl ResourceDescription<ResolvedResourceDescriptionDns> {
         match self {
             ResourceDescription::Dns(r) => r.addresses.iter().copied().map_into().collect_vec(),
             ResourceDescription::Cidr(r) => vec![r.address],
-            ResourceDescription::Internet(_) => vec![],
+            ResourceDescription::Internet(_) => vec![
+                Ipv4Network::DEFAULT_ROUTE.into(),
+                Ipv6Network::DEFAULT_ROUTE.into(),
+            ],
         }
     }
 

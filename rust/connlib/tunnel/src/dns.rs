@@ -10,7 +10,7 @@ use ip_packet::IpPacket;
 use ip_packet::Packet as _;
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 const DNS_TTL: u32 = 1;
@@ -44,12 +44,12 @@ pub(crate) enum ResolveStrategy {
 }
 
 struct KnownHosts {
-    fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
-    ips_to_fqdn: HashMap<IpAddr, DomainName>,
+    fqdn_to_ips: BTreeMap<DomainName, Vec<IpAddr>>,
+    ips_to_fqdn: BTreeMap<IpAddr, DomainName>,
 }
 
 impl KnownHosts {
-    fn new(hosts: HashMap<String, Vec<IpAddr>>) -> KnownHosts {
+    fn new(hosts: BTreeMap<String, Vec<IpAddr>>) -> KnownHosts {
         KnownHosts {
             fqdn_to_ips: fqdn_to_ips_for_known_hosts(&hosts),
             ips_to_fqdn: ips_to_fqdn_for_known_hosts(&hosts),
@@ -87,7 +87,7 @@ impl KnownHosts {
 }
 
 impl StubResolver {
-    pub(crate) fn new(known_hosts: HashMap<String, Vec<IpAddr>>) -> StubResolver {
+    pub(crate) fn new(known_hosts: BTreeMap<String, Vec<IpAddr>>) -> StubResolver {
         StubResolver {
             fqdn_to_ips: Default::default(),
             ips_to_fqdn: Default::default(),
@@ -182,7 +182,7 @@ impl StubResolver {
             tracing::trace!(%pattern, %id, "No match");
         }
 
-        tracing::debug!("No resources matched");
+        tracing::trace!("No resources matched");
 
         None
     }
@@ -392,8 +392,8 @@ fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
 }
 
 fn fqdn_to_ips_for_known_hosts(
-    hosts: &HashMap<String, Vec<IpAddr>>,
-) -> HashMap<DomainName, Vec<IpAddr>> {
+    hosts: &BTreeMap<String, Vec<IpAddr>>,
+) -> BTreeMap<DomainName, Vec<IpAddr>> {
     hosts
         .iter()
         .filter_map(|(d, a)| DomainName::vec_from_str(d).ok().map(|d| (d, a.clone())))
@@ -401,8 +401,8 @@ fn fqdn_to_ips_for_known_hosts(
 }
 
 fn ips_to_fqdn_for_known_hosts(
-    hosts: &HashMap<String, Vec<IpAddr>>,
-) -> HashMap<IpAddr, DomainName> {
+    hosts: &BTreeMap<String, Vec<IpAddr>>,
+) -> BTreeMap<IpAddr, DomainName> {
     hosts
         .iter()
         .filter_map(|(d, a)| {
@@ -593,7 +593,7 @@ mod benches {
     fn match_domain_linear<const NUM_RES: u128>(bencher: divan::Bencher) {
         bencher
             .with_inputs(|| {
-                let mut resolver = StubResolver::new(HashMap::default());
+                let mut resolver = StubResolver::new(BTreeMap::default());
                 let mut rng = rand::thread_rng();
 
                 for n in 0..NUM_RES {

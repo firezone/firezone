@@ -137,8 +137,7 @@ jobs:
           # Exclude debug builds for non-amd64 targets since they won't be used.
           - {stage: debug, arch: {platform: linux/arm/v7}}
           - {stage: debug, arch: {platform: linux/arm64}}
-          # Exclude snownet-tests and http-test-server from perf image builds
-          - {image_prefix: perf, name: {package: snownet-tests}}
+          # Exclude http-test-server from perf image builds
           - {image_prefix: perf, name: {package: http-test-server}}
 
         arch:
@@ -156,9 +155,9 @@ jobs:
             artifact: firezone-client-headless-linux
             image_name: client
             # mark:next-headless-version
-            release_name: headless-client-1.2.0
+            release_name: headless-client-1.2.1
             # mark:next-headless-version
-            version: 1.2.0
+            version: 1.2.1
           - package: firezone-relay
             artifact: firezone-relay
             image_name: relay
@@ -166,12 +165,9 @@ jobs:
             artifact: firezone-gateway
             image_name: gateway
             # mark:next-gateway-version
-            release_name: gateway-1.2.0
+            release_name: gateway-1.3.0
             # mark:next-gateway-version
-            version: 1.2.0
-          - package: snownet-tests
-            artifact: snownet-tests
-            image_name: snownet-tests
+            version: 1.3.0
           - package: http-test-server
             artifact: http-test-server
             image_name: http-test-server
@@ -196,6 +192,8 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cross
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build binaries
         run: |
           set -xe
@@ -304,8 +302,6 @@ jobs:
             PACKAGE=${{ matrix.name.package }}
             TARGET=${{ matrix.arch.target }}
           context: rust
-          build-contexts: |
-            browser-tests=${{ github.workspace }}/scripts/tests/browser
           cache-from: |
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }}
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main
@@ -343,20 +339,18 @@ jobs:
         image_prefix:
           - ${{ inputs.image_prefix }}
 
-        # Exclude snownet-tests and http-test-server from perf image builds
+        # Exclude http-test-server from perf image builds
         exclude:
-          - {image_prefix: perf, image: {name: snownet-tests}}
           - {image_prefix: perf, image: {name: http-test-server}}
 
         image:
           - name: relay
           - name: gateway
             # mark:next-gateway-version
-            version: 1.2.0
+            version: 1.3.0
           - name: client
             # mark:next-client-version
             version: 1.0.6
-          - name: snownet-tests
           - name: http-test-server
     steps:
       - uses: actions/checkout@v4

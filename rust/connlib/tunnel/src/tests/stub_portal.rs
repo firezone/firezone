@@ -6,7 +6,7 @@ use super::{
 };
 use crate::proptest::*;
 use connlib_shared::{
-    messages::{client, gateway, GatewayId, ResourceId},
+    messages::{client, gateway, DnsServer, GatewayId, ResourceId},
     DomainName,
 };
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -16,7 +16,7 @@ use proptest::{
     strategy::{Just, Strategy},
 };
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
@@ -25,12 +25,12 @@ use std::{
 #[derive(Clone, derivative::Derivative)]
 #[derivative(Debug)]
 pub(crate) struct StubPortal {
-    gateways_by_site: HashMap<client::SiteId, HashSet<GatewayId>>,
+    gateways_by_site: BTreeMap<client::SiteId, BTreeSet<GatewayId>>,
 
     #[derivative(Debug = "ignore")]
-    sites_by_resource: HashMap<ResourceId, client::SiteId>,
-    cidr_resources: HashMap<ResourceId, client::ResourceDescriptionCidr>,
-    dns_resources: HashMap<ResourceId, client::ResourceDescriptionDns>,
+    sites_by_resource: BTreeMap<ResourceId, client::SiteId>,
+    cidr_resources: BTreeMap<ResourceId, client::ResourceDescriptionCidr>,
+    dns_resources: BTreeMap<ResourceId, client::ResourceDescriptionDns>,
     internet_resource: client::ResourceDescriptionInternet,
 
     #[derivative(Debug = "ignore")]
@@ -39,20 +39,20 @@ pub(crate) struct StubPortal {
 
 impl StubPortal {
     pub(crate) fn new(
-        gateways_by_site: HashMap<client::SiteId, HashSet<GatewayId>>,
+        gateways_by_site: BTreeMap<client::SiteId, BTreeSet<GatewayId>>,
         gateway_selector: Selector,
-        cidr_resources: HashSet<client::ResourceDescriptionCidr>,
-        dns_resources: HashSet<client::ResourceDescriptionDns>,
+        cidr_resources: BTreeSet<client::ResourceDescriptionCidr>,
+        dns_resources: BTreeSet<client::ResourceDescriptionDns>,
         internet_resource: client::ResourceDescriptionInternet,
     ) -> Self {
         let cidr_resources = cidr_resources
             .into_iter()
             .map(|r| (r.id, r))
-            .collect::<HashMap<_, _>>();
+            .collect::<BTreeMap<_, _>>();
         let dns_resources = dns_resources
             .into_iter()
             .map(|r| (r.id, r))
-            .collect::<HashMap<_, _>>();
+            .collect::<BTreeMap<_, _>>();
 
         let cidr_sites = cidr_resources.iter().map(|(id, r)| {
             (
@@ -87,7 +87,9 @@ impl StubPortal {
         Self {
             gateways_by_site,
             gateway_selector,
-            sites_by_resource: HashMap::from_iter(cidr_sites.chain(dns_sites).chain(internet_site)),
+            sites_by_resource: BTreeMap::from_iter(
+                cidr_sites.chain(dns_sites).chain(internet_site),
+            ),
             cidr_resources,
             dns_resources,
             internet_resource,
@@ -105,10 +107,9 @@ impl StubPortal {
                     .cloned()
                     .map(client::ResourceDescription::Dns),
             )
-            // TODO: Enable once we actually implement the Internet resource
-            // .chain(iter::once(client::ResourceDescription::Internet(
-            //     self.internet_resource.clone(),
-            // )))
+            .chain(iter::once(client::ResourceDescription::Internet(
+                self.internet_resource.clone(),
+            )))
             .collect()
     }
 
@@ -116,7 +117,7 @@ impl StubPortal {
     pub(crate) fn handle_connection_intent(
         &self,
         resource: ResourceId,
-        _connected_gateway_ids: HashSet<GatewayId>,
+        _connected_gateway_ids: BTreeSet<GatewayId>,
     ) -> (GatewayId, client::SiteId) {
         let site_id = self
             .sites_by_resource
@@ -131,7 +132,7 @@ impl StubPortal {
 
     pub(crate) fn map_client_resource_to_gateway_resource(
         &self,
-        resolved_ips: Vec<IpAddr>,
+        resolved_ips: BTreeSet<IpAddr>,
         resource_id: ResourceId,
     ) -> gateway::ResourceDescription<gateway::ResolvedResourceDescriptionDns> {
         let cidr_resource = self.cidr_resources.iter().find_map(|(_, r)| {
@@ -150,7 +151,7 @@ impl StubPortal {
                 name: r.name.clone(),
                 filters: Vec::new(),
                 domain: r.address.clone(),
-                addresses: resolved_ips.clone(),
+                addresses: Vec::from_iter(resolved_ips),
             })
         });
         let internet_resource = Some(gateway::ResourceDescription::Internet(
@@ -196,16 +197,25 @@ impl StubPortal {
             .prop_map(BTreeMap::from_iter)
     }
 
-    pub(crate) fn client(&self) -> impl Strategy<Value = Host<RefClient>> {
+    pub(crate) fn client(
+        &self,
+        system_dns: impl Strategy<Value = Vec<IpAddr>>,
+        upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
+    ) -> impl Strategy<Value = Host<RefClient>> {
         let client_tunnel_ip4 = tunnel_ip4s().next().unwrap();
         let client_tunnel_ip6 = tunnel_ip6s().next().unwrap();
 
-        ref_client_host(Just(client_tunnel_ip4), Just(client_tunnel_ip6))
+        ref_client_host(
+            Just(client_tunnel_ip4),
+            Just(client_tunnel_ip6),
+            system_dns,
+            upstream_dns,
+        )
     }
 
     pub(crate) fn dns_resource_records(
         &self,
-    ) -> impl Strategy<Value = HashMap<DomainName, HashSet<IpAddr>>> {
+    ) -> impl Strategy<Value = BTreeMap<DomainName, BTreeSet<IpAddr>>> {
         self.dns_resources
             .values()
             .map(|resource| {
@@ -221,14 +231,14 @@ impl StubPortal {
                     }
                     _ => resolved_ips()
                         .prop_map(move |resolved_ips| {
-                            HashMap::from([(address.parse().unwrap(), resolved_ips)])
+                            BTreeMap::from([(address.parse().unwrap(), resolved_ips)])
                         })
                         .boxed(),
                 }
             })
             .collect::<Vec<_>>()
             .prop_map(|records| {
-                let mut map = HashMap::default();
+                let mut map = BTreeMap::default();
 
                 for record in records {
                     map.extend(record)

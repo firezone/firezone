@@ -1,5 +1,5 @@
 # Keep synced with `rust-toolchain.toml`
-ARG RUST_VERSION="1.80"
+ARG RUST_VERSION="1.80.1"
 ARG ALPINE_VERSION="3.20"
 ARG CARGO_CHEF_VERSION="0.1.67"
 
@@ -18,8 +18,7 @@ RUN set -xe \
 ## See https://github.com/LukeMathWalker/cargo-chef/issues/231.
 COPY rust-toolchain.toml rust-toolchain.toml
 
-RUN set -xe \
-  && rustup show
+RUN rustup show
 
 WORKDIR /build
 
@@ -36,6 +35,7 @@ FROM chef AS builder
 
 COPY --from=planner /build/recipe.json .
 
+ARG PACKAGE
 RUN set -xe \
   && cargo chef cook --recipe-path recipe.json --bin ${PACKAGE}
 
@@ -47,12 +47,7 @@ RUN cargo build -p ${PACKAGE} $([ -n "${TARGET}" ] && "--target ${TARGET}")
 # Base image which is used to run the application binary
 FROM alpine:${ALPINE_VERSION} AS runtime_base
 
-# Important!  Update this no-op ENV variable when this Dockerfile
-# is updated with the current date. It will force refresh of all
-# of the base images and things like `apk add` won't be using
-# old cached versions when the Dockerfile is built.
-ENV REFRESHED_AT=2023-10-23 \
-  LANG=C.UTF-8 \
+ENV LANG=C.UTF-8 \
   TERM=xterm \
   RUST_BACKTRACE=1 \
   RUST_LOG=str0m=warn,info
@@ -80,45 +75,37 @@ COPY ./docker-init.sh ./docker-init.sh
 FROM runtime_base AS runtime_http-test-server
 COPY ./docker-init.sh ./docker-init.sh
 
-# snownet-tests specific runtime base image
-FROM runtime_base AS runtime_snownet-tests
-COPY ./docker-init.sh ./docker-init.sh
-
 # Funnel package specific base image back into `runtime`
+ARG PACKAGE
 FROM runtime_${PACKAGE} AS runtime
 
 ARG PACKAGE
 ENTRYPOINT ["docker-init.sh"]
 ENV PACKAGE=${PACKAGE}
 
-CMD $PACKAGE
+CMD ${PACKAGE}
 
 # used as a base for dev and test
 FROM runtime AS test
 
-RUN set -xe \
-  && apk add --no-cache iperf3 bind-tools iproute2 jq procps
+RUN apk add --no-cache iperf3 bind-tools iproute2 jq procps
 
 # used for local development
 FROM test AS dev
 ARG TARGET
+ARG PACKAGE
 COPY --from=builder /build/target/${TARGET}/debug/${PACKAGE} .
 
 # Build an image for GitHub Actions which includes debug asserts and more test utilities
 FROM test AS debug
 
-ARG TARGET
 ## Build first with `cross build --target ${TARGET} -p ${PACKAGE} && mv /target/${TARGET}/release/${PACKAGE} .`
+ARG PACKAGE
 COPY ${PACKAGE} .
-
-RUN set -xe \
-  && apk add --no-cache nodejs npm chromium
-COPY --from=browser-tests . .
-RUN npm install
 
 # Build a production image from including a binary compiled on the host
 FROM runtime AS release
 
-ARG TARGET
 ## Build first with `cross build --target ${TARGET} -p ${PACKAGE} --release && mv /target/${TARGET}/release/${PACKAGE} .`
+ARG PACKAGE
 COPY ${PACKAGE} .
