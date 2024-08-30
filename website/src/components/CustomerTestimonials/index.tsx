@@ -58,19 +58,18 @@ const TestimonialBox = ({
   authorImage,
   authorName,
   authorTitle,
-  fontSize = "md",
+  fontSize,
 }: TestimonialBoxProps) => {
   return (
-    <div className="shrink-0 px-8 py-8 bg-[#1B1B1D] flex flex-col rounded-2xl justify-between w-fit max-w-[350px] min-h-[320px]">
+    <div className="shrink-0 p-8 bg-[#1B1B1D] flex flex-col rounded-2xl justify-between w-fit lg:max-w-[320px] lg:min-h-[320px] h-fit">
       <p
         className={`absolute text-[140px] -translate-y-1/3 -z-1 text-white/15 font-semibold ${manrope.className}`}
       >
         "
       </p>
       <p
-        className={`text-${fontSize == "md" ? "md" : "lg"} md:text-${
-          fontSize == "md" ? "md" : "lg"
-        } tracking-wide font-light mb-2 md:mb-6 break-keep italic text-neutral-50 z-10`}
+        className={`text-md  ${fontSize === "md" ? "lg:text-md" : "lg:text-lg"}
+        } tracking-wide font-light mb-6 break-keep italic text-neutral-50 z-10`}
       >
         "{desc}"
       </p>
@@ -116,17 +115,17 @@ export default function CustomerTestimonials() {
 
   return (
     <section className="bg-neutral-950 py-24">
-      <div className="relative flex items-center justify-center max-w-screen-2xl">
-        <div className="px-8 md:px-20 mb-12 md:mb-16">
+      <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-center max-w-screen-2xl">
+        <div className="px-4 sm:px-16 lg:px-10 xl:px-16 mb-12 md:mb-16">
           <div>
             <h3
-              className={`text-white text-3xl leading-5 md:text-4xl lg:text-5xl tracking-tight font-medium inline-block text-nowrap text-left ${manrope.className}`}
+              className={`text-white text-3xl md:text-4xl leading-5 xl:text-5xl tracking-tight font-medium inline-block text-wrap sm:text-nowrap text-left ${manrope.className}`}
             >
               Customers{" "}
               <FaHeart className="text-red-500 w-12 h-12 mx-1 inline-block" />{" "}
               us,
             </h3>
-            <h3 className="text-primary-450 text-3xl leading-5 md:text-4xl lg:text-5xl text-nowrap tracking-tight font-medium mb-6">
+            <h3 className="text-primary-450 text-3xl md:text-4xl leading-12 xl:text-5xl text-wrap sm:text-nowrap tracking-tight font-medium mb-6">
               and we love them back.
             </h3>
             <ActionLink href="/contact/sales" color="white">
@@ -134,29 +133,30 @@ export default function CustomerTestimonials() {
             </ActionLink>
           </div>
         </div>
-
-        <TestimonialBox
-          authorTitle={customerData[1].authorTitle}
-          desc={customerData[1].desc}
-          fontSize="lg"
-          authorImage={customerData[1].authorImage}
-          authorName={customerData[1].authorName}
-        />
-        <div className="flex flex-col pl-2 gap-2">
+        <div className="flex flex-col items-center px-4 sm:px-16 lg:px-0 gap-4 lg:gap-0 lg:flex-row">
           <TestimonialBox
-            fontSize="md"
-            authorTitle={customerData[0].authorTitle}
-            desc={customerData[0].desc}
-            authorImage={customerData[0].authorImage}
-            authorName={customerData[0].authorName}
+            authorTitle={customerData[1].authorTitle}
+            desc={customerData[1].desc}
+            fontSize="lg"
+            authorImage={customerData[1].authorImage}
+            authorName={customerData[1].authorName}
           />
-          <TestimonialBox
-            fontSize="md"
-            authorTitle={customerData[2].authorTitle}
-            desc={customerData[2].desc}
-            authorImage={customerData[2].authorImage}
-            authorName={customerData[2].authorName}
-          />
+          <div className="flex flex-col pl-0 lg:pl-2 lg:gap-2 gap-4">
+            <TestimonialBox
+              fontSize="md"
+              authorTitle={customerData[0].authorTitle}
+              desc={customerData[0].desc}
+              authorImage={customerData[0].authorImage}
+              authorName={customerData[0].authorName}
+            />
+            <TestimonialBox
+              fontSize="md"
+              authorTitle={customerData[2].authorTitle}
+              desc={customerData[2].desc}
+              authorImage={customerData[2].authorImage}
+              authorName={customerData[2].authorName}
+            />
+          </div>
         </div>
       </div>
     </section>
