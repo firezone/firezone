@@ -87,7 +87,6 @@ pub async fn new_dns_notifier(
 ) -> Result<Worker> {
     Worker::new("Firezone DNS monitoring worker", move |tx, stopper_rx| {
         async_dns::worker_thread(tokio_handle, tx, stopper_rx)?;
-        tracing::debug!("DNS monitoring worker thread shut down gracefully");
         Ok(())
     })
 }
@@ -106,7 +105,6 @@ pub async fn new_network_notifier(
                 let _network_change_listener = Listener::new(&com, tx)?;
                 stopper_rx.blocking_recv().ok();
             }
-            tracing::debug!("Network monitoring worker thread shut down gracefully");
             Ok(())
         },
     )
@@ -146,6 +144,7 @@ impl Worker {
     /// Same as `drop`, but you can catch errors
     pub fn close(&mut self) -> Result<()> {
         if let Some(inner) = self.inner.take() {
+            tracing::debug!("Asking worker thread to stop gracefully");
             inner
                 .stopper
                 .send(())
@@ -154,6 +153,7 @@ impl Worker {
                 Err(e) => std::panic::resume_unwind(e),
                 Ok(x) => x?,
             }
+            tracing::debug!("Worker thread stopped gracefully");
         }
         Ok(())
     }
@@ -414,7 +414,7 @@ mod async_dns {
         stopper_rx: oneshot::Receiver<()>,
     ) -> Result<()> {
         let local = LocalSet::new();
-        let task = local.spawn_local(async move {
+        let task = local.run_until(async move {
             let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
             let mut listener_4 = Listener::new(key_ipv4)?;
             let mut listener_6 = Listener::new(key_ipv6)?;
@@ -424,21 +424,16 @@ mod async_dns {
                 let mut fut_4 = pin!(listener_4.notified().fuse());
                 let mut fut_6 = pin!(listener_6.notified().fuse());
                 futures::select! {
-                    _ = fut_4 => {
-                        tx.try_send(())?;
-                    }
-                    _ = fut_6 => {
-                        tx.try_send(())?;
-                    }
                     _ = stop => break,
+                    _ = fut_4 => tx.try_send(())?,
+                    _ = fut_6 => tx.try_send(())?,
                 }
             }
-            tracing::debug!("DNS listener stopping gracefully");
 
             Ok(())
         });
 
-        tokio_handle.block_on(task)?
+        tokio_handle.block_on(task)
     }
 
     /// Listens to one registry key for changes. Callers should await `notified`.
@@ -573,7 +568,6 @@ mod async_dns {
                 .expect("Should be able to `UnregisterWaitEx` in the DNS change listener");
             unsafe { CloseHandle(self.event) }
                 .expect("Should be able to `CloseHandle` in the DNS change listener");
-            tracing::debug!("Gracefully closed DNS change listener");
         }
     }
 
