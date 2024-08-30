@@ -40,12 +40,20 @@ defmodule Web.SignInControllerTest do
       assert query_params["account_slug"] == account.slug
     end
 
-    test "redirects to sign in page when cookie not present", %{account: account} do
+    test "instructs user to restart sign in when cookie not present", %{account: account} do
       conn =
         build_conn()
         |> get(~p"/#{account}/sign_in/client_redirect")
 
       assert redirected_to(conn, 302) =~ ~p"/#{account}/sign_in/client_auth_error"
+    end
+
+    test "displays account name on client auth error page", %{account: account} do
+      conn =
+        build_conn()
+        |> get(~p"/#{account}/sign_in/client_auth_error")
+
+      assert html_response(conn, 200) =~ account.name
     end
   end
 end

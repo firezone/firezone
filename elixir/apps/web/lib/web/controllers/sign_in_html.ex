@@ -30,7 +30,7 @@ defmodule Web.SignInHTML do
         <main class="h-auto pt-16">
           <section>
             <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
-              <.logo />
+              <.hero_logo text={@account.name} />
 
               <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
                 <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
@@ -55,7 +55,7 @@ defmodule Web.SignInHTML do
     <main class="h-auto pt-16">
       <section>
         <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
-          <.logo />
+          <.hero_logo text={@account.name} />
 
           <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
             <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
