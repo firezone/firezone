@@ -7,8 +7,11 @@ use floem::{
 };
 use tao::{
     event_loop::{ControlFlow, EventLoopBuilder},
-    platform::unix::EventLoopBuilderExtUnix as _,
 };
+#[cfg(target_os = "linux")]
+use tao::platform::unix::EventLoopBuilderExtUnix as _;
+#[cfg(target_os = "windows")]
+use tao::platform::windows::EventLoopBuilderExtWindows as _;
 use tray_icon::{Icon, TrayIconBuilder};
 
 fn welcome() -> impl View {

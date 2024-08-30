@@ -40,9 +40,9 @@
         "webviewInstallMode": { "type": "skip" },
         "wix": {
           "bannerPath": "./win_files/banner.png",
-          "componentRefs": ["FirezoneClientIpcService", "FirezoneGuiClient2"],
+          "componentRefs": [],
           "dialogImagePath": "./win_files/install_dialog.png",
-          "fragmentPaths": ["./win_files/client2.wxs", "./win_files/service.wxs"],
+          "fragmentPaths": [],
           "template": "./win_files/main.wxs"
         }
       }
