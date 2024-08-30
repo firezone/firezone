@@ -114,7 +114,7 @@ const TestimonialBox = ({
 export default function CustomerTestimonials() {
 
   return (
-    <section className="bg-neutral-950 py-24">
+    <section className="bg-neutral-950 py-24 flex justify-center">
       <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-center max-w-screen-2xl">
         <div className="px-4 sm:px-16 lg:px-10 xl:px-0 xl:pr-16 mb-12 md:mb-16">
           <div>
