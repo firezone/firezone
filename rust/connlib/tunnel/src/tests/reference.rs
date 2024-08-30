@@ -342,9 +342,14 @@ impl ReferenceStateMachine for ReferenceState {
                         continue;
                     };
 
-                    tracing::debug!("Expecting DNS query via resource");
+                    let Some(gateway) = state.portal.gateway_for_resource(resource).copied() else {
+                        tracing::error!("Unknown gateway for resource");
+                        continue;
+                    };
 
-                    if pending_connections.contains(&resource) {
+                    tracing::debug!(%resource, "Expecting DNS query via resource");
+
+                    if pending_connections.contains(&gateway) {
                         // DNS server is a CIDR resource and a previous query of this batch is already triggering a connection.
                         // That connection isn't ready yet so further queries to the same resource are dropped until then.
                         continue;
@@ -358,7 +363,7 @@ impl ReferenceStateMachine for ReferenceState {
                         state.client.exec_mut(|client| {
                             client.connect_to_internet_or_cidr_resource(resource)
                         });
-                        pending_connections.insert(resource);
+                        pending_connections.insert(gateway);
                         continue;
                     }
 
