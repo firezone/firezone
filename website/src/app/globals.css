@@ -38,6 +38,10 @@
     );
   }
 
+  .animate-left {
+    animation: 28s slide infinite linear;
+  }
+
   /* For WebKit browsers (Chrome, Safari) */
   .dark-scroll::-webkit-scrollbar {
     width: 12px; /* Adjust the width of the scrollbar */

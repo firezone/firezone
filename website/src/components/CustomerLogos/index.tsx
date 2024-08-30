@@ -4,11 +4,8 @@ import Marquee from "react-fast-marquee";
 
 export function CustomerLogosGrayscale() {
   return (
-    <div className="fade-side inline-block overflow-hidden whitespace-nowrap mx-auto">
-      <div
-        className="inline-flex w-fit"
-        style={{ animation: "14s slide infinite linear" }}
-      >
+    <div className="lg:fade-side inline-block overflow-hidden whitespace-nowrap mx-auto">
+      <div className="animate-left inline-flex w-fit">
         <Link
           className="h-12 mr-20 place-content-center"
           href="https://corrdyn.com"
@@ -88,10 +85,7 @@ export function CustomerLogosGrayscale() {
           />
         </Link>
       </div>
-      <div
-        className="inline-flex w-fit whitespace-nowrap"
-        style={{ animation: "14s slide infinite linear" }}
-      >
+      <div className="animate-left inline-flex w-fit whitespace-nowrap">
         <Link
           className="h-12 mr-20 place-content-center"
           href="https://corrdyn.com"
