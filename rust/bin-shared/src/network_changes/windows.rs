@@ -66,7 +66,8 @@
 
 use crate::platform::DnsControlMethod;
 use anyhow::{anyhow, Context as _, Result};
-use tokio::sync::mpsc;
+use std::thread;
+use tokio::sync::{mpsc, oneshot};
 use windows::{
     core::{Interface, Result as WinResult, GUID},
     Win32::{
@@ -102,8 +103,8 @@ pub struct NetworkNotifier {
 
 /// Needed so that `Drop` can consume the oneshot Sender and the thread's JoinHandle
 struct WorkerInner {
-    thread: std::thread::JoinHandle<Result<()>>,
-    stopper: tokio::sync::oneshot::Sender<()>,
+    thread: thread::JoinHandle<Result<()>>,
+    stopper: oneshot::Sender<()>,
 }
 
 impl NetworkNotifier {
@@ -226,6 +227,9 @@ struct Callback {
 }
 
 impl<'a> Drop for Listener<'a> {
+    // Might never be called. Due to the way the scopes ended up,
+    // we crash the GUI process before we can get back to the main thread
+    // and drop the DNS listeners
     fn drop(&mut self) {
         self.close().unwrap();
     }
@@ -298,7 +302,8 @@ impl<'a> Listener<'a> {
     }
 }
 
-impl INetworkEvents_Impl for Callback {
+// <https://github.com/microsoft/windows-rs/pull/3065>
+impl INetworkEvents_Impl for Callback_Impl {
     fn NetworkAdded(&self, _networkid: &GUID) -> WinResult<()> {
         Ok(())
     }
@@ -433,7 +438,7 @@ mod async_dns {
             let tx = Box::new(tx);
             let tx_ptr: *const _ = tx.deref();
             let event = unsafe { CreateEventA(None, false, false, None) }?;
-            let mut wait_handle = HANDLE(0isize);
+            let mut wait_handle = HANDLE::default();
 
             // The docs say that `RegisterWaitForSingleObject` uses "a worker thread" from
             // "the thread pool".
@@ -510,7 +515,7 @@ mod async_dns {
         //
         // > Each time a process calls RegNotifyChangeKeyValue with the same set of parameters, it establishes another wait operation, creating a resource leak. Therefore, check that you are not calling RegNotifyChangeKeyValue with the same parameters until the previous wait operation has completed.
         fn register_callback(&mut self) -> Result<()> {
-            let key_handle = Registry::HKEY(self.key.raw_handle());
+            let key_handle = Registry::HKEY(self.key.raw_handle() as *mut c_void);
             let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
                 | Registry::REG_NOTIFY_CHANGE_LAST_SET
                 | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
@@ -564,7 +569,7 @@ mod async_dns {
             let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
                 | Registry::REG_NOTIFY_CHANGE_LAST_SET
                 | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
-            let key_handle = Registry::HKEY(key.raw_handle());
+            let key_handle = Registry::HKEY(key.raw_handle() as *mut c_void);
             unsafe {
                 Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, event, true)
             }
