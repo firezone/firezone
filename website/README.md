@@ -9,7 +9,7 @@ First, install dependencies and populate the `timestamps.json` file:
 pnpm setup
 ```
 
-Next, create files `.env.local` and `.env.development.local` in the root folder. 
+Next, create files `.env.local` and `.env.development.local` in this directory. 
 
 Put this in `.env.local`:
 
