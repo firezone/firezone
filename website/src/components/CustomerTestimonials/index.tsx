@@ -6,6 +6,7 @@ import Link from "next/link";
 import { HiArrowLeft, HiArrowRight } from "react-icons/hi2";
 import { FaHeart } from "react-icons/fa";
 import { manrope } from "@/lib/fonts";
+import ActionLink from "../ActionLink";
 
 const customerData = [
   {
@@ -49,6 +50,7 @@ interface TestimonialBoxProps {
   authorImage: string;
   authorName: string;
   authorTitle: string;
+  fontSize: string;
 }
 
 const TestimonialBox = ({
@@ -56,19 +58,29 @@ const TestimonialBox = ({
   authorImage,
   authorName,
   authorTitle,
+  fontSize = "md",
 }: TestimonialBoxProps) => {
   return (
-    <div className="first:sm:ml-48 last:sm:mr-48 shrink-0 px-8 md:px-12 py-8 md:py-12 bg-[#1B1B1D] snap-center flex flex-col rounded-2xl justify-between w-fit max-w-[540px] h-84">
-      <p className="text-md md:text-lg tracking-wide font-light mb-2 md:mb-6 break-keep italic text-neutral-50">
+    <div className="shrink-0 px-8 py-8 bg-[#1B1B1D] flex flex-col rounded-2xl justify-between w-fit max-w-[350px] min-h-[320px]">
+      <p
+        className={`absolute text-[140px] -translate-y-1/3 -z-1 text-white/15 font-semibold ${manrope.className}`}
+      >
+        "
+      </p>
+      <p
+        className={`text-${fontSize == "md" ? "md" : "lg"} md:text-${
+          fontSize == "md" ? "md" : "lg"
+        } tracking-wide font-light mb-2 md:mb-6 break-keep italic text-neutral-50 z-10`}
+      >
         "{desc}"
       </p>
-      <div className="flex gap-4 items-center">
+      <div className="flex gap-4 customerData[1]s-center">
         <Image
           src={authorImage}
           alt="author portrait"
-          width={128}
-          height={128}
-          className="w-10 h-10 sm:h-12 sm:h-12 md:h-16 md:w-16 rounded-full"
+          width={60}
+          height={60}
+          className="w-10 h-10 sm:h-12 md:h-12 md:w-12 rounded-full"
         />
         <div>
           <p className="text-md md:text-lg text-neutral-50">{authorName}</p>
@@ -82,65 +94,69 @@ const TestimonialBox = ({
 };
 
 export default function CustomerTestimonials() {
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // const scrollRef = useRef<HTMLDivElement>(null);
 
-  const scrollLeft = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollBy({
-        left: -540,
-        behavior: "smooth",
-      });
-    }
-  };
+  // const scrollLeft = () => {
+  //   if (scrollRef.current) {
+  //     scrollRef.current.scrollBy({
+  //       left: -540,
+  //       behavior: "smooth",
+  //     });
+  //   }
+  // };
 
-  const scrollRight = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollBy({
-        left: 540,
-        behavior: "smooth",
-      });
-    }
-  };
+  // const scrollRight = () => {
+  //   if (scrollRef.current) {
+  //     scrollRef.current.scrollBy({
+  //       left: 540,
+  //       behavior: "smooth",
+  //     });
+  //   }
+  // };
 
   return (
     <section className="bg-neutral-950 py-24">
-      <div className="relative mx-auto max-w-screen-lg">
-        <div className="px-8 sm:px-16 md:px-24 mb-12 md:mb-16">
+      <div className="relative flex items-center justify-center max-w-screen-2xl">
+        <div className="px-8 md:px-20 mb-12 md:mb-16">
           <div>
             <h3
-              className={`text-white text-3xl leading-5 md:text-4xl lg:text-5xl tracking-tight font-medium inline-block text-left mb-2 ${manrope.className}`}
+              className={`text-white text-3xl leading-5 md:text-4xl lg:text-5xl tracking-tight font-medium inline-block text-nowrap text-left ${manrope.className}`}
             >
               Customers{" "}
               <FaHeart className="text-red-500 w-12 h-12 mx-1 inline-block" />{" "}
               us,
             </h3>
-            <p className="text-neutral-500 text-2xl md:text-3xl font-medium">
+            <h3 className="text-primary-450 text-3xl leading-5 md:text-4xl lg:text-5xl text-nowrap tracking-tight font-medium mb-6">
               and we love them back.
-            </p>
+            </h3>
+            <ActionLink href="/contact/sales" color="white">
+              Book a demo
+            </ActionLink>
           </div>
         </div>
 
-        <div
-          ref={scrollRef}
-          className="sm:fade-side flex gap-12 px-8 sm:px-0 w-full snap-x snap-mandatory pb-24 sm:pb-12 overflow-x-auto"
-        >
-          {customerData.map((item, index) => (
-            <TestimonialBox
-              key={index}
-              authorTitle={item.authorTitle}
-              desc={item.desc}
-              authorImage={item.authorImage}
-              authorName={item.authorName}
-            />
-          ))}
-        </div>
-        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 sm:left-auto sm:translate-x-0 sm:bottom-auto sm:right-16 sm:top-8 flex items-center gap-16">
-          <button onClick={scrollLeft}>
-            <HiArrowLeft className="hover:bg-[#1b1b1d] cursor-pointer rounded-full border p-1.5 text-neutral-50 w-8 h-8" />
-          </button>
-          <button onClick={scrollRight}>
-            <HiArrowRight className="hover:bg-[#1b1b1d] cursor-pointer rounded-full border p-1.5 text-neutral-50 w-8 h-8" />
-          </button>
+        <TestimonialBox
+          authorTitle={customerData[1].authorTitle}
+          desc={customerData[1].desc}
+          fontSize="lg"
+          authorImage={customerData[1].authorImage}
+          authorName={customerData[1].authorName}
+        />
+        <div className="flex flex-col pl-2 gap-2">
+          <TestimonialBox
+            fontSize="md"
+            authorTitle={customerData[0].authorTitle}
+            desc={customerData[0].desc}
+            authorImage={customerData[0].authorImage}
+            authorName={customerData[0].authorName}
+          />
+          <TestimonialBox
+            fontSize="md"
+            authorTitle={customerData[2].authorTitle}
+            desc={customerData[2].desc}
+            authorImage={customerData[2].authorImage}
+            authorName={customerData[2].authorName}
+          />
         </div>
       </div>
     </section>
