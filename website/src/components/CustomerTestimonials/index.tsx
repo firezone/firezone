@@ -7,7 +7,7 @@ import { FaQuoteLeft } from "react-icons/fa";
 import { HiArrowLeft, HiArrowRight } from "react-icons/hi2";
 import { FaHeart } from "react-icons/fa";
 import { manrope } from "@/lib/fonts";
-import ActionLink from "../ActionLink";
+import ActionLink from "@/components/ActionLink";
 import { Route } from "next";
 
 const customerData = [
@@ -77,8 +77,6 @@ const TestimonialBox = ({
   return (
     <div className="shrink-0 p-6 md:p-8 bg-[#1B1B1D] flex flex-col rounded-2xl justify-between w-fit lg:max-w-[320px] xl:max-w-[340px] lg:min-h-[320px] h-fit">
       <FaQuoteLeft
-        width={32}
-        height={32}
         className="absolute text-white/10 -translate-y-1/3 -z-1 w-10 h-10 sm:h-12 md:h-12 md:w-12"
       />
       <p
