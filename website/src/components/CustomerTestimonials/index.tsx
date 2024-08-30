@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 import Image from "next/image";
-import Link from "next/link";
+import { FaQuoteLeft } from "react-icons/fa";
 import { HiArrowLeft, HiArrowRight } from "react-icons/hi2";
 import { FaHeart } from "react-icons/fa";
 import { manrope } from "@/lib/fonts";
@@ -61,15 +61,15 @@ const TestimonialBox = ({
   fontSize,
 }: TestimonialBoxProps) => {
   return (
-    <div className="shrink-0 p-8 bg-[#1B1B1D] flex flex-col rounded-2xl justify-between w-fit lg:max-w-[320px] lg:min-h-[320px] h-fit">
-      <p
-        className={`absolute text-[140px] -translate-y-1/3 -z-1 text-white/15 font-semibold ${manrope.className}`}
-      >
-        "
-      </p>
+    <div className="shrink-0 p-6 md:p-8 bg-[#1B1B1D] flex flex-col rounded-2xl justify-between w-fit lg:max-w-[320px] xl:max-w-[340px] lg:min-h-[320px] h-fit">
+      <FaQuoteLeft
+        width={32}
+        height={32}
+        className="absolute text-white/10 -translate-y-1/3 -z-1 w-10 h-10 sm:h-12 md:h-12 md:w-12"
+      />
       <p
         className={`text-md  ${fontSize === "md" ? "lg:text-md" : "lg:text-lg"}
-        } tracking-wide font-light mb-6 break-keep italic text-neutral-50 z-10`}
+         tracking-wide font-light mb-6 break-keep italic text-neutral-50 z-10`}
       >
         "{desc}"
       </p>
@@ -116,16 +116,16 @@ export default function CustomerTestimonials() {
   return (
     <section className="bg-neutral-950 py-24">
       <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-center max-w-screen-2xl">
-        <div className="px-4 sm:px-16 lg:px-10 xl:px-16 mb-12 md:mb-16">
+        <div className="px-4 sm:px-16 lg:px-10 xl:px-0 xl:pr-16 mb-12 md:mb-16">
           <div>
             <h3
               className={`text-white text-3xl md:text-4xl leading-5 xl:text-5xl tracking-tight font-medium inline-block text-wrap sm:text-nowrap text-left ${manrope.className}`}
             >
               Customers{" "}
-              <FaHeart className="text-red-500 w-12 h-12 mx-1 inline-block" />{" "}
+              <FaHeart className="text-primary-450 w-12 h-12 mx-1 inline-block" />{" "}
               us,
             </h3>
-            <h3 className="text-primary-450 text-3xl md:text-4xl leading-12 xl:text-5xl text-wrap sm:text-nowrap tracking-tight font-medium mb-6">
+            <h3 className="text-neutral-600 text-3xl md:text-4xl leading-12 xl:text-5xl text-wrap sm:text-nowrap tracking-tight font-medium mb-6">
               and we love them back.
             </h3>
             <ActionLink href="/contact/sales" color="white">
