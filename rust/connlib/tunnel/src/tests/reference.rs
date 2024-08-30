@@ -16,7 +16,7 @@ use proptest_state_machine::ReferenceStateMachine;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     fmt, iter,
-    net::{IpAddr, SocketAddr},
+    net::IpAddr,
 };
 
 /// The reference state machine of the tunnel.
@@ -246,7 +246,10 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .with_if_not_empty(
                 5,
-                (state.all_domains(), state.reachable_dns_servers()),
+                (
+                    state.all_domains(),
+                    Vec::from_iter(state.client.inner().expected_dns_servers()),
+                ),
                 |(domains, dns_servers)| {
                     dns_queries(sample::select(domains), sample::select(dns_servers))
                         .prop_map(Transition::SendDnsQueries)
@@ -323,6 +326,16 @@ impl ReferenceStateMachine for ReferenceState {
                 let mut pending_connections = HashSet::new();
 
                 for query in queries {
+                    if state
+                        .client
+                        .sending_socket_for(query.dns_server.ip())
+                        .is_none()
+                    {
+                        tracing::debug!(server = %query.dns_server, "No socket for DNS server, query can't be sent");
+
+                        continue;
+                    }
+
                     // Some queries get answered locally.
                     if state
                         .client
@@ -631,18 +644,6 @@ impl ReferenceState {
                     .keys()
                     .map(|h| DomainName::vec_from_str(h).unwrap()),
             )
-            .collect()
-    }
-
-    fn reachable_dns_servers(&self) -> Vec<SocketAddr> {
-        self.client
-            .inner()
-            .expected_dns_servers()
-            .into_iter()
-            .filter(|s| match s {
-                SocketAddr::V4(_) => self.client.ip4.is_some(),
-                SocketAddr::V6(_) => self.client.ip6.is_some(),
-            })
             .collect()
     }
 
