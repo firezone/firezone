@@ -114,25 +114,6 @@ const TestimonialBox = ({
 };
 
 export default function CustomerTestimonials() {
-  // const scrollRef = useRef<HTMLDivElement>(null);
-
-  // const scrollLeft = () => {
-  //   if (scrollRef.current) {
-  //     scrollRef.current.scrollBy({
-  //       left: -540,
-  //       behavior: "smooth",
-  //     });
-  //   }
-  // };
-
-  // const scrollRight = () => {
-  //   if (scrollRef.current) {
-  //     scrollRef.current.scrollBy({
-  //       left: 540,
-  //       behavior: "smooth",
-  //     });
-  //   }
-  // };
 
   return (
     <section className="bg-neutral-950 py-24">
