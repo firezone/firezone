@@ -1,162 +1,102 @@
-use std::{
-    collections::{HashMap, HashSet},
-    net::IpAddr,
-    ops::RangeInclusive,
-};
+use std::{collections::HashMap, net::IpAddr, ops::RangeInclusive};
 
-use connlib_shared::messages::{client::ResourceDescription, Filters, ResourceId};
-use ip_network::IpNetwork;
+use connlib_shared::messages::{client::ResourceDescription, ResourceId};
+use ip_network::{Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
+use ip_packet::{IpPacket, Protocol};
 use itertools::Itertools;
-use rangemap::{RangeInclusiveMap, RangeMap};
+use rangemap::RangeInclusiveMap;
 
 pub(crate) struct ResourceRoutingTable {
-    table: IpNetworkTable<ResourceMap>,
+    table: IpNetworkTable<FilterMap>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum ProtocolDest {
-    Tcp(u16),
-    Udp(u16),
-    Icmp,
+#[derive(Default, Clone)]
+pub struct FilterMap {
+    tcp: RangeInclusiveMap<u16, ResourceId>,
+    udp: RangeInclusiveMap<u16, ResourceId>,
+    icmp: Option<ResourceId>,
+    permit_all: Option<ResourceId>,
 }
 
-impl PartialOrd for ProtocolDest {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match (self, other) {
-            (ProtocolDest::Tcp(a), ProtocolDest::Tcp(b)) => a.partial_cmp(b),
-            (ProtocolDest::Udp(a), ProtocolDest::Udp(b)) => a.partial_cmp(b),
-            _ => None,
-        }
+impl FilterMap {
+    fn match_packet(&self, packet: &IpPacket) -> Option<ResourceId> {
+        let maybe_resource = match packet.destination_protocol() {
+            Ok(Protocol::Tcp(tcp)) => self.tcp.get(&tcp).cloned(),
+            Ok(Protocol::Udp(udp)) => self.udp.get(&udp).cloned(),
+            Ok(Protocol::Icmp(_)) => self.icmp.clone(),
+            Err(_) => None,
+        };
+
+        maybe_resource.or(self.permit_all.clone())
     }
 }
 
-#[derive(Default)]
-struct ResourceMap {
-    map: RangeInclusiveMap<ProtocolDest, ResourceId>,
-}
-
-fn resource_map_from_fitlers(filters: &Filters, id: ResourceId) -> ResourceMap {
-    let mut resource_map = ResourceMap::default();
-    if filters.is_empty() {
-        resource_map.udp.insert(0..=u16::MAX, id);
-        resource_map.tcp.insert(0..=u16::MAX, id);
-        resource_map.icmp = Some(id);
-    }
-
-    for filter in filters {
-        match filter {
-            connlib_shared::messages::Filter::Udp(p) => resource_map
-                .udp
-                .insert(p.port_range_start..=p.port_range_end, id),
-            connlib_shared::messages::Filter::Tcp(p) => resource_map
-                .tcp
-                .insert(p.port_range_start..=p.port_range_end, id),
-            connlib_shared::messages::Filter::Icmp => {
-                resource_map.icmp = Some(id);
-            }
-        }
-    }
-
-    resource_map
-}
-
-// Note if no intersection this function is wrong
-fn range_intersection(a: &RangeInclusive<u16>, b: &RangeInclusive<u16>) -> RangeInclusive<u16> {
-    *(a.start()).max(b.start())..=*(a.end()).min(b.end())
-}
-
-// TODO: This might take more parameters
-fn udp_priority(a: &ResourceDescription, b: &ResourceDescription) -> ResourceId {
-    todo!()
-}
-
-// TODO: This might take more parameters
-fn tcp_priority(a: &ResourceDescription, b: &ResourceDescription) -> ResourceId {
-    todo!()
-}
-
-// TODO: This might take more parameters
-fn icmp_priority(a: &ResourceDescription, b: &ResourceDescription) -> ResourceId {
-    todo!()
-}
-
-fn add_range(
+fn non_replacing_insert(
     map: &mut RangeInclusiveMap<u16, ResourceId>,
     range: &RangeInclusive<u16>,
-    resource: &ResourceDescription,
-    resources: &HashMap<ResourceId, ResourceDescription>,
-    priority: impl Fn(&ResourceDescription, &ResourceDescription) -> ResourceId,
+    id: ResourceId,
 ) {
-    let mut intersections = Vec::new();
-    let overlaps = map.overlapping(range);
-    // Done in 2 phases to satisfy the borrow checker
-    for (overlap, id) in overlaps {
-        let intersection = range_intersection(overlap, range);
-        intersections.push((intersection, resource.id()));
-    }
-
-    for (intersection, id) in intersections {
-        map.insert(
-            intersection,
-            priority(resource, resources.get(&id).expect("TODO: inconsistency")),
-        );
-    }
-
-    let gaps = map.gaps(&range).collect_vec();
-
-    // gaps_mut would let us do this without cloning
+    let gaps = map.gaps(range).collect_vec();
     for gap in gaps {
-        map.insert(gap, resource.id());
-    }
-}
-
-fn insert_resource(
-    table: &mut IpNetworkTable<ResourceMap>,
-    address: impl Into<IpNetwork> + Copy,
-    resource: &ResourceDescription,
-    resources: &HashMap<ResourceId, ResourceDescription>,
-) {
-    let Some(route) = table.exact_match_mut(address) else {
-        table.insert(
-            address,
-            resource_map_from_fitlers(&resource.filters(), resource.id()),
-        );
-        return;
-    };
-
-    for f in resource.filters() {
-        match f {
-            connlib_shared::messages::Filter::Udp(p) => {
-                let range = p.port_range_start..=p.port_range_end;
-                add_range(&mut route.udp, &range, resource, resources, udp_priority);
-            }
-            connlib_shared::messages::Filter::Tcp(p) => {
-                let range = p.port_range_start..=p.port_range_end;
-                add_range(&mut route.udp, &range, resource, resources, tcp_priority);
-            }
-            connlib_shared::messages::Filter::Icmp => {
-                let Some(id) = route.icmp else {
-                    route.icmp = Some(resource.id());
-                    return;
-                };
-
-                route.icmp = Some(icmp_priority(
-                    resource,
-                    resources.get(&id).expect("TODO: consistency"),
-                ));
-            }
-        }
+        map.insert(gap, id);
     }
 }
 
 impl ResourceRoutingTable {
-    fn calculate_table<'a>(
+    pub(crate) fn calculate_table(
         resources: HashMap<ResourceId, ResourceDescription>,
     ) -> ResourceRoutingTable {
-        let mut table = IpNetworkTable::new();
-        for resource in resources {}
+        let mut table: IpNetworkTable<FilterMap> = IpNetworkTable::new();
+        for resource in resources.values().sorted_by_key(|r| r.id()) {
+            match resource {
+                ResourceDescription::Cidr(cidr) => {
+                    if table.exact_match_mut(cidr.address).is_none() {
+                        table.insert(cidr.address, Default::default());
+                    }
+
+                    let filter_table = table.exact_match_mut(cidr.address).unwrap();
+                    if cidr.filters.is_empty() {
+                        filter_table.permit_all = Some(cidr.id);
+                    }
+
+                    for filter in &cidr.filters {
+                        match filter {
+                            connlib_shared::messages::Filter::Udp(udp) => {
+                                non_replacing_insert(&mut filter_table.udp, &udp.range(), cidr.id);
+                            }
+                            connlib_shared::messages::Filter::Tcp(tcp) => {
+                                non_replacing_insert(&mut filter_table.tcp, &tcp.range(), cidr.id);
+                            }
+                            connlib_shared::messages::Filter::Icmp => {
+                                filter_table.icmp.get_or_insert(cidr.id);
+                            }
+                        }
+                    }
+                }
+                ResourceDescription::Internet(internet) => {
+                    let mut filter_table: FilterMap = FilterMap {
+                        permit_all: Some(internet.id),
+                        ..Default::default()
+                    };
+
+                    filter_table.permit_all = Some(internet.id);
+
+                    table.insert(Ipv4Network::DEFAULT_ROUTE, filter_table.clone());
+                    table.insert(Ipv6Network::DEFAULT_ROUTE, filter_table);
+                }
+                ResourceDescription::Dns(_) => {}
+            }
+        }
 
         ResourceRoutingTable { table }
+    }
+
+    pub(crate) fn resource_id_by_dest_and_port(&self, packet: &IpPacket) -> Option<ResourceId> {
+        let possible_routes = self.table.matches(packet.destination());
+        // TODO: we need these routes to be ordered with more specific to less
+        for (_, route) in possible_routes {
+            route.match_packet(packet)
+        }
     }
 }

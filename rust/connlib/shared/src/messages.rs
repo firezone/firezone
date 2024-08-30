@@ -1,5 +1,8 @@
 //! Message types that are used by both the gateway and client.
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    ops::RangeInclusive,
+};
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
 use ip_network::IpNetwork;
@@ -33,6 +36,12 @@ pub struct PortRange {
     pub port_range_end: u16,
     #[serde(default = "min_port")]
     pub port_range_start: u16,
+}
+
+impl PortRange {
+    pub fn range(&self) -> RangeInclusive<u16> {
+        self.port_range_start..=self.port_range_end
+    }
 }
 
 // Note: these 2 functions are needed since serde doesn't yet support default_value

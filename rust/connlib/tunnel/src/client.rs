@@ -1685,6 +1685,7 @@ mod proptests {
             name: resource.name,
             address_description: resource.address_description,
             sites: resource.sites,
+            filters: vec![],
         };
 
         client_state.add_resource(ResourceDescription::Cidr(dns_as_cidr_resource.clone()));
