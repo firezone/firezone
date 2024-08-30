@@ -74,6 +74,7 @@ defmodule API.Client.Channel do
           ]
         )
 
+      # We pre-filter them before subscribing to events to avoid accidentally rendering them later
       resources = Policies.pre_filter_non_conforming_resources(resources, socket.assigns.client)
 
       # We subscribe for all resource events but only care about update events,
@@ -781,6 +782,9 @@ defmodule API.Client.Channel do
 
   def map_or_drop_compatible_resource(resource, client_or_gateway_version) do
     cond do
+      resource.gateway_groups == [] ->
+        :drop
+
       resource.type == :internet and Version.match?(client_or_gateway_version, ">= 1.3.0") ->
         {:cont, resource}
 
