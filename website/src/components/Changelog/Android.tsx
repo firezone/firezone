@@ -10,7 +10,7 @@ export default function Android() {
       title="Android"
     >
       {/*
-      <Entry version="1.2.1" date={new Date(todo)}>
+      <Entry version="1.3.0" date={new Date(todo)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6424">
             Fixes a bug where packets would be lost when a connection is first
@@ -23,6 +23,9 @@ export default function Android() {
           <ChangeItem pull="6495">
           Fixes a bug where the Firezone tunnel wasn't shutdown properly if you disconnect
           the VPN in system settings.
+          </ChangeItem>
+          <ChangeItem pull="6434">
+          Adds the Internet Resource feature.
           </ChangeItem>
         </ul>
       </Entry>
