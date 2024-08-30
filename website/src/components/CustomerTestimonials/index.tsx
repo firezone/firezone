@@ -7,7 +7,7 @@ import { FaQuoteLeft } from "react-icons/fa";
 import { HiArrowLeft, HiArrowRight } from "react-icons/hi2";
 import { FaHeart } from "react-icons/fa";
 import { manrope } from "@/lib/fonts";
-import ActionLink from "../ActionLink";
+import ActionLink from "@/components/ActionLink";
 import { Route } from "next";
 
 const customerData = [
