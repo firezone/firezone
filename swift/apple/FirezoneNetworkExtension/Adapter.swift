@@ -52,7 +52,8 @@ class Adapter {
   /// Track our last fetched DNS resolvers to know whether to tell connlib they've updated
   private var lastFetchedResolvers: [String] = []
 
-  /// Used to avoid needlessly sending resets to connlib while still triggering reset
+  /// Remembers the last _relevant_ path update.
+  /// A path update is considered relevant if certain properties change that require us to reset connlib's network state. 
   private var lastRelevantPath: Network.NWPath?
 
   /// Private queue used to ensure consistent ordering among path update and connlib callbacks
