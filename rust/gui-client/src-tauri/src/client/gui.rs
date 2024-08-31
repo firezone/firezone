@@ -17,6 +17,7 @@ use firezone_headless_client::{
 };
 use secrecy::{ExposeSecret, SecretString};
 use std::{
+    collections::BTreeSet,
     path::PathBuf,
     str::FromStr,
     time::{Duration, Instant},
@@ -441,6 +442,16 @@ impl Status {
             | Status::WaitingForTunnel { .. } => true,
         }
     }
+
+    fn internet_resource(&self) -> Option<ResourceDescription> {
+        #[allow(clippy::wildcard_enum_match_arm)]
+        match self {
+            Status::TunnelReady { resources } => {
+                resources.iter().find(|r| r.is_internet_resource()).cloned()
+            }
+            _ => None,
+        }
+    }
 }
 
 struct Controller {
@@ -621,12 +632,12 @@ impl Controller {
                 self.refresh_favorite_resources().await?;
             }
             Req::SystemTrayMenu(TrayMenuEvent::RetryPortalConnection) => self.try_retry_connection().await?,
-            Req::SystemTrayMenu(TrayMenuEvent::EnableResource(resource_id)) => {
-                self.advanced_settings.disabled_resources.remove(&resource_id);
+            Req::SystemTrayMenu(TrayMenuEvent::EnableInternetResource) => {
+                self.advanced_settings.internet_resource_enabled = Some(true);
                 self.update_disabled_resources().await?;
             }
-            Req::SystemTrayMenu(TrayMenuEvent::DisableResource(resource_id)) => {
-                self.advanced_settings.disabled_resources.insert(resource_id);
+            Req::SystemTrayMenu(TrayMenuEvent::DisableInternetResource) => {
+                self.advanced_settings.internet_resource_enabled = Some(false);
                 self.update_disabled_resources().await?;
             }
             Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
@@ -787,15 +798,18 @@ impl Controller {
     async fn update_disabled_resources(&mut self) -> Result<()> {
         settings::save(&self.advanced_settings).await?;
 
-        let Status::TunnelReady { resources } = &self.status else {
-            bail!("Tunnel is not ready");
-        };
+        let internet_resource = self
+            .status
+            .internet_resource()
+            .ok_or(anyhow!("Tunnel not ready"))?;
 
-        let disabled_resources = resources
-            .iter()
-            .filter_map(|r| r.can_be_disabled().then_some(r.id()))
-            .filter(|id| self.advanced_settings.disabled_resources.contains(id))
-            .collect();
+        let mut disabled_resources = BTreeSet::new();
+
+        if !self.advanced_settings.internet_resource_enabled()
+            && internet_resource.can_be_disabled()
+        {
+            disabled_resources.insert(internet_resource.id());
+        }
 
         self.ipc_client
             .send_msg(&SetDisabledResources(disabled_resources))
@@ -827,7 +841,9 @@ impl Controller {
                     system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
                         actor_name: &auth_session.actor_name,
                         favorite_resources: &self.advanced_settings.favorite_resources,
-                        disabled_resources: &self.advanced_settings.disabled_resources,
+                        internet_resource_enabled: &self
+                            .advanced_settings
+                            .internet_resource_enabled,
                         resources,
                     })
                 }

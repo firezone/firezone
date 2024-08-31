@@ -82,7 +82,7 @@ pub(crate) struct SignedIn<'a> {
     pub(crate) actor_name: &'a str,
     pub(crate) favorite_resources: &'a HashSet<ResourceId>,
     pub(crate) resources: &'a [ResourceDescription],
-    pub(crate) disabled_resources: &'a HashSet<ResourceId>,
+    pub(crate) internet_resource_enabled: &'a Option<bool>,
 }
 
 impl<'a> SignedIn<'a> {
@@ -103,17 +103,17 @@ impl<'a> SignedIn<'a> {
     fn resource_submenu(&self, res: &ResourceDescription) -> Menu {
         let mut submenu = Menu::default().resource_description(res);
 
-        if !res.is_internet_resource() {
-            self.add_favorite_toggle(&mut submenu, res.id());
+        if res.is_internet_resource() && res.can_be_disabled() {
+            submenu.add_separator();
+            if self.is_internet_resource_enabled() {
+                submenu.add_item(item(Event::DisableInternetResource, DISABLE));
+            } else {
+                submenu.add_item(item(Event::EnableInternetResource, ENABLE));
+            }
         }
 
-        if res.can_be_disabled() {
-            submenu.add_separator();
-            if self.is_enabled(res) {
-                submenu.add_item(item(Event::DisableResource(res.id()), DISABLE));
-            } else {
-                submenu.add_item(item(Event::EnableResource(res.id()), ENABLE));
-            }
+        if !res.is_internet_resource() {
+            self.add_favorite_toggle(&mut submenu, res.id());
         }
 
         if let Some(site) = res.sites().first() {
@@ -134,8 +134,8 @@ impl<'a> SignedIn<'a> {
         }
     }
 
-    fn is_enabled(&self, res: &ResourceDescription) -> bool {
-        !self.disabled_resources.contains(&res.id())
+    fn is_internet_resource_enabled(&self) -> bool {
+        self.internet_resource_enabled.unwrap_or_default()
     }
 }
 
@@ -387,14 +387,14 @@ mod tests {
     fn signed_in<'a>(
         resources: &'a [ResourceDescription],
         favorite_resources: &'a HashSet<ResourceId>,
-        disabled_resources: &'a HashSet<ResourceId>,
+        internet_resource_enabled: &'a Option<bool>,
     ) -> AppState<'a> {
         AppState {
             connlib: ConnlibState::SignedIn(SignedIn {
                 actor_name: "Jane Doe",
                 favorite_resources,
                 resources,
-                disabled_resources,
+                internet_resource_enabled,
             }),
             release: None,
         }
