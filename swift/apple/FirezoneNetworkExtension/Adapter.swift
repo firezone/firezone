@@ -293,9 +293,9 @@ extension Adapter {
       // out of a different interface even when 0.0.0.0 is used as the source.
       // If our primary interface changes, we can be certain the old socket shouldn't be
       // used anymore.
-      if path.connectivityDifferentFrom(path: lastRelevantPath) == true {
-        session.reset()
+      if lastRelevantPath?.connectivityDifferentFrom(path: path) != false {
         lastRelevantPath = path
+        session.reset()
       }
 
       if shouldFetchSystemResolvers(path: path) {
@@ -491,12 +491,7 @@ extension Adapter: CallbackHandlerDelegate {
 #endif
 
 extension Network.NWPath {
-  func connectivityDifferentFrom(path: Network.NWPath?) -> Bool {
-    // Consider connectivity different if we haven't initialized yet. Prevents an edge case
-    // where the network meaningfully changed while our Adapter was coming up and we don't
-    // detect it.
-    guard let path = path else { return true }
-
+  func connectivityDifferentFrom(path: Network.NWPath) -> Bool {
     // We define a path as different from another if the following properties change
     return path.supportsIPv4 != self.supportsIPv4 ||
       path.supportsIPv6 != self.supportsIPv6 ||
