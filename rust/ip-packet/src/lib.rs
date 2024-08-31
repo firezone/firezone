@@ -369,12 +369,20 @@ impl<'a> ConvertibleIpv4Packet<'a> {
             destination: dst.octets(),
         };
 
+        tracing::trace!(from = ?ipv4_header, to = ?ipv6_header, "Performed IP-NAT46");
+
         if ipv4_header.protocol == IpNumber::ICMP {
             let (icmpv4_header, icmp_payload) = Icmpv4Header::from_slice(payload.payload).ok()?;
             let icmpv4_header_length = icmpv4_header.header_len();
 
+            // Optimisation to only clone when we are actually logging.
+            let icmpv4_header_dbg = tracing::event_enabled!(tracing::Level::TRACE)
+                .then(|| tracing::field::debug(icmpv4_header.clone()));
+
             let icmpv6_header = translate_icmpv4_header(src, dst, icmpv4_header, icmp_payload)?;
             let icmpv6_header_length = icmpv6_header.header_len();
+
+            tracing::trace!(from = icmpv4_header_dbg, to = ?icmpv6_header, "Performed ICMP-NAT46");
 
             // We assume that the sizeof the ICMP header does not change and the payload will be in the correct spot.
             debug_assert_eq!(
@@ -541,7 +549,7 @@ fn translate_icmpv4_header(
         //    to 128 and 129, respectively, and adjust the ICMP checksum both
         //    to take the type change into account and to include the ICMPv6
         //    pseudo-header.
-        Icmpv4Type::EchoRequest(i) => Icmpv6Type::EchoRequest(i),
+        Icmpv4Type::EchoRequest(header) => Icmpv6Type::EchoRequest(header),
         Icmpv4Type::EchoReply(header) => Icmpv6Type::EchoReply(header),
 
         // Time Exceeded (Type 11):  Set the Type to 3, and adjust the
