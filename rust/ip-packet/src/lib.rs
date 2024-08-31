@@ -22,6 +22,7 @@ use pnet_packet::{
     udp::{MutableUdpPacket, UdpPacket},
 };
 use std::{
+    io::Cursor,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::{Deref, DerefMut},
 };
@@ -380,14 +381,13 @@ impl<'a> ConvertibleIpv4Packet<'a> {
 
             let (_ip_header, ip_payload) = self.buf.split_at_mut(start_of_ip_payload);
 
-            let icmpv6_header_buf = &mut ip_payload[..icmpv6_header_length];
-            icmpv6_header_buf.copy_from_slice(&ipv6_header.to_bytes());
+            icmpv6_header.write(&mut Cursor::new(ip_payload)).ok()?;
         };
 
         let start_of_ipv6_header = start_of_ip_payload - Ipv6Header::LEN;
 
         let (excess_padding, ipv6_header_buf) = self.buf.split_at_mut(start_of_ipv6_header);
-        ipv6_header_buf.copy_from_slice(&ipv6_header.to_bytes());
+        ipv6_header.write(&mut Cursor::new(ipv6_header_buf)).ok()?;
 
         let excess_padding_length = excess_padding.len();
         let buf = self.buf.remove_from_head(excess_padding_length);
