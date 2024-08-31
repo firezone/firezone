@@ -14,7 +14,7 @@ use domain::base::Rtype;
 use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{btree_map::Entry, BTreeMap, BTreeSet, HashSet},
     fmt, iter,
     net::{IpAddr, SocketAddr},
 };
@@ -320,7 +320,7 @@ impl ReferenceStateMachine for ReferenceState {
                 }
             }),
             Transition::SendDnsQueries(queries) => {
-                let mut pending_connections = HashSet::new();
+                let mut new_connections_via_gateways = BTreeMap::new();
 
                 for query in queries {
                     // Some queries get answered locally.
@@ -347,27 +347,31 @@ impl ReferenceStateMachine for ReferenceState {
                         continue;
                     };
 
-                    tracing::debug!(%resource, "Expecting DNS query via resource");
-
-                    if pending_connections.contains(&gateway) {
-                        // DNS server is a CIDR resource and a previous query of this batch is already triggering a connection.
-                        // That connection isn't ready yet so further queries to the same resource are dropped until then.
-                        continue;
-                    }
+                    tracing::debug!(%resource, %gateway, "Expecting DNS query via resource");
 
                     if !state
                         .client
                         .inner()
                         .is_connected_to_internet_or_cidr(resource)
                     {
-                        state.client.exec_mut(|client| {
-                            client.connect_to_internet_or_cidr_resource(resource)
-                        });
-                        pending_connections.insert(gateway);
+                        // As part of batch-processing DNS queries, only the first resource per gateway will be connected / authorized.
+                        match new_connections_via_gateways.entry(gateway) {
+                            Entry::Vacant(v) => {
+                                v.insert(resource);
+                            }
+                            Entry::Occupied(_) => {}
+                        };
+
                         continue;
                     }
 
                     state.client.exec_mut(|client| client.on_dns_query(query));
+                }
+
+                for (_, resource) in new_connections_via_gateways {
+                    state
+                        .client
+                        .exec_mut(|client| client.connect_to_internet_or_cidr_resource(resource));
                 }
             }
             Transition::SendICMPPacketToNonResourceIp {
