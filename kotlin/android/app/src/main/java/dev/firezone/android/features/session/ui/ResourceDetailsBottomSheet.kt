@@ -21,9 +21,12 @@ import androidx.fragment.app.activityViewModels
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.android.material.button.MaterialButton
 import dev.firezone.android.R
+import dev.firezone.android.core.data.isEnabled
+import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.StatusEnum
+import dev.firezone.android.tunnel.model.isInternetResource
 
-class ResourceDetailsBottomSheet(private val resource: ViewResource, private val activity: SessionActivity) : BottomSheetDialogFragment() {
+class ResourceDetailsBottomSheet(private val resource: Resource, private val activity: SessionActivity) : BottomSheetDialogFragment() {
     private lateinit var view: View
     private val viewModel: SessionViewModel by activityViewModels()
 
@@ -51,7 +54,6 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource, private val
 
         resourceHeader()
 
-        refreshDisableToggleButton()
 
         if (!resource.sites.isNullOrEmpty()) {
             val site = resource.sites.first()
@@ -90,7 +92,7 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource, private val
     }
 
     private fun resourceToggleText(): String {
-        if (resource.enabled) {
+        if (activity.internetState().isEnabled()) {
             return "Disable this resource"
         } else {
             return "Enable this resource"
@@ -122,6 +124,8 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource, private val
 
         resourceDescriptionLayout.visibility = View.VISIBLE
         resourceAddressDescriptionTextView.text = "All network traffic"
+
+        refreshDisableToggleButton()
     }
 
     private fun nonInternetResourceHeader() {
@@ -178,10 +182,7 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource, private val
             toggleResourceEnabled.visibility = View.VISIBLE
             toggleResourceEnabled.text = resourceToggleText()
             toggleResourceEnabled.setOnClickListener {
-                resource.enabled = !resource.enabled
-
-                activity.onViewResourceToggled(resource)
-
+                activity.onInternetResourceToggled()
                 refreshDisableToggleButton()
             }
         }

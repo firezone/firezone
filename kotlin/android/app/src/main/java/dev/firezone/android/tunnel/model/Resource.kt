@@ -4,6 +4,7 @@ package dev.firezone.android.tunnel.model
 import android.os.Parcelable
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import dev.firezone.android.features.session.ui.ViewResource
 import kotlinx.parcelize.Parcelize
 
 @JsonClass(generateAdapter = true)
@@ -18,6 +19,10 @@ data class Resource(
     val status: StatusEnum,
     @Json(name = "can_be_disabled") val canBeDisabled: Boolean,
 ) : Parcelable
+
+fun Resource.isInternetResource(): Boolean {
+    return this.type == ResourceType.Internet
+}
 
 enum class ResourceType {
     @Json(name = "dns")

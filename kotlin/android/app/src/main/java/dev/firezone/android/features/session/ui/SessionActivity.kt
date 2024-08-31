@@ -15,6 +15,8 @@ import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
 import dagger.hilt.android.AndroidEntryPoint
+import dev.firezone.android.core.data.InternetResourceState
+import dev.firezone.android.core.data.toggle
 import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
@@ -72,9 +74,14 @@ class SessionActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    fun onViewResourceToggled(resourceToggled: ViewResource) {
-        Log.d(TAG, "Resource toggled $resourceToggled")
-        tunnelService?.resourceToggled(resourceToggled)
+    fun internetState(): InternetResourceState {
+        return tunnelService?.internetState() ?: InternetResourceState.UNSET
+    }
+
+    fun onInternetResourceToggled() {
+        tunnelService?.internetResourceToggled(internetState().toggle())
+
+        Log.d(TAG, "Internet resource toggled ${internetState()}")
     }
 
     private fun setupViews() {

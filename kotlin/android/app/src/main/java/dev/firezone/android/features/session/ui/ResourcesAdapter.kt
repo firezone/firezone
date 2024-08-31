@@ -9,8 +9,10 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import dev.firezone.android.databinding.ListItemResourceBinding
+import dev.firezone.android.tunnel.model.Resource
+import dev.firezone.android.tunnel.model.isInternetResource
 
-internal class ResourcesAdapter(private val activity: SessionActivity) : ListAdapter<ViewResource, ResourcesAdapter.ViewHolder>(
+internal class ResourcesAdapter(private val activity: SessionActivity) : ListAdapter<Resource, ResourcesAdapter.ViewHolder>(
     ResourceDiffCallback(),
 ) {
     override fun onCreateViewHolder(
@@ -37,7 +39,7 @@ internal class ResourcesAdapter(private val activity: SessionActivity) : ListAda
     }
 
     class ViewHolder(private val binding: ListItemResourceBinding) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(resource: ViewResource) {
+        fun bind(resource: Resource) {
             binding.resourceNameText.text = resource.name
             if (resource.isInternetResource()) {
                 binding.addressText.visibility = View.GONE
@@ -47,17 +49,17 @@ internal class ResourcesAdapter(private val activity: SessionActivity) : ListAda
         }
     }
 
-    class ResourceDiffCallback : DiffUtil.ItemCallback<ViewResource>() {
+    class ResourceDiffCallback : DiffUtil.ItemCallback<Resource>() {
         override fun areItemsTheSame(
-            oldItem: ViewResource,
-            newItem: ViewResource,
+            oldItem: Resource,
+            newItem: Resource,
         ): Boolean {
             return oldItem.id == newItem.id
         }
 
         override fun areContentsTheSame(
-            oldItem: ViewResource,
-            newItem: ViewResource,
+            oldItem: Resource,
+            newItem: Resource,
         ): Boolean {
             return oldItem == newItem
         }

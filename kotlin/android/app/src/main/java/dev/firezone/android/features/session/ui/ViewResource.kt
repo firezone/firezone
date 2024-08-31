@@ -14,8 +14,7 @@ data class ViewResource(
     val sites: List<Site>?,
     val name: String,
     val status: StatusEnum,
-    var enabled: Boolean,
-    var canBeDisabled: Boolean = true,
+    var canBeDisabled: Boolean,
 )
 
 fun Resource.toViewResource(enabled: Boolean): ViewResource {
@@ -27,11 +26,7 @@ fun Resource.toViewResource(enabled: Boolean): ViewResource {
         sites = this.sites,
         name = this.name,
         status = this.status,
-        enabled = enabled,
         canBeDisabled = this.canBeDisabled,
     )
 }
 
-fun ViewResource.isInternetResource(): Boolean {
-    return this.type == ResourceType.Internet
-}
