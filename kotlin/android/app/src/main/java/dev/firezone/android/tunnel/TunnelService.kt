@@ -17,8 +17,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import androidx.lifecycle.MutableLiveData
-import com.google.firebase.crashlytics.ktx.crashlytics
-import com.google.firebase.ktx.Firebase
 import com.google.gson.Gson
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
@@ -116,12 +114,7 @@ class TunnelService : VpnService() {
                 tunnelIpv4Address = addressIPv4
                 tunnelIpv6Address = addressIPv6
 
-                // start VPN
-                val fd = buildVpnService()
-
-                connlibSessionPtr?.let {
-                    ConnlibSession.setTun(it, fd)
-                }
+                buildVpnService()
             }
 
             override fun onUpdateRoutes(
@@ -135,11 +128,7 @@ class TunnelService : VpnService() {
                 tunnelRoutes.addAll(routes4)
                 tunnelRoutes.addAll(routes6)
 
-                val fd = buildVpnService()
-
-                connlibSessionPtr?.let {
-                    ConnlibSession.setTun(it, fd)
-                }
+                buildVpnService()
             }
 
             // Unexpected disconnect, most likely a 401. Clear the token and initiate a stop of the
@@ -163,6 +152,60 @@ class TunnelService : VpnService() {
             }
         }
 
+    private fun buildVpnService() {
+        fun handleApplications(
+            appRestrictions: Bundle,
+            key: String,
+            action: (String) -> Unit,
+        ) {
+            appRestrictions.getString(key)?.takeIf { it.isNotBlank() }?.split(",")?.forEach { p ->
+                p.trim().takeIf { it.isNotBlank() }?.let(action)
+            }
+        }
+
+        stopDisconnectMonitoring()
+
+        Builder().apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                setMetered(false) // Inherit the metered status from the underlying networks.
+            }
+
+            if (tunnelRoutes.all { it.prefix != 0 }) {
+                // Allow traffic to bypass the VPN interface when Always-on VPN is enabled only
+                // if full-route is not enabled.
+                allowBypass()
+            }
+
+            setUnderlyingNetworks(null) // Use all available networks.
+
+            setSession(SESSION_NAME)
+            setMtu(MTU)
+
+            handleApplications(appRestrictions, "allowedApplications") { addAllowedApplication(it) }
+            handleApplications(
+                appRestrictions,
+                "disallowedApplications",
+            ) { addDisallowedApplication(it) }
+
+            tunnelRoutes.forEach {
+                addRoute(it.address, it.prefix)
+            }
+
+            tunnelDnsAddresses.forEach { dns ->
+                addDnsServer(dns)
+            }
+
+            addAddress(tunnelIpv4Address!!, 32)
+            addAddress(tunnelIpv6Address!!, 128)
+        }.establish()?.detachFd()?.also { fd ->
+            connlibSessionPtr?.let {
+                ConnlibSession.setTun(it, fd)
+            }
+        }
+
+        startDisconnectMonitoring()
+    }
+
     private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)
 
     private val restrictionsReceiver =
@@ -171,18 +214,16 @@ class TunnelService : VpnService() {
                 context: Context,
                 intent: Intent,
             ) {
+                // Only change VPN if appRestrictions have changed
                 val restrictionsManager = context.getSystemService(Context.RESTRICTIONS_SERVICE) as android.content.RestrictionsManager
                 val newAppRestrictions = restrictionsManager.applicationRestrictions
                 val changed = MANAGED_CONFIGURATIONS.any { newAppRestrictions.getString(it) != appRestrictions.getString(it) }
                 if (!changed) {
                     return
                 }
-
-                if (connlibSessionPtr != null) {
-                    disconnect()
-                }
                 appRestrictions = newAppRestrictions
-                connect()
+
+                buildVpnService()
             }
         }
 
@@ -285,25 +326,27 @@ class TunnelService : VpnService() {
         }
     }
 
-    private fun startNetworkMonitoring() {
-        networkCallback = NetworkMonitor(this)
+    private fun startDisconnectMonitoring() {
         disconnectCallback = DisconnectMonitor(this)
-
         val networkRequest = NetworkRequest.Builder()
-
         val connectivityManager =
             getSystemService(ConnectivityManager::class.java) as ConnectivityManager
-
-        // Listens for changes *not* including VPN networks
-        connectivityManager.requestNetwork(
-            networkRequest.addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(),
-            networkCallback!!,
-        )
-
         // Listens for changes for *all* networks
         connectivityManager.requestNetwork(
             networkRequest.removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(),
             disconnectCallback!!,
+        )
+    }
+
+    private fun startNetworkMonitoring() {
+        networkCallback = NetworkMonitor(this)
+        val networkRequest = NetworkRequest.Builder()
+        val connectivityManager =
+            getSystemService(ConnectivityManager::class.java) as ConnectivityManager
+        // Listens for changes *not* including VPN networks
+        connectivityManager.requestNetwork(
+            networkRequest.addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(),
+            networkCallback!!,
         )
     }
 
@@ -315,7 +358,9 @@ class TunnelService : VpnService() {
 
             networkCallback = null
         }
+    }
 
+    private fun stopDisconnectMonitoring() {
         disconnectCallback?.let {
             val connectivityManager =
                 getSystemService(ConnectivityManager::class.java) as ConnectivityManager
@@ -363,60 +408,6 @@ class TunnelService : VpnService() {
         val logDir = cacheDir.absolutePath + "/logs"
         Files.createDirectories(Paths.get(logDir))
         return logDir
-    }
-
-    private fun buildVpnService(): Int {
-        Builder().apply {
-            if (tunnelRoutes.all { it.prefix != 0 }) {
-                // Allow traffic to bypass the VPN interface when Always-on VPN is enabled.
-                allowBypass()
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                setMetered(false) // Inherit the metered status from the underlying networks.
-            }
-
-            setUnderlyingNetworks(null) // Use all available networks.
-
-            tunnelRoutes.forEach {
-                addRoute(it.address, it.prefix)
-            }
-
-            tunnelDnsAddresses.forEach { dns ->
-                addDnsServer(dns)
-            }
-
-            addAddress(tunnelIpv4Address!!, 32)
-            addAddress(tunnelIpv6Address!!, 128)
-
-            updateAllowedDisallowedApplications("allowedApplications", ::addAllowedApplication)
-            updateAllowedDisallowedApplications(
-                "disallowedApplications",
-                ::addDisallowedApplication,
-            )
-
-            setSession(SESSION_NAME)
-            setMtu(MTU)
-        }.establish()!!.let {
-            return it.detachFd()
-        }
-    }
-
-    private fun updateAllowedDisallowedApplications(
-        key: String,
-        allowOrDisallow: (String) -> Unit,
-    ) {
-        val applications = appRestrictions.getString(key)
-        Firebase.crashlytics.log("$key: $applications")
-        applications?.let {
-            if (it.isNotBlank()) {
-                it.split(",").forEach { p ->
-                    if (p.isNotBlank()) {
-                        allowOrDisallow(p.trim())
-                    }
-                }
-            }
-        }
     }
 
     fun updateStatusNotification(statusType: TunnelStatusNotification.StatusType) {
