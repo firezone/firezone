@@ -219,7 +219,7 @@ impl SimClient {
             }
         }
 
-        unimplemented!("Unhandled packet")
+        tracing::error!("Unhandled packet");
     }
 
     pub(crate) fn update_relays<'a>(
