@@ -53,7 +53,7 @@ class Adapter {
   private var lastFetchedResolvers: [String] = []
 
   /// Remembers the last _relevant_ path update.
-  /// A path update is considered relevant if certain properties change that require us to reset connlib's network state. 
+  /// A path update is considered relevant if certain properties change that require us to reset connlib's network state.
   private var lastRelevantPath: Network.NWPath?
 
   /// Private queue used to ensure consistent ordering among path update and connlib callbacks
