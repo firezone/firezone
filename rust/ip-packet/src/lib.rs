@@ -380,7 +380,8 @@ impl<'a> ConvertibleIpv4Packet<'a> {
             let icmpv4_header_dbg = tracing::event_enabled!(tracing::Level::TRACE)
                 .then(|| tracing::field::debug(icmpv4_header.clone()));
 
-            let icmpv6_header = translate_icmpv4_header(src, dst, icmpv4_header, icmp_payload)?;
+            let icmpv6_header =
+                translate_icmpv4_header(src, dst, total_length, icmpv4_header, icmp_payload)?;
             let icmpv6_header_length = icmpv6_header.header_len();
 
             tracing::trace!(from = icmpv4_header_dbg, to = ?icmpv6_header, "Performed ICMP-NAT46");
@@ -533,6 +534,7 @@ impl<'a> ConvertibleIpv4Packet<'a> {
 fn translate_icmpv4_header(
     src: Ipv6Addr,
     dst: Ipv6Addr,
+    total_length: u16,
     icmpv4_header: etherparse::Icmpv4Header,
     icmp_payload: &[u8],
 ) -> Option<etherparse::Icmpv6Header> {
@@ -599,12 +601,19 @@ fn translate_icmpv4_header(
                 //    than the returned Total Length field.)
 
                 //    See also the requirements in Section 6.
-                FragmentationNeeded { .. } => {
-                    return None;
+                FragmentationNeeded { next_hop_mtu: 0 } => {
+                    const PLATEAU_VALUES: [u16; 10] =
+                        [68, 296, 508, 1006, 1492, 2002, 4352, 8166, 32000, 65535];
 
-                    // Icmpv6Type::PacketTooBig {
-                    //     mtu: 0 // TODO
-                    //  }
+                    let mtu = PLATEAU_VALUES
+                        .into_iter()
+                        .filter(|mtu| *mtu < total_length)
+                        .max()?;
+
+                    Icmpv6Type::PacketTooBig { mtu: mtu as u32 }
+                }
+                FragmentationNeeded { .. } => {
+                    return None; // FIXME: We don't know our IPv4 / IPv6 MTU here so cannot currently implement this.
                 }
 
                 // Code 5 (Source Route Failed):  Set the Code to 0 (No route
