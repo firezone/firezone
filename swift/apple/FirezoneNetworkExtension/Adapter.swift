@@ -52,8 +52,8 @@ class Adapter {
   /// Track our last fetched DNS resolvers to know whether to tell connlib they've updated
   private var lastFetchedResolvers: [String] = []
 
-  /// Used to avoid needlessly sending resets to connlib
-  private var primaryInterfaceName: String?
+  /// Used to avoid needlessly sending resets to connlib while still triggering reset
+  private var lastUpdatedPath: Network.NWPath?
 
   /// Private queue used to ensure consistent ordering among path update and connlib callbacks
   /// This is the primary async primitive used in this class.
@@ -291,14 +291,14 @@ extension Adapter {
     } else {
       Log.tunnel.log("\(#function): Detected network change: Online.")
 
-      // Hint to connlib we're back online, but only do so if our primary interface changes,
-      // and therefore we need to bump sockets. On darwin, this is needed to send packets
+      // Hint to connlib we're back online, but only do so if our connectivity has
+      // meaningfully changed. On darwin, this is needed to send packets
       // out of a different interface even when 0.0.0.0 is used as the source.
       // If our primary interface changes, we can be certain the old socket shouldn't be
       // used anymore.
-      if path.availableInterfaces.first?.name != primaryInterfaceName {
+      if path.connectivityDifferentFrom(path: lastUpdatedPath) {
         session.reset()
-        primaryInterfaceName = path.availableInterfaces.first?.name
+        lastUpdatedPath = path
       }
 
       if shouldFetchSystemResolvers(path: path) {
@@ -492,3 +492,15 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 #endif
+
+extension Network.NWPath {
+
+  // We define a path as different from another if the following properties change
+  func connectivityDifferentFrom(path: Network.NWPath?) -> Bool {
+    guard let path = path else { return true }
+    return path.supportsIPv4 != self.supportsIPv4 ||
+      path.supportsIPv6 != self.supportsIPv6 ||
+      path.gateways != self.gateways ||
+      path.availableInterfaces.first?.name != self.availableInterfaces.first?.name
+  }
+}
