@@ -325,7 +325,10 @@ impl<'a> ConvertibleIpv4Packet<'a> {
 
             // Next Header:  For ICMPv4 (1), it is changed to ICMPv6 (58);
             //    otherwise, the protocol field MUST be copied from the IPv4 header.
-            next_header: ipv4_header.protocol,
+            next_header: match ipv4_header.protocol {
+                IpNumber::ICMP => IpNumber::IPV6_ICMP,
+                other => other,
+            },
 
             // Hop Limit:  The hop limit is derived from the TTL value in the IPv4
             //    header.  Since the translator is a router, as part of forwarding
