@@ -35,6 +35,9 @@ const NO_ACTIVITY: &str = "[-] No activity";
 const GATEWAY_CONNECTED: &str = "[O] Gateway connected";
 const ALL_GATEWAYS_OFFLINE: &str = "[X] All Gateways offline";
 
+const ENABLED_SYMBOL: &str = "[O]";
+const DISABLED_SYMBOL: &str = "[X]";
+
 const ADD_FAVORITE: &str = "Add to favorites";
 const REMOVE_FAVORITE: &str = "Remove from favorites";
 const FAVORITE_RESOURCES: &str = "Favorite Resources";
@@ -259,11 +262,26 @@ impl<'a> AppState<'a> {
     }
 }
 
+fn append_status(name: &str, enabled: bool) -> String {
+    let mut result = String::new();
+    if enabled {
+        result.push_str(ENABLED_SYMBOL);
+    } else {
+        result.push_str(DISABLED_SYMBOL);
+    }
+
+    result.push_str(" ");
+    result.push_str(name);
+
+    result
+}
+
 fn signed_in(signed_in: &SignedIn) -> Menu {
     let SignedIn {
         actor_name,
         favorite_resources,
         resources, // Make sure these are presented in the order we receive them
+        internet_resource_enabled,
         ..
     } = signed_in;
 
@@ -288,7 +306,12 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
             .iter()
             .filter(|res| favorite_resources.contains(&res.id()) || res.is_internet_resource())
         {
-            menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
+            let mut name = res.name().to_string();
+            if res.is_internet_resource() {
+                name = append_status(&name, internet_resource_enabled.unwrap_or_default());
+            }
+
+            menu = menu.add_submenu(name, signed_in.resource_submenu(res));
         }
     } else {
         // No favorites, show every Resource normally, just like before
@@ -296,7 +319,12 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         // Always show Resources in the original order
         menu = menu.disabled(RESOURCES);
         for res in *resources {
-            menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
+            let mut name = res.name().to_string();
+            if res.is_internet_resource() {
+                name = append_status(&name, internet_resource_enabled.unwrap_or_default());
+            }
+
+            menu = menu.add_submenu(name, signed_in.resource_submenu(res));
         }
     }
 
