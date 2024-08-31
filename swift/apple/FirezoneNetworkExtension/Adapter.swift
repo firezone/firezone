@@ -53,7 +53,7 @@ class Adapter {
   private var lastFetchedResolvers: [String] = []
 
   /// Used to avoid needlessly sending resets to connlib while still triggering reset
-  private var lastUpdatedPath: Network.NWPath?
+  private var lastRelevantPath: Network.NWPath?
 
   /// Private queue used to ensure consistent ordering among path update and connlib callbacks
   /// This is the primary async primitive used in this class.
@@ -281,24 +281,20 @@ extension Adapter {
     guard case .tunnelStarted(let session) = state else { return }
 
     if path.status == .unsatisfied {
-      Log.tunnel.log("\(#function): Detected network change: Offline.")
-
       // Check if we need to set reasserting, avoids OS log spam and potentially other side effects
       if packetTunnelProvider?.reasserting == false {
         // Tell the UI we're not connected
         packetTunnelProvider?.reasserting = true
       }
     } else {
-      Log.tunnel.log("\(#function): Detected network change: Online.")
-
-      // Hint to connlib we're back online, but only do so if our connectivity has
+      // Tell connlib to reset network state, but only do so if our connectivity has
       // meaningfully changed. On darwin, this is needed to send packets
       // out of a different interface even when 0.0.0.0 is used as the source.
       // If our primary interface changes, we can be certain the old socket shouldn't be
       // used anymore.
-      if path.connectivityDifferentFrom(path: lastUpdatedPath) {
+      if path.connectivityDifferentFrom(path: lastRelevantPath) == true {
         session.reset()
-        lastUpdatedPath = path
+        lastRelevantPath = path
       }
 
       if shouldFetchSystemResolvers(path: path) {
@@ -494,13 +490,17 @@ extension Adapter: CallbackHandlerDelegate {
 #endif
 
 extension Network.NWPath {
-
-  // We define a path as different from another if the following properties change
   func connectivityDifferentFrom(path: Network.NWPath?) -> Bool {
+    // Consider connectivity different if we haven't initialized yet. Prevents an edge case
+    // where the network meaningfully changed while our Adapter was coming up and we don't
+    // detect it.
     guard let path = path else { return true }
+
+    // We define a path as different from another if the following properties change
     return path.supportsIPv4 != self.supportsIPv4 ||
       path.supportsIPv6 != self.supportsIPv6 ||
-      path.gateways != self.gateways ||
-      path.availableInterfaces.first?.name != self.availableInterfaces.first?.name
+      path.availableInterfaces.first?.name != self.availableInterfaces.first?.name ||
+      // Apple provides no documentation on whether order is meaningful, so assume it isn't.
+      Set(self.gateways) != Set(path.gateways)
   }
 }
