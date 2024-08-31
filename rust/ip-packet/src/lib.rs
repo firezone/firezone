@@ -9,6 +9,7 @@ pub use pnet_packet::*;
 mod proptests;
 
 use domain::base::Message;
+use etherparse::icmpv6::ParameterProblemHeader;
 use pnet_packet::{
     icmp::{
         echo_reply::MutableEchoReplyPacket, echo_request::MutableEchoRequestPacket, IcmpTypes,
@@ -575,14 +576,10 @@ fn translate_icmpv4_header(
                 // Code 2 (Protocol Unreachable):  Translate to an ICMPv6
                 //    Parameter Problem (Type 4, Code 1) and make the Pointer
                 //    point to the IPv6 Next Header field.
-                Protocol => {
-                    return None;
-
-                    // Icmpv6Type::ParameterProblem(ParameterProblemHeader {
-                    //     code: icmpv6::ParameterProblemCode::UnrecognizedNextHeader,
-                    //     pointer: 0, // TODO
-                    // })
-                }
+                Protocol => Icmpv6Type::ParameterProblem(ParameterProblemHeader {
+                    code: icmpv6::ParameterProblemCode::UnrecognizedNextHeader,
+                    pointer: 6, // The "Next Header" field is always at a fixed offset.
+                }),
                 // Code 3 (Port Unreachable):  Set the Code to 4 (Port
                 //    unreachable).
                 icmpv4::DestUnreachableHeader::Port => {
