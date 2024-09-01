@@ -5,8 +5,11 @@ use proptest::arbitrary::any;
 use proptest::prop_oneof;
 use proptest::strategy::Strategy;
 
-use crate::make::{icmp4_packet_with_options, icmp_packet, tcp_packet, udp_packet, IcmpKind};
-use crate::MutableIpPacket;
+use crate::{build, MutableIpPacket};
+use etherparse::{Ipv4Extensions, Ipv4Header, Ipv4Options, PacketBuilder};
+use proptest::prelude::Just;
+
+const EMPTY_PAYLOAD: &[u8] = &[];
 
 fn tcp_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
     (
@@ -17,7 +20,10 @@ fn tcp_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
         any::<Vec<u8>>(),
     )
         .prop_map(|(src, dst, sport, dport, payload)| {
-            tcp_packet(src, dst, sport, dport, payload).unwrap()
+            build!(
+                PacketBuilder::ipv4(src.octets(), dst.octets(), 64).tcp(sport, dport, 0, 128),
+                payload
+            )
         })
 }
 
@@ -30,7 +36,10 @@ fn tcp_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
         any::<Vec<u8>>(),
     )
         .prop_map(|(src, dst, sport, dport, payload)| {
-            tcp_packet(src, dst, sport, dport, payload).unwrap()
+            build!(
+                PacketBuilder::ipv6(src.octets(), dst.octets(), 64).tcp(sport, dport, 0, 128),
+                payload
+            )
         })
 }
 
@@ -43,7 +52,10 @@ fn udp_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
         any::<Vec<u8>>(),
     )
         .prop_map(|(src, dst, sport, dport, payload)| {
-            udp_packet(src, dst, sport, dport, payload).unwrap()
+            build!(
+                PacketBuilder::ipv4(src.octets(), dst.octets(), 64).udp(sport, dport),
+                payload
+            )
         })
 }
 
@@ -56,182 +68,177 @@ fn udp_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
         any::<Vec<u8>>(),
     )
         .prop_map(|(src, dst, sport, dport, payload)| {
-            udp_packet(src, dst, sport, dport, payload).unwrap()
+            build!(
+                PacketBuilder::ipv6(src.octets(), dst.octets(), 64).udp(sport, dport),
+                payload
+            )
         })
 }
 
-fn icmp_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
+fn icmp_request_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
     (
         any::<Ipv4Addr>(),
         any::<Ipv4Addr>(),
         any::<u16>(),
         any::<u16>(),
-        any::<IcmpKind>(),
+        ipv4_options(),
     )
-        .prop_map(|(src, dst, id, seq, kind)| {
-            icmp_packet(src.into(), dst.into(), id, seq, &[], kind).unwrap()
+        .prop_map(|(src, dst, id, seq, options)| {
+            let packet = PacketBuilder::ip(etherparse::IpHeaders::Ipv4(
+                Ipv4Header {
+                    source: src.octets(),
+                    destination: dst.octets(),
+                    options,
+                    ..Default::default()
+                },
+                Ipv4Extensions::default(),
+            ))
+            .icmpv4_echo_request(id, seq);
+
+            build!(packet, EMPTY_PAYLOAD)
         })
 }
 
-fn icmp_packet_v4_header_options() -> impl Strategy<Value = MutableIpPacket<'static>> {
+fn icmp_reply_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
     (
         any::<Ipv4Addr>(),
         any::<Ipv4Addr>(),
         any::<u16>(),
         any::<u16>(),
-        any::<IcmpKind>(),
-        (5u8..15),
+        ipv4_options(),
     )
-        .prop_map(|(src, dst, id, seq, kind, header_length)| {
-            icmp4_packet_with_options(src, dst, id, seq, &[], kind, header_length)
+        .prop_map(|(src, dst, id, seq, options)| {
+            let packet = PacketBuilder::ip(etherparse::IpHeaders::Ipv4(
+                Ipv4Header {
+                    source: src.octets(),
+                    destination: dst.octets(),
+                    options,
+                    ..Default::default()
+                },
+                Ipv4Extensions::default(),
+            ))
+            .icmpv4_echo_reply(id, seq);
+
+            build!(packet, EMPTY_PAYLOAD)
         })
 }
 
-fn icmp_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
+fn icmp_request_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
     (
         any::<Ipv6Addr>(),
         any::<Ipv6Addr>(),
         any::<u16>(),
         any::<u16>(),
-        any::<IcmpKind>(),
     )
-        .prop_map(|(src, dst, id, seq, kind)| {
-            icmp_packet(src.into(), dst.into(), id, seq, &[], kind).unwrap()
+        .prop_map(|(src, dst, id, seq)| {
+            build!(
+                PacketBuilder::ipv6(src.octets(), dst.octets(), 64).icmpv6_echo_request(id, seq),
+                EMPTY_PAYLOAD
+            )
         })
 }
 
-fn packet() -> impl Strategy<Value = MutableIpPacket<'static>> {
+fn icmp_reply_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
+    (
+        any::<Ipv6Addr>(),
+        any::<Ipv6Addr>(),
+        any::<u16>(),
+        any::<u16>(),
+    )
+        .prop_map(|(src, dst, id, seq)| {
+            build!(
+                PacketBuilder::ipv6(src.octets(), dst.octets(), 64).icmpv6_echo_reply(id, seq),
+                EMPTY_PAYLOAD
+            )
+        })
+}
+
+fn ipv4_options() -> impl Strategy<Value = Ipv4Options> {
+    prop_oneof![
+        Just(Ipv4Options::from([0u8; 0])),
+        Just(Ipv4Options::from([0u8; 4])),
+        Just(Ipv4Options::from([0u8; 8])),
+        Just(Ipv4Options::from([0u8; 12])),
+        Just(Ipv4Options::from([0u8; 16])),
+        Just(Ipv4Options::from([0u8; 20])),
+        Just(Ipv4Options::from([0u8; 24])),
+        Just(Ipv4Options::from([0u8; 28])),
+        Just(Ipv4Options::from([0u8; 32])),
+        Just(Ipv4Options::from([0u8; 36])),
+        Just(Ipv4Options::from([0u8; 40])),
+    ]
+}
+
+fn packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
     prop_oneof![
         tcp_packet_v4(),
-        tcp_packet_v6(),
         udp_packet_v4(),
+        icmp_request_packet_v4(),
+        icmp_reply_packet_v4(),
+    ]
+}
+
+fn packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
+    prop_oneof![
+        tcp_packet_v6(),
         udp_packet_v6(),
-        icmp_packet_v4(),
-        icmp_packet_v6(),
+        icmp_request_packet_v6(),
+        icmp_reply_packet_v6(),
     ]
 }
 
 #[test_strategy::proptest()]
-fn can_translate_dst_packet_back_and_forth(
-    #[strategy(packet())] packet: MutableIpPacket<'static>,
-    #[strategy(any::<Ipv4Addr>())] src_v4: Ipv4Addr,
-    #[strategy(any::<Ipv6Addr>())] src_v6: Ipv6Addr,
-    #[strategy(any::<IpAddr>())] dst: IpAddr,
+fn nat_6446(
+    #[strategy(packet_v6())] packet_v6: MutableIpPacket<'static>,
+    #[strategy(any::<Ipv4Addr>())] new_src: Ipv4Addr,
+    #[strategy(any::<Ipv4Addr>())] new_dst: Ipv4Addr,
 ) {
-    let original_source = packet.source();
-    let original_destination = packet.destination();
-    let original_packet = packet.packet().to_vec();
+    let header = packet_v6.as_immutable().ipv6_header().unwrap();
+    let payload = packet_v6.payload().to_vec();
 
-    let original_source_v4 = if let IpAddr::V4(v4) = original_source {
-        v4
-    } else {
-        Ipv4Addr::UNSPECIFIED
-    };
-    let original_source_v6 = if let IpAddr::V6(v6) = original_source {
-        v6
-    } else {
-        Ipv6Addr::UNSPECIFIED
-    };
+    let packet_v4 = packet_v6.consume_to_ipv4(new_src, new_dst).unwrap();
 
-    let packet = packet.translate_destination(src_v4, src_v6, dst).unwrap();
+    assert_eq!(packet_v4.source(), IpAddr::V4(new_src));
+    assert_eq!(packet_v4.destination(), new_dst);
 
-    assert!(packet.source() == IpAddr::from(src_v4) || packet.source() == IpAddr::from(src_v6) || packet.source() == original_source, "either the translated packet was set to one of the sources or it wasn't translated and it kept the old source");
-    assert_eq!(packet.destination(), dst);
-
-    let mut packet = packet
-        .translate_destination(original_source_v4, original_source_v6, original_destination)
+    let mut new_packet_v6 = packet_v4
+        .consume_to_ipv6(header.source_addr(), header.destination_addr())
         .unwrap();
-    packet.update_checksum();
+    new_packet_v6.update_checksum();
 
-    assert_eq!(packet.packet(), original_packet);
+    assert_eq!(new_packet_v6.as_immutable().ipv6_header().unwrap(), header);
+    assert_eq!(new_packet_v6.payload(), payload);
 }
 
 #[test_strategy::proptest()]
-fn can_translate_src_packet_back_and_forth(
-    #[strategy(packet())] packet: MutableIpPacket<'static>,
-    #[strategy(any::<Ipv4Addr>())] dst_v4: Ipv4Addr,
-    #[strategy(any::<Ipv6Addr>())] dst_v6: Ipv6Addr,
-    #[strategy(any::<IpAddr>())] src: IpAddr,
+fn nat_4664(
+    #[strategy(packet_v4())] packet_v4: MutableIpPacket<'static>,
+    #[strategy(any::<Ipv6Addr>())] new_src: Ipv6Addr,
+    #[strategy(any::<Ipv6Addr>())] new_dst: Ipv6Addr,
 ) {
-    let original_source = packet.source();
-    let original_destination = packet.destination();
-    let original_packet = packet.packet().to_vec();
+    let header = packet_v4.as_immutable().ipv4_header().unwrap();
+    let payload = packet_v4.payload().to_vec();
 
-    let original_destination_v4 = if let IpAddr::V4(v4) = original_destination {
-        v4
-    } else {
-        Ipv4Addr::UNSPECIFIED
-    };
-    let original_destination_v6 = if let IpAddr::V6(v6) = original_destination {
-        v6
-    } else {
-        Ipv6Addr::UNSPECIFIED
-    };
+    let packet_v6 = packet_v4.consume_to_ipv6(new_src, new_dst).unwrap();
 
-    let packet = packet.translate_source(dst_v4, dst_v6, src).unwrap();
+    assert_eq!(packet_v6.source(), IpAddr::V6(new_src));
+    assert_eq!(packet_v6.destination(), new_dst);
 
-    assert!(packet.destination() == IpAddr::from(dst_v4) || packet.destination() == IpAddr::from(dst_v6) || packet.destination() == original_destination, "either the translated packet was set to one of the destinations or it wasn't translated and it kept the old destination");
-    assert_eq!(packet.source(), src);
-
-    let mut packet = packet
-        .translate_source(
-            original_destination_v4,
-            original_destination_v6,
-            original_source,
-        )
+    let mut new_packet_v4 = packet_v6
+        .consume_to_ipv4(header.source.into(), header.destination.into())
         .unwrap();
-    packet.update_checksum();
+    new_packet_v4.update_checksum();
 
-    assert_eq!(packet.packet(), original_packet);
-}
+    let mut header_without_options = Ipv4Header {
+        options: Ipv4Options::default(), // IPv4 options are lost in translation.
+        total_len: header.total_len - header.options.len_u8() as u16,
+        ..header
+    };
+    header_without_options.header_checksum = header_without_options.calc_header_checksum();
 
-#[test_strategy::proptest()]
-fn can_translate_dst_packet_with_options(
-    #[strategy(icmp_packet_v4_header_options())] packet: MutableIpPacket<'static>,
-    #[strategy(any::<Ipv4Addr>())] src_v4: Ipv4Addr,
-    #[strategy(any::<Ipv6Addr>())] src_v6: Ipv6Addr,
-    #[strategy(any::<IpAddr>())] dst: IpAddr,
-) {
-    let source_protocol = packet.to_immutable().source_protocol().unwrap();
-    let destination_protocol = packet.to_immutable().destination_protocol().unwrap();
-    let source = packet.source();
-    let sequence = packet.to_immutable().as_icmp().and_then(|i| i.sequence());
-    let identifier = packet.to_immutable().as_icmp().and_then(|i| i.identifier());
-
-    let packet = packet.translate_destination(src_v4, src_v6, dst).unwrap();
-    let packet = packet.to_immutable().to_owned();
-    let icmp = packet.as_icmp().unwrap();
-
-    assert!(packet.source() == IpAddr::from(src_v4) || packet.source() == IpAddr::from(src_v6) || packet.source() == source, "either the translated packet was set to one of the sources or it wasn't translated and it kept the old source");
-    assert_eq!(packet.destination(), dst);
-    assert_eq!(source_protocol, packet.source_protocol().unwrap());
-    assert_eq!(destination_protocol, packet.destination_protocol().unwrap());
-
-    assert_eq!(sequence, icmp.sequence());
-    assert_eq!(identifier, icmp.identifier());
-}
-#[test_strategy::proptest()]
-fn can_translate_src_packet_with_options(
-    #[strategy(icmp_packet_v4_header_options())] packet: MutableIpPacket<'static>,
-    #[strategy(any::<Ipv4Addr>())] dst_v4: Ipv4Addr,
-    #[strategy(any::<Ipv6Addr>())] dst_v6: Ipv6Addr,
-    #[strategy(any::<IpAddr>())] src: IpAddr,
-) {
-    let source_protocol = packet.to_immutable().source_protocol().unwrap();
-    let destination_protocol = packet.to_immutable().destination_protocol().unwrap();
-    let destination = packet.destination();
-    let sequence = packet.to_immutable().as_icmp().and_then(|i| i.sequence());
-    let identifier = packet.to_immutable().as_icmp().and_then(|i| i.identifier());
-
-    let packet = packet.translate_source(dst_v4, dst_v6, src).unwrap();
-    let packet = packet.to_immutable().to_owned();
-    let icmp = packet.as_icmp().unwrap();
-
-    assert!(packet.destination() == IpAddr::from(dst_v4) || packet.destination() == IpAddr::from(dst_v6) || packet.destination() == destination, "either the translated packet was set to one of the destinations or it wasn't translated and it kept the old destination");
-    assert_eq!(packet.source(), src);
-    assert_eq!(source_protocol, packet.source_protocol().unwrap());
-    assert_eq!(destination_protocol, packet.destination_protocol().unwrap());
-
-    assert_eq!(sequence, icmp.sequence());
-    assert_eq!(identifier, icmp.identifier());
+    assert_eq!(
+        new_packet_v4.as_immutable().ipv4_header().unwrap(),
+        header_without_options
+    );
+    assert_eq!(new_packet_v4.payload(), payload);
 }

@@ -14,7 +14,7 @@ pub use pnet_packet::*;
 mod proptests;
 
 use domain::base::Message;
-use etherparse::{Ipv4HeaderSlice, Ipv6Header, Ipv6HeaderSlice};
+use etherparse::{Ipv4Header, Ipv4HeaderSlice, Ipv6Header, Ipv6HeaderSlice};
 use ipv4_header_slice_mut::Ipv4HeaderSliceMut;
 use ipv6_header_slice_mut::Ipv6HeaderSliceMut;
 use pnet_packet::{
@@ -427,7 +427,11 @@ impl<'a> MutableIpPacket<'a> {
         for_both!(self, |i| i.to_immutable().into())
     }
 
-    fn consume_to_ipv4(self, src: Ipv4Addr, dst: Ipv4Addr) -> Option<MutableIpPacket<'a>> {
+    pub(crate) fn consume_to_ipv4(
+        self,
+        src: Ipv4Addr,
+        dst: Ipv4Addr,
+    ) -> Option<MutableIpPacket<'a>> {
         match self {
             MutableIpPacket::Ipv4(pkt) => Some(MutableIpPacket::Ipv4(pkt)),
             MutableIpPacket::Ipv6(pkt) => {
@@ -436,7 +440,11 @@ impl<'a> MutableIpPacket<'a> {
         }
     }
 
-    fn consume_to_ipv6(self, src: Ipv6Addr, dst: Ipv6Addr) -> Option<MutableIpPacket<'a>> {
+    pub(crate) fn consume_to_ipv6(
+        self,
+        src: Ipv6Addr,
+        dst: Ipv6Addr,
+    ) -> Option<MutableIpPacket<'a>> {
         match self {
             MutableIpPacket::Ipv4(pkt) => {
                 Some(MutableIpPacket::Ipv6(pkt.consume_to_ipv6(src, dst)?))
@@ -718,6 +726,28 @@ impl<'a> IpPacket<'a> {
             IpPacket::Ipv6(i) => Ipv6Packet::owned(i.packet().to_vec())
                 .expect("owned packet should still be valid")
                 .into(),
+        }
+    }
+
+    pub fn ipv4_header(&self) -> Option<Ipv4Header> {
+        match self {
+            IpPacket::Ipv4(p) => Some(
+                Ipv4HeaderSlice::from_slice(p.packet())
+                    .expect("Should be a valid packet")
+                    .to_header(),
+            ),
+            IpPacket::Ipv6(_) => None,
+        }
+    }
+
+    pub fn ipv6_header(&self) -> Option<Ipv6Header> {
+        match self {
+            IpPacket::Ipv4(_) => None,
+            IpPacket::Ipv6(p) => Some(
+                Ipv6HeaderSlice::from_slice(p.packet())
+                    .expect("Should be a valid packet")
+                    .to_header(),
+            ),
         }
     }
 
