@@ -44,23 +44,6 @@ pub fn icmp_reply_packet(
     )
 }
 
-pub fn icmp_response_packet(packet: IpPacket<'static>) -> MutableIpPacket<'static> {
-    let icmp = packet
-        .as_icmp()
-        .expect("IP packet should be an ICMP packet");
-    let echo_request = icmp.as_echo_request().expect("to be ICMP echo request");
-
-    icmp_packet(
-        packet.destination(),
-        packet.source(),
-        echo_request.sequence(),
-        echo_request.identifier(),
-        echo_request.payload(),
-        IcmpKind::Response,
-    )
-    .expect("src and dst come from the same packet")
-}
-
 #[cfg_attr(test, derive(Debug, test_strategy::Arbitrary))]
 pub(crate) enum IcmpKind {
     Request,
