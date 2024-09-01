@@ -389,9 +389,8 @@ impl ClientOnGateway {
                 .translate_outgoing(packet.as_immutable(), state.resolved_ip, now)?;
 
         let mut packet = packet
-            .translate_destination(self.ipv4, self.ipv6, real_ip)
+            .translate_destination(self.ipv4, self.ipv6, source_protocol, real_ip)
             .context("Failed to translate packet")?;
-        packet.set_source_protocol(source_protocol.value());
         packet.update_checksum();
 
         state.on_outgoing_traffic(now);
@@ -425,7 +424,7 @@ impl ClientOnGateway {
             return Ok(Some(packet));
         };
 
-        let Some(mut packet) = packet.translate_source(self.ipv4, self.ipv6, ip) else {
+        let Some(mut packet) = packet.translate_source(self.ipv4, self.ipv6, proto, ip) else {
             return Ok(None);
         };
 
@@ -434,7 +433,6 @@ impl ClientOnGateway {
             .expect("inconsistent state")
             .on_incoming_traffic(now);
 
-        packet.set_destination_protocol(proto.value());
         packet.update_checksum();
 
         Ok(Some(packet))

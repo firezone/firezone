@@ -644,32 +644,40 @@ impl<'a> MutableIpPacket<'a> {
         mut self,
         src_v4: Ipv4Addr,
         src_v6: Ipv6Addr,
+        src_proto: Protocol,
         dst: IpAddr,
     ) -> Option<MutableIpPacket<'a>> {
-        match (&self, dst) {
-            (&MutableIpPacket::Ipv4(_), IpAddr::V6(dst)) => self.consume_to_ipv6(src_v6, dst),
-            (&MutableIpPacket::Ipv6(_), IpAddr::V4(dst)) => self.consume_to_ipv4(src_v4, dst),
+        let mut packet = match (&self, dst) {
+            (&MutableIpPacket::Ipv4(_), IpAddr::V6(dst)) => self.consume_to_ipv6(src_v6, dst)?,
+            (&MutableIpPacket::Ipv6(_), IpAddr::V4(dst)) => self.consume_to_ipv4(src_v4, dst)?,
             _ => {
                 self.set_dst(dst);
-                Some(self)
+                self
             }
-        }
+        };
+        packet.set_source_protocol(src_proto.value());
+
+        Some(packet)
     }
 
     pub fn translate_source(
         mut self,
         dst_v4: Ipv4Addr,
         dst_v6: Ipv6Addr,
+        dst_proto: Protocol,
         src: IpAddr,
     ) -> Option<MutableIpPacket<'a>> {
-        match (&self, src) {
-            (&MutableIpPacket::Ipv4(_), IpAddr::V6(src)) => self.consume_to_ipv6(src, dst_v6),
-            (&MutableIpPacket::Ipv6(_), IpAddr::V4(src)) => self.consume_to_ipv4(src, dst_v4),
+        let mut packet = match (&self, src) {
+            (&MutableIpPacket::Ipv4(_), IpAddr::V6(src)) => self.consume_to_ipv6(src, dst_v6)?,
+            (&MutableIpPacket::Ipv6(_), IpAddr::V4(src)) => self.consume_to_ipv4(src, dst_v4)?,
             _ => {
                 self.set_src(src);
-                Some(self)
+                self
             }
-        }
+        };
+        packet.set_destination_protocol(dst_proto.value());
+
+        Some(packet)
     }
 
     #[inline]
