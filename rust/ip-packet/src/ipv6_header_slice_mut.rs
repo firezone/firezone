@@ -1,3 +1,4 @@
+use crate::slice_utils::write_to_offset_unchecked;
 use etherparse::Ipv6HeaderSlice;
 
 pub struct Ipv6HeaderSliceMut<'a> {
@@ -19,25 +20,11 @@ impl<'a> Ipv6HeaderSliceMut<'a> {
 
     pub fn set_source(&mut self, src: [u8; 16]) {
         // Safety: Slice it at least of length 40 as checked in the ctor.
-        unsafe { self.write_to_offset(8, src) };
+        unsafe { write_to_offset_unchecked(self.slice, 8, src) };
     }
 
     pub fn set_destination(&mut self, dst: [u8; 16]) {
         // Safety: Slice it at least of length 40 as checked in the ctor.
-        unsafe { self.write_to_offset(24, dst) };
-    }
-
-    /// Writes the given byte-array to the specified index.
-    ///
-    /// # Safety
-    ///
-    /// `offset` + `bytes.len()` must be within the slice.
-    unsafe fn write_to_offset<const N: usize>(&mut self, offset: usize, bytes: [u8; N]) {
-        debug_assert!(offset + N < self.slice.len());
-
-        let (_front, rest) = unsafe { self.slice.split_at_mut_unchecked(offset) };
-        let (target, _rest) = unsafe { rest.split_at_mut_unchecked(N) };
-
-        target.copy_from_slice(&bytes)
+        unsafe { write_to_offset_unchecked(self.slice, 24, dst) };
     }
 }

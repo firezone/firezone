@@ -1,10 +1,12 @@
 pub mod make;
 
+mod ipv4_header_slice_mut;
 mod ipv6_header_slice_mut;
 mod nat46;
 mod nat64;
 #[cfg(feature = "proptest")]
 pub mod proptest;
+mod slice_utils;
 
 pub use pnet_packet::*;
 
@@ -12,7 +14,8 @@ pub use pnet_packet::*;
 mod proptests;
 
 use domain::base::Message;
-use etherparse::Ipv6HeaderSlice;
+use etherparse::{Ipv4HeaderSlice, Ipv6HeaderSlice};
+use ipv4_header_slice_mut::Ipv4HeaderSliceMut;
 use ipv6_header_slice_mut::Ipv6HeaderSliceMut;
 use pnet_packet::{
     icmp::{
@@ -21,7 +24,7 @@ use pnet_packet::{
     },
     icmpv6::{Icmpv6Types, MutableIcmpv6Packet},
     ip::{IpNextHeaderProtocol, IpNextHeaderProtocols},
-    ipv4::{Ipv4Packet, MutableIpv4Packet},
+    ipv4::Ipv4Packet,
     ipv6::Ipv6Packet,
     tcp::{MutableTcpPacket, TcpPacket},
     udp::{MutableUdpPacket, UdpPacket},
@@ -189,22 +192,22 @@ pub struct ConvertibleIpv4Packet<'a> {
 
 impl<'a> ConvertibleIpv4Packet<'a> {
     pub fn new(buf: &'a mut [u8]) -> Option<ConvertibleIpv4Packet<'a>> {
-        MutableIpv4Packet::new(&mut buf[20..])?;
+        Ipv4HeaderSlice::from_slice(&buf[20..]).ok()?;
         Some(Self {
             buf: MaybeOwned::RefMut(buf),
         })
     }
 
-    fn owned(mut buf: Vec<u8>) -> Option<ConvertibleIpv4Packet<'a>> {
-        MutableIpv4Packet::new(&mut buf[20..])?;
+    fn owned(buf: Vec<u8>) -> Option<ConvertibleIpv4Packet<'a>> {
+        Ipv4HeaderSlice::from_slice(&buf[20..]).ok()?;
         Some(Self {
             buf: MaybeOwned::Owned(buf),
         })
     }
 
-    fn as_ipv4(&mut self) -> MutableIpv4Packet {
-        MutableIpv4Packet::new(&mut self.buf[20..])
-            .expect("when constructed we checked that this is some")
+    fn ip_header_mut(&mut self) -> Ipv4HeaderSliceMut {
+        // Safety: We checked this in `new` / `owned`.
+        unsafe { Ipv4HeaderSliceMut::from_slice_unchecked(&mut self.buf[20..]) }
     }
 
     pub fn to_immutable(&self) -> Ipv4Packet {
@@ -217,18 +220,6 @@ impl<'a> ConvertibleIpv4Packet<'a> {
 
     fn get_destination(&self) -> Ipv4Addr {
         self.to_immutable().get_destination()
-    }
-
-    fn set_source(&mut self, source: Ipv4Addr) {
-        self.as_ipv4().set_source(source);
-    }
-
-    fn set_destination(&mut self, destination: Ipv4Addr) {
-        self.as_ipv4().set_destination(destination);
-    }
-
-    fn set_checksum(&mut self, checksum: u16) {
-        self.as_ipv4().set_checksum(checksum);
     }
 
     fn consume_to_immutable(self) -> Ipv4Packet<'a> {
@@ -532,7 +523,8 @@ impl<'a> MutableIpPacket<'a> {
 
     fn set_ipv4_checksum(&mut self) {
         if let Self::Ipv4(p) = self {
-            p.set_checksum(ipv4::checksum(&p.to_immutable()));
+            let checksum = ipv4::checksum(&p.to_immutable());
+            p.ip_header_mut().set_checksum(checksum);
         }
     }
 
@@ -669,7 +661,9 @@ impl<'a> MutableIpPacket<'a> {
     #[inline]
     pub fn set_dst(&mut self, dst: IpAddr) {
         match (self, dst) {
-            (Self::Ipv4(p), IpAddr::V4(d)) => p.set_destination(d),
+            (Self::Ipv4(p), IpAddr::V4(d)) => {
+                p.ip_header_mut().set_destination(d.octets());
+            }
             (Self::Ipv6(p), IpAddr::V6(d)) => {
                 p.header_mut().set_destination(d.octets());
             }
@@ -685,7 +679,9 @@ impl<'a> MutableIpPacket<'a> {
     #[inline]
     pub fn set_src(&mut self, src: IpAddr) {
         match (self, src) {
-            (Self::Ipv4(p), IpAddr::V4(s)) => p.set_source(s),
+            (Self::Ipv4(p), IpAddr::V4(s)) => {
+                p.ip_header_mut().set_source(s.octets());
+            }
             (Self::Ipv6(p), IpAddr::V6(s)) => {
                 p.header_mut().set_source(s.octets());
             }
