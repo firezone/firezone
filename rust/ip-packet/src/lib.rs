@@ -37,16 +37,6 @@ macro_rules! for_both {
     };
 }
 
-// no std::mem::swap? no problem
-macro_rules! swap_src_dst {
-    ($p:expr) => {
-        let src = $p.get_source();
-        let dst = $p.get_destination();
-        $p.set_source(dst);
-        $p.set_destination(src);
-    };
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Protocol {
     /// Contains either the source or destination port.
@@ -238,14 +228,6 @@ impl<'a> ConvertibleIpv4Packet<'a> {
         self.as_ipv4().set_checksum(checksum);
     }
 
-    pub fn set_total_length(&mut self, total_length: u16) {
-        self.as_ipv4().set_total_length(total_length);
-    }
-
-    pub fn set_header_length(&mut self, header_length: u8) {
-        self.as_ipv4().set_header_length(header_length);
-    }
-
     fn consume_to_immutable(self) -> Ipv4Packet<'a> {
         match self.buf {
             MaybeOwned::RefMut(buf) => {
@@ -340,10 +322,6 @@ impl<'a> ConvertibleIpv6Packet<'a> {
 
     fn set_destination(&mut self, destination: Ipv6Addr) {
         self.as_ipv6().set_destination(destination);
-    }
-
-    pub fn set_payload_length(&mut self, payload_length: u16) {
-        self.as_ipv6().set_payload_length(payload_length);
     }
 
     fn consume_to_immutable(self) -> Ipv6Packet<'a> {
@@ -449,17 +427,6 @@ impl<'a> MutableIpPacket<'a> {
         };
 
         Some(packet)
-    }
-
-    pub fn to_owned(&self) -> MutableIpPacket<'static> {
-        match self {
-            MutableIpPacket::Ipv4(i) => ConvertibleIpv4Packet::owned(i.buf.to_vec())
-                .expect("owned packet should still be valid")
-                .into(),
-            MutableIpPacket::Ipv6(i) => ConvertibleIpv6Packet::owned(i.buf.to_vec())
-                .expect("owned packet should still be valid")
-                .into(),
-        }
     }
 
     pub fn to_immutable(&self) -> IpPacket {
@@ -617,11 +584,6 @@ impl<'a> MutableIpPacket<'a> {
             .flatten()
     }
 
-    /// Unwrap this [`IpPacket`] as a [`MutableUdpPacket`], panicking in case it is not.
-    pub fn unwrap_as_udp(&mut self) -> MutableUdpPacket {
-        self.as_udp().expect("Packet is not a UDP packet")
-    }
-
     pub fn as_tcp(&mut self) -> Option<MutableTcpPacket> {
         self.to_immutable()
             .is_tcp()
@@ -673,17 +635,6 @@ impl<'a> MutableIpPacket<'a> {
             .is_tcp()
             .then(|| TcpPacket::new(self.payload()))
             .flatten()
-    }
-
-    pub fn swap_src_dst(&mut self) {
-        match self {
-            Self::Ipv4(p) => {
-                swap_src_dst!(p);
-            }
-            Self::Ipv6(p) => {
-                swap_src_dst!(p);
-            }
-        }
     }
 
     pub fn translate_destination(
@@ -821,28 +772,6 @@ impl<'a> IpPacket<'a> {
         for_both!(self, |i| i.get_destination().into())
     }
 
-    pub fn udp_payload(&self) -> &[u8] {
-        debug_assert_eq!(
-            match self {
-                IpPacket::Ipv4(i) => i.get_next_level_protocol(),
-                IpPacket::Ipv6(i) => i.get_next_header(),
-            },
-            IpNextHeaderProtocols::Udp
-        );
-
-        for_both!(self, |i| &i.payload()[8..])
-    }
-
-    pub fn owned(data: Vec<u8>) -> Option<IpPacket<'static>> {
-        let packet = match data[0] >> 4 {
-            4 => Ipv4Packet::owned(data)?.into(),
-            6 => Ipv6Packet::owned(data)?.into(),
-            _ => return None,
-        };
-
-        Some(packet)
-    }
-
     pub fn next_header(&self) -> IpNextHeaderProtocol {
         match self {
             Self::Ipv4(p) => p.get_next_level_protocol(),
@@ -968,13 +897,6 @@ impl<'a> IcmpPacket<'a> {
 
     pub fn is_echo_request(&self) -> bool {
         self.as_echo_request().is_some()
-    }
-
-    pub fn checksum(&self) -> u16 {
-        match self {
-            IcmpPacket::Ipv4(p) => p.get_checksum(),
-            IcmpPacket::Ipv6(p) => p.get_checksum(),
-        }
     }
 }
 
