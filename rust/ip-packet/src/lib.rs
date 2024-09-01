@@ -533,7 +533,7 @@ impl<'a> MutableIpPacket<'a> {
         self.set_ipv4_checksum();
     }
 
-    pub fn set_ipv4_checksum(&mut self) {
+    fn set_ipv4_checksum(&mut self) {
         if let Self::Ipv4(p) = self {
             p.set_checksum(ipv4::checksum(&p.to_immutable()));
         }
@@ -584,7 +584,7 @@ impl<'a> MutableIpPacket<'a> {
             .flatten()
     }
 
-    pub fn as_tcp(&mut self) -> Option<MutableTcpPacket> {
+    fn as_tcp(&mut self) -> Option<MutableTcpPacket> {
         self.to_immutable()
             .is_tcp()
             .then(|| MutableTcpPacket::new(self.payload_mut()))
@@ -623,14 +623,14 @@ impl<'a> MutableIpPacket<'a> {
             .flatten()
     }
 
-    pub fn as_immutable_udp(&self) -> Option<UdpPacket> {
+    fn as_immutable_udp(&self) -> Option<UdpPacket> {
         self.to_immutable()
             .is_udp()
             .then(|| UdpPacket::new(self.payload()))
             .flatten()
     }
 
-    pub fn as_immutable_tcp(&self) -> Option<TcpPacket> {
+    fn as_immutable_tcp(&self) -> Option<TcpPacket> {
         self.to_immutable()
             .is_tcp()
             .then(|| TcpPacket::new(self.payload()))
@@ -839,7 +839,7 @@ impl<'a> IpPacket<'a> {
         }
     }
 
-    pub fn udp_checksum(&self, dgm: &UdpPacket<'_>) -> u16 {
+    fn udp_checksum(&self, dgm: &UdpPacket<'_>) -> u16 {
         match self {
             Self::Ipv4(p) => udp::ipv4_checksum(dgm, &p.get_source(), &p.get_destination()),
             Self::Ipv6(p) => udp::ipv6_checksum(dgm, &p.get_source(), &p.get_destination()),
