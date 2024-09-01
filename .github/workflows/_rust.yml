@@ -102,10 +102,12 @@ jobs:
           # First, run all tests.
           cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored --nocapture
 
-          # Assert that we sample certain transitions
+          # Poor man's test coverage testing: Grep the generated logs for specific patterns / lines.
           rg SendICMPPacketToCidrResource $TESTCASES_DIR
           rg SendICMPPacketToDnsResource $TESTCASES_DIR
           rg SendDnsQueries $TESTCASES_DIR
+          rg "Performed IP-NAT46" $TESTCASES_DIR
+          rg "Performed IP-NAT64" $TESTCASES_DIR
 
           # Backup dumped state and transition samples
           mv $TESTCASES_DIR $TESTCASES_BACKUP_DIR
