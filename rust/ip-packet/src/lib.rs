@@ -238,14 +238,6 @@ impl<'a> ConvertibleIpv4Packet<'a> {
         self.as_ipv4().set_checksum(checksum);
     }
 
-    pub fn set_total_length(&mut self, total_length: u16) {
-        self.as_ipv4().set_total_length(total_length);
-    }
-
-    pub fn set_header_length(&mut self, header_length: u8) {
-        self.as_ipv4().set_header_length(header_length);
-    }
-
     fn consume_to_immutable(self) -> Ipv4Packet<'a> {
         match self.buf {
             MaybeOwned::RefMut(buf) => {
@@ -340,10 +332,6 @@ impl<'a> ConvertibleIpv6Packet<'a> {
 
     fn set_destination(&mut self, destination: Ipv6Addr) {
         self.as_ipv6().set_destination(destination);
-    }
-
-    pub fn set_payload_length(&mut self, payload_length: u16) {
-        self.as_ipv6().set_payload_length(payload_length);
     }
 
     fn consume_to_immutable(self) -> Ipv6Packet<'a> {
