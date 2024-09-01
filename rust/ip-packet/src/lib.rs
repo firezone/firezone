@@ -263,11 +263,12 @@ impl<'a> ConvertibleIpv4Packet<'a> {
         src: Ipv6Addr,
         dst: Ipv6Addr,
     ) -> Option<ConvertibleIpv6Packet<'a>> {
-        let offset = nat46::translate_in_place(&mut self.buf, src, dst)?;
+        let offset = nat46::translate_in_place(&mut self.buf, src, dst)
+            .inspect_err(|e| tracing::trace!("NAT64 failed: {e:#}"))
+            .ok()?;
+        let buf = self.buf.remove_from_head(offset);
 
-        Some(ConvertibleIpv6Packet {
-            buf: self.buf.remove_from_head(offset),
-        })
+        Some(ConvertibleIpv6Packet { buf })
     }
 
     fn header_length(&self) -> usize {
@@ -361,7 +362,9 @@ impl<'a> ConvertibleIpv6Packet<'a> {
         src: Ipv4Addr,
         dst: Ipv4Addr,
     ) -> Option<ConvertibleIpv4Packet<'a>> {
-        nat64::translate_in_place(&mut self.buf, src, dst)?;
+        nat64::translate_in_place(&mut self.buf, src, dst)
+            .inspect_err(|e| tracing::trace!("NAT64 failed: {e:#}"))
+            .ok()?;
 
         Some(ConvertibleIpv4Packet { buf: self.buf })
     }

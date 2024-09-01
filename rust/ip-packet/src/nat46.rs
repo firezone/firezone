@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use etherparse::{
     icmpv4,
     icmpv6::{self, ParameterProblemHeader},
@@ -12,13 +13,12 @@ use std::{io::Cursor, net::Ipv6Addr};
 ///
 /// # Returns
 ///
-/// - Some(offset): The offset within `buf` at which the new IPv6 packet starts.
-/// - None: Translated failed.
-pub fn translate_in_place(buf: &mut [u8], src: Ipv6Addr, dst: Ipv6Addr) -> Option<usize> {
+/// - Ok(offset): The offset within `buf` at which the new IPv6 packet starts.
+pub fn translate_in_place(buf: &mut [u8], src: Ipv6Addr, dst: Ipv6Addr) -> Result<usize> {
     let ipv4_packet = &buf[20..];
 
-    let (headers, payload) = etherparse::IpHeaders::from_ipv4_slice(ipv4_packet).ok()?;
-    let (ipv4_header, _extensions) = headers.ipv4()?;
+    let (headers, payload) = etherparse::IpHeaders::from_ipv4_slice(ipv4_packet)?;
+    let (ipv4_header, _extensions) = headers.ipv4().expect("We successfully parsed as IPv4");
 
     let total_length = ipv4_header.total_len;
     let header_length = ipv4_header.header_len();
@@ -123,7 +123,7 @@ pub fn translate_in_place(buf: &mut [u8], src: Ipv6Addr, dst: Ipv6Addr) -> Optio
     tracing::trace!(from = ?ipv4_header, to = ?ipv6_header, "Performed IP-NAT46");
 
     if ipv4_header.protocol == IpNumber::ICMP {
-        let (icmpv4_header, icmp_payload) = Icmpv4Header::from_slice(payload.payload).ok()?;
+        let (icmpv4_header, icmp_payload) = Icmpv4Header::from_slice(payload.payload)?;
         let icmpv4_header_length = icmpv4_header.header_len();
 
         // Optimisation to only clone when we are actually logging.
@@ -131,7 +131,8 @@ pub fn translate_in_place(buf: &mut [u8], src: Ipv6Addr, dst: Ipv6Addr) -> Optio
             .then(|| tracing::field::debug(icmpv4_header.clone()));
 
         let icmpv6_header =
-            translate_icmpv4_header(src, dst, total_length, icmpv4_header, icmp_payload)?;
+            translate_icmpv4_header(src, dst, total_length, icmpv4_header, icmp_payload)
+                .context("Untranslatable ICMPv4 header")?;
         let icmpv6_header_length = icmpv6_header.header_len();
 
         tracing::trace!(from = icmpv4_header_dbg, to = ?icmpv6_header, "Performed ICMP-NAT46");
@@ -144,17 +145,17 @@ pub fn translate_in_place(buf: &mut [u8], src: Ipv6Addr, dst: Ipv6Addr) -> Optio
 
         let (_ip_header, ip_payload) = buf.split_at_mut(start_of_ip_payload);
 
-        icmpv6_header.write(&mut Cursor::new(ip_payload)).ok()?;
+        icmpv6_header.write(&mut Cursor::new(ip_payload))?;
     };
 
     let start_of_ipv6_header = start_of_ip_payload - Ipv6Header::LEN;
 
     let (excess_padding, ipv6_header_buf) = buf.split_at_mut(start_of_ipv6_header);
-    ipv6_header.write(&mut Cursor::new(ipv6_header_buf)).ok()?;
+    ipv6_header.write(&mut Cursor::new(ipv6_header_buf))?;
 
     let excess_padding_length = excess_padding.len();
 
-    Some(excess_padding_length)
+    Ok(excess_padding_length)
 }
 
 fn translate_icmpv4_header(

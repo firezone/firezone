@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use etherparse::{
     Icmpv6Header, IpFragOffset, IpNumber, Ipv4Dscp, Ipv4Ecn, Ipv4Header, Ipv4Options, Ipv6Header,
 };
@@ -8,9 +9,9 @@ use std::{io::Cursor, net::Ipv4Addr};
 /// IPv6 headers have a fixed size of 40 bytes.
 /// IPv4 options are lost as part of NAT64, meaning the translated packet will always be 20 bytes shorter.
 /// Thus, the IPv4 packet will always sit at an offset of 20 bytes in `buf` after the translation.
-pub fn translate_in_place(buf: &mut [u8], src: Ipv4Addr, dst: Ipv4Addr) -> Option<()> {
-    let (headers, payload) = etherparse::IpHeaders::from_ipv6_slice(buf).ok()?;
-    let (ipv6_header, _extensions) = headers.ipv6()?;
+pub fn translate_in_place(buf: &mut [u8], src: Ipv4Addr, dst: Ipv4Addr) -> Result<()> {
+    let (headers, payload) = etherparse::IpHeaders::from_ipv6_slice(buf)?;
+    let (ipv6_header, _extensions) = headers.ipv6().expect("We successfully parsed as IPv6");
 
     // TODO:
     // If there is no IPv6 Fragment Header, the IPv4 header fields are set
@@ -31,7 +32,7 @@ pub fn translate_in_place(buf: &mut [u8], src: Ipv4Addr, dst: Ipv4Addr) -> Optio
         //    addition, if the translator is at an administrative boundary, the
         //    filtering and update considerations of [RFC2475] may be
         //    applicable.
-        dscp: Ipv4Dscp::try_new(ipv6_header.traffic_class).ok()?,
+        dscp: Ipv4Dscp::try_new(ipv6_header.traffic_class)?,
 
         // Total Length:  Payload length value from the IPv6 header, plus the
         //    size of the IPv4 header.
@@ -99,8 +100,7 @@ pub fn translate_in_place(buf: &mut [u8], src: Ipv4Addr, dst: Ipv4Addr) -> Optio
             | IpNumber::IPV6_HEADER_HOP_BY_HOP
             | IpNumber::IPV6_ROUTE_HEADER
             | IpNumber::IPV6_DESTINATION_OPTIONS => {
-                tracing::debug!("Unable to translate IPv6 next header protocol: {:?}", ipv6_header.next_header.protocol_str());
-                return None;
+                anyhow::bail!("Unable to translate IPv6 next header protocol: {:?}", ipv6_header.next_header.protocol_str());
             },
             IpNumber::IPV6_ICMP => IpNumber::ICMP,
             other => other
@@ -143,14 +143,15 @@ pub fn translate_in_place(buf: &mut [u8], src: Ipv4Addr, dst: Ipv4Addr) -> Optio
     tracing::trace!(from = ?ipv6_header, to = ?ipv4_header, "Performed IP-NAT64");
 
     if ipv6_header.next_header == IpNumber::IPV6_ICMP {
-        let (icmpv6_header, icmp_payload) = Icmpv6Header::from_slice(payload.payload).ok()?;
+        let (icmpv6_header, icmp_payload) = Icmpv6Header::from_slice(payload.payload)?;
         let icmpv6_header_length = icmpv6_header.header_len();
 
         // Optimisation to only clone when we are actually logging.
         let icmpv6_header_dbg = tracing::event_enabled!(tracing::Level::TRACE)
             .then(|| tracing::field::debug(icmpv6_header.clone()));
 
-        let icmpv4_header = translate_icmpv6_header(icmpv6_header, icmp_payload)?;
+        let icmpv4_header = translate_icmpv6_header(icmpv6_header, icmp_payload)
+            .context("Untranslatable ICMPv6 header")?;
         let icmpv4_header_length = icmpv4_header.header_len();
 
         tracing::trace!(from = icmpv6_header_dbg, to = ?icmpv4_header, "Performed ICMP-NAT64");
@@ -163,7 +164,7 @@ pub fn translate_in_place(buf: &mut [u8], src: Ipv4Addr, dst: Ipv4Addr) -> Optio
 
         let (_ip_header, ip_payload) = buf.split_at_mut(Ipv6Header::LEN);
 
-        icmpv4_header.write(&mut Cursor::new(ip_payload)).ok()?;
+        icmpv4_header.write(&mut Cursor::new(ip_payload))?;
     }
 
     // TODO?: If a Routing header with a non-zero Segments Left field is present,
@@ -182,9 +183,9 @@ pub fn translate_in_place(buf: &mut [u8], src: Ipv4Addr, dst: Ipv4Addr) -> Optio
 
     buf[..40].fill(0);
     let ipv4_header_buf = &mut buf[20..];
-    ipv4_header.write(&mut Cursor::new(ipv4_header_buf)).ok()?;
+    ipv4_header.write(&mut Cursor::new(ipv4_header_buf))?;
 
-    Some(())
+    Ok(())
 }
 
 fn translate_icmpv6_header(
