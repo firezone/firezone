@@ -14,7 +14,7 @@ pub use pnet_packet::*;
 mod proptests;
 
 use domain::base::Message;
-use etherparse::{Ipv4HeaderSlice, Ipv6HeaderSlice};
+use etherparse::{Ipv4HeaderSlice, Ipv6Header, Ipv6HeaderSlice};
 use ipv4_header_slice_mut::Ipv4HeaderSliceMut;
 use ipv6_header_slice_mut::Ipv6HeaderSliceMut;
 use pnet_packet::{
@@ -352,9 +352,7 @@ impl<'a> Packet for ConvertibleIpv6Packet<'a> {
     }
 
     fn payload(&self) -> &[u8] {
-        let header_len =
-            self.to_immutable().packet_size() - self.to_immutable().get_payload_length() as usize;
-        &self.buf[header_len..]
+        &self.buf[Ipv6Header::LEN..]
     }
 }
 
@@ -364,9 +362,7 @@ impl<'a> MutablePacket for ConvertibleIpv6Packet<'a> {
     }
 
     fn payload_mut(&mut self) -> &mut [u8] {
-        let header_len =
-            self.to_immutable().packet_size() - self.to_immutable().get_payload_length() as usize;
-        &mut self.buf[header_len..]
+        &mut self.buf[Ipv6Header::LEN..]
     }
 }
 
