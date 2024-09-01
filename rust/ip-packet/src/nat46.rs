@@ -123,16 +123,15 @@ pub fn translate_in_place(buf: &mut [u8], src: Ipv6Addr, dst: Ipv6Addr) -> Resul
     tracing::trace!(from = ?ipv4_header, to = ?ipv6_header, "Performed IP-NAT46");
 
     if ipv4_header.protocol == IpNumber::ICMP {
-        let (icmpv4_header, icmp_payload) = Icmpv4Header::from_slice(payload.payload)?;
+        let (icmpv4_header, _icmp_payload) = Icmpv4Header::from_slice(payload.payload)?;
         let icmpv4_header_length = icmpv4_header.header_len();
 
         // Optimisation to only clone when we are actually logging.
         let icmpv4_header_dbg = tracing::event_enabled!(tracing::Level::TRACE)
             .then(|| tracing::field::debug(icmpv4_header.clone()));
 
-        let icmpv6_header =
-            translate_icmpv4_header(src, dst, total_length, icmpv4_header, icmp_payload)
-                .context("Untranslatable ICMPv4 header")?;
+        let icmpv6_header = translate_icmpv4_header(total_length, icmpv4_header)
+            .context("Untranslatable ICMPv4 header")?;
         let icmpv6_header_length = icmpv6_header.header_len();
 
         tracing::trace!(from = icmpv4_header_dbg, to = ?icmpv6_header, "Performed ICMP-NAT46");
@@ -159,11 +158,8 @@ pub fn translate_in_place(buf: &mut [u8], src: Ipv6Addr, dst: Ipv6Addr) -> Resul
 }
 
 fn translate_icmpv4_header(
-    src: Ipv6Addr,
-    dst: Ipv6Addr,
     total_length: u16,
     icmpv4_header: etherparse::Icmpv4Header,
-    icmp_payload: &[u8],
 ) -> Option<etherparse::Icmpv6Header> {
     // Note: we only really need to support reply/request because we need
     // the identification to do nat anyways as source port.
@@ -295,10 +291,5 @@ fn translate_icmpv4_header(
         Icmpv4Type::Unknown { .. } => return None,
     };
 
-    let mut icmpv6_header = Icmpv6Header::new(icmpv6_type);
-    icmpv6_header
-        .update_checksum(src.octets(), dst.octets(), icmp_payload)
-        .ok()?;
-
-    Some(icmpv6_header)
+    Some(Icmpv6Header::new(icmpv6_type))
 }
