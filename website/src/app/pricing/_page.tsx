@@ -22,8 +22,9 @@ export default function _Page() {
             <span
               className={
                 (annual
-                  ? "text-neutral-500 font-medium"
-                  : "text-neutral-900 font-semibold") + "text-lg uppercase"
+                  ? "text-neutral-500 font-medium text-md"
+                  : "text-neutral-900 font-semibold text-lg") +
+                "text-left uppercase"
               }
             >
               Monthly
@@ -32,9 +33,9 @@ export default function _Page() {
             <span
               className={
                 (annual
-                  ? "text-neutral-900 font-semibold "
-                  : "text-neutral-500 font-medium") +
-                "text-lg text-left uppercase"
+                  ? "text-neutral-900 font-semibold text-lg"
+                  : "text-neutral-500 font-medium text-md") +
+                "text-left uppercase"
               }
             >
               Annual
@@ -72,7 +73,10 @@ export default function _Page() {
             <p className="text-sm text-center text-neutral-600 mb-8">
               No credit card required.
             </p>
-            <ul role="list" className="text-sm md:text-md font-medium space-y-4">
+            <ul
+              role="list"
+              className="text-sm md:text-md font-medium space-y-4"
+            >
               <li className="flex space-x-2.5">
                 <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900">
@@ -164,7 +168,10 @@ export default function _Page() {
               Save 17% by switching to annual
             </p>
 
-            <ul role="list" className="text-sm md:text-md font-medium space-y-4">
+            <ul
+              role="list"
+              className="text-sm md:text-md font-medium space-y-4"
+            >
               <li className="flex space-x-2.5">
                 <FaCircleCheck className="flex-shrink-0 w-4 h-4 text-accent-450" />
                 <span className="leading-tight font-bold text-neutral-900 ">
@@ -249,7 +256,10 @@ export default function _Page() {
               </Link>
             </div>
 
-            <ul role="list" className="text-sm md:text-md font-medium space-y-4 text-neutral-200">
+            <ul
+              role="list"
+              className="text-sm md:text-md font-medium space-y-4 text-neutral-200"
+            >
               <li className="flex space-x-2.5">
                 <FaCircleCheck className="flex-shrink-0 w-4 h-4 text-accent-300" />
                 <span className="leading-tight font-bold text-neutral-50">
