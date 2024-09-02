@@ -81,8 +81,10 @@ pub struct Tunnel<TRoleState> {
     ip4_read_buf: Box<[u8; MAX_UDP_SIZE]>,
     ip6_read_buf: Box<[u8; MAX_UDP_SIZE]>,
 
-    /// Buffer for processing a single IP packet.
-    packet_buffer: Box<[u8; BUF_SIZE]>,
+    /// Buffer for reading a single IP packet.
+    device_read_buf: Box<[u8; BUF_SIZE]>,
+    /// Buffer for encrypting / decrypting a single packet.
+    packet_buf: Box<[u8; BUF_SIZE]>,
 }
 
 impl ClientTunnel {
@@ -95,9 +97,10 @@ impl ClientTunnel {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: ClientState::new(private_key, known_hosts, rand::random()),
-            packet_buffer: Box::new([0u8; BUF_SIZE]),
+            device_read_buf: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            packet_buf: Box::new([0u8; BUF_SIZE]),
         }
     }
 
@@ -132,14 +135,18 @@ impl ClientTunnel {
                 cx,
                 self.ip4_read_buf.as_mut(),
                 self.ip6_read_buf.as_mut(),
-                self.packet_buffer.as_mut(),
+                self.device_read_buf.as_mut(),
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout);
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
-                    let Some(transmit) = self.role_state.encapsulate(packet, Instant::now()) else {
+                    let Some(transmit) = self.role_state.encapsulate(
+                        packet,
+                        Instant::now(),
+                        self.packet_buf.as_mut(),
+                    ) else {
                         continue;
                     };
 
@@ -154,7 +161,7 @@ impl ClientTunnel {
                             received.from,
                             received.packet,
                             std::time::Instant::now(),
-                            self.packet_buffer.as_mut(),
+                            self.packet_buf.as_mut(),
                         ) else {
                             continue;
                         };
@@ -185,9 +192,10 @@ impl GatewayTunnel {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: GatewayState::new(private_key, rand::random()),
-            packet_buffer: Box::new([0u8; BUF_SIZE]),
+            device_read_buf: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            packet_buf: Box::new([0u8; BUF_SIZE]),
         }
     }
 
@@ -217,17 +225,18 @@ impl GatewayTunnel {
                 cx,
                 self.ip4_read_buf.as_mut(),
                 self.ip6_read_buf.as_mut(),
-                self.packet_buffer.as_mut(),
+                self.device_read_buf.as_mut(),
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout, Utc::now());
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
-                    let Some(transmit) = self
-                        .role_state
-                        .encapsulate(packet, std::time::Instant::now())
-                    else {
+                    let Some(transmit) = self.role_state.encapsulate(
+                        packet,
+                        std::time::Instant::now(),
+                        self.packet_buf.as_mut(),
+                    ) else {
                         continue;
                     };
 
@@ -242,7 +251,7 @@ impl GatewayTunnel {
                             received.from,
                             received.packet,
                             std::time::Instant::now(),
-                            self.packet_buffer.as_mut(),
+                            self.device_read_buf.as_mut(),
                         ) else {
                             continue;
                         };

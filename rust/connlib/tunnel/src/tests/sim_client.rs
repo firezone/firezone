@@ -147,7 +147,11 @@ impl SimClient {
             }
         }
 
-        Some(self.sut.encapsulate(packet, now)?.into_owned())
+        Some(
+            self.sut
+                .encapsulate(packet, now, &mut self.buffer)?
+                .into_owned(),
+        )
     }
 
     pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) {

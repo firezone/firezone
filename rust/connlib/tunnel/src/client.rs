@@ -419,11 +419,12 @@ impl ClientState {
         )
     }
 
-    pub(crate) fn encapsulate<'s>(
-        &'s mut self,
+    pub(crate) fn encapsulate<'b>(
+        &mut self,
         packet: MutableIpPacket<'_>,
         now: Instant,
-    ) -> Option<snownet::Transmit<'s>> {
+        buffer: &'b mut [u8],
+    ) -> Option<snownet::Transmit<'b>> {
         let (packet, dst) = match self.try_handle_dns_query(packet, now) {
             Ok(response) => {
                 self.buffered_packets.push_back(response?.to_owned());
@@ -469,7 +470,7 @@ impl ClientState {
 
         let transmit = self
             .node
-            .encapsulate(gid, packet.as_immutable(), now)
+            .encapsulate(gid, packet.as_immutable(), now, buffer)
             .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
             .ok()??;
 

@@ -287,14 +287,14 @@ where
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
     /// - `Ok(Some)` if the packet was an encrypted wireguard packet from a peer.
     ///   The `Option` contains the connection on which the packet was decrypted.
-    pub fn decapsulate<'s>(
+    pub fn decapsulate<'b>(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-        buffer: &'s mut [u8],
-    ) -> Result<Option<(TId, MutableIpPacket<'s>)>, Error> {
+        buffer: &'b mut [u8],
+    ) -> Result<Option<(TId, MutableIpPacket<'b>)>, Error> {
         self.add_local_as_host_candidate(local)?;
 
         let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
@@ -326,10 +326,11 @@ where
     /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
     /// Nevertheless, using [`IpPacket`] in our API has good documentation value.
     pub fn encapsulate<'s>(
-        &'s mut self,
+        &mut self,
         connection: TId,
         packet: IpPacket<'_>,
         now: Instant,
+        buffer: &'s mut [u8],
     ) -> Result<Option<Transmit<'s>>, Error> {
         let conn = self
             .connections
@@ -341,7 +342,7 @@ where
 
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
-            .encapsulate(packet.packet(), &mut self.buffer[4..], now)?
+            .encapsulate(packet.packet(), &mut buffer[4..], now)?
             .map(|p| p.len())
         // Mapping to len() here terminate the mutable borrow of buffer, allowing re-borrowing further down.
         else {
@@ -357,7 +358,7 @@ where
                 source,
             } => {
                 // Re-borrow the actual packet.
-                let packet = &self.buffer[packet_start..packet_end];
+                let packet = &buffer[packet_start..packet_end];
 
                 Ok(Some(Transmit {
                     src: Some(source),
@@ -370,7 +371,7 @@ where
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
-                let packet = &mut self.buffer[..packet_end];
+                let packet = &mut buffer[..packet_end];
 
                 let Some(transmit) = allocation.encode_to_borrowed_transmit(peer, packet, now)
                 else {

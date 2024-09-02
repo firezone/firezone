@@ -78,7 +78,10 @@ impl SimGateway {
                 self.received_icmp_requests.insert(payload, packet.clone());
 
                 let echo_response = ip_packet::make::icmp_response_packet(packet);
-                let transmit = self.sut.encapsulate(echo_response, now)?.into_owned();
+                let transmit = self
+                    .sut
+                    .encapsulate(echo_response, now, &mut self.buffer)?
+                    .into_owned();
 
                 return Some(transmit);
             }
@@ -89,7 +92,10 @@ impl SimGateway {
                 global_dns_records.get(name).cloned().into_iter().flatten()
             });
 
-            let transmit = self.sut.encapsulate(response, now)?.into_owned();
+            let transmit = self
+                .sut
+                .encapsulate(response, now, &mut self.buffer)?
+                .into_owned();
 
             return Some(transmit);
         }
