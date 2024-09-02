@@ -7,7 +7,7 @@ import { Route } from "next";
 function CardHeading({ children }: { children: React.ReactNode }) {
   return (
     <h4
-      className={`font-semibold tracking-tight leading-none text-xl mb-3 inline-block ${manrope.className}`}
+      className={`font-semibold tracking-tight leading-none text-2xl mb-3 inline-block ${manrope.className}`}
     >
       {children}
     </h4>
@@ -51,9 +51,9 @@ export default function UseCaseCards() {
         >
           See how our customers use Firezone
         </h3>
-        <div className="grid lg:grid-cols-16 gap-6 mt-8 mx-6">
+        <div className="grid lg:grid-cols-16 gap-6 mt-8 mx-2 md:mx-6">
           <Card>
-            <div>
+            <div className="mt-2 md:mt-4 lg:mt-6">
               <CardHeading>Scale access to cloud resources.</CardHeading>
               <p>
                 Eliminate throughput bottlenecks that plague other VPNs.
@@ -67,7 +67,7 @@ export default function UseCaseCards() {
               />
             </div>
             <Image
-              className="absolute -bottom-14 sm:-bottom-20 md:-bottom-24 mx-auto px-4"
+              className="absolute -bottom-12 sm:-bottom-20 md:-bottom-24 lg:-bottom-16 mx-auto px-4"
               src="/images/resource-list.png"
               width={700}
               height={350}
@@ -147,7 +147,7 @@ export default function UseCaseCards() {
             </div>
           </Card>
           <Card>
-            <div>
+            <div className="w-full mt-2 md:mt-4 lg:mt-6">
               <CardHeading>Block malicious DNS</CardHeading>
               <p>
                 Use Firezone to improve your team's Internet security by
@@ -156,7 +156,7 @@ export default function UseCaseCards() {
               <Button text="Secure your DNS" href="/kb/use-cases/secure-dns" />
             </div>
             <Image
-              className="absolute -bottom-5 px-4"
+              className="absolute bottom-0 px-4" 
               src="/images/block-malicious-dns.png"
               width={577}
               height={266}

@@ -135,7 +135,7 @@ export default function Page() {
           <p className="text-lg text-pretty text-neutral-800">
             Restrict access based on realtime conditions like device location,
             time of day, and more, and view every authorized connection by user,
-            Resource, or policy.
+            resource, or policy.
           </p>
         }
         image={
