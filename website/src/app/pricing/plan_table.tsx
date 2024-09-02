@@ -1,5 +1,5 @@
 import Tooltip from "@/components/Tooltip";
-import { HiCheck } from "react-icons/hi2";
+import { FaCheck } from "react-icons/fa6";
 import { useEffect } from "react";
 import Link from "next/link";
 
@@ -8,22 +8,22 @@ export default function PlanTable() {
     <table className="w-full mx-auto text-left table-fixed max-w-screen-sm sm:max-w-screen-md">
       <thead>
         <tr>
-          <th scope="col"></th>
+          <th scope="col" className="w-1/3"></th>
           <th
             scope="col"
-            className="mx-1 py-6 uppercase text-primary-450 text-center tracking-light"
+            className="text-lg mx-1 py-6 uppercase text-primary-450 text-center tracking-light"
           >
             Starter
           </th>
           <th
             scope="col"
-            className="mx-1 py-6 uppercase text-primary-450 text-center tracking-light"
+            className="text-lg mx-1 py-6 uppercase text-primary-450 text-center tracking-light"
           >
             Team
           </th>
           <th
             scope="col"
-            className="mx-1 py-6 uppercase text-primary-450 text-center tracking-light"
+            className="text-lg mx-1 py-6 uppercase text-primary-450 text-center tracking-light"
           >
             Enterprise
           </th>
@@ -36,9 +36,9 @@ export default function PlanTable() {
               Users
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">6</td>
-          <td className="gmx-1 py-4 text-center">100</td>
-          <td className="gmx-1 py-4 text-center">No limit</td>
+          <td className="font-semibold gmx-1 py-4 text-center">6</td>
+          <td className="font-semibold gmx-1 py-4 text-center">100</td>
+          <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">
@@ -46,9 +46,9 @@ export default function PlanTable() {
               Service Accounts
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">10</td>
-          <td className="gmx-1 py-4 text-center">100</td>
-          <td className="gmx-1 py-4 text-center">No limit</td>
+          <td className="font-semibold gmx-1 py-4 text-center">10</td>
+          <td className="font-semibold gmx-1 py-4 text-center">100</td>
+          <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">
@@ -56,9 +56,9 @@ export default function PlanTable() {
               Sites
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">10</td>
-          <td className="gmx-1 py-4 text-center">100</td>
-          <td className="gmx-1 py-4 text-center">No limit</td>
+          <td className="font-semibold gmx-1 py-4 text-center">10</td>
+          <td className="font-semibold gmx-1 py-4 text-center">100</td>
+          <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">
@@ -66,9 +66,9 @@ export default function PlanTable() {
               Admins
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">1</td>
-          <td className="gmx-1 py-4 text-center">10</td>
-          <td className="gmx-1 py-4 text-center">No limit</td>
+          <td className="font-semibold gmx-1 py-4 text-center">1</td>
+          <td className="font-semibold gmx-1 py-4 text-center">10</td>
+          <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">
@@ -76,9 +76,9 @@ export default function PlanTable() {
               Policies
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">No limit</td>
-          <td className="gmx-1 py-4 text-center">No limit</td>
-          <td className="gmx-1 py-4 text-center">No limit</td>
+          <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
+          <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
+          <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">
@@ -86,9 +86,9 @@ export default function PlanTable() {
               Resources
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">No limit</td>
-          <td className="gmx-1 py-4 text-center">No limit</td>
-          <td className="gmx-1 py-4 text-center">No limit</td>
+          <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
+          <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
+          <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">
@@ -96,9 +96,9 @@ export default function PlanTable() {
               Connected Clients
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">No limit</td>
-          <td className="gmx-1 py-4 text-center">No limit</td>
-          <td className="gmx-1 py-4 text-center">No limit</td>
+          <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
+          <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
+          <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
         </tr>
         <tr>
           <td
@@ -115,13 +115,13 @@ export default function PlanTable() {
             </Tooltip>
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -131,13 +131,13 @@ export default function PlanTable() {
             </Tooltip>
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -147,13 +147,13 @@ export default function PlanTable() {
             </Tooltip>
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -163,13 +163,13 @@ export default function PlanTable() {
             </Tooltip>
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -179,13 +179,13 @@ export default function PlanTable() {
             </Tooltip>
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -195,13 +195,13 @@ export default function PlanTable() {
             </Tooltip>
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -211,13 +211,13 @@ export default function PlanTable() {
             </Tooltip>
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -227,13 +227,13 @@ export default function PlanTable() {
             </Tooltip>
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -261,13 +261,13 @@ export default function PlanTable() {
             </Tooltip>
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4 justify-center">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -277,13 +277,13 @@ export default function PlanTable() {
             </Tooltip>
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -293,13 +293,13 @@ export default function PlanTable() {
             </Tooltip>
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -308,12 +308,12 @@ export default function PlanTable() {
               Conditional access policies
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -322,12 +322,12 @@ export default function PlanTable() {
               Custom account slug
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -336,10 +336,10 @@ export default function PlanTable() {
               Google Workspace directory sync
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -348,10 +348,10 @@ export default function PlanTable() {
               Microsoft Entra ID directory sync
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -360,10 +360,10 @@ export default function PlanTable() {
               Okta directory sync
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -372,10 +372,10 @@ export default function PlanTable() {
               JumpCloud directory sync
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr>
@@ -393,13 +393,13 @@ export default function PlanTable() {
             </Tooltip>
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -409,13 +409,13 @@ export default function PlanTable() {
             </Tooltip>
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -424,12 +424,12 @@ export default function PlanTable() {
               Resource access logs
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -438,12 +438,12 @@ export default function PlanTable() {
               Traffic restrictions
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -452,9 +452,9 @@ export default function PlanTable() {
               Compliance reports
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">SOC 2</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">SOC 2</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">
@@ -462,9 +462,9 @@ export default function PlanTable() {
               Pentest reports
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">40 hours</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">40 hours</td>
         </tr>
         <tr>
           <td
@@ -477,43 +477,43 @@ export default function PlanTable() {
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">Community Forums</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">Community Discord</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">Priority Email</td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">Dedicated Slack</td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -522,10 +522,10 @@ export default function PlanTable() {
               Roadmap acceleration
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -534,10 +534,10 @@ export default function PlanTable() {
               White-glove onboarding
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
           <td className="gmx-1 py-4">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -546,9 +546,9 @@ export default function PlanTable() {
               Uptime SLA
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">99.5%</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">99.5%</td>
         </tr>
         <tr>
           <td
@@ -564,12 +564,12 @@ export default function PlanTable() {
               Payment by credit card
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
-          <td className="gmx-1 py-4 text-center">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          <td className="font-semibold gmx-1 py-4 text-center">
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -578,12 +578,12 @@ export default function PlanTable() {
               Payment by ACH transfer
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
-          <td className="gmx-1 py-4 text-center">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          <td className="font-semibold gmx-1 py-4 text-center">
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -592,10 +592,10 @@ export default function PlanTable() {
               Payment by wire transfer
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -604,10 +604,10 @@ export default function PlanTable() {
               Annual invoicing
             </Tooltip>
           </td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4 text-center">
-            <HiCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
+          <td className="font-semibold gmx-1 py-4 text-center">
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
         <tr>
