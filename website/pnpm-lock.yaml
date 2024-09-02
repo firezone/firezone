@@ -27,8 +27,8 @@ importers:
         specifier: ^2.0.13
         version: 2.0.13
       '@types/mixpanel-browser':
-        specifier: ^2.49.1
-        version: 2.49.1
+        specifier: ^2.50.0
+        version: 2.50.0
       '@types/node':
         specifier: 20.14.12
         version: 20.14.12
@@ -66,8 +66,8 @@ importers:
         specifier: ^2.3.0
         version: 2.3.0
       mixpanel-browser:
-        specifier: ^2.55.0
-        version: 2.55.0
+        specifier: ^2.55.1
+        version: 2.55.1
       next:
         specifier: ^14.2.5
         version: 14.2.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -429,8 +429,8 @@ packages:
   '@types/mdx@2.0.13':
     resolution: {integrity: sha512-+OWZQfAYyio6YkJb3HLxDrvnx6SWWDbC0zVPfBRzUk0/nqoDyf6dNxQi3eArPe8rJ473nobTMQ/8Zk+LxJ+Yuw==}
 
-  '@types/mixpanel-browser@2.49.1':
-    resolution: {integrity: sha512-W9VZxD7haNMenkRwXxPZBJLhED7Sx1l89nZsGcWi3WzdIk417k/KnpmfDFn2sEyL31G/h0rY1E6erAny+8ItOw==}
+  '@types/mixpanel-browser@2.50.0':
+    resolution: {integrity: sha512-RkGTkkDUw3Tm/GEmcS/x8t2mNrt34jgrEWLVM6oSnoe/+bk/WQP1EWaHLk3pCDc3IaXHNoweoNMa1iWLLF0yFQ==}
 
   '@types/ms@0.7.34':
     resolution: {integrity: sha512-nG96G3Wp6acyAgJqGasjODb+acrI7KltPiRxzHPXnP3NgI28bpQDRv53olbqGXbfcgF5aiiHmO3xpwEpS5Ld9g==}
@@ -1307,8 +1307,8 @@ packages:
   mitt@3.0.1:
     resolution: {integrity: sha512-vKivATfr97l2/QBCYAkXYDbrIWPM2IIKEl7YPhjCvKlG3kE2gm+uBo6nEXK3M5/Ffh/FLpKExzOQ3JJoJGFKBw==}
 
-  mixpanel-browser@2.55.0:
-    resolution: {integrity: sha512-7gn9DucCoEXFfJ5y28ycpb6BGguyGLsoPCrDmPXyEcmBQ7JarPI9ZkFDiX5xonnWAVR/+fix+22/lLvFb+IdWQ==}
+  mixpanel-browser@2.55.1:
+    resolution: {integrity: sha512-NSEPdFSJxoR1OCKWKHbtqd3BeH1c9NjXbEt0tN5TgBEO1nSDji6niU9n4MopAXOP0POET9spjpQKxZtLZKTJwA==}
 
   ms@2.1.2:
     resolution: {integrity: sha512-sGkPx+VjMtmA6MX27oA4FBFELFCZZ4S4XqeGOXCv68tT+jb3vk/RyaKWP0PTKyWtmLSM0b+adUTEvbs1PEaH2w==}
@@ -2211,7 +2211,7 @@ snapshots:
 
   '@types/mdx@2.0.13': {}
 
-  '@types/mixpanel-browser@2.49.1': {}
+  '@types/mixpanel-browser@2.50.0': {}
 
   '@types/ms@0.7.34': {}
 
@@ -3418,7 +3418,7 @@ snapshots:
 
   mitt@3.0.1: {}
 
-  mixpanel-browser@2.55.0:
+  mixpanel-browser@2.55.1:
     dependencies:
       rrweb: 2.0.0-alpha.13
 
