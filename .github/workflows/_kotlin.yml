@@ -22,9 +22,9 @@ jobs:
           distribution: temurin
           java-version: 17
       - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v3
+        uses: gradle/actions/wrapper-validation@v4
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
         with:
           build-root-directory: ./kotlin/android
       - run: touch local.properties
@@ -45,7 +45,7 @@ jobs:
           distribution: temurin
           java-version: 17
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
         with:
           build-root-directory: ./kotlin/android
       - run: touch local.properties
@@ -91,7 +91,7 @@ jobs:
           distribution: temurin
           java-version: 17
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
         with:
           build-root-directory: ./kotlin/android
       - run: touch local.properties
@@ -139,7 +139,7 @@ jobs:
           distribution: temurin
           java-version: 17
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
       # Test on x86_64 only -- prevents compiling for other targets.
       # See https://github.com/mozilla/rust-android-gradle?tab=readme-ov-file#specifying-local-targets
       - run: echo 'rust.targets=x86' > local.properties
