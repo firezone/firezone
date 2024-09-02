@@ -18,7 +18,7 @@ export default function _Page() {
     <>
       <section className="bg-neutral-100 pb-14">
         <div className={`text-center ${manrope.className}`}>
-          <div className="flex gap-4 justify-center translate-x-6 mb-2.5">
+          <div className="flex gap-4 justify-center ps-6 mb-2.5">
             <span
               className={
                 (annual
@@ -45,9 +45,9 @@ export default function _Page() {
           </div>
         </div>
 
-        <div className="mx-auto bg-neutral-100 max-w-screen-2xl md:grid md:grid-cols-3 pt-10 md:gap-4 px-4">
+        <div className="mx-auto bg-neutral-100 max-w-screen-2xl md:grid md:grid-cols-3 pt-10 md:gap-2 lg:gap-4 px-4">
           <div
-            className={`p-10 bg-white rounded-xl shadow-drop mb-4 ${manrope.className}`}
+            className={`p-8 md:p-6 lg:p-8 xl:p-10 bg-white rounded-xl shadow-drop mb-4 ${manrope.className}`}
           >
             <h3 className="mb-6 text-xl tracking-tight font-semibold text-primary-450">
               Starter
@@ -55,7 +55,7 @@ export default function _Page() {
             <h2 className="mb-6 text-2xl sm:text-4xl tracking-tight font-bold text-neutral-900">
               Free
             </h2>
-            <p className="mb-6 text-neutral-600">
+            <p className="mb-8 text-sm text-neutral-600">
               Secure remote access for individuals and small groups.
             </p>
             <div className="mb-2 w-full text-center">
@@ -72,7 +72,7 @@ export default function _Page() {
             <p className="text-sm text-center text-neutral-600 mb-8">
               No credit card required.
             </p>
-            <ul role="list" className="font-medium space-y-4">
+            <ul role="list" className="text-sm md:text-md font-medium space-y-4">
               <li className="flex space-x-2.5">
                 <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900">
@@ -118,7 +118,7 @@ export default function _Page() {
             </ul>
           </div>
           <div
-            className={`p-10 bg-white rounded-xl shadow-drop mb-4 ${manrope.className}`}
+            className={`p-8 md:p-6 lg:p-8 xl:p-10 bg-white rounded-xl shadow-drop mb-4 ${manrope.className}`}
           >
             <h3 className="mb-6 text-xl tracking-tight font-semibold text-primary-450">
               Team
@@ -139,10 +139,10 @@ export default function _Page() {
                 </span>
               </span>
             </h2>
-            <p className="mb-6 text-neutral-600">
+            <p className="mb-8 text-sm text-neutral-600">
               Zero trust network access for teams and organizations
             </p>
-            <div className="mb-12 w-full text-center">
+            <div className="mb-10 w-full text-center">
               <Link href="https://app.firezone.dev/sign_up">
                 <button
                   type="button"
@@ -153,10 +153,20 @@ export default function _Page() {
                 </button>
               </Link>
             </div>
+            <p
+              className={`${
+                annual ? "hidden" : "block"
+              } text-primary-450 font-semibold cursor-pointer text-center -mt-12 mb-8 text-sm`}
+              onClick={() => {
+                setAnnual(true);
+              }}
+            >
+              Save 17% by switching to annual
+            </p>
 
-            <ul role="list" className="font-medium space-y-4">
+            <ul role="list" className="text-sm md:text-md font-medium space-y-4">
               <li className="flex space-x-2.5">
-                <FaCircleCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-accent-450" />
+                <FaCircleCheck className="flex-shrink-0 w-4 h-4 text-accent-450" />
                 <span className="leading-tight font-bold text-neutral-900 ">
                   Everything in Starter
                 </span>
@@ -211,81 +221,90 @@ export default function _Page() {
             </ul>
           </div>
           <div
-            className={`p-10 bg-neutral-950 text-neutral-50 rounded-xl shadow-drop mb-4 ${manrope.className}`}
+            className={`p-8 md:p-6 lg:p-8 xl:p-10 bg-neutral-950 text-neutral-50 rounded-xl shadow-drop mb-4 ${manrope.className}`}
           >
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="mb-6 text-xl tracking-tight font-semibold text-primary-450">
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="text-xl tracking-tight font-semibold text-primary-450">
                 Enterprise
               </h3>
-              <span className="font-semibold uppercase text-xs rounded bg-neutral-50 text-neutral-800 px-1 py-0.5">
+              <span className="text-center font-bold w-fit uppercase text-xs rounded-full bg-neutral-50 text-primary-450 px-3 py-1">
                 30-day trial
               </span>
             </div>
-            <p className="mb-8 font-semibold">
-              Compliance-ready security for large organizations
-            </p>
-            <h2 className="mb-16 text-2xl sm:text-4xl tracking-tight font-semibold">
+            <h2 className="mb-6 text-2xl sm:text-4xl tracking-tight font-bold text-neutral-50">
               Contact us
             </h2>
-            <div className="mb-16 w-full text-center">
+            <p className="mb-8 text-sm text-neutral-400">
+              Compliance-ready security for large organizations
+            </p>
+            <div className="mb-10 w-full text-center">
               <Link href="/contact/sales">
                 <button
                   type="button"
-                  className="w-64 text-lg px-5 py-2.5 md:w-44 md:text-sm md:px-3 md:py-2.5 lg:w-64 lg:text-lg lg:px-5 lg:py-2.5 text-white font-semibold hover:ring-2 hover:ring-primary-450 tracking-tight transition transform duration-50 rounded bg-primary-450 shadow-lg shadow-primary-700"
+                  className="bg-primary-450 w-full text-lg px-5 py-2.5 md:text-sm md:px-3 md:py-2.5 lg:text-lg lg:px-5 lg:py-2.5 
+                   hover:brightness-90 font-semibold tracking-tight rounded-full text-neutral-100 duration-50 transition transform"
                 >
                   Request a demo
                 </button>
               </Link>
             </div>
-            <p className="mb-2">
-              <strong>Everything in Team, plus:</strong>
-            </p>
-            <ul role="list" className="font-medium space-y-2">
+
+            <ul role="list" className="text-sm md:text-md font-medium space-y-4 text-neutral-200">
               <li className="flex space-x-2.5">
-                <FaCheck className="flex-shrink-0 w-5 h-5" />
-                <span className="leading-tight">Unlimited users</span>
+                <FaCircleCheck className="flex-shrink-0 w-4 h-4 text-accent-300" />
+                <span className="leading-tight font-bold text-neutral-50">
+                  Everything in Starter and Team
+                </span>
+              </li>
+              <div className="flex w-full gap-3 items-center">
+                <div className="h-[1px] w-full bg-neutral-700" />
+                <p className="uppercase text-neutral-50 font-medium">plus</p>
+                <div className="h-[1px] w-full bg-neutral-700" />
+              </div>
+              <li className="flex space-x-2.5">
+                <FaCheck className="mt-0.5 flex-shrink-0 text-primary-450 w-4 h-4" />
+                <span className="leading-tight font-bold text-neutral-50">
+                  Unlimited users
+                </span>
               </li>
               <li className="flex space-x-2.5">
-                <FaCheck className="flex-shrink-0 w-5 h-5" />
+                <FaCheck className="mt-0.5 flex-shrink-0 text-primary-450 w-4 h-4" />
+                <span className="leading-tight font-bold text-neutral-50">
+                  Unthrottled relay network
+                </span>
+              </li>
+              <li className="flex space-x-2.5">
+                <FaCheck className="mt-0.5 flex-shrink-0 text-primary-450 w-4 h-4" />
                 <span className="leading-tight">
                   Directory sync for Google, Entra ID, Okta, and JumpCloud
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <FaCheck className="flex-shrink-0 w-5 h-5" />
-                <span className="leading-tight">
-                  <span className="font-semibold text-primary-450">
-                    Unthrottled
-                  </span>{" "}
-                  relay network
-                </span>
-              </li>
-              <li className="flex space-x-2.5">
-                <FaCheck className="flex-shrink-0 w-5 h-5" />
+                <FaCheck className="mt-0.5 flex-shrink-0 text-primary-450 w-4 h-4" />
                 <span className="leading-tight">
                   Dedicated Slack support channel
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <FaCheck className="flex-shrink-0 w-5 h-5" />
+                <FaCheck className="mt-0.5 flex-shrink-0 text-primary-450 w-4 h-4" />
                 <span className="leading-tight">Uptime SLAs</span>
               </li>
               <li className="flex space-x-2.5">
-                <FaCheck className="flex-shrink-0 w-5 h-5" />
+                <FaCheck className="mt-0.5 flex-shrink-0 text-primary-450 w-4 h-4" />
                 <span className="leading-tight">
                   40-hour pentest &amp; SOC 2 reports
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <FaCheck className="flex-shrink-0 w-5 h-5" />
+                <FaCheck className="mt-0.5 flex-shrink-0 text-primary-450 w-4 h-4" />
                 <span className="leading-tight">Roadmap acceleration</span>
               </li>
               <li className="flex space-x-2.5">
-                <FaCheck className="flex-shrink-0 w-5 h-5" />
+                <FaCheck className="mt-0.5 flex-shrink-0 text-primary-450 w-4 h-4" />
                 <span className="leading-tight">White-glove onboarding</span>
               </li>
               <li className="flex space-x-2.5">
-                <FaCheck className="flex-shrink-0 w-5 h-5" />
+                <FaCheck className="mt-0.5 flex-shrink-0 text-primary-450 w-4 h-4" />
                 <span className="leading-tight">Annual invoicing</span>
               </li>
             </ul>
