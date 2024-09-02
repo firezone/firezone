@@ -60,8 +60,8 @@ public final class SessionViewModel: ObservableObject {
       .store(in: &cancellables)
   }
 
-  public func isResourceEnabled(_ resource: String) -> Bool {
-    store.isResourceEnabled(resource)
+  public func isInternetResourceEnabled() -> Bool {
+    store.internetResourceEnabled()
   }
 
 }
