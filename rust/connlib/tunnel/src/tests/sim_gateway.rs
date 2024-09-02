@@ -94,7 +94,8 @@ impl SimGateway {
             return Some(transmit);
         }
 
-        panic!("Unhandled packet")
+        tracing::error!("Unhandled packet");
+        None
     }
 
     pub(crate) fn update_relays<'a>(
