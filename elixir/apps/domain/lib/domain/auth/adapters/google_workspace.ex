@@ -71,27 +71,39 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace do
   end
 
   def fetch_service_account_token(%Provider{} = provider) do
-    unix_timestamp = :os.system_time(:seconds)
     key = provider.adapter_config["service_account_json_key"]
-    jws = %{"alg" => "RS256", "typ" => "JWT"}
-    jwk = JOSE.JWK.from_pem(key["private_key"])
+    sub = provider.adapter_state["userinfo"]["sub"]
 
-    claim_set =
-      %{
-        "iss" => key["client_email"],
-        "scope" => Enum.join(GoogleWorkspace.Settings.scope(), " "),
-        "aud" => "https://oauth2.googleapis.com/token",
-        "exp" => unix_timestamp + 3600,
-        "iat" => unix_timestamp
-      }
-      |> Jason.encode!()
+    cond do
+      is_nil(key) or key == "" ->
+        {:error, :missing_service_account_key}
 
-    jwt =
-      JOSE.JWS.sign(jwk, claim_set, jws)
-      |> JOSE.JWS.compact()
-      |> elem(1)
+      is_nil(sub) or sub == "" ->
+        {:error, :missing_sub}
 
-    APIClient.fetch_service_account_token(jwt)
+      true ->
+        unix_timestamp = :os.system_time(:seconds)
+        jws = %{"alg" => "RS256", "typ" => "JWT"}
+        jwk = JOSE.JWK.from_pem(key["private_key"])
+
+        claim_set =
+          %{
+            "iss" => key["client_email"],
+            "scope" => Enum.join(GoogleWorkspace.Settings.scope(), " "),
+            "aud" => "https://oauth2.googleapis.com/token",
+            "sub" => sub,
+            "exp" => unix_timestamp + 3600,
+            "iat" => unix_timestamp
+          }
+          |> Jason.encode!()
+
+        jwt =
+          JOSE.JWS.sign(jwk, claim_set, jws)
+          |> JOSE.JWS.compact()
+          |> elem(1)
+
+        APIClient.fetch_service_account_token(jwt)
+    end
   end
 
   @impl true
