@@ -132,6 +132,7 @@ export default function CustomerTestimonials() {
               href="/contact/sales"
               color="neutral-100"
               transitionColor="primary-450"
+              size="lg"
             >
               Book a demo
             </ActionLink>
