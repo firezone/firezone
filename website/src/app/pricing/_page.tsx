@@ -48,7 +48,7 @@ export default function _Page() {
 
         <div className="mx-auto bg-neutral-100 max-w-screen-2xl md:grid md:grid-cols-3 pt-10 md:gap-2 lg:gap-4 px-4">
           <div
-            className={`p-8 md:p-6 lg:p-8 xl:p-10 bg-white rounded-xl shadow-drop mb-4 ${manrope.className}`}
+            className={`p-8 md:p-6 lg:p-8 xl:p-10 bg-white rounded-xl shadow-light mb-4 ${manrope.className}`}
           >
             <h3 className="mb-6 text-xl tracking-tight font-semibold text-primary-450">
               Starter
@@ -122,7 +122,7 @@ export default function _Page() {
             </ul>
           </div>
           <div
-            className={`p-8 md:p-6 lg:p-8 xl:p-10 bg-white rounded-xl shadow-drop mb-4 ${manrope.className}`}
+            className={`p-8 md:p-6 lg:p-8 xl:p-10 bg-white rounded-xl shadow-light mb-4 ${manrope.className}`}
           >
             <h3 className="mb-6 text-xl tracking-tight font-semibold text-primary-450">
               Team
@@ -228,7 +228,7 @@ export default function _Page() {
             </ul>
           </div>
           <div
-            className={`p-8 md:p-6 lg:p-8 xl:p-10 bg-neutral-950 text-neutral-50 rounded-xl shadow-drop mb-4 ${manrope.className}`}
+            className={`p-8 md:p-6 lg:p-8 xl:p-10 bg-neutral-950 text-neutral-50 rounded-xl shadow-light mb-4 ${manrope.className}`}
           >
             <div className="mb-6 flex items-center justify-between">
               <h3 className="text-xl tracking-tight font-semibold text-primary-450">

@@ -60,6 +60,8 @@ module.exports = {
     extend: {
       boxShadow: {
         drop: "0px 16px 32px -4px rgba(12, 12, 13, 0.1), 0px 4px 4px -4px rgba(12, 12, 13, 0.05)",
+        light:
+          "0px 4px 8px 3px rgba(12, 12, 13, 0.08), 0px 1px 3px 0 rgba(12, 12, 13, 0.15)",
       },
       gridTemplateColumns: {
         // Simple 16 column grid
