@@ -126,13 +126,11 @@ impl Drop for Worker {
 }
 
 impl Worker {
-    fn new<
+    fn new<F, S>(thread_name: S, func: F) -> Result<Self>
+    where
         F: FnOnce(mpsc::Sender<()>, oneshot::Receiver<()>) -> Result<()> + Send + 'static,
         S: Into<String>,
-    >(
-        thread_name: S,
-        func: F,
-    ) -> Result<Self> {
+    {
         let (tx, rx) = mpsc::channel(1);
         let inner = WorkerInner::new(thread_name, tx, func)?;
         Ok(Self {
