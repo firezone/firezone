@@ -32,7 +32,7 @@ pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Er
             ErrorKind::NotFound => Error::NotFound(path),
             _ => Error::Other(error.into()),
         })?;
-    let handle = HANDLE(stream.as_raw_handle() as isize);
+    let handle = HANDLE(stream.as_raw_handle());
     let mut server_pid: u32 = 0;
     // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
     // from Tokio, so it should be valid.
@@ -74,7 +74,7 @@ impl Server {
             .connect()
             .await
             .context("Couldn't accept IPC connection from GUI")?;
-        let handle = HANDLE(server.as_raw_handle() as isize);
+        let handle = HANDLE(server.as_raw_handle());
         let mut client_pid: u32 = 0;
         // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
         // from Tokio, so it should be valid.

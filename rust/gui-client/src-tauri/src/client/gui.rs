@@ -100,7 +100,6 @@ pub(crate) fn run(
         inject_faults: cli.inject_faults,
     };
 
-    tracing::info!("Setting up Tauri app instance...");
     let (setup_result_tx, mut setup_result_rx) =
         tokio::sync::oneshot::channel::<Result<(), Error>>();
     let app = tauri::Builder::default()
@@ -144,8 +143,6 @@ pub(crate) fn run(
             }
         })
         .setup(move |app| {
-            tracing::info!("Entered Tauri's `setup`");
-
             let setup_inner = move || {
                 // Check for updates
                 let ctlr_tx_clone = ctlr_tx.clone();
@@ -995,8 +992,13 @@ async fn run_controller(
         // Code down here may not run because the `select` sometimes `continue`s.
     }
 
+    tracing::debug!("Closing...");
+
+    if let Err(error) = dns_notifier.close() {
+        tracing::error!(?error, "dns_notifier");
+    }
     if let Err(error) = network_notifier.close() {
-        tracing::error!(?error, "com_worker");
+        tracing::error!(?error, "network_notifier");
     }
     if let Err(error) = controller.ipc_client.disconnect_from_ipc().await {
         tracing::error!(?error, "ipc_client");
