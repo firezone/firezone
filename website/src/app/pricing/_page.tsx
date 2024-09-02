@@ -63,7 +63,7 @@ export default function _Page() {
               <Link href="https://app.firezone.dev/sign_up">
                 <button
                   type="button"
-                  className="bg-neutral-100 w-full text-lg px-5 py-2.5 md:text-sm md:px-3 md:py-2.5 lg:text-lg lg:px-5 lg:py-2.5 border 
+                  className="bg-neutral-100 w-full text-lg px-5 py-2.5 md:text-sm md:px-3 md:py-2.5 lg:text-lg lg:px-5 lg:py-2.5 border
                   border-1 border-neutral-500  hover:brightness-90 font-semibold tracking-tight rounded-full text-neutral-950 duration-50 transition transform"
                 >
                   Sign up
@@ -150,7 +150,7 @@ export default function _Page() {
               <Link href="https://app.firezone.dev/sign_up">
                 <button
                   type="button"
-                  className="bg-primary-450 w-full text-lg px-5 py-2.5 md:text-sm md:px-3 md:py-2.5 lg:text-lg lg:px-5 lg:py-2.5 
+                  className="bg-primary-450 w-full text-lg px-5 py-2.5 md:text-sm md:px-3 md:py-2.5 lg:text-lg lg:px-5 lg:py-2.5
                    hover:brightness-90 font-semibold tracking-tight rounded-full text-neutral-100 duration-50 transition transform"
                 >
                   Sign up
@@ -248,7 +248,7 @@ export default function _Page() {
               <Link href="/contact/sales">
                 <button
                   type="button"
-                  className="bg-primary-450 w-full text-lg px-5 py-2.5 md:text-sm md:px-3 md:py-2.5 lg:text-lg lg:px-5 lg:py-2.5 
+                  className="bg-primary-450 w-full text-lg px-5 py-2.5 md:text-sm md:px-3 md:py-2.5 lg:text-lg lg:px-5 lg:py-2.5
                    hover:brightness-90 font-semibold tracking-tight rounded-full text-neutral-100 duration-50 transition transform"
                 >
                   Request a demo
