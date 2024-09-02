@@ -156,7 +156,7 @@ export default function _Page() {
             <p
               className={`${
                 annual ? "hidden" : "block"
-              } text-primary-450 font-semibold cursor-pointer text-center -mt-12 mb-8 text-sm`}
+              } text-primary-450 font-semibold cursor-pointer text-center -mt-8 mb-8 text-sm`}
               onClick={() => {
                 setAnnual(true);
               }}
