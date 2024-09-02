@@ -43,16 +43,18 @@ export default function UseCaseCards() {
   return (
     <section className="py-24">
       <div className="max-w-[1240px] flex flex-col items-center mx-auto">
+        <h6 className="uppercase text-sm font-semibold text-primary-450 place-content-center tracking-wide mb-2">
+          Use cases
+        </h6>
         <h3
           className={`px-4 mb-8 text-3xl md:text-4xl lg:text-5xl text-center leading-tight tracking-tight font-bold inline-block ${manrope.className}`}
         >
-          One product. Endless possibilities.{" "}
-          <span className="text-primary-450">Zero </span>hassle.
+          See how our customers use Firezone
         </h3>
         <div className="grid lg:grid-cols-16 gap-6 mt-8 mx-6">
           <Card>
             <div>
-              <CardHeading>Scale access to cloud Resources.</CardHeading>
+              <CardHeading>Scale access to cloud resources.</CardHeading>
               <p>
                 Eliminate throughput bottlenecks that plague other VPNs.
                 Firezone's load-balancing architecture scales horizontally to
