@@ -541,7 +541,15 @@ impl Controller {
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
-            Req::Ipc(msg) => self.handle_ipc(msg).await?,
+            Req::Ipc(msg) => match self.handle_ipc(msg).await {
+                Ok(()) => {}
+                // Handles <https://github.com/firezone/firezone/issues/6547> more gracefully so we can still export logs even if we crashed right after sign-in
+                Err(Error::ConnectToFirezoneFailed(error)) => {
+                    tracing::error!(?error, "Failed to connect to Firezone");
+                    self.sign_out().await?;
+                }
+                Err(error) => Err(error)?,
+            }
             Req::IpcReadFailed(error) => {
                 // IPC errors are always fatal
                 tracing::error!(?error, "IPC read failure");
@@ -768,6 +776,8 @@ impl Controller {
                 Ok(())
             }
             Err(IpcServiceError::PortalConnection(error)) => {
+                // This is typically something like, we don't have Internet access so we can't
+                // open the PhoenixChannel's WebSocket.
                 tracing::warn!(
                     ?error,
                     "Failed to connect to Firezone Portal, will try again when the network changes"
@@ -778,12 +788,7 @@ impl Controller {
                 }
                 Ok(())
             }
-            Err(error) => {
-                tracing::error!(?error, "Failed to connect to Firezone");
-                Err(Error::Other(anyhow!(
-                    "Failed to connect to Firezone for non-Portal-related reason"
-                )))
-            }
+            Err(msg) => Err(Error::ConnectToFirezoneFailed(msg)),
         }
     }
 
