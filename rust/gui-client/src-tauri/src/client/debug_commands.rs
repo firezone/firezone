@@ -2,9 +2,11 @@
 //! them with the GUI, or to exercise features programmatically.
 
 use anyhow::Result;
+use firezone_bin_shared::{network_changes, platform::DnsControlMethod};
 
 #[derive(clap::Subcommand)]
 pub(crate) enum Cmd {
+    NetworkNotifiers,
     SetAutostart(SetAutostartArgs),
 
     // Store and check a bogus debug token to make sure `keyring-rs`
@@ -33,6 +35,7 @@ const CRED_NAME: &str = "dev.firezone.client/test_BYKPFT6P/token";
 
 pub fn run(cmd: Cmd) -> Result<()> {
     match cmd {
+        Cmd::NetworkNotifiers => network_notifiers(),
         Cmd::SetAutostart(SetAutostartArgs { enabled }) => set_autostart(enabled),
 
         Cmd::CheckToken(CheckTokenArgs { token: expected }) => {
@@ -47,6 +50,26 @@ pub fn run(cmd: Cmd) -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn network_notifiers() -> Result<()> {
+    firezone_headless_client::setup_stdout_logging()?;
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        let mut dns =
+            network_changes::new_dns_notifier(rt.handle().clone(), DnsControlMethod::default())
+                .await?;
+        tracing::info!("Listening...");
+        loop {
+            if let Err(error) = dns.notified().await {
+                tracing::error!(?error, "DNS listener failed");
+                dns.close()?;
+                break;
+            }
+            tracing::info!("DNS");
+        }
+        Ok(())
+    })
 }
 
 fn set_autostart(enabled: bool) -> Result<()> {

@@ -10,7 +10,7 @@ use crate::client::{
     Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
-use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
+use firezone_bin_shared::network_changes::{new_dns_notifier, new_network_notifier};
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,

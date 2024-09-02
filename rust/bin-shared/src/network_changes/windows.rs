@@ -65,7 +65,7 @@
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
 use crate::platform::DnsControlMethod;
-use anyhow::{anyhow, Context as _, Result};
+use anyhow::{Context as _, Result};
 use std::thread;
 use tokio::sync::{mpsc, oneshot};
 use windows::{
@@ -149,10 +149,13 @@ impl Worker {
                 thread_name = self.thread_name,
                 "Asking worker thread to stop gracefully"
             );
-            inner
-                .stopper
-                .send(())
-                .map_err(|_| anyhow!("Couldn't stop `NetworkNotifier` worker thread"))?;
+            if let Err(error) = inner.stopper.send(()) {
+                tracing::error!(
+                    ?error,
+                    "Couldn't stop `{}` worker thread, maybe it already stopped",
+                    self.thread_name
+                );
+            }
             match inner.thread.join() {
                 Err(e) => std::panic::resume_unwind(e),
                 Ok(x) => x?,
@@ -165,10 +168,12 @@ impl Worker {
     // `Result` needed to match Linux
     #[allow(clippy::unnecessary_wraps)]
     pub async fn notified(&mut self) -> Result<()> {
-        self.rx
-            .recv()
-            .await
-            .context("MPSC receiver from worker thread ended.")?;
+        self.rx.recv().await.with_context(|| {
+            format!(
+                "MPSC receiver from worker thread {} ended.",
+                self.thread_name
+            )
+        })?;
         Ok(())
     }
 }
@@ -417,27 +422,44 @@ mod async_dns {
         tx: mpsc::Sender<()>,
         stopper_rx: oneshot::Receiver<()>,
     ) -> Result<()> {
-        let local = LocalSet::new();
-        let task = local.run_until(async move {
-            let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
-            let mut listener_4 = Listener::new(key_ipv4)?;
-            let mut listener_6 = Listener::new(key_ipv6)?;
+        tokio_handle.block_on(async move {
+            let local = LocalSet::new();
+            local
+                .run_until(async move {
+                    tokio::task::spawn_local(dns_worker_task(stopper_rx, tx)).await?
+                })
+                .await
+        })?;
+        Ok(())
+    }
 
+    async fn dns_worker_task(
+        stopper_rx: oneshot::Receiver<()>,
+        tx: mpsc::Sender<()>,
+    ) -> Result<()> {
+        let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
+        let mut listener_4 = Listener::new(key_ipv4)?;
+        let mut listener_6 = Listener::new(key_ipv6)?;
+
+        tokio::task::spawn_local(async move {
             let mut stop = pin!(stopper_rx.fuse());
             loop {
                 let mut fut_4 = pin!(listener_4.notified().fuse());
                 let mut fut_6 = pin!(listener_6.notified().fuse());
                 futures::select! {
-                    _ = stop => break,
-                    _ = fut_4 => tx.try_send(())?,
-                    _ = fut_6 => tx.try_send(())?,
+                    _ = stop => break Ok::<_, anyhow::Error>(()),
+                    _ = fut_4 => {
+                        // Ignore send errors because we're just sending a notification
+                        tx.try_send(()).ok();
+                    }
+                    _ = fut_6 => {
+                        tx.try_send(()).ok();
+                    }
                 }
             }
-
-            Ok(())
-        });
-
-        tokio_handle.block_on(task)
+        })
+        .await??;
+        Ok(())
     }
 
     /// Listens to one registry key for changes. Callers should await `notified`.

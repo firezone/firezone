@@ -6,7 +6,7 @@ use clap::Parser;
 use connlib_client_shared::{keypair, ConnectArgs, LoginUrl, Session};
 use connlib_shared::{get_user_agent, DEFAULT_MTU};
 use firezone_bin_shared::{
-    new_dns_notifier, new_network_notifier,
+    network_changes,
     platform::{tcp_socket_factory, udp_socket_factory},
     TunDeviceManager, TOKEN_ENV_KEY,
 };
@@ -155,17 +155,17 @@ fn main() -> Result<()> {
     let max_partition_time = cli.common.max_partition_time.map(|d| d.into());
 
     // AKA "Device ID", not the Firezone slug
-    let firezone_id = match cli.firezone_id {
+    let firezone_id = match cli.firezone_id.clone() {
         Some(id) => id,
         None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
     let (private_key, public_key) = keypair();
     let url = LoginUrl::client(
-        cli.api_url,
+        cli.api_url.clone(),
         &token,
         firezone_id,
-        cli.firezone_name,
+        cli.firezone_name.clone(),
         public_key.to_bytes(),
     )?;
 
@@ -178,7 +178,7 @@ fn main() -> Result<()> {
     let callbacks = CallbackHandler { cb_tx };
 
     // The name matches that in `ipc_service.rs`
-    let mut last_connlib_start_instant = Some(Instant::now());
+    let last_connlib_start_instant = Some(Instant::now());
     let args = ConnectArgs {
         udp_socket_factory: Arc::new(udp_socket_factory),
         tcp_socket_factory: Arc::new(tcp_socket_factory),
@@ -205,37 +205,79 @@ fn main() -> Result<()> {
     let session = Session::connect(args, portal, rt.handle().clone());
 
     let result = rt.block_on(async {
-        let mut terminate = signals::Terminate::new()?;
-        let mut hangup = signals::Hangup::new()?;
-        let mut terminate = pin!(terminate.recv().fuse());
-        let mut hangup = pin!(hangup.recv().fuse());
+        let terminate = signals::Terminate::new()?;
+        let hangup = signals::Hangup::new()?;
         let dns_control_method = cli.common.dns_control;
         let mut dns_controller = DnsController { dns_control_method };
         // Deactivate Firezone DNS control in case the system or IPC service crashed
         // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
         dns_controller.deactivate()?;
         let mut tun_device = TunDeviceManager::new(DEFAULT_MTU)?;
-        let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
         let tokio_handle = tokio::runtime::Handle::current();
 
-        let mut dns_notifier = new_dns_notifier(tokio_handle.clone(), dns_control_method).await?;
-
-        let mut network_notifier =
-            new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
+        let dns_notifier =
+            network_changes::new_dns_notifier(tokio_handle.clone(), dns_control_method).await?;
+        let network_notifier =
+            network_changes::new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
         drop(tokio_handle);
 
         let tun = tun_device.make_tun()?;
         session.set_tun(Box::new(tun));
         session.set_dns(dns_controller.system_resolvers());
 
-        tracing::warn!("Checkpoint 2");
+        let cb_rx = ReceiverStream::new(cb_rx).fuse();
 
-        let result = loop {
-            let mut dns_changed = pin!(dns_notifier.notified().fuse());
-            let mut network_changed = pin!(network_notifier.notified().fuse());
+        let mut controller = Controller {
+            cb_rx,
+            dns_controller,
+            dns_notifier,
+            hangup,
+            last_connlib_start_instant,
+            network_notifier,
+            session: &session,
+            terminate,
+            tun_device,
+        };
 
-            tracing::warn!("Checkpoint 2.2");
+        let result = controller.run(&cli).await;
+
+        if let Err(error) = controller.dns_notifier.close() {
+            tracing::error!(?error, "DNS listener");
+        }
+
+        if let Err(error) = controller.network_notifier.close() {
+            tracing::error!(?error, "network listener");
+        }
+
+        result
+    });
+
+    session.disconnect();
+
+    result
+}
+
+struct Controller<'a> {
+    cb_rx: futures::stream::Fuse<ReceiverStream<ConnlibMsg>>,
+    dns_controller: DnsController,
+    dns_notifier: network_changes::Worker,
+    hangup: signals::Hangup,
+    last_connlib_start_instant: Option<Instant>,
+    network_notifier: network_changes::Worker,
+    session: &'a Session,
+    terminate: signals::Terminate,
+    tun_device: TunDeviceManager,
+}
+
+impl<'a> Controller<'a> {
+    async fn run(&mut self, cli: &Cli) -> Result<()> {
+        let mut hangup = pin!(self.hangup.recv().fuse());
+        let mut terminate = pin!(self.terminate.recv().fuse());
+
+        loop {
+            let mut dns_changed = pin!(self.dns_notifier.notified().fuse());
+            let mut network_changed = pin!(self.network_notifier.notified().fuse());
 
             let cb = futures::select! {
                 () = terminate => {
@@ -244,28 +286,21 @@ fn main() -> Result<()> {
                 },
                 () = hangup => {
                     tracing::info!("Caught SIGHUP");
-                    session.reset();
+                    self.session.reset();
                     continue;
                 },
                 result = dns_changed => {
-                    tracing::warn!(is_ok = result.is_ok(), "DNS change, notifying Session");
                     result?;
-                    session.set_dns(dns_controller.system_resolvers());
+                    self.session.set_dns(self.dns_controller.system_resolvers());
                     continue;
                 },
                 result = network_changed => {
-                    tracing::warn!(is_ok = result.is_ok(), "Network change, resetting Session");
                     result?;
-                    session.reset();
+                    self.session.reset();
                     continue;
                 },
-                cb = cb_rx.next() => {
-                    tracing::warn!(cb_is_some = cb.is_some());
-                    cb.context("cb_rx unexpectedly ran empty")?
-                }
+                cb = self.cb_rx.next() => cb.context("cb_rx unexpectedly ran empty")?,
             };
-
-            tracing::warn!("Checkpoint 2.7");
 
             match cb {
                 // TODO: Headless Client shouldn't be using messages labelled `Ipc`
@@ -275,14 +310,14 @@ fn main() -> Result<()> {
                 } => break Err(anyhow!(error_msg).context("Firezone disconnected")),
                 ConnlibMsg::OnUpdateResources(_) => {
                     // On every Resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
-                    dns_controller.flush()?;
+                    self.dns_controller.flush()?;
                 }
                 ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
-                    tun_device.set_ips(ipv4, ipv6).await?;
-                    dns_controller.set_dns(dns).await?;
+                    self.tun_device.set_ips(ipv4, ipv6).await?;
+                    self.dns_controller.set_dns(dns).await?;
                     // `on_set_interface_config` is guaranteed to be called when the tunnel is completely ready
                     // <https://github.com/firezone/firezone/pull/6026#discussion_r1692297438>
-                    if let Some(instant) = last_connlib_start_instant.take() {
+                    if let Some(instant) = self.last_connlib_start_instant.take() {
                         // `OnUpdateResources` appears to be the latest callback that happens during startup
                         tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
                         platform::notify_service_controller()?;
@@ -293,29 +328,11 @@ fn main() -> Result<()> {
                     }
                 }
                 ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                    tun_device.set_routes(ipv4, ipv6).await?;
+                    self.tun_device.set_routes(ipv4, ipv6).await?;
                 }
             }
-        };
-
-        if let Err(error) = dns_notifier.close() {
-            tracing::error!(?error, "DNS listener");
         }
-
-        if let Err(error) = network_notifier.close() {
-            tracing::error!(?error, "network listener");
-        }
-
-        tracing::warn!("Checkpoint 3");
-
-        result
-    });
-
-    tracing::warn!("Checkpoint 4");
-
-    session.disconnect();
-
-    result
+    }
 }
 
 /// Read the token from disk if it was not in the environment
