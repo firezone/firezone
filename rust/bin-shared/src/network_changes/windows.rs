@@ -116,6 +116,7 @@ pub async fn new_network_notifier(
 pub struct Worker {
     inner: Option<WorkerInner>,
     rx: mpsc::Receiver<()>,
+    thread_name: String,
 }
 
 impl Drop for Worker {
@@ -131,18 +132,23 @@ impl Worker {
         F: FnOnce(mpsc::Sender<()>, oneshot::Receiver<()>) -> Result<()> + Send + 'static,
         S: Into<String>,
     {
+        let thread_name = thread_name.into();
         let (tx, rx) = mpsc::channel(1);
-        let inner = WorkerInner::new(thread_name, tx, func)?;
+        let inner = WorkerInner::new(thread_name.clone(), tx, func)?;
         Ok(Self {
             inner: Some(inner),
             rx,
+            thread_name,
         })
     }
 
     /// Same as `drop`, but you can catch errors
     pub fn close(&mut self) -> Result<()> {
         if let Some(inner) = self.inner.take() {
-            tracing::debug!("Asking worker thread to stop gracefully");
+            tracing::debug!(
+                thread_name = self.thread_name,
+                "Asking worker thread to stop gracefully"
+            );
             inner
                 .stopper
                 .send(())
