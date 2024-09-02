@@ -9,6 +9,14 @@ export default function Android() {
       href="https://play.google.com/store/apps/details?id=dev.firezone.android"
       title="Android"
     >
+      <Entry version="1.3.1" date={new Date("2024-08-31")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6517">
+            Fixes a bug where the tunnel would immediately disconnect after
+            connecting.
+          </ChangeItem>
+        </ul>
+      </Entry>
       <Entry version="1.3.0" date={new Date("2024-08-30")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6424">
