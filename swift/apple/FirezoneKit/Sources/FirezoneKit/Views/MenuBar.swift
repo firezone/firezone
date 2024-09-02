@@ -498,20 +498,22 @@ public final class MenuBar: NSObject, ObservableObject {
     menu.removeItem(item)
   }
 
-  private func internetResourceTitle(resourceName: String) -> String {
-    let status = self.model.store.internetResourceEnabled() ? "[ON]" : "[OFF]"
+  private func internetResourceTitle(resource: Resource) -> String {
+    let status = !model.store.internetResourceEnabled() && resource.canBeDisabled ? "[OFF]" : "[ON]"
 
-    return status + " " + resourceName
+    return status + " " + resource.name
+  }
+
+  private func resourceTitle(resource: Resource) -> String {
+    if resource.isInternetResource() {
+      return internetResourceTitle(resource: resource)
+    }
+
+    return resource.name
   }
 
   private func createResourceMenuItem(resource: Resource) -> NSMenuItem {
-    var resourceTitle = resource.name
-
-    if resource.isInternetResource() && resource.canBeDisabled {
-      resourceTitle = internetResourceTitle(resourceName: resourceTitle)
-    }
-
-    let item = NSMenuItem(title: resourceTitle, action: nil, keyEquivalent: "")
+    let item = NSMenuItem(title: resourceTitle(resource: resource), action: nil, keyEquivalent: "")
 
     item.isHidden = false
     item.submenu = createSubMenu(resource: resource)

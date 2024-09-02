@@ -173,9 +173,6 @@ struct NonInternetResourceHeader: View {
           }
         }
       }
-
-      ToggleResourceEnabledButton(resource: resource, model: model)
-
     }
   }
 }
@@ -204,17 +201,18 @@ struct InternetResourceHeader: View {
 
         Text("All network traffic")
       }
-      ToggleResourceEnabledButton(resource: resource, model: model)
+
+      ToggleInternetResourceButton(resource: resource, model: model)
     }
   }
 }
 
-struct ToggleResourceEnabledButton: View {
+struct ToggleInternetResourceButton: View {
   var resource: Resource
   @ObservedObject var model: SessionViewModel
 
   private func toggleResourceEnabledText() -> String {
-    if model.isResourceEnabled(resource.id) {
+    if model.isInternetResourceEnabled() {
       "Disable this resource"
     } else {
       "Enable this resource"
@@ -224,7 +222,7 @@ struct ToggleResourceEnabledButton: View {
   var body: some View {
     if resource.canBeDisabled {
       Button(action: {
-        model.store.toggleResourceDisabled(resource: resource.id, enabled: !model.isResourceEnabled(resource.id))
+        model.store.toggleInternetResource(enabled: !model.isInternetResourceEnabled())
       }) {
         HStack {
           Text(toggleResourceEnabledText())

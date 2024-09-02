@@ -127,12 +127,26 @@ struct ResourceSection: View {
   let resources: [Resource]
   @ObservedObject var model: SessionViewModel
 
+  private func internetResourceTitle(resource: Resource) -> String {
+    let status = !model.store.internetResourceEnabled() && resource.canBeDisabled ? "[OFF]" : "[ON]"
+
+    return status + " " + resource.name
+  }
+
+  private func resourceTitle(resource: Resource) -> String {
+    if resource.isInternetResource() {
+      return internetResourceTitle(resource: resource)
+    }
+
+    return resource.name
+  }
+
   var body: some View {
     ForEach(resources) { resource in
       HStack {
           NavigationLink { ResourceView(model: model, resource: resource) }
           label: {
-            Text(resource.name)
+            Text(resourceTitle(resource: resource))
           }
       }
       .navigationTitle("All Resources")
