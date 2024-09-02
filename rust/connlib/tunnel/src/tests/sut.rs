@@ -549,7 +549,8 @@ impl TunnelTest {
         let now = self.flux_capacitor.now();
 
         let Some(host) = self.network.host_by_ip(dst.ip()) else {
-            panic!("Unhandled packet: {src} -> {dst}")
+            tracing::error!("Unhandled packet: {src} -> {dst}");
+            return;
         };
 
         match host {
