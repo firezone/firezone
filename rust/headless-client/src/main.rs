@@ -229,9 +229,13 @@ fn main() -> Result<()> {
         session.set_tun(Box::new(tun));
         session.set_dns(dns_controller.system_resolvers());
 
+        tracing::warn!("Checkpoint 2");
+
         let result = loop {
             let mut dns_changed = pin!(dns_notifier.notified().fuse());
             let mut network_changed = pin!(network_notifier.notified().fuse());
+
+            tracing::warn!("Checkpoint 2.2");
 
             let cb = futures::select! {
                 () = terminate => {
@@ -244,21 +248,24 @@ fn main() -> Result<()> {
                     continue;
                 },
                 result = dns_changed => {
+                    tracing::warn!(is_ok = result.is_ok(), "DNS change, notifying Session");
                     result?;
-                    // If the DNS control method is not `systemd-resolved`
-                    // then we'll use polling here, so no point logging every 5 seconds that we're checking the DNS
-                    tracing::trace!("DNS change, notifying Session");
                     session.set_dns(dns_controller.system_resolvers());
                     continue;
                 },
                 result = network_changed => {
+                    tracing::warn!(is_ok = result.is_ok(), "Network change, resetting Session");
                     result?;
-                    tracing::info!("Network change, resetting Session");
                     session.reset();
                     continue;
                 },
-                cb = cb_rx.next() => cb.context("cb_rx unexpectedly ran empty")?,
+                cb = cb_rx.next() => {
+                    tracing::warn!(cb_is_some = cb.is_some());
+                    cb.context("cb_rx unexpectedly ran empty")?
+                }
             };
+
+            tracing::warn!("Checkpoint 2.7");
 
             match cb {
                 // TODO: Headless Client shouldn't be using messages labelled `Ipc`
@@ -291,12 +298,20 @@ fn main() -> Result<()> {
             }
         };
 
+        if let Err(error) = dns_notifier.close() {
+            tracing::error!(?error, "DNS listener");
+        }
+
         if let Err(error) = network_notifier.close() {
             tracing::error!(?error, "network listener");
         }
 
+        tracing::warn!("Checkpoint 3");
+
         result
     });
+
+    tracing::warn!("Checkpoint 4");
 
     session.disconnect();
 
