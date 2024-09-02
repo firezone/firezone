@@ -53,7 +53,7 @@ export default function UseCaseCards() {
         </h3>
         <div className="grid lg:grid-cols-16 gap-6 mt-8 mx-2 md:mx-6">
           <Card>
-            <div className="mt-2 md:mt-4 lg:mt-6">
+            <div className="text-center md:text-left mt-2 md:mt-4 lg:mt-6">
               <CardHeading>Scale access to cloud resources.</CardHeading>
               <p>
                 Eliminate throughput bottlenecks that plague other VPNs.
@@ -75,7 +75,7 @@ export default function UseCaseCards() {
             />
           </Card>
           <Card narrow>
-            <div className="text-center max-w-[420px] text-pretty">
+            <div className="text-center md:max-w-[420px] text-pretty">
               <Image
                 className="mx-auto mb-8"
                 src="/images/two-factor-graphic.png"
@@ -98,14 +98,14 @@ export default function UseCaseCards() {
           </Card>
           <Card narrow>
             <Image
-              className="absolute right-0"
+              className="absolute right-0 max-h-[200px] md:max-h-max w-auto"
               src="/images/manage-access-saas.png"
               width={380}
               height={241}
               alt="Manage access to SaaS graphic"
             />
             <div className="w-full flex items-end">
-              <div>
+              <div className="w-full text-center md:text-left">
                 <CardHeading>Manage access to a SaaS app</CardHeading>
                 <p>
                   Manage access to a third-party SaaS app like HubSpot or
@@ -130,7 +130,7 @@ export default function UseCaseCards() {
                 />
               </div>
               <div className="w-full flex items-end">
-                <div>
+                <div className="w-full text-center md:text-left">
                   <CardHeading>Access an on-prem network</CardHeading>
                   <p>
                     Firezone securely punches through firewalls with ease, so
@@ -147,7 +147,7 @@ export default function UseCaseCards() {
             </div>
           </Card>
           <Card>
-            <div className="w-full mt-2 md:mt-4 lg:mt-6">
+            <div className="w-full mt-2 md:mt-4 lg:mt-6 text-center md:text-left">
               <CardHeading>Block malicious DNS</CardHeading>
               <p>
                 Use Firezone to improve your team's Internet security by
