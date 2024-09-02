@@ -128,7 +128,11 @@ export default function CustomerTestimonials() {
             <h3 className="text-neutral-600 text-3xl md:text-4xl leading-12 xl:text-5xl text-wrap sm:text-nowrap tracking-tight font-medium mb-6">
               and we love them back.
             </h3>
-            <ActionLink href="/contact/sales" color="neutral-100">
+            <ActionLink
+              href="/contact/sales"
+              color="neutral-100"
+              transitionColor="primary-450"
+            >
               Book a demo
             </ActionLink>
           </div>
