@@ -35,13 +35,13 @@ zbus = "4.4" # Can't use `zbus`'s `tokio` feature here, or it will break toast p
 known-folders = "1.1.0"
 ring = "0.17"
 uuid = { version = "1.10.0", features = ["v4"] }
-windows-core = "0.58.0"
-windows-implement = "0.58.0"
+windows-core = "0.57.0"
+windows-implement = "0.57.0"
 wintun = "0.4.0"
 winreg = "0.52.0"
 
 [target.'cfg(windows)'.dependencies.windows]
-version = "0.58.0"
+version = "0.57.0"
 features = [
   # For implementing COM interfaces
   "implement",
