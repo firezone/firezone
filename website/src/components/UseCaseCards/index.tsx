@@ -156,7 +156,7 @@ export default function UseCaseCards() {
               <Button text="Secure your DNS" href="/kb/use-cases/secure-dns" />
             </div>
             <Image
-              className="absolute bottom-0 px-4" 
+              className="absolute bottom-0 px-4"
               src="/images/block-malicious-dns.png"
               width={577}
               height={266}
