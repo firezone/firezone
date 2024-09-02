@@ -7,6 +7,8 @@ import Link from "next/link";
 import PlanTable from "./plan_table";
 import { useState } from "react";
 import { Accordion } from "flowbite-react";
+import { manrope } from "@/lib/fonts";
+import { FaCheck } from "react-icons/fa6";
 
 export default function _Page() {
   let [annual, setAnnual] = useState(true);
@@ -14,90 +16,102 @@ export default function _Page() {
 
   return (
     <>
-      <section className="bg-white pb-14">
-        <div className="flex justify-center mt-12">
-          <span
-            className={
-              (annual ? "text-neutral-500 " : "text-neutral-900 ") +
-              "font-medium me-3 text-lg uppercase"
-            }
-          >
-            Monthly
-          </span>
-          <Toggle checked={annual} onChange={setAnnual} />
-          <span
-            className={
-              (annual ? "text-neutral-900 " : "text-neutral-500 ") +
-              "font-medium ms-3 text-lg uppercase"
-            }
-          >
-            Annual
-            <span className="text-sm text-neutral-700 text-primary-450">
-              {" "}
-              (Save 17%)
+      <section className="bg-neutral-100 pb-14">
+        <div className={`text-center ${manrope.className}`}>
+          <div className="flex gap-4 justify-center translate-x-6 mb-2.5">
+            <span
+              className={
+                (annual
+                  ? "text-neutral-500 font-medium"
+                  : "text-neutral-900 font-semibold") +
+                "text-lg uppercase"
+              }
+            >
+              Monthly
             </span>
-          </span>
+            <Toggle checked={annual} onChange={setAnnual} />
+            <span
+              className={
+                (annual
+                  ? "text-neutral-900 font-semibold "
+                  : "text-neutral-500 font-medium") +
+                "text-lg text-left uppercase"
+              }
+            >
+              Annual
+              <span className="ml-2 text-sm text-accent-600 font-semibold">
+                Save 17%
+              </span>
+            </span>
+          </div>
         </div>
-        <div className="mx-auto max-w-screen-2xl md:grid md:grid-cols-3 pt-14 md:gap-4 px-4">
-          <div className="p-8 bg-neutral-50 rounded border-2 border-neutral-200 mb-4">
-            <h3 className="mb-4 text-2xl tracking-tight font-semibold text-primary-450">
+
+        <div className="mx-auto bg-neutral-100 max-w-screen-2xl md:grid md:grid-cols-3 pt-10 md:gap-4 px-4">
+          <div
+            className={`p-10 bg-white rounded-xl shadow-drop mb-4 ${manrope.className}`}
+          >
+            <h3 className="mb-6 text-xl tracking-tight font-semibold text-primary-450">
               Starter
             </h3>
-            <p className="mb-8">
-              Secure remote access for individuals and small groups
-            </p>
-            <h2 className="mb-16 text-2xl sm:text-4xl tracking-tight font-semibold text-neutral-900">
+            <h2 className="mb-6 text-2xl sm:text-4xl tracking-tight font-bold text-neutral-900">
               Free
             </h2>
-            <div className="mb-24 w-full text-center">
+            <p className="mb-6 text-neutral-600">
+              Secure remote access for individuals and small groups.
+            </p>
+            <div className="mb-2 w-full text-center">
               <Link href="https://app.firezone.dev/sign_up">
                 <button
                   type="button"
-                  className="bg-white w-64 text-lg px-5 py-2.5 md:w-44 md:text-sm md:px-3 md:py-2.5 lg:w-64 lg:text-lg lg:px-5 lg:py-2.5 border border-1 border-primary-450 hover:ring-1 hover:ring-primary-450 font-semibold tracking-tight rounded shadow-lg text-primary-450 duration-50 transition transform"
+                  className="bg-neutral-100 w-full text-lg px-5 py-2.5 md:text-sm md:px-3 md:py-2.5 lg:text-lg lg:px-5 lg:py-2.5 border 
+                  border-1 border-neutral-500  hover:brightness-90 font-semibold tracking-tight rounded-full text-neutral-950 duration-50 transition transform"
                 >
                   Sign up
                 </button>
               </Link>
             </div>
-            <ul role="list" className="font-medium space-y-2">
+            <p className="text-sm text-center text-neutral-600 mb-8">
+              No credit card required.
+            </p>
+            <ul role="list" className="font-medium space-y-4">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900 ">
                   Up to 6 users
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900 ">
                   Access your homelab or VPC from anywhere
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900 ">
                   Native clients for Windows, Linux, macOS, iOS, Android
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900 ">
                   Authenticate via email or OpenID Connect (OIDC)
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900 ">
                   Load balancing and automatic failover
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900 ">
                   No firewall configuration required
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900 ">
                   Community Support
                 </span>
@@ -141,50 +155,50 @@ export default function _Page() {
             </p>
             <ul role="list" className="font-medium space-y-2">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900 ">
                   Up to 100 users
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900 ">
                   Resource access logs
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900 ">
                   Port and protocol traffic restrictions
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900 ">
                   Conditional access policies
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900 ">
                   Customize your account slug
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900 ">
                   Faster relay network
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5 text-neutral-900" />
+                <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900 ">
                   Priority email support
                 </span>
               </li>
             </ul>
           </div>
-          <div className="p-8 bg-neutral-950 text-neutral-50 rounded shadow border border-primary-450 mb-4">
+          <div className="p-8 bg-neutral-950 text-neutral-50 rounded-xl shadow border border-primary-450 mb-4">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-2xl tracking-tight font-semibold text-primary-450">
                 Enterprise
@@ -214,17 +228,17 @@ export default function _Page() {
             </p>
             <ul role="list" className="font-medium space-y-2">
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <FaCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">Unlimited users</span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <FaCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">
                   Directory sync for Google, Entra ID, Okta, and JumpCloud
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <FaCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">
                   <span className="font-semibold text-primary-450">
                     Unthrottled
@@ -233,31 +247,31 @@ export default function _Page() {
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <FaCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">
                   Dedicated Slack support channel
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <FaCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">Uptime SLAs</span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <FaCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">
                   40-hour pentest &amp; SOC 2 reports
                 </span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <FaCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">Roadmap acceleration</span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <FaCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">White-glove onboarding</span>
               </li>
               <li className="flex space-x-2.5">
-                <HiCheck className="flex-shrink-0 w-5 h-5" />
+                <FaCheck className="flex-shrink-0 w-5 h-5" />
                 <span className="leading-tight">Annual invoicing</span>
               </li>
             </ul>

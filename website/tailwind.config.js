@@ -58,6 +58,9 @@ module.exports = {
   ],
   theme: {
     extend: {
+      boxShadow: {
+        drop: "0px 16px 32px -4px rgba(12, 12, 13, 0.1), 0px 4px 4px -4px rgba(12, 12, 13, 0.05)",
+      },
       gridTemplateColumns: {
         // Simple 16 column grid
         16: "repeat(16, minmax(0, 1fr))",
