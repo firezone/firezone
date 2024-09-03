@@ -12,7 +12,7 @@ export default function Tooltip({
 }) {
   return (
     <FlowbiteTooltip content={content}>
-      <span className="underline decoration-dotted cursor-help">
+      <span className="underline underline-offset-4 decoration-neutral-400 decoration-dotted cursor-help">
         {children}
       </span>
     </FlowbiteTooltip>
