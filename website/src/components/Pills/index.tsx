@@ -19,7 +19,7 @@ export default function Pills({
   };
 
   return (
-    <div className="flex flex-wrap justify-center md:justify-start md:flex-row gap-3 py-6 px-4 sm:py-8 sm:px-6 md:py-10 md:px-8 lg:py-12 lg:px-10 mx-auto max-w-screen-lg w-full">
+    <div className="flex flex-wrap justify-center md:justify-start md:flex-row gap-3">
       {options.map((option, index) => (
         <button
           key={index}

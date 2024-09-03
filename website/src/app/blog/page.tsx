@@ -5,6 +5,7 @@ import Image from "next/image";
 import NewsletterSignup from "@/components/NewsletterSignup";
 import SummaryCard from "@/components/Blog/SummaryCard";
 import Pills from "@/components/Pills";
+import { manrope } from "@/lib/fonts";
 
 export const metadata: Metadata = {
   title: "Blog • Firezone",
@@ -16,7 +17,7 @@ export default function Page() {
     <section>
       <div className="bg-neutral-50 border-b border-neutral-100">
         <div className="py-8 px-4 sm:py-10 sm:px-6 md:py-12 md:px-8 lg:py-14 lg:px-10 mx-auto max-w-screen-lg w-full text-center">
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold tracking-tight justify-center">
+          <h1 className={`text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold tracking-tight justify-center ${manrope.className}`}>
             Blog
           </h1>
           <p className="text-md sm:text-lg md:text-xl lg:text-2xl mt-4 md:mt-6 lg:mt-8 tracking-tight">
@@ -24,12 +25,15 @@ export default function Page() {
           </p>
         </div>
       </div>
-      <Pills
-        options={["All Posts", "Announcement", "Learn", "Insight"]}
-        multiselect={true}
-      />
-      <div className="py-6 px-4 sm:py-8 sm:px-6 md:py-10 md:px-8 lg:py-12 lg:px-10 mx-auto max-w-screen-lg w-full">
-        <div className="grid divide-y">
+      <div className="border-b-[1px] py-6 px-4 sm:px-6 md:py-4 md:px-8 lg:px-10 mx-auto max-w-screen-lg w-full">
+        <Pills
+          options={["All Posts", "Announcement", "Learn", "Insight"]}
+          multiselect={true}
+        />
+      </div>
+
+      <div className="mx-auto max-w-screen-lg w-full">
+        <div className="grid divide-y space-y-8">
           <SummaryCard
             title="sans-IO: The secret to effective Rust for network services"
             date="July 2, 2024"
@@ -37,6 +41,7 @@ export default function Page() {
             authorName="Thomas Eizinger"
             authorAvatarSrc={gravatar("thomas@firezone.dev")}
             type="Learn"
+            src="/images/learn-thumb.webp"
           >
             <p className="mb-2">
               Firezone's data plane extensively uses the sans-IO design pattern.
