@@ -1,7 +1,7 @@
 /* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
-import dev.firezone.android.core.data.OnSymbol
+import dev.firezone.android.core.data.ON_SYMBOL
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.stateSymbol
 import dev.firezone.android.tunnel.model.Resource
@@ -10,7 +10,7 @@ import dev.firezone.android.tunnel.model.Site
 import dev.firezone.android.tunnel.model.StatusEnum
 import dev.firezone.android.tunnel.model.isInternetResource
 
-data class ViewResource(
+data class ResourceViewModel(
     val id: String,
     val type: ResourceType,
     val address: String?,
@@ -25,7 +25,7 @@ data class ViewResource(
 
 fun internetResourceDisplayName(resource: Resource, state: ResourceState): String {
     return if (!resource.canBeDisabled) {
-        "$OnSymbol ${resource.name}"
+        "$ON_SYMBOL ${resource.name}"
     } else {
         "${state.stateSymbol()} ${resource.name}"
     }
@@ -39,8 +39,8 @@ fun displayName(resource: Resource, state: ResourceState): String {
     }
 }
 
-fun Resource.toViewResource(resourceState: ResourceState): ViewResource {
-    return ViewResource(
+fun Resource.toViewResource(resourceState: ResourceState): ResourceViewModel {
+    return ResourceViewModel(
         id = this.id,
         type = this.type,
         address = this.address,
@@ -54,7 +54,7 @@ fun Resource.toViewResource(resourceState: ResourceState): ViewResource {
     )
 }
 
-fun ViewResource.isInternetResource(): Boolean {
+fun ResourceViewModel.isInternetResource(): Boolean {
     return this.type == ResourceType.Internet
 }
 

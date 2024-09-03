@@ -8,15 +8,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import dev.firezone.android.core.data.OnSymbol
 import dev.firezone.android.core.data.ResourceState
-import dev.firezone.android.core.data.isEnabled
-import dev.firezone.android.core.data.stateSymbol
 import dev.firezone.android.databinding.ListItemResourceBinding
-import dev.firezone.android.tunnel.model.Resource
-import dev.firezone.android.tunnel.model.isInternetResource
 
-internal class ResourcesAdapter(private val internetResourceToggle: () -> ResourceState) : ListAdapter<ViewResource, ResourcesAdapter.ViewHolder>(
+internal class ResourcesAdapter(private val internetResourceToggle: () -> ResourceState) :
+    ListAdapter<ResourceViewModel, ResourcesAdapter.ViewHolder>(
     ResourceDiffCallback(),
 ) {
     override fun onCreateViewHolder(
@@ -43,7 +39,7 @@ internal class ResourcesAdapter(private val internetResourceToggle: () -> Resour
     }
 
     class ViewHolder(private val binding: ListItemResourceBinding) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(resource: ViewResource) {
+        fun bind(resource: ResourceViewModel) {
             binding.resourceNameText.text = resource.displayName
             if (resource.isInternetResource()) {
                 binding.addressText.visibility = View.GONE
@@ -53,17 +49,17 @@ internal class ResourcesAdapter(private val internetResourceToggle: () -> Resour
         }
     }
 
-    class ResourceDiffCallback : DiffUtil.ItemCallback<ViewResource>() {
+    class ResourceDiffCallback : DiffUtil.ItemCallback<ResourceViewModel>() {
         override fun areItemsTheSame(
-            oldItem: ViewResource,
-            newItem: ViewResource,
+            oldItem: ResourceViewModel,
+            newItem: ResourceViewModel,
         ): Boolean {
             return oldItem.id == newItem.id
         }
 
         override fun areContentsTheSame(
-            oldItem: ViewResource,
-            newItem: ViewResource,
+            oldItem: ResourceViewModel,
+            newItem: ResourceViewModel,
         ): Boolean {
             return oldItem == newItem
         }

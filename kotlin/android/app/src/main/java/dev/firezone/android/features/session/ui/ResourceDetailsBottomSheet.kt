@@ -23,11 +23,10 @@ import com.google.android.material.button.MaterialButton
 import dev.firezone.android.R
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.isEnabled
-import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.StatusEnum
-import dev.firezone.android.tunnel.model.isInternetResource
 
-class ResourceDetailsBottomSheet(private val resource: ViewResource, private val internetResourceToggle: () -> ResourceState) : BottomSheetDialogFragment() {
+class ResourceDetailsBottomSheet(private val resource: ResourceViewModel,
+                                 private val internetResourceToggle: () -> ResourceState) : BottomSheetDialogFragment() {
     private lateinit var view: View
     private val viewModel: SessionViewModel by activityViewModels()
 
@@ -92,7 +91,7 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource, private val
         }
     }
 
-    private fun resourceToggleText(resource: ViewResource): String {
+    private fun resourceToggleText(resource: ResourceViewModel): String {
         return if (resource.state.isEnabled()) {
             "Disable this resource"
         } else {

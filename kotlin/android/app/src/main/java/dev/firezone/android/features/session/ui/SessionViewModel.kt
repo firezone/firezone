@@ -59,7 +59,7 @@ internal class SessionViewModel
         fun clearToken() = repo.clearToken()
 
         // The subset of Resources to actually render
-        fun resourcesList(isInternetResourceEnabled: ResourceState): List<ViewResource> {
+        fun resourcesList(isInternetResourceEnabled: ResourceState): List<ResourceViewModel> {
             val resources = resourcesLiveData.value!!.map {
                 if (it.isInternetResource()) {
                     it.toViewResource(isInternetResourceEnabled)
