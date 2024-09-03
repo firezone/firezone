@@ -22,6 +22,9 @@ public final class MenuBar: NSObject, ObservableObject {
   // Wish these could be `[String]` but diffing between different types is tricky
   private var lastShownFavorites: [Resource] = []
   private var lastShownOthers: [Resource] = []
+  
+  private var wasInternetResourceEnabled: Bool = false
+  
   private var cancellables: Set<AnyCancellable> = []
 
   @ObservedObject var model: SessionViewModel
@@ -431,13 +434,22 @@ public final class MenuBar: NSObject, ObservableObject {
     populateFavoriteResourcesMenu(newFavorites)
     populateOtherResourcesMenu(newOthers)
   }
+  
+  private func displayNameChanged(_ resource: Resource) -> Bool {
+    if resource.isInternetResource() {
+      return wasInternetResourceEnabled != model.store.internetResourceEnabled()
+    } else {
+      return false
+    }
+  }
 
   private func populateFavoriteResourcesMenu(_ newFavorites: [Resource]) {
     // Update the menu in place so everything won't vanish if it's open when it updates
     let diff = (newFavorites).difference(
       from: lastShownFavorites,
-      by: { $0 == $1 }
+      by: { $0 == $1 && !displayNameChanged($0) }
     )
+    
     let index = menu.index(of: resourcesTitleMenuItem) + 1
     for change in diff {
       switch change {
@@ -449,6 +461,7 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     }
     lastShownFavorites = newFavorites
+    wasInternetResourceEnabled = model.store.internetResourceEnabled()
   }
 
   private func populateOtherResourcesMenu(_ newOthers: [Resource]) {
@@ -464,7 +477,7 @@ public final class MenuBar: NSObject, ObservableObject {
     // Update the menu in place so everything won't vanish if it's open when it updates
     let diff = (newOthers).difference(
       from: lastShownOthers,
-      by: { $0 == $1 }
+      by: { $0 == $1 && !displayNameChanged($0) }
     )
     for change in diff {
       switch change {
@@ -476,6 +489,8 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     }
     lastShownOthers = newOthers
+    wasInternetResourceEnabled = model.store.internetResourceEnabled()
+
   }
 
   private func addItemToMenu(menu: NSMenu, item: NSMenuItem, at: Int) {

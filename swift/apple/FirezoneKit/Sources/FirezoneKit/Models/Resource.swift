@@ -11,7 +11,6 @@ import Foundation
 class StatusSymbol {
   static var on: String = "<->"
   static var off: String = "—"
-
 }
 
 public enum ResourceList {
