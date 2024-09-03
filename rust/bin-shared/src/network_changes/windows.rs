@@ -40,8 +40,6 @@
 //! Connecting to Wi-Fi usually notifies while Windows is showing the progress bar
 //! in the Wi-Fi menu.
 //!
-//! DNS server changes are (TODO <https://github.com/firezone/firezone/issues/3343>)
-//!
 //! # Worker thread
 //!
 //! `Listener` must live in a worker thread if used from Tauri.
@@ -67,7 +65,10 @@
 use crate::platform::DnsControlMethod;
 use anyhow::{anyhow, Context as _, Result};
 use std::thread;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{
+    mpsc::{self, error::TrySendError},
+    oneshot,
+};
 use windows::{
     core::{Interface, Result as WinResult, GUID},
     Win32::{
@@ -115,7 +116,7 @@ pub async fn new_network_notifier(
 /// The worker thread emits notifications with no data in them.
 pub struct Worker {
     inner: Option<WorkerInner>,
-    rx: mpsc::Receiver<()>,
+    rx: NotifyReceiver,
     thread_name: String,
 }
 
@@ -129,11 +130,11 @@ impl Drop for Worker {
 impl Worker {
     fn new<F, S>(thread_name: S, func: F) -> Result<Self>
     where
-        F: FnOnce(mpsc::Sender<()>, oneshot::Receiver<()>) -> Result<()> + Send + 'static,
+        F: FnOnce(NotifySender, oneshot::Receiver<()>) -> Result<()> + Send + 'static,
         S: Into<String>,
     {
         let thread_name = thread_name.into();
-        let (tx, rx) = mpsc::channel(1);
+        let (tx, rx) = notify_channel();
         let inner = WorkerInner::new(thread_name.clone(), tx, func)?;
         Ok(Self {
             inner: Some(inner),
@@ -166,9 +167,9 @@ impl Worker {
     #[allow(clippy::unnecessary_wraps)]
     pub async fn notified(&mut self) -> Result<()> {
         self.rx
-            .recv()
+            .notified()
             .await
-            .context("MPSC receiver from worker thread ended.")?;
+            .context("Couldn't listen to notifications.")?;
         Ok(())
     }
 }
@@ -181,11 +182,11 @@ struct WorkerInner {
 
 impl WorkerInner {
     fn new<
-        F: FnOnce(mpsc::Sender<()>, oneshot::Receiver<()>) -> Result<()> + Send + 'static,
+        F: FnOnce(NotifySender, oneshot::Receiver<()>) -> Result<()> + Send + 'static,
         S: Into<String>,
     >(
         thread_name: S,
-        tx: mpsc::Sender<()>,
+        tx: NotifySender,
         func: F,
     ) -> Result<Self> {
         let (stopper, stopper_rx) = tokio::sync::oneshot::channel();
@@ -256,7 +257,7 @@ struct Listener<'a> {
 // https://kennykerr.ca/rust-getting-started/how-to-implement-com-interface.html
 #[windows_implement::implement(INetworkEvents)]
 struct Callback {
-    tx: mpsc::Sender<()>,
+    tx: NotifySender,
 }
 
 impl<'a> Drop for Listener<'a> {
@@ -277,7 +278,7 @@ impl<'a> Listener<'a> {
     ///   on the same thread as `new` is called on.
     /// * `tx` - A Sender to notify when Windows detects
     ///   connectivity changes. Some notifications may be spurious.
-    fn new(com: &'a ComGuard, tx: mpsc::Sender<()>) -> Result<Self> {
+    fn new(com: &'a ComGuard, tx: NotifySender) -> Result<Self> {
         // `windows-rs` automatically releases (de-refs) COM objects on Drop:
         // https://github.com/microsoft/windows-rs/issues/2123#issuecomment-1293194755
         // https://github.com/microsoft/windows-rs/blob/cefdabd15e4a7a7f71b7a2d8b12d5dc148c99adb/crates/samples/windows/wmi/src/main.rs#L22
@@ -316,7 +317,7 @@ impl<'a> Listener<'a> {
         // 2. Caller continues setup, checks Internet is connected
         // 3. Internet gets disconnected but caller isn't notified
         // 4. Worker thread finally gets scheduled, but we never notify that the Internet was lost during setup. Caller is now out of sync with ground truth.
-        tx.try_send(()).ok();
+        tx.notify()?;
 
         Ok(this)
     }
@@ -350,8 +351,8 @@ impl INetworkEvents_Impl for Callback_Impl {
         _networkid: &GUID,
         _newconnectivity: NLM_CONNECTIVITY,
     ) -> WinResult<()> {
-        // Use `try_send` because we're only sending a notification to wake up the receiver.
-        self.tx.try_send(()).ok();
+        // No reasonable way to translate this error into a Windows error
+        self.tx.notify().ok();
         Ok(())
     }
 
@@ -414,10 +415,9 @@ mod async_dns {
 
     pub fn worker_thread(
         tokio_handle: tokio::runtime::Handle,
-        tx: mpsc::Sender<()>,
+        tx: super::NotifySender,
         stopper_rx: oneshot::Receiver<()>,
     ) -> Result<()> {
-        let tx = super::Notifier { tx };
         let local = LocalSet::new();
         let task = local.run_until(async move {
             let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
@@ -430,8 +430,8 @@ mod async_dns {
                 let mut fut_6 = pin!(listener_6.notified().fuse());
                 futures::select! {
                     _ = stop => break,
-                    _ = fut_4 => tx.notify(),
-                    _ = fut_6 => tx.notify(),
+                    _ = fut_4 => tx.notify()?,
+                    _ = fut_6 => tx.notify()?,
                 }
             }
 
@@ -688,14 +688,36 @@ mod async_dns {
 }
 
 /// Wraps an MPSC channel of capacity 1 to use as a cancel-safe notifier
-struct Notifier {
+#[derive(Clone)]
+struct NotifySender {
     tx: mpsc::Sender<()>,
 }
 
-impl Notifier {
-    fn notify(&self) {
+struct NotifyReceiver {
+    rx: mpsc::Receiver<()>,
+}
+
+impl NotifySender {
+    fn notify(&self) -> Result<()> {
         // If there isn't capacity to send, it's because the receiver has a notification
         // it needs to pick up anyway, so it's fine.
-        self.tx.try_send(()).ok();
+        match self.tx.try_send(()) {
+            Ok(()) | Err(TrySendError::Full(())) => Ok(()),
+            Err(TrySendError::Closed(())) => Err(anyhow!("TrySendError::Closed")),
+        }
     }
+}
+
+impl NotifyReceiver {
+    async fn notified(&mut self) -> Result<()> {
+        self.rx
+            .recv()
+            .await
+            .context("All NotifySender instances are closed")
+    }
+}
+
+fn notify_channel() -> (NotifySender, NotifyReceiver) {
+    let (tx, rx) = mpsc::channel(1);
+    (NotifySender { tx }, NotifyReceiver { rx })
 }
