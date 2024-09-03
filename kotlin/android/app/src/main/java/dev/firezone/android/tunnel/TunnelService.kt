@@ -269,7 +269,7 @@ class TunnelService : VpnService() {
     // UI updates for resources
     fun resourcesUpdated() {
         val currentlyDisabled =
-            if (internetResource() != null && !resourceState.isEnabled() && internetResource()?.canBeDisabled == true) {
+            if (internetResource() != null && !resourceState.isEnabled()) {
                 setOf(internetResource()!!.id)
             } else {
                 emptySet()

@@ -514,7 +514,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func internetResourceTitle(resource: Resource) -> String {
-    let status = !model.store.internetResourceEnabled() && resource.canBeDisabled ? StatusSymbol.off : StatusSymbol.on
+    let status = model.store.internetResourceEnabled() ? StatusSymbol.on : StatusSymbol.off
 
     return status + " " + resource.name
   }
@@ -625,17 +625,15 @@ public final class MenuBar: NSObject, ObservableObject {
     subMenu.addItem(description)
 
     // Resource enable / disable toggle
-    if resource.canBeDisabled {
-      subMenu.addItem(NSMenuItem.separator())
-      let enableToggle = NSMenuItem()
-      enableToggle.action = #selector(internetResourceToggle(_:))
-      enableToggle.title = internetResourceToggleTitle()
-      enableToggle.toolTip = "Enable or disable resource"
-      enableToggle.isEnabled = true
-      enableToggle.target = self
-      enableToggle.representedObject = resource.id
-      subMenu.addItem(enableToggle)
-    }
+    subMenu.addItem(NSMenuItem.separator())
+    let enableToggle = NSMenuItem()
+    enableToggle.action = #selector(internetResourceToggle(_:))
+    enableToggle.title = internetResourceToggleTitle()
+    enableToggle.toolTip = "Enable or disable resource"
+    enableToggle.isEnabled = true
+    enableToggle.target = self
+    enableToggle.representedObject = resource.id
+    subMenu.addItem(enableToggle)
 
     return subMenu
   }

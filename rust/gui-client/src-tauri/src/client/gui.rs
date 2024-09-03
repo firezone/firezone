@@ -805,9 +805,7 @@ impl Controller {
 
         let mut disabled_resources = BTreeSet::new();
 
-        if !self.advanced_settings.internet_resource_enabled()
-            && internet_resource.can_be_disabled()
-        {
+        if !self.advanced_settings.internet_resource_enabled() {
             disabled_resources.insert(internet_resource.id());
         }
 

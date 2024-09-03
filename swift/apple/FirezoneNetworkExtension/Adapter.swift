@@ -221,7 +221,7 @@ class Adapter {
     internetResource = resources().filter{ $0.isInternetResource() }.first
 
     var disablingResources: Set<String> = []
-    if let internetResource = internetResource, internetResource.canBeDisabled && !internetResourceEnabled {
+    if let internetResource = internetResource, !internetResourceEnabled {
       disablingResources.insert(internetResource.id)
     }
 

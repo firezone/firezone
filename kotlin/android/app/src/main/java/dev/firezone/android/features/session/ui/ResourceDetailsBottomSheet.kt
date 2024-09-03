@@ -178,14 +178,12 @@ class ResourceDetailsBottomSheet(
     }
 
     private fun refreshDisableToggleButton() {
-        if (resource.canBeDisabled) {
-            val toggleResourceEnabled: MaterialButton = view.findViewById(R.id.toggleResourceEnabled)
-            toggleResourceEnabled.visibility = View.VISIBLE
-            toggleResourceEnabled.text = resourceToggleText(resource)
-            toggleResourceEnabled.setOnClickListener {
-                resource.state = internetResourceToggle()
-                refreshDisableToggleButton()
-            }
+        val toggleResourceEnabled: MaterialButton = view.findViewById(R.id.toggleResourceEnabled)
+        toggleResourceEnabled.visibility = View.VISIBLE
+        toggleResourceEnabled.text = resourceToggleText(resource)
+        toggleResourceEnabled.setOnClickListener {
+            resource.state = internetResourceToggle()
+            refreshDisableToggleButton()
         }
     }
 

@@ -220,14 +220,12 @@ struct ToggleInternetResourceButton: View {
   }
 
   var body: some View {
-    if resource.canBeDisabled {
-      Button(action: {
-        model.store.toggleInternetResource(enabled: !model.isInternetResourceEnabled())
-      }) {
-        HStack {
-          Text(toggleResourceEnabledText())
-          Spacer()
-        }
+    Button(action: {
+      model.store.toggleInternetResource(enabled: !model.isInternetResourceEnabled())
+    }) {
+      HStack {
+        Text(toggleResourceEnabledText())
+        Spacer()
       }
     }
   }

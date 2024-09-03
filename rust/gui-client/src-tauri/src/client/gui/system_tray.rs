@@ -106,7 +106,7 @@ impl<'a> SignedIn<'a> {
     fn resource_submenu(&self, res: &ResourceDescription) -> Menu {
         let mut submenu = Menu::default().resource_description(res);
 
-        if res.is_internet_resource() && res.can_be_disabled() {
+        if res.is_internet_resource() {
             submenu.add_separator();
             if self.is_internet_resource_enabled() {
                 submenu.add_item(item(Event::DisableInternetResource, DISABLE));
@@ -437,8 +437,7 @@ mod tests {
                 "address": "172.172.0.0/16",
                 "address_description": "cidr resource",
                 "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
-                "status": "Unknown",
-                "can_be_disabled": false
+                "status": "Unknown"
             },
             {
                 "id": "03000143-e25e-45c7-aafb-144990e57dcd",
@@ -447,8 +446,7 @@ mod tests {
                 "address": "gitlab.mycorp.com",
                 "address_description": "https://gitlab.mycorp.com",
                 "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
-                "status": "Online",
-                "can_be_disabled": false
+                "status": "Online"
             },
             {
                 "id": "1106047c-cd5d-4151-b679-96b93da7383b",
@@ -456,8 +454,7 @@ mod tests {
                 "name": "Internet Resource",
                 "address": "All internet addresses",
                 "sites": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
-                "status": "Offline",
-                "can_be_disabled": false
+                "status": "Offline"
             }
         ]"#;
 

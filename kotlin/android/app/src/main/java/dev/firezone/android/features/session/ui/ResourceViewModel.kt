@@ -19,7 +19,6 @@ data class ResourceViewModel(
     val displayName: String,
     val name: String,
     val status: StatusEnum,
-    var canBeDisabled: Boolean,
     var state: ResourceState,
 )
 
@@ -27,11 +26,7 @@ fun internetResourceDisplayName(
     resource: Resource,
     state: ResourceState,
 ): String {
-    return if (!resource.canBeDisabled) {
-        "$ON_SYMBOL ${resource.name}"
-    } else {
-        "${state.stateSymbol()} ${resource.name}"
-    }
+    return "${state.stateSymbol()} ${resource.name}"
 }
 
 fun displayName(
@@ -55,7 +50,6 @@ fun Resource.toViewResource(resourceState: ResourceState): ResourceViewModel {
         name = this.name,
         displayName = displayName(this, resourceState),
         status = this.status,
-        canBeDisabled = this.canBeDisabled,
         state = resourceState,
     )
 }

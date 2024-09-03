@@ -128,7 +128,7 @@ struct ResourceSection: View {
   @ObservedObject var model: SessionViewModel
 
   private func internetResourceTitle(resource: Resource) -> String {
-    let status = !model.store.internetResourceEnabled() && resource.canBeDisabled ? StatusSymbol.off : StatusSymbol.on
+    let status = model.store.internetResourceEnabled() ? StatusSymbol.on : StatusSymbol.off
 
     return status + " " + resource.name
   }
