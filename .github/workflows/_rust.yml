@@ -131,16 +131,6 @@ jobs:
           CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
           TESTCASES_DIR: "connlib/tunnel/testcases"
           TESTCASES_BACKUP_DIR: "connlib/tunnel/testcases_backup"
-      - name: Upload testcase data
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
-        with:
-          overwrite: true
-          name: proptest-cases
-          path: |
-            rust/connlib/tunnel/testcases
-            rust/connlib/tunnel/testcases_backup
-          retention-days: 7
 
   # Runs the Tauri client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
