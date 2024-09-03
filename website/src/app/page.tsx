@@ -6,15 +6,7 @@ import { RunaCap } from "@/components/Badges";
 import FeatureSection from "@/components/FeatureSection";
 import { Metadata } from "next";
 import { CustomerLogosGrayscale } from "@/components/CustomerLogos";
-import {
-  HiShieldCheck,
-  HiCheck,
-  HiFingerPrint,
-  HiArrowLongRight,
-  HiGlobeAlt,
-  HiHome,
-  HiRocketLaunch,
-} from "react-icons/hi2";
+import { HiArrowLongRight } from "react-icons/hi2";
 import {
   AppleIcon,
   WindowsIcon,
@@ -143,7 +135,7 @@ export default function Page() {
           <p className="text-lg text-pretty text-neutral-800">
             Restrict access based on realtime conditions like device location,
             time of day, and more, and view every authorized connection by user,
-            Resource, or policy.
+            resource, or policy.
           </p>
         }
         image={
