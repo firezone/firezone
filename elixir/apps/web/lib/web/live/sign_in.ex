@@ -56,6 +56,15 @@ defmodule Web.SignIn do
               This account has been disabled, please contact your administrator.
             </.flash>
 
+            <%= if trial_ends_at = get_in(@account.metadata.stripe.trial_ends_at) do %>
+              <% trial_ends_in_days = trial_ends_at |> DateTime.diff(DateTime.utc_now(), :day) %>
+
+              <.flash :if={trial_ends_in_days <= 0} kind={:error}>
+                Your Enterprise pilot period needs to be renewed,
+                please contact your system administrator to ensure uninterrupted service.
+              </.flash>
+            <% end %>
+
             <.intersperse_blocks :if={not disabled?(@account, @params)}>
               <:separator>
                 <.separator />

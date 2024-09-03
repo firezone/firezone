@@ -99,7 +99,7 @@
 </.sidebar>
 
 <main class="lg:ml-64 h-auto pt-14">
-  <.flash :if={@account.warning} kind={:warning}>
+  <.flash :if={@account.warning} kind={:warning} class="m-1">
     <%= @account.warning %>.
     <span :if={Domain.Billing.account_provisioned?(@account)}>
       Please
@@ -110,7 +110,7 @@
     </span>
   </.flash>
 
-  <.flash :if={not Domain.Accounts.account_active?(@account)} kind={:error}>
+  <.flash :if={not Domain.Accounts.account_active?(@account)} kind={:error} class="m-1">
     This account has been disabled.
     <span>
       Please
@@ -123,6 +123,24 @@
       to re-activate it.
     </span>
   </.flash>
+
+  <%= if trial_ends_at = get_in(@account.metadata.stripe.trial_ends_at) do %>
+    <% trial_ends_in_days = trial_ends_at |> DateTime.diff(DateTime.utc_now(), :day) %>
+
+    <.flash :if={5 > trial_ends_in_days and trial_ends_in_days > 0} kind={:info} class="m-1">
+      Your Enterprise pilot period will expire in <%= trial_ends_in_days %>
+      <%= Web.CLDR.Number.Cardinal.pluralize(trial_ends_in_days, "en", %{
+        one: "day",
+        other: "days"
+      }) %>.
+      Please contact your sales representative to extend it.
+    </.flash>
+
+    <.flash :if={trial_ends_in_days <= 0} kind={:error} class="m-1">
+      Your Enterprise pilot period needs to be renewed,
+      please contact your sales representative.
+    </.flash>
+  <% end %>
 
   <%= @inner_content %>
 </main>
