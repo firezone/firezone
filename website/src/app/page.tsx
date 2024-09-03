@@ -6,15 +6,7 @@ import { RunaCap } from "@/components/Badges";
 import FeatureSection from "@/components/FeatureSection";
 import { Metadata } from "next";
 import { CustomerLogosGrayscale } from "@/components/CustomerLogos";
-import {
-  HiShieldCheck,
-  HiCheck,
-  HiFingerPrint,
-  HiArrowLongRight,
-  HiGlobeAlt,
-  HiHome,
-  HiRocketLaunch,
-} from "react-icons/hi2";
+import { HiArrowLongRight } from "react-icons/hi2";
 import {
   AppleIcon,
   WindowsIcon,
