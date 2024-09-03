@@ -12,7 +12,7 @@ export default function SummaryCard({
   authorName,
   authorAvatarSrc,
   type,
-  src = "/images/learn-thumb.webp",
+  src,
 }: {
   children: React.ReactNode;
   date: string;
@@ -49,15 +49,17 @@ export default function SummaryCard({
           <span className="font-semibold text-neutral-600">{date}</span>
         </div>
       </div>
-      <div className="rounded-lg overflow-hidden max-h-[120px] w-[240px]">
-        <Image
-          src={src}
-          width={200}
-          height={200}
-          alt="Article Image"
-          className="object-cover rounded-lg object-center"
-        />
-      </div>
+      {src && (
+        <div className="rounded-lg overflow-hidden max-h-[120px] w-[240px]">
+          <Image
+            src={src}
+            width={200}
+            height={200}
+            alt="Article Image"
+            className="object-cover rounded-lg object-center"
+          />
+        </div>
+      )}
     </article>
   );
 }
