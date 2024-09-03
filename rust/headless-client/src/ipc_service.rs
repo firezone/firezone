@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{keypair, ConnectArgs, LoginUrl, Session};
+use connlib_client_shared::{keypair, ConnectArgs, LoginUrl};
 use connlib_shared::callbacks::ResourceDescription;
 use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
@@ -237,14 +237,18 @@ async fn ipc_listen(
 /// Handles one IPC client
 struct Handler<'a> {
     callback_handler: CallbackHandler,
-    cb_rx: mpsc::Receiver<ConnlibMsg>,
-    connlib: Option<connlib_client_shared::Session>,
     dns_controller: &'a mut DnsController,
     ipc_rx: ipc::ServerRead,
     ipc_tx: ipc::ServerWrite,
     last_connlib_start_instant: Option<Instant>,
     log_filter_reloader: &'a LogFilterReloader,
+    session: Option<Session>,
     tun_device: TunDeviceManager,
+}
+
+struct Session {
+    cb_rx: mpsc::Receiver<ConnlibMsg>,
+    connlib: connlib_client_shared::Session>,
 }
 
 enum Event {
@@ -359,12 +363,14 @@ impl<'a> Handler<'a> {
                 None => Poll::Ready(Event::IpcDisconnected),
             };
         }
-        // `tokio::sync::mpsc::Receiver::recv` is cancel-safe.
-        if let Poll::Ready(option) = self.cb_rx.poll_recv(cx) {
-            return match option {
-                Some(x) => Poll::Ready(Event::Callback(x)),
-                None => Poll::Ready(Event::CallbackChannelClosed),
-            };
+        if let Some(session) = self.session.as_mut() {
+            // `tokio::sync::mpsc::Receiver::recv` is cancel-safe.
+            if let Poll::Ready(option) = session.cb_rx.poll_recv(cx) {
+                return match option {
+                    Some(x) => Poll::Ready(Event::Callback(x)),
+                    None => Poll::Ready(Event::CallbackChannelClosed),
+                };
+            }
         }
         Poll::Pending
     }
@@ -410,7 +416,7 @@ impl<'a> Handler<'a> {
     }
 
     fn tunnel_is_ready(&self) -> bool {
-        self.last_connlib_start_instant.is_none() && self.connlib.is_some()
+        self.last_connlib_start_instant.is_none() && self.session.is_some()
     }
 
     async fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
@@ -479,10 +485,7 @@ impl<'a> Handler<'a> {
     ///
     /// Throws matchable errors for bad URLs, unable to reach the portal, or unable to create the tunnel device
     fn connect_to_firezone(&mut self, api_url: &str, token: SecretString) -> Result<(), Error> {
-        // There isn't an airtight way to implement a "disconnect and reconnect"
-        // right now because `Session::disconnect` is fire-and-forget:
-        // <https://github.com/firezone/firezone/blob/663367b6055ced7432866a40a60f9525db13288b/rust/connlib/clients/shared/src/lib.rs#L98-L103>
-        assert!(self.connlib.is_none());
+        assert!(self.session.is_none());
         let device_id = device_id::get_or_create().map_err(|e| Error::DeviceId(e.to_string()))?;
         let (private_key, public_key) = keypair();
 
@@ -518,16 +521,19 @@ impl<'a> Handler<'a> {
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
-        let new_session = Session::connect(args, portal, tokio::runtime::Handle::current());
+        let connlib = connlib_client_shared::Session::connect(args, portal, tokio::runtime::Handle::current());
         // Call `set_dns` before `set_tun` so that the tunnel starts up with a valid list of resolvers.
         tracing::debug!(?dns, "Calling `set_dns`...");
-        new_session.set_dns(dns);
+        connlib.set_dns(dns);
         let tun = self
             .tun_device
             .make_tun()
             .map_err(|e| Error::TunnelDevice(e.to_string()))?;
-        new_session.set_tun(Box::new(tun));
-        self.connlib = Some(new_session);
+        connlib.set_tun(Box::new(tun));
+        let session = Session {
+            connlib,
+        };
+        self.session = Some(session);
 
         Ok(())
     }
