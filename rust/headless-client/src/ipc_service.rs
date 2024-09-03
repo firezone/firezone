@@ -426,8 +426,12 @@ impl<'a> Handler<'a> {
                     .context("Error while sending IPC message")?
             }
             ClientMsg::Connect { api_url, token } => {
+                // Warning: Connection errors don't bubble to callers of `handle_ipc_msg`.
                 let token = secrecy::SecretString::from(token);
                 let result = self.connect_to_firezone(&api_url, token);
+                if let Err(error) = &result {
+                    tracing::error!(?error, "Failed to connect connlib session");
+                }
                 self.ipc_tx
                     .send(&ServerMsg::ConnectResult(result))
                     .await
