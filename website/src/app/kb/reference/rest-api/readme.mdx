@@ -1,0 +1,30 @@
+import SupportOptions from "@/components/SupportOptions";
+import Alert from "@/components/DocsAlert";
+
+# REST API
+
+Firezone provides a REST API for programmatic access to your account. The API
+features endpoints for managing your entire Firezone account end-to-end, so you
+can achieve virtually any workflow you can perform in the admin portal.
+
+<Alert color="warning">
+  The API is currently in beta. This means the Firezone team may introduce
+  breaking changes as we work to improve it. The beta label will be lifted when
+  the API stablizes towards 1.0.
+</Alert>
+
+## Getting started
+
+To get started with the API, you'll need to request access from the
+`Settings -> API Clients` section of the admin portal. That will send a
+notification to the Firezone team to enable the API for your account.
+
+Once enabled, you can generate an API key and use it with any HTTP client.
+
+### Documentation
+
+We publish an [OpenAPI spec](https://swagger.io/specification/) for the API that
+you can use to generate client libraries or explore the API interactively. You
+can find the spec at `https://api.firezone.dev/swaggerui`.
+
+<SupportOptions />

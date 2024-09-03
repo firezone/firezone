@@ -14,10 +14,6 @@ works with any authentication service offering a standard
 connector to enable authenticating users and admins to Firezone for any
 OIDC-capable identity provider that supports the `authorization_code` grant.
 
-This connector works great for popular hosted providers like Google Workspace,
-Microsoft Entra ID, and Okta and also for self-hosted ones like
-[Keycloak](https://www.keycloak.org) and [Ory](https://www.ory.sh).
-
 <Alert color="warning">
   Directory sync is **not supported** with the universal OIDC connector. See the
   [Google Workspace](/kb/authenticate/google), [Microsoft Entra
@@ -102,13 +98,25 @@ https://your-tenant.okta.com/.well-known/openid-configuration
 
 ### PKCE
 
-If the option is available, be sure to **enable PKCE** for the connector. This
-is a security feature that helps prevent certain types of attacks and is
-recommended for added security.
+The universal OIDC connector **requires** PKCE (Proof Key for Code Exchange) to
+be enabled on the connector. PKCE is a security feature that helps prevent
+certain types of attacks and is recommended for added security.
 
 For more detailed guides specific to each provider, see the
 [Firezone legacy documentation](/docs/authenticate/oidc). Firezone 1.0 uses the
 same OIDC connector under the hood as our legacy version, so the steps should
 similar.
+
+### Provisioning users and groups
+
+Users must be created in Firezone before they can authenticate with the
+universal OIDC connector. You can [create users](/kb/deploy/users) manually in
+the admin portal or use the [REST API](/kb/reference/rest-api) to create users
+programmatically.
+
+Groups used for access control must also be created in Firezone before they can
+be used with users associated with the universal OIDC connector. You can
+[create groups](/kb/deploy/groups) manually in the admin portal or use the
+[REST API](/kb/reference/rest-api) to create groups programmatically.
 
 <SupportOptions />
