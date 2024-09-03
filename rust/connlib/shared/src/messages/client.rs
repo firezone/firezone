@@ -74,7 +74,7 @@ impl ResourceDescriptionCidr {
 }
 
 fn internet_resource_name() -> String {
-    "<-> Internet Resource".to_string()
+    "Internet Resource".to_string()
 }
 
 /// Description of an internet resource.

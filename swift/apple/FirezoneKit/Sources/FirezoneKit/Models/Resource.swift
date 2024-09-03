@@ -8,6 +8,12 @@
 
 import Foundation
 
+class StatusSymbol {
+  static var on: String = "<->"
+  static var off: String = "—"
+
+}
+
 public enum ResourceList {
   case loading
   case loaded([Resource])

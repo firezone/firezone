@@ -35,8 +35,8 @@ const NO_ACTIVITY: &str = "[-] No activity";
 const GATEWAY_CONNECTED: &str = "[O] Gateway connected";
 const ALL_GATEWAYS_OFFLINE: &str = "[X] All Gateways offline";
 
-const ENABLED_SYMBOL: &str = "[O]";
-const DISABLED_SYMBOL: &str = "[X]";
+const ENABLED_SYMBOL: &str = "<->";
+const DISABLED_SYMBOL: &str = "—";
 
 const ADD_FAVORITE: &str = "Add to favorites";
 const REMOVE_FAVORITE: &str = "Remove from favorites";

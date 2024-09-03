@@ -499,7 +499,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func internetResourceTitle(resource: Resource) -> String {
-    let status = !model.store.internetResourceEnabled() && resource.canBeDisabled ? "[OFF]" : "[ON]"
+    let status = !model.store.internetResourceEnabled() && resource.canBeDisabled ? StatusSymbol.off : StatusSymbol.on
 
     return status + " " + resource.name
   }
