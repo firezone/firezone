@@ -1,7 +1,6 @@
 /* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
-import dev.firezone.android.core.data.ON_SYMBOL
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.stateSymbol
 import dev.firezone.android.tunnel.model.Resource
@@ -29,18 +28,7 @@ fun internetResourceDisplayName(
     return "${state.stateSymbol()} ${resource.name}"
 }
 
-fun displayName(
-    resource: Resource,
-    state: ResourceState,
-): String {
-    if (resource.isInternetResource()) {
-        return internetResourceDisplayName(resource, state)
-    } else {
-        return resource.name
-    }
-}
-
-fun Resource.toViewResource(resourceState: ResourceState): ResourceViewModel {
+fun Resource.toResourceViewModel(resourceState: ResourceState): ResourceViewModel {
     return ResourceViewModel(
         id = this.id,
         type = this.type,
@@ -52,6 +40,17 @@ fun Resource.toViewResource(resourceState: ResourceState): ResourceViewModel {
         status = this.status,
         state = resourceState,
     )
+}
+
+fun displayName(
+    resource: Resource,
+    state: ResourceState,
+): String {
+    if (resource.isInternetResource()) {
+        return internetResourceDisplayName(resource, state)
+    } else {
+        return resource.name
+    }
 }
 
 fun ResourceViewModel.isInternetResource(): Boolean {

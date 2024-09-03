@@ -263,17 +263,13 @@ impl<'a> AppState<'a> {
 }
 
 fn append_status(name: &str, enabled: bool) -> String {
-    let mut result = String::new();
-    if enabled {
-        result.push_str(ENABLED_SYMBOL);
+    let symbol = if enabled {
+        ENABLED_SYMBOL
     } else {
-        result.push_str(DISABLED_SYMBOL);
-    }
+        DISABLED_SYMBOL
+    };
 
-    result.push_str(" ");
-    result.push_str(name);
-
-    result
+    format!("{symbol} {name}")
 }
 
 fn signed_in(signed_in: &SignedIn) -> Menu {

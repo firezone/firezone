@@ -436,11 +436,11 @@ public final class MenuBar: NSObject, ObservableObject {
   }
   
   private func displayNameChanged(_ resource: Resource) -> Bool {
-    if resource.isInternetResource() {
-      return wasInternetResourceEnabled != model.store.internetResourceEnabled()
-    } else {
+    if !resource.isInternetResource() {
       return false
     }
+  
+    return wasInternetResourceEnabled != model.store.internetResourceEnabled()
   }
 
   private func populateFavoriteResourcesMenu(_ newFavorites: [Resource]) {
@@ -632,7 +632,6 @@ public final class MenuBar: NSObject, ObservableObject {
     enableToggle.toolTip = "Enable or disable resource"
     enableToggle.isEnabled = true
     enableToggle.target = self
-    enableToggle.representedObject = resource.id
     subMenu.addItem(enableToggle)
 
     return subMenu
@@ -696,8 +695,6 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func internetResourceToggle(_ sender: NSMenuItem) {
-    let id = sender.representedObject as! String
-
     self.model.store.toggleInternetResource(enabled: !model.store.internetResourceEnabled())
     sender.title = internetResourceToggleTitle()
   }

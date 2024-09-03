@@ -801,7 +801,7 @@ impl Controller {
         let internet_resource = self
             .status
             .internet_resource()
-            .ok_or(anyhow!("Tunnel not ready"))?;
+            .context("Tunnel not ready")?;
 
         let mut disabled_resources = BTreeSet::new();
 
