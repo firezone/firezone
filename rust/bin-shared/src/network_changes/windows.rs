@@ -417,6 +417,7 @@ mod async_dns {
         tx: mpsc::Sender<()>,
         stopper_rx: oneshot::Receiver<()>,
     ) -> Result<()> {
+        let tx = super::Notifier { tx };
         let local = LocalSet::new();
         let task = local.run_until(async move {
             let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
@@ -429,8 +430,8 @@ mod async_dns {
                 let mut fut_6 = pin!(listener_6.notified().fuse());
                 futures::select! {
                     _ = stop => break,
-                    _ = fut_4 => tx.try_send(())?,
-                    _ = fut_6 => tx.try_send(())?,
+                    _ = fut_4 => tx.notify(),
+                    _ = fut_6 => tx.notify(),
                 }
             }
 
@@ -683,5 +684,18 @@ mod async_dns {
                 .delete_subkey_all(&key_path)
                 .expect("Should be able to delete test key");
         }
+    }
+}
+
+/// Wraps an MPSC channel of capacity 1 to use as a cancel-safe notifier
+struct Notifier {
+    tx: mpsc::Sender<()>,
+}
+
+impl Notifier {
+    fn notify(&self) {
+        // If there isn't capacity to send, it's because the receiver has a notification
+        // it needs to pick up anyway, so it's fine.
+        self.tx.try_send(()).ok();
     }
 }
