@@ -559,6 +559,8 @@ mod tests {
                 Menu::default()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
                     .separator()
+                    .item(Event::EnableInternetResource, ENABLE)
+                    .separator()
                     .disabled("Site")
                     .copyable("test")
                     .copyable(ALL_GATEWAYS_OFFLINE),
@@ -612,6 +614,8 @@ mod tests {
                 "— Internet Resource",
                 Menu::default()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
+                    .separator()
+                    .item(Event::EnableInternetResource, ENABLE)
                     .separator()
                     .disabled("Site")
                     .copyable("test")
@@ -711,6 +715,8 @@ mod tests {
                 "— Internet Resource",
                 Menu::default()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
+                    .separator()
+                    .item(Event::EnableInternetResource, ENABLE)
                     .separator()
                     .disabled("Site")
                     .copyable("test")
