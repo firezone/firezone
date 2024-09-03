@@ -26,7 +26,7 @@ enum class ResourceState {
     DISABLED,
 
     @SerializedName("unset")
-    UNSET
+    UNSET,
 }
 
 fun ResourceState.isEnabled(): Boolean {

@@ -60,13 +60,14 @@ internal class SessionViewModel
 
         // The subset of Resources to actually render
         fun resourcesList(isInternetResourceEnabled: ResourceState): List<ResourceViewModel> {
-            val resources = resourcesLiveData.value!!.map {
-                if (it.isInternetResource()) {
-                    it.toViewResource(isInternetResourceEnabled)
-                } else {
-                    it.toViewResource(ResourceState.ENABLED)
+            val resources =
+                resourcesLiveData.value!!.map {
+                    if (it.isInternetResource()) {
+                        it.toViewResource(isInternetResourceEnabled)
+                    } else {
+                        it.toViewResource(ResourceState.ENABLED)
+                    }
                 }
-            }
 
             return if (favoriteResources.isEmpty()) {
                 resources

@@ -25,8 +25,10 @@ import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.tunnel.model.StatusEnum
 
-class ResourceDetailsBottomSheet(private val resource: ResourceViewModel,
-                                 private val internetResourceToggle: () -> ResourceState) : BottomSheetDialogFragment() {
+class ResourceDetailsBottomSheet(
+    private val resource: ResourceViewModel,
+    private val internetResourceToggle: () -> ResourceState,
+) : BottomSheetDialogFragment() {
     private lateinit var view: View
     private val viewModel: SessionViewModel by activityViewModels()
 
@@ -53,7 +55,6 @@ class ResourceDetailsBottomSheet(private val resource: ResourceViewModel,
         val siteStatusLayout: LinearLayout = view.findViewById(R.id.siteStatusLayout)
 
         resourceHeader()
-
 
         if (!resource.sites.isNullOrEmpty()) {
             val site = resource.sites.first()

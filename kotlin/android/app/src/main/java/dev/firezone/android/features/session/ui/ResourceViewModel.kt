@@ -23,7 +23,10 @@ data class ResourceViewModel(
     var state: ResourceState,
 )
 
-fun internetResourceDisplayName(resource: Resource, state: ResourceState): String {
+fun internetResourceDisplayName(
+    resource: Resource,
+    state: ResourceState,
+): String {
     return if (!resource.canBeDisabled) {
         "$ON_SYMBOL ${resource.name}"
     } else {
@@ -31,7 +34,10 @@ fun internetResourceDisplayName(resource: Resource, state: ResourceState): Strin
     }
 }
 
-fun displayName(resource: Resource, state: ResourceState): String {
+fun displayName(
+    resource: Resource,
+    state: ResourceState,
+): String {
     if (resource.isInternetResource()) {
         return internetResourceDisplayName(resource, state)
     } else {
@@ -57,4 +63,3 @@ fun Resource.toViewResource(resourceState: ResourceState): ResourceViewModel {
 fun ResourceViewModel.isInternetResource(): Boolean {
     return this.type == ResourceType.Internet
 }
-

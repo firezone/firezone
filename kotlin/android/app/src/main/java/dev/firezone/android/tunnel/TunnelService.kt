@@ -21,8 +21,8 @@ import com.google.gson.Gson
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.tunnel.callback.ConnlibCallback
 import dev.firezone.android.tunnel.model.Cidr
@@ -268,11 +268,12 @@ class TunnelService : VpnService() {
 
     // UI updates for resources
     fun resourcesUpdated() {
-        val currentlyDisabled = if (internetResource() != null && !resourceState.isEnabled() && internetResource()?.canBeDisabled == true) {
-            setOf(internetResource()!!.id)
-        } else {
-            emptySet()
-        }
+        val currentlyDisabled =
+            if (internetResource() != null && !resourceState.isEnabled() && internetResource()?.canBeDisabled == true) {
+                setOf(internetResource()!!.id)
+            } else {
+                emptySet()
+            }
 
         connlibSessionPtr?.let {
             ConnlibSession.setDisabledResources(it, Gson().toJson(currentlyDisabled))

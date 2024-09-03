@@ -13,8 +13,8 @@ import dev.firezone.android.databinding.ListItemResourceBinding
 
 internal class ResourcesAdapter(private val internetResourceToggle: () -> ResourceState) :
     ListAdapter<ResourceViewModel, ResourcesAdapter.ViewHolder>(
-    ResourceDiffCallback(),
-) {
+        ResourceDiffCallback(),
+    ) {
     override fun onCreateViewHolder(
         parent: ViewGroup,
         viewType: Int,
