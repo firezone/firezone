@@ -15,7 +15,10 @@ import kotlinx.coroutines.flow.flowOn
 import java.security.MessageDigest
 import javax.inject.Inject
 
-enum class InternetResourceState {
+public const val OnSymbol: String = "[ON]"
+public const val OffSymbol: String = "[OFF]"
+
+enum class ResourceState {
     @SerializedName("enabled")
     ENABLED,
 
@@ -26,15 +29,23 @@ enum class InternetResourceState {
     UNSET
 }
 
-fun InternetResourceState.isEnabled(): Boolean {
-    return this == InternetResourceState.ENABLED
+fun ResourceState.isEnabled(): Boolean {
+    return this == ResourceState.ENABLED
 }
 
-fun InternetResourceState.toggle(): InternetResourceState {
+fun ResourceState.stateSymbol(): String {
     return if (this.isEnabled()) {
-        InternetResourceState.DISABLED
+        OnSymbol
     } else {
-        InternetResourceState.ENABLED
+        OffSymbol
+    }
+}
+
+fun ResourceState.toggle(): ResourceState {
+    return if (this.isEnabled()) {
+        ResourceState.DISABLED
+    } else {
+        ResourceState.ENABLED
     }
 }
 
@@ -118,13 +129,13 @@ internal class Repository
                 .putString(DEVICE_ID_KEY, value)
                 .apply()
 
-        fun getInternetResourceStateSync(): InternetResourceState {
-            val jsonString = sharedPreferences.getString(ENABLED_INTERNET_RESOURCE_KEY, null) ?: return InternetResourceState.UNSET
-            val type = object : TypeToken<InternetResourceState>() {}.type
+        fun getInternetResourceStateSync(): ResourceState {
+            val jsonString = sharedPreferences.getString(ENABLED_INTERNET_RESOURCE_KEY, null) ?: return ResourceState.UNSET
+            val type = object : TypeToken<ResourceState>() {}.type
             return Gson().fromJson(jsonString, type)
         }
 
-        fun saveInternetResourceStateSync(value: InternetResourceState): Unit =
+        fun saveInternetResourceStateSync(value: ResourceState): Unit =
             sharedPreferences.edit().putString(ENABLED_INTERNET_RESOURCE_KEY, Gson().toJson(value))
                 .apply()
 

@@ -5,8 +5,10 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.tunnel.TunnelService.Companion.State
 import dev.firezone.android.tunnel.model.Resource
+import dev.firezone.android.tunnel.model.isInternetResource
 import javax.inject.Inject
 
 @HiltViewModel
@@ -57,8 +59,15 @@ internal class SessionViewModel
         fun clearToken() = repo.clearToken()
 
         // The subset of Resources to actually render
-        fun resourcesList(): List<Resource> {
-            val resources = resourcesLiveData.value!!
+        fun resourcesList(isInternetResourceEnabled: ResourceState): List<ViewResource> {
+            val resources = resourcesLiveData.value!!.map {
+                if (it.isInternetResource()) {
+                    it.toViewResource(isInternetResourceEnabled)
+                } else {
+                    it.toViewResource(ResourceState.ENABLED)
+                }
+            }
+
             return if (favoriteResources.isEmpty()) {
                 resources
             } else if (showOnlyFavorites) {

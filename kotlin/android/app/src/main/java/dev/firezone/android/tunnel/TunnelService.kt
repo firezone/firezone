@@ -16,17 +16,14 @@ import android.os.Binder
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
-import android.util.Log
 import androidx.lifecycle.MutableLiveData
 import com.google.gson.Gson
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.core.data.InternetResourceState
+import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.isEnabled
-import dev.firezone.android.features.session.ui.ViewResource
-import dev.firezone.android.features.session.ui.toViewResource
 import dev.firezone.android.tunnel.callback.ConnlibCallback
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
@@ -55,7 +52,7 @@ class TunnelService : VpnService() {
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
     private var _tunnelResources: List<Resource> = emptyList()
     private var _tunnelState: State = State.DOWN
-    var internetResourceState: InternetResourceState = InternetResourceState.UNSET
+    var resourceState: ResourceState = ResourceState.UNSET
 
     // For reacting to changes to the network
     private var networkCallback: NetworkMonitor? = null
@@ -261,8 +258,8 @@ class TunnelService : VpnService() {
         super.onRevoke()
     }
 
-    fun internetState(): InternetResourceState {
-        return internetResourceState
+    fun internetState(): ResourceState {
+        return resourceState
     }
 
     fun internetResource(): Resource? {
@@ -271,8 +268,8 @@ class TunnelService : VpnService() {
 
     // UI updates for resources
     fun resourcesUpdated() {
-        val currentlyDisabled = if (!internetResourceState.isEnabled() && internetResource()?.canBeDisabled == true) {
-            setOf(internetResource())
+        val currentlyDisabled = if (internetResource() != null && !resourceState.isEnabled() && internetResource()?.canBeDisabled == true) {
+            setOf(internetResource()!!.id)
         } else {
             emptySet()
         }
@@ -282,10 +279,10 @@ class TunnelService : VpnService() {
         }
     }
 
-    fun internetResourceToggled(state: InternetResourceState) {
-        internetResourceState = state
+    fun internetResourceToggled(state: ResourceState) {
+        resourceState = state
 
-        repo.saveInternetResourceStateSync(internetResourceState)
+        repo.saveInternetResourceStateSync(resourceState)
 
         resourcesUpdated()
     }
@@ -316,7 +313,7 @@ class TunnelService : VpnService() {
     private fun connect() {
         val token = appRestrictions.getString("token") ?: repo.getTokenSync()
         val config = repo.getConfigSync()
-        internetResourceState = repo.getInternetResourceStateSync()
+        resourceState = repo.getInternetResourceStateSync()
 
         if (!token.isNullOrBlank()) {
             tunnelState = State.CONNECTING

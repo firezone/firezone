@@ -1,10 +1,14 @@
 /* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
+import dev.firezone.android.core.data.OnSymbol
+import dev.firezone.android.core.data.ResourceState
+import dev.firezone.android.core.data.stateSymbol
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.ResourceType
 import dev.firezone.android.tunnel.model.Site
 import dev.firezone.android.tunnel.model.StatusEnum
+import dev.firezone.android.tunnel.model.isInternetResource
 
 data class ViewResource(
     val id: String,
@@ -12,12 +16,30 @@ data class ViewResource(
     val address: String?,
     val addressDescription: String?,
     val sites: List<Site>?,
+    val displayName: String,
     val name: String,
     val status: StatusEnum,
     var canBeDisabled: Boolean,
+    var state: ResourceState,
 )
 
-fun Resource.toViewResource(enabled: Boolean): ViewResource {
+fun internetResourceDisplayName(resource: Resource, state: ResourceState): String {
+    return if (!resource.canBeDisabled) {
+        "$OnSymbol ${resource.name}"
+    } else {
+        "${state.stateSymbol()} ${resource.name}"
+    }
+}
+
+fun displayName(resource: Resource, state: ResourceState): String {
+    if (resource.isInternetResource()) {
+        return internetResourceDisplayName(resource, state)
+    } else {
+        return resource.name
+    }
+}
+
+fun Resource.toViewResource(resourceState: ResourceState): ViewResource {
     return ViewResource(
         id = this.id,
         type = this.type,
@@ -25,8 +47,14 @@ fun Resource.toViewResource(enabled: Boolean): ViewResource {
         addressDescription = this.addressDescription,
         sites = this.sites,
         name = this.name,
+        displayName = displayName(this, resourceState),
         status = this.status,
         canBeDisabled = this.canBeDisabled,
+        state = resourceState,
     )
+}
+
+fun ViewResource.isInternetResource(): Boolean {
+    return this.type == ResourceType.Internet
 }
 

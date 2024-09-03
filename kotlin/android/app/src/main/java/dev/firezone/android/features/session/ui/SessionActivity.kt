@@ -15,7 +15,8 @@ import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.core.data.InternetResourceState
+import dev.firezone.android.core.data.ResourceState
+import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.core.data.toggle
 import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
@@ -49,7 +50,7 @@ class SessionActivity : AppCompatActivity() {
             }
         }
 
-    private val resourcesAdapter = ResourcesAdapter(this)
+    private val resourcesAdapter = ResourcesAdapter { this.onInternetResourceToggled() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,14 +75,15 @@ class SessionActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    fun internetState(): InternetResourceState {
-        return tunnelService?.internetState() ?: InternetResourceState.UNSET
+    fun internetState(): ResourceState {
+        return tunnelService?.internetState() ?: ResourceState.UNSET
     }
 
-    fun onInternetResourceToggled() {
+    private fun onInternetResourceToggled(): ResourceState {
         tunnelService?.internetResourceToggled(internetState().toggle())
-
+        refreshList()
         Log.d(TAG, "Internet resource toggled ${internetState()}")
+        return internetState()
     }
 
     private fun setupViews() {
@@ -157,7 +159,7 @@ class SessionActivity : AppCompatActivity() {
                 View.GONE
             }
 
-        resourcesAdapter.submitList(viewModel.resourcesList()) {
+        resourcesAdapter.submitList(viewModel.resourcesList(internetState())) {
             afterLoad()
         }
     }
