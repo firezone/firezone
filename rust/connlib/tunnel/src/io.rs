@@ -95,6 +95,7 @@ impl Io {
     ) -> Poll<io::Result<()>> {
         ready!(self.sockets.poll_send_ready(cx))?;
 
+        // If the `unwritten_packet` is set, `EncryptBuffer` is still holding a packet that we need so send.
         let Some(unwritten_packet) = self.unwritten_packet.take() else {
             return Poll::Ready(Ok(()));
         };
