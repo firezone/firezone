@@ -1,13 +1,12 @@
 import Link from "next/link";
 import Image from "next/image";
 import { HiArrowLongRight, HiCheck, HiXMark } from "react-icons/hi2";
-import { manrope } from "@/lib/fonts";
 import { Route } from "next";
 
 function CardHeading({ children }: { children: React.ReactNode }) {
   return (
     <h4
-      className={`font-semibold tracking-tight leading-none text-xl mb-3 inline-block ${manrope.className}`}
+      className={`font-semibold tracking-tight leading-none text-xl mb-3 inline-block font-manrope`}
     >
       {children}
     </h4>
@@ -44,7 +43,7 @@ export default function UseCaseCards() {
     <section className="py-24">
       <div className="max-w-[1240px] flex flex-col items-center mx-auto">
         <h3
-          className={`px-4 mb-8 text-3xl md:text-4xl lg:text-5xl text-center leading-tight tracking-tight font-bold inline-block ${manrope.className}`}
+          className={`px-4 mb-8 text-3xl md:text-4xl lg:text-5xl text-center leading-tight tracking-tight font-bold inline-block font-manrope`}
         >
           One product. Endless possibilities.{" "}
           <span className="text-primary-450">Zero </span>hassle.

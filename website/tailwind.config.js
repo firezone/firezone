@@ -1,3 +1,4 @@
+/** @type {import('tailwindcss').Config} */
 import flowbite from "flowbite-react/tailwind";
 
 const firezoneColors = {
@@ -58,6 +59,10 @@ module.exports = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-source-sans)"],
+        manrope: ["var(--font-manrope)"],
+      },
       boxShadow: {
         drop: "0px 16px 32px -4px rgba(12, 12, 13, 0.1), 0px 4px 4px -4px rgba(12, 12, 13, 0.05)",
         light:

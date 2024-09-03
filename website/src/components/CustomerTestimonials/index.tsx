@@ -5,7 +5,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { HiArrowLeft, HiArrowRight } from "react-icons/hi2";
 import { FaHeart } from "react-icons/fa";
-import { manrope } from "@/lib/fonts";
 import { Route } from "next";
 
 const customerData = [
@@ -128,7 +127,7 @@ export default function CustomerTestimonials() {
         <div className="px-8 sm:px-16 md:px-24 mb-12 md:mb-16">
           <div>
             <h3
-              className={`text-white text-3xl leading-5 md:text-4xl lg:text-5xl tracking-tight font-medium inline-block text-left mb-2 ${manrope.className}`}
+              className={`text-white text-3xl leading-5 md:text-4xl lg:text-5xl tracking-tight font-medium inline-block text-left mb-2 font-manrope`}
             >
               Customers{" "}
               <FaHeart className="text-red-500 w-12 h-12 mx-1 inline-block" />{" "}
