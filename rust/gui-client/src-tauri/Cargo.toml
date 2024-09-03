@@ -38,7 +38,6 @@ semver = { version = "1.0.22", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 subtle = "2.5.0"
-tauri = { version = "1.7.1", features = [ "dialog", "icon-png", "notification", "shell-open-api", "system-tray" ] }
 tauri-runtime = "0.14.2"
 tauri-utils = "1.6.0"
 thiserror = { version = "1.0", default-features = false }
@@ -64,10 +63,12 @@ features = [
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
 nix = { version = "0.29.0", features = ["user"] }
+tauri = { version = "1.7.1", features = [ "dialog", "icon-png", "notification", "shell-open-api", "system-tray" ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 
 [target.'cfg(target_os = "windows")'.dependencies]
+tauri = { version = "1.7.1", features = [ "dialog", "icon-png", "shell-open-api", "system-tray" ] }
 tauri-winrt-notification = "0.5.0"
 winreg = "0.52.0"
 wintun = "0.4.0"
