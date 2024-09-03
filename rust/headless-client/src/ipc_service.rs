@@ -311,7 +311,8 @@ impl<'a> Handler<'a> {
                     break HandlerOk::Err;
                 }
                 Event::Ipc(msg) => {
-                    let msg_variant = serde_variant::to_variant_name(&msg).expect("IPC messages should support `to_variant_name`");
+                    let msg_variant = serde_variant::to_variant_name(&msg)
+                        .expect("IPC messages should support `to_variant_name`");
                     if let Err(error) = self.handle_ipc_msg(msg).await {
                         tracing::error!(
                             ?error,
