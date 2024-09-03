@@ -1,0 +1,67 @@
+import Image from "next/image";
+import { Badge } from "@/components/Badges";
+
+<Image
+  src="/images/blog/sep-2024-update/sep-24-update.png"
+  alt="September update graphic"
+  width={500}
+  height={500}
+  className="mx-auto shadow rounded"
+/>
+
+## In this update:
+
+- **New feature:** Internet Resources
+- **New feature:** REST API
+  <Badge size="xs" textColor="blue-800" bgColor="blue-100">
+    Beta
+  </Badge>
+- **New feature:** Improved wildcard matching for DNS Resources
+- **Blog post:** [sans-IO: The secret to effective Rust for network service](/blog/sans-io)
+
+### Internet Resources
+
+Up until today, Firezone has supported what's known as a "split-tunnel" architecture. That means that only traffic destined for your protected resources is routed through Firezone, while all other traffic goes directly to the internet. This architecture works great for routing traffic to IPs, CIDRs, and DNS Resources, but what if you want to protect your workforce as they work from public cafes, airports, and other untrusuted networks? What if the internet itself is a resource you want to protect?
+
+Well, now you can. Today we are excited to announce the launch of the Internet Resource, which allows you to route all of your internet-bound traffic through Firezone as well. This means that you can now apply the same security policies to all of your traffic, not just the traffic destined for your protected resources.
+
+Like any other Resource in Firezone, you can apply Policies to the Internet Resource to control who can access them. When you grant access to the Internet Resource, it'll appear at the top of the Resources list in the Firezone Client, just like any other Resource. Unlike other Resources, however, the Internet Resource can be enabled or disabled directly from the Client.
+
+<Image
+  src="/images/blog/sep-2024-update/internet-resource.png"
+  width={400}
+  height={400}
+  alt="Internet Resource"
+  className="mx-auto"
+/>
+
+Internet Resources are supported in Clients and Gateways v1.3.0 or later, and are available to accounts on the `Team` and `Enterprise` plans. There's no need to create them manually -- simply select the Internet Resource when creating a new policy in order to use it.
+
+### REST API
+
+Firezone now has a REST API, available in closed beta. The API allows you to manage all of the same configuration you can in the admin portal, but programmatically.
+
+We've published an OpenAPI spec for it at [https://api.firezone.dev/swaggerui](https://api.firezone.dev/swaggerui) you can use to interact with the API right from your browser. You can
+even generate a native client library to use the API in your own applications using [Swagger Codegen](https://swagger.io/tools/swagger-codegen/).
+
+To request access, head to the `Settings -> API Clients` page in your account and we'll get you set up.
+
+### Improved wildcard matching for DNS Resources
+
+We've improved how DNS Resources can be matched for routing. They now support a more powerful syntax for matching names, similar to how glob pattern matching works in Unix shells.
+
+<Image
+  src="/images/blog/sep-2024-update/wildcard.png"
+  width={700}
+  height={700}
+  alt="Wildcard matching"
+  className="mx-auto rounded-lg shadow-lg"
+/>
+
+Now, you can use wildcards to match single characters, parts of a subdomain, and even multiple subdomains. These powerful new matching capabilities make it easier to route traffic to the right places without needing to needlessly create a new DNS Resource for every subdomain.
+
+As an example, you can now use:
+
+- `us-west-?.company.com` to match things like `us-west-1.company.com`, `us-west-2.company.com`, and so on
+- `**.google.com` to match all subdomains under `google.com` recursively
+- `*.github.com` to match all subdomains under `github.com` directly
