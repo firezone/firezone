@@ -105,17 +105,12 @@ pub enum ServerMsg {
 }
 
 // All variants are `String` because almost no error type implements `Serialize`
-#[derive(Clone, Debug, Deserialize, Serialize, thiserror::Error)]
+#[derive(Debug, Deserialize, Serialize)]
 pub enum Error {
-    #[error("DeviceId({0}")]
     DeviceId(String),
-    #[error("LoginUrl({0}")]
     LoginUrl(String),
-    #[error("PortalConnection({0}")]
     PortalConnection(String),
-    #[error("TunnelDevice({0}")]
     TunnelDevice(String),
-    #[error("UrlParse({0}")]
     UrlParse(String),
 }
 
@@ -427,17 +422,16 @@ impl<'a> Handler<'a> {
                     .context("Error while sending IPC message")?;
             }
             ClientMsg::Connect { api_url, token } => {
+                // Warning: Connection errors don't bubble to callers of `handle_ipc_msg`.
                 let token = secrecy::SecretString::from(token);
                 let connect_result = self.connect_to_firezone(&api_url, token);
-                let ipc_result = self
-                    .ipc_tx
-                    .send(&ServerMsg::ConnectResult(connect_result.clone()))
+                if let Err(error) = &connect_result {
+                    tracing::error!(?error, "Failed to connect connlib session");
+                }
+                self.ipc_tx
+                    .send(&ServerMsg::ConnectResult(connect_result))
                     .await
-                    .context("Failed to send `ConnectResult`");
-                return match (connect_result, ipc_result) {
-                    (Err(error), _) => Err(error).context("Failed to connect connlib session"), // Connection errors should bubble first
-                    (Ok(()), ipc_result) => ipc_result, // If we connected, bubble IPC errors
-                };
+                    .context("Failed to send `ConnectResult`")?;
             }
             ClientMsg::Disconnect => {
                 if let Some(connlib) = self.connlib.take() {
