@@ -105,12 +105,17 @@ pub enum ServerMsg {
 }
 
 // All variants are `String` because almost no error type implements `Serialize`
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, thiserror::Error)]
 pub enum Error {
+    #[error("DeviceId({0}")]
     DeviceId(String),
+    #[error("LoginUrl({0}")]
     LoginUrl(String),
+    #[error("PortalConnection({0}")]
     PortalConnection(String),
+    #[error("TunnelDevice({0}")]
     TunnelDevice(String),
+    #[error("UrlParse({0}")]
     UrlParse(String),
 }
 
@@ -419,15 +424,20 @@ impl<'a> Handler<'a> {
                 self.ipc_tx
                     .send(&ServerMsg::ClearedLogs(result.map_err(|e| e.to_string())))
                     .await
-                    .context("Error while sending IPC message")?
+                    .context("Error while sending IPC message")?;
             }
             ClientMsg::Connect { api_url, token } => {
                 let token = secrecy::SecretString::from(token);
-                let result = self.connect_to_firezone(&api_url, token);
-                self.ipc_tx
-                    .send(&ServerMsg::ConnectResult(result))
+                let connect_result = self.connect_to_firezone(&api_url, token);
+                let ipc_result = self
+                    .ipc_tx
+                    .send(&ServerMsg::ConnectResult(connect_result.clone()))
                     .await
-                    .context("Failed to send `ConnectResult`")?
+                    .context("Failed to send `ConnectResult`");
+                return match (connect_result, ipc_result) {
+                    (Err(error), _) => Err(error).context("Failed to connect connlib session"), // Connection errors should bubble first
+                    (Ok(()), ipc_result) => ipc_result, // If we connected, bubble IPC errors
+                };
             }
             ClientMsg::Disconnect => {
                 if let Some(connlib) = self.connlib.take() {
@@ -453,7 +463,7 @@ impl<'a> Handler<'a> {
                 self.connlib
                     .as_mut()
                     .context("No connlib session")?
-                    .set_dns(resolvers)
+                    .set_dns(resolvers);
             }
             ClientMsg::SetDisabledResources(disabled_resources) => {
                 self.connlib
