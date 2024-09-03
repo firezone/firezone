@@ -53,17 +53,6 @@ export function CustomerLogosGrayscale() {
           </Link>
           <Link
             className="shrink-0 h-12 mr-20 place-content-center"
-            href="https://sebgroup.com"
-          >
-            <Image
-              alt="seb logo"
-              src="/images/logos/cust-logo-seb-gray.svg"
-              width={75}
-              height={75}
-            />
-          </Link>
-          <Link
-            className="shrink-0 h-12 mr-20 place-content-center"
             href="https://teracloud.com"
           >
             <Image
@@ -128,17 +117,6 @@ export function CustomerLogosGrayscale() {
               alt="wolfram logo"
               src="/images/logos/cust-logo-wolfram-gray.svg"
               width={60}
-              height={75}
-            />
-          </Link>
-          <Link
-            className="shrink-0 h-12 mr-20 place-content-center"
-            href="https://sebgroup.com"
-          >
-            <Image
-              alt="seb logo"
-              src="/images/logos/cust-logo-seb-gray.svg"
-              width={75}
               height={75}
             />
           </Link>
@@ -235,14 +213,6 @@ export function CustomerLogosColored() {
           <Image
             alt="nomobo logo"
             src="/images/logos/cust-logo-nomobo.webp"
-            width={150}
-            height={150}
-          />
-        </Link>
-        <Link href="https://sebgroup.com" className="mx-12 flex items-center">
-          <Image
-            alt="seb logo"
-            src="/images/logos/cust-logo-seb.svg"
             width={150}
             height={150}
           />
