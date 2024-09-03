@@ -478,7 +478,7 @@ defmodule Web.SignUp do
         |> Web.Mailer.deliver_with_rate_limit(
           rate_limit_key: {:sign_up_link, String.downcase(identity.provider_identifier)},
           rate_limit: 3,
-          rate_limit_interval: :timer.minutes(60)
+          rate_limit_interval: :timer.minutes(30)
         )
       end
     )

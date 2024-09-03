@@ -644,7 +644,7 @@ defmodule Web.Actors.Show do
     |> Web.Mailer.deliver_with_rate_limit(
       rate_limit: 3,
       rate_limit_key: {:welcome_email, identity.id},
-      rate_limit_interval: :timer.minutes(15)
+      rate_limit_interval: :timer.minutes(3)
     )
     |> case do
       {:ok, _} ->
