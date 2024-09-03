@@ -325,13 +325,13 @@ where
     /// Wireguard is an IP tunnel, so we "enforce" that only IP packets are sent through it.
     /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
     /// Nevertheless, using [`IpPacket`] in our API has good documentation value.
-    pub fn encapsulate<'s>(
+    pub fn encapsulate(
         &mut self,
         connection: TId,
         packet: IpPacket<'_>,
         now: Instant,
-        buffer: &'s mut [u8],
-    ) -> Result<Option<Transmit<'s>>, Error> {
+        buffer: &mut EncryptBuffer,
+    ) -> Result<Option<EncryptedPacket>, Error> {
         let conn = self
             .connections
             .get_established_mut(&connection)
@@ -342,7 +342,7 @@ where
 
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
-            .encapsulate(packet.packet(), &mut buffer[4..], now)?
+            .encapsulate(packet.packet(), &mut buffer.inner[4..], now)?
             .map(|p| p.len())
         // Mapping to len() here terminate the mutable borrow of buffer, allowing re-borrowing further down.
         else {
@@ -356,30 +356,26 @@ where
             PeerSocket::Direct {
                 dest: remote,
                 source,
-            } => {
-                // Re-borrow the actual packet.
-                let packet = &buffer[packet_start..packet_end];
-
-                Ok(Some(Transmit {
-                    src: Some(source),
-                    dst: remote,
-                    payload: Cow::Borrowed(packet),
-                }))
-            }
+            } => Ok(Some(EncryptedPacket {
+                src: Some(source),
+                dst: remote,
+                packet_start,
+                packet_len,
+            })),
             PeerSocket::Relay { relay, dest: peer } => {
                 let Some(allocation) = self.allocations.get(&relay) else {
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
-                let packet = &mut buffer[..packet_end];
+                let packet = &mut buffer.inner[..packet_end];
 
-                let Some(transmit) = allocation.encode_to_borrowed_transmit(peer, packet, now)
+                let Some(enc_packet) = allocation.encode_to_encrypted_packet(peer, packet, now)
                 else {
                     tracing::warn!(%peer, "No channel");
                     return Ok(None);
                 };
 
-                Ok(Some(transmit))
+                Ok(Some(enc_packet))
             }
         }
     }
@@ -1239,6 +1235,42 @@ pub enum Event<TId> {
 
     /// We closed a connection (e.g. due to inactivity, roaming, etc).
     ConnectionClosed(TId),
+}
+
+pub struct EncryptBuffer {
+    inner: Vec<u8>,
+}
+
+impl EncryptBuffer {
+    pub fn new(len: usize) -> Self {
+        Self {
+            inner: vec![0u8; len],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EncryptedPacket {
+    pub(crate) src: Option<SocketAddr>,
+    pub(crate) dst: SocketAddr,
+    pub(crate) packet_start: usize,
+    pub(crate) packet_len: usize,
+}
+
+impl EncryptedPacket {
+    pub fn to_transmit(self, buf: &EncryptBuffer) -> Transmit<'_> {
+        Transmit {
+            src: self.src,
+            dst: self.dst,
+            payload: Cow::Borrowed(
+                &buf.inner[self.packet_start..(self.packet_start + self.packet_len)],
+            ),
+        }
+    }
+
+    pub fn dst(&self) -> SocketAddr {
+        self.dst
+    }
 }
 
 #[derive(Clone, PartialEq, PartialOrd, Eq, Ord)]

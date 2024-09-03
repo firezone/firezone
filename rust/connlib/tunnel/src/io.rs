@@ -1,6 +1,7 @@
 use crate::{device_channel::Device, sockets::Sockets, BUF_SIZE};
 use futures_util::FutureExt as _;
 use ip_packet::{IpPacket, MutableIpPacket};
+use snownet::{EncryptBuffer, EncryptedPacket};
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     io,
@@ -18,6 +19,7 @@ pub struct Io {
     device: Device,
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
+    unwritten_packet: Option<EncryptedPacket>,
 
     _tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -48,6 +50,7 @@ impl Io {
             sockets,
             _tcp_socket_factory: tcp_socket_factory,
             udp_socket_factory,
+            unwritten_packet: None,
         }
     }
 
@@ -61,12 +64,13 @@ impl Io {
         ip4_buffer: &'b1 mut [u8],
         ip6_bffer: &'b1 mut [u8],
         device_buffer: &'b2 mut [u8],
+        encrypt_buffer: &EncryptBuffer,
     ) -> Poll<io::Result<Input<'b2, impl Iterator<Item = DatagramIn<'b1>>>>> {
+        ready!(self.poll_send_unwritten(cx, encrypt_buffer)?);
+
         if let Poll::Ready(network) = self.sockets.poll_recv_from(ip4_buffer, ip6_bffer, cx)? {
             return Poll::Ready(Ok(Input::Network(network.filter(is_max_wg_packet_size))));
         }
-
-        ready!(self.sockets.poll_flush(cx))?;
 
         if let Poll::Ready(packet) = self.device.poll_read(device_buffer, cx)? {
             return Poll::Ready(Ok(Input::Device(packet)));
@@ -82,6 +86,22 @@ impl Io {
         }
 
         Poll::Pending
+    }
+
+    fn poll_send_unwritten(
+        &mut self,
+        cx: &mut Context<'_>,
+        buf: &EncryptBuffer,
+    ) -> Poll<io::Result<()>> {
+        ready!(self.sockets.poll_send_ready(cx))?;
+
+        let Some(unwritten_packet) = self.unwritten_packet.take() else {
+            return Poll::Ready(Ok(()));
+        };
+
+        self.send_encrypted_packet(unwritten_packet, buf)?;
+
+        Poll::Ready(Ok(()))
     }
 
     pub fn device_mut(&mut self) -> &mut Device {
@@ -110,6 +130,28 @@ impl Io {
             dst: transmit.dst,
             packet: transmit.payload,
         })?;
+
+        Ok(())
+    }
+
+    pub fn send_encrypted_packet(
+        &mut self,
+        packet: EncryptedPacket,
+        buf: &EncryptBuffer,
+    ) -> io::Result<()> {
+        let transmit = packet.to_transmit(buf);
+        let res = self.send_network(transmit);
+
+        if res
+            .as_ref()
+            .err()
+            .is_some_and(|e| e.kind() == io::ErrorKind::WouldBlock)
+        {
+            tracing::debug!(dst = %packet.dst(), "Socket busy");
+            self.unwritten_packet = Some(packet);
+        }
+
+        res?;
 
         Ok(())
     }

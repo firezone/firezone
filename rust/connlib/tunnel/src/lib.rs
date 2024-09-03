@@ -64,6 +64,7 @@ pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::ClientState;
 pub use gateway::{GatewayState, IPV4_PEERS, IPV6_PEERS};
+use snownet::EncryptBuffer;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
@@ -83,8 +84,10 @@ pub struct Tunnel<TRoleState> {
 
     /// Buffer for reading a single IP packet.
     device_read_buf: Box<[u8; BUF_SIZE]>,
-    /// Buffer for encrypting / decrypting a single packet.
-    packet_buf: Box<[u8; BUF_SIZE]>,
+    /// Buffer for decryping a single packet.
+    decrypt_buf: Box<[u8; BUF_SIZE]>,
+    /// Buffer for encrypting a single packet.
+    encrypt_buf: EncryptBuffer,
 }
 
 impl ClientTunnel {
@@ -100,7 +103,8 @@ impl ClientTunnel {
             device_read_buf: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            packet_buf: Box::new([0u8; BUF_SIZE]),
+            encrypt_buf: EncryptBuffer::new(BUF_SIZE),
+            decrypt_buf: Box::new([0u8; BUF_SIZE]),
         }
     }
 
@@ -136,21 +140,22 @@ impl ClientTunnel {
                 self.ip4_read_buf.as_mut(),
                 self.ip6_read_buf.as_mut(),
                 self.device_read_buf.as_mut(),
+                &self.encrypt_buf,
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout);
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
-                    let Some(transmit) = self.role_state.encapsulate(
-                        packet,
-                        Instant::now(),
-                        self.packet_buf.as_mut(),
-                    ) else {
+                    let Some(enc_packet) =
+                        self.role_state
+                            .encapsulate(packet, Instant::now(), &mut self.encrypt_buf)
+                    else {
                         continue;
                     };
 
-                    self.io.send_network(transmit)?;
+                    self.io
+                        .send_encrypted_packet(enc_packet, &self.encrypt_buf)?;
 
                     continue;
                 }
@@ -161,7 +166,7 @@ impl ClientTunnel {
                             received.from,
                             received.packet,
                             std::time::Instant::now(),
-                            self.packet_buf.as_mut(),
+                            self.decrypt_buf.as_mut(),
                         ) else {
                             continue;
                         };
@@ -195,7 +200,8 @@ impl GatewayTunnel {
             device_read_buf: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            packet_buf: Box::new([0u8; BUF_SIZE]),
+            encrypt_buf: EncryptBuffer::new(BUF_SIZE),
+            decrypt_buf: Box::new([0u8; BUF_SIZE]),
         }
     }
 
@@ -226,21 +232,23 @@ impl GatewayTunnel {
                 self.ip4_read_buf.as_mut(),
                 self.ip6_read_buf.as_mut(),
                 self.device_read_buf.as_mut(),
+                &self.encrypt_buf,
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout, Utc::now());
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
-                    let Some(transmit) = self.role_state.encapsulate(
+                    let Some(enc_packet) = self.role_state.encapsulate(
                         packet,
                         std::time::Instant::now(),
-                        self.packet_buf.as_mut(),
+                        &mut self.encrypt_buf,
                     ) else {
                         continue;
                     };
 
-                    self.io.send_network(transmit)?;
+                    self.io
+                        .send_encrypted_packet(enc_packet, &self.encrypt_buf)?;
 
                     continue;
                 }
