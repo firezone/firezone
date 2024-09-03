@@ -86,8 +86,12 @@ fn gtk_thread() -> Result<()> {
         true,
         None,
     ))?;
+
     tray_icon::menu::MenuEvent::set_event_handler(Some(|event| {
         println!("Menu event {event:?}");
+    }));
+    tray_icon::TrayIconEvent::set_event_handler(Some(|event| {
+        println!("Icon event {event:?}");
     }));
 
     let event_loop = EventLoopBuilder::new().with_any_thread(true).build();
