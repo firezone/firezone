@@ -3,7 +3,7 @@ import Image from "next/image";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="pt-14 flex flex-col">
+    <div className="flex flex-col">
       <div className="bg-neutral-950 mx-auto w-screen text-center">
         <Image
           alt="Firezone logo light"
