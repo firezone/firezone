@@ -313,6 +313,7 @@ impl<'a> Handler<'a> {
                 Event::Ipc(msg) => {
                     let msg_variant = serde_variant::to_variant_name(&msg)
                         .expect("IPC messages should be enums, not structs or anything else.");
+	            let _entered = tracing::error_span!("handle_ipc_msg", msg = %msg_variant).entered();
                     if let Err(error) = self.handle_ipc_msg(msg).await {
                         tracing::error!(
                             ?error,
