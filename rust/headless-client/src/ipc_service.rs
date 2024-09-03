@@ -311,6 +311,10 @@ impl<'a> Handler<'a> {
                     break HandlerOk::Err;
                 }
                 Event::Ipc(msg) => {
+                    let msg_variant = serde_variant::to_variant_name(&msg)
+                        .expect("IPC messages should be enums, not structs or anything else.");
+                    let _entered =
+                        tracing::error_span!("handle_ipc_msg", msg = %msg_variant).entered();
                     if let Err(error) = self.handle_ipc_msg(msg).await {
                         tracing::error!(?error, "Error while handling IPC message from client");
                         continue;
@@ -422,8 +426,12 @@ impl<'a> Handler<'a> {
                     .context("Error while sending IPC message")?
             }
             ClientMsg::Connect { api_url, token } => {
+                // Warning: Connection errors don't bubble to callers of `handle_ipc_msg`.
                 let token = secrecy::SecretString::from(token);
                 let result = self.connect_to_firezone(&api_url, token);
+                if let Err(error) = &result {
+                    tracing::error!(?error, "Failed to connect connlib session");
+                }
                 self.ipc_tx
                     .send(&ServerMsg::ConnectResult(result))
                     .await
