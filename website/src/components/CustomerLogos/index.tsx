@@ -4,165 +4,145 @@ import Marquee from "react-fast-marquee";
 
 export function CustomerLogosGrayscale() {
   return (
-    <div className="lg:fade-side inline-block overflow-hidden whitespace-nowrap mx-auto">
-      <div className="animate-left inline-flex w-fit">
-        <Link
-          className="h-12 mr-20 place-content-center"
-          href="https://corrdyn.com"
-        >
-          <Image
-            alt="corrdyn logo"
-            src="/images/logos/cust-logo-corrdyn-gray.svg"
-            width={125}
-            height={125}
-          />
-        </Link>
-        <Link
-          className="h-12 mr-20 place-content-center"
-          href="https://square1.io"
-        >
-          <Image
-            alt="square1 logo"
-            src="/images/logos/cust-logo-square1-gray.svg"
-            width={100}
-            height={100}
-          />
-        </Link>
-        <Link
-          className="h-12 mr-20 place-content-center"
-          href="https://bunq.com"
-        >
-          <Image
-            alt="bunq logo"
-            src="/images/logos/cust-logo-bunq-gray.svg"
-            width={80}
-            height={60}
-          />
-        </Link>
-        <Link
-          className="h-12 mr-20 place-content-center"
-          href="https://wolfram.com"
-        >
-          <Image
-            alt="wolfram logo"
-            src="/images/logos/cust-logo-wolfram-gray.svg"
-            width={60}
-            height={75}
-          />
-        </Link>
-        <Link
-          className="h-12 mr-20 place-content-center"
-          href="https://sebgroup.com"
-        >
-          <Image
-            alt="seb logo"
-            src="/images/logos/cust-logo-seb-gray.svg"
-            width={75}
-            height={75}
-          />
-        </Link>
-        <Link
-          className="h-12 mr-20 place-content-center"
-          href="https://teracloud.com"
-        >
-          <Image
-            alt="teracloud logo"
-            src="/images/logos/cust-logo-teracloud-gray.svg"
-            width={125}
-            height={125}
-            className="  "
-          />
-        </Link>
-        <Link
-          className="h-12 mr-20 place-content-center"
-          href="https://double11.co.uk"
-        >
-          <Image
-            alt="double11 logo"
-            src="/images/logos/cust-logo-double11-gray.svg"
-            width={50}
-            height={50}
-          />
-        </Link>
-      </div>
-      <div className="animate-left inline-flex w-fit whitespace-nowrap">
-        <Link
-          className="h-12 mr-20 place-content-center"
-          href="https://corrdyn.com"
-        >
-          <Image
-            alt="corrdyn logo"
-            src="/images/logos/cust-logo-corrdyn-gray.svg"
-            width={125}
-            height={125}
-          />
-        </Link>
-        <Link
-          className="h-12 mr-20 place-content-center"
-          href="https://square1.io"
-        >
-          <Image
-            alt="square1 logo"
-            src="/images/logos/cust-logo-square1-gray.svg"
-            width={100}
-            height={100}
-          />
-        </Link>
-        <Link
-          className="h-12 mr-20 place-content-center"
-          href="https://bunq.com"
-        >
-          <Image
-            alt="bunq logo"
-            src="/images/logos/cust-logo-bunq-gray.svg"
-            width={80}
-            height={60}
-          />
-        </Link>
-        <Link
-          className="h-12 mr-20 place-content-center"
-          href="https://wolfram.com"
-        >
-          <Image
-            alt="wolfram logo"
-            src="/images/logos/cust-logo-wolfram-gray.svg"
-            width={60}
-            height={75}
-          />
-        </Link>
-        <Link
-          className="h-12 mr-20 place-content-center"
-          href="https://sebgroup.com"
-        >
-          <Image
-            alt="seb logo"
-            src="/images/logos/cust-logo-seb-gray.svg"
-            width={75}
-            height={75}
-          />
-        </Link>
-        <Link
-          className="h-12 mr-20 place-content-center"
-          href="https://teracloud.com"
-        >
-          <Image
-            alt="teracloud logo"
-            src="/images/logos/cust-logo-teracloud-gray.svg"
-            width={125}
-            height={125}
-          />
-        </Link>
-        <Link
-          className="h-12 mr-20 place-content-center"
-          href="https://double11.co.uk"
-        >
-          <Image
-            alt="double11 logo"
-            src="/images/logos/cust-logo-double11-gray.svg"
-            width={50}
-            height={50}
-          />
-        </Link>
+    <div className="lg:fade-side overflow-hidden w-full">
+      <div className="animate-left inline-block whitespace-nowrap">
+        <div className="inline-flex mr-12 lg:mr-0">
+          <Link
+            className="shrink-0 h-12 mr-20 place-content-center"
+            href="https://corrdyn.com"
+          >
+            <Image
+              alt="corrdyn logo"
+              src="/images/logos/cust-logo-corrdyn-gray.svg"
+              width={125}
+              height={125}
+            />
+          </Link>
+          <Link
+            className="shrink-0 h-12 mr-20 place-content-center"
+            href="https://square1.io"
+          >
+            <Image
+              alt="square1 logo"
+              src="/images/logos/cust-logo-square1-gray.svg"
+              width={100}
+              height={100}
+            />
+          </Link>
+          <Link
+            className="shrink-0 h-12 mr-20 place-content-center"
+            href="https://bunq.com"
+          >
+            <Image
+              alt="bunq logo"
+              src="/images/logos/cust-logo-bunq-gray.svg"
+              width={80}
+              height={60}
+            />
+          </Link>
+          <Link
+            className="shrink-0 h-12 mr-20 place-content-center"
+            href="https://wolfram.com"
+          >
+            <Image
+              alt="wolfram logo"
+              src="/images/logos/cust-logo-wolfram-gray.svg"
+              width={60}
+              height={75}
+            />
+          </Link>
+          <Link
+            className="shrink-0 h-12 mr-20 place-content-center"
+            href="https://teracloud.com"
+          >
+            <Image
+              alt="teracloud logo"
+              src="/images/logos/cust-logo-teracloud-gray.svg"
+              width={125}
+              height={125}
+              className="  "
+            />
+          </Link>
+          <Link
+            className="shrink-0 h-12 mr-20 place-content-center"
+            href="https://double11.co.uk"
+          >
+            <Image
+              alt="double11 logo"
+              src="/images/logos/cust-logo-double11-gray.svg"
+              width={50}
+              height={50}
+            />
+          </Link>
+        </div>
+        <div className="inline-flex">
+          <Link
+            className="shrink-0 h-12 mr-20 place-content-center"
+            href="https://corrdyn.com"
+          >
+            <Image
+              alt="corrdyn logo"
+              src="/images/logos/cust-logo-corrdyn-gray.svg"
+              width={125}
+              height={125}
+            />
+          </Link>
+          <Link
+            className="shrink-0 h-12 mr-20 place-content-center"
+            href="https://square1.io"
+          >
+            <Image
+              alt="square1 logo"
+              src="/images/logos/cust-logo-square1-gray.svg"
+              width={100}
+              height={100}
+            />
+          </Link>
+          <Link
+            className="shrink-0 h-12 mr-20 place-content-center"
+            href="https://bunq.com"
+          >
+            <Image
+              alt="bunq logo"
+              src="/images/logos/cust-logo-bunq-gray.svg"
+              width={80}
+              height={60}
+            />
+          </Link>
+          <Link
+            className="shrink-0 h-12 mr-20 place-content-center"
+            href="https://wolfram.com"
+          >
+            <Image
+              alt="wolfram logo"
+              src="/images/logos/cust-logo-wolfram-gray.svg"
+              width={60}
+              height={75}
+            />
+          </Link>
+          <Link
+            className="shrink-0 h-12 mr-20 place-content-center"
+            href="https://teracloud.com"
+          >
+            <Image
+              alt="teracloud logo"
+              src="/images/logos/cust-logo-teracloud-gray.svg"
+              width={125}
+              height={125}
+            />
+          </Link>
+          <Link
+            className="shrink-0 h-12 mr-20 place-content-center"
+            href="https://double11.co.uk"
+          >
+            <Image
+              alt="double11 logo"
+              src="/images/logos/cust-logo-double11-gray.svg"
+              width={50}
+              height={50}
+            />
+          </Link>
+        </div>
       </div>
     </div>
   );
@@ -233,14 +213,6 @@ export function CustomerLogosColored() {
           <Image
             alt="nomobo logo"
             src="/images/logos/cust-logo-nomobo.webp"
-            width={150}
-            height={150}
-          />
-        </Link>
-        <Link href="https://sebgroup.com" className="mx-12 flex items-center">
-          <Image
-            alt="seb logo"
-            src="/images/logos/cust-logo-seb.svg"
             width={150}
             height={150}
           />

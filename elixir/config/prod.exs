@@ -35,7 +35,9 @@ secret_keys = [
   "token",
   "public_key",
   "private_key",
-  "preshared_key"
+  "preshared_key",
+  "session",
+  "sessions"
 ]
 
 config :phoenix, :filter_parameters, secret_keys
