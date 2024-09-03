@@ -130,6 +130,7 @@ fn start_logging(directives: &str) -> Result<logging::Handles> {
     let logging_handles = logging::setup(directives)?;
     tracing::info!(
         arch = std::env::consts::ARCH,
+        os = std::env::consts::OS,
         ?directives,
         git_version = firezone_bin_shared::git_version!("gui-client-*"),
         system_uptime_seconds = firezone_headless_client::uptime::get().map(|dur| dur.as_secs()),
