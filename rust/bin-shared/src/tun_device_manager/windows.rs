@@ -6,7 +6,7 @@ use ring::digest;
 use std::{
     collections::HashSet,
     io::{self, Read as _},
-    net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     os::windows::process::CommandExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -114,7 +114,7 @@ impl TunDeviceManager {
         }
 
         for new_route in &new_routes {
-            add_route(*new_route, iface_idx);
+            add_route(*new_route, None, iface_idx);
         }
 
         self.routes = new_routes;
@@ -124,9 +124,9 @@ impl TunDeviceManager {
 }
 
 // It's okay if this blocks until the route is added in the OS.
-pub(crate) fn add_route(route: IpNetwork, iface_idx: u32) {
+pub(crate) fn add_route(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx: u32) {
     const DUPLICATE_ERR: u32 = 0x80071392;
-    let entry = forward_entry(route, iface_idx);
+    let entry = forward_entry(route, next_hop, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
     let Err(e) = unsafe { CreateIpForwardEntry2(&entry) }.ok() else {
@@ -144,7 +144,7 @@ pub(crate) fn add_route(route: IpNetwork, iface_idx: u32) {
 // It's okay if this blocks until the route is removed in the OS.
 fn remove_route(route: IpNetwork, iface_idx: u32) {
     const ELEMENT_NOT_FOUND: u32 = 0x80070490;
-    let entry = forward_entry(route, iface_idx);
+    let entry = forward_entry(route, None, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
 
@@ -159,7 +159,7 @@ fn remove_route(route: IpNetwork, iface_idx: u32) {
     tracing::warn!(%route, "Failed to remove route: {e}")
 }
 
-fn forward_entry(route: IpNetwork, iface_idx: u32) -> MIB_IPFORWARD_ROW2 {
+fn forward_entry(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx: u32) -> MIB_IPFORWARD_ROW2 {
     let mut row = MIB_IPFORWARD_ROW2::default();
     // SAFETY: Windows shouldn't store the reference anywhere, it's just setting defaults
     unsafe { InitializeIpForwardEntry(&mut row) };
@@ -178,6 +178,10 @@ fn forward_entry(route: IpNetwork, iface_idx: u32) -> MIB_IPFORWARD_ROW2 {
 
     row.InterfaceIndex = iface_idx;
     row.Metric = 0;
+
+    if let Some(next_hop) = next_hop {
+        row.NextHop = SocketAddr::from((next_hop, 0)).into();
+    }
 
     row
 }

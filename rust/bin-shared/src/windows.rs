@@ -56,12 +56,12 @@ pub fn app_local_data_dir() -> Result<PathBuf> {
 }
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
-    let (_, ifindex) = get_best_non_tunnel_route(addr.ip())?;
+    let (local, ifindex) = get_best_non_tunnel_route(addr.ip())?;
 
     let socket = socket_factory::tcp(addr)?;
-    // socket.bind((local, 0).into())?; // To avoid routing loops, all TCP sockets are bound to the "best" source IP.
+    socket.bind((local, 0).into())?; // To avoid routing loops, all TCP sockets are bound to the "best" source IP.
 
-    crate::tun_device_manager::windows::add_route(addr.ip().into(), ifindex);
+    crate::tun_device_manager::windows::add_route(addr.ip().into(), Some(IpAddr::V4(Ipv4Addr::new(192, 168, 86, 1))), ifindex);
 
     Ok(socket)
 }
