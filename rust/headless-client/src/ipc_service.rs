@@ -236,7 +236,6 @@ async fn ipc_listen(
 
 /// Handles one IPC client
 struct Handler<'a> {
-    callback_handler: CallbackHandler,
     dns_controller: &'a mut DnsController,
     ipc_rx: ipc::ServerRead,
     ipc_tx: ipc::ServerWrite,
@@ -248,7 +247,7 @@ struct Handler<'a> {
 
 struct Session {
     cb_rx: mpsc::Receiver<ConnlibMsg>,
-    connlib: connlib_client_shared::Session>,
+    connlib: connlib_client_shared::Session,
 }
 
 enum Event {
@@ -279,18 +278,15 @@ impl<'a> Handler<'a> {
             .next_client_split()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
-        let (cb_tx, cb_rx) = mpsc::channel(1_000);
         let tun_device = TunDeviceManager::new(DEFAULT_MTU)?;
 
         Ok(Self {
-            callback_handler: CallbackHandler { cb_tx },
-            cb_rx,
-            connlib: None,
             dns_controller,
             ipc_rx,
             ipc_tx,
             last_connlib_start_instant: None,
             log_filter_reloader,
+            session: None,
             tun_device,
         })
     }
@@ -415,10 +411,6 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
-    fn tunnel_is_ready(&self) -> bool {
-        self.last_connlib_start_instant.is_none() && self.session.is_some()
-    }
-
     async fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
         match msg {
             ClientMsg::ClearLogs => {
@@ -444,36 +436,47 @@ impl<'a> Handler<'a> {
                     .context("Failed to send `ConnectResult`")?
             }
             ClientMsg::Disconnect => {
-                if let Some(connlib) = self.connlib.take() {
-                    connlib.disconnect();
-                    self.dns_controller.deactivate()?;
-                } else {
+                let Some(session) = self.session.take() else {
                     tracing::error!("Error - Got Disconnect when we're already not connected");
-                }
+                    return Ok(());
+                };
+
+                // Identical to dropping it, but looks nicer.
+                session.connlib.disconnect();
+                self.dns_controller.deactivate()?;
             }
             ClientMsg::ReloadLogFilter => {
                 let filter = spawn_blocking(get_log_filter).await??;
                 self.log_filter_reloader.reload(filter)?;
             }
             ClientMsg::Reset => {
-                if self.tunnel_is_ready() {
-                    self.connlib.as_mut().context("No connlib session")?.reset();
-                } else {
-                    tracing::debug!("Ignoring redundant reset");
+                if self.last_connlib_start_instant.is_some() {
+                    tracing::debug!("Ignoring reset since we're still signing in");
+                    return Ok(());
                 }
+                let Some(session) = self.session.as_ref() else {
+                    tracing::warn!("Cannot reset if we're signed out");
+                    return Ok(());
+                };
+
+                session.connlib.reset();
             }
             ClientMsg::SetDns(resolvers) => {
+                let Some(session) = self.session.as_ref() else {
+                    tracing::warn!("Cannot set DNS resolvers if we're signed out");
+                    return Ok(());
+                };
+
                 tracing::debug!(?resolvers);
-                self.connlib
-                    .as_mut()
-                    .context("No connlib session")?
-                    .set_dns(resolvers)
+                session.connlib.set_dns(resolvers);
             }
             ClientMsg::SetDisabledResources(disabled_resources) => {
-                self.connlib
-                    .as_mut()
-                    .context("No connlib session")?
-                    .set_disabled_resources(disabled_resources);
+                let Some(session) = self.session.as_ref() else {
+                    tracing::warn!("Cannot set disabled resources if we're signed out");
+                    return Ok(());
+                };
+
+                session.connlib.set_disabled_resources(disabled_resources);
             }
         }
         Ok(())
@@ -499,11 +502,13 @@ impl<'a> Handler<'a> {
         .map_err(|e| Error::LoginUrl(e.to_string()))?;
 
         self.last_connlib_start_instant = Some(Instant::now());
+        let (cb_tx, cb_rx) = mpsc::channel(1_000);
+        let callbacks = CallbackHandler { cb_tx };
         let args = ConnectArgs {
             tcp_socket_factory: Arc::new(tcp_socket_factory),
             udp_socket_factory: Arc::new(udp_socket_factory),
             private_key,
-            callbacks: self.callback_handler.clone(),
+            callbacks,
         };
 
         // Synchronous DNS resolution here
@@ -521,7 +526,11 @@ impl<'a> Handler<'a> {
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
-        let connlib = connlib_client_shared::Session::connect(args, portal, tokio::runtime::Handle::current());
+        let connlib = connlib_client_shared::Session::connect(
+            args,
+            portal,
+            tokio::runtime::Handle::current(),
+        );
         // Call `set_dns` before `set_tun` so that the tunnel starts up with a valid list of resolvers.
         tracing::debug!(?dns, "Calling `set_dns`...");
         connlib.set_dns(dns);
@@ -530,9 +539,8 @@ impl<'a> Handler<'a> {
             .make_tun()
             .map_err(|e| Error::TunnelDevice(e.to_string()))?;
         connlib.set_tun(Box::new(tun));
-        let session = Session {
-            connlib,
-        };
+
+        let session = Session { cb_rx, connlib };
         self.session = Some(session);
 
         Ok(())
