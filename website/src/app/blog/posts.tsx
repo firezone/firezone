@@ -16,7 +16,6 @@ export default function Posts() {
       authorName: "Thomas Eizinger",
       authorAvatarSrc: gravatar("thomas@firezone.dev"),
       type: "Learn",
-      src: "/images/learn-thumb.webp",
       description: (
         <p className="mb-2">
           Firezone's data plane extensively uses the sans-IO design pattern.
@@ -31,6 +30,7 @@ export default function Posts() {
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
       type: "Announcement",
+      src:"/images/blog/jun-2024-update/jun-24-update.png",
       description: (
         <div className="mb-2">
           <div className="mb-2">In this update:</div>
