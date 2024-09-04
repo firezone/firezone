@@ -1,5 +1,3 @@
-import { manrope } from "@/lib/fonts";
-
 export default function FeatureSection({
   reverse = false,
   title,
@@ -21,7 +19,7 @@ export default function FeatureSection({
         {titleCaption}
       </h6>
       <h3
-        className={`mb-4 text-center lg:text-left text-3xl md:text-4xl lg:text-5xl leading-tight text-pretty tracking-tight font-bold inline-block ${manrope.className}`}
+        className={`mb-4 text-center lg:text-left text-3xl md:text-4xl lg:text-5xl leading-tight text-pretty tracking-tight font-bold inline-block font-manrope`}
       >
         {title}
       </h3>
