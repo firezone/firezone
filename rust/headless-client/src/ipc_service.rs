@@ -353,19 +353,19 @@ impl<'a> Handler<'a> {
         }
         // `FramedRead::next` is cancel-safe.
         if let Poll::Ready(result) = pin!(&mut self.ipc_rx).poll_next(cx) {
-            return match result {
-                Some(Ok(x)) => Poll::Ready(Event::Ipc(x)),
-                Some(Err(error)) => Poll::Ready(Event::IpcError(error)),
-                None => Poll::Ready(Event::IpcDisconnected),
-            };
+            return Poll::Ready(match result {
+                Some(Ok(x)) => Event::Ipc(x),
+                Some(Err(error)) => Event::IpcError(error),
+                None => Event::IpcDisconnected,
+            });
         }
         if let Some(session) = self.session.as_mut() {
             // `tokio::sync::mpsc::Receiver::recv` is cancel-safe.
             if let Poll::Ready(option) = session.cb_rx.poll_recv(cx) {
-                return match option {
-                    Some(x) => Poll::Ready(Event::Callback(x)),
-                    None => Poll::Ready(Event::CallbackChannelClosed),
-                };
+                return Poll::Ready(match option {
+                    Some(x) => Event::Callback(x),
+                    None => Event::CallbackChannelClosed,
+                });
             }
         }
         Poll::Pending
