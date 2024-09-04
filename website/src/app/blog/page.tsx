@@ -44,9 +44,12 @@ export default function Page() {
                 </li>
                 <li>
                   <strong>New feature:</strong> REST API{" "}
-                  <Badge size="xs" textColor="blue-800" bgColor="blue-100">
-                    beta
-                  </Badge>
+                  <Badge
+                    text="Beta"
+                    size="xs"
+                    textColor="blue-800"
+                    bgColor="blue-100"
+                  />
                 </li>
                 <li>
                   <strong>New feature:</strong> Improved wildcard matching for

@@ -4,20 +4,20 @@ import Link from "next/link";
 type Size = "xs" | "sm" | "md" | "lg" | "xl";
 
 enum SizeClass {
-  XS = "px-1 py-0.5 text-xs rounded-md",
-  SM = "px-1.5 py-1 text-sm rounded-md",
-  MD = "px-2 py-1 text-base rounded-lg",
-  LG = "px-3 py-1.5 text-lg rounded-lg",
-  XL = "px-4 py-2 text-xl rounded-xl",
+  XS = "px-1 py-0.5 text-xs -translate-y-0.5 rounded-md",
+  SM = "px-1.5 py-1 text-sm -translate-y-1 rounded-md",
+  MD = "px-2 py-1 text-base -translate-y-1 rounded-lg",
+  LG = "px-3 py-1.5 text-lg -translate-y-1.5 rounded-lg",
+  XL = "px-4 py-2 text-xl -translate-y-2 rounded-xl",
 }
 
 export function Badge({
-  children,
+  text,
   size,
   bgColor,
   textColor,
 }: {
-  children: React.ReactNode;
+  text: string;
   size: Size;
   bgColor: string;
   textColor: string;
@@ -25,11 +25,11 @@ export function Badge({
   const sizeClass = SizeClass[size.toUpperCase() as keyof typeof SizeClass];
 
   return (
-    <span
+    <div
       className={`place-content-center uppercase inline-block ${sizeClass} font-semibold bg-${bgColor} text-${textColor}`}
     >
-      {children}
-    </span>
+      {text}
+    </div>
   );
 }
 
