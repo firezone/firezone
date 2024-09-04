@@ -58,19 +58,14 @@ pub fn app_local_data_dir() -> Result<PathBuf> {
 }
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
-    let (local, ifindex, next_hop) = get_best_non_tunnel_route(addr.ip())?;
-    let next_hop = next_hop.ok_or_else(|| {
-        io::Error::other(format!(
-            "Failed to resolve default gateway for routing to {addr}"
-        ))
-    })?;
+    let (route, ifindex) = get_best_non_tunnel_route(addr.ip())?;
 
     let mut socket = socket_factory::tcp(addr)?;
 
     // To avoid routing loops, all TCP sockets are bound to the "best" source IP.
     // Additionally, we add a dedicated route for the given address to route via the default interface.
-    socket.bind((local, 0).into())?;
-    let entry = RoutingTableEntry::create(IpNetwork::from(addr.ip()), next_hop, ifindex);
+    socket.bind((route.addr, 0).into())?;
+    let entry = RoutingTableEntry::create(IpNetwork::from(addr.ip()), route.next_hop, ifindex);
 
     socket.pack(entry);
 
@@ -79,9 +74,9 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
 
 pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
     let source_ip_resolver = |dst| {
-        let (route, _, _) = get_best_non_tunnel_route(dst)?;
+        let (route, _) = get_best_non_tunnel_route(dst)?;
 
-        Ok(Some(route))
+        Ok(Some(route.addr))
     };
 
     let socket =
@@ -128,31 +123,23 @@ impl Drop for RoutingTableEntry {
 /// This function performs multiple syscalls and is thus fairly expensive.
 /// It should **not** be called on a per-packet basis.
 /// Callers should instead cache the result until network interfaces change.
-fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<(IpAddr, u32, Option<IpAddr>)> {
-    let (route, ifindex, gateway) = list_adapters()?
+fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<(Route, u32)> {
+    let (route, ifindex) = list_adapters()?
         .filter(|adapter| !is_tun(adapter))
         .filter_map(|adapter| {
             let route = find_best_route_for_luid(&adapter.Luid, dst).ok()?;
 
             // Safety: TODO
             let if_index = unsafe { adapter.Anonymous1.Anonymous.IfIndex };
-            let gateway = unsafe {
-                adapter
-                    .FirstGatewayAddress
-                    .as_ref()
-                    .and_then(sock_addr_to_ip_addr)
-            };
 
-            Some((route, if_index, gateway))
+            Some((route, if_index))
         })
         .min()
         .ok_or(io::Error::other("No route to host"))?;
 
-    let src = route.addr;
+    tracing::debug!(src = %route.addr, %dst, %ifindex, next_hop = %route.next_hop, "Resolved best route outside of tunnel interface");
 
-    tracing::debug!(%src, %dst, %ifindex, ?gateway, "Resolved best route outside of tunnel interface");
-
-    Ok((src, ifindex, gateway))
+    Ok((route, ifindex))
 }
 
 struct Adapters {
@@ -233,6 +220,7 @@ fn is_tun(adapter: &IP_ADAPTER_ADDRESSES_LH) -> bool {
 struct Route {
     metric: u32,
     addr: IpAddr,
+    next_hop: IpAddr,
 }
 
 impl Ord for Route {
@@ -276,6 +264,8 @@ fn find_best_route_for_luid(luid: &NET_LUID_LH, dst: IpAddr) -> Result<Route> {
         addr: unsafe { to_ip_addr(best_src, dst) }
             .ok_or(io::Error::other("can't find a valid route"))?,
         metric: best_route.Metric,
+        next_hop: unsafe { to_ip_addr(best_route.NextHop, dst) }
+            .ok_or(io::Error::other("can't extract next hop"))?,
     })
 }
 
@@ -290,33 +280,6 @@ unsafe fn to_ip_addr(addr: SOCKADDR_INET, dst: IpAddr) -> Option<IpAddr> {
         }
         _ => None,
     }
-}
-
-fn sock_addr_to_ip_addr(addr: &IP_ADAPTER_GATEWAY_ADDRESS_LH) -> Option<IpAddr> {
-    const SOCKADDR_IN_LENGTH: usize = std::mem::size_of::<SOCKADDR_IN>();
-    const SOCKADDR6_IN_LENGTH: usize = std::mem::size_of::<SOCKADDR_IN6>();
-
-    dbg!(SOCKADDR_IN_LENGTH, SOCKADDR6_IN_LENGTH);
-
-    Some(match dbg!(addr.Address.iSockaddrLength) as usize {
-        SOCKADDR_IN_LENGTH => {
-            // Safety: We checked that it has the right length.
-            let addr: &SOCKADDR_IN = unsafe { std::ptr::read(addr.Address.lpSockaddr as *const _) };
-            // Safety: Reading from the union is okay.
-            let ip_bytes = unsafe { addr.sin_addr.S_un.S_addr };
-            IpAddr::V4(Ipv4Addr::from(ip_bytes))
-        }
-        SOCKADDR6_IN_LENGTH => {
-            // Safety: We checked that it has the right length.
-            let addr: &SOCKADDR_IN6 =
-                unsafe { std::ptr::read(addr.Address.lpSockaddr as *const _) };
-            // Safety: Reading from the union is okay.
-            let ip_bytes = unsafe { addr.sin6_addr.u.Byte };
-
-            IpAddr::V6(Ipv6Addr::from(ip_bytes))
-        }
-        _ => return None,
-    })
 }
 
 #[cfg(test)]
