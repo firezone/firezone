@@ -21,7 +21,6 @@ class ResourceViewModel(resource: Resource, resourceState: ResourceState) {
     var state: ResourceState = resourceState
 }
 
-
 fun displayName(
     resource: Resource,
     state: ResourceState,

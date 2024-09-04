@@ -29,8 +29,6 @@ enum class ResourceState {
     UNSET,
 }
 
-
-
 fun ResourceState.isEnabled(): Boolean {
     return this == ResourceState.ENABLED
 }
