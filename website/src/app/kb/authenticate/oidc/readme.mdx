@@ -38,6 +38,11 @@ documentation for convenience:
 - [Authentik](https://docs.goauthentik.io/docs/providers/oauth2/)
 - [Zitadel](https://zitadel.com/docs/guides/integrate/login/oidc)
 
+For more detailed guides specific to each provider, see the
+[Firezone legacy documentation](/docs/authenticate/oidc). Firezone 1.0 uses the
+same OIDC connector under the hood as our legacy version, so the steps should
+similar.
+
 ## Setting up the universal OIDC connector
 
 To set up the universal OIDC connector, go to
@@ -98,25 +103,35 @@ https://your-tenant.okta.com/.well-known/openid-configuration
 
 ### PKCE
 
-The universal OIDC connector **requires** PKCE (Proof Key for Code Exchange) to
-be enabled on the connector. PKCE is a security feature that helps prevent
-certain types of attacks and is recommended for added security.
+The universal OIDC connector **requires** the provider to support PKCE (Proof
+Key for Code Exchange). PKCE is a security feature that helps prevent certain
+types of attacks and is supported by nearly every OIDC provider today.
 
-For more detailed guides specific to each provider, see the
-[Firezone legacy documentation](/docs/authenticate/oidc). Firezone 1.0 uses the
-same OIDC connector under the hood as our legacy version, so the steps should
-similar.
+If your provider does not support PKCE, authentication will fail with an error
+message similar to this:
+
+```text
+You may not authenticate to this account.
+```
 
 ### Provisioning users and groups
 
-Users must be created in Firezone before they can authenticate with the
-universal OIDC connector. You can [create users](/kb/deploy/users) manually in
-the admin portal or use the [REST API](/kb/reference/rest-api) to create users
-programmatically.
+Users must be created in Firezone before they can sign in with the universal
+OIDC connector. You can [create users](/kb/deploy/users) in the admin portal or
+programmatically via the [REST API](/kb/reference/rest-api).
 
-Groups used for access control must also be created in Firezone before they can
-be used with users associated with the universal OIDC connector. You can
-[create groups](/kb/deploy/groups) manually in the admin portal or use the
-[REST API](/kb/reference/rest-api) to create groups programmatically.
+Similarly, groups used for access control must also be created in Firezone
+before they can be used with users associated with the universal OIDC connector.
+You can [create groups](/kb/deploy/groups) manually in the admin portal or use
+the [REST API](/kb/reference/rest-api) to create groups programmatically.
+
+<Alert color="info">
+  If you're using the [Google Workspace](/kb/authenticate/google), [Microsoft
+  Entra](/kb/authenticate/entra), [Okta](/kb/authenticate/okta) connectors, or
+  [JumpCloud](/kb/authenticate/jumpcloud) connectors, users and groups are
+  automatically synced from your identity provider and do not need to be created
+  manually.
+</Alert>
 
 <SupportOptions />
+```
