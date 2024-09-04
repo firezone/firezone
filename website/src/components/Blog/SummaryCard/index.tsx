@@ -13,6 +13,7 @@ export default function SummaryCard({
   authorAvatarSrc,
   type,
   src,
+  filterState,
 }: {
   children: React.ReactNode;
   date: string;
@@ -22,6 +23,7 @@ export default function SummaryCard({
   authorAvatarSrc: string;
   type: string;
   src?: string;
+  filterState?: boolean;
 }) {
   return (
     <Link href={href}>
