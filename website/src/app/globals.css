@@ -87,6 +87,10 @@
     display: none;
   }
 
+  .summary-inner a {
+    pointer-events: all;
+  }
+
   @keyframes slide {
     from {
       transform: translateX(0);

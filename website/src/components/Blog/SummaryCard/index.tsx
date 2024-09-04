@@ -12,7 +12,6 @@ export default function SummaryCard({
   authorAvatarSrc,
   type,
   src,
-  filters,
 }: {
   children: React.ReactNode;
   date: string;
@@ -22,51 +21,49 @@ export default function SummaryCard({
   authorAvatarSrc: string;
   type: string;
   src?: string;
-  filters?: string;
 }) {
   return (
-    <Link href={href}>
-      <article
-        className={`py-6 px-4 sm:px-6 md:px-8 lg:px-10 gap-12 hover:bg-neutral-100 bg-white mt-2 rounded-2xl cursor-pointer border-t-0 ${
-          filters === type || filters === "All Posts" ? "flex" : "hidden"
-        }`}
-      >
-        <div className="w-full">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-primary-450 font-semibold text-sm inline-flex items-center">
-              {type.toUpperCase()}
-            </span>
-          </div>
-          <h2 className="mb-3 text-2xl font-bold tracking-tight text-neutral-800 ">
-            {title}
-          </h2>
-          <div className="mb-6 font-regular text-neutral-800 z-10">{children}</div>
-          <div className="flex gap-3 items-center text-sm">
-            <div className="flex items-center space-x-3">
-              <Image
-                width={28}
-                height={28}
-                className="w-7 h-7 rounded-full"
-                src={authorAvatarSrc}
-                alt={authorName + " avatar"}
-              />
-              <span className="font-semibold">{authorName}</span>
-            </div>
-            <span className="font-semibold text-neutral-600">{date}</span>
-          </div>
+    <article className={`relative flex flex-col-reverse md:flex-row py-6 px-4`}>
+      <Link href={href}>
+        <div className="inset-0 mx-4 absolute hover:bg-neutral-100 bg-white mt-2 rounded-2xl cursor-pointer" />
+      </Link>
+      <div className="w-full relative pointer-events-none z-10 px-8 md:px-0 mx-0 md:mx-8">
+        <div className="flex justify-between items-center mb-2">
+          <span className="uppercase text-primary-450 font-semibold text-sm inline-flex items-center">
+            {type}
+          </span>
         </div>
-        {src && (
-          <div className="rounded-lg overflow-hidden max-h-[120px] w-[240px]">
+        <h2 className="mb-3 text-2xl font-bold tracking-tight text-neutral-800 ">
+          {title}
+        </h2>
+        <div className="summary-inner mb-6 font-regular text-neutral-800 z-10">
+          {children}
+        </div>
+        <div className="flex gap-3 items-center text-sm">
+          <div className="flex items-center space-x-3">
             <Image
-              src={src}
-              width={200}
-              height={200}
-              alt="Article Image"
-              className="object-cover rounded-lg object-center"
+              width={28}
+              height={28}
+              className="w-7 h-7 rounded-full"
+              src={authorAvatarSrc}
+              alt={authorName + " avatar"}
             />
+            <span className="font-semibold">{authorName}</span>
           </div>
-        )}
-      </article>
-    </Link>
+          <span className="font-semibold text-neutral-600">{date}</span>
+        </div>
+      </div>
+      {src && (
+        <div className="relative z-10 w-full md:max-h-[120px] md:w-[240px] p-8 md:p-0 mx-0 md:mx-8">
+          <Image
+            src={src}
+            width={800}
+            height={800}
+            alt="Article Image"
+            className="object-cover rounded-lg object-center"
+          />
+        </div>
+      )}
+    </article>
   );
 }
