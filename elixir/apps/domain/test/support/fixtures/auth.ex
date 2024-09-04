@@ -2,6 +2,38 @@ defmodule Domain.Fixtures.Auth do
   use Domain.Fixture
   alias Domain.Auth
 
+  # this key is revoked so don't bother trying to use it
+  @google_workspace_private_key """
+  -----BEGIN PRIVATE KEY-----
+  MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCZU+IlZMT1ExqS
+  LAi7Fa2bGYiGSFIvbVoOVvu8VZyOAR3Bjfe2TiLzVTc35+D5fYzQftx7sC0ZF6Ub
+  ZSK5mgBi0LcVw8xsMcDhroD0MZdE5E1Lg/tvCdYJCkWFsvCHk8yN40hPgw2lB9Bu
+  xJ4uV5agl8zAkEr+Y8ck0BFY3aK5uyA5McdmakkEUCYRfUaoRCP4y+kR22PJJnYN
+  yYma4nLk6b3OwMs58z5U0N2tmDj8o8zWPSlh4HJgMmOnwtl1EjZ9ZlwjENhzooL2
+  E00gFglm8Lgj34HZp6zhF3bhiCQz0j06puLScXAsLDa5AMf4mBVNsefG59lGZLd4
+  HEaRoxrjAgMBAAECggEAHdiDO84qvJ3UXUGvDWPB4GAPADyRquO5VPM/m0B68fVr
+  qmKNJnJ9QSqETiCX3VjAEVGwb28yyCCfJf8AzGoayyFfkiAD6cehiQyj02TX0jQy
+  i5GMXufmPuo98DGNuoZdmfz09W1IOaiUvQsO02x/SJFj7NPplS0s9ZB+3/J8m3Rx
+  OmYzWg27zV5yITSE4N5FVfK7zfOHzFSdo+yXULRS8ZfzdQeQBFqlnWYSMe9P3QlG
+  kJDyB0JULGcUfpcKQfcI//AMSFjhNn5CngYCU4Qedsm04PmbQr73qMZdbmzLw1Nq
+  NToSwc9SsH2rUBjwffdUK8JNE2wY8JVF96pqX3C8QQKBgQDNQ2o5HZmI2vGqVG0G
+  8/cDVDoJuEjgVPuYAeCHjfjXKR/AKanUTu0Pv/Q45K419T4IdMbOcqr4TvkDHsgZ
+  qQ7Uus+soDz6kY5oyYL43NBS1XAeTmjBkyKT4+k3goUg1+rPyKEATT3dXwT377CS
+  CC3HQE4mZ4RFhEocxku0l/M1oQKBgQC/Ohm3f2/tod5xeJSXfdC0mHKcxcTjQiax
+  pYWHbr+YH4GRBTZUNpCMIoYpSjLCoCXcQ5yhxK3K2BEp/5t44OrmfI1o91Xz2XXJ
+  x0A7q27umTRug8J7E3GaoTDutFBUP5C0nJSQgdQaTOAMzZpJqtM27tFJYAHxI2gS
+  0cEeFsM6AwKBgH/r0qhTvRqgMFnRkbzyj++gLyddlPVRoRZjnRV9siYNN/9fN7rb
+  kTvuifpm8fcopodIl5mTtt9XADMknNn5FQgYgFJ57mbODa1aYGhN3Pqyj9QjU3/H
+  /ZWjRPXWPrdwOKNTyprQiIyMqiEGXMk1laoGdm3St4lHX5S9M/MRe33hAoGBAJXi
+  TFXvpSN1RI1cHdu/2d4zv2HyAai/KOUE/+xvee0ahMvOcg7/1byBMvcaGT9Dl2lV
+  9Wc2aaIcSRfKKWpNoNCXv58Ofmhrgk9txYL/lCugGeCllcIyM1EoFtqCqpPeXuWx
+  9SBvInia2OIwJUaohnUAKzp/7gW74s8daWjUHqFRAoGAJ6JJYh749pfDYB4LKwia
+  R9Iyld0qDPR6FXY0ZkOWKczHM2OFjhTT5LglNhoso4zavakyIRmWH8y1tiQnSO/m
+  XI2ckSJQwxpnezLFkP2poJaaM4UqbvRFpXAvUOwvMLpbN57WSngm7Gsm6c9dKvZl
+  7aghWWogzrdN9hMNjXRevao=
+  -----END PRIVATE KEY-----
+  """
+
   def user_password, do: "Hello w0rld!"
   def remote_ip, do: {100, 64, 100, 58}
   def user_agent, do: "iOS/12.5 (iPhone) connlib/1.3.0"
@@ -100,7 +132,21 @@ defmodule Domain.Fixtures.Auth do
       openid_connect_adapter_config(
         discovery_document_uri:
           "http://localhost:#{bypass.port}/.well-known/openid-configuration",
-        scope: Domain.Auth.Adapters.GoogleWorkspace.Settings.scope() |> Enum.join(" ")
+        scope: Domain.Auth.Adapters.GoogleWorkspace.Settings.scope() |> Enum.join(" "),
+        service_account_json_key: %{
+          type: "service_account",
+          project_id: "firezone-test",
+          private_key_id: "e1fc5c12b490aaa1602f3de9133551952b749db3",
+          private_key: @google_workspace_private_key,
+          client_email: "firezone-idp-sync@firezone-test-391719.iam.gserviceaccount.com",
+          client_id: "110986447653011314480",
+          auth_uri: "https://accounts.google.com/o/oauth2/auth",
+          token_uri: "https://oauth2.googleapis.com/token",
+          auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+          client_x509_cert_url:
+            "https://www.googleapis.com/robot/v1/metadata/x509/firezone-idp-sync%40firezone-test-111111.iam.gserviceaccount.com",
+          universe_domain: "googleapis.com"
+        }
       )
 
     provider =
@@ -222,6 +268,7 @@ defmodule Domain.Fixtures.Auth do
     update!(provider,
       disabled_at: nil,
       adapter_state: %{
+        "userinfo" => %{"sub" => email()},
         "access_token" => "OIDC_ACCESS_TOKEN",
         "refresh_token" => "OIDC_REFRESH_TOKEN",
         "expires_at" => DateTime.utc_now() |> DateTime.add(1, :day),

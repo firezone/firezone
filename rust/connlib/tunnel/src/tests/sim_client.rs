@@ -28,7 +28,7 @@ use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use itertools::Itertools as _;
 use prop::collection;
 use proptest::prelude::*;
-use snownet::Transmit;
+use snownet::{EncryptBuffer, Transmit};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     mem,
@@ -57,6 +57,7 @@ pub(crate) struct SimClient {
     pub(crate) received_icmp_replies: BTreeMap<(u16, u16), IpPacket<'static>>,
 
     buffer: Vec<u8>,
+    enc_buffer: EncryptBuffer,
 }
 
 impl SimClient {
@@ -71,6 +72,7 @@ impl SimClient {
             sent_icmp_requests: Default::default(),
             received_icmp_replies: Default::default(),
             buffer: vec![0u8; (1 << 16) - 1],
+            enc_buffer: EncryptBuffer::new((1 << 16) - 1),
         }
     }
 
@@ -147,7 +149,12 @@ impl SimClient {
             }
         }
 
-        Some(self.sut.encapsulate(packet, now)?.into_owned())
+        Some(
+            self.sut
+                .encapsulate(packet, now, &mut self.enc_buffer)?
+                .to_transmit(&self.enc_buffer)
+                .into_owned(),
+        )
     }
 
     pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) {
@@ -219,7 +226,7 @@ impl SimClient {
             }
         }
 
-        unimplemented!("Unhandled packet")
+        tracing::error!("Unhandled packet");
     }
 
     pub(crate) fn update_relays<'a>(

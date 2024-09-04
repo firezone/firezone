@@ -13,22 +13,23 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This cannot be done when the issue's PR merges. */}
-      {/*
-      <Entry version="1.2.3" date={new Date(todo)}>
+      <Entry version="1.3.0" date={new Date("2024-08-30")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6434">
+            Adds the Internet Resource feature.
+          </ChangeItem>
         </ul>
       </Entry>
-      */}
       <Entry version="1.2.2" date={new Date("2024-08-29")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6432">
-            Shows an orange dot on the tray icon when an update is ready to download.
+            Shows an orange dot on the tray icon when an update is ready to
+            download.
           </ChangeItem>
-          <ChangeItem pull="6449">
-            Checks for updates once a day
-          </ChangeItem>
+          <ChangeItem pull="6449">Checks for updates once a day</ChangeItem>
           <ChangeItem enable={title === "Windows"} pull="6472">
-            Fixes an issue where Split DNS didn't work for domain-joined Windows machines
+            Fixes an issue where Split DNS didn't work for domain-joined Windows
+            machines
           </ChangeItem>
         </ul>
       </Entry>

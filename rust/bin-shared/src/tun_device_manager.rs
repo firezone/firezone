@@ -59,6 +59,10 @@ mod tests {
         )))
         .unwrap();
 
+        std::future::poll_fn(|cx| socket.poll_send_ready(cx))
+            .await
+            .unwrap();
+
         // Send a STUN request.
         socket
             .send(DatagramOut {
@@ -68,11 +72,6 @@ mod tests {
                     "000100002112A4420123456789abcdef01234567"
                 )),
             })
-            .unwrap();
-
-        // First send seems to always result as would block
-        std::future::poll_fn(|cx| socket.poll_flush(cx))
-            .await
             .unwrap();
 
         let task = std::future::poll_fn(|cx| {

@@ -11,7 +11,7 @@ use connlib_shared::{
 };
 use ip_packet::IpPacket;
 use proptest::prelude::*;
-use snownet::Transmit;
+use snownet::{EncryptBuffer, Transmit};
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::IpAddr,
@@ -27,6 +27,7 @@ pub(crate) struct SimGateway {
     pub(crate) received_icmp_requests: BTreeMap<u64, IpPacket<'static>>,
 
     buffer: Vec<u8>,
+    enc_buffer: EncryptBuffer,
 }
 
 impl SimGateway {
@@ -36,6 +37,7 @@ impl SimGateway {
             sut,
             received_icmp_requests: Default::default(),
             buffer: vec![0u8; (1 << 16) - 1],
+            enc_buffer: EncryptBuffer::new((1 << 16) - 1),
         }
     }
 
@@ -78,7 +80,11 @@ impl SimGateway {
                 self.received_icmp_requests.insert(payload, packet.clone());
 
                 let echo_response = ip_packet::make::icmp_response_packet(packet);
-                let transmit = self.sut.encapsulate(echo_response, now)?.into_owned();
+                let transmit = self
+                    .sut
+                    .encapsulate(echo_response, now, &mut self.enc_buffer)?
+                    .to_transmit(&self.enc_buffer)
+                    .into_owned();
 
                 return Some(transmit);
             }
@@ -89,12 +95,17 @@ impl SimGateway {
                 global_dns_records.get(name).cloned().into_iter().flatten()
             });
 
-            let transmit = self.sut.encapsulate(response, now)?.into_owned();
+            let transmit = self
+                .sut
+                .encapsulate(response, now, &mut self.enc_buffer)?
+                .to_transmit(&self.enc_buffer)
+                .into_owned();
 
             return Some(transmit);
         }
 
-        panic!("Unhandled packet")
+        tracing::error!("Unhandled packet");
+        None
     }
 
     pub(crate) fn update_relays<'a>(
