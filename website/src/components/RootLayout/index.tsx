@@ -7,10 +7,23 @@ import RootNavbar from "@/components/RootNavbar";
 import Banner from "@/components/Banner";
 import Script from "next/script";
 import Footer from "@/components/Footer";
-import { source_sans_3 } from "@/lib/fonts";
 import { HiArrowLongRight } from "react-icons/hi2";
 import { usePathname, useSearchParams } from "next/navigation";
 import Analytics from "@/components/Analytics";
+import { Source_Sans_3, Manrope } from "next/font/google";
+
+const source_sans_3 = Source_Sans_3({
+  subsets: ["latin"],
+  variable: "--font-source-sans",
+  display: "swap",
+  weight: ["200", "300", "400", "500", "600", "700", "800", "900"],
+});
+const manrope = Manrope({
+  subsets: ["latin"],
+  variable: "--font-manrope",
+  display: "swap",
+  weight: ["200", "300", "400", "500", "600", "700", "800"],
+});
 
 export const metadata: Metadata = {
   title: "WireGuard® for Enterprise • Firezone",
@@ -23,16 +36,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${source_sans_3.variable} ${manrope.variable}`}>
       <Script
         type="text/javascript"
         src="https://app.termly.io/resource-blocker/c4df1a31-22d9-4000-82e6-a86cbec0bba0?autoBlock=on"
       />
-      <body
-        className={
-          "subpixel-antialiased text-neutral-900 " + source_sans_3.className
-        }
-      >
+      <body className={"subpixel-antialiased text-neutral-900 font-sans"}>
         <Banner active={false}>
           <p className="mx-auto text-center">
             Firezone 1.0 is here!{" "}

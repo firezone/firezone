@@ -7,7 +7,6 @@ import {
 } from "react-icons/hi2";
 import { HiLightningBolt } from "react-icons/hi";
 import { FaBookOpen } from "react-icons/fa";
-import { manrope } from "@/lib/fonts";
 import Image from "next/image";
 import { SlideIn } from "@/components/Animations";
 
@@ -91,7 +90,7 @@ export default function ElevatorPitch() {
                 Stay Connected
               </h6>
               <h3
-                className={`mb-4 text-3xl md:text-4xl lg:text-5xl leading-tight tracking-tight font-bold inline-block ${manrope.className}`}
+                className={`mb-4 text-3xl md:text-4xl lg:text-5xl leading-tight tracking-tight font-bold inline-block font-manrope`}
               >
                 Supercharge your workforce
                 <span className="text-primary-450"> in minutes.</span>
