@@ -45,8 +45,8 @@ public final class Store: ObservableObject {
     initTunnelManager()
   }
 
-  public func isResourceEnabled(_ id: String) -> Bool {
-    !tunnelManager.disabledResources.contains(id)
+  public func internetResourceEnabled() -> Bool {
+    tunnelManager.internetResourceEnabled
   }
 
   private func initNotifications() {
@@ -171,10 +171,10 @@ public final class Store: ObservableObject {
     }
   }
 
-  func toggleResourceDisabled(resource: String, enabled: Bool) {
-    tunnelManager.toggleResourceDisabled(resource: resource, enabled: enabled)
+  func toggleInternetResource(enabled: Bool) {
+    tunnelManager.toggleInternetResource(enabled: enabled)
     var newSettings = settings
-    newSettings.disabledResources = tunnelManager.disabledResources
+    newSettings.internetResourceEnabled = tunnelManager.internetResourceEnabled
     Task {
       try await save(newSettings)
     }

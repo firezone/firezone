@@ -20,13 +20,13 @@ public enum TunnelManagerKeys {
   static let authBaseURL = "authBaseURL"
   static let apiURL = "apiURL"
   public static let logFilter = "logFilter"
-  public static let disabledResources = "disabledResources"
+  public static let internetResourceEnabled = "internetResourceEnabled"
 }
 
 public enum TunnelMessage: Codable {
   case getResourceList(Data)
   case signOut
-  case setDisabledResources(Set<String>)
+  case internetResourceEnabled(Bool)
 
   enum CodingKeys: String, CodingKey {
     case type
@@ -36,16 +36,16 @@ public enum TunnelMessage: Codable {
   enum MessageType: String, Codable {
     case getResourceList
     case signOut
-    case setDisabledResources
+    case internetResourceEnabled
   }
 
   public init(from decoder: Decoder) throws {
       let container = try decoder.container(keyedBy: CodingKeys.self)
       let type = try container.decode(MessageType.self, forKey: .type)
       switch type {
-      case .setDisabledResources:
-          let value = try container.decode(Set<String>.self, forKey: .value)
-          self = .setDisabledResources(value)
+      case .internetResourceEnabled:
+          let value = try container.decode(Bool.self, forKey: .value)
+          self = .internetResourceEnabled(value)
       case .getResourceList:
           let value = try container.decode(Data.self, forKey: .value)
           self = .getResourceList(value)
@@ -56,9 +56,9 @@ public enum TunnelMessage: Codable {
   public func encode(to encoder: Encoder) throws {
       var container = encoder.container(keyedBy: CodingKeys.self)
       switch self {
-      case .setDisabledResources(let value):
-          try container.encode(MessageType.setDisabledResources, forKey: .type)
-          try container.encode(value, forKey: .value)
+      case .internetResourceEnabled(let value):
+        try container.encode(MessageType.internetResourceEnabled, forKey: .type)
+        try container.encode(value, forKey: .value)
       case .getResourceList(let value):
           try container.encode(MessageType.getResourceList, forKey: .type)
           try container.encode(value, forKey: .value)
@@ -87,8 +87,8 @@ public class TunnelManager {
   // Persists our tunnel settings
   private var manager: NETunnelProviderManager?
 
-  // Resources that are currently disabled and will not be used
-  public var disabledResources: Set<String> = []
+  // Indicates if the internet resource is currently enabled
+  public var internetResourceEnabled: Bool = false
 
   // Encoder used to send messages to the tunnel
   private let encoder = PropertyListEncoder()
@@ -154,8 +154,9 @@ public class TunnelManager {
           // Found it
           let settings = Settings.fromProviderConfiguration(providerConfiguration)
           let actorName = providerConfiguration[TunnelManagerKeys.actorName]
-          if let disabledResourcesData = providerConfiguration[TunnelManagerKeys.disabledResources]?.data(using: .utf8) {
-            self.disabledResources = (try? JSONDecoder().decode(Set<String>.self, from: disabledResourcesData)) ?? Set()
+          if let internetResourceEnabled = providerConfiguration[TunnelManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
+
+            self.internetResourceEnabled = (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabled)) ?? false
 
           }
           let status = manager.connection.status
@@ -256,20 +257,15 @@ public class TunnelManager {
     }
   }
 
-  func updateDisabledResources() {
+  func updateInternetResourceState() {
     guard session().status == .connected else { return }
 
-    try? session().sendProviderMessage(encoder.encode(TunnelMessage.setDisabledResources(disabledResources))) { _ in }
+    try? session().sendProviderMessage(encoder.encode(TunnelMessage.internetResourceEnabled(internetResourceEnabled))) { _ in }
   }
 
-  func toggleResourceDisabled(resource: String, enabled: Bool) {
-    if enabled {
-      disabledResources.remove(resource)
-    } else {
-      disabledResources.insert(resource)
-    }
-
-    updateDisabledResources()
+  func toggleInternetResource(enabled: Bool) {
+    internetResourceEnabled = enabled
+    updateInternetResourceState()
   }
 
   func fetchResources(callback: @escaping (ResourceList) -> Void) {

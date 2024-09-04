@@ -36,7 +36,6 @@ impl ResourceDescriptionDns {
             name: self.name,
             address_description: self.address_description,
             sites: self.sites,
-            can_be_disabled: false,
             status,
         }
     }
@@ -67,14 +66,13 @@ impl ResourceDescriptionCidr {
             name: self.name,
             address_description: self.address_description,
             sites: self.sites,
-            can_be_disabled: false,
             status,
         }
     }
 }
 
 fn internet_resource_name() -> String {
-    "<-> Internet Resource".to_string()
+    "Internet Resource".to_string()
 }
 
 /// Description of an internet resource.
@@ -90,9 +88,6 @@ pub struct ResourceDescriptionInternet {
     /// Sites for the internet resource
     #[serde(rename = "gateway_groups")]
     pub sites: Vec<Site>,
-    /// Whether or not resource can be disabled from UI
-    #[serde(default)]
-    pub can_be_disabled: bool,
 }
 
 impl ResourceDescriptionInternet {
@@ -101,7 +96,6 @@ impl ResourceDescriptionInternet {
             name: self.name,
             id: self.id,
             sites: self.sites,
-            can_be_disabled: self.can_be_disabled,
             status,
         }
     }

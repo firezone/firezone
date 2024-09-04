@@ -78,13 +78,10 @@ pub fn cidr_resource(
 pub fn internet_resource(
     sites: impl Strategy<Value = Vec<Site>>,
 ) -> impl Strategy<Value = ResourceDescriptionInternet> {
-    (resource_id(), sites, any::<bool>()).prop_map(move |(id, sites, can_be_disabled)| {
-        ResourceDescriptionInternet {
-            name: "Internet Resource".to_string(),
-            id,
-            sites,
-            can_be_disabled,
-        }
+    (resource_id(), sites).prop_map(move |(id, sites)| ResourceDescriptionInternet {
+        name: "Internet Resource".to_string(),
+        id,
+        sites,
     })
 }
 

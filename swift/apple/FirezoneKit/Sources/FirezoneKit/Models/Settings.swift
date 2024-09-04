@@ -10,7 +10,7 @@ struct Settings: Equatable {
   var authBaseURL: String
   var apiURL: String
   var logFilter: String
-  var disabledResources: Set<String>
+  var internetResourceEnabled: Bool?
 
   var isValid: Bool {
     let authBaseURL = URL(string: authBaseURL)
@@ -38,19 +38,17 @@ struct Settings: Equatable {
           ?? Settings.defaultValue.apiURL,
         logFilter: providerConfiguration[TunnelManagerKeys.logFilter]
           ?? Settings.defaultValue.logFilter,
-        disabledResources: getDisabledResources(disabledResources: providerConfiguration[TunnelManagerKeys.disabledResources])
+        internetResourceEnabled: getInternetResourceEnabled(internetResourceEnabled:  providerConfiguration[TunnelManagerKeys.internetResourceEnabled])
       )
     } else {
       return Settings.defaultValue
     }
   }
 
-  static private func getDisabledResources(disabledResources: String?) -> Set<String> {
-    guard let disabledResourcesJSON = disabledResources, let disabledResourcesData = disabledResourcesJSON.data(using: .utf8)  else{
-      return Set()
-    }
-    return (try? JSONDecoder().decode(Set<String>.self, from: disabledResourcesData))
-      ?? Settings.defaultValue.disabledResources
+  static private func getInternetResourceEnabled(internetResourceEnabled: String?) -> Bool? {
+    guard let internetResourceEnabled = internetResourceEnabled, let jsonData = internetResourceEnabled.data(using: .utf8) else { return nil }
+
+    return try? JSONDecoder().decode(Bool?.self, from: jsonData)
   }
 
   // Used for initializing a new providerConfiguration from Settings
@@ -59,7 +57,7 @@ struct Settings: Equatable {
       TunnelManagerKeys.authBaseURL: authBaseURL,
       TunnelManagerKeys.apiURL: apiURL,
       TunnelManagerKeys.logFilter: logFilter,
-      TunnelManagerKeys.disabledResources: String(data: try! JSONEncoder().encode(disabledResources), encoding: .utf8) ?? "",
+      TunnelManagerKeys.internetResourceEnabled: String(data: try! JSONEncoder().encode(internetResourceEnabled) , encoding: .utf8)!,
     ]
   }
 
@@ -72,14 +70,14 @@ struct Settings: Equatable {
         apiURL: "wss://api.firez.one",
         logFilter:
           "firezone_tunnel=debug,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,snownet=debug,str0m=info,warn",
-        disabledResources: Set()
+        internetResourceEnabled: nil
       )
     #else
       Settings(
         authBaseURL: "https://app.firezone.dev",
         apiURL: "wss://api.firezone.dev",
         logFilter: "str0m=warn,info",
-        disabledResources: Set()
+        internetResourceEnabled: nil
       )
     #endif
   }()
