@@ -124,7 +124,7 @@ impl TunDeviceManager {
 }
 
 // It's okay if this blocks until the route is added in the OS.
-fn add_route(route: IpNetwork, iface_idx: u32) {
+pub(crate) fn add_route(route: IpNetwork, iface_idx: u32) {
     const DUPLICATE_ERR: u32 = 0x80071392;
     let entry = forward_entry(route, iface_idx);
 

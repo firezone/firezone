@@ -56,16 +56,22 @@ pub fn app_local_data_dir() -> Result<PathBuf> {
 }
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
-    let local = get_best_non_tunnel_route(addr.ip())?;
+    let (_, ifindex) = get_best_non_tunnel_route(addr.ip())?;
 
     let socket = socket_factory::tcp(addr)?;
-    socket.bind((local, 0).into())?; // To avoid routing loops, all TCP sockets are bound to the "best" source IP.
+    // socket.bind((local, 0).into())?; // To avoid routing loops, all TCP sockets are bound to the "best" source IP.
+
+    crate::tun_device_manager::windows::add_route(&(addr.ip().into()), ifindex);
 
     Ok(socket)
 }
 
 pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
-    let source_ip_resolver = |dst| Ok(Some(get_best_non_tunnel_route(dst)?));
+    let source_ip_resolver = |dst| {
+        let (route, _) = get_best_non_tunnel_route(dst)?;
+
+        Ok(Some(route))
+    };
 
     let socket =
         socket_factory::udp(src_addr)?.with_source_ip_resolver(Box::new(source_ip_resolver));
@@ -84,11 +90,14 @@ pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
 /// This function performs multiple syscalls and is thus fairly expensive.
 /// It should **not** be called on a per-packet basis.
 /// Callers should instead cache the result until network interfaces change.
-fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<IpAddr> {
-    let route = list_adapters()?
+fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<(IpAddr, u32)> {
+    let (route, ifindex) = list_adapters()?
         .filter(|adapter| !is_tun(adapter))
-        .map(|adapter| adapter.Luid)
-        .filter_map(|luid| find_best_route_for_luid(&luid, dst).ok())
+        .filter_map(|adapter| {
+            let route = find_best_route_for_luid(&adapter.Luid, dst).ok()?;
+
+            Some((route, unsafe { adapter.Anonymous1.Anonymous.IfIndex }))
+        })
         .min()
         .ok_or(io::Error::other("No route to host"))?;
 
@@ -96,7 +105,7 @@ fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<IpAddr> {
 
     tracing::debug!(%src, %dst, "Resolved best route outside of tunnel interface");
 
-    Ok(src)
+    Ok((src, ifindex))
 }
 
 struct Adapters {
