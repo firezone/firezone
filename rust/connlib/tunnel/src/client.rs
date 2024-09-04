@@ -22,7 +22,7 @@ use crate::{ClientEvent, ClientTunnel, Tun};
 use domain::base::Message;
 use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::{ClientNode, RelaySocket, Transmit};
+use snownet::{ClientNode, EncryptBuffer, RelaySocket, Transmit};
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
@@ -419,11 +419,12 @@ impl ClientState {
         )
     }
 
-    pub(crate) fn encapsulate<'s>(
-        &'s mut self,
+    pub(crate) fn encapsulate(
+        &mut self,
         packet: MutableIpPacket<'_>,
         now: Instant,
-    ) -> Option<snownet::Transmit<'s>> {
+        buffer: &mut EncryptBuffer,
+    ) -> Option<snownet::EncryptedPacket> {
         let (packet, dst) = match self.try_handle_dns_query(packet, now) {
             Ok(response) => {
                 self.buffered_packets.push_back(response?.to_owned());
@@ -469,7 +470,7 @@ impl ClientState {
 
         let transmit = self
             .node
-            .encapsulate(gid, packet.as_immutable(), now)
+            .encapsulate(gid, packet.as_immutable(), now, buffer)
             .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
             .ok()??;
 

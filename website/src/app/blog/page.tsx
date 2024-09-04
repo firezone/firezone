@@ -16,11 +16,13 @@ export default function Page() {
   return (
     <section>
       <div className="bg-neutral-50 border-b border-neutral-100">
-        <div className="p-4 sm:p-6 md:p-8 lg:p-10 mx-auto max-w-screen-lg w-full text-center">
-          <h1 className={`text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold tracking-tight justify-center ${manrope.className}`}>
+        <div className="py-8 px-4 sm:py-12 sm:px-6 md:py-16 md:px-8 lg:py-20 lg:px-10 mx-auto max-w-screen-lg w-full">
+          <h1
+            className={`justify-center text-5xl sm:text-6xl md:text-7xl font-bold tracking-tight font-manrope`}
+          >
             Blog
           </h1>
-          <p className="text-md sm:text-lg md:text-xl lg:text-2xl mt-4 md:mt-6 lg:mt-8 tracking-tight">
+          <p className="text-center text-md md:text-lg lg:text-xl mt-2 md:mt-4 tracking-tight">
             Announcements, how-tos, and more from the Firezone team.
           </p>
         </div>

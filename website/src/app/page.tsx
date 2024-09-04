@@ -22,7 +22,6 @@ import {
   FadeIn,
 } from "@/components/Animations";
 import ElevatorPitch from "@/components/ElevatorPitch";
-import { manrope } from "@/lib/fonts";
 import "@/styles/hero.css";
 import CustomerTestimonials from "@/components/CustomerTestimonials";
 import FeatureCards from "@/components/FeatureCards";
@@ -42,17 +41,16 @@ export default function Page() {
         <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
           <h1
             className={
-              manrope.className +
-              " mb-8 text-5xl sm:text-6xl md:text-7xl text-center drop-shadow-[inset_0_2px_0_0_rgba(255,255,255,100)] font-medium tracking-tight leading-tight bg-gradient-to-b from-white from-70% to-slate-200 text-transparent bg-clip-text"
+              "font-manrope mb-8 text-5xl sm:text-6xl md:text-7xl text-center drop-shadow-[inset_0_2px_0_0_rgba(255,255,255,100)] font-medium tracking-tight leading-tight bg-gradient-to-b from-white from-70% to-slate-200 text-transparent bg-clip-text"
             }
           >
             Upgrade your VPN to zero-trust access
           </h1>
-          <h3 className={"text-xl text-center text-neutral-400"}>
+          <p className={"text-xl text-center text-neutral-400"}>
             Firezone is a fast, flexible VPN replacement built on WireGuard®
             that protects your most valuable resources without tedious
             configuration.
-          </h3>
+          </p>
           <div className="flex sm:flex-row flex-col-reverse items-center justify-center sm:gap-x-6 md:gap-x-12 mt-10 w-full">
             <div className="flex items-center my-4 mr-4">
               <ActionLink
@@ -164,7 +162,7 @@ export default function Page() {
             Flexible security
           </h6>
           <h3
-            className={`mb-4 tracking-tight font-bold leading-tight inline-block ${manrope.className}`}
+            className={`mb-4 tracking-tight font-bold leading-tight inline-block font-manrope`}
           >
             Runs <span className="text-primary-450">everywhere </span>
             your business does
@@ -306,7 +304,7 @@ export default function Page() {
             Open source
           </h6>
           <h3
-            className={`mb-4 tracking-tight font-bold inline-block ${manrope.className}`}
+            className={`mb-4 tracking-tight font-bold inline-block font-manrope`}
           >
             <span className="text-primary-450">Open source</span> for
             transparency and trust

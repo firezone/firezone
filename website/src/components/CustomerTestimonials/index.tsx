@@ -6,7 +6,6 @@ import Link from "next/link";
 import { FaQuoteLeft } from "react-icons/fa";
 import { HiArrowLeft, HiArrowRight } from "react-icons/hi2";
 import { FaHeart } from "react-icons/fa";
-import { manrope } from "@/lib/fonts";
 import ActionLink from "@/components/ActionLink";
 import { Route } from "next";
 
@@ -119,7 +118,7 @@ export default function CustomerTestimonials() {
         <div className="px-4 sm:px-16 lg:px-10 xl:px-0 xl:pr-16 mb-12 md:mb-16">
           <div>
             <h3
-              className={`text-white text-3xl md:text-4xl leading-5 xl:text-5xl tracking-tight font-medium inline-block text-wrap sm:text-nowrap text-left ${manrope.className}`}
+              className={`text-white text-3xl leading-5 md:text-4xl lg:text-5xl tracking-tight font-medium inline-block text-left mb-2 font-manrope`}
             >
               Customers{" "}
               <FaHeart className="text-primary-450 w-12 h-12 mx-1 inline-block" />{" "}
