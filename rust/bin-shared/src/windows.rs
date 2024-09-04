@@ -1,3 +1,4 @@
+use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
 use known_folders::{get_known_folder_path, KnownFolder};
 use socket_factory::{TcpSocket, UdpSocket};
@@ -5,20 +6,18 @@ use std::{
     cmp::Ordering,
     io,
     mem::MaybeUninit,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     path::PathBuf,
     ptr::null,
 };
 use windows::Win32::NetworkManagement::{IpHelper::GetAdaptersAddresses, Ndis::NET_LUID_LH};
 use windows::Win32::{
     NetworkManagement::IpHelper::{
-        GetBestRoute2, GET_ADAPTERS_ADDRESSES_FLAGS, IP_ADAPTER_ADDRESSES_LH, MIB_IPFORWARD_ROW2,
+        CreateIpForwardEntry2, DeleteIpForwardEntry2, GetBestRoute2, GET_ADAPTERS_ADDRESSES_FLAGS,
+        IP_ADAPTER_ADDRESSES_LH, MIB_IPFORWARD_ROW2,
     },
     Networking::WinSock::{ADDRESS_FAMILY, AF_UNSPEC, SOCKADDR_INET},
 };
-
-use crate::tun_device_manager::windows::{add_route, remove_route};
-use crate::TUNNEL_NAME;
 
 /// Hides Powershell's console on Windows
 ///
@@ -95,21 +94,21 @@ impl RoutingTableEntry {
     fn create(route: IpAddr, mut prototype: MIB_IPFORWARD_ROW2) -> io::Result<()> {
         let prefix = &mut prototype.DestinationPrefix;
         match route {
-            IpNetwork::V4(x) => {
-                prefix.PrefixLength = x.netmask();
-                prefix.Prefix.Ipv4 = SocketAddrV4::new(x.network_address(), 0).into();
+            IpAddr::V4(x) => {
+                prefix.PrefixLength = 32;
+                prefix.Prefix.Ipv4 = SocketAddrV4::new(x, 0).into();
             }
-            IpNetwork::V6(x) => {
-                prefix.PrefixLength = x.netmask();
-                prefix.Prefix.Ipv6 = SocketAddrV6::new(x.network_address(), 0, 0, 0).into();
+            IpAddr::V6(x) => {
+                prefix.PrefixLength = 128;
+                prefix.Prefix.Ipv6 = SocketAddrV6::new(x, 0, 0, 0).into();
             }
         }
 
-        unsafe { CreateIpForwardEntry2(&entry) }
+        unsafe { CreateIpForwardEntry2(&prototype) }
             .ok()
             .map_err(|e| io::Error::other(e))?;
 
-        Ok(Self { entry })
+        Ok(Self { entry: prototype })
     }
 }
 
