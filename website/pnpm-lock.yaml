@@ -21,14 +21,14 @@ importers:
         specifier: ~14.2.5
         version: 14.2.5(@mdx-js/loader@3.0.1(webpack@5.92.0))(@mdx-js/react@3.0.1(@types/react@18.3.3)(react@18.3.1))
       '@next/third-parties':
-        specifier: ^14.2.5
-        version: 14.2.5(next@14.2.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
+        specifier: ^14.2.7
+        version: 14.2.7(next@14.2.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
       '@types/mdx':
         specifier: ^2.0.13
         version: 2.0.13
       '@types/mixpanel-browser':
-        specifier: ^2.49.1
-        version: 2.49.1
+        specifier: ^2.50.0
+        version: 2.50.0
       '@types/node':
         specifier: 20.14.12
         version: 20.14.12
@@ -55,10 +55,10 @@ importers:
         version: 4.4.1
       flowbite-react:
         specifier: ^0.10.1
-        version: 0.10.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.7)
+        version: 0.10.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.10)
       framer-motion:
-        specifier: ^11.3.28
-        version: 11.3.28(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: ^11.3.31
+        version: 11.3.31(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       highlight.js:
         specifier: ^11.10.0
         version: 11.10.0
@@ -66,8 +66,8 @@ importers:
         specifier: ^2.3.0
         version: 2.3.0
       mixpanel-browser:
-        specifier: ^2.55.0
-        version: 2.55.0
+        specifier: ^2.55.1
+        version: 2.55.1
       next:
         specifier: ^14.2.5
         version: 14.2.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -117,12 +117,12 @@ importers:
         specifier: ^11.0.0
         version: 11.0.0
       tailwindcss:
-        specifier: 3.4.7
-        version: 3.4.7
+        specifier: 3.4.10
+        version: 3.4.10
     devDependencies:
       flowbite-typography:
         specifier: ^1.0.3
-        version: 1.0.3(tailwindcss@3.4.7)
+        version: 1.0.3(tailwindcss@3.4.10)
       hastscript:
         specifier: ^9.0.0
         version: 9.0.0
@@ -359,8 +359,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@next/third-parties@14.2.5':
-    resolution: {integrity: sha512-PDRJm8RZ3rnGNporHKjcdCeZqoW8iJ5uP0clo1Z08TqJiQzuntJ66zrGYCJyqTakx62UJNOp73YsQCFo6kbYYg==}
+  '@next/third-parties@14.2.7':
+    resolution: {integrity: sha512-cE/1MAvmbKFZ9VCCj+Gvv21rMm/72JRTeLr24QEqCBNe17xuXyCzg9c7cRCXLdbk1VTBSALZCK9o13gbOvSMKA==}
     peerDependencies:
       next: ^13.0.0 || ^14.0.0
       react: ^18.2.0
@@ -429,8 +429,8 @@ packages:
   '@types/mdx@2.0.13':
     resolution: {integrity: sha512-+OWZQfAYyio6YkJb3HLxDrvnx6SWWDbC0zVPfBRzUk0/nqoDyf6dNxQi3eArPe8rJ473nobTMQ/8Zk+LxJ+Yuw==}
 
-  '@types/mixpanel-browser@2.49.1':
-    resolution: {integrity: sha512-W9VZxD7haNMenkRwXxPZBJLhED7Sx1l89nZsGcWi3WzdIk417k/KnpmfDFn2sEyL31G/h0rY1E6erAny+8ItOw==}
+  '@types/mixpanel-browser@2.50.0':
+    resolution: {integrity: sha512-RkGTkkDUw3Tm/GEmcS/x8t2mNrt34jgrEWLVM6oSnoe/+bk/WQP1EWaHLk3pCDc3IaXHNoweoNMa1iWLLF0yFQ==}
 
   '@types/ms@0.7.34':
     resolution: {integrity: sha512-nG96G3Wp6acyAgJqGasjODb+acrI7KltPiRxzHPXnP3NgI28bpQDRv53olbqGXbfcgF5aiiHmO3xpwEpS5Ld9g==}
@@ -864,8 +864,8 @@ packages:
   fraction.js@4.3.7:
     resolution: {integrity: sha512-ZsDfxO51wGAXREY55a7la9LScWpwv9RxIrYABrlvOFBlH/ShPnrtsXeuUIfXKKOVicNxQ+o8JTbJvjS4M89yew==}
 
-  framer-motion@11.3.28:
-    resolution: {integrity: sha512-dqhoawipEAjqdv32zbv72sOMJZjol7dROWn7t/FOq23WXJ40O4OUybgnO2ldnuS+3YquSn8xO/KKRavZ+TBVOQ==}
+  framer-motion@11.3.31:
+    resolution: {integrity: sha512-Xmxs08WBXnc2tNzNZbFSpquI33lvleJg4Y+hmZ+vFkn+laN9ZnR3gbZnNGKDtuz7c/x3u8dLg05OU3EhLobCsg==}
     peerDependencies:
       '@emotion/is-prop-valid': '*'
       react: ^18.0.0
@@ -1307,8 +1307,8 @@ packages:
   mitt@3.0.1:
     resolution: {integrity: sha512-vKivATfr97l2/QBCYAkXYDbrIWPM2IIKEl7YPhjCvKlG3kE2gm+uBo6nEXK3M5/Ffh/FLpKExzOQ3JJoJGFKBw==}
 
-  mixpanel-browser@2.55.0:
-    resolution: {integrity: sha512-7gn9DucCoEXFfJ5y28ycpb6BGguyGLsoPCrDmPXyEcmBQ7JarPI9ZkFDiX5xonnWAVR/+fix+22/lLvFb+IdWQ==}
+  mixpanel-browser@2.55.1:
+    resolution: {integrity: sha512-NSEPdFSJxoR1OCKWKHbtqd3BeH1c9NjXbEt0tN5TgBEO1nSDji6niU9n4MopAXOP0POET9spjpQKxZtLZKTJwA==}
 
   ms@2.1.2:
     resolution: {integrity: sha512-sGkPx+VjMtmA6MX27oA4FBFELFCZZ4S4XqeGOXCv68tT+jb3vk/RyaKWP0PTKyWtmLSM0b+adUTEvbs1PEaH2w==}
@@ -1711,8 +1711,8 @@ packages:
   tailwind-merge@2.3.0:
     resolution: {integrity: sha512-vkYrLpIP+lgR0tQCG6AP7zZXCTLc1Lnv/CCRT3BqJ9CZ3ui2++GPaGb1x/ILsINIMSYqqvrpqjUFsMNLlW99EA==}
 
-  tailwindcss@3.4.7:
-    resolution: {integrity: sha512-rxWZbe87YJb4OcSopb7up2Ba4U82BoiSGUdoDr3Ydrg9ckxFS/YWsvhN323GMcddgU65QRy7JndC7ahhInhvlQ==}
+  tailwindcss@3.4.10:
+    resolution: {integrity: sha512-KWZkVPm7yJRhdu4SRSl9d4AK2wM3a50UsvgHZO7xY77NQr2V+fIrEuoDGQcbvswWvFGbS2f6e+jC/6WJm1Dl0w==}
     engines: {node: '>=14.0.0'}
     hasBin: true
 
@@ -2135,7 +2135,7 @@ snapshots:
   '@next/swc-win32-x64-msvc@14.2.5':
     optional: true
 
-  '@next/third-parties@14.2.5(next@14.2.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
+  '@next/third-parties@14.2.7(next@14.2.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
     dependencies:
       next: 14.2.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react: 18.3.1
@@ -2211,7 +2211,7 @@ snapshots:
 
   '@types/mdx@2.0.13': {}
 
-  '@types/mixpanel-browser@2.49.1': {}
+  '@types/mixpanel-browser@2.50.0': {}
 
   '@types/ms@0.7.34': {}
 
@@ -2616,7 +2616,7 @@ snapshots:
     dependencies:
       to-regex-range: 5.0.1
 
-  flowbite-react@0.10.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.7):
+  flowbite-react@0.10.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.10):
     dependencies:
       '@floating-ui/core': 1.6.2
       '@floating-ui/react': 0.26.17(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -2627,14 +2627,14 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
       react-icons: 5.2.1(react@18.3.1)
       tailwind-merge: 2.3.0
-      tailwindcss: 3.4.7
+      tailwindcss: 3.4.10
 
-  flowbite-typography@1.0.3(tailwindcss@3.4.7):
+  flowbite-typography@1.0.3(tailwindcss@3.4.10):
     dependencies:
       lodash.castarray: 4.4.0
       lodash.isplainobject: 4.0.6
       lodash.merge: 4.6.2
-      tailwindcss: 3.4.7
+      tailwindcss: 3.4.10
 
   flowbite@2.3.0:
     dependencies:
@@ -2650,7 +2650,7 @@ snapshots:
 
   fraction.js@4.3.7: {}
 
-  framer-motion@11.3.28(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+  framer-motion@11.3.31(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
       tslib: 2.6.3
     optionalDependencies:
@@ -3418,7 +3418,7 @@ snapshots:
 
   mitt@3.0.1: {}
 
-  mixpanel-browser@2.55.0:
+  mixpanel-browser@2.55.1:
     dependencies:
       rrweb: 2.0.0-alpha.13
 
@@ -3879,7 +3879,7 @@ snapshots:
     dependencies:
       '@babel/runtime': 7.25.0
 
-  tailwindcss@3.4.7:
+  tailwindcss@3.4.10:
     dependencies:
       '@alloc/quick-lru': 5.2.0
       arg: 5.0.2
