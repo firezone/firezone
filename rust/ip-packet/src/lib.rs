@@ -410,7 +410,7 @@ impl<'a> MutableIpPacket<'a> {
         }
     }
 
-    pub fn owned(mut data: Vec<u8>) -> Option<MutableIpPacket<'static>> {
+    pub(crate) fn owned(mut data: Vec<u8>) -> Option<MutableIpPacket<'static>> {
         let packet = match data[20] >> 4 {
             4 => ConvertibleIpv4Packet::owned(data)?.into(),
             6 => {
