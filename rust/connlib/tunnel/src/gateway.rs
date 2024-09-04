@@ -13,7 +13,7 @@ use connlib_shared::{DomainName, StaticSecret};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MutableIpPacket};
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::{RelaySocket, ServerNode};
+use snownet::{EncryptBuffer, RelaySocket, ServerNode};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
@@ -155,11 +155,12 @@ impl GatewayState {
         self.node.public_key()
     }
 
-    pub(crate) fn encapsulate<'s>(
-        &'s mut self,
+    pub(crate) fn encapsulate(
+        &mut self,
         packet: MutableIpPacket<'_>,
         now: Instant,
-    ) -> Option<snownet::Transmit<'s>> {
+        buffer: &mut EncryptBuffer,
+    ) -> Option<snownet::EncryptedPacket> {
         let dst = packet.destination();
 
         if !is_client(dst) {
@@ -180,7 +181,7 @@ impl GatewayState {
 
         let transmit = self
             .node
-            .encapsulate(peer.id(), packet.as_immutable(), now)
+            .encapsulate(peer.id(), packet.as_immutable(), now, buffer)
             .inspect_err(|e| tracing::debug!(%cid, "Failed to encapsulate: {e}"))
             .ok()??;
 

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::{
     borrow::Cow,
-    collections::VecDeque,
+    // collections::VecDeque,
     io::{self, IoSliceMut},
     net::{IpAddr, SocketAddr},
     slice,
@@ -84,8 +84,6 @@ pub struct UdpSocket {
     src_by_dst_cache: HashMap<IpAddr, IpAddr>,
 
     port: u16,
-
-    buffered_datagrams: VecDeque<DatagramOut<'static>>,
 }
 
 impl UdpSocket {
@@ -97,7 +95,6 @@ impl UdpSocket {
             port,
             inner,
             source_ip_resolver: Box::new(|_| Ok(None)),
-            buffered_datagrams: VecDeque::new(),
             src_by_dst_cache: Default::default(),
         })
     }
@@ -144,16 +141,6 @@ pub struct DatagramOut<'a> {
     pub src: Option<SocketAddr>,
     pub dst: SocketAddr,
     pub packet: Cow<'a, [u8]>,
-}
-
-impl<'a> DatagramOut<'a> {
-    fn into_owned(self) -> DatagramOut<'static> {
-        DatagramOut {
-            src: self.src,
-            dst: self.dst,
-            packet: Cow::Owned(self.packet.into_owned()),
-        }
-    }
 }
 
 impl UdpSocket {
@@ -205,51 +192,16 @@ impl UdpSocket {
         }
     }
 
-    pub fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        loop {
-            ready!(self.inner.poll_send_ready(cx))?; // Ensure we are ready to send.
-
-            let Some(transmit) = self.buffered_datagrams.pop_front() else {
-                break;
-            };
-
-            match self.try_send(&transmit) {
-                Ok(()) => continue, // Try to send another packet.
-                Err(e) => {
-                    self.buffered_datagrams.push_front(transmit); // Don't lose the packet if we fail.
-
-                    if e.kind() == io::ErrorKind::WouldBlock {
-                        continue; // False positive send-readiness: Loop to `poll_send_ready` and return `Pending`.
-                    }
-
-                    return Poll::Ready(Err(e));
-                }
-            }
-        }
-
-        assert!(self.buffered_datagrams.is_empty());
-
-        Poll::Ready(Ok(()))
+    pub fn poll_send_ready(&self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.inner.poll_send_ready(cx)
     }
 
     pub fn send(&mut self, datagram: DatagramOut) -> io::Result<()> {
         tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, num_bytes = %datagram.packet.len());
 
-        debug_assert!(
-            self.buffered_datagrams.len() < 10_000,
-            "We are not flushing the packets for some reason"
-        );
+        self.try_send(&datagram)?;
 
-        match self.try_send(&datagram) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                tracing::trace!("Buffering packet because socket is busy");
-
-                self.buffered_datagrams.push_back(datagram.into_owned());
-                Ok(())
-            }
-            Err(e) => Err(e),
-        }
+        Ok(())
     }
 
     pub fn try_send(&mut self, transmit: &DatagramOut) -> io::Result<()> {

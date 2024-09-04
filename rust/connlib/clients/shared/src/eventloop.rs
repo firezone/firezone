@@ -15,6 +15,7 @@ use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
     collections::{BTreeMap, BTreeSet},
+    io,
     net::IpAddr,
     task::{Context, Poll},
 };
@@ -89,6 +90,9 @@ where
             match self.tunnel.poll_next_event(cx) {
                 Poll::Ready(Ok(event)) => {
                     self.handle_tunnel_event(event);
+                    continue;
+                }
+                Poll::Ready(Err(e)) if e.kind() == io::ErrorKind::WouldBlock => {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
