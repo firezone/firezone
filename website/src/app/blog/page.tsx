@@ -16,7 +16,7 @@ export default function Page() {
   return (
     <section>
       <div className="bg-neutral-50 border-b border-neutral-100">
-        <div className="py-8 px-4 sm:py-10 sm:px-6 md:py-12 md:px-8 lg:py-14 lg:px-10 mx-auto max-w-screen-lg w-full text-center">
+        <div className="p-4 sm:p-6 md:p-8 lg:p-10 mx-auto max-w-screen-lg w-full text-center">
           <h1 className={`text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold tracking-tight justify-center ${manrope.className}`}>
             Blog
           </h1>
