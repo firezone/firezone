@@ -3,7 +3,6 @@
 import { ReactNode, useState } from "react";
 import { HiCloud, HiMiniPuzzlePiece, HiLockClosed } from "react-icons/hi2";
 import { SlideIn } from "@/components/Animations";
-import { manrope } from "@/lib/fonts";
 import ActionLink from "../ActionLink";
 import { Route } from "next";
 
@@ -39,7 +38,7 @@ export default function SingleFeature({
         </div>
         <div className="max-w-screen-md">
           <p
-            className={`text-md text-left text-pretty mb-12 text-neutral-600 font-medium ${manrope.className}`}
+            className={`text-md text-left text-pretty mb-12 text-neutral-600 font-medium font-manrope`}
           >
             {desc}
           </p>
