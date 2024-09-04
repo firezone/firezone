@@ -5,7 +5,6 @@ use tracing::instrument;
 use tracing_subscriber::EnvFilter;
 
 mod about;
-mod auth;
 mod crash_handling;
 mod debug_commands;
 mod deep_link;

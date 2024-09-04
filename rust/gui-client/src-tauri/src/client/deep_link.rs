@@ -3,8 +3,8 @@
 // The IPC parts use the same primitives as the IPC service, UDS on Linux
 // and named pipes on Windows, so TODO de-dupe the IPC code
 
-use crate::client::auth::Response as AuthResponse;
 use anyhow::{bail, Context as _, Result};
+use firezone_gui_client_common::auth;
 use secrecy::{ExposeSecret, SecretString};
 use url::Url;
 
@@ -36,7 +36,7 @@ pub enum Error {
 
 pub(crate) use imp::{open, register, Server};
 
-pub(crate) fn parse_auth_callback(url_secret: &SecretString) -> Result<AuthResponse> {
+pub(crate) fn parse_auth_callback(url_secret: &SecretString) -> Result<auth::Response> {
     let url = Url::parse(url_secret.expose_secret())?;
     if Some(url::Host::Domain("handle_client_sign_in_callback")) != url.host() {
         bail!("URL host should be `handle_client_sign_in_callback`");
@@ -76,7 +76,7 @@ pub(crate) fn parse_auth_callback(url_secret: &SecretString) -> Result<AuthRespo
         }
     }
 
-    Ok(AuthResponse {
+    Ok(auth::Response {
         actor_name: actor_name.context("URL should have `actor_name`")?,
         fragment: fragment.context("URL should have `fragment`")?,
         state: state.context("URL should have `state`")?,

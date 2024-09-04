@@ -11,11 +11,12 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
+use firezone_gui_client_common::auth;
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
 };
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::{ExposeSecret as _, SecretString};
 use std::{
     path::PathBuf,
     str::FromStr,
@@ -448,7 +449,7 @@ struct Controller {
     advanced_settings: AdvancedSettings,
     app: tauri::AppHandle,
     // Sign-in state with the portal / deep links
-    auth: client::auth::Auth,
+    auth: auth::Auth,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
@@ -913,7 +914,7 @@ async fn run_controller(
     let mut controller = Controller {
         advanced_settings,
         app: app.clone(),
-        auth: client::auth::Auth::new()?,
+        auth: auth::Auth::new()?,
         clear_logs_callback: None,
         ctlr_tx,
         ipc_client,

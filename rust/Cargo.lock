@@ -1883,11 +1883,10 @@ dependencies = [
  "crash-handler",
  "dirs",
  "firezone-bin-shared",
+ "firezone-gui-client-common",
  "firezone-headless-client",
  "firezone-logging",
  "futures",
- "hex",
- "keyring",
  "minidumper",
  "native-dialog",
  "nix 0.29.0",
@@ -1901,7 +1900,6 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "subtle",
  "tauri",
  "tauri-build",
  "tauri-runtime",
@@ -1921,6 +1919,22 @@ dependencies = [
  "winreg 0.52.0",
  "wintun",
  "zip",
+]
+
+[[package]]
+name = "firezone-gui-client-common"
+version = "1.3.1"
+dependencies = [
+ "anyhow",
+ "firezone-headless-client",
+ "hex",
+ "keyring",
+ "rand 0.8.5",
+ "secrecy",
+ "subtle",
+ "thiserror",
+ "tracing",
+ "url",
 ]
 
 [[package]]
