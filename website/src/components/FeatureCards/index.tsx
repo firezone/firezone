@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { HiCloud, HiMiniPuzzlePiece, HiLockClosed } from "react-icons/hi2";
 import { SlideIn } from "@/components/Animations";
-import { manrope } from "@/lib/fonts";
 import ActionLink from "../ActionLink";
 
 export default function FeatureCards() {
@@ -15,7 +14,7 @@ export default function FeatureCards() {
             Built for you
           </h6>
           <h3
-            className={`mb-4 text-3xl md:text-4xl lg:text-5xl leading-tight text-pretty tracking-tight font-bold inline-block ${manrope.className}`}
+            className={`mb-4 text-3xl md:text-4xl lg:text-5xl leading-tight text-pretty tracking-tight font-bold inline-block font-manrope`}
           >
             Simplify access management
             <span className="text-primary-450"> with WireGuard.</span>
@@ -47,7 +46,7 @@ export default function FeatureCards() {
             <HiCloud color="#EF7E88" className="w-6 h-6 lg:w-7 lg:h-7" />
           </div>
           <h4
-            className={`text-md md:text-lg tracking-tight text-neutral-900 font-semibold mb-1 ${manrope.className}`}
+            className={`text-md md:text-lg tracking-tight text-neutral-900 font-semibold mb-1 font-manrope`}
           >
             Flexible
           </h4>
@@ -66,7 +65,7 @@ export default function FeatureCards() {
             <HiLockClosed color="#719CF1" className="w-6 h-6 lg:w-7 lg:h-7" />
           </div>
           <h4
-            className={`text-md md:text-lg tracking-tight text-neutral-900 font-semibold mb-1 ${manrope.className}`}
+            className={`text-md md:text-lg tracking-tight text-neutral-900 font-semibold mb-1 font-manrope`}
           >
             Secure
           </h4>
@@ -88,7 +87,7 @@ export default function FeatureCards() {
             />
           </div>
           <h4
-            className={`text-md md:text-lg tracking-tight text-neutral-900 font-semibold mb-1 ${manrope.className}`}
+            className={`text-md md:text-lg tracking-tight text-neutral-900 font-semibold mb-1 font-manrope`}
           >
             Granular
           </h4>
