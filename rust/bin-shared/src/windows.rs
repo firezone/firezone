@@ -87,7 +87,7 @@ struct RoutingTableEntry {
 
 impl RoutingTableEntry {
     /// Creates a new routing table entry by using the given prototype and overriding the route.
-    fn create(route: IpAddr, mut prototype: MIB_IPFORWARD_ROW2) -> io::Result<()> {
+    fn create(route: IpAddr, mut prototype: MIB_IPFORWARD_ROW2) -> io::Result<Self> {
         let prefix = &mut prototype.DestinationPrefix;
         match route {
             IpAddr::V4(x) => {
@@ -215,7 +215,6 @@ fn is_tun(adapter: &IP_ADAPTER_ADDRESSES_LH) -> bool {
     friendly_name == TUNNEL_NAME
 }
 
-#[derive(PartialEq, Eq)]
 struct Route {
     metric: u32,
     addr: IpAddr,
@@ -234,6 +233,14 @@ impl PartialOrd for Route {
         Some(self.cmp(other))
     }
 }
+
+impl PartialEq for Route {
+    fn eq(&self, other: &Self) -> bool {
+        self.metric.eq(&other.metric) && self.addr.eq(&other.addr)
+    }
+}
+
+impl Eq for Route {}
 
 fn find_best_route_for_luid(luid: &NET_LUID_LH, dst: IpAddr) -> Result<Route> {
     let addr: SOCKADDR_INET = SocketAddr::from((dst, 0)).into();
