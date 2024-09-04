@@ -25,12 +25,12 @@ export default function Page() {
           </p>
         </div>
       </div>
-      <div className="border-b-[1px] py-6 px-4 sm:px-6 md:py-4 md:px-8 lg:px-10 mx-auto max-w-screen-lg w-full">
+      {/* <div className="border-b-[1px] py-6 px-4 sm:px-6 md:py-4 md:px-8 lg:px-10 mx-auto max-w-screen-lg w-full">
         <Pills
           options={["All Posts", "Announcement", "Learn", "Insight"]}
           multiselect={true}
         />
-      </div>
+      </div> */}
 
       <div className="mx-auto max-w-screen-lg w-full">
         <div className="grid divide-y space-y-8">
