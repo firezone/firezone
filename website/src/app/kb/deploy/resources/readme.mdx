@@ -99,6 +99,30 @@ access for your DevOps team, then add another Resource with the `TCP/443`
 restriction to allow access to an HTTPS service for the rest of your
 organization.
 
+<PlanBadge plans={["team", "enterprise"]}>
+
+### The Internet Resource
+
+</PlanBadge>
+
+The Internet Resource is a special Resource available on paid plans that allows
+you to route `0.0.0.0/0` and `::/0` through Firezone in a full-tunnel
+configuration.
+
+The Internet Resource functions as a fallback for traffic that doesn't match any
+other Resources.
+
+The Internet Resource is automatically enabled on Team and Enterprise plans. To
+configure it, simply define a Policy for it like you would for any other
+Resource.
+
+<Alert color="warning">
+  Unlike regular Resources, the Internet Resource can be disabled by end-users
+  to prevent their internet access from being affected by Firezone if any issues
+  arise. The Internet Resource is <strong>disabled by default</strong> in Client
+  apps when it is first assigned a policy.
+</Alert>
+
 <NextStep href="/kb/deploy/groups">Next: Create Groups</NextStep>
 
 <SupportOptions />
