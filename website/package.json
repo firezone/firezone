@@ -28,7 +28,7 @@
     "autoprefixer": "10.4.19",
     "fast-xml-parser": "^4.4.1",
     "flowbite-react": "^0.10.1",
-    "framer-motion": "^11.3.28",
+    "framer-motion": "^11.3.31",
     "highlight.js": "^11.10.0",
     "md5": "^2.3.0",
     "mixpanel-browser": "^2.55.1",

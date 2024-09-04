@@ -1952,6 +1952,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "serde_variant",
  "tempfile",
  "thiserror",
  "tokio",
@@ -3803,9 +3804,9 @@ dependencies = [
 
 [[package]]
 name = "notify-rust"
-version = "4.11.0"
+version = "4.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5312f837191c317644f313f7b2b39f9cb1496570c74f7c17152dd3961219551f"
+checksum = "26a1d03b6305ecefdd9c6c60150179bb8d9f0cd4e64bbcad1e41419e7bf5e414"
 dependencies = [
  "log",
  "mac-notification-sys",
@@ -4655,7 +4656,7 @@ dependencies = [
 [[package]]
 name = "proptest"
 version = "1.5.0"
-source = "git+https://github.com/proptest-rs/proptest?branch=master#c012218897b41606a5f8a21718d44d10509cb502"
+source = "git+https://github.com/proptest-rs/proptest?branch=master#ff98819628a73005fe8181e7f5f7d6e1a89fd565"
 dependencies = [
  "bit-set",
  "bit-vec",
@@ -4674,7 +4675,7 @@ dependencies = [
 [[package]]
 name = "proptest-state-machine"
 version = "0.3.0"
-source = "git+https://github.com/proptest-rs/proptest?branch=master#c012218897b41606a5f8a21718d44d10509cb502"
+source = "git+https://github.com/proptest-rs/proptest?branch=master#ff98819628a73005fe8181e7f5f7d6e1a89fd565"
 dependencies = [
  "proptest",
 ]
@@ -5381,6 +5382,15 @@ dependencies = [
  "form_urlencoded",
  "itoa 1.0.11",
  "ryu",
+ "serde",
+]
+
+[[package]]
+name = "serde_variant"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a0068df419f9d9b6488fdded3f1c818522cdea328e02ce9d9f147380265a432"
+dependencies = [
  "serde",
 ]
 
