@@ -49,7 +49,7 @@ export default function _Page() {
           <div
             className={`p-8 md:p-6 lg:p-8 xl:p-10 bg-white rounded-xl shadow-light mb-4 font-manrope`}
           >
-            <h3 className="mb-6 text-xl tracking-tight font-semibold text-primary-450">
+            <h3 className="mb-6 text-xl tracking-tight font-semibold text-neutral-900">
               Starter
             </h3>
             <h2 className="mb-6 text-2xl sm:text-4xl tracking-tight font-bold text-neutral-900">
@@ -123,7 +123,7 @@ export default function _Page() {
           <div
             className={`p-8 md:p-6 lg:p-8 xl:p-10 bg-white rounded-xl shadow-light mb-4 font-manrope`}
           >
-            <h3 className="mb-6 text-xl tracking-tight font-semibold text-primary-450">
+            <h3 className="mb-6 text-xl tracking-tight font-semibold text-neutral-900">
               Team
             </h3>
 
@@ -230,7 +230,7 @@ export default function _Page() {
             className={`p-8 md:p-6 lg:p-8 xl:p-10 bg-neutral-950 text-neutral-50 rounded-xl shadow-light mb-4 font-manrope`}
           >
             <div className="mb-6 flex items-center justify-between">
-              <h3 className="text-xl tracking-tight font-semibold text-primary-450">
+              <h3 className="text-xl tracking-tight font-semibold text-neutral-50">
                 Enterprise
               </h3>
               <span className="text-center font-bold w-fit uppercase text-xs rounded-full bg-neutral-50 text-primary-450 px-3 py-1">
@@ -257,7 +257,7 @@ export default function _Page() {
 
             <ul
               role="list"
-              className="text-sm md:text-md font-medium space-y-4 text-neutral-200"
+              className="text-sm md:text-md font-medium space-y-4 text-neutral-300"
             >
               <li className="flex space-x-2.5">
                 <FaCircleCheck className="flex-shrink-0 w-4 h-4 text-accent-300" />
