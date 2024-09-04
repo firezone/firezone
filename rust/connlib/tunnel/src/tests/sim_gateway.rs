@@ -79,7 +79,14 @@ impl SimGateway {
 
                 self.received_icmp_requests.insert(payload, packet.clone());
 
-                let echo_response = ip_packet::make::icmp_response_packet(packet);
+                let echo_response = ip_packet::make::icmp_reply_packet(
+                    packet.destination(),
+                    packet.source(),
+                    request.sequence(),
+                    request.identifier(),
+                    request.payload(),
+                )
+                .expect("src and dst are taken from incoming packet");
                 let transmit = self
                     .sut
                     .encapsulate(echo_response, now, &mut self.enc_buffer)?

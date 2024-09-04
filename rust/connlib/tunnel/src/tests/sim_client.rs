@@ -119,7 +119,7 @@ impl SimClient {
         now: Instant,
     ) -> Option<snownet::Transmit<'static>> {
         {
-            let packet = packet.to_owned().into_immutable();
+            let packet = packet.as_immutable().to_owned();
 
             if let Some(icmp) = packet.as_icmp() {
                 let echo_request = icmp.as_echo_request().expect("to be echo request");
@@ -130,7 +130,7 @@ impl SimClient {
         }
 
         {
-            let packet = packet.to_owned().into_immutable();
+            let packet = packet.as_immutable().to_owned();
 
             if let Some(udp) = packet.as_udp() {
                 if let Ok(message) = Message::from_slice(udp.payload()) {
