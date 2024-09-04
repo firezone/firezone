@@ -49,7 +49,7 @@ export default function UseCaseCards() {
           className={`px-4 mb-8 text-3xl md:text-4xl lg:text-5xl text-center leading-tight tracking-tight font-bold inline-block font-manrope`}
         >
           One product. Endless possibilities.
-          <span className="text-primary-450">Zero </span>hassle.
+          <span className="text-primary-450"> Zero </span>hassle.
         </h3>
         <div className="grid lg:grid-cols-16 gap-6 mt-8 mx-2 md:mx-6">
           <Card>
