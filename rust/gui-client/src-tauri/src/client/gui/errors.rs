@@ -1,11 +1,13 @@
 use super::{deep_link, logging};
 use anyhow::Result;
-use firezone_headless_client::{ipc, FIREZONE_GROUP};
+use firezone_headless_client::{ipc, IpcServiceError, FIREZONE_GROUP};
 
 // TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
 #[allow(dead_code)]
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    #[error("Failed to connect to Firezone for non-Portal-related reason")]
+    ConnectToFirezoneFailed(IpcServiceError),
     #[error("Deep-link module error: {0}")]
     DeepLink(#[from] deep_link::Error),
     #[error("Logging module error: {0}")]
@@ -39,7 +41,7 @@ pub(crate) fn show_error_dialog(error: &Error) -> Result<()> {
     // This message gets shown to users in the GUI and could be localized, unlike
     // messages in the log which only need to be used for `git grep`.
     let user_friendly_error_msg = match error {
-        // TODO: Update this URL
+        Error::ConnectToFirezoneFailed(_) => error.to_string(),
         Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/client-apps/windows-client>.".to_string(),
         Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
         Error::DeepLink(deep_link::Error::Other(error)) => error.to_string(),
