@@ -9,48 +9,35 @@ import dev.firezone.android.tunnel.model.Site
 import dev.firezone.android.tunnel.model.StatusEnum
 import dev.firezone.android.tunnel.model.isInternetResource
 
-data class ResourceViewModel(
-    val id: String,
-    val type: ResourceType,
-    val address: String?,
-    val addressDescription: String?,
-    val sites: List<Site>?,
-    val displayName: String,
-    val name: String,
-    val status: StatusEnum,
-    var state: ResourceState,
-)
+class ResourceViewModel(resource: Resource, resourceState: ResourceState) {
+    val id: String = resource.id
+    val type: ResourceType = resource.type
+    val address: String? = resource.address
+    val addressDescription: String? = resource.addressDescription
+    val sites: List<Site>? = resource.sites
+    val displayName: String = displayName(resource, resourceState)
+    val name: String = resource.name
+    val status: StatusEnum = resource.status
+    var state: ResourceState = resourceState
+}
+
+
+fun displayName(
+    resource: Resource,
+    state: ResourceState,
+): String {
+    return if (resource.isInternetResource()) {
+        internetResourceDisplayName(resource, state)
+    } else {
+        resource.name
+    }
+}
 
 fun internetResourceDisplayName(
     resource: Resource,
     state: ResourceState,
 ): String {
     return "${state.stateSymbol()} ${resource.name}"
-}
-
-fun Resource.toResourceViewModel(resourceState: ResourceState): ResourceViewModel {
-    return ResourceViewModel(
-        id = this.id,
-        type = this.type,
-        address = this.address,
-        addressDescription = this.addressDescription,
-        sites = this.sites,
-        name = this.name,
-        displayName = displayName(this, resourceState),
-        status = this.status,
-        state = resourceState,
-    )
-}
-
-fun displayName(
-    resource: Resource,
-    state: ResourceState,
-): String {
-    if (resource.isInternetResource()) {
-        return internetResourceDisplayName(resource, state)
-    } else {
-        return resource.name
-    }
 }
 
 fun ResourceViewModel.isInternetResource(): Boolean {

@@ -63,9 +63,9 @@ internal class SessionViewModel
             val resources =
                 resourcesLiveData.value!!.map {
                     if (it.isInternetResource()) {
-                        it.toResourceViewModel(isInternetResourceEnabled)
+                        ResourceViewModel(it, isInternetResourceEnabled)
                     } else {
-                        it.toResourceViewModel(ResourceState.ENABLED)
+                        ResourceViewModel(it, ResourceState.ENABLED)
                     }
                 }
 
