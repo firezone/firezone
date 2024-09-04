@@ -61,7 +61,7 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
     let socket = socket_factory::tcp(addr)?;
     // socket.bind((local, 0).into())?; // To avoid routing loops, all TCP sockets are bound to the "best" source IP.
 
-    crate::tun_device_manager::windows::add_route(&(addr.ip().into()), ifindex);
+    crate::tun_device_manager::windows::add_route(addr.ip().into(), ifindex);
 
     Ok(socket)
 }
