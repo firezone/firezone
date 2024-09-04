@@ -15,8 +15,8 @@ import kotlinx.coroutines.flow.flowOn
 import java.security.MessageDigest
 import javax.inject.Inject
 
-public const val ON_SYMBOL: String = "<->"
-public const val OFF_SYMBOL: String = " — "
+const val ON_SYMBOL: String = "<->"
+const val OFF_SYMBOL: String = " — "
 
 enum class ResourceState {
     @SerializedName("enabled")
@@ -28,6 +28,8 @@ enum class ResourceState {
     @SerializedName("unset")
     UNSET,
 }
+
+
 
 fun ResourceState.isEnabled(): Boolean {
     return this == ResourceState.ENABLED

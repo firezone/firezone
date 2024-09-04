@@ -79,9 +79,12 @@ class SessionActivity : AppCompatActivity() {
     }
 
     private fun onInternetResourceToggled(): ResourceState {
-        tunnelService?.internetResourceToggled(internetState().toggle())
-        refreshList()
-        Log.d(TAG, "Internet resource toggled ${internetState()}")
+        tunnelService?.let {
+            it.internetResourceToggled(internetState().toggle())
+            refreshList()
+            Log.d(TAG, "Internet resource toggled ${internetState()}")
+        }
+
         return internetState()
     }
 
