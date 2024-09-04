@@ -455,7 +455,7 @@ impl<'a> Handler<'a> {
                     return Ok(());
                 }
                 let Some(session) = self.session.as_ref() else {
-                    tracing::warn!("Cannot reset if we're signed out");
+                    tracing::debug!("Cannot reset if we're signed out");
                     return Ok(());
                 };
 
@@ -463,7 +463,7 @@ impl<'a> Handler<'a> {
             }
             ClientMsg::SetDns(resolvers) => {
                 let Some(session) = self.session.as_ref() else {
-                    tracing::warn!("Cannot set DNS resolvers if we're signed out");
+                    tracing::debug!("Cannot set DNS resolvers if we're signed out");
                     return Ok(());
                 };
 
