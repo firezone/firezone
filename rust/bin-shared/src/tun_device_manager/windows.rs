@@ -110,7 +110,7 @@ impl TunDeviceManager {
         );
 
         for old_route in self.routes.difference(&new_routes) {
-            remove_route(*old_route, iface_idx);
+            remove_route(*old_route, None, iface_idx);
         }
 
         for new_route in &new_routes {
@@ -152,6 +152,7 @@ pub(crate) fn remove_route(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
 
     let Err(e) = unsafe { DeleteIpForwardEntry2(&entry) }.ok() else {
+        let next_hop = next_hop.map(tracing::field::display);
         tracing::debug!(%route, next_hop, %iface_idx, "Removed route");
 
         return;

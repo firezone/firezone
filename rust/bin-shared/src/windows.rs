@@ -2,7 +2,6 @@ use anyhow::{Context as _, Result};
 use ip_network::IpNetwork;
 use known_folders::{get_known_folder_path, KnownFolder};
 use socket_factory::{TcpSocket, UdpSocket};
-use std::mem;
 use std::{
     cmp::Ordering,
     io,
@@ -11,15 +10,13 @@ use std::{
     path::PathBuf,
     ptr::null,
 };
+use windows::Win32::NetworkManagement::IpHelper::IP_ADAPTER_GATEWAY_ADDRESS_LH;
 use windows::Win32::NetworkManagement::{IpHelper::GetAdaptersAddresses, Ndis::NET_LUID_LH};
 use windows::Win32::{
     NetworkManagement::IpHelper::{
         GetBestRoute2, GET_ADAPTERS_ADDRESSES_FLAGS, IP_ADAPTER_ADDRESSES_LH, MIB_IPFORWARD_ROW2,
     },
-    Networking::WinSock::{
-        ADDRESS_FAMILY, AF_INET, AF_INET6, AF_UNSPEC, SOCKADDR, SOCKADDR_IN, SOCKADDR_IN6,
-        SOCKADDR_INET,
-    },
+    Networking::WinSock::{ADDRESS_FAMILY, AF_UNSPEC, SOCKADDR_IN, SOCKADDR_IN6, SOCKADDR_INET},
 };
 
 use crate::tun_device_manager::windows::{add_route, remove_route};
@@ -63,7 +60,7 @@ pub fn app_local_data_dir() -> Result<PathBuf> {
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
     let (local, ifindex, next_hop) = get_best_non_tunnel_route(addr.ip())?;
     let next_hop = next_hop.ok_or_else(|| {
-        io::Error::custom(format!(
+        io::Error::other(format!(
             "Failed to resolve default gateway for routing to {addr}"
         ))
     })?;
@@ -116,7 +113,7 @@ impl RoutingTableEntry {
 
 impl Drop for RoutingTableEntry {
     fn drop(&mut self) {
-        remove_route(self.route, Some(self.next_hop), self.ifindex);
+        remove_route(self.route, Some(self.next_hop), self.iface_idx);
     }
 }
 
@@ -131,7 +128,7 @@ impl Drop for RoutingTableEntry {
 /// This function performs multiple syscalls and is thus fairly expensive.
 /// It should **not** be called on a per-packet basis.
 /// Callers should instead cache the result until network interfaces change.
-fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<(IpAddr, u32)> {
+fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<(IpAddr, u32, Option<IpAddr>)> {
     let (route, ifindex, gateway) = list_adapters()?
         .filter(|adapter| !is_tun(adapter))
         .filter_map(|adapter| {
@@ -295,21 +292,24 @@ unsafe fn to_ip_addr(addr: SOCKADDR_INET, dst: IpAddr) -> Option<IpAddr> {
     }
 }
 
-fn sock_addr_to_ip_addr(addr: SOCKADDR) -> Option<IpAddr> {
-    Some(match addr.sa_family {
-        AF_INET => {
-            // Safety: `sa_data` is a `SOCKADDR_IN` struct if `sa_family` is set to `AF_INET` as per Windows docs.
-            let sockaddr_in: SOCKADDR_IN = unsafe { mem::transmute(addr.sa_data) };
-            // Safety: union access is safe.
-            let ip_bytes = unsafe { sockaddr_in.sin_addr.S_un.S_addr };
+fn sock_addr_to_ip_addr(addr: &IP_ADAPTER_GATEWAY_ADDRESS_LH) -> Option<IpAddr> {
+    const SOCKADDR_IN_LENGTH: usize = std::mem::size_of::<SOCKADDR_IN>();
+    const SOCKADDR6_IN_LENGTH: usize = std::mem::size_of::<SOCKADDR_IN6>();
 
+    Some(match addr.Address.iSockaddrLength as usize {
+        SOCKADDR_IN_LENGTH => {
+            // Safety: We checked that it has the right length.
+            let addr: &SOCKADDR_IN = unsafe { std::ptr::read(addr.Address.lpSockaddr as *const _) };
+            // Safety: Reading from the union is okay.
+            let ip_bytes = unsafe { addr.sin_addr.S_un.S_addr };
             IpAddr::V4(Ipv4Addr::from(ip_bytes))
         }
-        AF_INET6 => {
-            // Safety: `sa_data` is a `SOCKADDR_IN6` struct if `sa_family` is set to `AF_INET` as per Windows docs.
-            let sockaddr_in6: SOCKADDR_IN6 = unsafe { mem::transmute(addr.sa_data) };
-            // Safety: union access is safe.
-            let ip_bytes = unsafe { sockaddr_in6.sin6_addr.u.Byte };
+        SOCKADDR6_IN_LENGTH => {
+            // Safety: We checked that it has the right length.
+            let addr: &SOCKADDR_IN6 =
+                unsafe { std::ptr::read(addr.Address.lpSockaddr as *const _) };
+            // Safety: Reading from the union is okay.
+            let ip_bytes = unsafe { addr.sin6_addr.u.Byte };
 
             IpAddr::V6(Ipv6Addr::from(ip_bytes))
         }
