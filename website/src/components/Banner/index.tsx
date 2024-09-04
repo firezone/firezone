@@ -5,11 +5,11 @@ import { UrlObject } from "url";
 
 export default function Banner({
   active,
-  href,
+  href = "/",
   children,
 }: {
   active: boolean;
-  href: Route<string> | UrlObject;
+  href?: Route<string> | UrlObject;
   children: React.ReactNode;
 }) {
   if (!active) return null;
