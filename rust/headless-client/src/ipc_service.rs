@@ -472,7 +472,8 @@ impl<'a> Handler<'a> {
             }
             ClientMsg::SetDisabledResources(disabled_resources) => {
                 let Some(session) = self.session.as_ref() else {
-                    tracing::warn!("Cannot set disabled resources if we're signed out");
+                    // At this point, the GUI has already saved the disabled Resources to disk, so it'll be correct on the next sign-in anyway.
+                    tracing::debug!("Cannot set disabled resources if we're signed out");
                     return Ok(());
                 };
 
