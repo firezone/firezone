@@ -1,15 +1,16 @@
-"use client";
-import { useState } from "react";
+import { Dispatch, SetStateAction } from "react";
 
 export default function Pills({
   options,
   multiselect,
+  filters,
+  setFilters,
 }: {
   options: Array<string>;
   multiselect: boolean;
+  filters: string;
+  setFilters: Dispatch<SetStateAction<string>>;
 }) {
-  const [filters, setFilters] = useState("All Posts");
-
   return (
     <div className="flex flex-wrap justify-center md:justify-start md:flex-row gap-3">
       {options.map((option, index) => (

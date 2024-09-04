@@ -1,4 +1,3 @@
-import ActionLink from "@/components/ActionLink";
 import Link from "next/link";
 import { Route } from "next";
 
@@ -13,7 +12,7 @@ export default function SummaryCard({
   authorAvatarSrc,
   type,
   src,
-  filterState,
+  filters,
 }: {
   children: React.ReactNode;
   date: string;
@@ -23,11 +22,15 @@ export default function SummaryCard({
   authorAvatarSrc: string;
   type: string;
   src?: string;
-  filterState?: boolean;
+  filters?: string;
 }) {
   return (
     <Link href={href}>
-      <article className="py-6 px-4 sm:px-6 md:px-8 lg:px-10 flex gap-12 hover:bg-neutral-100 bg-white mt-2 rounded-2xl cursor-pointer">
+      <article
+        className={`py-6 px-4 sm:px-6 md:px-8 lg:px-10 gap-12 hover:bg-neutral-100 bg-white mt-2 rounded-2xl cursor-pointer border-t-0 ${
+          filters === type || filters === "All Posts" ? "flex" : "hidden"
+        }`}
+      >
         <div className="w-full">
           <div className="flex justify-between items-center mb-2">
             <span className="text-primary-450 font-semibold text-sm inline-flex items-center">
@@ -37,7 +40,7 @@ export default function SummaryCard({
           <h2 className="mb-3 text-2xl font-bold tracking-tight text-neutral-800 ">
             {title}
           </h2>
-          <div className="mb-6 font-regular text-neutral-800 ">{children}</div>
+          <div className="mb-6 font-regular text-neutral-800 z-10">{children}</div>
           <div className="flex gap-3 items-center text-sm">
             <div className="flex items-center space-x-3">
               <Image
