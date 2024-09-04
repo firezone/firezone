@@ -6,12 +6,11 @@
 use crate::client::{
     self, about, deep_link, ipc, logging,
     settings::{self, AdvancedSettings},
-    updates::Release,
     Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
-use firezone_gui_client_common::auth;
+use firezone_gui_client_common::{auth, updates};
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
@@ -95,6 +94,7 @@ pub(crate) fn run(
     let deep_link_server = rt.block_on(async { deep_link::Server::new().await })?;
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
+    let (updates_tx, updates_rx) = mpsc::channel(1);
 
     let managed = Managed {
         ctlr_tx: ctlr_tx.clone(),
@@ -146,9 +146,8 @@ pub(crate) fn run(
         .setup(move |app| {
             let setup_inner = move || {
                 // Check for updates
-                let ctlr_tx_clone = ctlr_tx.clone();
                 tokio::spawn(async move {
-                    if let Err(error) = crate::client::updates::checker_task(ctlr_tx_clone, cli.debug_update_check).await
+                    if let Err(error) = updates::checker_task(updates_tx, cli.debug_update_check).await
                     {
                         tracing::error!(?error, "Error in updates::checker_task");
                     }
@@ -203,6 +202,7 @@ pub(crate) fn run(
                             ctlr_rx,
                             advanced_settings,
                             reloader,
+                            updates_rx,
                         )
                         .await
                     });
@@ -381,7 +381,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 #[allow(dead_code)]
 pub(crate) enum ControllerRequest {
     /// The GUI wants us to use these settings in-memory, they've already been saved to disk
-    ApplySettings(AdvancedSettings),
+    ApplySettings(Box<AdvancedSettings>),
     /// Clear the GUI's logs and await the IPC service to clear its logs
     ClearLogs(oneshot::Sender<Result<(), String>>),
     /// The same as the arguments to `client::logging::export_logs_to`
@@ -397,8 +397,6 @@ pub(crate) enum ControllerRequest {
     SchemeRequest(SecretString),
     SignIn,
     SystemTrayMenu(TrayMenuEvent),
-    /// Set (or clear) update notification
-    SetUpdateNotification(Option<crate::client::updates::Notification>),
     UpdateNotificationClicked(Url),
 }
 
@@ -455,7 +453,7 @@ struct Controller {
     ipc_client: ipc::Client,
     log_filter_reloader: LogFilterReloader,
     /// A release that's ready to download
-    release: Option<Release>,
+    release: Option<updates::Release>,
     status: Status,
     tray: system_tray::Tray,
     uptime: client::uptime::Tracker,
@@ -509,7 +507,7 @@ impl Controller {
             Req::ApplySettings(settings) => {
                 let filter = firezone_logging::try_filter(&self.advanced_settings.log_filter)
                         .context("Couldn't parse new log filter directives")?;
-                self.advanced_settings = settings;
+                self.advanced_settings = *settings;
                 self.log_filter_reloader
                     .reload(filter)
                     .context("Couldn't reload log filter")?;
@@ -557,26 +555,6 @@ impl Controller {
             Req::SchemeRequest(url) => {
                 if let Err(error) = self.handle_deep_link(&url).await {
                     tracing::error!(?error, "`handle_deep_link` failed");
-                }
-            }
-            Req::SetUpdateNotification(notification) => {
-                let Some(notification) = notification else {
-                    self.release = None;
-                    self.refresh_system_tray_menu()?;
-                    return Ok(());
-                };
-
-                let release = notification.release;
-                self.release = Some(release.clone());
-                self.refresh_system_tray_menu()?;
-
-                if notification.tell_user {
-                    let title = format!("Firezone {} available for download", release.version);
-
-                    // We don't need to route through the controller here either, we could
-                    // use the `open` crate directly instead of Tauri's wrapper
-                    // `tauri::api::shell::open`
-                    os::show_update_notification(self.ctlr_tx.clone(), &title, release.download_url)?;
                 }
             }
             Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
@@ -790,6 +768,29 @@ impl Controller {
         }
     }
 
+    /// Set (or clear) update notification
+    fn handle_update_notification(&mut self, notification: Option<updates::Notification>) -> Result<()> {
+        let Some(notification) = notification else {
+            self.release = None;
+            self.refresh_system_tray_menu()?;
+            return Ok(());
+        };
+
+        let release = notification.release;
+        self.release = Some(release.clone());
+        self.refresh_system_tray_menu()?;
+
+        if notification.tell_user {
+            let title = format!("Firezone {} available for download", release.version);
+
+            // We don't need to route through the controller here either, we could
+            // use the `open` crate directly instead of Tauri's wrapper
+            // `tauri::api::shell::open`
+            os::show_update_notification(self.ctlr_tx.clone(), &title, release.download_url)?;
+        }
+        Ok(())
+    }
+
     async fn update_disabled_resources(&mut self) -> Result<()> {
         settings::save(&self.advanced_settings).await?;
 
@@ -907,6 +908,7 @@ async fn run_controller(
     mut rx: mpsc::Receiver<ControllerRequest>,
     advanced_settings: AdvancedSettings,
     log_filter_reloader: LogFilterReloader,
+    mut updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 ) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");
     let ipc_client = ipc::Client::new(ctlr_tx.clone()).await?;
@@ -962,7 +964,7 @@ async fn run_controller(
                     controller.ipc_client.reset().await?
                 }
                 controller.try_retry_connection().await?
-            },
+            }
             result = dns_notifier.notified() => {
                 result?;
                 if controller.status.needs_network_changes() {
@@ -971,7 +973,7 @@ async fn run_controller(
                     controller.ipc_client.set_dns(resolvers).await?;
                 }
                 controller.try_retry_connection().await?
-            },
+            }
             req = rx.recv() => {
                 let Some(req) = req else {
                     break;
@@ -993,7 +995,8 @@ async fn run_controller(
                     // TODO: Should we really skip cleanup if a request fails?
                     req => controller.handle_request(req).await?,
                 }
-            },
+            }
+            notification = updates_rx.recv() => controller.handle_update_notification(notification.context("Update checker task stopped")?)?,
         }
         // Code down here may not run because the `select` sometimes `continue`s.
     }

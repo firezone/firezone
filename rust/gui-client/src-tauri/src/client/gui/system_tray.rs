@@ -5,7 +5,7 @@
 //! "Notification Area" is Microsoft's official name instead of "System tray":
 //! <https://learn.microsoft.com/en-us/windows/win32/shell/notification-area?redirectedfrom=MSDN#notifications-and-the-notification-area>
 
-use crate::client::updates::Release;
+use firezone_gui_client_common::updates::Release;
 use anyhow::Result;
 use connlib_shared::{
     callbacks::{ResourceDescription, Status},

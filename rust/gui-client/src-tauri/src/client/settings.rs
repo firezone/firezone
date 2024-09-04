@@ -111,7 +111,7 @@ pub(crate) async fn apply_inner(ctlr_tx: &gui::CtlrTx, settings: AdvancedSetting
     // TODO: Errors aren't handled here. But there isn't much that can go wrong
     // since it's just applying a new `Settings` object in memory.
     ctlr_tx
-        .send(ControllerRequest::ApplySettings(settings))
+        .send(ControllerRequest::ApplySettings(Box::new(settings)))
         .await?;
     Ok(())
 }
