@@ -81,6 +81,11 @@ defmodule Web.Mailer.RateLimiter do
     end
   end
 
+  def reset_rate_limit(key, ets_table_name \\ @default_ets_table_name) do
+    _ = delete_counter(ets_table_name, key)
+    :ok
+  end
+
   defp delete_counter(ets_table_name, key) do
     :ets.delete(ets_table_name, key)
     1

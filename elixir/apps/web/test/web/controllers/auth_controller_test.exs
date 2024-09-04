@@ -770,6 +770,30 @@ defmodule Web.AuthControllerTest do
       assert %{"fz_recent_account_ids" => fz_recent_account_ids} = conn.cookies
       assert :erlang.binary_to_term(fz_recent_account_ids) == [identity.account_id]
     end
+
+    test "resets the rate limit for signed in identity", %{
+      conn_with_cookie: conn,
+      account: account,
+      provider: provider,
+      identity: identity,
+      email_secret: email_secret
+    } do
+      key = {:sign_in_link, identity.id}
+      Web.Mailer.RateLimiter.rate_limit(key, 3, 60_000, fn -> :ok end)
+
+      conn =
+        conn
+        |> get(~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", %{
+          "identity_id" => identity.id,
+          "secret" => String.upcase(email_secret)
+        })
+
+      assert conn.assigns.flash == %{}
+      assert redirected_to(conn) == ~p"/#{account}/sites"
+
+      refute :ets.tab2list(Web.Mailer.RateLimiter.ETS)
+             |> Enum.any?(fn {ets_key, _, _} -> ets_key == key end)
+    end
   end
 
   describe "redirect_to_idp/2" do
