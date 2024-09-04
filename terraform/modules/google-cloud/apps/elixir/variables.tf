@@ -224,12 +224,20 @@ variable "application_token_scopes" {
   description = "Any extra oAuth2 token scopes granted to the token of default service account."
 }
 
-variable "application_dns_tld" {
+variable "application_dns_tld_v4" {
   type     = string
   nullable = true
   default  = null
 
-  description = "DNS host which will be used to create DNS records for the application and provision SSL-certificates."
+  description = "IPv4 DNS host which will be used to create DNS records for the application and provision SSL-certificates."
+}
+
+variable "application_dns_tld_v6" {
+  type     = string
+  nullable = true
+  default  = null
+
+  description = "IPv6 DNS host which will be used to create DNS records for the application and provision SSL-certificates."
 }
 
 variable "application_cdn_enabled" {

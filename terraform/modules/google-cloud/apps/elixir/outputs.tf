@@ -11,5 +11,5 @@ output "instance_group" {
 }
 
 output "host" {
-  value = var.application_dns_tld
+  value = var.application_dns_tld_v4
 }
