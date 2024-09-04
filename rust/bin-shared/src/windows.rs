@@ -55,7 +55,7 @@ pub fn app_local_data_dir() -> Result<PathBuf> {
 }
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
-    let (route, ifindex) = get_best_non_tunnel_route(addr.ip())?;
+    let route = get_best_non_tunnel_route(addr.ip())?;
 
     let mut socket = socket_factory::tcp(addr)?;
 
@@ -70,11 +70,7 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
 }
 
 pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
-    let source_ip_resolver = |dst| {
-        let (route, _) = get_best_non_tunnel_route(dst)?;
-
-        Ok(Some(route.addr))
-    };
+    let source_ip_resolver = |dst| Ok(Some(get_best_non_tunnel_route(dst)?.addr));
 
     let socket =
         socket_factory::udp(src_addr)?.with_source_ip_resolver(Box::new(source_ip_resolver));
@@ -133,23 +129,16 @@ impl Drop for RoutingTableEntry {
 /// This function performs multiple syscalls and is thus fairly expensive.
 /// It should **not** be called on a per-packet basis.
 /// Callers should instead cache the result until network interfaces change.
-fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<(Route, u32)> {
-    let (route, ifindex) = list_adapters()?
+fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<Route> {
+    let route = list_adapters()?
         .filter(|adapter| !is_tun(adapter))
-        .filter_map(|adapter| {
-            let route = find_best_route_for_luid(&adapter.Luid, dst).ok()?;
-
-            // Safety: TODO
-            let if_index = unsafe { adapter.Anonymous1.Anonymous.IfIndex };
-
-            Some((route, if_index))
-        })
+        .filter_map(|adapter| find_best_route_for_luid(&adapter.Luid, dst).ok())
         .min()
         .ok_or(io::Error::other("No route to host"))?;
 
-    tracing::debug!(src = %route.addr, %dst, %ifindex, "Resolved best route outside of tunnel interface");
+    tracing::debug!(src = %route.addr, %dst, "Resolved best route outside of tunnel interface");
 
-    Ok((route, ifindex))
+    Ok(route)
 }
 
 struct Adapters {

@@ -110,11 +110,11 @@ impl TunDeviceManager {
         );
 
         for old_route in self.routes.difference(&new_routes) {
-            remove_route(*old_route, None, iface_idx);
+            remove_route(*old_route, iface_idx);
         }
 
         for new_route in &new_routes {
-            add_route(*new_route, None, iface_idx);
+            add_route(*new_route, iface_idx);
         }
 
         self.routes = new_routes;
@@ -124,14 +124,13 @@ impl TunDeviceManager {
 }
 
 // It's okay if this blocks until the route is added in the OS.
-fn add_route(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx: u32) {
+fn add_route(route: IpNetwork, iface_idx: u32) {
     const DUPLICATE_ERR: u32 = 0x80071392;
-    let entry = forward_entry(route, next_hop, iface_idx);
+    let entry = forward_entry(route, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
     let Err(e) = unsafe { CreateIpForwardEntry2(&entry) }.ok() else {
-        let next_hop = next_hop.map(tracing::field::display);
-        tracing::debug!(%route, next_hop, %iface_idx, "Created new route");
+        tracing::debug!(%route, %iface_idx, "Created new route");
 
         return;
     };
@@ -145,15 +144,14 @@ fn add_route(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx: u32) {
 }
 
 // It's okay if this blocks until the route is removed in the OS.
-fn remove_route(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx: u32) {
+fn remove_route(route: IpNetwork, iface_idx: u32) {
     const ELEMENT_NOT_FOUND: u32 = 0x80070490;
-    let entry = forward_entry(route, next_hop, iface_idx);
+    let entry = forward_entry(route, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
 
     let Err(e) = unsafe { DeleteIpForwardEntry2(&entry) }.ok() else {
-        let next_hop = next_hop.map(tracing::field::display);
-        tracing::debug!(%route, next_hop, %iface_idx, "Removed route");
+        tracing::debug!(%route, %iface_idx, "Removed route");
 
         return;
     };
@@ -165,7 +163,7 @@ fn remove_route(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx: u32) {
     tracing::warn!(%route, "Failed to remove route: {e}")
 }
 
-fn forward_entry(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx: u32) -> MIB_IPFORWARD_ROW2 {
+fn forward_entry(route: IpNetwork, iface_idx: u32) -> MIB_IPFORWARD_ROW2 {
     let mut row = MIB_IPFORWARD_ROW2::default();
     // SAFETY: Windows shouldn't store the reference anywhere, it's just setting defaults
     unsafe { InitializeIpForwardEntry(&mut row) };
@@ -184,10 +182,6 @@ fn forward_entry(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx: u32) -> 
 
     row.InterfaceIndex = iface_idx;
     row.Metric = 0;
-
-    if let Some(next_hop) = next_hop {
-        row.NextHop = SocketAddr::from((next_hop, 0)).into();
-    }
 
     row
 }
