@@ -296,7 +296,9 @@ fn sock_addr_to_ip_addr(addr: &IP_ADAPTER_GATEWAY_ADDRESS_LH) -> Option<IpAddr> 
     const SOCKADDR_IN_LENGTH: usize = std::mem::size_of::<SOCKADDR_IN>();
     const SOCKADDR6_IN_LENGTH: usize = std::mem::size_of::<SOCKADDR_IN6>();
 
-    Some(match addr.Address.iSockaddrLength as usize {
+    dbg!(SOCKADDR_IN_LENGTH, SOCKADDR6_IN_LENGTH);
+
+    Some(match dbg!(addr.Address.iSockaddrLength) as usize {
         SOCKADDR_IN_LENGTH => {
             // Safety: We checked that it has the right length.
             let addr: &SOCKADDR_IN = unsafe { std::ptr::read(addr.Address.lpSockaddr as *const _) };
