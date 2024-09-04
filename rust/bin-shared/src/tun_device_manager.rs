@@ -21,7 +21,7 @@ mod tests {
     use socket_factory::DatagramOut;
     use std::{
         borrow::Cow,
-        net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+        net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
         time::Duration,
     };
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};

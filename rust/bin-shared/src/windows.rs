@@ -10,13 +10,12 @@ use std::{
     path::PathBuf,
     ptr::null,
 };
-use windows::Win32::NetworkManagement::IpHelper::IP_ADAPTER_GATEWAY_ADDRESS_LH;
 use windows::Win32::NetworkManagement::{IpHelper::GetAdaptersAddresses, Ndis::NET_LUID_LH};
 use windows::Win32::{
     NetworkManagement::IpHelper::{
         GetBestRoute2, GET_ADAPTERS_ADDRESSES_FLAGS, IP_ADAPTER_ADDRESSES_LH, MIB_IPFORWARD_ROW2,
     },
-    Networking::WinSock::{ADDRESS_FAMILY, AF_UNSPEC, SOCKADDR_IN, SOCKADDR_IN6, SOCKADDR_INET},
+    Networking::WinSock::{ADDRESS_FAMILY, AF_UNSPEC, SOCKADDR_INET},
 };
 
 use crate::tun_device_manager::windows::{add_route, remove_route};
