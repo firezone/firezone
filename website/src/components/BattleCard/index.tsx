@@ -1,7 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
 import { HiArrowLongRight, HiCheck, HiXMark } from "react-icons/hi2";
-import { manrope } from "@/lib/fonts";
 
 export default function BattleCard2() {
   return (
@@ -11,7 +10,7 @@ export default function BattleCard2() {
           Compare
         </h6>
         <h3
-          className={` text-3xl md:text-4xl lg:text-5xl tracking-tight font-bold inline-block text-center my-2 ${manrope.className}`}
+          className={` text-3xl md:text-4xl lg:text-5xl tracking-tight font-bold inline-block text-center my-2 font-manrope`}
         >
           More features
           <span className="text-primary-450"> for less</span>
