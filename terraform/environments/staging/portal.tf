@@ -566,7 +566,8 @@ module "api" {
   application_name    = "api"
   application_version = replace(var.image_tag, ".", "-")
 
-  application_dns_tld = "api.${local.tld}"
+  application_dns_tld_v4 = "api.${local.tld}"
+  application_dns_tld_v6 = "api.${local.tld}"
 
   application_ports = [
     {
