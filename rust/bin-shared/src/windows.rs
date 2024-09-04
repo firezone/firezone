@@ -1,5 +1,4 @@
 use anyhow::{Context as _, Result};
-use ip_network::IpNetwork;
 use known_folders::{get_known_folder_path, KnownFolder};
 use socket_factory::{TcpSocket, UdpSocket};
 use std::{
@@ -64,7 +63,7 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
     // To avoid routing loops, all TCP sockets are bound to the "best" source IP.
     // Additionally, we add a dedicated route for the given address to route via the default interface.
     socket.bind((route.addr, 0).into())?;
-    let entry = RoutingTableEntry::create(IpNetwork::from(addr.ip()), route.next_hop, ifindex);
+    let entry = RoutingTableEntry::create(addr.ip(), route.original)?;
 
     socket.pack(entry);
 
@@ -88,26 +87,39 @@ pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
 ///
 /// Routes will be created upon [`create`](RoutingTableEntry::create) and removed on [`Drop`].
 struct RoutingTableEntry {
-    route: IpNetwork,
-    next_hop: IpAddr,
-    iface_idx: u32,
+    entry: MIB_IPFORWARD_ROW2,
 }
 
 impl RoutingTableEntry {
-    fn create(route: IpNetwork, next_hop: IpAddr, iface_idx: u32) -> Self {
-        add_route(route, Some(next_hop), iface_idx);
-
-        Self {
-            route,
-            next_hop,
-            iface_idx,
+    /// Creates a new routing table entry by using the given prototype and overriding the route.
+    fn create(route: IpAddr, mut prototype: MIB_IPFORWARD_ROW2) -> io::Result<()> {
+        let prefix = &mut prototype.DestinationPrefix;
+        match route {
+            IpNetwork::V4(x) => {
+                prefix.PrefixLength = x.netmask();
+                prefix.Prefix.Ipv4 = SocketAddrV4::new(x.network_address(), 0).into();
+            }
+            IpNetwork::V6(x) => {
+                prefix.PrefixLength = x.netmask();
+                prefix.Prefix.Ipv6 = SocketAddrV6::new(x.network_address(), 0, 0, 0).into();
+            }
         }
+
+        unsafe { CreateIpForwardEntry2(&entry) }
+            .ok()
+            .map_err(|e| io::Error::other(e))?;
+
+        Ok(Self { entry })
     }
 }
 
 impl Drop for RoutingTableEntry {
     fn drop(&mut self) {
-        remove_route(self.route, Some(self.next_hop), self.iface_idx);
+        let Err(e) = unsafe { DeleteIpForwardEntry2(&self.entry) }.ok() else {
+            return;
+        };
+
+        tracing::warn!("Failed to delete routing entry: {e}");
     }
 }
 
@@ -136,7 +148,7 @@ fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<(Route, u32)> {
         .min()
         .ok_or(io::Error::other("No route to host"))?;
 
-    tracing::debug!(src = %route.addr, %dst, %ifindex, next_hop = %route.next_hop, "Resolved best route outside of tunnel interface");
+    tracing::debug!(src = %route.addr, %dst, %ifindex, "Resolved best route outside of tunnel interface");
 
     Ok((route, ifindex))
 }
@@ -219,7 +231,8 @@ fn is_tun(adapter: &IP_ADAPTER_ADDRESSES_LH) -> bool {
 struct Route {
     metric: u32,
     addr: IpAddr,
-    next_hop: IpAddr,
+
+    original: MIB_IPFORWARD_ROW2,
 }
 
 impl Ord for Route {
@@ -263,8 +276,7 @@ fn find_best_route_for_luid(luid: &NET_LUID_LH, dst: IpAddr) -> Result<Route> {
         addr: unsafe { to_ip_addr(best_src, dst) }
             .ok_or(io::Error::other("can't find a valid route"))?,
         metric: best_route.Metric,
-        next_hop: unsafe { to_ip_addr(best_route.NextHop, dst) }
-            .ok_or(io::Error::other("can't extract next hop"))?,
+        original: best_route,
     })
 }
 

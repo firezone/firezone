@@ -124,7 +124,7 @@ impl TunDeviceManager {
 }
 
 // It's okay if this blocks until the route is added in the OS.
-pub(crate) fn add_route(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx: u32) {
+fn add_route(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx: u32) {
     const DUPLICATE_ERR: u32 = 0x80071392;
     let entry = forward_entry(route, next_hop, iface_idx);
 
@@ -145,7 +145,7 @@ pub(crate) fn add_route(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx: u
 }
 
 // It's okay if this blocks until the route is removed in the OS.
-pub(crate) fn remove_route(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx: u32) {
+fn remove_route(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx: u32) {
     const ELEMENT_NOT_FOUND: u32 = 0x80070490;
     let entry = forward_entry(route, next_hop, iface_idx);
 
