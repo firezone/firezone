@@ -1,6 +1,8 @@
 use anyhow::{Context as _, Result};
+use ip_network::IpNetwork;
 use known_folders::{get_known_folder_path, KnownFolder};
 use socket_factory::{TcpSocket, UdpSocket};
+use std::mem;
 use std::{
     cmp::Ordering,
     io,
@@ -10,14 +12,17 @@ use std::{
     ptr::null,
 };
 use windows::Win32::NetworkManagement::{IpHelper::GetAdaptersAddresses, Ndis::NET_LUID_LH};
-use windows::Win32::Networking::WinSock::SOCKADDR_INET;
 use windows::Win32::{
     NetworkManagement::IpHelper::{
         GetBestRoute2, GET_ADAPTERS_ADDRESSES_FLAGS, IP_ADAPTER_ADDRESSES_LH, MIB_IPFORWARD_ROW2,
     },
-    Networking::WinSock::{ADDRESS_FAMILY, AF_UNSPEC},
+    Networking::WinSock::{
+        ADDRESS_FAMILY, AF_INET, AF_INET6, AF_UNSPEC, SOCKADDR, SOCKADDR_IN, SOCKADDR_IN6,
+        SOCKADDR_INET,
+    },
 };
 
+use crate::tun_device_manager::windows::{add_route, remove_route};
 use crate::TUNNEL_NAME;
 
 /// Hides Powershell's console on Windows
@@ -56,19 +61,28 @@ pub fn app_local_data_dir() -> Result<PathBuf> {
 }
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
-    let (local, ifindex) = get_best_non_tunnel_route(addr.ip())?;
+    let (local, ifindex, next_hop) = get_best_non_tunnel_route(addr.ip())?;
+    let next_hop = next_hop.ok_or_else(|| {
+        io::Error::custom(format!(
+            "Failed to resolve default gateway for routing to {addr}"
+        ))
+    })?;
 
-    let socket = socket_factory::tcp(addr)?;
-    socket.bind((local, 0).into())?; // To avoid routing loops, all TCP sockets are bound to the "best" source IP.
+    let mut socket = socket_factory::tcp(addr)?;
 
-    crate::tun_device_manager::windows::add_route(addr.ip().into(), Some(IpAddr::V4(Ipv4Addr::new(192, 168, 86, 1))), ifindex);
+    // To avoid routing loops, all TCP sockets are bound to the "best" source IP.
+    // Additionally, we add a dedicated route for the given address to route via the default interface.
+    socket.bind((local, 0).into())?;
+    let entry = RoutingTableEntry::create(IpNetwork::from(addr.ip()), next_hop, ifindex);
+
+    socket.pack(entry);
 
     Ok(socket)
 }
 
 pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
     let source_ip_resolver = |dst| {
-        let (route, _) = get_best_non_tunnel_route(dst)?;
+        let (route, _, _) = get_best_non_tunnel_route(dst)?;
 
         Ok(Some(route))
     };
@@ -77,6 +91,33 @@ pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
         socket_factory::udp(src_addr)?.with_source_ip_resolver(Box::new(source_ip_resolver));
 
     Ok(socket)
+}
+
+/// Represents an entry in Windows' routing table.
+///
+/// Routes will be created upon [`create`](RoutingTableEntry::create) and removed on [`Drop`].
+struct RoutingTableEntry {
+    route: IpNetwork,
+    next_hop: IpAddr,
+    iface_idx: u32,
+}
+
+impl RoutingTableEntry {
+    fn create(route: IpNetwork, next_hop: IpAddr, iface_idx: u32) -> Self {
+        add_route(route, Some(next_hop), iface_idx);
+
+        Self {
+            route,
+            next_hop,
+            iface_idx,
+        }
+    }
+}
+
+impl Drop for RoutingTableEntry {
+    fn drop(&mut self) {
+        remove_route(self.route, Some(self.next_hop), self.ifindex);
+    }
 }
 
 /// Finds the best route (i.e. source interface) for a given destination IP, excluding our TUN interface.
@@ -91,21 +132,30 @@ pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
 /// It should **not** be called on a per-packet basis.
 /// Callers should instead cache the result until network interfaces change.
 fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<(IpAddr, u32)> {
-    let (route, ifindex) = list_adapters()?
+    let (route, ifindex, gateway) = list_adapters()?
         .filter(|adapter| !is_tun(adapter))
         .filter_map(|adapter| {
             let route = find_best_route_for_luid(&adapter.Luid, dst).ok()?;
 
-            Some((route, unsafe { adapter.Anonymous1.Anonymous.IfIndex }))
+            // Safety: TODO
+            let if_index = unsafe { adapter.Anonymous1.Anonymous.IfIndex };
+            let gateway = unsafe {
+                adapter
+                    .FirstGatewayAddress
+                    .as_ref()
+                    .and_then(sock_addr_to_ip_addr)
+            };
+
+            Some((route, if_index, gateway))
         })
         .min()
         .ok_or(io::Error::other("No route to host"))?;
 
     let src = route.addr;
 
-    tracing::debug!(%src, %dst, "Resolved best route outside of tunnel interface");
+    tracing::debug!(%src, %dst, %ifindex, ?gateway, "Resolved best route outside of tunnel interface");
 
-    Ok((src, ifindex))
+    Ok((src, ifindex, gateway))
 }
 
 struct Adapters {
@@ -243,6 +293,28 @@ unsafe fn to_ip_addr(addr: SOCKADDR_INET, dst: IpAddr) -> Option<IpAddr> {
         }
         _ => None,
     }
+}
+
+fn sock_addr_to_ip_addr(addr: SOCKADDR) -> Option<IpAddr> {
+    Some(match addr.sa_family {
+        AF_INET => {
+            // Safety: `sa_data` is a `SOCKADDR_IN` struct if `sa_family` is set to `AF_INET` as per Windows docs.
+            let sockaddr_in: SOCKADDR_IN = unsafe { mem::transmute(addr.sa_data) };
+            // Safety: union access is safe.
+            let ip_bytes = unsafe { sockaddr_in.sin_addr.S_un.S_addr };
+
+            IpAddr::V4(Ipv4Addr::from(ip_bytes))
+        }
+        AF_INET6 => {
+            // Safety: `sa_data` is a `SOCKADDR_IN6` struct if `sa_family` is set to `AF_INET` as per Windows docs.
+            let sockaddr_in6: SOCKADDR_IN6 = unsafe { mem::transmute(addr.sa_data) };
+            // Safety: union access is safe.
+            let ip_bytes = unsafe { sockaddr_in6.sin6_addr.u.Byte };
+
+            IpAddr::V6(Ipv6Addr::from(ip_bytes))
+        }
+        _ => return None,
+    })
 }
 
 #[cfg(test)]

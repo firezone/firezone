@@ -130,6 +130,9 @@ pub(crate) fn add_route(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx: u
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
     let Err(e) = unsafe { CreateIpForwardEntry2(&entry) }.ok() else {
+        let next_hop = next_hop.map(tracing::field::display);
+        tracing::debug!(%route, next_hop, %iface_idx, "Created new route");
+
         return;
     };
 
@@ -142,13 +145,15 @@ pub(crate) fn add_route(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx: u
 }
 
 // It's okay if this blocks until the route is removed in the OS.
-fn remove_route(route: IpNetwork, iface_idx: u32) {
+pub(crate) fn remove_route(route: IpNetwork, next_hop: Option<IpAddr>, iface_idx: u32) {
     const ELEMENT_NOT_FOUND: u32 = 0x80070490;
-    let entry = forward_entry(route, None, iface_idx);
+    let entry = forward_entry(route, next_hop, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
 
     let Err(e) = unsafe { DeleteIpForwardEntry2(&entry) }.ok() else {
+        tracing::debug!(%route, next_hop, %iface_idx, "Removed route");
+
         return;
     };
 

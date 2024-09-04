@@ -9,6 +9,7 @@ use std::{
 };
 
 use socket2::SockAddr;
+use std::any::Any;
 use std::collections::hash_map::Entry;
 use tokio::io::Interest;
 
@@ -24,7 +25,10 @@ pub fn tcp(addr: &SocketAddr) -> io::Result<TcpSocket> {
 
     socket.set_nodelay(true)?;
 
-    Ok(TcpSocket { inner: socket })
+    Ok(TcpSocket {
+        inner: socket,
+        backpack: None,
+    })
 }
 
 pub fn udp(addr: &SocketAddr) -> io::Result<UdpSocket> {
@@ -48,6 +52,8 @@ pub fn udp(addr: &SocketAddr) -> io::Result<UdpSocket> {
 
 pub struct TcpSocket {
     inner: tokio::net::TcpSocket,
+    /// A location to store additional data with the [`TcpSocket`].
+    backpack: Option<Box<dyn Any + Send + Sync + 'static>>,
 }
 
 impl TcpSocket {
@@ -57,6 +63,13 @@ impl TcpSocket {
 
     pub fn bind(&self, addr: SocketAddr) -> io::Result<()> {
         self.inner.bind(addr)
+    }
+
+    /// Pack some custom data into the backpack of this [`TcpSocket`].
+    ///
+    /// The data will be carried around until the [`TcpSocket`] is dropped.
+    pub fn pack(&mut self, luggage: impl Any + Send + Sync + 'static) {
+        self.backpack = Some(Box::new(luggage));
     }
 }
 

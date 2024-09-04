@@ -21,7 +21,7 @@ mod tests {
     use socket_factory::DatagramOut;
     use std::{
         borrow::Cow,
-        net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
+        net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
         time::Duration,
     };
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -31,14 +31,25 @@ mod tests {
     async fn tunnel() {
         let _guard = firezone_logging::test("debug");
 
-        no_packet_loops_tcp().await;
+        no_packet_loops_tcp(SocketAddr::V4(SocketAddrV4::new(
+            Ipv4Addr::from([1, 1, 1, 1]),
+            80,
+        )))
+        .await;
+        no_packet_loops_tcp(SocketAddr::V6(SocketAddrV6::new(
+            Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0x0, 0x0, 0x0, 0x0, 0x1111),
+            80,
+            0,
+            0,
+        )))
+        .await;
         no_packet_loops_udp().await;
         tunnel_drop();
     }
 
     // Starts up a WinTun device, claims all routes, and checks if we can still make
     // TCP connections outside of our tunnel.
-    async fn no_packet_loops_tcp() {
+    async fn no_packet_loops_tcp(remote: SocketAddr) {
         let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
         let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
 
@@ -54,8 +65,6 @@ mod tests {
             )
             .await
             .unwrap();
-
-        let remote = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from([1, 1, 1, 1]), 80));
 
         let socket = crate::platform::tcp_socket_factory(&remote).unwrap();
         let mut stream = socket.connect(remote).await.unwrap();
