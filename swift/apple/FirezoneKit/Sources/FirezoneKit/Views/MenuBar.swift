@@ -24,7 +24,7 @@ public final class MenuBar: NSObject, ObservableObject {
   private var lastShownOthers: [Resource] = []
   
   private var wasInternetResourceEnabled: Bool = false
-  
+
   private var cancellables: Set<AnyCancellable> = []
 
   @ObservedObject var model: SessionViewModel
