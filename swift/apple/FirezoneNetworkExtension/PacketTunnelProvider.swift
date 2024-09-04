@@ -78,14 +78,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           return
         }
 
-        let disabledResources: Set<String> = if let disabledResourcesJSON = providerConfiguration[TunnelManagerKeys.disabledResources]?.data(using: .utf8) {
-          (try? JSONDecoder().decode(Set<String>.self, from: disabledResourcesJSON )) ?? Set()
+        let internetResourceEnabled: Bool = if let internetResourceEnabledJSON = providerConfiguration[TunnelManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
+          (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabledJSON )) ?? false
         } else {
-          Set()
+          false
         }
 
         let adapter = Adapter(
-          apiURL: apiURL, token: token, logFilter: logFilter, disabledResources: disabledResources, packetTunnelProvider: self)
+          apiURL: apiURL, token: token, logFilter: logFilter, internetResourceEnabled: internetResourceEnabled, packetTunnelProvider: self)
         self.adapter = adapter
 
 
@@ -139,8 +139,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     guard let tunnelMessage =  try? PropertyListDecoder().decode(TunnelMessage.self, from: message) else { return }
 
     switch tunnelMessage {
-    case .setDisabledResources(let value):
-      adapter?.setDisabledResources(newDisabledResources: value)
+    case .internetResourceEnabled(let value):
+      adapter?.setInternetResourceEnabled(value)
     case .signOut:
       Task {
           await clearToken()

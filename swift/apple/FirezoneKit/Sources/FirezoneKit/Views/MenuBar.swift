@@ -22,6 +22,9 @@ public final class MenuBar: NSObject, ObservableObject {
   // Wish these could be `[String]` but diffing between different types is tricky
   private var lastShownFavorites: [Resource] = []
   private var lastShownOthers: [Resource] = []
+
+  private var wasInternetResourceEnabled: Bool = false
+
   private var cancellables: Set<AnyCancellable> = []
 
   @ObservedObject var model: SessionViewModel
@@ -432,12 +435,21 @@ public final class MenuBar: NSObject, ObservableObject {
     populateOtherResourcesMenu(newOthers)
   }
 
+  private func displayNameChanged(_ resource: Resource) -> Bool {
+    if !resource.isInternetResource() {
+      return false
+    }
+
+    return wasInternetResourceEnabled != model.store.internetResourceEnabled()
+  }
+
   private func populateFavoriteResourcesMenu(_ newFavorites: [Resource]) {
     // Update the menu in place so everything won't vanish if it's open when it updates
     let diff = (newFavorites).difference(
       from: lastShownFavorites,
-      by: { $0 == $1 }
+      by: { $0 == $1 && !displayNameChanged($0) }
     )
+
     let index = menu.index(of: resourcesTitleMenuItem) + 1
     for change in diff {
       switch change {
@@ -449,6 +461,7 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     }
     lastShownFavorites = newFavorites
+    wasInternetResourceEnabled = model.store.internetResourceEnabled()
   }
 
   private func populateOtherResourcesMenu(_ newOthers: [Resource]) {
@@ -464,7 +477,7 @@ public final class MenuBar: NSObject, ObservableObject {
     // Update the menu in place so everything won't vanish if it's open when it updates
     let diff = (newOthers).difference(
       from: lastShownOthers,
-      by: { $0 == $1 }
+      by: { $0 == $1 && !displayNameChanged($0) }
     )
     for change in diff {
       switch change {
@@ -476,6 +489,8 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     }
     lastShownOthers = newOthers
+    wasInternetResourceEnabled = model.store.internetResourceEnabled()
+
   }
 
   private func addItemToMenu(menu: NSMenu, item: NSMenuItem, at: Int) {
@@ -498,8 +513,22 @@ public final class MenuBar: NSObject, ObservableObject {
     menu.removeItem(item)
   }
 
+  private func internetResourceTitle(resource: Resource) -> String {
+    let status = model.store.internetResourceEnabled() ? StatusSymbol.on : StatusSymbol.off
+
+    return status + " " + resource.name
+  }
+
+  private func resourceTitle(resource: Resource) -> String {
+    if resource.isInternetResource() {
+      return internetResourceTitle(resource: resource)
+    }
+
+    return resource.name
+  }
+
   private func createResourceMenuItem(resource: Resource) -> NSMenuItem {
-    let item = NSMenuItem(title: resource.name, action: nil, keyEquivalent: "")
+    let item = NSMenuItem(title: resourceTitle(resource: resource), action: nil, keyEquivalent: "")
 
     item.isHidden = false
     item.submenu = createSubMenu(resource: resource)
@@ -507,8 +536,8 @@ public final class MenuBar: NSObject, ObservableObject {
     return item
   }
 
-  private func resourceTitle(_ id: String) -> String {
-    model.isResourceEnabled(id) ? "Disable this resource" : "Enable this resource"
+  private func internetResourceToggleTitle() -> String {
+    model.isInternetResourceEnabled() ? "Disable this resource" : "Enable this resource"
   }
 
   private func nonInternetResourceHeader(resource: Resource) -> NSMenu {
@@ -595,6 +624,16 @@ public final class MenuBar: NSObject, ObservableObject {
 
     subMenu.addItem(description)
 
+    // Resource enable / disable toggle
+    subMenu.addItem(NSMenuItem.separator())
+    let enableToggle = NSMenuItem()
+    enableToggle.action = #selector(internetResourceToggle(_:))
+    enableToggle.title = internetResourceToggleTitle()
+    enableToggle.toolTip = "Enable or disable resource"
+    enableToggle.isEnabled = true
+    enableToggle.target = self
+    subMenu.addItem(enableToggle)
+
     return subMenu
   }
 
@@ -610,21 +649,8 @@ public final class MenuBar: NSObject, ObservableObject {
     let siteSectionItem = NSMenuItem()
     let siteNameItem = NSMenuItem()
     let siteStatusItem = NSMenuItem()
-    let enableToggle = NSMenuItem()
 
     let subMenu = resourceHeader(resource: resource)
-
-    // Resource enable / disable toggle
-    if resource.canBeDisabled {
-      subMenu.addItem(NSMenuItem.separator())
-      enableToggle.action = #selector(resourceToggle(_:))
-      enableToggle.title = resourceTitle(resource.id)
-      enableToggle.toolTip = "Enable or disable resource"
-      enableToggle.isEnabled = true
-      enableToggle.target = self
-      enableToggle.representedObject = resource.id
-      subMenu.addItem(enableToggle)
-    }
 
     // Site details
     if let site = resource.sites.first {
@@ -668,11 +694,9 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  @objc private func resourceToggle(_ sender: NSMenuItem) {
-    let id = sender.representedObject as! String
-
-    self.model.store.toggleResourceDisabled(resource: id, enabled: !model.isResourceEnabled(id))
-    sender.title = resourceTitle(id)
+  @objc private func internetResourceToggle(_ sender: NSMenuItem) {
+    self.model.store.toggleInternetResource(enabled: !model.store.internetResourceEnabled())
+    sender.title = internetResourceToggleTitle()
   }
 
   @objc private func resourceURLTapped(_ sender: AnyObject?) {
