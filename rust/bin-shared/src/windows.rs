@@ -100,6 +100,7 @@ impl RoutingTableEntry {
             }
         }
 
+        // Safety: The prototype is initialised correctly.
         unsafe { CreateIpForwardEntry2(&prototype) }
             .ok()
             .map_err(|e| io::Error::other(e))?;
@@ -110,6 +111,7 @@ impl RoutingTableEntry {
 
 impl Drop for RoutingTableEntry {
     fn drop(&mut self) {
+        // Safety: The entry we stored is valid.
         let Err(e) = unsafe { DeleteIpForwardEntry2(&self.entry) }.ok() else {
             return;
         };
