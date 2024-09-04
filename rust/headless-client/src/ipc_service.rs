@@ -528,6 +528,7 @@ impl<'a> Handler<'a> {
             .map_err(|e| Error::TunnelDevice(e.to_string()))?;
         new_session.set_tun(Box::new(tun));
         self.connlib = Some(new_session);
+
         Ok(())
     }
 }
