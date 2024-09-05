@@ -9,6 +9,29 @@ First, install dependencies and populate the `timestamps.json` file:
 pnpm setup
 ```
 
+Next, create files `.env.local` and `.env.development.local` in this directory.
+
+Put this in `.env.local`:
+
+```
+NEXT_PUBLIC_MIXPANEL_TOKEN=""
+NEXT_PUBLIC_GOOGLE_ANALYTICS_ID=""
+NEXT_PUBLIC_LINKEDIN_PARTNER_ID=""
+FIREZONE_DEPLOYED_SHA=""
+```
+
+And this in `.env.development.local`:
+
+```
+# Created by Vercel CLI
+EDGE_CONFIG=""
+FIREZONE_DEPLOYED_SHA=""
+SITE_URL=""
+VERCEL_DEEP_CLONE=""
+```
+
+After that, make sure to contact the team for their values.
+
 Then, run the development server:
 
 ```bash
