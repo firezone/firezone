@@ -6,7 +6,7 @@ use std::{
     cmp::Ordering,
     io,
     mem::MaybeUninit,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
     path::PathBuf,
     ptr::null,
 };
@@ -54,7 +54,7 @@ pub fn app_local_data_dir() -> Result<PathBuf> {
     Ok(path)
 }
 
-pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
+pub fn tcp_socket_factory(addr: &std::net::SocketAddr) -> io::Result<TcpSocket> {
     let route = get_best_non_tunnel_route(addr.ip())?;
 
     let mut socket = socket_factory::tcp(addr)?;
@@ -69,7 +69,7 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
     Ok(socket)
 }
 
-pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
+pub fn udp_socket_factory(src_addr: &std::net::SocketAddr) -> io::Result<UdpSocket> {
     let source_ip_resolver = |dst| Ok(Some(get_best_non_tunnel_route(dst)?.addr));
 
     let socket =
@@ -87,14 +87,14 @@ struct RoutingTableEntry {
 
 impl RoutingTableEntry {
     /// Creates a new routing table entry by using the given prototype and overriding the route.
-    fn create(route: IpAddr, mut prototype: MIB_IPFORWARD_ROW2) -> io::Result<Self> {
+    fn create(route: std::net::IpAddr, mut prototype: MIB_IPFORWARD_ROW2) -> io::Result<Self> {
         let prefix = &mut prototype.DestinationPrefix;
         match route {
-            IpAddr::V4(x) => {
+            std::net::IpAddr::V4(x) => {
                 prefix.PrefixLength = 32;
                 prefix.Prefix.Ipv4 = SocketAddrV4::new(x, 0).into();
             }
-            IpAddr::V6(x) => {
+            std::net::IpAddr::V6(x) => {
                 prefix.PrefixLength = 128;
                 prefix.Prefix.Ipv6 = SocketAddrV6::new(x, 0, 0, 0).into();
             }
@@ -131,7 +131,7 @@ impl Drop for RoutingTableEntry {
 /// This function performs multiple syscalls and is thus fairly expensive.
 /// It should **not** be called on a per-packet basis.
 /// Callers should instead cache the result until network interfaces change.
-fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<Route> {
+fn get_best_non_tunnel_route(dst: std::net::IpAddr) -> io::Result<Route> {
     let route = list_adapters()?
         .filter(|adapter| !is_tun(adapter))
         .filter_map(|adapter| find_best_route_for_luid(&adapter.Luid, dst).ok())
@@ -219,7 +219,7 @@ fn is_tun(adapter: &IP_ADAPTER_ADDRESSES_LH) -> bool {
 
 struct Route {
     metric: u32,
-    addr: IpAddr,
+    addr: std::net::IpAddr,
 
     original: MIB_IPFORWARD_ROW2,
 }
@@ -244,8 +244,8 @@ impl PartialEq for Route {
 
 impl Eq for Route {}
 
-fn find_best_route_for_luid(luid: &NET_LUID_LH, dst: IpAddr) -> Result<Route> {
-    let addr: SOCKADDR_INET = SocketAddr::from((dst, 0)).into();
+fn find_best_route_for_luid(luid: &NET_LUID_LH, dst: std::net::IpAddr) -> Result<Route> {
+    let addr: SOCKADDR_INET = std::net::SocketAddr::from((dst, 0)).into();
     let mut best_route: MaybeUninit<MIB_IPFORWARD_ROW2> = MaybeUninit::zeroed();
     let mut best_src: MaybeUninit<SOCKADDR_INET> = MaybeUninit::zeroed();
 
@@ -278,12 +278,12 @@ fn find_best_route_for_luid(luid: &NET_LUID_LH, dst: IpAddr) -> Result<Route> {
 }
 
 // SAFETY: si_family must be always set in the union, which will be the case for a valid SOCKADDR_INET
-unsafe fn to_ip_addr(addr: SOCKADDR_INET, dst: IpAddr) -> Option<IpAddr> {
+unsafe fn to_ip_addr(addr: SOCKADDR_INET, dst: std::net::IpAddr) -> Option<std::net::IpAddr> {
     match (addr.si_family, dst) {
-        (ADDRESS_FAMILY(0), IpAddr::V4(_)) | (ADDRESS_FAMILY(2), _) => {
+        (ADDRESS_FAMILY(0), std::net::IpAddr::V4(_)) | (ADDRESS_FAMILY(2), _) => {
             Some(Ipv4Addr::from(addr.Ipv4.sin_addr).into())
         }
-        (ADDRESS_FAMILY(0), IpAddr::V6(_)) | (ADDRESS_FAMILY(23), _) => {
+        (ADDRESS_FAMILY(0), std::net::IpAddr::V6(_)) | (ADDRESS_FAMILY(23), _) => {
             Some(Ipv6Addr::from(addr.Ipv6.sin6_addr).into())
         }
         _ => None,
