@@ -56,7 +56,7 @@ pub(crate) struct Managed {
 
 struct TauriIntegration {
     app: tauri::AppHandle,
-    tray: system_tray::Tray,
+    tray: tray_icon::TrayIcon,
 }
 
 impl GuiIntegration for TauriIntegration {
@@ -176,25 +176,16 @@ pub(crate) fn run(
             settings::get_advanced_settings,
             crate::client::welcome::sign_in,
         ])
-        .system_tray(system_tray::loading())
-        .on_system_tray_event(|app, event| {
-            if let SystemTrayEvent::MenuItemClick { id, .. } = event {
-                tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
-                let event = match serde_json::from_str::<TrayMenuEvent>(&id) {
-                    Ok(x) => x,
-                    Err(e) => {
-                        tracing::error!("{e}");
-                        return;
-                    }
-                };
-                match handle_system_tray_event(app, event) {
-                    Ok(_) => {}
-                    Err(e) => tracing::error!("{e}"),
-                }
-            }
-        })
         .setup(move |app| {
             let setup_inner = move || {
+                // Hopefully this doesn't deadlock the GTK+ main loop by accident.
+                let (sys_tray_tx, sys_tray_rx) = mpsc::channel(5);
+                tray_icon::menu::MenuEvent::set_event_handler(Some(move |event| {
+                    if let Err(error) = sys_tray_tx.blocking_send(event) {
+                        tracing::error!(?error, "Failed to send sys tray event to `Controller`.");
+                    }
+                }));
+
                 // Check for updates
                 tokio::spawn(async move {
                     if let Err(error) = updates::checker_task(updates_tx, cli.debug_update_check).await
@@ -253,6 +244,7 @@ pub(crate) fn run(
                             ctlr_rx,
                             advanced_settings,
                             reloader,
+                            sys_tray_rx,
                             updates_rx,
                         )
                         .await
@@ -420,14 +412,6 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
     }
 }
 
-fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Result<()> {
-    app.try_state::<Managed>()
-        .context("can't get Managed struct from Tauri")?
-        .ctlr_tx
-        .blocking_send(ControllerRequest::SystemTrayMenu(event))?;
-    Ok(())
-}
-
 // TODO: Move this into `impl Controller`
 async fn run_controller(
     app: tauri::AppHandle,
@@ -435,12 +419,22 @@ async fn run_controller(
     rx: mpsc::Receiver<ControllerRequest>,
     advanced_settings: AdvancedSettings,
     log_filter_reloader: LogFilterReloader,
+    sys_tray_rx: mpsc::Receiver<SystemTrayEvent>,
     updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 ) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");
     let (ipc_tx, ipc_rx) = mpsc::channel(1);
     let ipc_client = ipc::Client::new(ipc_tx).await?;
-    let tray = system_tray::Tray::new(app.tray_handle());
+    let tray_attrs = tray_icon::TrayIconAttributes {
+        tooltip: Some("TODO".to_string()),
+        menu: None,
+        icon: None,
+        temp_dir_path: None, // This is probably where this silly PNGs get dumped.
+        icon_is_template: false,
+        menu_on_left_click: true, // Doesn't work on Windows
+        title: Some("TODO".to_string()),
+    };
+    let tray = tray_icon::TrayIcon::new(tray_attrs);
     let integration = TauriIntegration { app, tray };
     let controller = Controller {
         advanced_settings,
@@ -454,6 +448,7 @@ async fn run_controller(
         release: None,
         rx,
         status: Default::default(),
+        sys_tray_rx,
         updates_rx,
         uptime: Default::default(),
     };

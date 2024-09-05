@@ -14,7 +14,7 @@ use firezone_headless_client::{
     IpcServerMsg, IpcServiceError, LogFilterReloader,
 };
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{collections::BTreeSet, path::PathBuf, time::Instant};
+use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, time::Instant};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 
@@ -39,6 +39,7 @@ pub struct Controller<I: GuiIntegration> {
     pub release: Option<updates::Release>,
     pub rx: mpsc::Receiver<ControllerRequest>,
     pub status: Status,
+    pub sys_tray_rx: mpsc::Receiver<TrayMenuEvent>,
     pub updates_rx: mpsc::Receiver<Option<updates::Notification>>,
     pub uptime: crate::uptime::Tracker,
 }
@@ -74,7 +75,6 @@ pub enum ControllerRequest {
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(SecretString),
     SignIn,
-    SystemTrayMenu(TrayMenuEvent),
     UpdateNotificationClicked(Url),
 }
 
@@ -203,14 +203,13 @@ impl<I: GuiIntegration> Controller<I> {
                         },
                         Req::Fail(Failure::Error) => Err(anyhow!("Test error"))?,
                         Req::Fail(Failure::Panic) => panic!("Test panic"),
-                        Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
-                            tracing::info!("User clicked Quit in the menu");
-                            break
-                        }
                         // TODO: Should we really skip cleanup if a request fails?
                         req => self.handle_request(req).await?,
                     }
                 }
+                event = self.sys_tray_rx.recv() => if let ControlFlow::Break(()) = self.handle_sys_tray(event.context("System tray event channel stopped")?).await? {
+                    break;
+                },
                 notification = self.updates_rx.recv() => self.handle_update_notification(notification.context("Update checker task stopped")?)?,
             }
             // Code down here may not run because the `select` sometimes `continue`s.
@@ -277,21 +276,23 @@ impl<I: GuiIntegration> Controller<I> {
         match req {
             Req::ApplySettings(settings) => {
                 let filter = firezone_logging::try_filter(&self.advanced_settings.log_filter)
-                        .context("Couldn't parse new log filter directives")?;
+                    .context("Couldn't parse new log filter directives")?;
                 self.advanced_settings = *settings;
                 self.log_filter_reloader
                     .reload(filter)
                     .context("Couldn't reload log filter")?;
-                self.ipc_client.send_msg(&IpcClientMsg::ReloadLogFilter).await?;
-                tracing::debug!(
-                    "Applied new settings. Log level will take effect immediately."
-                );
+                self.ipc_client
+                    .send_msg(&IpcClientMsg::ReloadLogFilter)
+                    .await?;
+                tracing::debug!("Applied new settings. Log level will take effect immediately.");
                 // Refresh the menu in case the favorites were reset.
                 self.refresh_system_tray_menu()?;
             }
             Req::ClearLogs(completion_tx) => {
                 if self.clear_logs_callback.is_some() {
-                    tracing::error!("Can't clear logs, we're already waiting on another log-clearing operation");
+                    tracing::error!(
+                        "Can't clear logs, we're already waiting on another log-clearing operation"
+                    );
                 }
                 if let Err(error) = logging::clear_gui_logs().await {
                     tracing::error!(?error, "Failed to clear GUI logs");
@@ -313,85 +314,11 @@ impl<I: GuiIntegration> Controller<I> {
                     tracing::error!(?error, "`handle_deep_link` failed");
                 }
             }
-            Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
-                if let Some(req) = self
-                    .auth
-                    .start_sign_in()
-                    .context("Couldn't start sign-in flow")?
-                {
-                    let url = req.to_url(&self.advanced_settings.auth_base_url);
-                    self.refresh_system_tray_menu()?;
-                    self.integration.open_url(url.expose_secret())
-                        .context("Couldn't open auth page")?;
-                    self.integration.set_welcome_window_visible(false)?;
-                }
-            }
-            Req::SystemTrayMenu(TrayMenuEvent::AddFavorite(resource_id)) => {
-                self.advanced_settings.favorite_resources.insert(resource_id);
-                self.refresh_favorite_resources().await?;
-            },
-            Req::SystemTrayMenu(TrayMenuEvent::AdminPortal) => self.integration.open_url(
-                &self.advanced_settings.auth_base_url,
-            )
-            .context("Couldn't open auth page")?,
-            Req::SystemTrayMenu(TrayMenuEvent::Copy(s)) => arboard::Clipboard::new()
-                .context("Couldn't access clipboard")?
-                .set_text(s)
-                .context("Couldn't copy resource URL or other text to clipboard")?,
-            Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn) => {
-                match &self.status {
-                    Status::Disconnected | Status::RetryingConnection { .. } | Status::WaitingForPortal { .. } => {
-                        tracing::info!("Calling `sign_out` to cancel sign-in");
-                        self.sign_out().await?;
-                    }
-                    Status::TunnelReady{..} => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
-                    Status::WaitingForTunnel { .. } => {
-                        tracing::warn!(
-                            "Connlib is already raising the tunnel, calling `sign_out` anyway"
-                        );
-                        self.sign_out().await?;
-                    }
-                }
-            }
-            Req::SystemTrayMenu(TrayMenuEvent::RemoveFavorite(resource_id)) => {
-                self.advanced_settings.favorite_resources.remove(&resource_id);
-                self.refresh_favorite_resources().await?;
-            }
-            Req::SystemTrayMenu(TrayMenuEvent::RetryPortalConnection) => self.try_retry_connection().await?,
-            Req::SystemTrayMenu(TrayMenuEvent::EnableInternetResource) => {
-                self.advanced_settings.internet_resource_enabled = Some(true);
-                self.update_disabled_resources().await?;
-            }
-            Req::SystemTrayMenu(TrayMenuEvent::DisableInternetResource) => {
-                self.advanced_settings.internet_resource_enabled = Some(false);
-                self.update_disabled_resources().await?;
-            }
-            Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
-                self.integration.show_window(window)?;
-                // When the About or Settings windows are hidden / shown, log the
-                // run ID and uptime. This makes it easy to check client stability on
-                // dev or test systems without parsing the whole log file.
-                let uptime_info = self.uptime.info();
-                tracing::debug!(
-                    uptime_s = uptime_info.uptime.as_secs(),
-                    run_id = uptime_info.run_id.to_string(),
-                    "Uptime info"
-                );
-            }
-            Req::SystemTrayMenu(TrayMenuEvent::SignOut) => {
-                tracing::info!("User asked to sign out");
-                self.sign_out().await?;
-            }
-            Req::SystemTrayMenu(TrayMenuEvent::Url(url)) => {
-                self.integration.open_url(&url)
-                    .context("Couldn't open URL from system tray")?
-            }
-            Req::SystemTrayMenu(TrayMenuEvent::Quit) => Err(anyhow!(
-                "Impossible error: `Quit` should be handled before this"
-            ))?,
+            Req::SignIn => self.start_sign_in()?,
             Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
-                self.integration.open_url(&download_url)
+                self.integration
+                    .open_url(&download_url)
                     .context("Couldn't open update page")?;
             }
         }
@@ -539,6 +466,95 @@ impl<I: GuiIntegration> Controller<I> {
             }
             Err(msg) => Err(Error::ConnectToFirezoneFailed(msg)),
         }
+    }
+
+    async fn handle_sys_tray(&mut self, event: TrayMenuEvent) -> Result<ControlFlow<()>> {
+        match event {
+            TrayMenuEvent::SignIn => self.start_sign_in()?,
+            TrayMenuEvent::AddFavorite(resource_id) => {
+                self.advanced_settings.favorite_resources.insert(resource_id);
+                self.refresh_favorite_resources().await?;
+            },
+            TrayMenuEvent::AdminPortal => self.integration.open_url(
+                &self.advanced_settings.auth_base_url,
+            )
+            .context("Couldn't open auth page")?,
+            TrayMenuEvent::Copy(s) => arboard::Clipboard::new()
+                .context("Couldn't access clipboard")?
+                .set_text(s)
+                .context("Couldn't copy resource URL or other text to clipboard")?,
+            TrayMenuEvent::CancelSignIn => {
+                match &self.status {
+                    Status::Disconnected | Status::RetryingConnection { .. } | Status::WaitingForPortal { .. } => {
+                        tracing::info!("Calling `sign_out` to cancel sign-in");
+                        self.sign_out().await?;
+                    }
+                    Status::TunnelReady{..} => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
+                    Status::WaitingForTunnel { .. } => {
+                        tracing::warn!(
+                            "Connlib is already raising the tunnel, calling `sign_out` anyway"
+                        );
+                        self.sign_out().await?;
+                    }
+                }
+            }
+            TrayMenuEvent::RemoveFavorite(resource_id) => {
+                self.advanced_settings.favorite_resources.remove(&resource_id);
+                self.refresh_favorite_resources().await?;
+            }
+            TrayMenuEvent::RetryPortalConnection => self.try_retry_connection().await?,
+            TrayMenuEvent::EnableInternetResource => {
+                self.advanced_settings.internet_resource_enabled = Some(true);
+                self.update_disabled_resources().await?;
+            }
+            TrayMenuEvent::DisableInternetResource => {
+                self.advanced_settings.internet_resource_enabled = Some(false);
+                self.update_disabled_resources().await?;
+            }
+            TrayMenuEvent::ShowWindow(window) => {
+                self.integration.show_window(window)?;
+                // When the About or Settings windows are hidden / shown, log the
+                // run ID and uptime. This makes it easy to check client stability on
+                // dev or test systems without parsing the whole log file.
+                let uptime_info = self.uptime.info();
+                tracing::debug!(
+                    uptime_s = uptime_info.uptime.as_secs(),
+                    run_id = uptime_info.run_id.to_string(),
+                    "Uptime info"
+                );
+            }
+            TrayMenuEvent::SignOut => {
+                tracing::info!("User asked to sign out");
+                self.sign_out().await?;
+            }
+            TrayMenuEvent::Url(url) => {
+                self.integration.open_url(&url)
+                    .context("Couldn't open URL from system tray")?
+            }
+            TrayMenuEvent::Quit => {
+                tracing::info!("User clicked Quit in the menu");
+                return Ok(ControlFlow::Break(()));
+            }
+        }
+        Ok(ControlFlow::Continue(()))
+    }
+
+    fn start_sign_in(&mut self) -> Result<()> {
+        let Some(req) = self
+            .auth
+            .start_sign_in()
+            .context("Couldn't start sign-in flow")?
+        else {
+            return Ok(());
+        };
+
+        let url = req.to_url(&self.advanced_settings.auth_base_url);
+        self.refresh_system_tray_menu()?;
+        self.integration
+            .open_url(url.expose_secret())
+            .context("Couldn't open auth page")?;
+        self.integration.set_welcome_window_visible(false)?;
+        Ok(())
     }
 
     /// Set (or clear) update notification
