@@ -10,7 +10,10 @@ use std::{
     path::PathBuf,
     ptr::null,
 };
-use windows::Win32::NetworkManagement::{IpHelper::GetAdaptersAddresses, Ndis::NET_LUID_LH};
+use windows::Win32::NetworkManagement::{
+    IpHelper::{GetAdaptersAddresses, MIB_IPFORWARD_TABLE2},
+    Ndis::NET_LUID_LH,
+};
 use windows::Win32::{
     NetworkManagement::IpHelper::{
         CreateIpForwardEntry2, DeleteIpForwardEntry2, GetBestRoute2, GetIpForwardTable2,
@@ -55,7 +58,7 @@ pub fn app_local_data_dir() -> Result<PathBuf> {
 }
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
-    delete_all_routing_entries_matching(addr)?;
+    delete_all_routing_entries_matching(addr.ip())?;
 
     let route = get_best_non_tunnel_route(addr.ip())?;
 
@@ -80,14 +83,14 @@ pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
     Ok(socket)
 }
 
-fn delete_all_routing_entries_matching(ip: &IpAddr) -> io::Result<()> {
-    let mut table = std::ptr::null();
+fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
+    let mut table = std::ptr::null_mut::<MIB_IPFORWARD_TABLE2>();
     let ip_family = match addr {
         IpAddr::V4(_) => AF_INET,
         IpAddr::V6(_) => AF_INET6,
     };
 
-    unsafe { GetIpForwardTable2(ip_family, (&mut table).as_mut_ptr()) }
+    unsafe { GetIpForwardTable2(ip_family, &mut table) }
         .ok()
         .map_err(io::Error::other)?;
 
@@ -96,9 +99,10 @@ fn delete_all_routing_entries_matching(ip: &IpAddr) -> io::Result<()> {
     let mut entry = table.Table.as_ptr();
 
     for _ in 0..table.NumEntries {
-        entry = entry.offset(1);
+        entry = unsafe { entry.offset(1) };
+        let entry_ref = unsafe { entry.as_ref().unwrap() };
 
-        let dp = entry.DestinationPrefix;
+        let dp = entry_ref.DestinationPrefix;
 
         let route = match addr {
             IpAddr::V4(_) => {
@@ -106,22 +110,22 @@ fn delete_all_routing_entries_matching(ip: &IpAddr) -> io::Result<()> {
                     continue;
                 }
 
-                IpAddr::V4(dp.Prefix.Ipv4.sin_addr.into())
+                IpAddr::V4(unsafe { dp.Prefix.Ipv4 }.sin_addr.into())
             }
             IpAddr::V6(_) => {
                 if dp.PrefixLength != 128 {
                     continue;
                 };
 
-                IpAddr::V6(dp.Prefix.Ipv6.sin_addr.into())
+                IpAddr::V6(unsafe { dp.Prefix.Ipv6 }.sin6_addr.into())
             }
         };
 
-        if route != addr.ip() {
+        if route != addr {
             continue;
         }
 
-        if let Err(e) = unsafe { DeleteIpForwardEntry2(&entry) }.ok() {
+        if let Err(e) = unsafe { DeleteIpForwardEntry2(entry) }.ok() {
             tracing::warn!("Failed to delete routing entry: {e}");
         };
     }
