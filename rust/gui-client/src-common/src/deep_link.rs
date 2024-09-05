@@ -85,6 +85,7 @@ pub fn parse_auth_callback(url_secret: &SecretString) -> Result<auth::Response> 
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use anyhow::{Context, Result};
     use secrecy::{ExposeSecret, SecretString};
 
