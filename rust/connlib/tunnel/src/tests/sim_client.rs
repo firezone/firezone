@@ -346,9 +346,13 @@ impl RefClient {
 
         match maybe_cidr_resource {
             Some(IpNetwork::V4(v4)) => {
+                tracing::debug!(%v4, "Removing CIDR route");
+
                 self.ipv4_routes.remove(&v4);
             }
             Some(IpNetwork::V6(v6)) => {
+                tracing::debug!(%v6, "Removing CIDR route");
+
                 self.ipv6_routes.remove(&v6);
             }
             _ => {}
@@ -359,6 +363,8 @@ impl RefClient {
 
         if self.internet_resource.is_some_and(|r| &r == resource) {
             self.connected_internet_resource = false;
+
+            tracing::debug!("Removing Internet Resource routes");
 
             self.ipv4_routes.remove(&Ipv4Network::DEFAULT_ROUTE);
             self.ipv6_routes.remove(&Ipv6Network::DEFAULT_ROUTE);
@@ -384,7 +390,12 @@ impl RefClient {
 
     pub(crate) fn add_internet_resource(&mut self, r: ResourceDescriptionInternet) {
         self.internet_resource = Some(r.id);
-        self.resources.push(ResourceDescription::Internet(r));
+        self.resources
+            .push(ResourceDescription::Internet(r.clone()));
+
+        if self.disabled_resources.contains(&r.id) {
+            return;
+        }
 
         self.ipv4_routes.insert(Ipv4Network::DEFAULT_ROUTE);
         self.ipv6_routes.insert(Ipv6Network::DEFAULT_ROUTE);
@@ -393,6 +404,10 @@ impl RefClient {
     pub(crate) fn add_cidr_resource(&mut self, r: ResourceDescriptionCidr) {
         self.cidr_resources.insert(r.address, r.id);
         self.resources.push(ResourceDescription::Cidr(r.clone()));
+
+        if self.disabled_resources.contains(&r.id) {
+            return;
+        }
 
         match r.address {
             IpNetwork::V4(v4) => self.ipv4_routes.insert(v4),
