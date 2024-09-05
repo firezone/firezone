@@ -88,6 +88,8 @@ struct RoutingTableEntry {
 impl RoutingTableEntry {
     /// Creates a new routing table entry by using the given prototype and overriding the route.
     fn create(route: IpAddr, mut prototype: MIB_IPFORWARD_ROW2) -> io::Result<Self> {
+        const DUPLICATE_ERR: u32 = 0x80071392;
+
         let prefix = &mut prototype.DestinationPrefix;
         match route {
             IpAddr::V4(x) => {
@@ -103,7 +105,13 @@ impl RoutingTableEntry {
         // Safety: The prototype is initialised correctly.
         unsafe { CreateIpForwardEntry2(&prototype) }
             .ok()
-            .map_err(|e| io::Error::other(e))?;
+            .or_else(|e| {
+                if e.code().0 as u32 == DUPLICATE_ERR {
+                    Ok(())
+                } else {
+                    Err(io::Error::other(e))
+                }
+            })?;
 
         Ok(Self { entry: prototype })
     }
