@@ -192,7 +192,7 @@ defmodule Domain.Gateways do
   @doc false
   def preload_gateways_presence([gateway]) do
     gateway.account_id
-    |> gateways_in_account_presence_topic()
+    |> account_gateways_presence_topic()
     |> Presence.get_by_key(gateway.id)
     |> case do
       [] -> %{gateway | online?: false}
@@ -209,7 +209,7 @@ defmodule Domain.Gateways do
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq()
       |> Enum.reduce(%{}, fn account_id, acc ->
-        connected_gateways = account_id |> gateways_in_account_presence_topic() |> Presence.list()
+        connected_gateways = account_id |> account_gateways_presence_topic() |> Presence.list()
         Map.merge(acc, connected_gateways)
       end)
 
@@ -220,7 +220,7 @@ defmodule Domain.Gateways do
 
   def all_online_gateway_ids_by_group_id!(group_id) do
     group_id
-    |> gateways_in_group_presence_topic()
+    |> group_gateways_presence_topic()
     |> Presence.list()
     |> Map.keys()
   end
@@ -235,7 +235,7 @@ defmodule Domain.Gateways do
 
       connected_gateway_ids =
         resource.account_id
-        |> gateways_in_account_presence_topic()
+        |> account_gateways_presence_topic()
         |> Presence.list()
         |> Map.keys()
 
@@ -258,7 +258,7 @@ defmodule Domain.Gateways do
   def gateway_can_connect_to_resource?(%Gateway{} = gateway, %Resources.Resource{} = resource) do
     connected_gateway_ids =
       resource.account_id
-      |> gateways_in_account_presence_topic()
+      |> account_gateways_presence_topic()
       |> Presence.list()
       |> Map.keys()
 
@@ -385,44 +385,47 @@ defmodule Domain.Gateways do
     with {:ok, _} <-
            Presence.track(
              self(),
-             gateways_in_group_presence_topic(gateway.group_id),
+             group_gateways_presence_topic(gateway.group_id),
              gateway.id,
              %{}
            ),
          {:ok, _} <-
            Presence.track(
              self(),
-             gateways_in_account_presence_topic(gateway.account_id),
+             account_gateways_presence_topic(gateway.account_id),
              gateway.id,
              %{
                online_at: System.system_time(:second)
              }
            ) do
       :ok = PubSub.subscribe(gateway_topic(gateway))
-      :ok = PubSub.subscribe(gateways_in_group_topic(gateway.group_id))
-      :ok = PubSub.subscribe(account_topic(gateway.account_id))
+      :ok = PubSub.subscribe(group_gateways_topic(gateway.group_id))
+      :ok = PubSub.subscribe(account_gateways_topic(gateway.account_id))
       :ok
     end
   end
 
   ### Presence
 
-  def gateways_in_account_presence_topic(account_or_id),
-    do: "presences:#{account_topic(account_or_id)}"
+  def account_gateways_presence_topic(account_or_id),
+    do: "presences:#{account_gateways_topic(account_or_id)}"
 
-  defp gateways_in_group_presence_topic(group_or_id),
-    do: "presences:#{gateways_in_group_topic(group_or_id)}"
+  defp group_gateways_presence_topic(group_or_id),
+    do: "presences:#{group_gateways_topic(group_or_id)}"
 
   ### PubSub
 
   defp gateway_topic(%Gateway{} = gateway), do: gateway_topic(gateway.id)
   defp gateway_topic(gateway_id), do: "gateways:#{gateway_id}"
 
-  defp account_topic(%Accounts.Account{} = account), do: account_topic(account.id)
-  defp account_topic(account_id), do: "account_gateways:#{account_id}"
+  defp account_gateways_topic(%Accounts.Account{} = account),
+    do: account_gateways_topic(account.id)
 
-  defp gateways_in_group_topic(%Group{} = group), do: gateways_in_group_topic(group.id)
-  defp gateways_in_group_topic(group_id), do: "group_gateways:#{group_id}"
+  defp account_gateways_topic(account_id),
+    do: "account_gateways:#{account_id}"
+
+  defp group_gateways_topic(%Group{} = group), do: group_gateways_topic(group.id)
+  defp group_gateways_topic(group_id), do: "group_gateways:#{group_id}"
 
   defp group_topic(%Group{} = group), do: group_topic(group.id)
   defp group_topic(group_id), do: "group:#{group_id}"
@@ -441,25 +444,25 @@ defmodule Domain.Gateways do
 
   def subscribe_to_gateways_presence_in_account(%Accounts.Account{} = account) do
     account
-    |> gateways_in_account_presence_topic()
+    |> account_gateways_presence_topic()
     |> PubSub.subscribe()
   end
 
   def unsubscribe_from_gateways_presence_in_account(%Accounts.Account{} = account) do
     account
-    |> gateways_in_account_presence_topic()
+    |> account_gateways_presence_topic()
     |> PubSub.unsubscribe()
   end
 
   def subscribe_to_gateways_presence_in_group(group_or_id) do
     group_or_id
-    |> gateways_in_group_presence_topic()
+    |> group_gateways_presence_topic()
     |> PubSub.subscribe()
   end
 
   def unsubscribe_from_gateways_presence_in_group(group_or_id) do
     group_or_id
-    |> gateways_in_group_presence_topic()
+    |> group_gateways_presence_topic()
     |> PubSub.unsubscribe()
   end
 
@@ -477,13 +480,13 @@ defmodule Domain.Gateways do
 
   defp broadcast_to_gateways_in_group(group_or_id, payload) do
     group_or_id
-    |> gateways_in_group_topic()
+    |> group_gateways_topic()
     |> PubSub.broadcast(payload)
   end
 
   defp broadcast_to_gateways_in_account(account_or_id, payload) do
     account_or_id
-    |> account_topic()
+    |> account_gateways_topic()
     |> PubSub.broadcast(payload)
   end
 
