@@ -113,11 +113,11 @@ fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
 
         let route = match addr {
             IpAddr::V4(_) if dp.PrefixLength == 32 => {
-                // Safety: Access to the union is safe.
+                // Safety: Any 32 bit number is a valid IPv4 address
                 IpAddr::V4(unsafe { dp.Prefix.Ipv4 }.sin_addr.into())
             }
             IpAddr::V6(_) if dp.PrefixLength == 128 => {
-                // Safety: Access to the union is safe.
+                // Safety: Any 128 bit number is a valid IPv6 address
                 IpAddr::V6(unsafe { dp.Prefix.Ipv6 }.sin6_addr.into())
             }
             IpAddr::V4(_) | IpAddr::V6(_) => continue,
