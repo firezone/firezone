@@ -7,7 +7,7 @@ members = [
   "connlib/shared",
   "connlib/snownet",
   "connlib/tunnel",
-  "gateway", "gui-client/src-common",
+  "gateway",
   "gui-client/src-common",
   "gui-client/src-tauri",
   "headless-client",
