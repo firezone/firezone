@@ -121,11 +121,11 @@ fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
         let iface_idx = entry_ref.InterfaceIndex;
 
         if let Err(e) = unsafe { DeleteIpForwardEntry2(entry) }.ok() {
-            tracing::warn!("Failed to delete routing entry: {e}");
+            tracing::warn!("Failed to remove routing entry: {e}");
             continue;
         };
 
-        tracing::debug!(%route, %iface_idx, "Deleted stale route entry");
+        tracing::debug!(%route, %iface_idx, "Removed stale route entry");
     }
 
     Ok(())
@@ -167,7 +167,9 @@ impl RoutingTableEntry {
                 }
             })?;
 
-        tracing::debug!(%route, "Created new route");
+        let iface_idx = prototype.InterfaceIndex;
+
+        tracing::debug!(%route, %iface_idx, "Created new route");
 
         Ok(Self {
             entry: prototype,
@@ -186,7 +188,7 @@ impl Drop for RoutingTableEntry {
             return;
         };
 
-        tracing::debug!(route = %self.route, %iface_idx, "Deleted route");
+        tracing::debug!(route = %self.route, %iface_idx, "Removed route");
     }
 }
 
