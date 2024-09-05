@@ -22,7 +22,7 @@ export default function GUI({ title }: { title: string }) {
           </ChangeItem>
           <ChangeItem pull="6584">
             Prevents routing loops for some windows installation when the
-            Internet resource was on, taking down network connections 
+            Internet resource was on, taking down network connections
           </ChangeItem>
         </ul>
       </Entry>
