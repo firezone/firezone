@@ -10,7 +10,7 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
-use firezone_gui_client_common::{auth, crash_handling, deep_link, updates};
+use firezone_gui_client_common::{self as common, auth, crash_handling, deep_link, updates};
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
@@ -534,13 +534,13 @@ impl Controller {
                 if self.clear_logs_callback.is_some() {
                     tracing::error!("Can't clear logs, we're already waiting on another log-clearing operation");
                 }
-                if let Err(error) = logging::clear_gui_logs().await {
+                if let Err(error) = common::logging::clear_gui_logs().await {
                     tracing::error!(?error, "Failed to clear GUI logs");
                 }
                 self.ipc_client.send_msg(&IpcClientMsg::ClearLogs).await?;
                 self.clear_logs_callback = Some(completion_tx);
             }
-            Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
+            Req::ExportLogs { path, stem } => common::logging::export_logs_to(path, stem)
                 .await
                 .context("Failed to export logs to zip")?,
             Req::Fail(_) => Err(anyhow!(

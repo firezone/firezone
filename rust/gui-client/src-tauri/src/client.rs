@@ -1,6 +1,6 @@
 use anyhow::{bail, Context as _, Result};
 use clap::{Args, Parser};
-use firezone_gui_client_common::{crash_handling, deep_link};
+use firezone_gui_client_common::{self as common, crash_handling, deep_link};
 use std::path::PathBuf;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
@@ -63,7 +63,7 @@ pub(crate) fn run() -> Result<()> {
             // Can't check elevation here because the Windows CI is always elevated
             let settings = settings::load_advanced_settings().unwrap_or_default();
             // Don't fix the log filter for smoke tests
-            let logging::Handles {
+            let common::logging::Handles {
                 logger: _logger,
                 reloader,
             } = start_logging(&settings.log_filter)?;
@@ -88,7 +88,7 @@ pub(crate) fn run() -> Result<()> {
 fn run_gui(cli: Cli) -> Result<()> {
     let mut settings = settings::load_advanced_settings().unwrap_or_default();
     fix_log_filter(&mut settings)?;
-    let logging::Handles {
+    let common::logging::Handles {
         logger: _logger,
         reloader,
     } = start_logging(&settings.log_filter)?;
@@ -123,8 +123,8 @@ fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
 /// Starts logging
 ///
 /// Don't drop the log handle or logging will stop.
-fn start_logging(directives: &str) -> Result<logging::Handles> {
-    let logging_handles = logging::setup(directives)?;
+fn start_logging(directives: &str) -> Result<common::logging::Handles> {
+    let logging_handles = common::logging::setup(directives)?;
     tracing::info!(
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,

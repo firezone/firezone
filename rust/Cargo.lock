@@ -1903,7 +1903,6 @@ dependencies = [
  "futures",
  "native-dialog",
  "nix 0.29.0",
- "output_vt100",
  "png",
  "rand 0.8.5",
  "rustls",
@@ -1920,13 +1919,11 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "tracing-log",
  "tracing-panic",
  "tracing-subscriber",
  "url",
  "uuid",
  "windows 0.58.0",
- "zip",
 ]
 
 [[package]]
@@ -1942,6 +1939,7 @@ dependencies = [
  "hex",
  "keyring",
  "minidumper",
+ "output_vt100",
  "rand 0.8.5",
  "reqwest",
  "secrecy",
@@ -1953,8 +1951,11 @@ dependencies = [
  "time",
  "tokio",
  "tracing",
+ "tracing-log",
+ "tracing-subscriber",
  "url",
  "winreg 0.52.0",
+ "zip",
 ]
 
 [[package]]

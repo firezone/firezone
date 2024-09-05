@@ -25,7 +25,6 @@ firezone-headless-client = { path = "../../headless-client" }
 firezone-logging = { workspace = true }
 futures = { version = "0.3", default-features = false }
 native-dialog = "0.7.0"
-output_vt100 = "0.1"
 png = "0.17.13" # `png` is free since we already need it for Tauri
 rand = "0.8.5"
 rustls = { workspace = true }
@@ -39,12 +38,10 @@ thiserror = { version = "1.0", default-features = false }
 tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
 tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
-tracing-log = "0.2"
 tracing-panic = "0.1.2"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 uuid = { version = "1.10.0", features = ["v4"] }
 url = { version = "2.5.2", features = ["serde"] }
-zip = { version = "2", features = ["deflate", "time"], default-features = false }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
