@@ -90,25 +90,34 @@ fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
         IpAddr::V6(_) => AF_INET6,
     };
 
+    // Safety: `ip_family` is initialised and `table` is not-null (we pass a reference that gets coerced to a pointer).
     unsafe { GetIpForwardTable2(ip_family, &mut table) }
         .ok()
         .map_err(io::Error::other)?;
 
+    // Safety: The pointer is aligned.
     let maybe_table = unsafe { table.as_ref() };
     let table = maybe_table.ok_or(io::Error::other("IP routing table is null"))?;
     let mut entry = table.Table.as_ptr();
 
     for _ in 0..table.NumEntries {
+        // Safety: We never offset beyond the number of entries.
         entry = unsafe { entry.offset(1) };
-        let entry_ref = unsafe { entry.as_ref().unwrap() };
+        // Safety: The pointer is aligned.
+        let maybe_entry_ref = unsafe { entry.as_ref() };
+        let Some(entry_ref) = maybe_entry_ref else {
+            continue; // Better safe than sorry.
+        };
 
         let dp = entry_ref.DestinationPrefix;
 
         let route = match addr {
             IpAddr::V4(_) if dp.PrefixLength == 32 => {
+                // Safety: Access to the union is safe.
                 IpAddr::V4(unsafe { dp.Prefix.Ipv4 }.sin_addr.into())
             }
             IpAddr::V6(_) if dp.PrefixLength == 128 => {
+                // Safety: Access to the union is safe.
                 IpAddr::V6(unsafe { dp.Prefix.Ipv6 }.sin6_addr.into())
             }
             _ => continue,
@@ -120,6 +129,7 @@ fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
 
         let iface_idx = entry_ref.InterfaceIndex;
 
+        // Safety: The `entry` is initialised.
         if let Err(e) = unsafe { DeleteIpForwardEntry2(entry) }.ok() {
             tracing::warn!("Failed to remove routing entry: {e}");
             continue;
