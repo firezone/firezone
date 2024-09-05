@@ -769,7 +769,7 @@ defmodule Domain.ClientsTest do
       assert client.verified_by_actor_id == subject.actor.id
       assert client.verified_by_identity_id == subject.identity.id
 
-      assert_receive :verified
+      assert_receive :updated
 
       assert {:ok, double_verified_client} = verify_client(client, subject)
       assert double_verified_client.verified_at == client.verified_at
