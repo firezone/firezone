@@ -745,13 +745,14 @@ defmodule Domain.Auth do
          %Context{type: context_type} = context
        )
        when token_type == :browser or context_type == :browser do
-    cond do
-      # We disabled this check because Google Chrome uses "Happy Eyeballs" algorithm which sometimes
-      # connects to the server using IPv4 for HTTP request and then uses IPv6 for WebSockets.
-      # This causes the remote IP to change leading to LiveView auth redirect loops.
-      # token.created_by_remote_ip.address != context.remote_ip -> {:error, :invalid_remote_ip}
-      token.created_by_user_agent != context.user_agent -> {:error, :invalid_user_agent}
-      true -> :ok
+    # We disabled this check because Google Chrome uses "Happy Eyeballs" algorithm which sometimes
+    # connects to the server using IPv4 for HTTP request and then uses IPv6 for WebSockets.
+    # This causes the remote IP to change leading to LiveView auth redirect loops.
+    # token.created_by_remote_ip.address != context.remote_ip -> {:error, :invalid_remote_ip}
+    if token.created_by_user_agent != context.user_agent do
+      {:error, :invalid_user_agent}
+    else
+      :ok
     end
   end
 
