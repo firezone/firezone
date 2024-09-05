@@ -37,18 +37,19 @@ tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
 tracing-panic = "0.1.2"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+# tray-icon = "0.17.0"
 url = { version = "2.5.2", features = ["serde"] }
 uuid = { version = "1.10.0", features = ["v4"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"
 nix = { version = "0.29.0", features = ["user"] }
-tauri = { version = "1.7.1", features = [ "dialog", "icon-png", "notification", "shell-open-api", "system-tray" ] }
+tauri = { version = "1.7.2", features = [ "dialog", "icon-png", "notification", "shell-open-api" ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 
 [target.'cfg(target_os = "windows")'.dependencies]
-tauri = { version = "1.7.1", features = [ "dialog", "icon-png", "shell-open-api", "system-tray" ] }
+tauri = { version = "1.7.2", features = [ "dialog", "icon-png", "shell-open-api" ] }
 tauri-winrt-notification = "0.5.0"
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
