@@ -28,6 +28,7 @@ import FeatureCards from "@/components/FeatureCards";
 import SingleFeature from "@/components/SingleFeature";
 import UseCaseCards from "@/components/UseCaseCards";
 import Banner from "@/components/Banner";
+import { Badge } from "@/components/Badges";
 
 export const metadata: Metadata = {
   title: "Firezone: Zero trust access that scales",
@@ -40,8 +41,17 @@ export default function Page() {
     <>
       <section className="bg-neutral-950 bg-hero pt-28 mb-16">
         <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
-          <Banner href="/blog" active={true}>
-            NEW: Internet Resources, REST API, and more
+          <Banner href="/blog/sep-2024-update" active>
+            <Badge
+              text="New"
+              bgColor="accent-700"
+              textColor="accent-200"
+              size="sm"
+            />
+            <span className="ml-1 ">
+              Internet Resources, REST API, and more
+            </span>
+            <HiArrowLongRight className="inline-block mx-1 w-5 h-5 duration-50 transition transform group-hover:translate-x-1" />
           </Banner>
           <h1
             className={
