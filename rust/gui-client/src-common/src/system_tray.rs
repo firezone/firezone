@@ -296,6 +296,8 @@ mod tests {
     use anyhow::Result;
     use std::str::FromStr as _;
 
+    use builder::INTERNET_RESOURCE_DESCRIPTION;
+
     impl Menu {
         fn selected_item<E: Into<Option<Event>>, S: Into<String>>(
             mut self,
