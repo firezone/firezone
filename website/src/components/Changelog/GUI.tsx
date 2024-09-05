@@ -13,6 +13,20 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This cannot be done when the issue's PR merges. */}
+      {/*
+      <Entry version="1.3.1" date={new Date("2024-09-05")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6518">
+            Minor improvements to the look of the internet resource and makes
+            the Internet resource off by default.
+          </ChangeItem>
+          <ChangeItem pull="6584">
+            Prevents routing loops for some Windows installation when the
+            Internet resource was on, taking down network connections.
+          </ChangeItem>
+        </ul>
+      </Entry>
+      */}
       <Entry version="1.3.0" date={new Date("2024-08-30")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6434">
