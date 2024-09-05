@@ -37,7 +37,10 @@ tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
 tracing-panic = "0.1.2"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
-# tray-icon = "0.17.0"
+# TODO: Once we remove Tauri, update this
+# We need to use a year-plus-old version of `tray-icon` otherwise its dep on the native GTK+
+# libs will conflict with Tauri's dep on the native GTK+ libs (via WebKit and rfd)
+tray-icon = "0.4.0"
 url = { version = "2.5.2", features = ["serde"] }
 uuid = { version = "1.10.0", features = ["v4"] }
 
