@@ -67,6 +67,20 @@ pub(crate) struct Managed {
     pub inject_faults: bool,
 }
 
+trait GuiIntegration {
+    fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()>;
+}
+
+struct TauriIntegration {
+    app: tauri::AppHandle,
+}
+
+impl GuiIntegration for TauriIntegration {
+    fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
+        Ok(tauri::api::shell::open(&self.app.shell_scope(), url, None)?)
+    }
+}
+
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 ///
 /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
@@ -453,7 +467,7 @@ impl Status {
     }
 }
 
-struct Controller {
+struct Controller<I: GuiIntegration> {
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
     app: tauri::AppHandle,
@@ -462,6 +476,7 @@ struct Controller {
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
+    integration: I,
     log_filter_reloader: LogFilterReloader,
     /// A release that's ready to download
     release: Option<updates::Release>,
@@ -470,7 +485,7 @@ struct Controller {
     uptime: client::uptime::Tracker,
 }
 
-impl Controller {
+impl<I: GuiIntegration> Controller<I> {
     async fn start_session(&mut self, token: SecretString) -> Result<(), Error> {
         match self.status {
             Status::Disconnected | Status::RetryingConnection { .. } => {}
@@ -561,7 +576,7 @@ impl Controller {
                 {
                     let url = req.to_url(&self.advanced_settings.auth_base_url);
                     self.refresh_system_tray_menu()?;
-                    tauri::api::shell::open(&self.app.shell_scope(), url.expose_secret(), None)
+                    self.integration.open_url(url.expose_secret())
                         .context("Couldn't open auth page")?;
                     self.app
                         .get_window("welcome")
@@ -574,10 +589,8 @@ impl Controller {
                 self.advanced_settings.favorite_resources.insert(resource_id);
                 self.refresh_favorite_resources().await?;
             },
-            Req::SystemTrayMenu(TrayMenuEvent::AdminPortal) => tauri::api::shell::open(
-                &self.app.shell_scope(),
+            Req::SystemTrayMenu(TrayMenuEvent::AdminPortal) => self.integration.open_url(
                 &self.advanced_settings.auth_base_url,
-                None,
             )
             .context("Couldn't open auth page")?,
             Req::SystemTrayMenu(TrayMenuEvent::Copy(s)) => arboard::Clipboard::new()
@@ -629,7 +642,7 @@ impl Controller {
                 self.sign_out().await?;
             }
             Req::SystemTrayMenu(TrayMenuEvent::Url(url)) => {
-                tauri::api::shell::open(&self.app.shell_scope(), url, None)
+                self.integration.open_url(&url)
                     .context("Couldn't open URL from system tray")?
             }
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => Err(anyhow!(
@@ -637,7 +650,7 @@ impl Controller {
             ))?,
             Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
-                tauri::api::shell::open(&self.app.shell_scope(), download_url, None)
+                self.integration.open_url(&download_url)
                     .context("Couldn't open update page")?;
             }
         }
@@ -943,6 +956,7 @@ async fn run_controller(
     let (ipc_tx, mut ipc_rx) = mpsc::channel(1);
     let ipc_client = ipc::Client::new(ipc_tx).await?;
     let tray = system_tray::Tray::new(app.tray_handle());
+    let integration = TauriIntegration { app: app.clone() };
     let mut controller = Controller {
         advanced_settings,
         app: app.clone(),
@@ -950,6 +964,7 @@ async fn run_controller(
         clear_logs_callback: None,
         ctlr_tx,
         ipc_client,
+        integration,
         log_filter_reloader,
         release: None,
         status: Default::default(),
