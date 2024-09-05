@@ -76,6 +76,15 @@ defmodule API.Client.Channel do
           :ok = Resources.subscribe_to_events_for_resource(resource)
         end)
 
+      :ok =
+        resources
+        |> Enum.flat_map(& &1.gateway_groups)
+        |> Enum.uniq()
+        |> Enum.each(fn gateway_group ->
+          :ok = Gateways.unsubscribe_from_group_updates(gateway_group)
+          :ok = Gateways.subscribe_to_group_updates(gateway_group)
+        end)
+
       # Return all connected relays for the account
       {:ok, relays} = select_relays(socket)
       :ok = Enum.each(relays, &Relays.subscribe_to_relay_presence/1)
@@ -136,8 +145,8 @@ defmodule API.Client.Channel do
     {:noreply, socket}
   end
 
-  # This event is sent when client is updated (eg. changed, verified, etc.),
-  # so we just re-initialize the client the same way as after join
+  # This event is sent when client or group are changed (eg. renamed, verified, etc.),
+  # so we just re-initialize the client the same way as after join to push the updates
   def handle_info(:updated, socket) do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
