@@ -35,18 +35,18 @@
 
   <.sidebar_item
     current_path={@current_path}
-    navigate={~p"/#{@account}/policies"}
-    icon="hero-shield-check-solid"
-  >
-    Policies
-  </.sidebar_item>
-
-  <.sidebar_item
-    current_path={@current_path}
     navigate={~p"/#{@account}/resources"}
     icon="hero-server-stack-solid"
   >
     Resources
+  </.sidebar_item>
+
+  <.sidebar_item
+    current_path={@current_path}
+    navigate={~p"/#{@account}/policies"}
+    icon="hero-shield-check-solid"
+  >
+    Policies
   </.sidebar_item>
 
   <.sidebar_item
