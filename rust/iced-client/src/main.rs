@@ -64,7 +64,8 @@ impl Application for FirezoneApp {
             "Welcome to Firezone"
         } else {
             panic!("Impossible - Can't generate title for window we didn't make.")
-        }.into()
+        }
+        .into()
     }
 
     fn update(&mut self, message: Message) -> Command<Message> {
