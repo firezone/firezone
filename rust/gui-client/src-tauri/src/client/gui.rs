@@ -67,17 +67,41 @@ pub(crate) struct Managed {
     pub inject_faults: bool,
 }
 
-trait GuiIntegration {
-    fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()>;
-}
-
 struct TauriIntegration {
     app: tauri::AppHandle,
 }
 
 impl GuiIntegration for TauriIntegration {
+    fn hide_welcome_window(&self) -> Result<()> {
+        self.app
+            .get_window("welcome")
+            .context("Couldn't get handle to Welcome window")?
+            .hide()
+            .context("Couldn't hide Welcome window")?;
+        Ok(())
+    }
+
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
         Ok(tauri::api::shell::open(&self.app.shell_scope(), url, None)?)
+    }
+
+    fn show_window(&self, window: common::system_tray::Window) -> Result<()> {
+        let id = match window {
+            common::system_tray::Window::About => "about",
+            common::system_tray::Window::Settings => "settings",
+        };
+
+        let win = self
+            .app
+            .get_window(id)
+            .context("Couldn't get handle to `{id}` window")?;
+
+        // Needed to bring shown windows to the front
+        // `request_user_attention` and `set_focus` don't work, at least on Linux
+        win.hide()?;
+        // Needed to show windows that are completely hidden
+        win.show()?;
+        Ok(())
     }
 }
 
@@ -470,7 +494,6 @@ impl Status {
 struct Controller<I: GuiIntegration> {
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
-    app: tauri::AppHandle,
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
@@ -483,6 +506,16 @@ struct Controller<I: GuiIntegration> {
     status: Status,
     tray: system_tray::Tray,
     uptime: client::uptime::Tracker,
+}
+
+trait GuiIntegration {
+    fn hide_welcome_window(&self) -> Result<()>;
+
+    /// Also opens non-URLs
+    fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()>;
+
+    /// Shows a window that the system tray knows about, e.g. not Welcome.
+    fn show_window(&self, window: common::system_tray::Window) -> Result<()>;
 }
 
 impl<I: GuiIntegration> Controller<I> {
@@ -578,11 +611,7 @@ impl<I: GuiIntegration> Controller<I> {
                     self.refresh_system_tray_menu()?;
                     self.integration.open_url(url.expose_secret())
                         .context("Couldn't open auth page")?;
-                    self.app
-                        .get_window("welcome")
-                        .context("Couldn't get handle to Welcome window")?
-                        .hide()
-                        .context("Couldn't hide Welcome window")?;
+                    self.integration.hide_welcome_window()?;
                 }
             }
             Req::SystemTrayMenu(TrayMenuEvent::AddFavorite(resource_id)) => {
@@ -626,7 +655,7 @@ impl<I: GuiIntegration> Controller<I> {
                 self.update_disabled_resources().await?;
             }
             Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
-                self.show_window(window)?;
+                self.integration.show_window(window)?;
                 // When the About or Settings windows are hidden / shown, log the
                 // run ID and uptime. This makes it easy to check client stability on
                 // dev or test systems without parsing the whole log file.
@@ -922,25 +951,6 @@ impl<I: GuiIntegration> Controller<I> {
         self.refresh_system_tray_menu()?;
         Ok(())
     }
-
-    fn show_window(&self, window: common::system_tray::Window) -> Result<()> {
-        let id = match window {
-            common::system_tray::Window::About => "about",
-            common::system_tray::Window::Settings => "settings",
-        };
-
-        let win = self
-            .app
-            .get_window(id)
-            .context("Couldn't get handle to `{id}` window")?;
-
-        // Needed to bring shown windows to the front
-        // `request_user_attention` and `set_focus` don't work, at least on Linux
-        win.hide()?;
-        // Needed to show windows that are completely hidden
-        win.show()?;
-        Ok(())
-    }
 }
 
 // TODO: Move this into `impl Controller`
@@ -956,10 +966,9 @@ async fn run_controller(
     let (ipc_tx, mut ipc_rx) = mpsc::channel(1);
     let ipc_client = ipc::Client::new(ipc_tx).await?;
     let tray = system_tray::Tray::new(app.tray_handle());
-    let integration = TauriIntegration { app: app.clone() };
+    let integration = TauriIntegration { app, };
     let mut controller = Controller {
         advanced_settings,
-        app: app.clone(),
         auth: auth::Auth::new()?,
         clear_logs_callback: None,
         ctlr_tx,
@@ -984,7 +993,9 @@ async fn run_controller(
     }
 
     if !ran_before::get().await? {
-        let win = app
+        let win = controller
+            .integration
+            .app
             .get_window("welcome")
             .context("Couldn't get handle to Welcome window")?;
         win.show().context("Couldn't show Welcome window")?;
