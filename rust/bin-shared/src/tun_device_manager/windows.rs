@@ -130,6 +130,8 @@ fn add_route(route: IpNetwork, iface_idx: u32) {
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
     let Err(e) = unsafe { CreateIpForwardEntry2(&entry) }.ok() else {
+        tracing::debug!(%route, %iface_idx, "Created new route");
+
         return;
     };
 
@@ -149,6 +151,8 @@ fn remove_route(route: IpNetwork, iface_idx: u32) {
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
 
     let Err(e) = unsafe { DeleteIpForwardEntry2(&entry) }.ok() else {
+        tracing::debug!(%route, %iface_idx, "Removed route");
+
         return;
     };
 
@@ -226,7 +230,13 @@ impl Tun {
         let uuid = uuid::Uuid::from_str(TUNNEL_UUID)
             .expect("static UUID should always parse correctly")
             .as_u128();
-        let adapter = &Adapter::create(&wintun, TUNNEL_NAME, TUNNEL_NAME, Some(uuid))?;
+        let adapter = match Adapter::create(&wintun, TUNNEL_NAME, TUNNEL_NAME, Some(uuid)) {
+            Ok(x) => x,
+            Err(error) => {
+                tracing::error!(?error, "Failed in `Adapter::create`");
+                return Err(error)?;
+            }
+        };
         let iface_idx = adapter.get_adapter_index()?;
 
         set_iface_config(adapter.get_luid(), mtu)?;
