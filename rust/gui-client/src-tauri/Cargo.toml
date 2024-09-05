@@ -39,8 +39,8 @@ tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
 tracing-panic = "0.1.2"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
-uuid = { version = "1.10.0", features = ["v4"] }
 url = { version = "2.5.2", features = ["serde"] }
+uuid = { version = "1.10.0", features = ["v4"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = "5.0.1"

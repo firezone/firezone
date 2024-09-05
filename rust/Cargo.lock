@@ -1956,6 +1956,7 @@ dependencies = [
  "tracing-log",
  "tracing-subscriber",
  "url",
+ "uuid",
  "winreg 0.52.0",
  "zip",
 ]
