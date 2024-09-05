@@ -118,7 +118,6 @@ fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
             continue;
         }
 
-        let next_hop = SocketAddr::from(entry_ref.NextHop);
         let iface_idx = entry_ref.InterfaceIndex;
 
         if let Err(e) = unsafe { DeleteIpForwardEntry2(entry) }.ok() {
@@ -126,7 +125,7 @@ fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
             continue;
         };
 
-        tracing::debug!(%route, %next_hop, %iface_idx, "Deleted stale route entry");
+        tracing::debug!(%route, %iface_idx, "Deleted stale route entry");
     }
 
     Ok(())
