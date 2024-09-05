@@ -48,7 +48,7 @@ export default function Page() {
                 height="24"
                 alt="Play Icon"
               />
-              <p className="text-sm mr-4">See our latest news</p>
+              <p className="text-sm mr-4">New: Internet Resources, REST API, and improved wildcard matching</p>
             </div>
           </Banner>
           <h1
