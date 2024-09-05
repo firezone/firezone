@@ -1,12 +1,8 @@
 use iced::{
-    Background,
-    Border,
-    Color,
     executor,
     multi_window::Application,
-    Renderer,
     widget::{button, column, container, text},
-    window, Alignment, Command, Element, Length, Settings,
+    window, Alignment, Background, Border, Color, Command, Element, Length, Renderer, Settings,
 };
 
 pub fn main() -> iced::Result {
