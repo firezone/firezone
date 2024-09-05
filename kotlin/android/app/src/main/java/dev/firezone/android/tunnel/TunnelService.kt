@@ -22,11 +22,12 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.features.session.ui.ViewResource
-import dev.firezone.android.features.session.ui.toViewResource
+import dev.firezone.android.core.data.ResourceState
+import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.tunnel.callback.ConnlibCallback
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
+import dev.firezone.android.tunnel.model.isInternetResource
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.UUID
@@ -49,9 +50,9 @@ class TunnelService : VpnService() {
     var tunnelIpv6Address: String? = null
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
-    private var _tunnelResources: List<ViewResource> = emptyList()
+    private var _tunnelResources: List<Resource> = emptyList()
     private var _tunnelState: State = State.DOWN
-    private var disabledResources: MutableSet<String> = mutableSetOf()
+    var resourceState: ResourceState = ResourceState.UNSET
 
     // For reacting to changes to the network
     private var networkCallback: NetworkMonitor? = null
@@ -67,7 +68,7 @@ class TunnelService : VpnService() {
     var startedByUser: Boolean = false
     var connlibSessionPtr: Long? = null
 
-    var tunnelResources: List<ViewResource>
+    var tunnelResources: List<Resource>
         get() = _tunnelResources
         set(value) {
             _tunnelResources = value
@@ -82,7 +83,7 @@ class TunnelService : VpnService() {
 
     // Used to update the UI when the SessionActivity is bound to this service
     private var serviceStateLiveData: MutableLiveData<State>? = null
-    private var resourcesLiveData: MutableLiveData<List<ViewResource>>? = null
+    private var resourcesLiveData: MutableLiveData<List<Resource>>? = null
 
     // For binding the SessionActivity view to this service
     private val binder = LocalBinder()
@@ -99,7 +100,7 @@ class TunnelService : VpnService() {
         object : ConnlibCallback {
             override fun onUpdateResources(resourceListJSON: String) {
                 moshi.adapter<List<Resource>>().fromJson(resourceListJSON)?.let {
-                    tunnelResources = it.map { resource -> resource.toViewResource(!disabledResources.contains(resource.id)) }
+                    tunnelResources = it
                     resourcesUpdated()
                 }
             }
@@ -257,24 +258,33 @@ class TunnelService : VpnService() {
         super.onRevoke()
     }
 
+    fun internetState(): ResourceState {
+        return resourceState
+    }
+
+    fun internetResource(): Resource? {
+        return tunnelResources.firstOrNull { it.isInternetResource() }
+    }
+
     // UI updates for resources
     fun resourcesUpdated() {
-        val newResources = tunnelResources.associateBy { it.id }
-        val currentlyDisabled = disabledResources.filter { newResources[it]?.canBeDisabled ?: false }
+        val currentlyDisabled =
+            if (internetResource() != null && !resourceState.isEnabled()) {
+                setOf(internetResource()!!.id)
+            } else {
+                emptySet()
+            }
 
         connlibSessionPtr?.let {
             ConnlibSession.setDisabledResources(it, Gson().toJson(currentlyDisabled))
         }
     }
 
-    fun resourceToggled(resource: ViewResource) {
-        if (!resource.enabled) {
-            disabledResources.add(resource.id)
-        } else {
-            disabledResources.remove(resource.id)
-        }
+    fun internetResourceToggled(state: ResourceState) {
+        resourceState = state
 
-        repo.saveDisabledResourcesSync(disabledResources)
+        repo.saveInternetResourceStateSync(resourceState)
+
         resourcesUpdated()
     }
 
@@ -304,7 +314,7 @@ class TunnelService : VpnService() {
     private fun connect() {
         val token = appRestrictions.getString("token") ?: repo.getTokenSync()
         val config = repo.getConfigSync()
-        disabledResources = repo.getDisabledResourcesSync().toMutableSet()
+        resourceState = repo.getInternetResourceStateSync()
 
         if (!token.isNullOrBlank()) {
             tunnelState = State.CONNECTING
@@ -377,7 +387,7 @@ class TunnelService : VpnService() {
         serviceStateLiveData?.postValue(tunnelState)
     }
 
-    fun setResourcesLiveData(liveData: MutableLiveData<List<ViewResource>>) {
+    fun setResourcesLiveData(liveData: MutableLiveData<List<Resource>>) {
         resourcesLiveData = liveData
 
         // Update the newly bound SessionActivity with our current resources
@@ -388,7 +398,7 @@ class TunnelService : VpnService() {
         serviceStateLiveData?.postValue(state)
     }
 
-    private fun updateResourcesLiveData(resources: List<ViewResource>) {
+    private fun updateResourcesLiveData(resources: List<Resource>) {
         resourcesLiveData?.postValue(resources)
     }
 

@@ -61,10 +61,10 @@ class Adapter {
   private let workQueue = DispatchQueue(label: "FirezoneAdapterWorkQueue")
 
   /// Currently disabled resources
-  private var disabledResources: Set<String> = []
+  private var internetResourceEnabled: Bool = false
 
-  /// Cache of resources that can be disabled
-  private var canBeDisabled: Set<String> = []
+  /// Cache of internet resource
+  private var internetResource: Resource?
 
   /// Adapter state.
   private var state: AdapterState {
@@ -86,7 +86,7 @@ class Adapter {
     apiURL: String,
     token: String,
     logFilter: String,
-    disabledResources: Set<String>,
+    internetResourceEnabled: Bool,
     packetTunnelProvider: PacketTunnelProvider
   ) {
     self.apiURL = apiURL
@@ -97,7 +97,7 @@ class Adapter {
     self.logFilter = logFilter
     self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
     self.networkSettings = nil
-    self.disabledResources = disabledResources
+    self.internetResourceEnabled = internetResourceEnabled
   }
 
   // Could happen abruptly if the process is killed.
@@ -204,10 +204,10 @@ class Adapter {
     return (try? decoder.decode([Resource].self, from: resourceList.data(using: .utf8)!)) ?? []
   }
 
-  public func setDisabledResources(newDisabledResources: Set<String>) {
+  public func setInternetResourceEnabled(_ enabled: Bool) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      self.disabledResources = newDisabledResources
+      self.internetResourceEnabled = enabled
       self.resourcesUpdated()
     }
   }
@@ -218,9 +218,13 @@ class Adapter {
     let decoder = JSONDecoder()
     decoder.keyDecodingStrategy = .convertFromSnakeCase
 
-    canBeDisabled = Set(resources().filter({ $0.canBeDisabled }).map({ $0.id }))
+    internetResource = resources().filter{ $0.isInternetResource() }.first
 
-    let disablingResources = disabledResources.filter({ canBeDisabled.contains($0) })
+    var disablingResources: Set<String> = []
+    if let internetResource = internetResource, !internetResourceEnabled {
+      disablingResources.insert(internetResource.id)
+    }
+
 
     let currentlyDisabled = try! JSONEncoder().encode(disablingResources)
     session.setDisabledResources(String(data: currentlyDisabled, encoding: .utf8)!)

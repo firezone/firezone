@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import NewsletterSignup from "@/components/NewsletterSignup";
 import SummaryCard from "@/components/Blog/SummaryCard";
+import { Badge } from "@/components/Badges";
 
 export const metadata: Metadata = {
   title: "Blog • Firezone",
@@ -14,17 +15,58 @@ export default function Page() {
   return (
     <section>
       <div className="bg-neutral-50 border-b border-neutral-100">
-        <div className="py-8 px-4 sm:py-10 sm:px-6 md:py-12 md:px-8 lg:py-14 lg:px-10 mx-auto max-w-screen-lg w-full">
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold tracking-tight">
+        <div className="py-8 px-4 sm:py-12 sm:px-6 md:py-16 md:px-8 lg:py-20 lg:px-10 mx-auto max-w-screen-lg w-full">
+          <h1
+            className={`justify-center text-5xl sm:text-6xl md:text-7xl font-bold tracking-tight font-manrope`}
+          >
             Blog
           </h1>
-          <p className="text-md sm:text-lg md:text-xl lg:text-2xl mt-4 md:mt-6 lg:mt-8 tracking-tight">
+          <p className="text-center text-md md:text-lg lg:text-xl mt-2 md:mt-4 tracking-tight">
             Announcements, how-tos, and more from the Firezone team.
           </p>
         </div>
       </div>
       <div className="py-6 px-4 sm:py-8 sm:px-6 md:py-10 md:px-8 lg:py-12 lg:px-10 mx-auto max-w-screen-lg w-full">
         <div className="grid divide-y">
+          <SummaryCard
+            title="September 2024 update"
+            date="September 30, 2024"
+            href="/blog/sep-2024-update"
+            authorName="Jamil Bou Kheir"
+            authorAvatarSrc={gravatar("jamil@firezone.dev")}
+            type="Announcement"
+          >
+            <div className="mb-2">
+              <div className="mb-2">In this update:</div>
+              <ul className="space-y-2 list-inside list-disc ml-4">
+                <li>
+                  <strong>New feature:</strong> Internet Resources
+                </li>
+                <li>
+                  <strong>New feature:</strong> REST API{" "}
+                  <Badge
+                    text="Beta"
+                    size="xs"
+                    textColor="blue-800"
+                    bgColor="blue-100"
+                  />
+                </li>
+                <li>
+                  <strong>New feature:</strong> Improved wildcard matching for
+                  DNS Resources
+                </li>
+                <li>
+                  <strong>Blog post:</strong>{" "}
+                  <Link
+                    href="/blog/sans-io"
+                    className="text-accent-500 underline hover:no-underline"
+                  >
+                    sans-IO: The secret to effective Rust for network services
+                  </Link>
+                </li>
+              </ul>
+            </div>
+          </SummaryCard>
           <SummaryCard
             title="sans-IO: The secret to effective Rust for network services"
             date="July 2, 2024"
