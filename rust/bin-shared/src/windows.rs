@@ -105,20 +105,13 @@ fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
         let dp = entry_ref.DestinationPrefix;
 
         let route = match addr {
-            IpAddr::V4(_) => {
-                if dp.PrefixLength != 32 {
-                    continue;
-                }
-
+            IpAddr::V4(_) if dp.PrefixLength == 32 => {
                 IpAddr::V4(unsafe { dp.Prefix.Ipv4 }.sin_addr.into())
             }
-            IpAddr::V6(_) => {
-                if dp.PrefixLength != 128 {
-                    continue;
-                };
-
-                IpAddr::V6(unsafe { dp.Prefix.Ipv6 }.sin6_addr.into())
+            IpAddr::V6(_) if dp.PrefixLength == 128 => {
+                IpAddr::V6(unsafe { dp.Prefix.Ipv6 }.sin_addr.into())
             }
+            _ => continue,
         };
 
         if route != addr {
