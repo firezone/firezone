@@ -1,33 +1,33 @@
 //! Module to check the Github repo for new releases
 
-use crate::client::{
-    about::get_cargo_version,
-    gui::{ControllerRequest, CtlrTx},
-};
 use anyhow::{Context, Result};
 use rand::{thread_rng, Rng as _};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{io::Write, path::PathBuf, str::FromStr, time::Duration};
+use tokio::sync::mpsc;
 use url::Url;
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Notification {
-    pub(crate) release: Release,
+pub struct Notification {
+    pub release: Release,
     /// If true, show a pop-up notification and set the dot. If false, only set the dot.
-    pub(crate) tell_user: bool,
+    pub tell_user: bool,
 }
 
 /// GUI-friendly release struct
 ///
 /// Serialize is derived for debugging
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub(crate) struct Release {
-    pub(crate) download_url: url::Url,
-    pub(crate) version: Version,
+pub struct Release {
+    pub download_url: url::Url,
+    pub version: Version,
 }
 
-pub(crate) async fn checker_task(ctlr_tx: CtlrTx, debug_mode: bool) -> Result<()> {
+pub async fn checker_task(
+    ctlr_tx: mpsc::Sender<Option<Notification>>,
+    debug_mode: bool,
+) -> Result<()> {
     let (current_version, interval_in_seconds) = if debug_mode {
         (Version::new(1, 0, 0), 30)
     } else {
@@ -63,9 +63,7 @@ pub(crate) async fn checker_task(ctlr_tx: CtlrTx, debug_mode: bool) -> Result<()
             Event::Notify(notification) => {
                 tracing::debug!("Notify");
                 write_latest_release_file(notification.as_ref().map(|n| &n.release)).await?;
-                ctlr_tx
-                    .send(ControllerRequest::SetUpdateNotification(notification))
-                    .await?;
+                ctlr_tx.send(notification).await?;
             }
         }
     }
@@ -275,7 +273,7 @@ fn parse_version_from_url(url: &Url) -> Result<Version> {
 }
 
 pub(crate) fn current_version() -> Result<Version> {
-    Version::from_str(&get_cargo_version()).context("Impossible, our version is invalid")
+    Version::from_str(env!("CARGO_PKG_VERSION")).context("Impossible, our version is invalid")
 }
 
 #[cfg(test)]

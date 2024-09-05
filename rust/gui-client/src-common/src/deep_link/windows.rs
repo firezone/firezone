@@ -5,12 +5,16 @@ use super::FZ_SCHEME;
 use anyhow::{Context, Result};
 use firezone_bin_shared::BUNDLE_ID;
 use secrecy::Secret;
-use std::{io, path::Path, time::Duration};
+use std::{
+    io,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
 
 /// A server for a named pipe, so we can receive deep links from other instances
 /// of the client launched by web browsers
-pub(crate) struct Server {
+pub struct Server {
     inner: named_pipe::NamedPipeServer,
 }
 
@@ -19,7 +23,7 @@ impl Server {
     ///
     /// Panics if there is no Tokio runtime
     /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
-    pub(crate) async fn new() -> Result<Self, super::Error> {
+    pub async fn new() -> Result<Self, super::Error> {
         // This isn't air-tight - We recreate the whole server on each loop,
         // rather than binding 1 socket and accepting many streams like a normal socket API.
         // Tokio appears to be following Windows' underlying API here, so not
@@ -35,7 +39,7 @@ impl Server {
     /// I assume this is based on the underlying Windows API.
     /// I tried re-using the server and it acted strange. The official Tokio
     /// examples are not clear on this.
-    pub(crate) async fn accept(mut self) -> Result<Secret<Vec<u8>>> {
+    pub async fn accept(mut self) -> Result<Secret<Vec<u8>>> {
         self.inner
             .connect()
             .await
@@ -105,12 +109,8 @@ fn pipe_path() -> String {
 ///
 /// This is copied almost verbatim from tauri-plugin-deep-link's `register` fn, with an improvement
 /// that we send the deep link to a subcommand so the URL won't confuse `clap`
-pub fn register() -> Result<()> {
-    let exe = tauri_utils::platform::current_exe()
-        .context("Can't find our own exe path")?
-        .display()
-        .to_string()
-        .replace("\\\\?\\", "");
+pub fn register(exe: PathBuf) -> Result<()> {
+    let exe = exe.display().to_string().replace("\\\\?\\", "");
 
     set_registry_values(BUNDLE_ID, &exe).context("Can't set Windows Registry values")?;
 

@@ -3,7 +3,7 @@
 // The IPC parts use the same primitives as the IPC service, UDS on Linux
 // and named pipes on Windows, so TODO de-dupe the IPC code
 
-use crate::client::auth::Response as AuthResponse;
+use crate::auth;
 use anyhow::{bail, Context as _, Result};
 use secrecy::{ExposeSecret, SecretString};
 use url::Url;
@@ -34,9 +34,9 @@ pub enum Error {
     Other(#[from] anyhow::Error),
 }
 
-pub(crate) use imp::{open, register, Server};
+pub use imp::{open, register, Server};
 
-pub(crate) fn parse_auth_callback(url_secret: &SecretString) -> Result<AuthResponse> {
+pub fn parse_auth_callback(url_secret: &SecretString) -> Result<auth::Response> {
     let url = Url::parse(url_secret.expose_secret())?;
     if Some(url::Host::Domain("handle_client_sign_in_callback")) != url.host() {
         bail!("URL host should be `handle_client_sign_in_callback`");
@@ -76,7 +76,7 @@ pub(crate) fn parse_auth_callback(url_secret: &SecretString) -> Result<AuthRespo
         }
     }
 
-    Ok(AuthResponse {
+    Ok(auth::Response {
         actor_name: actor_name.context("URL should have `actor_name`")?,
         fragment: fragment.context("URL should have `fragment`")?,
         state: state.context("URL should have `state`")?,
@@ -85,6 +85,7 @@ pub(crate) fn parse_auth_callback(url_secret: &SecretString) -> Result<AuthRespo
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use anyhow::{Context, Result};
     use secrecy::{ExposeSecret, SecretString};
 
@@ -133,7 +134,7 @@ mod tests {
         Ok(())
     }
 
-    fn parse_callback_wrapper(s: &str) -> Result<super::AuthResponse> {
+    fn parse_callback_wrapper(s: &str) -> Result<auth::Response> {
         super::parse_auth_callback(&SecretString::new(s.to_owned()))
     }
 
