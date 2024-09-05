@@ -288,20 +288,38 @@ resource "google_compute_ssl_policy" "application" {
 }
 
 ## Create a managed SSL certificate
+locals {
+  ssl_managed_domains = distinct(compact([
+    var.application_dns_tld_v4,
+    var.application_dns_tld_v6
+  ]))
+}
+
+# This is a black magic to ensure that the certificate is recreated when the domains change,
+# see https://github.com/hashicorp/terraform-provider-google/issues/5356#issuecomment-617974978
+resource "random_id" "certificate" {
+  byte_length = 4
+
+  keepers = {
+    domains = join(",", local.ssl_managed_domains)
+  }
+}
+
 resource "google_compute_managed_ssl_certificate" "default" {
   count = local.public_application ? 1 : 0
 
   project = var.project_id
 
-  name = "${local.application_name}-mig-lb-cert"
+  name = "${local.application_name}-mig-lb-cert-v${random_id.certificate.hex}"
 
   type = "MANAGED"
 
   managed {
-    domains = [
-      var.application_dns_tld_v4,
-      var.application_dns_tld_v6,
-    ]
+    domains = local.ssl_managed_domains
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 
   depends_on = [
@@ -364,7 +382,7 @@ resource "google_compute_target_https_proxy" "default" {
 
   url_map = google_compute_url_map.default[0].self_link
 
-  ssl_certificates = google_compute_managed_ssl_certificate.default[*].self_link
+  ssl_certificates = [for cert in google_compute_managed_ssl_certificate.default : cert.id]
   ssl_policy       = google_compute_ssl_policy.application[0].self_link
   quic_override    = "NONE"
 }
