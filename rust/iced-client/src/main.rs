@@ -2,13 +2,16 @@ use iced::{
     event, executor,
     multi_window::Application,
     widget::{button, column, container, text},
-    window, Alignment, Background, Border, Color, Command, Element, Event, Length, Renderer,
+    window, Alignment, Background, Border, Color, Command, Event, Length, Renderer,
     Settings, Subscription,
 };
+
+type Element<'a> = iced::Element<'a, Message, FzTheme, Renderer>;
 
 pub fn main() -> iced::Result {
     let mut settings = Settings::default();
     settings.window.exit_on_close_request = false;
+    settings.window.size = [640, 480].into();
     FirezoneApp::run(settings)
 }
 
@@ -24,6 +27,13 @@ enum Message {
     IncrementPressed,
     DecrementPressed,
     SubscribedEvent(iced::Event),
+    Quit,
+}
+
+enum FzWindow {
+    About,
+    Settings,
+    Welcome,
 }
 
 impl Application for FirezoneApp {
@@ -33,8 +43,12 @@ impl Application for FirezoneApp {
     type Theme = FzTheme;
 
     fn new(_flags: ()) -> (Self, Command<Message>) {
-        let (about_window, about_cmd) = window::spawn(Default::default());
-        let (settings_window, settings_cmd) = window::spawn(Default::default());
+        let mut settings = window::Settings::default();
+        settings.exit_on_close_request = false;
+        settings.size = [640, 480].into();
+
+        let (about_window, about_cmd) = window::spawn(settings.clone());
+        let (settings_window, settings_cmd) = window::spawn(settings.clone());
         (
             Self {
                 about_window,
@@ -55,15 +69,11 @@ impl Application for FirezoneApp {
         Default::default()
     }
 
-    fn title(&self, window: window::Id) -> String {
-        if window == self.about_window {
-            "About Firezone"
-        } else if window == self.settings_window {
-            "Firezone Settings"
-        } else if window == self.welcome_window {
-            "Welcome to Firezone"
-        } else {
-            panic!("Impossible - Can't generate title for window we didn't make.")
+    fn title(&self, id: window::Id) -> String {
+        match self.fz_window(id) {
+            FzWindow::About => "About Firezone",
+            FzWindow::Settings => "Settings",
+            FzWindow::Welcome => "Welcome to Firezone",
         }
         .into()
     }
@@ -80,23 +90,54 @@ impl Application for FirezoneApp {
                 return window::change_mode::<Message>(id, window::Mode::Hidden)
             }
             Message::SubscribedEvent(_) => {}
+            // Closing all windows causes Iced to exit the app
+            Message::Quit => return Command::batch([
+                window::close(self.about_window),
+                window::close(self.settings_window),
+                window::close(self.welcome_window),
+            ]),
         }
         Command::none()
     }
 
-    fn view(&self, window: window::Id) -> Element<'_, Message, FzTheme, Renderer> {
-        match window {
-            _ => self.view_welcome(),
+    fn view(&self, id: window::Id) -> Element {
+        match self.fz_window(id) {
+            FzWindow::About => self.view_about(),
+            FzWindow::Settings => self.view_settings(),
+            FzWindow::Welcome => self.view_welcome(),
         }
     }
 }
 
 impl FirezoneApp {
-    fn view_welcome(&self) -> Element<'_, Message, FzTheme, Renderer> {
+    fn view_about(&self) -> Element {
+        let content = column![
+            text("Version 42.9000"),
+            button("Quit").on_press(Message::Quit).padding(20),
+        ];
+        container(content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x()
+            .center_y()
+            .into()
+    }
+
+    fn view_settings(&self) -> Element {
+        let content = text("Settings");
+        container(content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x()
+            .center_y()
+            .into()
+    }
+
+    fn view_welcome(&self) -> Element {
         let content = column![
             button("Increment").on_press(Message::IncrementPressed),
             text(self.value).size(50),
-            button("Decrement").on_press(Message::DecrementPressed)
+            button("Decrement").on_press(Message::DecrementPressed),
         ]
         .padding(20)
         .align_items(Alignment::Center);
@@ -107,6 +148,18 @@ impl FirezoneApp {
             .center_x()
             .center_y()
             .into()
+    }
+
+    fn fz_window(&self, id: window::Id) -> FzWindow {
+        if id == self.about_window {
+            FzWindow::About
+        } else if id == self.settings_window {
+            FzWindow::Settings
+        } else if id == self.welcome_window {
+            FzWindow::Welcome
+        } else {
+            panic!("Impossible - Can't generate title for window we didn't make.")
+        }
     }
 }
 
