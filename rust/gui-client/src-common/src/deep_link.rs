@@ -133,7 +133,7 @@ mod tests {
         Ok(())
     }
 
-    fn parse_callback_wrapper(s: &str) -> Result<super::AuthResponse> {
+    fn parse_callback_wrapper(s: &str) -> Result<crate::auth::Response> {
         super::parse_auth_callback(&SecretString::new(s.to_owned()))
     }
 
