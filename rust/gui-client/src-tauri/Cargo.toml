@@ -24,7 +24,6 @@ firezone-gui-client-common = { path = "../src-common" }
 firezone-headless-client = { path = "../../headless-client" }
 firezone-logging = { workspace = true }
 native-dialog = "0.7.0"
-png = "0.17.13" # `png` is free since we already need it for Tauri
 rand = "0.8.5"
 rustls = { workspace = true }
 sadness-generator = "0.5.0"

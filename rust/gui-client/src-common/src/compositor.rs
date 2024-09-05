@@ -11,20 +11,10 @@
 
 use anyhow::{ensure, Context as _, Result};
 
-pub(crate) struct Image {
-    width: u32,
-    height: u32,
-    rgba: Vec<u8>,
-}
-
-impl From<Image> for tauri::Icon {
-    fn from(val: Image) -> Self {
-        Self::Rgba {
-            rgba: val.rgba,
-            width: val.width,
-            height: val.height,
-        }
-    }
+pub struct Image {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
 }
 
 /// Builds up an image via painter's algorithm
@@ -39,7 +29,7 @@ impl From<Image> for tauri::Icon {
 ///
 /// An `Image` with the same dimensions as the first layer.
 
-pub(crate) fn compose<'a, I: IntoIterator<Item = &'a [u8]>>(layers: I) -> Result<Image> {
+pub fn compose<'a, I: IntoIterator<Item = &'a [u8]>>(layers: I) -> Result<Image> {
     let mut dst = None;
 
     for layer in layers {

@@ -9,6 +9,7 @@ use crate::client::{
     Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
+use common::system_tray::Event as TrayMenuEvent;
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
 use firezone_gui_client_common::{
     self as common, auth, crash_handling, deep_link, ipc, settings::AdvancedSettings, updates,
@@ -24,7 +25,6 @@ use std::{
     str::FromStr,
     time::{Duration, Instant},
 };
-use system_tray::Event as TrayMenuEvent;
 use tauri::{Manager, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
@@ -712,7 +712,7 @@ impl Controller {
             }
             IpcServerMsg::TerminatingGracefully => {
                 tracing::info!("Caught TerminatingGracefully");
-                self.tray.set_icon(system_tray::Icon::terminating()).ok();
+                self.tray.set_icon(system_tray::icon_terminating()).ok();
                 Err(Error::IpcServiceTerminating)
             }
             IpcServerMsg::TunnelReady => {
@@ -848,11 +848,13 @@ impl Controller {
             match &self.status {
                 Status::Disconnected => {
                     tracing::error!("We have an auth session but no connlib session");
-                    system_tray::ConnlibState::SignedOut
+                    common::system_tray::ConnlibState::SignedOut
                 }
-                Status::RetryingConnection { .. } => system_tray::ConnlibState::RetryingConnection,
+                Status::RetryingConnection { .. } => {
+                    common::system_tray::ConnlibState::RetryingConnection
+                }
                 Status::TunnelReady { resources } => {
-                    system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
+                    common::system_tray::ConnlibState::SignedIn(common::system_tray::SignedIn {
                         actor_name: &auth_session.actor_name,
                         favorite_resources: &self.advanced_settings.favorite_resources,
                         internet_resource_enabled: &self
@@ -861,16 +863,20 @@ impl Controller {
                         resources,
                     })
                 }
-                Status::WaitingForPortal { .. } => system_tray::ConnlibState::WaitingForPortal,
-                Status::WaitingForTunnel { .. } => system_tray::ConnlibState::WaitingForTunnel,
+                Status::WaitingForPortal { .. } => {
+                    common::system_tray::ConnlibState::WaitingForPortal
+                }
+                Status::WaitingForTunnel { .. } => {
+                    common::system_tray::ConnlibState::WaitingForTunnel
+                }
             }
         } else if self.auth.ongoing_request().is_ok() {
             // Signing in, waiting on deep link callback
-            system_tray::ConnlibState::WaitingForBrowser
+            common::system_tray::ConnlibState::WaitingForBrowser
         } else {
-            system_tray::ConnlibState::SignedOut
+            common::system_tray::ConnlibState::SignedOut
         };
-        self.tray.update(system_tray::AppState {
+        self.tray.update(common::system_tray::AppState {
             connlib,
             release: self.release.clone(),
         })?;
@@ -904,10 +910,10 @@ impl Controller {
         Ok(())
     }
 
-    fn show_window(&self, window: system_tray::Window) -> Result<()> {
+    fn show_window(&self, window: common::system_tray::Window) -> Result<()> {
         let id = match window {
-            system_tray::Window::About => "about",
-            system_tray::Window::Settings => "settings",
+            common::system_tray::Window::About => "about",
+            common::system_tray::Window::Settings => "settings",
         };
 
         let win = self
