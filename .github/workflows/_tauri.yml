@@ -87,6 +87,8 @@ jobs:
       - name: Build release exe and MSI / deb
         # Signs the exe before bundling it into the MSI
         run: pnpm build
+      - name: Debug
+        run: git diff
       # We need to sign the exe inside the MSI. Currently
       # we do this in a "beforeBundleCommand" hook in tauri.windows.conf.json.
       # But this will soon be natively supported in Tauri.
