@@ -136,6 +136,7 @@ fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
 /// Routes will be created upon [`create`](RoutingTableEntry::create) and removed on [`Drop`].
 struct RoutingTableEntry {
     entry: MIB_IPFORWARD_ROW2,
+    route: IpAddr,
 }
 
 impl RoutingTableEntry {
@@ -168,18 +169,24 @@ impl RoutingTableEntry {
 
         tracing::debug!(%route, "Created new route");
 
-        Ok(Self { entry: prototype })
+        Ok(Self {
+            entry: prototype,
+            route,
+        })
     }
 }
 
 impl Drop for RoutingTableEntry {
     fn drop(&mut self) {
+        let iface_idx = self.entry.InterfaceIndex;
+
         // Safety: The entry we stored is valid.
-        let Err(e) = unsafe { DeleteIpForwardEntry2(&self.entry) }.ok() else {
+        if let Err(e) = unsafe { DeleteIpForwardEntry2(&self.entry) }.ok() {
+            tracing::warn!("Failed to delete routing entry: {e}");
             return;
         };
 
-        tracing::warn!("Failed to delete routing entry: {e}");
+        tracing::debug!(route = %self.route, %iface_idx, "Deleted route");
     }
 }
 
