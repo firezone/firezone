@@ -307,6 +307,10 @@ resource "google_compute_managed_ssl_certificate" "default" {
     google_project_service.compute,
     google_project_service.servicenetworking,
   ]
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 ## Create URL map for the application
