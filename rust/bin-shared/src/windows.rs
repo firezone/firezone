@@ -13,10 +13,10 @@ use std::{
 use windows::Win32::NetworkManagement::{IpHelper::GetAdaptersAddresses, Ndis::NET_LUID_LH};
 use windows::Win32::{
     NetworkManagement::IpHelper::{
-        CreateIpForwardEntry2, DeleteIpForwardEntry2, GetBestRoute2, GET_ADAPTERS_ADDRESSES_FLAGS,
-        IP_ADAPTER_ADDRESSES_LH, MIB_IPFORWARD_ROW2,
+        CreateIpForwardEntry2, DeleteIpForwardEntry2, GetBestRoute2, GetIpForwardTable2,
+        GET_ADAPTERS_ADDRESSES_FLAGS, IP_ADAPTER_ADDRESSES_LH, MIB_IPFORWARD_ROW2,
     },
-    Networking::WinSock::{ADDRESS_FAMILY, AF_UNSPEC, SOCKADDR_INET},
+    Networking::WinSock::{ADDRESS_FAMILY, AF_INET, AF_INET6, AF_UNSPEC, SOCKADDR_INET},
 };
 
 /// Hides Powershell's console on Windows
@@ -55,6 +55,51 @@ pub fn app_local_data_dir() -> Result<PathBuf> {
 }
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
+    let mut table = std::ptr::null();
+    let ip_family = match addr {
+        IpAddr::V4(_) => AF_INET,
+        IpAddr::V6(_) => AF_INET6,
+    };
+
+    unsafe { GetIpForwardTable2(ip_family, (&mut table).as_mut_ptr()) }
+        .ok()
+        .map_err(io::Error::other)?;
+
+    let maybe_table = unsafe { table.as_ref() };
+    let table = maybe_table.ok_or(io::Error::other("IP routing table is null"))?;
+    let mut entry = table.Table.as_ptr();
+
+    for _ in 0..table.NumEntries {
+        entry = entry.offset(1);
+
+        let dp = entry.DestinationPrefix;
+
+        let route = match addr {
+            IpAddr::V4(_) => {
+                if dp.PrefixLength != 32 {
+                    continue;
+                }
+
+                IpAddr::V4(dp.Prefix.Ipv4.sin_addr.into())
+            }
+            IpAddr::V6(_) => {
+                if dp.PrefixLength != 128 {
+                    continue;
+                };
+
+                IpAddr::V6(dp.Prefix.Ipv6.sin_addr.into())
+            }
+        };
+
+        if route != addr.ip() {
+            continue;
+        }
+
+        if let Err(e) = unsafe { DeleteIpForwardEntry2(&entry) }.ok() {
+            tracing::warn!("Failed to delete routing entry: {e}");
+        };
+    }
+
     let route = get_best_non_tunnel_route(addr.ip())?;
 
     let mut socket = socket_factory::tcp(addr)?;
