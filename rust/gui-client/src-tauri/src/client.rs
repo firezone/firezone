@@ -1,6 +1,8 @@
 use anyhow::{bail, Context as _, Result};
 use clap::{Args, Parser};
-use firezone_gui_client_common::{self as common, crash_handling, deep_link};
+use firezone_gui_client_common::{
+    self as common, crash_handling, deep_link, settings::AdvancedSettings,
+};
 use std::path::PathBuf;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
@@ -14,8 +16,6 @@ mod logging;
 mod settings;
 mod uptime;
 mod welcome;
-
-use settings::AdvancedSettings;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
@@ -61,7 +61,7 @@ pub(crate) fn run() -> Result<()> {
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
-            let settings = settings::load_advanced_settings().unwrap_or_default();
+            let settings = common::settings::load_advanced_settings().unwrap_or_default();
             // Don't fix the log filter for smoke tests
             let common::logging::Handles {
                 logger: _logger,
@@ -86,7 +86,7 @@ pub(crate) fn run() -> Result<()> {
 /// Automatically logs or shows error dialogs for important user-actionable errors
 // Can't `instrument` this because logging isn't running when we enter it.
 fn run_gui(cli: Cli) -> Result<()> {
-    let mut settings = settings::load_advanced_settings().unwrap_or_default();
+    let mut settings = common::settings::load_advanced_settings().unwrap_or_default();
     fix_log_filter(&mut settings)?;
     let common::logging::Handles {
         logger: _logger,

@@ -5,12 +5,14 @@
 
 use crate::client::{
     self, about, ipc, logging,
-    settings::{self, AdvancedSettings},
+    settings::{self},
     Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
-use firezone_gui_client_common::{self as common, auth, crash_handling, deep_link, updates};
+use firezone_gui_client_common::{
+    self as common, auth, crash_handling, deep_link, settings::AdvancedSettings, updates,
+};
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
@@ -71,7 +73,7 @@ pub(crate) struct Managed {
 #[instrument(skip_all)]
 pub(crate) fn run(
     cli: client::Cli,
-    advanced_settings: settings::AdvancedSettings,
+    advanced_settings: AdvancedSettings,
     reloader: LogFilterReloader,
 ) -> Result<(), Error> {
     // Need to keep this alive so crashes will be handled. Dropping detaches it.
@@ -319,7 +321,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     tokio::time::sleep_until(quit_time).await;
 
     // Write the settings so we can check the path for those
-    settings::save(&settings::AdvancedSettings::default()).await?;
+    common::settings::save(&AdvancedSettings::default()).await?;
 
     // Check results of tests
     let zip_len = tokio::fs::metadata(&path)
@@ -335,7 +337,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     tracing::info!(?path, ?zip_len, "Exported log zip looks okay");
 
     // Check that settings file and at least one log file were written
-    anyhow::ensure!(tokio::fs::try_exists(settings::advanced_settings_path()?).await?);
+    anyhow::ensure!(tokio::fs::try_exists(common::settings::advanced_settings_path()?).await?);
 
     tracing::info!("Quitting on purpose because of `smoke-test` subcommand");
     ctlr_tx
@@ -807,7 +809,7 @@ impl Controller {
     }
 
     async fn update_disabled_resources(&mut self) -> Result<()> {
-        settings::save(&self.advanced_settings).await?;
+        common::settings::save(&self.advanced_settings).await?;
 
         let internet_resource = self
             .status
@@ -830,7 +832,7 @@ impl Controller {
 
     /// Saves the current settings (including favorites) to disk and refreshes the tray menu
     async fn refresh_favorite_resources(&mut self) -> Result<()> {
-        settings::save(&self.advanced_settings).await?;
+        common::settings::save(&self.advanced_settings).await?;
         self.refresh_system_tray_menu()?;
         Ok(())
     }
