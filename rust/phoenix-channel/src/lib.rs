@@ -17,9 +17,8 @@ use heartbeat::{Heartbeat, MissedLastHeartbeat};
 use rand_core::{OsRng, RngCore};
 use secrecy::{ExposeSecret, Secret};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use socket_factory::{SocketFactory, TcpSocket};
+use socket_factory::{SocketFactory, TcpSocket, TcpStream};
 use std::task::{Context, Poll, Waker};
-use tokio::net::TcpStream;
 use tokio_tungstenite::client_async_tls;
 use tokio_tungstenite::tungstenite::http::StatusCode;
 use tokio_tungstenite::{

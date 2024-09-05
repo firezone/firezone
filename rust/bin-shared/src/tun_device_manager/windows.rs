@@ -130,6 +130,8 @@ fn add_route(route: IpNetwork, iface_idx: u32) {
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
     let Err(e) = unsafe { CreateIpForwardEntry2(&entry) }.ok() else {
+        tracing::debug!(%route, %iface_idx, "Created new route");
+
         return;
     };
 
@@ -149,6 +151,8 @@ fn remove_route(route: IpNetwork, iface_idx: u32) {
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
 
     let Err(e) = unsafe { DeleteIpForwardEntry2(&entry) }.ok() else {
+        tracing::debug!(%route, %iface_idx, "Removed route");
+
         return;
     };
 

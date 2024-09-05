@@ -247,6 +247,8 @@ async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
     };
 
     let Err(err) = res else {
+        tracing::debug!(%route, iface_idx = %idx, "Created new route");
+
         return;
     };
 
@@ -267,6 +269,8 @@ async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
     let res = handle.route().del(message).execute().await;
 
     let Err(err) = res else {
+        tracing::debug!(%route, iface_idx = %idx, "Removed route");
+
         return;
     };
 

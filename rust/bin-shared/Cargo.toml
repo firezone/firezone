@@ -14,7 +14,7 @@ git-version = "0.3.9"
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
 socket-factory = { workspace = true }
 thiserror = "1.0.63"
-tokio = { workspace = true, features = ["rt", "sync", "net"] }
+tokio = { workspace = true, features = ["io-util", "net", "rt", "sync"] }
 tracing = { workspace = true }
 tun = { workspace = true }
 

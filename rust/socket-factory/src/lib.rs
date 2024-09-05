@@ -9,7 +9,9 @@ use std::{
 };
 
 use socket2::SockAddr;
+use std::any::Any;
 use std::collections::hash_map::Entry;
+use std::pin::Pin;
 use tokio::io::Interest;
 
 pub trait SocketFactory<S>: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
@@ -24,7 +26,10 @@ pub fn tcp(addr: &SocketAddr) -> io::Result<TcpSocket> {
 
     socket.set_nodelay(true)?;
 
-    Ok(TcpSocket { inner: socket })
+    Ok(TcpSocket {
+        inner: socket,
+        backpack: None,
+    })
 }
 
 pub fn udp(addr: &SocketAddr) -> io::Result<UdpSocket> {
@@ -48,15 +53,66 @@ pub fn udp(addr: &SocketAddr) -> io::Result<UdpSocket> {
 
 pub struct TcpSocket {
     inner: tokio::net::TcpSocket,
+    /// A location to store additional data with the [`TcpSocket`].
+    backpack: Option<Box<dyn Any + Send + Sync + Unpin + 'static>>,
 }
 
 impl TcpSocket {
-    pub async fn connect(self, addr: SocketAddr) -> io::Result<tokio::net::TcpStream> {
-        self.inner.connect(addr).await
+    pub async fn connect(self, addr: SocketAddr) -> io::Result<TcpStream> {
+        let tcp_stream = self.inner.connect(addr).await?;
+
+        Ok(TcpStream {
+            inner: tcp_stream,
+            _backpack: self.backpack,
+        })
     }
 
     pub fn bind(&self, addr: SocketAddr) -> io::Result<()> {
         self.inner.bind(addr)
+    }
+
+    /// Pack some custom data into the backpack of this [`TcpSocket`].
+    ///
+    /// The data will be carried around until the [`TcpSocket`] is dropped.
+    pub fn pack(&mut self, luggage: impl Any + Send + Sync + Unpin + 'static) {
+        self.backpack = Some(Box::new(luggage));
+    }
+}
+
+pub struct TcpStream {
+    inner: tokio::net::TcpStream,
+    /// A location to store additional data with the [`TcpStream`].
+    _backpack: Option<Box<dyn Any + Send + Sync + Unpin + 'static>>,
+}
+
+impl tokio::io::AsyncWrite for TcpStream {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        Pin::new(&mut self.as_mut().inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Pin::new(&mut self.as_mut().inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), io::Error>> {
+        Pin::new(&mut self.as_mut().inner).poll_shutdown(cx)
+    }
+}
+
+impl tokio::io::AsyncRead for TcpStream {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.as_mut().inner).poll_read(cx, buf)
     }
 }
 

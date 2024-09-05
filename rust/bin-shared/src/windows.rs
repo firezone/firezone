@@ -1,3 +1,4 @@
+use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
 use known_folders::{get_known_folder_path, KnownFolder};
 use socket_factory::{TcpSocket, UdpSocket};
@@ -5,20 +6,21 @@ use std::{
     cmp::Ordering,
     io,
     mem::MaybeUninit,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     path::PathBuf,
     ptr::null,
 };
-use windows::Win32::NetworkManagement::{IpHelper::GetAdaptersAddresses, Ndis::NET_LUID_LH};
-use windows::Win32::Networking::WinSock::SOCKADDR_INET;
+use windows::Win32::NetworkManagement::{
+    IpHelper::{GetAdaptersAddresses, MIB_IPFORWARD_TABLE2},
+    Ndis::NET_LUID_LH,
+};
 use windows::Win32::{
     NetworkManagement::IpHelper::{
-        GetBestRoute2, GET_ADAPTERS_ADDRESSES_FLAGS, IP_ADAPTER_ADDRESSES_LH, MIB_IPFORWARD_ROW2,
+        CreateIpForwardEntry2, DeleteIpForwardEntry2, GetBestRoute2, GetIpForwardTable2,
+        GET_ADAPTERS_ADDRESSES_FLAGS, IP_ADAPTER_ADDRESSES_LH, MIB_IPFORWARD_ROW2,
     },
-    Networking::WinSock::{ADDRESS_FAMILY, AF_UNSPEC},
+    Networking::WinSock::{ADDRESS_FAMILY, AF_INET, AF_INET6, AF_UNSPEC, SOCKADDR_INET},
 };
-
-use crate::TUNNEL_NAME;
 
 /// Hides Powershell's console on Windows
 ///
@@ -56,21 +58,148 @@ pub fn app_local_data_dir() -> Result<PathBuf> {
 }
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
-    let local = get_best_non_tunnel_route(addr.ip())?;
+    delete_all_routing_entries_matching(addr.ip())?;
 
-    let socket = socket_factory::tcp(addr)?;
-    socket.bind((local, 0).into())?; // To avoid routing loops, all TCP sockets are bound to the "best" source IP.
+    let route = get_best_non_tunnel_route(addr.ip())?;
+
+    let mut socket = socket_factory::tcp(addr)?;
+
+    // To avoid routing loops, all TCP sockets are bound to the "best" source IP.
+    // Additionally, we add a dedicated route for the given address to route via the default interface.
+    socket.bind((route.addr, 0).into())?;
+    let entry = RoutingTableEntry::create(addr.ip(), route.original)?;
+
+    socket.pack(entry);
 
     Ok(socket)
 }
 
 pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
-    let source_ip_resolver = |dst| Ok(Some(get_best_non_tunnel_route(dst)?));
+    let source_ip_resolver = |dst| Ok(Some(get_best_non_tunnel_route(dst)?.addr));
 
     let socket =
         socket_factory::udp(src_addr)?.with_source_ip_resolver(Box::new(source_ip_resolver));
 
     Ok(socket)
+}
+
+fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
+    let mut table = std::ptr::null_mut::<MIB_IPFORWARD_TABLE2>();
+    let ip_family = match addr {
+        IpAddr::V4(_) => AF_INET,
+        IpAddr::V6(_) => AF_INET6,
+    };
+
+    // Safety: `ip_family` is initialised and `table` is not-null (we pass a reference that gets coerced to a pointer).
+    unsafe { GetIpForwardTable2(ip_family, &mut table) }
+        .ok()
+        .map_err(io::Error::other)?;
+
+    // Safety: The pointer is aligned.
+    let maybe_table = unsafe { table.as_ref() };
+    let table = maybe_table.ok_or(io::Error::other("IP routing table is null"))?;
+    let mut entry = table.Table.as_ptr();
+
+    for _ in 0..table.NumEntries {
+        // Safety: We never offset beyond the number of entries.
+        entry = unsafe { entry.offset(1) };
+        // Safety: The pointer is aligned.
+        let maybe_entry_ref = unsafe { entry.as_ref() };
+        let Some(entry_ref) = maybe_entry_ref else {
+            continue; // Better safe than sorry.
+        };
+
+        let dp = entry_ref.DestinationPrefix;
+
+        let route = match addr {
+            IpAddr::V4(_) if dp.PrefixLength == 32 => {
+                // Safety: Any 32 bit number is a valid IPv4 address
+                IpAddr::V4(unsafe { dp.Prefix.Ipv4 }.sin_addr.into())
+            }
+            IpAddr::V6(_) if dp.PrefixLength == 128 => {
+                // Safety: Any 128 bit number is a valid IPv6 address
+                IpAddr::V6(unsafe { dp.Prefix.Ipv6 }.sin6_addr.into())
+            }
+            IpAddr::V4(_) | IpAddr::V6(_) => continue,
+        };
+
+        if route != addr {
+            continue;
+        }
+
+        let iface_idx = entry_ref.InterfaceIndex;
+
+        // Safety: The `entry` is initialised.
+        if let Err(e) = unsafe { DeleteIpForwardEntry2(entry) }.ok() {
+            tracing::warn!("Failed to remove routing entry: {e}");
+            continue;
+        };
+
+        tracing::debug!(%route, %iface_idx, "Removed stale route entry");
+    }
+
+    Ok(())
+}
+
+/// Represents an entry in Windows' routing table.
+///
+/// Routes will be created upon [`create`](RoutingTableEntry::create) and removed on [`Drop`].
+struct RoutingTableEntry {
+    entry: MIB_IPFORWARD_ROW2,
+    route: IpAddr,
+}
+
+impl RoutingTableEntry {
+    /// Creates a new routing table entry by using the given prototype and overriding the route.
+    fn create(route: IpAddr, mut prototype: MIB_IPFORWARD_ROW2) -> io::Result<Self> {
+        const DUPLICATE_ERR: u32 = 0x80071392;
+
+        let prefix = &mut prototype.DestinationPrefix;
+        match route {
+            IpAddr::V4(x) => {
+                prefix.PrefixLength = 32;
+                prefix.Prefix.Ipv4 = SocketAddrV4::new(x, 0).into();
+            }
+            IpAddr::V6(x) => {
+                prefix.PrefixLength = 128;
+                prefix.Prefix.Ipv6 = SocketAddrV6::new(x, 0, 0, 0).into();
+            }
+        }
+
+        // Safety: The prototype is initialised correctly.
+        unsafe { CreateIpForwardEntry2(&prototype) }
+            .ok()
+            .or_else(|e| {
+                if e.code().0 as u32 == DUPLICATE_ERR {
+                    Ok(())
+                } else {
+                    Err(io::Error::other(e))
+                }
+            })?;
+
+        let iface_idx = prototype.InterfaceIndex;
+
+        tracing::debug!(%route, %iface_idx, "Created new route");
+
+        Ok(Self {
+            entry: prototype,
+            route,
+        })
+    }
+}
+
+impl Drop for RoutingTableEntry {
+    fn drop(&mut self) {
+        let iface_idx = self.entry.InterfaceIndex;
+
+        // Safety: The entry we stored is valid.
+        if let Err(e) = unsafe { DeleteIpForwardEntry2(&self.entry) }.ok() {
+            tracing::warn!("Failed to delete routing entry: {e}");
+            return;
+        };
+
+        tracing::debug!(route = %self.route, %iface_idx, "Removed route");
+    }
 }
 
 /// Finds the best route (i.e. source interface) for a given destination IP, excluding our TUN interface.
@@ -84,19 +213,16 @@ pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
 /// This function performs multiple syscalls and is thus fairly expensive.
 /// It should **not** be called on a per-packet basis.
 /// Callers should instead cache the result until network interfaces change.
-fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<IpAddr> {
+fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<Route> {
     let route = list_adapters()?
         .filter(|adapter| !is_tun(adapter))
-        .map(|adapter| adapter.Luid)
-        .filter_map(|luid| find_best_route_for_luid(&luid, dst).ok())
+        .filter_map(|adapter| find_best_route_for_luid(&adapter.Luid, dst).ok())
         .min()
         .ok_or(io::Error::other("No route to host"))?;
 
-    let src = route.addr;
+    tracing::debug!(src = %route.addr, %dst, "Resolved best route outside of tunnel interface");
 
-    tracing::debug!(%src, %dst, "Resolved best route outside of tunnel interface");
-
-    Ok(src)
+    Ok(route)
 }
 
 struct Adapters {
@@ -173,10 +299,11 @@ fn is_tun(adapter: &IP_ADAPTER_ADDRESSES_LH) -> bool {
     friendly_name == TUNNEL_NAME
 }
 
-#[derive(PartialEq, Eq)]
 struct Route {
     metric: u32,
     addr: IpAddr,
+
+    original: MIB_IPFORWARD_ROW2,
 }
 
 impl Ord for Route {
@@ -190,6 +317,14 @@ impl PartialOrd for Route {
         Some(self.cmp(other))
     }
 }
+
+impl PartialEq for Route {
+    fn eq(&self, other: &Self) -> bool {
+        self.metric.eq(&other.metric) && self.addr.eq(&other.addr)
+    }
+}
+
+impl Eq for Route {}
 
 fn find_best_route_for_luid(luid: &NET_LUID_LH, dst: IpAddr) -> Result<Route> {
     let addr: SOCKADDR_INET = SocketAddr::from((dst, 0)).into();
@@ -220,6 +355,7 @@ fn find_best_route_for_luid(luid: &NET_LUID_LH, dst: IpAddr) -> Result<Route> {
         addr: unsafe { to_ip_addr(best_src, dst) }
             .ok_or(io::Error::other("can't find a valid route"))?,
         metric: best_route.Metric,
+        original: best_route,
     })
 }
 
