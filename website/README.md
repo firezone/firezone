@@ -9,7 +9,7 @@ First, install dependencies and populate the `timestamps.json` file:
 pnpm setup
 ```
 
-Next, create files `.env.local` and `.env.development.local` in this directory. 
+Next, create files `.env.local` and `.env.development.local` in this directory.
 
 Put this in `.env.local`:
 
@@ -31,7 +31,6 @@ VERCEL_DEEP_CLONE=""
 ```
 
 After that, make sure to contact the team for their values.
-
 
 Then, run the development server:
 
