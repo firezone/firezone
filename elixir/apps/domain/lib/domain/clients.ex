@@ -107,7 +107,7 @@ defmodule Domain.Clients do
   @doc false
   def preload_clients_presence([client]) do
     client.account_id
-    |> account_presence_topic()
+    |> account_clients_presence_topic()
     |> Presence.get_by_key(client.id)
     |> case do
       [] -> %{client | online?: false}
@@ -124,7 +124,7 @@ defmodule Domain.Clients do
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq()
       |> Enum.reduce(%{}, fn account_id, acc ->
-        connected_clients = account_id |> account_presence_topic() |> Presence.list()
+        connected_clients = account_id |> account_clients_presence_topic() |> Presence.list()
         Map.merge(acc, connected_clients)
       end)
 
@@ -181,6 +181,14 @@ defmodule Domain.Clients do
         with: &Client.Changeset.update(&1, attrs),
         preload: [:online?]
       )
+      |> case do
+        {:ok, client} ->
+          :ok = broadcast_to_client(client, :updated)
+          {:ok, client}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -197,6 +205,7 @@ defmodule Domain.Clients do
       |> case do
         {:ok, client} ->
           client = Repo.preload(client, [:verified_by_actor, :verified_by_identity])
+          :ok = broadcast_to_client(client, :updated)
           {:ok, client}
 
         {:error, reason} ->
@@ -215,6 +224,14 @@ defmodule Domain.Clients do
         with: &Client.Changeset.remove_verification(&1),
         preload: [:online?]
       )
+      |> case do
+        {:ok, client} ->
+          :ok = broadcast_to_client(client, :updated)
+          {:ok, client}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -274,56 +291,57 @@ defmodule Domain.Clients do
 
   def connect_client(%Client{} = client) do
     with {:ok, _} <-
-           Presence.track(self(), account_presence_topic(client.account_id), client.id, %{
+           Presence.track(self(), account_clients_presence_topic(client.account_id), client.id, %{
              online_at: System.system_time(:second)
            }),
-         {:ok, _} <- Presence.track(self(), actor_presence_topic(client.actor_id), client.id, %{}) do
+         {:ok, _} <-
+           Presence.track(self(), actor_clients_presence_topic(client.actor_id), client.id, %{}) do
       :ok = PubSub.subscribe(client_topic(client))
-      # :ok = PubSub.subscribe(actor_topic(client.actor_id))
+      # :ok = PubSub.subscribe(actor_clients_topic(client.actor_id))
       # :ok = PubSub.subscribe(identity_topic(client.actor_id))
-      :ok = PubSub.subscribe(account_topic(client.account_id))
+      :ok = PubSub.subscribe(account_clients_topic(client.account_id))
       :ok
     end
   end
 
   ### Presence
 
-  def account_presence_topic(account_or_id),
-    do: "presences:#{account_topic(account_or_id)}"
+  def account_clients_presence_topic(account_or_id),
+    do: "presences:#{account_clients_topic(account_or_id)}"
 
-  defp actor_presence_topic(actor_or_id),
-    do: "presences:#{actor_topic(actor_or_id)}"
+  defp actor_clients_presence_topic(actor_or_id),
+    do: "presences:#{actor_clients_topic(actor_or_id)}"
 
   ### PubSub
 
   defp client_topic(%Client{} = client), do: client_topic(client.id)
   defp client_topic(client_id), do: "clients:#{client_id}"
 
-  defp account_topic(%Accounts.Account{} = account), do: account_topic(account.id)
-  defp account_topic(account_id), do: "account_clients:#{account_id}"
+  defp account_clients_topic(%Accounts.Account{} = account), do: account_clients_topic(account.id)
+  defp account_clients_topic(account_id), do: "account_clients:#{account_id}"
 
-  defp actor_topic(%Actors.Actor{} = actor), do: actor_topic(actor.id)
-  defp actor_topic(actor_id), do: "actor_clients:#{actor_id}"
+  defp actor_clients_topic(%Actors.Actor{} = actor), do: actor_clients_topic(actor.id)
+  defp actor_clients_topic(actor_id), do: "actor_clients:#{actor_id}"
 
   def subscribe_to_clients_presence_in_account(account_or_id) do
-    PubSub.subscribe(account_presence_topic(account_or_id))
+    PubSub.subscribe(account_clients_presence_topic(account_or_id))
   end
 
   def unsubscribe_from_clients_presence_in_account(account_or_id) do
-    PubSub.unsubscribe(account_presence_topic(account_or_id))
+    PubSub.unsubscribe(account_clients_presence_topic(account_or_id))
   end
 
   def subscribe_to_clients_presence_for_actor(actor_or_id) do
-    PubSub.subscribe(actor_presence_topic(actor_or_id))
+    PubSub.subscribe(actor_clients_presence_topic(actor_or_id))
   end
 
   def unsubscribe_from_clients_presence_for_actor(actor_or_id) do
-    PubSub.unsubscribe(actor_presence_topic(actor_or_id))
+    PubSub.unsubscribe(actor_clients_presence_topic(actor_or_id))
   end
 
   def broadcast_to_account_clients(account_or_id, payload) do
     account_or_id
-    |> account_topic()
+    |> account_clients_topic()
     |> PubSub.broadcast(payload)
   end
 
@@ -335,7 +353,7 @@ defmodule Domain.Clients do
 
   defp broadcast_to_actor_clients(actor_or_id, payload) do
     actor_or_id
-    |> actor_topic()
+    |> actor_clients_topic()
     |> PubSub.broadcast(payload)
   end
 

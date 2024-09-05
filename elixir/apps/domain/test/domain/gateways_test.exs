@@ -274,6 +274,19 @@ defmodule Domain.GatewaysTest do
       assert group.name == "foo"
     end
 
+    test "broadcasts an update event", %{account: account, subject: subject} do
+      group = Fixtures.Gateways.create_group(account: account)
+      :ok = subscribe_to_group_updates(group)
+
+      attrs = %{
+        name: "foo"
+      }
+
+      assert {:ok, _group} = update_group(group, attrs, subject)
+
+      assert_receive :updated
+    end
+
     test "returns error when subject has no permission to manage groups", %{
       account: account,
       subject: subject

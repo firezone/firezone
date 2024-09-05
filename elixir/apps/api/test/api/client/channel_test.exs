@@ -156,7 +156,8 @@ defmodule API.Client.ChannelTest do
 
   describe "join/3" do
     test "tracks presence after join", %{account: account, client: client} do
-      presence = Domain.Clients.Presence.list(Domain.Clients.account_presence_topic(account))
+      presence =
+        Domain.Clients.Presence.list(Domain.Clients.account_clients_presence_topic(account))
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, client.id)
       assert is_number(online_at)
@@ -714,6 +715,18 @@ defmodule API.Client.ChannelTest do
                  %{protocol: :ip_port, address: "1.8.8.1:53"}
                ]
              }
+    end
+  end
+
+  describe "handle_info/2 :updated" do
+    test "sends init message", %{
+      socket: socket
+    } do
+      assert_push "init", %{}
+
+      send(socket.channel_pid, :updated)
+
+      assert_push "init", %{}
     end
   end
 

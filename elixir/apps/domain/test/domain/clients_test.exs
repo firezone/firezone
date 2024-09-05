@@ -659,11 +659,15 @@ defmodule Domain.ClientsTest do
       unprivileged_subject: subject
     } do
       client = Fixtures.Clients.create_client(actor: actor)
+      :ok = Domain.PubSub.subscribe("clients:#{client.id}")
+
       attrs = %{name: "new name"}
 
       assert {:ok, client} = update_client(client, attrs, subject)
 
       assert client.name == attrs.name
+
+      assert_receive :updated
     end
 
     test "does not allow unprivileged actor to update other actors clients", %{
@@ -757,12 +761,15 @@ defmodule Domain.ClientsTest do
   describe "verify_client/2" do
     test "allows admin actor to verify clients", %{admin_actor: actor, admin_subject: subject} do
       client = Fixtures.Clients.create_client(actor: actor)
+      :ok = Domain.PubSub.subscribe("clients:#{client.id}")
 
       assert {:ok, client} = verify_client(client, subject)
       assert client.verified_at
       assert client.verified_by == :identity
       assert client.verified_by_actor_id == subject.actor.id
       assert client.verified_by_identity_id == subject.identity.id
+
+      assert_receive :updated
 
       assert {:ok, double_verified_client} = verify_client(client, subject)
       assert double_verified_client.verified_at == client.verified_at
@@ -794,6 +801,7 @@ defmodule Domain.ClientsTest do
       admin_subject: subject
     } do
       client = Fixtures.Clients.create_client(actor: actor)
+      :ok = Domain.PubSub.subscribe("clients:#{client.id}")
 
       assert {:ok, client} = verify_client(client, subject)
       assert {:ok, client} = remove_client_verification(client, subject)
@@ -802,6 +810,8 @@ defmodule Domain.ClientsTest do
       assert is_nil(client.verified_by)
       assert is_nil(client.verified_by_actor_id)
       assert is_nil(client.verified_by_identity_id)
+
+      assert_receive :updated
     end
 
     test "returns error when subject has no permission to verify clients", %{
