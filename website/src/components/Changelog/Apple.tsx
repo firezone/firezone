@@ -10,11 +10,15 @@ export default function Apple() {
       title="macOS / iOS"
     >
       {/*
-      <Entry version="1.3.1" date={new Date("2024-08-31")}>
+      <Entry version="1.3.1" date={new Date("2024-09-05")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6521">
             Gracefully handles cases where the device's local interface IPv4/IPv6 address or
             local network gateway changes while the client is connected.
+          </ChangeItem>
+          <ChangeItem pull="6518">
+            Minor improvements to the look of the internet resource and makes
+            the Internet resource off by default.
           </ChangeItem>
         </ul>
       </Entry>
