@@ -60,14 +60,6 @@ fn image_to_tauri_icon(val: Image) -> tauri::Icon {
     }
 }
 
-/// Generic icon for unusual terminating cases like if the IPC service stops running
-pub(crate) fn icon_terminating() -> Icon {
-    Icon {
-        base: IconBase::SignedOut,
-        update_ready: false,
-    }
-}
-
 impl Tray {
     pub(crate) fn new(handle: SystemTrayHandle) -> Self {
         Self {

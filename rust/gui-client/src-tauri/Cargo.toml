@@ -13,7 +13,6 @@ tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
 anyhow = { version = "1.0" }
-arboard = { version = "3.4.0", default-features = false }
 atomicwrites = "0.4.3"
 chrono = { workspace = true }
 clap = { version = "4.5", features = ["derive",  "env"] }

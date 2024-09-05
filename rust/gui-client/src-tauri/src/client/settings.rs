@@ -1,9 +1,12 @@
 //! Everything related to the Settings window, including
 //! advanced settings and code for manipulating diagnostic logs.
 
-use crate::client::gui::{self, ControllerRequest, Managed};
+use crate::client::gui::Managed;
 use anyhow::Result;
-use firezone_gui_client_common::settings::{save, AdvancedSettings};
+use firezone_gui_client_common::{
+    controller::{ControllerRequest, CtlrTx},
+    settings::{save, AdvancedSettings},
+};
 use std::time::Duration;
 use tokio::sync::oneshot;
 
@@ -33,7 +36,7 @@ pub(crate) async fn reset_advanced_settings(
 }
 
 /// Saves the settings to disk and then tells `Controller` to apply them in-memory
-async fn apply_inner(ctlr_tx: &gui::CtlrTx, settings: AdvancedSettings) -> Result<()> {
+async fn apply_inner(ctlr_tx: &CtlrTx, settings: AdvancedSettings) -> Result<()> {
     save(&settings).await?;
     // TODO: Errors aren't handled here. But there isn't much that can go wrong
     // since it's just applying a new `Settings` object in memory.

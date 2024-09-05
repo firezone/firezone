@@ -1,7 +1,7 @@
 use anyhow::{bail, Context as _, Result};
 use clap::{Args, Parser};
 use firezone_gui_client_common::{
-    self as common, crash_handling, deep_link, settings::AdvancedSettings,
+    self as common, controller::Failure, crash_handling, deep_link, settings::AdvancedSettings,
 };
 use std::path::PathBuf;
 use tracing::instrument;
@@ -13,13 +13,12 @@ mod elevation;
 mod gui;
 mod logging;
 mod settings;
-mod uptime;
 mod welcome;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     #[error("GUI module error: {0}")]
-    Gui(#[from] gui::Error),
+    Gui(#[from] common::errors::Error),
 }
 
 /// The program's entry point, equivalent to `main`
@@ -42,7 +41,7 @@ pub(crate) fn run() -> Result<()> {
                 Ok(true) => run_gui(cli),
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
                 Err(error) => {
-                    gui::show_error_dialog(&error)?;
+                    common::errors::show_error_dialog(&error)?;
                     Err(error.into())
                 }
             }
@@ -96,7 +95,7 @@ fn run_gui(cli: Cli) -> Result<()> {
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
         tracing::error!(?error, error_msg = %error);
-        gui::show_error_dialog(error)?;
+        common::errors::show_error_dialog(error)?;
     }
 
     Ok(result?)
@@ -182,18 +181,6 @@ impl Cli {
             None
         }
     }
-}
-
-// The failure flags are all mutually exclusive
-// TODO: I can't figure out from the `clap` docs how to do this:
-// `app --fail-on-purpose crash-in-wintun-worker`
-// So the failure should be an `Option<Enum>` but _not_ a subcommand.
-// You can only have one subcommand per container, I've tried
-#[derive(Debug)]
-enum Failure {
-    Crash,
-    Error,
-    Panic,
 }
 
 #[derive(clap::Subcommand)]

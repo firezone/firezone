@@ -1,6 +1,9 @@
-use crate::client::gui::{ControllerRequest, CtlrTx, Managed};
+use crate::client::gui::Managed;
 use anyhow::{bail, Result};
-use firezone_gui_client_common::logging as common;
+use firezone_gui_client_common::{
+    controller::{ControllerRequest, CtlrTx},
+    logging as common,
+};
 use std::path::PathBuf;
 
 #[tauri::command]

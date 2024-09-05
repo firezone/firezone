@@ -136,6 +136,14 @@ pub struct Icon {
     pub update_ready: bool,
 }
 
+/// Generic icon for unusual terminating cases like if the IPC service stops running
+pub(crate) fn icon_terminating() -> Icon {
+    Icon {
+        base: IconBase::SignedOut,
+        update_ready: false,
+    }
+}
+
 #[derive(PartialEq)]
 pub enum IconBase {
     /// Must be equivalent to the default app icon, since we assume this is set when we start
