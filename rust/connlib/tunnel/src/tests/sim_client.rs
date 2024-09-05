@@ -50,6 +50,9 @@ pub(crate) struct SimClient {
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     pub(crate) dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 
+    pub(crate) ipv4_routes: Vec<Ipv4Network>,
+    pub(crate) ipv6_routes: Vec<Ipv6Network>,
+
     pub(crate) sent_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket<'static>>,
     pub(crate) received_dns_responses: BTreeMap<(SocketAddr, QueryId), IpPacket<'static>>,
 
@@ -73,6 +76,8 @@ impl SimClient {
             received_icmp_replies: Default::default(),
             buffer: vec![0u8; (1 << 16) - 1],
             enc_buffer: EncryptBuffer::new((1 << 16) - 1),
+            ipv4_routes: Default::default(),
+            ipv6_routes: Default::default(),
         }
     }
 
@@ -268,6 +273,9 @@ pub struct RefClient {
     /// The upstream DNS resolvers configured in the portal.
     #[derivative(Debug = "ignore")]
     upstream_dns_resolvers: Vec<DnsServer>,
+
+    ipv4_routes: Vec<Ipv4Network>,
+    ipv6_routes: Vec<Ipv6Network>,
 
     /// Tracks all resources in the order they have been added in.
     ///
@@ -655,6 +663,10 @@ impl RefClient {
             .collect()
     }
 
+    pub(crate) fn expected_routes(&self) -> (Vec<Ipv4Network>, Vec<Ipv6Network>) {
+        (self.ipv4_routes.clone(), self.ipv6_routes.clone())
+    }
+
     pub(crate) fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
         // Manually implement `longest_match` because we need to filter disabled resources _before_ we match.
         let (_, r) = self
@@ -830,6 +842,8 @@ fn ref_client(
                     expected_dns_handshakes: Default::default(),
                     disabled_resources: Default::default(),
                     resources: Default::default(),
+                    ipv4_routes: Default::default(),
+                    ipv6_routes: Default::default(),
                 }
             },
         )

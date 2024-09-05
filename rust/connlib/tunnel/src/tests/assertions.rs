@@ -136,6 +136,19 @@ pub(crate) fn assert_dns_servers_are_valid(ref_client: &RefClient, sim_client: &
     }
 }
 
+pub(crate) fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimClient) {
+    let (expected_ipv4, expected_ipv6) = ref_client.expected_routes();
+    let (actual_ipv4, actual_ipv6) = (&sim_client.ipv4_routes, &sim_client.ipv6_routes);
+
+    if actual_ipv4 != &expected_ipv4 {
+        tracing::error!(target: "assertions", actual = ?actual_ipv4, expected = ?expected_ipv4, "❌ IPv4 routes don't match");
+    }
+
+    if actual_ipv6 != &expected_ipv6 {
+        tracing::error!(target: "assertions", actual = ?actual_ipv6, expected = ?expected_ipv6, "❌ IPv6 routes don't match");
+    }
+}
+
 pub(crate) fn assert_dns_packets_properties(ref_client: &RefClient, sim_client: &SimClient) {
     let unexpected_dns_replies = find_unexpected_entries(
         &ref_client.expected_dns_handshakes,

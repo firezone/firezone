@@ -352,6 +352,7 @@ impl TunnelTest {
         assert_dns_packets_properties(ref_client, sim_client);
         assert_known_hosts_are_valid(ref_client, sim_client);
         assert_dns_servers_are_valid(ref_client, sim_client);
+        assert_routes_are_valid(ref_client, sim_client);
     }
 }
 
@@ -681,7 +682,10 @@ impl TunnelTest {
                 self.client
                     .exec_mut(|c| c.dns_by_sentinel = config.dns_by_sentinel);
             }
-            ClientEvent::TunRoutesUpdated { .. } => {}
+            ClientEvent::TunRoutesUpdated { ip4, ip6 } => self.client.exec_mut(|c| {
+                c.ipv4_routes = ip4;
+                c.ipv6_routes = ip6;
+            }),
             ClientEvent::RequestConnection {
                 gateway_id,
                 offer,
