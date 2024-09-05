@@ -21,8 +21,8 @@ export default function GUI({ title }: { title: string }) {
             the Internet resource off by default.
           </ChangeItem>
           <ChangeItem pull="6584">
-            Prevents routing loops for some windows installation when the
-            Internet resource was on, taking down network connections
+            Prevents routing loops for some Windows installation when the
+            Internet resource was on, taking down network connections.
           </ChangeItem>
         </ul>
       </Entry>
