@@ -4,6 +4,7 @@ package dev.firezone.android.core.data
 import android.content.Context
 import android.content.SharedPreferences
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.data.model.Config
@@ -13,6 +14,40 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import java.security.MessageDigest
 import javax.inject.Inject
+
+const val ON_SYMBOL: String = "<->"
+const val OFF_SYMBOL: String = " — "
+
+enum class ResourceState {
+    @SerializedName("enabled")
+    ENABLED,
+
+    @SerializedName("disabled")
+    DISABLED,
+
+    @SerializedName("unset")
+    UNSET,
+}
+
+fun ResourceState.isEnabled(): Boolean {
+    return this == ResourceState.ENABLED
+}
+
+fun ResourceState.stateSymbol(): String {
+    return if (this.isEnabled()) {
+        ON_SYMBOL
+    } else {
+        OFF_SYMBOL
+    }
+}
+
+fun ResourceState.toggle(): ResourceState {
+    return if (this.isEnabled()) {
+        ResourceState.DISABLED
+    } else {
+        ResourceState.ENABLED
+    }
+}
 
 internal class Repository
     @Inject
@@ -94,14 +129,14 @@ internal class Repository
                 .putString(DEVICE_ID_KEY, value)
                 .apply()
 
-        fun getDisabledResourcesSync(): Set<String> {
-            val jsonString = sharedPreferences.getString(DISABLED_RESOURCES_KEY, null) ?: return hashSetOf()
-            val type = object : TypeToken<HashSet<String>>() {}.type
+        fun getInternetResourceStateSync(): ResourceState {
+            val jsonString = sharedPreferences.getString(ENABLED_INTERNET_RESOURCE_KEY, null) ?: return ResourceState.UNSET
+            val type = object : TypeToken<ResourceState>() {}.type
             return Gson().fromJson(jsonString, type)
         }
 
-        fun saveDisabledResourcesSync(value: Set<String>): Unit =
-            sharedPreferences.edit().putString(DISABLED_RESOURCES_KEY, Gson().toJson(value))
+        fun saveInternetResourceStateSync(value: ResourceState): Unit =
+            sharedPreferences.edit().putString(ENABLED_INTERNET_RESOURCE_KEY, Gson().toJson(value))
                 .apply()
 
         fun saveNonce(value: String): Flow<Unit> =
@@ -183,6 +218,6 @@ internal class Repository
             private const val NONCE_KEY = "nonce"
             private const val STATE_KEY = "state"
             private const val DEVICE_ID_KEY = "deviceId"
-            private const val DISABLED_RESOURCES_KEY = "disabledResources"
+            private const val ENABLED_INTERNET_RESOURCE_KEY = "enabledInternetResource"
         }
     }

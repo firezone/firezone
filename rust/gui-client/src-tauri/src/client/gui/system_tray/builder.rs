@@ -67,10 +67,10 @@ pub(crate) enum Event {
     Url(Url),
     /// Quits the app, without signing the user out
     Quit,
-    /// A resource was enabled in the UI
-    EnableResource(ResourceId),
-    /// A resource was disabled in the UI
-    DisableResource(ResourceId),
+    /// The internet resource was enabled
+    EnableInternetResource,
+    /// The internet resource was disabled
+    DisableInternetResource,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]

@@ -21,9 +21,14 @@ import androidx.fragment.app.activityViewModels
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.android.material.button.MaterialButton
 import dev.firezone.android.R
+import dev.firezone.android.core.data.ResourceState
+import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.tunnel.model.StatusEnum
 
-class ResourceDetailsBottomSheet(private val resource: ViewResource, private val activity: SessionActivity) : BottomSheetDialogFragment() {
+class ResourceDetailsBottomSheet(
+    private val resource: ResourceViewModel,
+    private val internetResourceToggle: () -> ResourceState,
+) : BottomSheetDialogFragment() {
     private lateinit var view: View
     private val viewModel: SessionViewModel by activityViewModels()
 
@@ -50,8 +55,6 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource, private val
         val siteStatusLayout: LinearLayout = view.findViewById(R.id.siteStatusLayout)
 
         resourceHeader()
-
-        refreshDisableToggleButton()
 
         if (!resource.sites.isNullOrEmpty()) {
             val site = resource.sites.first()
@@ -89,11 +92,11 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource, private val
         }
     }
 
-    private fun resourceToggleText(): String {
-        if (resource.enabled) {
-            return "Disable this resource"
+    private fun resourceToggleText(resource: ResourceViewModel): String {
+        return if (resource.state.isEnabled()) {
+            "Disable this resource"
         } else {
-            return "Enable this resource"
+            "Enable this resource"
         }
     }
 
@@ -122,6 +125,8 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource, private val
 
         resourceDescriptionLayout.visibility = View.VISIBLE
         resourceAddressDescriptionTextView.text = "All network traffic"
+
+        refreshDisableToggleButton()
     }
 
     private fun nonInternetResourceHeader() {
@@ -173,17 +178,12 @@ class ResourceDetailsBottomSheet(private val resource: ViewResource, private val
     }
 
     private fun refreshDisableToggleButton() {
-        if (resource.canBeDisabled) {
-            val toggleResourceEnabled: MaterialButton = view.findViewById(R.id.toggleResourceEnabled)
-            toggleResourceEnabled.visibility = View.VISIBLE
-            toggleResourceEnabled.text = resourceToggleText()
-            toggleResourceEnabled.setOnClickListener {
-                resource.enabled = !resource.enabled
-
-                activity.onViewResourceToggled(resource)
-
-                refreshDisableToggleButton()
-            }
+        val toggleResourceEnabled: MaterialButton = view.findViewById(R.id.toggleResourceEnabled)
+        toggleResourceEnabled.visibility = View.VISIBLE
+        toggleResourceEnabled.text = resourceToggleText(resource)
+        toggleResourceEnabled.setOnClickListener {
+            resource.state = internetResourceToggle()
+            refreshDisableToggleButton()
         }
     }
 

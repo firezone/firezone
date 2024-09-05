@@ -18,7 +18,7 @@ pub(crate) struct AdvancedSettings {
     #[serde(default)]
     pub favorite_resources: HashSet<ResourceId>,
     #[serde(default)]
-    pub disabled_resources: HashSet<ResourceId>,
+    pub internet_resource_enabled: Option<bool>,
     pub log_filter: String,
 }
 
@@ -29,7 +29,7 @@ impl Default for AdvancedSettings {
             auth_base_url: Url::parse("https://app.firez.one").unwrap(),
             api_url: Url::parse("wss://api.firez.one").unwrap(),
             favorite_resources: Default::default(),
-            disabled_resources: Default::default(),
+            internet_resource_enabled: Default::default(),
             log_filter: "firezone_gui_client=debug,info".to_string(),
         }
     }
@@ -42,9 +42,15 @@ impl Default for AdvancedSettings {
             auth_base_url: Url::parse("https://app.firezone.dev").unwrap(),
             api_url: Url::parse("wss://api.firezone.dev").unwrap(),
             favorite_resources: Default::default(),
-            disabled_resources: Default::default(),
+            internet_resource_enabled: Default::default(),
             log_filter: "info".to_string(),
         }
+    }
+}
+
+impl AdvancedSettings {
+    pub fn internet_resource_enabled(&self) -> bool {
+        self.internet_resource_enabled.is_some_and(|v| v)
     }
 }
 
