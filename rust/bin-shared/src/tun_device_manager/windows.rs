@@ -6,7 +6,7 @@ use ring::digest;
 use std::{
     collections::HashSet,
     io::{self, Read as _},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
     os::windows::process::CommandExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
