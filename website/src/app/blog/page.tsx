@@ -23,8 +23,6 @@ export default function Page() {
         </div>
       </div>
       <Posts/>
-
-      
     </section>
   );
 }
