@@ -46,7 +46,7 @@ defmodule Domain.Tokens.Token.Changeset do
       :service_account_client
     ])
     |> changeset()
-    |> put_created_by(subject)
+    |> put_subject_trail(:created_by, subject)
   end
 
   defp changeset(changeset) do

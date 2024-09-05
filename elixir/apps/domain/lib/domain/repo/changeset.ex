@@ -139,22 +139,22 @@ defmodule Domain.Repo.Changeset do
     end
   end
 
-  def put_created_by(changeset, :system) do
+  def put_subject_trail(changeset, field, :system) do
     changeset
-    |> put_change(:created_by, :system)
+    |> put_default_value(field, :system)
   end
 
-  def put_created_by(changeset, %Domain.Auth.Subject{identity: nil} = subject) do
+  def put_subject_trail(changeset, field, %Domain.Auth.Subject{identity: nil} = subject) do
     changeset
-    |> put_change(:created_by_actor_id, subject.actor.id)
-    |> put_change(:created_by, :actor)
+    |> put_default_value(field, :actor)
+    |> put_default_value(:"#{field}_actor_id", subject.actor.id)
   end
 
-  def put_created_by(changeset, %Domain.Auth.Subject{} = subject) do
+  def put_subject_trail(changeset, field, %Domain.Auth.Subject{} = subject) do
     changeset
-    |> put_change(:created_by, :identity)
-    |> put_change(:created_by_identity_id, subject.identity.id)
-    |> put_change(:created_by_actor_id, subject.actor.id)
+    |> put_default_value(field, :identity)
+    |> put_default_value(:"#{field}_actor_id", subject.actor.id)
+    |> put_default_value(:"#{field}_identity_id", subject.identity.id)
   end
 
   # Validations

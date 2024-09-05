@@ -114,6 +114,16 @@ defmodule Domain.Clients.Client.Query do
         fun: &filter_by_name_fts/2
       },
       %Domain.Repo.Filter{
+        name: :verification,
+        title: "Verification Status",
+        type: :string,
+        values: [
+          {"Verified", "verified"},
+          {"Not Verified", "not_verified"}
+        ],
+        fun: &filter_by_verification/2
+      },
+      %Domain.Repo.Filter{
         name: :client_or_actor_name,
         title: "Client Name or Actor Name",
         type: {:string, :websearch},
@@ -123,6 +133,14 @@ defmodule Domain.Clients.Client.Query do
 
   def filter_by_name_fts(queryable, name) do
     {queryable, dynamic([clients: clients], fulltext_search(clients.name, ^name))}
+  end
+
+  def filter_by_verification(queryable, "verified") do
+    {queryable, dynamic([clients: clients], not is_nil(clients.verified_at))}
+  end
+
+  def filter_by_verification(queryable, "not_verified") do
+    {queryable, dynamic([clients: clients], is_nil(clients.verified_at))}
   end
 
   def filter_by_client_or_actor_name(queryable, name) do

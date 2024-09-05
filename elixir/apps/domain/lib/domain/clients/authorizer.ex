@@ -4,13 +4,15 @@ defmodule Domain.Clients.Authorizer do
 
   def manage_own_clients_permission, do: build(Client, :manage_own)
   def manage_clients_permission, do: build(Client, :manage)
+  def verify_clients_permission, do: build(Client, :verify)
 
   @impl Domain.Auth.Authorizer
 
   def list_permissions_for_role(:account_admin_user) do
     [
       manage_own_clients_permission(),
-      manage_clients_permission()
+      manage_clients_permission(),
+      verify_clients_permission()
     ]
   end
 

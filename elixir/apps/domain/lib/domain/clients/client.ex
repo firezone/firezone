@@ -27,6 +27,11 @@ defmodule Domain.Clients.Client do
     belongs_to :identity, Domain.Auth.Identity
     belongs_to :last_used_token, Domain.Tokens.Token
 
+    field :verified_at, :utc_datetime_usec
+    field :verified_by, Ecto.Enum, values: [:system, :actor, :identity]
+    belongs_to :verified_by_actor, Domain.Actors.Actor
+    belongs_to :verified_by_identity, Domain.Auth.Identity
+
     field :deleted_at, :utc_datetime_usec
     timestamps()
   end

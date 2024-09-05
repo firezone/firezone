@@ -454,6 +454,8 @@ defmodule Domain.ClientsTest do
       assert client.last_seen_user_agent == subject.context.user_agent
       assert client.last_seen_version == "1.3.0"
       assert client.last_seen_at
+
+      assert is_nil(client.verified_at)
     end
 
     test "updates client when it already exists", %{
@@ -576,6 +578,7 @@ defmodule Domain.ClientsTest do
       assert client.actor_id == subject.actor.id
       assert client.account_id == account.id
       refute client.identity_id
+      assert is_nil(client.verified_at)
     end
 
     test "does not allow to reuse IP addresses", %{
@@ -748,6 +751,76 @@ defmodule Domain.ClientsTest do
                 {:unauthorized,
                  reason: :missing_permissions,
                  missing_permissions: [Clients.Authorizer.manage_clients_permission()]}}
+    end
+  end
+
+  describe "verify_client/2" do
+    test "allows admin actor to verify clients", %{admin_actor: actor, admin_subject: subject} do
+      client = Fixtures.Clients.create_client(actor: actor)
+
+      assert {:ok, client} = verify_client(client, subject)
+      assert client.verified_at
+      assert client.verified_by == :identity
+      assert client.verified_by_actor_id == subject.actor.id
+      assert client.verified_by_identity_id == subject.identity.id
+
+      assert {:ok, double_verified_client} = verify_client(client, subject)
+      assert double_verified_client.verified_at == client.verified_at
+    end
+
+    test "returns error when subject has no permission to verify clients", %{
+      admin_actor: actor,
+      admin_subject: subject
+    } do
+      client = Fixtures.Clients.create_client(actor: actor)
+
+      subject =
+        Fixtures.Auth.remove_permission(
+          subject,
+          Clients.Authorizer.verify_clients_permission()
+        )
+
+      assert verify_client(client, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Clients.Authorizer.verify_clients_permission()]}}
+    end
+  end
+
+  describe "remove_client_verification/2" do
+    test "allows admin actor to remove client verification", %{
+      admin_actor: actor,
+      admin_subject: subject
+    } do
+      client = Fixtures.Clients.create_client(actor: actor)
+
+      assert {:ok, client} = verify_client(client, subject)
+      assert {:ok, client} = remove_client_verification(client, subject)
+
+      assert is_nil(client.verified_at)
+      assert is_nil(client.verified_by)
+      assert is_nil(client.verified_by_actor_id)
+      assert is_nil(client.verified_by_identity_id)
+    end
+
+    test "returns error when subject has no permission to verify clients", %{
+      admin_actor: actor,
+      admin_subject: subject
+    } do
+      client = Fixtures.Clients.create_client(actor: actor)
+
+      subject =
+        Fixtures.Auth.remove_permission(
+          subject,
+          Clients.Authorizer.verify_clients_permission()
+        )
+
+      assert remove_client_verification(client, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Clients.Authorizer.verify_clients_permission()]}}
     end
   end
 

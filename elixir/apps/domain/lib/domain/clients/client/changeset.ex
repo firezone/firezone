@@ -72,6 +72,22 @@ defmodule Domain.Clients.Client.Changeset do
     |> unique_constraint(:ipv6, name: :clients_account_id_ipv6_index)
   end
 
+  def verify(%Clients.Client{} = client, %Auth.Subject{} = subject) do
+    client
+    |> change()
+    |> put_default_value(:verified_at, DateTime.utc_now())
+    |> put_subject_trail(:verified_by, subject)
+  end
+
+  def remove_verification(%Clients.Client{} = client) do
+    client
+    |> change()
+    |> put_change(:verified_at, nil)
+    |> put_change(:verified_by, nil)
+    |> put_change(:verified_by_actor_id, nil)
+    |> put_change(:verified_by_identity_id, nil)
+  end
+
   def update(%Clients.Client{} = client, attrs) do
     client
     |> cast(attrs, @update_fields)

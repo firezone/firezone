@@ -60,6 +60,9 @@ defmodule Web.Live.Policies.NewTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
+             "policy[conditions][client_verified][operator]",
+             "policy[conditions][client_verified][property]",
+             "policy[conditions][client_verified][values][]",
              "policy[conditions][current_utc_datetime][operator]",
              "policy[conditions][current_utc_datetime][property]",
              "policy[conditions][current_utc_datetime][timezone]",
@@ -99,6 +102,9 @@ defmodule Web.Live.Policies.NewTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
+             "policy[conditions][client_verified][operator]",
+             "policy[conditions][client_verified][property]",
+             "policy[conditions][client_verified][values][]",
              "policy[conditions][current_utc_datetime][operator]",
              "policy[conditions][current_utc_datetime][property]",
              "policy[conditions][current_utc_datetime][timezone]",
@@ -149,6 +155,9 @@ defmodule Web.Live.Policies.NewTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
+             "policy[conditions][client_verified][operator]",
+             "policy[conditions][client_verified][property]",
+             "policy[conditions][client_verified][values][]",
              "policy[conditions][current_utc_datetime][operator]",
              "policy[conditions][current_utc_datetime][property]",
              "policy[conditions][current_utc_datetime][timezone]",
@@ -329,6 +338,11 @@ defmodule Web.Live.Policies.NewTest do
     assert policy.resource_id == resource.id
 
     assert policy.conditions == [
+             %Domain.Policies.Condition{
+               property: :client_verified,
+               operator: :is,
+               values: nil
+             },
              %Domain.Policies.Condition{
                property: :current_utc_datetime,
                operator: :is_in_day_of_week_time_ranges,

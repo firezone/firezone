@@ -184,6 +184,40 @@ defmodule Domain.Clients do
     end
   end
 
+  def verify_client(%Client{} = client, %Auth.Subject{} = subject) do
+    with :ok <- authorize_actor_client_management(client.actor_id, subject),
+         :ok <- Auth.ensure_has_permissions(subject, Authorizer.verify_clients_permission()) do
+      Client.Query.not_deleted()
+      |> Client.Query.by_id(client.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch_and_update(Client.Query,
+        with: &Client.Changeset.verify(&1, subject),
+        preload: [:online?]
+      )
+      |> case do
+        {:ok, client} ->
+          client = Repo.preload(client, [:verified_by_actor, :verified_by_identity])
+          {:ok, client}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
+  def remove_client_verification(%Client{} = client, %Auth.Subject{} = subject) do
+    with :ok <- authorize_actor_client_management(client.actor_id, subject),
+         :ok <- Auth.ensure_has_permissions(subject, Authorizer.verify_clients_permission()) do
+      Client.Query.not_deleted()
+      |> Client.Query.by_id(client.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch_and_update(Client.Query,
+        with: &Client.Changeset.remove_verification(&1),
+        preload: [:online?]
+      )
+    end
+  end
+
   def delete_client(%Client{} = client, %Auth.Subject{} = subject) do
     queryable =
       Client.Query.not_deleted()

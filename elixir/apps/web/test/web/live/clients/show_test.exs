@@ -95,6 +95,7 @@ defmodule Web.Live.Clients.ShowTest do
     assert table["last seen remote ip"] =~ to_string(client.last_seen_remote_ip)
     assert table["client version"] =~ client.last_seen_version
     assert table["user agent"] =~ client.last_seen_user_agent
+    assert table["verification"] =~ "Not Verified"
   end
 
   test "shows client online status", %{
@@ -290,5 +291,31 @@ defmodule Web.Live.Clients.ShowTest do
            |> render_click() ==
              {:error,
               {:live_redirect, %{to: ~p"/#{account}/clients/#{client}/edit", kind: :push}}}
+  end
+
+  test "allows verifying clients", %{
+    account: account,
+    client: client,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/clients/#{client}")
+
+    assert lv
+           |> element("button[type=submit]", "Verify")
+           |> render_click()
+
+    table =
+      lv
+      |> element("#client")
+      |> render()
+      |> vertical_table_to_map()
+
+    refute table["verification"] =~ "Not"
+    assert table["verification"] =~ "Verified"
+    assert table["verification"] =~ "by"
   end
 end

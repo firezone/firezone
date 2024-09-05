@@ -698,6 +698,10 @@ defmodule Domain.Fixtures.Auth do
     {token, nonce <> Domain.Tokens.encode_fragment!(token)}
   end
 
+  def remove_permission(%Auth.Subject{} = subject, permission) do
+    %{subject | permissions: MapSet.delete(subject.permissions, permission)}
+  end
+
   def remove_permissions(%Auth.Subject{} = subject) do
     %{subject | permissions: MapSet.new()}
   end
