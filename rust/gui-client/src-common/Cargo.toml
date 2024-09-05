@@ -7,9 +7,12 @@ edition = "2021"
 [dependencies]
 anyhow = { version = "1.0" }
 atomicwrites = "0.4.3"
+crash-handler = "0.6.2"
 firezone-bin-shared = { workspace = true }
 firezone-headless-client = { path = "../../headless-client" }
+firezone-logging = { workspace = true }
 hex = "0.4.3"
+minidumper = "0.8.3"
 rand = "0.8.5"
 reqwest = { version = "0.12.5", default-features = false, features = ["stream", "rustls-tls"] }
 secrecy = { workspace = true }
@@ -17,6 +20,7 @@ semver = { version = "1.0.22", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 subtle = "2.5.0"
+time = { version = "0.3.36", features = ["formatting"] }
 thiserror = { version = "1.0", default-features = false }
 tokio = { workspace = true }
 tracing = { workspace = true }

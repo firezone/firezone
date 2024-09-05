@@ -10,7 +10,7 @@ use crate::client::{
 };
 use anyhow::{anyhow, bail, Context, Result};
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
-use firezone_gui_client_common::{auth, deep_link, updates};
+use firezone_gui_client_common::{auth, crash_handling, deep_link, updates};
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
@@ -75,7 +75,7 @@ pub(crate) fn run(
     reloader: LogFilterReloader,
 ) -> Result<(), Error> {
     // Need to keep this alive so crashes will be handled. Dropping detaches it.
-    let _crash_handler = match client::crash_handling::attach_handler() {
+    let _crash_handler = match crash_handling::attach_handler() {
         Ok(x) => Some(x),
         Err(error) => {
             // TODO: None of these logs are actually written yet

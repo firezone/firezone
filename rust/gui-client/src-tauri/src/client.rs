@@ -1,12 +1,11 @@
 use anyhow::{bail, Context as _, Result};
 use clap::{Args, Parser};
-use firezone_gui_client_common::deep_link;
+use firezone_gui_client_common::{crash_handling, deep_link};
 use std::path::PathBuf;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
 
 mod about;
-mod crash_handling;
 mod debug_commands;
 mod elevation;
 mod gui;
