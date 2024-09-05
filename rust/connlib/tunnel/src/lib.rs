@@ -17,6 +17,7 @@ use rand::rngs::OsRng;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
     task::{ready, Context, Poll},
@@ -321,7 +322,8 @@ pub enum ClientEvent {
     TunInterfaceUpdated(TunConfig),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, derivative::Derivative, PartialEq, Eq)]
+#[derivative(Debug)]
 pub struct TunConfig {
     pub ip4: Ipv4Addr,
     pub ip6: Ipv6Addr,
@@ -333,7 +335,9 @@ pub struct TunConfig {
     ///   Otherwise, we will use the DNS servers configured on the system.
     pub dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 
+    #[derivative(Debug(format_with = "fmt_routes"))]
     pub ipv4_routes: BTreeSet<Ipv4Network>,
+    #[derivative(Debug(format_with = "fmt_routes"))]
     pub ipv6_routes: BTreeSet<Ipv6Network>,
 }
 
@@ -359,4 +363,17 @@ pub fn keypair() -> (StaticSecret, PublicKey) {
     let public_key = PublicKey::from(&private_key);
 
     (private_key, public_key)
+}
+
+fn fmt_routes<T>(routes: &BTreeSet<T>, f: &mut fmt::Formatter) -> fmt::Result
+where
+    T: fmt::Display,
+{
+    let mut list = f.debug_list();
+
+    for route in routes {
+        list.entry(&format_args!("{route}"));
+    }
+
+    list.finish()
 }
