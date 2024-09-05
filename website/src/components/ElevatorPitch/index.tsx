@@ -50,13 +50,15 @@ export default function ElevatorPitch() {
     delay: number;
   }
 
-  const OptionButton = ({ title, desc, icon, index, delay }: OptionButtonProps) => {
+  const OptionButton = ({
+    title,
+    desc,
+    icon,
+    index,
+    delay,
+  }: OptionButtonProps) => {
     return (
-      <SlideIn
-        direction="left"
-        delay={delay}
-        duration={0.5}
-      >
+      <SlideIn direction="left" delay={delay} duration={0.5}>
         <button
           className={`flex flex-col lg:flex-row lg:w-full pointer-events-none
           items-start lg:items-center py-6 lg:py-0 gap-4 border-[1px] justify-center
@@ -92,15 +94,12 @@ export default function ElevatorPitch() {
               <h3
                 className={`mb-4 text-3xl md:text-4xl lg:text-5xl leading-tight tracking-tight font-bold inline-block font-manrope`}
               >
-                Supercharge your workforce
-                <span className="text-primary-450"> in minutes.</span>
+                <span className="text-primary-450">Eliminate </span>
+                ACL hell
               </h3>
               <p className="text-lg text-pretty text-neutral-800">
-                Firezone secures apps, services, networks and everything in
-                between.
-              </p>
-              <p className="text-lg font-semibold text-pretty text-neutral-800">
-                No ACL hell required.
+                Firezone secures apps, services, and networks with simple access
+                policies that are manageable by mere humans.
               </p>
             </div>
 
