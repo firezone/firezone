@@ -7,7 +7,7 @@ defmodule Domain.Resources.Connection.Changeset do
 
   def changeset(account_id, connection, attrs, %Auth.Subject{} = subject) do
     changeset(account_id, connection, attrs)
-    |> put_created_by(subject)
+    |> put_subject_trail(:created_by, subject)
   end
 
   def changeset(account_id, connection, attrs) do
