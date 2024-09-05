@@ -226,7 +226,13 @@ impl Tun {
         let uuid = uuid::Uuid::from_str(TUNNEL_UUID)
             .expect("static UUID should always parse correctly")
             .as_u128();
-        let adapter = &Adapter::create(&wintun, TUNNEL_NAME, TUNNEL_NAME, Some(uuid))?;
+        let adapter = match Adapter::create(&wintun, TUNNEL_NAME, TUNNEL_NAME, Some(uuid)) {
+            Ok(x) => x,
+            Err(error) => {
+                tracing::error!(?error, "Failed in `Adapter::create`");
+                return Err(error)?;
+            }
+        };
         let iface_idx = adapter.get_adapter_index()?;
 
         set_iface_config(adapter.get_luid(), mtu)?;
