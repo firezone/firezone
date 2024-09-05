@@ -11,7 +11,7 @@ use url::Url;
 const NONCE_LENGTH: usize = 32;
 
 #[derive(thiserror::Error, Debug)]
-pub(crate) enum Error {
+pub enum Error {
     #[error("`actor_name_path` has no parent, this should be impossible")]
     ActorNamePathWrong,
     #[error("`known_dirs` failed")]
@@ -32,19 +32,19 @@ pub(crate) enum Error {
     WriteActorName(std::io::Error),
 }
 
-pub(crate) struct Auth {
+pub struct Auth {
     /// Implementation details in case we need to disable `keyring-rs`
     token_store: keyring::Entry,
     state: State,
 }
 
-pub(crate) enum State {
+enum State {
     SignedOut,
     NeedResponse(Request),
     SignedIn(Session),
 }
 
-pub(crate) struct Request {
+pub struct Request {
     nonce: SecretString,
     state: SecretString,
 }
@@ -61,17 +61,17 @@ impl Request {
     }
 }
 
-pub(crate) struct Response {
+pub struct Response {
     pub actor_name: String,
     pub fragment: SecretString,
     pub state: SecretString,
 }
 
-pub(crate) struct Session {
+pub struct Session {
     pub actor_name: String,
 }
 
-pub(crate) struct SessionAndToken {
+struct SessionAndToken {
     session: Session,
     token: SecretString,
 }

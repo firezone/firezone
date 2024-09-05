@@ -1,29 +1,24 @@
 use anyhow::{bail, Context as _, Result};
 use clap::{Args, Parser};
+use firezone_gui_client_common::{
+    self as common, controller::Failure, crash_handling, deep_link, settings::AdvancedSettings,
+};
 use std::path::PathBuf;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
 
 mod about;
-mod auth;
-mod crash_handling;
 mod debug_commands;
-mod deep_link;
 mod elevation;
 mod gui;
-mod ipc;
 mod logging;
 mod settings;
-mod updates;
-mod uptime;
 mod welcome;
-
-use settings::AdvancedSettings;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     #[error("GUI module error: {0}")]
-    Gui(#[from] gui::Error),
+    Gui(#[from] common::errors::Error),
 }
 
 /// The program's entry point, equivalent to `main`
@@ -46,7 +41,7 @@ pub(crate) fn run() -> Result<()> {
                 Ok(true) => run_gui(cli),
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
                 Err(error) => {
-                    gui::show_error_dialog(&error)?;
+                    common::errors::show_error_dialog(&error)?;
                     Err(error.into())
                 }
             }
@@ -64,9 +59,9 @@ pub(crate) fn run() -> Result<()> {
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
-            let settings = settings::load_advanced_settings().unwrap_or_default();
+            let settings = common::settings::load_advanced_settings().unwrap_or_default();
             // Don't fix the log filter for smoke tests
-            let logging::Handles {
+            let common::logging::Handles {
                 logger: _logger,
                 reloader,
             } = start_logging(&settings.log_filter)?;
@@ -89,9 +84,9 @@ pub(crate) fn run() -> Result<()> {
 /// Automatically logs or shows error dialogs for important user-actionable errors
 // Can't `instrument` this because logging isn't running when we enter it.
 fn run_gui(cli: Cli) -> Result<()> {
-    let mut settings = settings::load_advanced_settings().unwrap_or_default();
+    let mut settings = common::settings::load_advanced_settings().unwrap_or_default();
     fix_log_filter(&mut settings)?;
-    let logging::Handles {
+    let common::logging::Handles {
         logger: _logger,
         reloader,
     } = start_logging(&settings.log_filter)?;
@@ -100,7 +95,7 @@ fn run_gui(cli: Cli) -> Result<()> {
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
         tracing::error!(?error, error_msg = %error);
-        gui::show_error_dialog(error)?;
+        common::errors::show_error_dialog(error)?;
     }
 
     Ok(result?)
@@ -126,8 +121,8 @@ fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
 /// Starts logging
 ///
 /// Don't drop the log handle or logging will stop.
-fn start_logging(directives: &str) -> Result<logging::Handles> {
-    let logging_handles = logging::setup(directives)?;
+fn start_logging(directives: &str) -> Result<common::logging::Handles> {
+    let logging_handles = common::logging::setup(directives)?;
     tracing::info!(
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
@@ -186,18 +181,6 @@ impl Cli {
             None
         }
     }
-}
-
-// The failure flags are all mutually exclusive
-// TODO: I can't figure out from the `clap` docs how to do this:
-// `app --fail-on-purpose crash-in-wintun-worker`
-// So the failure should be an `Option<Enum>` but _not_ a subcommand.
-// You can only have one subcommand per container, I've tried
-#[derive(Debug)]
-enum Failure {
-    Crash,
-    Error,
-    Panic,
 }
 
 #[derive(clap::Subcommand)]
