@@ -318,12 +318,7 @@ pub enum ClientEvent {
     ResourcesChanged {
         resources: Vec<callbacks::ResourceDescription>,
     },
-    // TODO: Make this more fine-granular.
     TunInterfaceUpdated(TunConfig),
-    TunRoutesUpdated {
-        ip4: Vec<Ipv4Network>,
-        ip6: Vec<Ipv6Network>,
-    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -337,6 +332,9 @@ pub struct TunConfig {
     ///   If upstream DNS servers are configured (in the portal), we will use those.
     ///   Otherwise, we will use the DNS servers configured on the system.
     pub dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+
+    pub ipv4_routes: BTreeSet<Ipv4Network>,
+    pub ipv6_routes: BTreeSet<Ipv6Network>,
 }
 
 #[derive(Debug, Clone)]
