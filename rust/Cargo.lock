@@ -1914,8 +1914,6 @@ dependencies = [
  "url",
  "uuid",
  "windows 0.58.0",
- "winreg 0.52.0",
- "wintun",
  "zip",
 ]
 
@@ -1925,6 +1923,7 @@ version = "1.3.1"
 dependencies = [
  "anyhow",
  "atomicwrites",
+ "firezone-bin-shared",
  "firezone-headless-client",
  "hex",
  "keyring",
@@ -1939,6 +1938,7 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+ "winreg 0.52.0",
 ]
 
 [[package]]

@@ -4,13 +4,13 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::client::{
-    self, about, deep_link, ipc, logging,
+    self, about, ipc, logging,
     settings::{self, AdvancedSettings},
     Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
-use firezone_gui_client_common::{auth, updates};
+use firezone_gui_client_common::{auth, deep_link, updates};
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
@@ -167,7 +167,8 @@ pub(crate) fn run(
                 if !cli.no_deep_links {
                     // The single-instance check is done, so register our exe
                     // to handle deep links
-                    deep_link::register().context("Failed to register deep link handler")?;
+                    let exe = tauri_utils::platform::current_exe().context("Can't find our own exe path")?;
+                    deep_link::register(exe).context("Failed to register deep link handler")?;
                     tokio::spawn(accept_deep_links(deep_link_server, ctlr_tx.clone()));
                 }
 
@@ -490,7 +491,7 @@ impl Controller {
 
     async fn handle_deep_link(&mut self, url: &SecretString) -> Result<(), Error> {
         let auth_response =
-            client::deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
+            deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
         tracing::info!("Received deep link over IPC");
         // Uses `std::fs`
@@ -769,7 +770,10 @@ impl Controller {
     }
 
     /// Set (or clear) update notification
-    fn handle_update_notification(&mut self, notification: Option<updates::Notification>) -> Result<()> {
+    fn handle_update_notification(
+        &mut self,
+        notification: Option<updates::Notification>,
+    ) -> Result<()> {
         let Some(notification) = notification else {
             self.release = None;
             self.refresh_system_tray_menu()?;

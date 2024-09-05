@@ -7,6 +7,7 @@ edition = "2021"
 [dependencies]
 anyhow = { version = "1.0" }
 atomicwrites = "0.4.3"
+firezone-bin-shared = { workspace = true }
 firezone-headless-client = { path = "../../headless-client" }
 hex = "0.4.3"
 rand = "0.8.5"
@@ -28,6 +29,9 @@ features = [
     "sync-secret-service", # Can't use Tokio because of <https://github.com/hwchen/keyring-rs/issues/132>
     "windows-native", # Yes, really, we must actually explicitly ask for every platform. Otherwise it defaults to an in-memory mock store. Really. That's really how `keyring` 3.x is designed.
 ]
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winreg = "0.52.0"
 
 [lints]
 workspace = true

@@ -24,7 +24,10 @@ pub struct Release {
     pub version: Version,
 }
 
-pub async fn checker_task(ctlr_tx: mpsc::Sender<Option<Notification>>, debug_mode: bool) -> Result<()> {
+pub async fn checker_task(
+    ctlr_tx: mpsc::Sender<Option<Notification>>,
+    debug_mode: bool,
+) -> Result<()> {
     let (current_version, interval_in_seconds) = if debug_mode {
         (Version::new(1, 0, 0), 30)
     } else {
@@ -60,9 +63,7 @@ pub async fn checker_task(ctlr_tx: mpsc::Sender<Option<Notification>>, debug_mod
             Event::Notify(notification) => {
                 tracing::debug!("Notify");
                 write_latest_release_file(notification.as_ref().map(|n| &n.release)).await?;
-                ctlr_tx
-                    .send(notification)
-                    .await?;
+                ctlr_tx.send(notification).await?;
             }
         }
     }

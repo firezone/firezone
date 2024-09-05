@@ -9,7 +9,7 @@ use tokio::{
 
 const SOCK_NAME: &str = "deep_link.sock";
 
-pub(crate) struct Server {
+pub struct Server {
     listener: UnixListener,
 }
 
@@ -25,7 +25,7 @@ impl Server {
     /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
     /// On Windows this uses async because of #5143 and #5566.
     #[allow(clippy::unused_async)]
-    pub(crate) async fn new() -> Result<Self, super::Error> {
+    pub async fn new() -> Result<Self, super::Error> {
         let path = sock_path()?;
         let dir = path
             .parent()
@@ -58,7 +58,7 @@ impl Server {
     /// Await one incoming deep link
     ///
     /// To match the Windows API, this consumes the `Server`.
-    pub(crate) async fn accept(self) -> Result<Secret<Vec<u8>>> {
+    pub async fn accept(self) -> Result<Secret<Vec<u8>>> {
         tracing::debug!("deep_link::accept");
         let (mut stream, _) = self.listener.accept().await?;
         tracing::debug!("Accepted Unix domain socket connection");
@@ -96,7 +96,7 @@ pub(crate) async fn open(url: &url::Url) -> Result<()> {
 /// Register a URI scheme so that browser can deep link into our app for auth
 ///
 /// Performs blocking I/O (Waits on `xdg-desktop-menu` subprocess)
-pub(crate) fn register() -> Result<()> {
+pub(crate) fn register(exe: PathBuf) -> Result<()> {
     // Write `$HOME/.local/share/applications/firezone-client.desktop`
     // According to <https://wiki.archlinux.org/title/Desktop_entries>, that's the place to put
     // per-user desktop entries.
@@ -108,7 +108,6 @@ pub(crate) fn register() -> Result<()> {
     // Don't use atomic writes here - If we lose power, we'll just rewrite this file on
     // the next boot anyway.
     let path = dir.join("firezone-client.desktop");
-    let exe = std::env::current_exe().context("failed to find our own exe path")?;
     let content = format!(
         "[Desktop Entry]
 Version=1.0

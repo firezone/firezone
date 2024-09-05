@@ -1,5 +1,6 @@
 use anyhow::{bail, Context as _, Result};
 use clap::{Args, Parser};
+use firezone_gui_client_common::deep_link;
 use std::path::PathBuf;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
@@ -7,7 +8,6 @@ use tracing_subscriber::EnvFilter;
 mod about;
 mod crash_handling;
 mod debug_commands;
-mod deep_link;
 mod elevation;
 mod gui;
 mod ipc;
