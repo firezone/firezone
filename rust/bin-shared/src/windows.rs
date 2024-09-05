@@ -120,7 +120,7 @@ fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
                 // Safety: Access to the union is safe.
                 IpAddr::V6(unsafe { dp.Prefix.Ipv6 }.sin6_addr.into())
             }
-            _ => continue,
+            IpAddr::V4(_) | IpAddr::V6(_) => continue,
         };
 
         if route != addr {
