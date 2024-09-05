@@ -55,6 +55,32 @@ pub fn app_local_data_dir() -> Result<PathBuf> {
 }
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
+    delete_all_routing_entries_matching(addr)?;
+
+    let route = get_best_non_tunnel_route(addr.ip())?;
+
+    let mut socket = socket_factory::tcp(addr)?;
+
+    // To avoid routing loops, all TCP sockets are bound to the "best" source IP.
+    // Additionally, we add a dedicated route for the given address to route via the default interface.
+    socket.bind((route.addr, 0).into())?;
+    let entry = RoutingTableEntry::create(addr.ip(), route.original)?;
+
+    socket.pack(entry);
+
+    Ok(socket)
+}
+
+pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
+    let source_ip_resolver = |dst| Ok(Some(get_best_non_tunnel_route(dst)?.addr));
+
+    let socket =
+        socket_factory::udp(src_addr)?.with_source_ip_resolver(Box::new(source_ip_resolver));
+
+    Ok(socket)
+}
+
+fn delete_all_routing_entries_matching(ip: &IpAddr) -> io::Result<()> {
     let mut table = std::ptr::null();
     let ip_family = match addr {
         IpAddr::V4(_) => AF_INET,
@@ -100,27 +126,7 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
         };
     }
 
-    let route = get_best_non_tunnel_route(addr.ip())?;
-
-    let mut socket = socket_factory::tcp(addr)?;
-
-    // To avoid routing loops, all TCP sockets are bound to the "best" source IP.
-    // Additionally, we add a dedicated route for the given address to route via the default interface.
-    socket.bind((route.addr, 0).into())?;
-    let entry = RoutingTableEntry::create(addr.ip(), route.original)?;
-
-    socket.pack(entry);
-
-    Ok(socket)
-}
-
-pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
-    let source_ip_resolver = |dst| Ok(Some(get_best_non_tunnel_route(dst)?.addr));
-
-    let socket =
-        socket_factory::udp(src_addr)?.with_source_ip_resolver(Box::new(source_ip_resolver));
-
-    Ok(socket)
+    Ok(())
 }
 
 /// Represents an entry in Windows' routing table.
