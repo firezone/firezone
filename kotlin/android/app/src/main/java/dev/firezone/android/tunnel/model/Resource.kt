@@ -16,8 +16,11 @@ data class Resource(
     val sites: List<Site>?,
     val name: String,
     val status: StatusEnum,
-    @Json(name = "can_be_disabled") val canBeDisabled: Boolean,
 ) : Parcelable
+
+fun Resource.isInternetResource(): Boolean {
+    return this.type == ResourceType.Internet
+}
 
 enum class ResourceType {
     @Json(name = "dns")

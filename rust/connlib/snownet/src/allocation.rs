@@ -3,6 +3,7 @@ use crate::{
     node::{CandidateEvent, SessionId, Transmit},
     ringbuffer::RingBuffer,
     utils::earliest,
+    EncryptedPacket,
 };
 use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
@@ -721,29 +722,23 @@ impl Allocation {
         );
     }
 
-    /// Encodes the packet contained in the given buffer into a [`Transmit`].
-    ///
-    /// This function assumes that the first 4 bytes of `buffer` have been reserved for the header of the channel-data message.
-    pub fn encode_to_borrowed_transmit<'b>(
+    pub fn encode_to_encrypted_packet(
         &self,
         peer: SocketAddr,
-        buffer: &'b mut [u8],
+        buffer: &mut [u8],
         now: Instant,
-    ) -> Option<Transmit<'b>> {
+    ) -> Option<EncryptedPacket> {
         let buffer_len = buffer.len();
         let packet_len = buffer_len - 4;
 
         let channel_number = self.channel_bindings.connected_channel_to_peer(peer, now)?;
-        let total_length = crate::channel_data::encode_header_to_slice(
-            &mut buffer[..4],
-            channel_number,
-            packet_len,
-        );
+        crate::channel_data::encode_header_to_slice(&mut buffer[..4], channel_number, packet_len);
 
-        Some(Transmit {
+        Some(EncryptedPacket {
             src: None,
             dst: self.active_socket?,
-            payload: Cow::Borrowed(&buffer[..total_length]),
+            packet_start: 0,
+            packet_len: buffer_len,
         })
     }
 

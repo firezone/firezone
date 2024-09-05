@@ -35,6 +35,9 @@ const NO_ACTIVITY: &str = "[-] No activity";
 const GATEWAY_CONNECTED: &str = "[O] Gateway connected";
 const ALL_GATEWAYS_OFFLINE: &str = "[X] All Gateways offline";
 
+const ENABLED_SYMBOL: &str = "<->";
+const DISABLED_SYMBOL: &str = "—";
+
 const ADD_FAVORITE: &str = "Add to favorites";
 const REMOVE_FAVORITE: &str = "Remove from favorites";
 const FAVORITE_RESOURCES: &str = "Favorite Resources";
@@ -82,7 +85,7 @@ pub(crate) struct SignedIn<'a> {
     pub(crate) actor_name: &'a str,
     pub(crate) favorite_resources: &'a HashSet<ResourceId>,
     pub(crate) resources: &'a [ResourceDescription],
-    pub(crate) disabled_resources: &'a HashSet<ResourceId>,
+    pub(crate) internet_resource_enabled: &'a Option<bool>,
 }
 
 impl<'a> SignedIn<'a> {
@@ -103,17 +106,17 @@ impl<'a> SignedIn<'a> {
     fn resource_submenu(&self, res: &ResourceDescription) -> Menu {
         let mut submenu = Menu::default().resource_description(res);
 
-        if !res.is_internet_resource() {
-            self.add_favorite_toggle(&mut submenu, res.id());
+        if res.is_internet_resource() {
+            submenu.add_separator();
+            if self.is_internet_resource_enabled() {
+                submenu.add_item(item(Event::DisableInternetResource, DISABLE));
+            } else {
+                submenu.add_item(item(Event::EnableInternetResource, ENABLE));
+            }
         }
 
-        if res.can_be_disabled() {
-            submenu.add_separator();
-            if self.is_enabled(res) {
-                submenu.add_item(item(Event::DisableResource(res.id()), DISABLE));
-            } else {
-                submenu.add_item(item(Event::EnableResource(res.id()), ENABLE));
-            }
+        if !res.is_internet_resource() {
+            self.add_favorite_toggle(&mut submenu, res.id());
         }
 
         if let Some(site) = res.sites().first() {
@@ -134,8 +137,8 @@ impl<'a> SignedIn<'a> {
         }
     }
 
-    fn is_enabled(&self, res: &ResourceDescription) -> bool {
-        !self.disabled_resources.contains(&res.id())
+    fn is_internet_resource_enabled(&self) -> bool {
+        self.internet_resource_enabled.unwrap_or_default()
     }
 }
 
@@ -259,11 +262,22 @@ impl<'a> AppState<'a> {
     }
 }
 
+fn append_status(name: &str, enabled: bool) -> String {
+    let symbol = if enabled {
+        ENABLED_SYMBOL
+    } else {
+        DISABLED_SYMBOL
+    };
+
+    format!("{symbol} {name}")
+}
+
 fn signed_in(signed_in: &SignedIn) -> Menu {
     let SignedIn {
         actor_name,
         favorite_resources,
         resources, // Make sure these are presented in the order we receive them
+        internet_resource_enabled,
         ..
     } = signed_in;
 
@@ -288,7 +302,12 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
             .iter()
             .filter(|res| favorite_resources.contains(&res.id()) || res.is_internet_resource())
         {
-            menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
+            let mut name = res.name().to_string();
+            if res.is_internet_resource() {
+                name = append_status(&name, internet_resource_enabled.unwrap_or_default());
+            }
+
+            menu = menu.add_submenu(name, signed_in.resource_submenu(res));
         }
     } else {
         // No favorites, show every Resource normally, just like before
@@ -296,7 +315,12 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         // Always show Resources in the original order
         menu = menu.disabled(RESOURCES);
         for res in *resources {
-            menu = menu.add_submenu(res.name(), signed_in.resource_submenu(res));
+            let mut name = res.name().to_string();
+            if res.is_internet_resource() {
+                name = append_status(&name, internet_resource_enabled.unwrap_or_default());
+            }
+
+            menu = menu.add_submenu(name, signed_in.resource_submenu(res));
         }
     }
 
@@ -387,14 +411,14 @@ mod tests {
     fn signed_in<'a>(
         resources: &'a [ResourceDescription],
         favorite_resources: &'a HashSet<ResourceId>,
-        disabled_resources: &'a HashSet<ResourceId>,
+        internet_resource_enabled: &'a Option<bool>,
     ) -> AppState<'a> {
         AppState {
             connlib: ConnlibState::SignedIn(SignedIn {
                 actor_name: "Jane Doe",
                 favorite_resources,
                 resources,
-                disabled_resources,
+                internet_resource_enabled,
             }),
             release: None,
         }
@@ -409,8 +433,7 @@ mod tests {
                 "address": "172.172.0.0/16",
                 "address_description": "cidr resource",
                 "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
-                "status": "Unknown",
-                "can_be_disabled": false
+                "status": "Unknown"
             },
             {
                 "id": "03000143-e25e-45c7-aafb-144990e57dcd",
@@ -419,8 +442,7 @@ mod tests {
                 "address": "gitlab.mycorp.com",
                 "address_description": "https://gitlab.mycorp.com",
                 "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
-                "status": "Online",
-                "can_be_disabled": false
+                "status": "Online"
             },
             {
                 "id": "1106047c-cd5d-4151-b679-96b93da7383b",
@@ -428,8 +450,7 @@ mod tests {
                 "name": "Internet Resource",
                 "address": "All internet addresses",
                 "sites": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
-                "status": "Offline",
-                "can_be_disabled": false
+                "status": "Offline"
             }
         ]"#;
 
@@ -534,9 +555,11 @@ mod tests {
                     .copyable(GATEWAY_CONNECTED),
             )
             .add_submenu(
-                "Internet Resource",
+                "— Internet Resource",
                 Menu::default()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
+                    .separator()
+                    .item(Event::EnableInternetResource, ENABLE)
                     .separator()
                     .disabled("Site")
                     .copyable("test")
@@ -588,9 +611,11 @@ mod tests {
                     .copyable(GATEWAY_CONNECTED),
             )
             .add_submenu(
-                "Internet Resource",
+                "— Internet Resource",
                 Menu::default()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
+                    .separator()
+                    .item(Event::EnableInternetResource, ENABLE)
                     .separator()
                     .disabled("Site")
                     .copyable("test")
@@ -687,9 +712,11 @@ mod tests {
                     .copyable(GATEWAY_CONNECTED),
             )
             .add_submenu(
-                "Internet Resource",
+                "— Internet Resource",
                 Menu::default()
                     .disabled(INTERNET_RESOURCE_DESCRIPTION)
+                    .separator()
+                    .item(Event::EnableInternetResource, ENABLE)
                     .separator()
                     .disabled("Site")
                     .copyable("test")

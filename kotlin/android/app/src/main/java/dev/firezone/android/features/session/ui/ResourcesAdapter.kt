@@ -8,11 +8,13 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.databinding.ListItemResourceBinding
 
-internal class ResourcesAdapter(private val activity: SessionActivity) : ListAdapter<ViewResource, ResourcesAdapter.ViewHolder>(
-    ResourceDiffCallback(),
-) {
+internal class ResourcesAdapter(private val internetResourceToggle: () -> ResourceState) :
+    ListAdapter<ResourceViewModel, ResourcesAdapter.ViewHolder>(
+        ResourceDiffCallback(),
+    ) {
     override fun onCreateViewHolder(
         parent: ViewGroup,
         viewType: Int,
@@ -31,14 +33,14 @@ internal class ResourcesAdapter(private val activity: SessionActivity) : ListAda
             // Show bottom sheet
             val fragmentManager =
                 (holder.itemView.context as AppCompatActivity).supportFragmentManager
-            val bottomSheet = ResourceDetailsBottomSheet(resource, activity)
+            val bottomSheet = ResourceDetailsBottomSheet(resource, internetResourceToggle)
             bottomSheet.show(fragmentManager, "ResourceDetailsBottomSheet")
         }
     }
 
     class ViewHolder(private val binding: ListItemResourceBinding) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(resource: ViewResource) {
-            binding.resourceNameText.text = resource.name
+        fun bind(resource: ResourceViewModel) {
+            binding.resourceNameText.text = resource.displayName
             if (resource.isInternetResource()) {
                 binding.addressText.visibility = View.GONE
             } else {
@@ -47,17 +49,17 @@ internal class ResourcesAdapter(private val activity: SessionActivity) : ListAda
         }
     }
 
-    class ResourceDiffCallback : DiffUtil.ItemCallback<ViewResource>() {
+    class ResourceDiffCallback : DiffUtil.ItemCallback<ResourceViewModel>() {
         override fun areItemsTheSame(
-            oldItem: ViewResource,
-            newItem: ViewResource,
+            oldItem: ResourceViewModel,
+            newItem: ResourceViewModel,
         ): Boolean {
             return oldItem.id == newItem.id
         }
 
         override fun areContentsTheSame(
-            oldItem: ViewResource,
-            newItem: ViewResource,
+            oldItem: ResourceViewModel,
+            newItem: ResourceViewModel,
         ): Boolean {
             return oldItem == newItem
         }

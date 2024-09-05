@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import NewsletterSignup from "@/components/NewsletterSignup";
 import SummaryCard from "@/components/Blog/SummaryCard";
+import { Badge } from "@/components/Badges";
 
 export const metadata: Metadata = {
   title: "Blog • Firezone",
@@ -27,6 +28,45 @@ export default function Page() {
       </div>
       <div className="py-6 px-4 sm:py-8 sm:px-6 md:py-10 md:px-8 lg:py-12 lg:px-10 mx-auto max-w-screen-lg w-full">
         <div className="grid divide-y">
+          <SummaryCard
+            title="September 2024 update"
+            date="September 30, 2024"
+            href="/blog/sep-2024-update"
+            authorName="Jamil Bou Kheir"
+            authorAvatarSrc={gravatar("jamil@firezone.dev")}
+            type="Announcement"
+          >
+            <div className="mb-2">
+              <div className="mb-2">In this update:</div>
+              <ul className="space-y-2 list-inside list-disc ml-4">
+                <li>
+                  <strong>New feature:</strong> Internet Resources
+                </li>
+                <li>
+                  <strong>New feature:</strong> REST API{" "}
+                  <Badge
+                    text="Beta"
+                    size="xs"
+                    textColor="blue-800"
+                    bgColor="blue-100"
+                  />
+                </li>
+                <li>
+                  <strong>New feature:</strong> Improved wildcard matching for
+                  DNS Resources
+                </li>
+                <li>
+                  <strong>Blog post:</strong>{" "}
+                  <Link
+                    href="/blog/sans-io"
+                    className="text-accent-500 underline hover:no-underline"
+                  >
+                    sans-IO: The secret to effective Rust for network services
+                  </Link>
+                </li>
+              </ul>
+            </div>
+          </SummaryCard>
           <SummaryCard
             title="sans-IO: The secret to effective Rust for network services"
             date="July 2, 2024"
