@@ -4,14 +4,14 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::client::{
-    self, about, ipc, logging,
+    self, about, logging,
     settings::{self},
     Failure,
 };
 use anyhow::{anyhow, bail, Context, Result};
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
 use firezone_gui_client_common::{
-    self as common, auth, crash_handling, deep_link, settings::AdvancedSettings, updates,
+    self as common, auth, crash_handling, deep_link, ipc, settings::AdvancedSettings, updates,
 };
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
@@ -395,9 +395,6 @@ pub(crate) enum ControllerRequest {
     },
     Fail(Failure),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
-    Ipc(IpcServerMsg),
-    IpcClosed,
-    IpcReadFailed(anyhow::Error),
     SchemeRequest(SecretString),
     SignIn,
     SystemTrayMenu(TrayMenuEvent),
@@ -551,21 +548,6 @@ impl Controller {
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
-            Req::Ipc(msg) => match self.handle_ipc(msg).await {
-                Ok(()) => {}
-                // Handles <https://github.com/firezone/firezone/issues/6547> more gracefully so we can still export logs even if we crashed right after sign-in
-                Err(Error::ConnectToFirezoneFailed(error)) => {
-                    tracing::error!(?error, "Failed to connect to Firezone");
-                    self.sign_out().await?;
-                }
-                Err(error) => Err(error)?,
-            }
-            Req::IpcReadFailed(error) => {
-                // IPC errors are always fatal
-                tracing::error!(?error, "IPC read failure");
-                Err(Error::IpcRead)?
-            }
-            Req::IpcClosed => Err(Error::IpcClosed)?,
             Req::SchemeRequest(url) => {
                 if let Err(error) = self.handle_deep_link(&url).await {
                     tracing::error!(?error, "`handle_deep_link` failed");
@@ -662,7 +644,28 @@ impl Controller {
         Ok(())
     }
 
-    async fn handle_ipc(&mut self, msg: IpcServerMsg) -> Result<(), Error> {
+    async fn handle_ipc_event(&mut self, event: ipc::Event) -> Result<(), Error> {
+        match event {
+            ipc::Event::Message(msg) => match self.handle_ipc_msg(msg).await {
+                Ok(()) => Ok(()),
+                // Handles <https://github.com/firezone/firezone/issues/6547> more gracefully so we can still export logs even if we crashed right after sign-in
+                Err(Error::ConnectToFirezoneFailed(error)) => {
+                    tracing::error!(?error, "Failed to connect to Firezone");
+                    self.sign_out().await?;
+                    Ok(())
+                }
+                Err(error) => Err(error)?,
+            },
+            ipc::Event::ReadFailed(error) => {
+                // IPC errors are always fatal
+                tracing::error!(?error, "IPC read failure");
+                Err(Error::IpcRead)?
+            }
+            ipc::Event::Closed => Err(Error::IpcClosed)?,
+        }
+    }
+
+    async fn handle_ipc_msg(&mut self, msg: IpcServerMsg) -> Result<(), Error> {
         match msg {
             IpcServerMsg::ClearedLogs(result) => {
                 let Some(tx) = self.clear_logs_callback.take() else {
@@ -931,7 +934,8 @@ async fn run_controller(
     mut updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 ) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");
-    let ipc_client = ipc::Client::new(ctlr_tx.clone()).await?;
+    let (ipc_tx, mut ipc_rx) = mpsc::channel(1);
+    let ipc_client = ipc::Client::new(ipc_tx).await?;
     let tray = system_tray::Tray::new(app.tray_handle());
     let mut controller = Controller {
         advanced_settings,
@@ -994,6 +998,7 @@ async fn run_controller(
                 }
                 controller.try_retry_connection().await?
             }
+            event = ipc_rx.recv() => controller.handle_ipc_event(event.context("IPC task stopped")?).await?,
             req = rx.recv() => {
                 let Some(req) = req else {
                     break;

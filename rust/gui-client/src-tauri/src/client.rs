@@ -11,7 +11,6 @@ mod about;
 mod debug_commands;
 mod elevation;
 mod gui;
-mod ipc;
 mod logging;
 mod settings;
 mod uptime;
