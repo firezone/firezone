@@ -9,7 +9,7 @@ members = [
   "connlib/tunnel",
   "gateway",
   "gui-client/src-tauri",
-  "headless-client",
+  "headless-client", "iced-client",
   "ip-packet",
   "logging",
   "phoenix-channel",
