@@ -18,7 +18,7 @@ export default function Apple() {
           </ChangeItem>
           <ChangeItem pull="6518">
             Minor improvements to the look of the internet resource and makes
-            the Internet resource off by default
+            the Internet resource off by default.
           </ChangeItem>
         </ul>
       </Entry>
