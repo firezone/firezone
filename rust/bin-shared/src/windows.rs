@@ -123,6 +123,7 @@ fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
 
         if let Err(e) = unsafe { DeleteIpForwardEntry2(entry) }.ok() {
             tracing::warn!("Failed to delete routing entry: {e}");
+            continue;
         };
 
         tracing::debug!(%route, %next_hop, %iface_idx, "Deleted stale route entry");
