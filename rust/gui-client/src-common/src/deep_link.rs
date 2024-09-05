@@ -3,8 +3,8 @@
 // The IPC parts use the same primitives as the IPC service, UDS on Linux
 // and named pipes on Windows, so TODO de-dupe the IPC code
 
-use anyhow::{bail, Context as _, Result};
 use crate::auth;
+use anyhow::{bail, Context as _, Result};
 use secrecy::{ExposeSecret, SecretString};
 use url::Url;
 

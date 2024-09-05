@@ -5,7 +5,11 @@ use super::FZ_SCHEME;
 use anyhow::{Context, Result};
 use firezone_bin_shared::BUNDLE_ID;
 use secrecy::Secret;
-use std::{io, path::{Path, PathBuf}, time::Duration};
+use std::{
+    io,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::windows::named_pipe};
 
 /// A server for a named pipe, so we can receive deep links from other instances
@@ -106,9 +110,7 @@ fn pipe_path() -> String {
 /// This is copied almost verbatim from tauri-plugin-deep-link's `register` fn, with an improvement
 /// that we send the deep link to a subcommand so the URL won't confuse `clap`
 pub fn register(exe: PathBuf) -> Result<()> {
-    let exe = exe.display()
-        .to_string()
-        .replace("\\\\?\\", "");
+    let exe = exe.display().to_string().replace("\\\\?\\", "");
 
     set_registry_values(BUNDLE_ID, &exe).context("Can't set Windows Registry values")?;
 
