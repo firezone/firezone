@@ -30,7 +30,7 @@ export default function Posts() {
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
       type: "Announcement",
-      src:"/images/blog/jun-2024-update/jun-24-update.png",
+      src: "/images/blog/jun-2024-update/jun-24-update.png",
       description: (
         <div className="mb-2">
           <div className="mb-2">In this update:</div>
@@ -120,6 +120,7 @@ export default function Posts() {
       authorName: "Gabriel Steinberg",
       authorAvatarSrc: gravatar("gabriel@firezone.dev"),
       type: "Learn",
+      src: "/images/blog/how-dns-works-in-firezone/how-dns-works-in-firezone.png",
       description: (
         <p className="mb-2">
           Firezone's approach to DNS works a bit differently than one might
@@ -136,6 +137,7 @@ export default function Posts() {
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
       type: "Announcement",
+      src: "/images/blog/may-2024-update/hero.webp",
       description: (
         <div className="mb-2">
           <div className="mb-2">In this update:</div>
@@ -164,6 +166,7 @@ export default function Posts() {
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
       type: "Announcement",
+      src: "/images/blog/apr-2024-update/GA.png",
       description: (
         <>
           <p className="mb-2">
@@ -202,6 +205,7 @@ export default function Posts() {
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
       type: "Announcement",
+      src: "/images/blog/mar-2024-update/release-1.0.0-pre.9.png",
       description: (
         <>
           {" "}
@@ -346,7 +350,9 @@ export default function Posts() {
         />
       </div>
       <div className="mx-auto max-w-screen-lg w-full">
-        <p className="px-12 pt-6 pb-4 text-neutral-600 font-semibold text-lg">{ filteredPosts.length + " results"}</p>
+        <p className="px-12 pt-6 pb-4 text-neutral-600 font-semibold text-lg">
+          {filteredPosts.length + " results"}
+        </p>
         <div className="grid divide-y space-y-8">
           {filteredPosts.map((post, index) => (
             <SummaryCard

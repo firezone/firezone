@@ -27,7 +27,7 @@ export default function SummaryCard({
       <Link href={href}>
         <div className="inset-0 mx-4 absolute hover:bg-neutral-100 bg-white mt-2 rounded-2xl cursor-pointer" />
       </Link>
-      <div className="w-full relative pointer-events-none z-10 py-2 md:py-0 px-8 md:px-0 mx-0 md:mx-8">
+      <div className="w-full md:w-2/3 relative pointer-events-none z-10 py-2 md:py-0 px-8 md:px-0 mx-0 md:mx-8">
         <div className="flex justify-between items-center mb-2">
           <span className="uppercase text-primary-450 font-semibold text-sm inline-flex items-center">
             {type}
@@ -54,7 +54,7 @@ export default function SummaryCard({
         </div>
       </div>
       {src && (
-        <div className="relative z-10 w-full md:max-h-[120px] md:w-[240px] p-8 md:p-0 mx-0 md:mx-8 pointer-events-none">
+        <div className="relative z-10 w-full md:w-1/3 place-content-center p-8 md:p-0 mx-0 md:mx-8 pointer-events-none">
           <Image
             src={src}
             width={800}
