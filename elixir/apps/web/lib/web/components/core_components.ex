@@ -835,12 +835,13 @@ defmodule Web.CoreComponents do
   Renders online or offline status using an `online?` field of the schema.
   """
   attr :schema, :any, required: true
+  attr :class, :any, default: nil
 
   def connection_status(assigns) do
     assigns = assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
 
     ~H"""
-    <span class="flex items-center">
+    <span class={["flex items-center", @class]}>
       <.ping_icon color={if @schema.online?, do: "success", else: "danger"} />
       <span
         class="ml-2.5"
@@ -932,6 +933,46 @@ defmodule Web.CoreComponents do
     >
       <%= @schema.provider.name %>
     </.link> sync
+    """
+  end
+
+  @doc """
+  Renders verification timestamp and entity.
+  """
+  attr :account, :any, required: true
+  attr :schema, :any, required: true
+
+  def verified_by(%{schema: %{verified_by: :system}} = assigns) do
+    ~H"""
+    <.icon name="hero-shield-check" class="w-4 h-4 mr-1" /> Verified
+    <.relative_datetime datetime={@schema.verified_at} /> by system
+    """
+  end
+
+  def verified_by(%{schema: %{verified_by: :actor}} = assigns) do
+    ~H"""
+    <.icon name="hero-shield-check" class="w-4 h-4 mr-1" /> Verified
+    <.relative_datetime datetime={@schema.verified_at} /> by
+    <.actor_link account={@account} actor={@schema.verified_by_actor} />
+    """
+  end
+
+  def verified_by(%{schema: %{verified_by: :identity}} = assigns) do
+    ~H"""
+    <.icon name="hero-shield-check" class="w-4 h-4 mr-1" /> Verified
+    <.relative_datetime datetime={@schema.verified_at} /> by
+    <.link
+      class="text-accent-500 hover:underline"
+      navigate={~p"/#{@schema.account_id}/actors/#{@schema.verified_by_identity.actor_id}"}
+    >
+      <%= assigns.schema.verified_by_actor.name %>
+    </.link>
+    """
+  end
+
+  def verified_by(%{schema: %{verified_at: nil}} = assigns) do
+    ~H"""
+    Not Verified
     """
   end
 
