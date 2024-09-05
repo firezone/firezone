@@ -5,6 +5,7 @@ use super::{
 use crate::tests::reference::ResourceDst;
 use connlib_shared::{messages::GatewayId, DomainName};
 use ip_packet::IpPacket;
+use itertools::Itertools;
 use std::{
     collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, VecDeque},
     marker::PhantomData,
@@ -138,13 +139,27 @@ pub(crate) fn assert_dns_servers_are_valid(ref_client: &RefClient, sim_client: &
 
 pub(crate) fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimClient) {
     let (expected_ipv4, expected_ipv6) = ref_client.expected_routes();
-    let (actual_ipv4, actual_ipv6) = (&sim_client.ipv4_routes, &sim_client.ipv6_routes);
+    let (actual_ipv4, actual_ipv6) = (
+        sim_client.ipv4_routes.clone(),
+        sim_client.ipv6_routes.clone(),
+    );
 
-    if actual_ipv4 != &expected_ipv4 {
+    let expected_ipv4 = BTreeSet::from_iter(expected_ipv4);
+    let actual_ipv4 = BTreeSet::from_iter(actual_ipv4);
+    let expected_ipv6 = BTreeSet::from_iter(expected_ipv6);
+    let actual_ipv6 = BTreeSet::from_iter(actual_ipv6);
+
+    if actual_ipv4 != expected_ipv4 {
+        let expected_ipv4 = expected_ipv4.iter().join(", ");
+        let actual_ipv4 = actual_ipv4.iter().join(", ");
+
         tracing::error!(target: "assertions", actual = ?actual_ipv4, expected = ?expected_ipv4, "❌ IPv4 routes don't match");
     }
 
-    if actual_ipv6 != &expected_ipv6 {
+    if actual_ipv6 != expected_ipv6 {
+        let expected_ipv6 = expected_ipv6.iter().join(", ");
+        let actual_ipv6 = actual_ipv6.iter().join(", ");
+
         tracing::error!(target: "assertions", actual = ?actual_ipv6, expected = ?expected_ipv6, "❌ IPv6 routes don't match");
     }
 }
