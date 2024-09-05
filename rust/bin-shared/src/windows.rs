@@ -109,7 +109,7 @@ fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
                 IpAddr::V4(unsafe { dp.Prefix.Ipv4 }.sin_addr.into())
             }
             IpAddr::V6(_) if dp.PrefixLength == 128 => {
-                IpAddr::V6(unsafe { dp.Prefix.Ipv6 }.sin_addr.into())
+                IpAddr::V6(unsafe { dp.Prefix.Ipv6 }.sin6_addr.into())
             }
             _ => continue,
         };
