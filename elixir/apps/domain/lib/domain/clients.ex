@@ -181,6 +181,14 @@ defmodule Domain.Clients do
         with: &Client.Changeset.update(&1, attrs),
         preload: [:online?]
       )
+      |> case do
+        {:ok, client} ->
+          :ok = broadcast_to_client(client, :updated)
+          {:ok, client}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -197,6 +205,7 @@ defmodule Domain.Clients do
       |> case do
         {:ok, client} ->
           client = Repo.preload(client, [:verified_by_actor, :verified_by_identity])
+          :ok = broadcast_to_client(client, :updated)
           {:ok, client}
 
         {:error, reason} ->
@@ -215,6 +224,14 @@ defmodule Domain.Clients do
         with: &Client.Changeset.remove_verification(&1),
         preload: [:online?]
       )
+      |> case do
+        {:ok, client} ->
+          :ok = broadcast_to_client(client, :updated)
+          {:ok, client}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 

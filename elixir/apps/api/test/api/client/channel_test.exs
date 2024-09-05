@@ -717,6 +717,18 @@ defmodule API.Client.ChannelTest do
     end
   end
 
+  describe "handle_info/2 :updated" do
+    test "sends init message", %{
+      socket: socket
+    } do
+      assert_push "init", %{}
+
+      send(socket.channel_pid, :updated)
+
+      assert_push "init", %{}
+    end
+  end
+
   describe "handle_info/2 :token_expired" do
     test "sends a token_expired messages and closes the socket", %{
       socket: socket
