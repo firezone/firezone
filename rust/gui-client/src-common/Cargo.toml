@@ -40,6 +40,9 @@ features = [
     "windows-native", # Yes, really, we must actually explicitly ask for every platform. Otherwise it defaults to an in-memory mock store. Really. That's really how `keyring` 3.x is designed.
 ]
 
+[target.'cfg(target_os = "linux")'.dependencies]
+dirs = "5.0.1"
+
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.52.0"
 

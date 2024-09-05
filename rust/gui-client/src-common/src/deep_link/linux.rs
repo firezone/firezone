@@ -82,7 +82,7 @@ impl Server {
     }
 }
 
-pub(crate) async fn open(url: &url::Url) -> Result<()> {
+pub async fn open(url: &url::Url) -> Result<()> {
     firezone_headless_client::setup_stdout_logging()?;
 
     let path = sock_path()?;
@@ -96,7 +96,7 @@ pub(crate) async fn open(url: &url::Url) -> Result<()> {
 /// Register a URI scheme so that browser can deep link into our app for auth
 ///
 /// Performs blocking I/O (Waits on `xdg-desktop-menu` subprocess)
-pub(crate) fn register(exe: PathBuf) -> Result<()> {
+pub fn register(exe: PathBuf) -> Result<()> {
     // Write `$HOME/.local/share/applications/firezone-client.desktop`
     // According to <https://wiki.archlinux.org/title/Desktop_entries>, that's the place to put
     // per-user desktop entries.
