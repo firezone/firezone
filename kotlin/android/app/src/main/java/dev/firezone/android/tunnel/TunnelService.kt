@@ -136,6 +136,7 @@ class TunnelService : VpnService() {
             // service.
             override fun onDisconnect(error: String): Boolean {
                 stopNetworkMonitoring()
+                stopDisconnectMonitoring()
 
                 // Clear any user tokens and actorNames
                 repo.clearToken()
@@ -163,8 +164,6 @@ class TunnelService : VpnService() {
                 p.trim().takeIf { it.isNotBlank() }?.let(action)
             }
         }
-
-        stopDisconnectMonitoring()
 
         Builder().apply {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -203,8 +202,6 @@ class TunnelService : VpnService() {
                 ConnlibSession.setTun(it, fd)
             }
         }
-
-        startDisconnectMonitoring()
     }
 
     private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)
@@ -333,6 +330,7 @@ class TunnelService : VpnService() {
                 )
 
             startNetworkMonitoring()
+            startDisconnectMonitoring()
         }
     }
 
