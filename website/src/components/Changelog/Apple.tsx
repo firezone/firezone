@@ -16,6 +16,10 @@ export default function Apple() {
             Gracefully handles cases where the device's local interface IPv4/IPv6 address or
             local network gateway changes while the client is connected.
           </ChangeItem>
+          <ChangeItem pull="6518">
+            Minor improvements to the look of the internet resource and makes
+            the Internet resource by default
+          </ChangeItem>
         </ul>
       </Entry>
       */}
