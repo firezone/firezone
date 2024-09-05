@@ -82,7 +82,7 @@ defmodule Web.Clients.Show do
           icon="hero-shield-exclamation"
           on_confirm="remove_client_verification"
         >
-          <:dialog_title>Remove Client Verification</:dialog_title>
+          <:dialog_title>Remove verification</:dialog_title>
           <:dialog_content>
             Are you sure you want to remove verification of this Client?
           </:dialog_content>
@@ -92,7 +92,7 @@ defmodule Web.Clients.Show do
           <:dialog_cancel_button>
             Cancel
           </:dialog_cancel_button>
-          Remove Client Verification
+          Remove verification
         </.button_with_confirmation>
       </:action>
       <:action :if={is_nil(@client.deleted_at) and is_nil(@client.verified_at)}>
