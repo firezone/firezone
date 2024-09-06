@@ -357,7 +357,6 @@ export default function Posts() {
           {filteredPosts.map((post, index) => (
             <SummaryCard
               key={index}
-              filters={filters}
               title={post.title}
               date={post.date}
               href={post.href}
