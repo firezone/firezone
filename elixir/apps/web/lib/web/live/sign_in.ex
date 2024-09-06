@@ -60,8 +60,8 @@ defmodule Web.SignIn do
               <% trial_ends_in_days = trial_ends_at |> DateTime.diff(DateTime.utc_now(), :day) %>
 
               <.flash :if={trial_ends_in_days <= 0} kind={:error}>
-                Your Enterprise pilot period needs to be renewed,
-                please contact your system administrator to ensure uninterrupted service.
+                Your Enterprise pilot needs to be renewed.
+                Contact your system administrator to ensure uninterrupted service.
               </.flash>
             <% end %>
 
