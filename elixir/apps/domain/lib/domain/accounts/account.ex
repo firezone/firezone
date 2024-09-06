@@ -19,6 +19,7 @@ defmodule Domain.Accounts.Account do
         field :subscription_id, :string
         field :product_name, :string
         field :billing_email, :string
+        field :trial_ends_at, :utc_datetime_usec
         field :support_type, :string
       end
     end
