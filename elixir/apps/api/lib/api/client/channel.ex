@@ -56,17 +56,8 @@ defmodule API.Client.Channel do
     end
   end
 
-  @impl true
-  def handle_info({:after_join, {opentelemetry_ctx, opentelemetry_span_ctx}}, socket) do
-    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
-
-    OpenTelemetry.Tracer.with_span "client.after_join" do
-      :ok = Clients.connect_client(socket.assigns.client)
-
-      # Subscribe for account config updates
-      :ok = Accounts.subscribe_to_events_in_account(socket.assigns.client.account_id)
-
+  def init(socket) do
+    OpenTelemetry.Tracer.with_span "client.init" do
       {:ok, resources} =
         Resources.all_authorized_resources(socket.assigns.subject,
           preload: [
@@ -79,15 +70,21 @@ defmodule API.Client.Channel do
 
       # We subscribe for all resource events but only care about update events,
       # where resource might be renamed which should be propagated to the UI.
-      :ok = Enum.each(resources, &Resources.subscribe_to_events_for_resource/1)
+      :ok =
+        Enum.each(resources, fn resource ->
+          :ok = Resources.unsubscribe_from_events_for_resource(resource)
+          :ok = Resources.subscribe_to_events_for_resource(resource)
+        end)
 
-      # We subscribe for membership updates for all actor groups the client is a member of,
-      :ok = Actors.subscribe_to_membership_updates_for_actor(socket.assigns.subject.actor)
-
-      # We subscribe for policy access events for the actor and the groups the client is a member of,
-      actor_group_ids = Actors.all_actor_group_ids!(socket.assigns.subject.actor)
-      :ok = Enum.each(actor_group_ids, &Policies.subscribe_to_events_for_actor_group/1)
-      :ok = Policies.subscribe_to_events_for_actor(socket.assigns.subject.actor)
+      # Subscribe for known gateway group names so that if they are updated - we can render change in the UI
+      :ok =
+        resources
+        |> Enum.flat_map(& &1.gateway_groups)
+        |> Enum.uniq()
+        |> Enum.each(fn gateway_group ->
+          :ok = Gateways.unsubscribe_from_group_updates(gateway_group)
+          :ok = Gateways.subscribe_to_group_updates(gateway_group)
+        end)
 
       # Return all connected relays for the account
       {:ok, relays} = select_relays(socket)
@@ -97,16 +94,38 @@ defmodule API.Client.Channel do
       resources =
         map_and_filter_compatible_resources(resources, socket.assigns.client.last_seen_version)
 
-      :ok =
-        push(socket, "init", %{
-          resources: Views.Resource.render_many(resources),
-          relays: Views.Relay.render_many(relays, socket.assigns.subject.expires_at),
-          interface:
-            Views.Interface.render(%{
-              socket.assigns.client
-              | account: socket.assigns.subject.account
-            })
-        })
+      push(socket, "init", %{
+        resources: Views.Resource.render_many(resources),
+        relays: Views.Relay.render_many(relays, socket.assigns.subject.expires_at),
+        interface:
+          Views.Interface.render(%{
+            socket.assigns.client
+            | account: socket.assigns.subject.account
+          })
+      })
+    end
+  end
+
+  @impl true
+  def handle_info({:after_join, {opentelemetry_ctx, opentelemetry_span_ctx}}, socket) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "client.after_join" do
+      :ok = Clients.connect_client(socket.assigns.client)
+
+      # Subscribe for account config updates
+      :ok = Accounts.subscribe_to_events_in_account(socket.assigns.client.account_id)
+
+      # We subscribe for membership updates for all actor groups the client is a member of,
+      :ok = Actors.subscribe_to_membership_updates_for_actor(socket.assigns.subject.actor)
+
+      # We subscribe for policy access events for the actor and the groups the client is a member of,
+      actor_group_ids = Actors.all_actor_group_ids!(socket.assigns.subject.actor)
+      :ok = Enum.each(actor_group_ids, &Policies.subscribe_to_events_for_actor_group/1)
+      :ok = Policies.subscribe_to_events_for_actor(socket.assigns.subject.actor)
+
+      :ok = init(socket)
 
       {:noreply, socket}
     end
@@ -125,6 +144,19 @@ defmodule API.Client.Channel do
       })
 
     {:noreply, socket}
+  end
+
+  # This event is sent when client or group are changed (eg. renamed, verified, etc.),
+  # so we just re-initialize the client the same way as after join to push the updates
+  def handle_info(:updated, socket) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "client.updated" do
+      socket = assign(socket, client: Clients.fetch_client_by_id!(socket.assigns.client.id))
+      :ok = init(socket)
+      {:noreply, socket}
+    end
   end
 
   # Message is scheduled by schedule_expiration/1 on topic join to be sent
