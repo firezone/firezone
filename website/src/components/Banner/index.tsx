@@ -11,7 +11,7 @@ export default function Banner({
   children,
 }: {
   active: boolean;
-  href?: Route<string> | UrlObject;
+  href?: URL | Route<string>;
   bgColor?: string;
   textColor?: string;
   children: React.ReactNode;
