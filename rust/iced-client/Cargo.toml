@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-iced = { version = "0.12.1", features = ["multi-window"] }
+iced = { version = "0.12.1", features = ["image", "multi-window"] }
 
 [lints]
 workspace = true

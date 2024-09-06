@@ -1,17 +1,23 @@
 use iced::{
     event, executor,
     multi_window::Application,
-    widget::{button, column, container, text},
-    window, Alignment, Background, Border, Color, Command, Event, Length, Renderer,
-    Settings, Subscription,
+    widget::{button, column, container, image, text},
+    window, Alignment, Background, Border, Color, Command, Event, Length, Renderer, Settings,
+    Subscription,
 };
 
 type Element<'a> = iced::Element<'a, Message, FzTheme, Renderer>;
 
 pub fn main() -> iced::Result {
-    let mut settings = Settings::default();
+    let icon = window::icon::from_file_data(include_bytes!("../../gui-client/src-tauri/icons/32x32.png"), None).expect("Baked-in icon PNG should always be decodable");
+
+    let mut settings = Settings::with_flags(Flags {
+        icon: icon.clone(),
+    });
     settings.window.exit_on_close_request = false;
+    settings.window.icon = Some(icon);
     settings.window.size = [640, 480].into();
+
     FirezoneApp::run(settings)
 }
 
@@ -19,6 +25,9 @@ struct FirezoneApp {
     about_window: window::Id,
     settings_window: window::Id,
     welcome_window: window::Id,
+
+    logo: image::Handle,
+
     value: i32,
 }
 
@@ -26,6 +35,7 @@ struct FirezoneApp {
 enum Message {
     IncrementPressed,
     DecrementPressed,
+    SignIn,
     SubscribedEvent(iced::Event),
     Quit,
 }
@@ -36,24 +46,41 @@ enum FzWindow {
     Welcome,
 }
 
+struct Flags {
+    icon: window::Icon,
+}
+
+impl Default for Flags {
+    fn default() -> Self {
+        unreachable!()
+    }
+}
+
 impl Application for FirezoneApp {
     type Executor = executor::Default;
-    type Flags = ();
+    type Flags = Flags;
     type Message = Message;
     type Theme = FzTheme;
 
-    fn new(_flags: ()) -> (Self, Command<Message>) {
+    // I don't know why `iced` calls these params `flags`.
+    fn new(flags: Self::Flags) -> (Self, Command<Message>) {
+        let logo = image::Handle::from_memory(include_bytes!("../../gui-client/src/logo.png"));
+
         let mut settings = window::Settings::default();
         settings.exit_on_close_request = false;
+        settings.icon = Some(flags.icon.clone());
         settings.size = [640, 480].into();
 
         let (about_window, about_cmd) = window::spawn(settings.clone());
         let (settings_window, settings_cmd) = window::spawn(settings.clone());
+
         (
             Self {
                 about_window,
                 settings_window,
                 welcome_window: window::Id::MAIN,
+
+                logo,
 
                 value: 0,
             },
@@ -89,13 +116,15 @@ impl Application for FirezoneApp {
             Message::SubscribedEvent(Event::Window(id, window::Event::CloseRequested)) => {
                 return window::change_mode::<Message>(id, window::Mode::Hidden)
             }
-            Message::SubscribedEvent(_) => {}
+            Message::SignIn | Message::SubscribedEvent(_) => {}
             // Closing all windows causes Iced to exit the app
-            Message::Quit => return Command::batch([
-                window::close(self.about_window),
-                window::close(self.settings_window),
-                window::close(self.welcome_window),
-            ]),
+            Message::Quit => {
+                return Command::batch([
+                    window::close(self.about_window),
+                    window::close(self.settings_window),
+                    window::close(self.welcome_window),
+                ])
+            }
         }
         Command::none()
     }
@@ -112,6 +141,7 @@ impl Application for FirezoneApp {
 impl FirezoneApp {
     fn view_about(&self) -> Element {
         let content = column![
+            image::Image::new(self.logo.clone()).width(240).height(240),
             text("Version 42.9000"),
             button("Quit").on_press(Message::Quit).padding(20),
         ];
@@ -135,9 +165,10 @@ impl FirezoneApp {
 
     fn view_welcome(&self) -> Element {
         let content = column![
-            button("Increment").on_press(Message::IncrementPressed),
-            text(self.value).size(50),
-            button("Decrement").on_press(Message::DecrementPressed),
+            text("Welcome to Firezone.").size(32),
+            text("Sign in below to get started."),
+            image::Image::new(self.logo.clone()).width(200).height(200),
+            button("Sign in").on_press(Message::SignIn).padding(30),
         ]
         .padding(20)
         .align_items(Alignment::Center);
@@ -186,7 +217,7 @@ impl button::StyleSheet for FzTheme {
         x.border = Border {
             color: Color::from_rgb8(0, 0, 0),
             width: 0.0,
-            radius: 2.75.into(),
+            radius: 4.into(),
         };
         x.text_color = Color::from_rgb8(255, 255, 255);
         x
@@ -198,7 +229,7 @@ impl button::StyleSheet for FzTheme {
         x.border = Border {
             color: Color::from_rgb8(0xf5, 0xf5, 0xf5),
             width: 2.0,
-            radius: 2.75.into(),
+            radius: 4.into(),
         };
         x.text_color = Color::from_rgb8(255, 255, 255);
         x
@@ -214,7 +245,7 @@ impl button::StyleSheet for FzTheme {
         x.border = Border {
             color: Color::from_rgb8(0, 0, 0),
             width: 0.0,
-            radius: 2.75.into(),
+            radius: 4.into(),
         };
         x.text_color = Color::from_rgb8(0, 0, 0);
         x
