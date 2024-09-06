@@ -27,6 +27,8 @@ import CustomerTestimonials from "@/components/CustomerTestimonials";
 import FeatureCards from "@/components/FeatureCards";
 import SingleFeature from "@/components/SingleFeature";
 import UseCaseCards from "@/components/UseCaseCards";
+import Banner from "@/components/Banner";
+import { Badge } from "@/components/Badges";
 
 export const metadata: Metadata = {
   title: "Firezone: Zero trust access that scales",
@@ -39,6 +41,18 @@ export default function Page() {
     <>
       <section className="bg-neutral-950 bg-hero pt-28 mb-16">
         <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
+          <Banner href="/blog/sep-2024-update" active>
+            <Badge
+              text="New"
+              bgColor="accent-700"
+              textColor="accent-200"
+              size="sm"
+            />
+            <span className="ml-1 ">
+              Internet Resources, REST API, and more
+            </span>
+            <HiArrowLongRight className="inline-block mx-1 w-5 h-5 duration-50 transition transform group-hover:translate-x-1" />
+          </Banner>
           <h1
             className={
               "font-manrope mb-8 text-5xl sm:text-6xl md:text-7xl text-center drop-shadow-[inset_0_2px_0_0_rgba(255,255,255,100)] font-medium tracking-tight leading-tight bg-gradient-to-b from-white from-70% to-slate-200 text-transparent bg-clip-text"
@@ -73,8 +87,8 @@ export default function Page() {
             </div>
           </div>
         </div>
-        <div className="pt-16 pb-4 max-w-[1020px] mx-auto">
-          <div className="text-center text-sm mb-6 font-base text-neutral-600">
+        <div className="pt-24 pb-4 max-w-[1020px] mx-auto">
+          <div className="text-center text-sm mb-6 font-base text-neutral-500">
             Backed by{" "}
             <Image
               src="/images/yc-logo-gray.png"
