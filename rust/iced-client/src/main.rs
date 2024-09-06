@@ -1,7 +1,7 @@
 use iced::{
     event, executor,
     multi_window::Application,
-    widget::{button, column, container, image, text},
+    widget::{button, column, container, image, row, text, text_input},
     window, Alignment, Background, Border, Color, Command, Event, Length, Renderer, Settings,
     Subscription,
 };
@@ -9,11 +9,13 @@ use iced::{
 type Element<'a> = iced::Element<'a, Message, FzTheme, Renderer>;
 
 pub fn main() -> iced::Result {
-    let icon = window::icon::from_file_data(include_bytes!("../../gui-client/src-tauri/icons/32x32.png"), None).expect("Baked-in icon PNG should always be decodable");
+    let icon = window::icon::from_file_data(
+        include_bytes!("../../gui-client/src-tauri/icons/32x32.png"),
+        None,
+    )
+    .expect("Baked-in icon PNG should always be decodable");
 
-    let mut settings = Settings::with_flags(Flags {
-        icon: icon.clone(),
-    });
+    let mut settings = Settings::with_flags(Flags { icon: icon.clone() });
     settings.window.exit_on_close_request = false;
     settings.window.icon = Some(icon);
     settings.window.size = [640, 480].into();
@@ -28,13 +30,36 @@ struct FirezoneApp {
 
     logo: image::Handle,
 
-    value: i32,
+    settings_tab: SettingsTab,
+
+    auth_base_url: String,
+    api_url: String,
+    log_filter: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
+enum SettingsTab {
+    Advanced,
+    DiagnosticLogs,
+}
+
+#[derive(Clone, Debug)]
+enum SettingsField {
+    AuthBaseUrl,
+    ApiUrl,
+    LogFilter,
+}
+
+impl Default for SettingsTab {
+    fn default() -> Self {
+        Self::Advanced
+    }
+}
+
+#[derive(Clone, Debug)]
 enum Message {
-    IncrementPressed,
-    DecrementPressed,
+    ChangeSettingsTab(SettingsTab),
+    InputChanged((SettingsField, String)),
     SignIn,
     SubscribedEvent(iced::Event),
     Quit,
@@ -82,7 +107,11 @@ impl Application for FirezoneApp {
 
                 logo,
 
-                value: 0,
+                settings_tab: Default::default(),
+
+                auth_base_url: String::new(),
+                api_url: String::new(),
+                log_filter: String::new(),
             },
             Command::batch([about_cmd, settings_cmd]),
         )
@@ -107,12 +136,12 @@ impl Application for FirezoneApp {
 
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
-            Message::IncrementPressed => {
-                self.value += 1;
-            }
-            Message::DecrementPressed => {
-                self.value -= 1;
-            }
+            Message::ChangeSettingsTab(new_tab) => self.settings_tab = new_tab,
+            Message::InputChanged((field, s)) => match field {
+                SettingsField::AuthBaseUrl => self.auth_base_url = s,
+                SettingsField::ApiUrl => self.api_url = s,
+                SettingsField::LogFilter => self.log_filter = s,
+            },
             Message::SubscribedEvent(Event::Window(id, window::Event::CloseRequested)) => {
                 return window::change_mode::<Message>(id, window::Mode::Hidden)
             }
@@ -143,8 +172,9 @@ impl FirezoneApp {
         let content = column![
             image::Image::new(self.logo.clone()).width(240).height(240),
             text("Version 42.9000"),
-            button("Quit").on_press(Message::Quit).padding(20),
-        ];
+            button("Quit").on_press(Message::Quit).padding(16),
+        ]
+        .align_items(Alignment::Center);
         container(content)
             .width(Length::Fill)
             .height(Length::Fill)
@@ -154,8 +184,45 @@ impl FirezoneApp {
     }
 
     fn view_settings(&self) -> Element {
-        let content = text("Settings");
+        let tabs = row![
+            button("Advanced").on_press(Message::ChangeSettingsTab(SettingsTab::Advanced)),
+            button("DiagnosticLogs")
+                .on_press(Message::ChangeSettingsTab(SettingsTab::DiagnosticLogs)),
+        ];
+        let tabs = container(tabs).width(Length::Fill).center_x();
+
+        let content = match self.settings_tab {
+            SettingsTab::Advanced => self.tab_advanced_settings(),
+            SettingsTab::DiagnosticLogs => self.tab_diagnostic_logs(),
+        };
+
+        let content = column!(tabs, content);
+
+        container(content).height(Length::Fill).into()
+    }
+
+    fn tab_advanced_settings(&self) -> Element {
+        let content = column![
+            text("WARNING: These settings are intended for internal debug purposes only. Changing these is not supported and will disrupt access to your resources"),
+            column![
+                text_input("Auth Base URL", &self.auth_base_url).on_input(|s| Message::InputChanged((SettingsField::AuthBaseUrl, s))),
+                text_input("API URL", &self.api_url).on_input(|s| Message::InputChanged((SettingsField::ApiUrl, s))),
+                text_input("Log Filter", &self.log_filter).on_input(|s| Message::InputChanged((SettingsField::LogFilter, s))),
+            ]
+            .padding(20)
+        ]
+        .padding(20)
+        .align_items(Alignment::Center);
         container(content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x()
+            .center_y()
+            .into()
+    }
+
+    fn tab_diagnostic_logs(&self) -> Element {
+        container(text("TODO"))
             .width(Length::Fill)
             .height(Length::Fill)
             .center_x()
@@ -168,7 +235,7 @@ impl FirezoneApp {
             text("Welcome to Firezone.").size(32),
             text("Sign in below to get started."),
             image::Image::new(self.logo.clone()).width(200).height(200),
-            button("Sign in").on_press(Message::SignIn).padding(30),
+            button("Sign in").on_press(Message::SignIn).padding(16),
         ]
         .padding(20)
         .align_items(Alignment::Center);
@@ -265,5 +332,45 @@ impl text::StyleSheet for FzTheme {
 
     fn appearance(&self, _style: Self::Style) -> text::Appearance {
         Default::default()
+    }
+}
+
+impl text_input::StyleSheet for FzTheme {
+    type Style = ();
+
+    fn active(&self, _style: &Self::Style) -> text_input::Appearance {
+        text_input::Appearance {
+            background: Background::Color(Color::from_rgba8(0, 0, 0, 0.0)),
+            border: Border {
+                color: Color::from_rgb8(0, 0, 0),
+                radius: 0.0.into(),
+                width: 0.0,
+            },
+            icon_color: Color::from_rgb8(0, 0, 0),
+        }
+    }
+
+    fn focused(&self, style: &Self::Style) -> text_input::Appearance {
+        text_input::StyleSheet::active(self, style)
+    }
+
+    fn placeholder_color(&self, _style: &Self::Style) -> Color {
+        Color::from_rgb8(180, 180, 180)
+    }
+
+    fn value_color(&self, _style: &Self::Style) -> Color {
+        Color::from_rgb8(0, 0, 0)
+    }
+
+    fn disabled_color(&self, _style: &Self::Style) -> Color {
+        todo!()
+    }
+
+    fn selection_color(&self, _style: &Self::Style) -> Color {
+        Color::from_rgb8(0, 0, 255)
+    }
+
+    fn disabled(&self, style: &Self::Style) -> text_input::Appearance {
+        text_input::StyleSheet::active(self, style)
     }
 }
