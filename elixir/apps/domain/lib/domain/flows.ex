@@ -167,6 +167,12 @@ defmodule Domain.Flows do
     |> expire_flows()
   end
 
+  def expire_flows_for(%Clients.Client{} = client) do
+    Flow.Query.all()
+    |> Flow.Query.by_client_id(client.id)
+    |> expire_flows()
+  end
+
   def expire_flows_for(%Actors.Group{} = actor_group) do
     Flow.Query.all()
     |> Flow.Query.by_policy_actor_group_id(actor_group.id)

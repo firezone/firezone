@@ -1,7 +1,7 @@
 defmodule Domain.Clients do
   use Supervisor
   alias Domain.{Repo, Auth, PubSub}
-  alias Domain.{Accounts, Actors}
+  alias Domain.{Accounts, Actors, Flows}
   alias Domain.Clients.{Client, Authorizer, Presence}
   require Ecto.Query
 
@@ -226,6 +226,7 @@ defmodule Domain.Clients do
       )
       |> case do
         {:ok, client} ->
+          {:ok, _flows} = Flows.expire_flows_for(client)
           :ok = broadcast_to_client(client, :updated)
           {:ok, client}
 

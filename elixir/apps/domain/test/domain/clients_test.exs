@@ -814,6 +814,31 @@ defmodule Domain.ClientsTest do
       assert_receive :updated
     end
 
+    test "expires flows for the unverified client", %{
+      account: account,
+      admin_actor: actor,
+      admin_subject: subject
+    } do
+      client = Fixtures.Clients.create_client(actor: actor)
+
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          actor: actor,
+          client: client,
+          subject: subject
+        )
+
+      :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
+
+      assert {:ok, client} = verify_client(client, subject)
+      assert {:ok, client} = remove_client_verification(client, subject)
+
+      assert_received {:expire_flow, flow_id, flow_client_id, _flow_resource_id}
+      assert flow_id == flow.id
+      assert flow_client_id == client.id
+    end
+
     test "returns error when subject has no permission to verify clients", %{
       admin_actor: actor,
       admin_subject: subject

@@ -942,6 +942,15 @@ defmodule Domain.FlowsTest do
       assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
       assert expired_flow.id == flow.id
     end
+
+    test "expires flows for client", %{
+      flow: flow,
+      client: client
+    } do
+      assert {:ok, [expired_flow]} = expire_flows_for(client)
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
+      assert expired_flow.id == flow.id
+    end
   end
 
   describe "expire_flows_for/2" do
