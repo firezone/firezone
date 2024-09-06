@@ -46,7 +46,7 @@ export default function Page() {
                   <strong>New feature:</strong> REST API{" "}
                   <Badge
                     text="Beta"
-                    size="xs"
+                    size="sm"
                     textColor="blue-800"
                     bgColor="blue-100"
                   />
