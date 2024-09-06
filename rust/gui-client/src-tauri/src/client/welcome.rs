@@ -1,6 +1,7 @@
 //! Everything related to the Welcome window
 
-use crate::client::gui::{ControllerRequest, Managed};
+use crate::client::gui::Managed;
+use firezone_gui_client_common::controller::ControllerRequest;
 
 // Tauri requires a `Result` here, maybe in case the managed state can't be retrieved
 #[tauri::command]

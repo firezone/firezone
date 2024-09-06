@@ -4,21 +4,21 @@ use connlib_shared::{callbacks::ResourceDescription, messages::ResourceId};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use super::INTERNET_RESOURCE_DESCRIPTION;
+pub const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
 
 /// A menu that can either be assigned to the system tray directly or used as a submenu in another menu.
 ///
 /// Equivalent to `tauri::SystemTrayMenu`
 #[derive(Debug, Default, PartialEq, Serialize)]
-pub(crate) struct Menu {
-    pub(crate) entries: Vec<Entry>,
+pub struct Menu {
+    pub entries: Vec<Entry>,
 }
 
 /// Something that can be shown in a menu, including text items, separators, and submenus
 ///
 /// Equivalent to `tauri::SystemTrayMenuEntry`
 #[derive(Debug, PartialEq, Serialize)]
-pub(crate) enum Entry {
+pub enum Entry {
     Item(Item),
     Separator,
     Submenu { title: String, inner: Menu },
@@ -28,20 +28,20 @@ pub(crate) enum Entry {
 ///
 /// Equivalent to `tauri::CustomMenuItem`
 #[derive(Debug, PartialEq, Serialize)]
-pub(crate) struct Item {
+pub struct Item {
     /// An event to send to the app when the item is clicked.
     ///
     /// If `None`, then the item is disabled and greyed out.
-    pub(crate) event: Option<Event>,
+    pub event: Option<Event>,
     /// The text displayed to the user
-    pub(crate) title: String,
+    pub title: String,
     /// If true, show a checkmark next to the item
-    pub(crate) selected: bool,
+    pub selected: bool,
 }
 
 /// Events that the menu can send to the app
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub(crate) enum Event {
+pub enum Event {
     /// Marks this Resource as favorite
     AddFavorite(ResourceId),
     /// Opens the admin portal in the default web browser
@@ -74,7 +74,7 @@ pub(crate) enum Event {
 }
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
-pub(crate) enum Window {
+pub enum Window {
     About,
     Settings,
 }
@@ -110,23 +110,6 @@ impl Menu {
             title: title.into(),
         });
         self
-    }
-
-    /// Builds this abstract `Menu` into a real menu that we can use in Tauri.
-    ///
-    /// This recurses but we never go deeper than 3 or 4 levels so it's fine.
-    pub(crate) fn build(&self) -> tauri::SystemTrayMenu {
-        let mut menu = tauri::SystemTrayMenu::new();
-        for entry in &self.entries {
-            menu = match entry {
-                Entry::Item(item) => menu.add_item(item.build()),
-                Entry::Separator => menu.add_native_item(tauri::SystemTrayMenuItem::Separator),
-                Entry::Submenu { title, inner } => {
-                    menu.add_submenu(tauri::SystemTraySubmenu::new(title, inner.build()))
-                }
-            };
-        }
-        menu
     }
 
     /// Appends a menu item that copies its title when clicked
@@ -175,23 +158,6 @@ impl Menu {
 }
 
 impl Item {
-    /// Builds this abstract `Item` into a real item that we can use in Tauri.
-    fn build(&self) -> tauri::CustomMenuItem {
-        let mut item = tauri::CustomMenuItem::new(
-            serde_json::to_string(&self.event)
-                .expect("`serde_json` should always be able to serialize tray menu events"),
-            &self.title,
-        );
-
-        if self.event.is_none() {
-            item = item.disabled();
-        }
-        if self.selected {
-            item = item.selected();
-        }
-        item
-    }
-
     fn disabled(mut self) -> Self {
         self.event = None;
         self
