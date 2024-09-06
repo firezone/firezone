@@ -16,7 +16,7 @@ export default function SummaryCard({
 }: {
   children: React.ReactNode;
   date: string;
-  href: URL | Route<string>;
+  href: UrlObject | Route<string>;
   title: string;
   authorName: string;
   authorAvatarSrc: string;
