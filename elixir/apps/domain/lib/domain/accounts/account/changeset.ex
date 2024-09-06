@@ -104,6 +104,7 @@ defmodule Domain.Accounts.Account.Changeset do
       :subscription_id,
       :product_name,
       :billing_email,
+      :trial_ends_at,
       :support_type
     ])
   end

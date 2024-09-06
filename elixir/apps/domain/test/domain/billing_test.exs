@@ -803,10 +803,15 @@ defmodule Domain.BillingTest do
 
       quantity = 13
 
+      trial_ends_at =
+        DateTime.utc_now()
+        |> DateTime.add(2, :day)
+
       event =
         Stripe.build_event(
           "customer.subscription.updated",
           Stripe.subscription_object(customer_id, subscription_metadata, %{}, quantity)
+          |> Map.put("trial_end", DateTime.to_unix(trial_ends_at))
         )
 
       assert handle_events([event]) == :ok
@@ -817,6 +822,9 @@ defmodule Domain.BillingTest do
       assert account.metadata.stripe.subscription_id
       assert account.metadata.stripe.product_name == "Enterprise"
       assert account.metadata.stripe.support_type == "email"
+
+      assert DateTime.truncate(account.metadata.stripe.trial_ends_at, :second) ==
+               DateTime.truncate(trial_ends_at, :second)
 
       assert account.limits == %Domain.Accounts.Limits{
                monthly_active_users_count: 15,
