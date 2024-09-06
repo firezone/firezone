@@ -12,7 +12,7 @@ export default function Posts() {
     {
       title: "sans-IO: The secret to effective Rust for network services",
       date: "July 2, 2024",
-      href: "/blog/sans-io",
+      href: new URL("/blog/sans-io"),
       authorName: "Thomas Eizinger",
       authorAvatarSrc: gravatar("thomas@firezone.dev"),
       type: "Learn",
@@ -26,7 +26,7 @@ export default function Posts() {
     {
       title: "June 2024 update",
       date: "June 21, 2024",
-      href: "/blog/jun-2024-update",
+      href: new URL("/blog/jun-2024-update"),
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
       type: "Announcement",
@@ -86,7 +86,7 @@ export default function Posts() {
     {
       title: "Improving reliability for DNS Resources",
       date: "June 20, 2024",
-      href: "/blog/improving-reliability-for-dns-resources",
+      href: new URL("/blog/improving-reliability-for-dns-resources"),
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
       type: "Announcement",
@@ -102,7 +102,7 @@ export default function Posts() {
     {
       title: "Using Tauri to build a cross-platform security app",
       date: "June 11, 2024",
-      href: "/blog/using-tauri",
+      href: new URL("/blog/using-tauri"),
       authorName: "ReactorScram",
       authorAvatarSrc: "/images/avatars/reactorscram.png",
       type: "Learn",
@@ -116,7 +116,7 @@ export default function Posts() {
     {
       title: "How DNS works in Firezone",
       date: "May 8, 2024",
-      href: "/blog/how-dns-works-in-firezone",
+      href: new URL("/blog/how-dns-works-in-firezone"),
       authorName: "Gabriel Steinberg",
       authorAvatarSrc: gravatar("gabriel@firezone.dev"),
       type: "Learn",
@@ -133,7 +133,7 @@ export default function Posts() {
     {
       title: "May 2024 update",
       date: "May 1, 2024",
-      href: "/blog/may-2024-update",
+      href: new URL("/blog/may-2024-update"),
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
       type: "Announcement",
@@ -162,7 +162,7 @@ export default function Posts() {
     {
       title: "April 2024 update: GA",
       date: "April 1, 2024",
-      href: "/blog/apr-2024-update",
+      href: new URL("/blog/apr-2024-update"),
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
       type: "Announcement",
@@ -201,7 +201,7 @@ export default function Posts() {
     {
       title: "March 2024 update",
       date: "March 1, 2024",
-      href: "/blog/mar-2024-update",
+      href: new URL("/blog/mar-2024-update"),
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
       type: "Announcement",
@@ -230,7 +230,7 @@ export default function Posts() {
     {
       title: "January 2024 update",
       date: "January 1, 2024",
-      href: "/blog/jan-2024-update",
+      href: new URL("/blog/jan-2024-update"),
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
       type: "Announcement",
@@ -250,7 +250,7 @@ export default function Posts() {
     {
       title: "Enterprises choose open source",
       date: "December 6, 2023",
-      href: "/blog/enterprises-choose-open-source",
+      href: new URL("/blog/enterprises-choose-open-source"),
       authorName: "Jeff Spencer",
       authorAvatarSrc: gravatar("jeff@firezone.dev"),
       type: "Insights",
@@ -268,7 +268,7 @@ export default function Posts() {
     {
       title: "Secure remote access makes remote work a win-win",
       date: "November 17, 2023",
-      href: "/blog/secure-access",
+      href: new URL("/blog/secure-access"),
       authorName: "Jeff Spencer",
       authorAvatarSrc: gravatar("jeff@firezone.dev"),
       type: "Insights",
@@ -285,7 +285,7 @@ export default function Posts() {
     {
       title: "Firezone 1.0",
       date: "July 15, 2023",
-      href: "/blog/firezone-1-0",
+      href: new URL("/blog/firezone-1-0"),
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
       type: "Announcement",
@@ -305,7 +305,7 @@ export default function Posts() {
     {
       title: "Release 0.6.0",
       date: "October 17, 2022",
-      href: "/blog/release-0-6-0",
+      href: new URL("/blog/release-0-6-0"),
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
       type: "Announcement",
@@ -321,7 +321,7 @@ export default function Posts() {
     {
       title: "Release 0.5.0",
       date: "July 25, 2022",
-      href: "/blog/release-0-5-0",
+      href: new URL("/blog/release-0-5-0"),
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
       type: "Announcement",
