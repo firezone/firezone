@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Route } from "next";
 
 import Image from "next/image";
+import { UrlObject } from "url";
 
 export default function SummaryCard({
   children,
