@@ -43,7 +43,6 @@ export default function ActionLink({
   // being applied below. The CSS checks out but the color defaults to gray.
   const linkClasses = `
     group inline-flex justify-center items-center py-2 font-semibold
-    tracking-tight font-medium
     text-${color}
     ${Size[size].link}
     ${border && `${Size[size].border} border-current`}
