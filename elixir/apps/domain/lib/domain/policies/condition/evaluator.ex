@@ -143,15 +143,11 @@ defmodule Domain.Policies.Condition.Evaluator do
         %Condition{
           property: :client_verified,
           operator: :is,
-          values: ["false"]
+          values: _other
         },
-        %Clients.Client{verified_at: verified_at}
+        %Clients.Client{}
       ) do
-    if is_nil(verified_at) do
-      {:ok, nil}
-    else
-      :error
-    end
+    {:ok, nil}
   end
 
   def fetch_conformation_expiration(
