@@ -557,6 +557,12 @@ where
         /// Without such a timeout, using a tunnel after the REKEY_TIMEOUT requires handshaking a new session which delays the new application packet by 1 RTT.
         const WG_KEEP_ALIVE: Option<u16> = Some(10);
 
+        if self.allocations.is_empty() {
+            tracing::warn!(
+                "No TURN servers connected; connection will very likely fail to establish"
+            );
+        }
+
         Connection {
             agent,
             tunnel: Tunn::new(
