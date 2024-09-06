@@ -155,6 +155,7 @@ export default function KbSidebar() {
             </SidebarItem>
           </SidebarCollapse>
           <SidebarCollapse prefix="/kb/reference" label="Reference">
+            <SidebarItem href="/kb/reference/rest-api">REST API</SidebarItem>
             <SidebarItem href="/kb/reference/faq">FAQ</SidebarItem>
             <SidebarItem href="/kb/reference/glossary">Glossary</SidebarItem>
           </SidebarCollapse>
