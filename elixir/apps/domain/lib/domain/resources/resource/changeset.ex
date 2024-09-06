@@ -41,7 +41,7 @@ defmodule Domain.Resources.Resource.Changeset do
       with: &Connection.Changeset.changeset(account.id, &1, &2, subject),
       required: true
     )
-    |> put_created_by(subject)
+    |> put_subject_trail(:created_by, subject)
   end
 
   def create(%Accounts.Account{} = account, attrs) do

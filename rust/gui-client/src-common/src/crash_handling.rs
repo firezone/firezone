@@ -27,7 +27,7 @@ use time::OffsetDateTime;
 /// <https://github.com/EmbarkStudios/crash-handling/blob/main/minidumper/examples/diskwrite.rs>
 /// Linux has a special `set_ptracer` call that is handy
 /// MacOS needs a special `ping` call to flush messages inside the crash handler
-pub(crate) fn attach_handler() -> Result<CrashHandler> {
+pub fn attach_handler() -> Result<CrashHandler> {
     // Attempt to connect to the server
     let (client, _server) = start_server_and_connect()?;
 
@@ -55,7 +55,7 @@ pub(crate) fn attach_handler() -> Result<CrashHandler> {
 ///
 /// <https://jake-shadle.github.io/crash-reporting/#implementation>
 /// <https://chromium.googlesource.com/breakpad/breakpad/+/master/docs/getting_started_with_breakpad.md#terminology>
-pub(crate) fn server(socket_path: PathBuf) -> Result<()> {
+pub fn server(socket_path: PathBuf) -> Result<()> {
     let mut server = minidumper::Server::with_name(&*socket_path)?;
     let ab = std::sync::atomic::AtomicBool::new(false);
     server.run(Box::new(Handler::default()), &ab, None)?;

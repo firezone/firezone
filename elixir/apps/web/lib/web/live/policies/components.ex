@@ -42,6 +42,10 @@ defmodule Web.Policies.Components do
          |> Enum.empty?())
   end
 
+  defp maybe_filter(%{}, empty_values: :drop) do
+    false
+  end
+
   defp maybe_filter(_condition_attrs, _opts) do
     true
   end
@@ -168,6 +172,16 @@ defmodule Web.Policies.Components do
     """
   end
 
+  defp condition(%{property: :client_verified} = assigns) do
+    ~H"""
+    <span :if={@values != []} class="mr-1">
+      <span>by clients that are</span>
+      <span :if={@values == ["true"]}>verified</span>
+      <span :if={@values == ["false"]}>not verified</span>
+    </span>
+    """
+  end
+
   defp condition(%{property: :current_utc_datetime, values: values} = assigns) do
     assigns =
       assign_new(assigns, :tz_time_ranges_by_dow, fn ->
@@ -221,6 +235,7 @@ defmodule Web.Policies.Components do
   defp condition_operator_option_name(:contains), do: "contains"
   defp condition_operator_option_name(:does_not_contain), do: "does not contain"
   defp condition_operator_option_name(:is_in), do: "is in"
+  defp condition_operator_option_name(:is), do: "is"
   defp condition_operator_option_name(:is_not_in), do: "is not in"
   defp condition_operator_option_name(:is_in_day_of_week_time_ranges), do: ""
   defp condition_operator_option_name(:is_in_cidr), do: "is in"
@@ -261,6 +276,7 @@ defmodule Web.Policies.Components do
           providers={@providers}
           disabled={@policy_conditions_enabled? == false}
         />
+        <.client_verified_condition_form form={@form} disabled={@policy_conditions_enabled? == false} />
         <.current_utc_datetime_condition_form
           form={@form}
           timezone={@timezone}
@@ -522,6 +538,83 @@ defmodule Web.Policies.Components do
               />
             </div>
           <% end %>
+        </div>
+      </div>
+    </fieldset>
+    """
+  end
+
+  defp client_verified_condition_form(assigns) do
+    ~H"""
+    <fieldset class="mb-4">
+      <% condition_form = find_condition_form(@form[:conditions], :client_verified) %>
+
+      <.input
+        type="hidden"
+        field={condition_form[:property]}
+        name="policy[conditions][client_verified][property]"
+        id="policy_conditions_client_verified_property"
+        value="client_verified"
+      />
+
+      <.input
+        type="hidden"
+        name="policy[conditions][client_verified][operator]"
+        id="policy_conditions_client_verified_operator"
+        field={condition_form[:operator]}
+        value={:is}
+      />
+
+      <div
+        class="hover:bg-neutral-100 cursor-pointer border border-neutral-200 shadow-b rounded-t px-4 py-2"
+        phx-click={
+          JS.toggle_class("hidden",
+            to: "#policy_conditions_client_verified_condition"
+          )
+          |> JS.toggle_class("bg-neutral-50")
+          |> JS.toggle_class("hero-chevron-down",
+            to: "#policy_conditions_client_verified_chevron"
+          )
+          |> JS.toggle_class("hero-chevron-up",
+            to: "#policy_conditions_client_verified_chevron"
+          )
+        }
+      >
+        <legend class="flex justify-between items-center text-neutral-700">
+          <span class="flex items-center">
+            <.icon name="hero-shield-check" class="w-5 h-5 mr-2" /> Client verification
+          </span>
+          <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
+            <.icon
+              id="policy_conditions_client_verified_chevron"
+              name="hero-chevron-down"
+              class="w-5 h-5"
+            />
+          </span>
+        </legend>
+      </div>
+
+      <div
+        id="policy_conditions_client_verified_condition"
+        class={[
+          "p-4 border-neutral-200 border-l border-r border-b rounded-b",
+          condition_values_empty?(condition_form) && "hidden"
+        ]}
+      >
+        <p class="text-sm text-neutral-500 mb-4">
+          Allow access when the Client is manually verified by the administrator.
+        </p>
+        <div class="space-y-2">
+          <.input
+            type="checkbox"
+            label="Require client verification"
+            field={condition_form[:values]}
+            name="policy[conditions][client_verified][values][]"
+            id="policy_conditions_client_verified_value"
+            disabled={@disabled}
+            checked={List.first(List.wrap(condition_form[:values].value)) == "true"}
+            value="true"
+          />
         </div>
       </div>
     </fieldset>

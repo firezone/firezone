@@ -1,17 +1,17 @@
-use super::{deep_link, logging};
+use crate::{self as common, deep_link};
 use anyhow::Result;
 use firezone_headless_client::{ipc, IpcServiceError, FIREZONE_GROUP};
 
 // TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
 #[allow(dead_code)]
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum Error {
+pub enum Error {
     #[error("Failed to connect to Firezone for non-Portal-related reason")]
     ConnectToFirezoneFailed(IpcServiceError),
     #[error("Deep-link module error: {0}")]
     DeepLink(#[from] deep_link::Error),
     #[error("Logging module error: {0}")]
-    Logging(#[from] logging::Error),
+    Logging(#[from] common::logging::Error),
 
     // `client.rs` provides a more user-friendly message when showing the error dialog box for certain variants
     #[error("IPC")]
@@ -36,7 +36,7 @@ pub(crate) enum Error {
 ///
 /// Doesn't play well with async, only use this if we're bailing out of the
 /// entire process.
-pub(crate) fn show_error_dialog(error: &Error) -> Result<()> {
+pub fn show_error_dialog(error: &Error) -> Result<()> {
     // Decision to put the error strings here: <https://github.com/firezone/firezone/pull/3464#discussion_r1473608415>
     // This message gets shown to users in the GUI and could be localized, unlike
     // messages in the log which only need to be used for `git grep`.
