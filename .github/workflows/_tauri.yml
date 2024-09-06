@@ -33,7 +33,7 @@ jobs:
             syms-artifact: rust/gui-client/firezone-client-gui-linux_1.3.2_x86_64.dwp
             # mark:next-gui-version
             pkg-artifact: rust/gui-client/firezone-client-gui-linux_1.3.2_x86_64.deb
-          - runs-on: ubuntu-20.04-arm
+          - runs-on: ubuntu-22.04-arm
             # mark:next-gui-version
             binary-dest-path: firezone-client-gui-linux_1.3.2_aarch64
             rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
@@ -68,7 +68,7 @@ jobs:
       # the arm64 images don't have the GH cli installed.
       # Remove this when https://github.com/actions/runner-images/issues/10192 is resolved.
       - name: Ubuntu arm workaround
-        if: ${{ matrix.runs-on == 'ubuntu-20.04-arm' }}
+        if: ${{ matrix.runs-on == 'ubuntu-22.04-arm' }}
         run: |
           (type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)) \
           && sudo mkdir -p -m 755 /etc/apt/keyrings \
