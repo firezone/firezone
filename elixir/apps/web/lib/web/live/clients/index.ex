@@ -13,7 +13,8 @@ defmodule Web.Clients.Index do
       |> assign_live_table("clients",
         query_module: Clients.Client.Query,
         sortable_fields: [
-          {:clients, :name}
+          {:clients, :name},
+          {:clients, :inserted_at}
         ],
         hide_filters: [
           :name
@@ -68,6 +69,7 @@ defmodule Web.Clients.Index do
             <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
               <%= client.name %>
             </.link>
+            <.icon :if={not is_nil(client.verified_at)} name="hero-shield-check" class="w-4 h-4" />
           </:col>
           <:col :let={client} label="user">
             <.link navigate={~p"/#{@account}/actors/#{client.actor.id}"} class={[link_style()]}>
@@ -76,6 +78,9 @@ defmodule Web.Clients.Index do
           </:col>
           <:col :let={client} label="status">
             <.connection_status schema={client} />
+          </:col>
+          <:col :let={client} field={{:clients, :inserted_at}} label="created at">
+            <.relative_datetime datetime={client.inserted_at} />
           </:col>
           <:empty>
             <div class="text-center text-neutral-500 p-4">

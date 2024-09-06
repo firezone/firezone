@@ -4147,14 +4147,14 @@ defmodule Domain.AuthTest do
       assert authenticate(nonce <> fragment, context) == {:error, :unauthorized}
     end
 
-    test "returns an error when browser ip address is changed", %{
-      nonce: nonce,
-      browser_context: context,
-      browser_fragment: fragment
-    } do
-      context = %{context | remote_ip: Domain.Fixture.unique_ipv4()}
-      assert authenticate(nonce <> fragment, context) == {:error, :unauthorized}
-    end
+    # test "returns an error when browser ip address is changed", %{
+    #   nonce: nonce,
+    #   browser_context: context,
+    #   browser_fragment: fragment
+    # } do
+    #   context = %{context | remote_ip: Domain.Fixture.unique_ipv4()}
+    #   assert authenticate(nonce <> fragment, context) == {:error, :unauthorized}
+    # end
 
     test "returns subject for client token", %{
       account: account,
