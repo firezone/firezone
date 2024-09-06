@@ -76,6 +76,7 @@ defmodule API.Client.Channel do
           :ok = Resources.subscribe_to_events_for_resource(resource)
         end)
 
+      # Subscribe for known gateway group names so that if they are updated - we can render change in the UI
       :ok =
         resources
         |> Enum.flat_map(& &1.gateway_groups)
@@ -152,6 +153,7 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "client.updated" do
+      socket = assign(socket, client: Clients.fetch_client_by_id!(socket.assigns.client.id))
       :ok = init(socket)
       {:noreply, socket}
     end
