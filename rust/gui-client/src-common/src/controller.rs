@@ -574,10 +574,9 @@ impl<I: GuiIntegration> Controller<I> {
     async fn update_disabled_resources(&mut self) -> Result<()> {
         settings::save(&self.advanced_settings).await?;
 
-        let internet_resource = self
-            .status
-            .internet_resource()
-            .context("Tunnel not ready")?;
+        let Some(internet_resource) = self.status.internet_resource() else {
+            return Ok(());
+        };
 
         let mut disabled_resources = BTreeSet::new();
 
