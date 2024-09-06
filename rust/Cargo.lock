@@ -2399,6 +2399,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "firezone-iced-client"
+version = "0.1.0"
+dependencies = [
+ "iced",
+]
+
+[[package]]
 name = "firezone-logging"
 version = "0.1.0"
 dependencies = [
@@ -3565,13 +3572,6 @@ dependencies = [
  "iced_winit",
  "image",
  "thiserror",
-]
-
-[[package]]
-name = "iced-client"
-version = "0.1.0"
-dependencies = [
- "iced",
 ]
 
 [[package]]
