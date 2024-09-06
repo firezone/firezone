@@ -91,13 +91,15 @@ impl Application for FirezoneApp {
     fn new(flags: Self::Flags) -> (Self, Command<Message>) {
         let logo = image::Handle::from_memory(include_bytes!("../../gui-client/src/logo.png"));
 
-        let mut settings = window::Settings::default();
-        settings.exit_on_close_request = false;
-        settings.icon = Some(flags.icon.clone());
-        settings.size = [640, 480].into();
+        let settings = window::Settings {
+            exit_on_close_request: false,
+            icon: Some(flags.icon),
+            size: [640, 480].into(),
+            ..Default::default()
+        };
 
         let (about_window, about_cmd) = window::spawn(settings.clone());
-        let (settings_window, settings_cmd) = window::spawn(settings.clone());
+        let (settings_window, settings_cmd) = window::spawn(settings);
 
         (
             Self {
@@ -279,27 +281,29 @@ impl button::StyleSheet for FzTheme {
     type Style = ();
 
     fn active(&self, _style: &Self::Style) -> button::Appearance {
-        let mut x = button::Appearance::default();
-        x.background = Some(Background::Color(Color::from_rgb8(94, 0, 214)));
-        x.border = Border {
-            color: Color::from_rgb8(0, 0, 0),
-            width: 0.0,
-            radius: 4.into(),
-        };
-        x.text_color = Color::from_rgb8(255, 255, 255);
-        x
+        button::Appearance {
+            background: Some(Background::Color(Color::from_rgb8(94, 0, 214))),
+            border: Border {
+                color: Color::from_rgb8(0, 0, 0),
+                width: 0.0,
+                radius: 4.into(),
+            },
+            text_color: Color::from_rgb8(255, 255, 255),
+            ..Default::default()
+        }
     }
 
     fn hovered(&self, _style: &Self::Style) -> button::Appearance {
-        let mut x = button::Appearance::default();
-        x.background = Some(Background::Color(Color::from_rgb8(94, 0, 214)));
-        x.border = Border {
-            color: Color::from_rgb8(0xf5, 0xf5, 0xf5),
-            width: 2.0,
-            radius: 4.into(),
-        };
-        x.text_color = Color::from_rgb8(255, 255, 255);
-        x
+        button::Appearance {
+            background: Some(Background::Color(Color::from_rgb8(94, 0, 214))),
+            border: Border {
+                color: Color::from_rgb8(0xf5, 0xf5, 0xf5),
+                width: 2.0,
+                radius: 4.into(),
+            },
+            text_color: Color::from_rgb8(255, 255, 255),
+            ..Default::default()
+        }
     }
 
     fn pressed(&self, style: &Self::Style) -> button::Appearance {
@@ -307,15 +311,16 @@ impl button::StyleSheet for FzTheme {
     }
 
     fn disabled(&self, _style: &Self::Style) -> button::Appearance {
-        let mut x = button::Appearance::default();
-        x.background = Some(Background::Color(Color::from_rgb8(96, 96, 96)));
-        x.border = Border {
-            color: Color::from_rgb8(0, 0, 0),
-            width: 0.0,
-            radius: 4.into(),
-        };
-        x.text_color = Color::from_rgb8(0, 0, 0);
-        x
+        button::Appearance {
+            background: Some(Background::Color(Color::from_rgb8(96, 96, 96))),
+            border: Border {
+                color: Color::from_rgb8(0, 0, 0),
+                width: 0.0,
+                radius: 4.into(),
+            },
+            text_color: Color::from_rgb8(0, 0, 0),
+            ..Default::default()
+        }
     }
 }
 
