@@ -1,8 +1,8 @@
-import ActionLink from "@/components/ActionLink";
 import Link from "next/link";
 import { Route } from "next";
 
 import Image from "next/image";
+import { UrlObject } from "url";
 
 export default function SummaryCard({
   children,
@@ -12,47 +12,63 @@ export default function SummaryCard({
   authorName,
   authorAvatarSrc,
   type,
+  src,
 }: {
   children: React.ReactNode;
   date: string;
-  href: URL | Route<string>;
+  href: UrlObject | Route<string>;
   title: string;
   authorName: string;
   authorAvatarSrc: string;
   type: string;
+  src?: string;
 }) {
   return (
-    <article className="py-6">
-      <div className="flex justify-between items-center mb-5">
-        <span className="text-neutral-500 font-semibold text-xs inline-flex items-center">
-          {type.toUpperCase()}
-        </span>
-        <span className="text-sm font-semibold">{date}</span>
-      </div>
-      <h2 className="mb-2 text-2xl font-bold tracking-tight text-neutral-800 ">
-        <Link href={href}>{title}</Link>
-      </h2>
-      <div className="mb-5 font-medium text-neutral-800 ">{children}</div>
-      <div className="flex justify-between items-center">
-        <div className="flex items-center space-x-4">
-          <Image
-            width={28}
-            height={28}
-            className="w-7 h-7 rounded-full"
-            src={authorAvatarSrc}
-            alt={authorName + " avatar"}
-          />
-          <span className="font-medium">{authorName}</span>
+    <article
+      className={`relative flex flex-col-reverse md:flex-row py-2 md:py-6 px-2 md:px-4`}
+    >
+      <Link href={href}>
+        <div className="inset-0 mx-4 absolute hover:bg-neutral-100 bg-white mt-2 rounded-2xl cursor-pointer" />
+      </Link>
+      <div className="w-full md:w-2/3 flex-grow relative pointer-events-none py-2 md:py-0 px-8 md:px-0 mx-0 md:mx-8">
+        <div className="flex justify-between items-center mb-2">
+          <span className="uppercase text-primary-450 font-semibold text-sm inline-flex items-center">
+            {type}
+          </span>
         </div>
-        <ActionLink
-          color="neutral-900"
-          transitionColor="primary-450"
-          href={href}
-          size="lg"
-        >
-          Read more
-        </ActionLink>
+        <h2 className="mb-3 text-2xl font-bold tracking-tight text-neutral-800 ">
+          {title}
+        </h2>
+        <div className="mb-6 font-regular text-neutral-800 z-10">
+          {children}
+        </div>
+        <div className="flex gap-3 items-center text-sm">
+          <div className="flex items-center space-x-3">
+            <Image
+              width={28}
+              height={28}
+              className="w-7 h-7 rounded-full"
+              src={authorAvatarSrc}
+              alt={authorName + " avatar"}
+            />
+            <span className="font-semibold">{authorName}</span>
+          </div>
+          <span className="font-semibold text-neutral-600">{date}</span>
+        </div>
       </div>
+      {src && (
+        <div className="relative flex w-full md:w-96 lg:w-1/3 justify-center items-center p-8 md:p-0 mx-0 md:mx-8">
+          <div className="max-h-72 max-w-72">
+            <Image
+              src={src}
+              width={800}
+              height={800}
+              alt="Article Image"
+              className="rounded-lg object-contain"
+            />
+          </div>
+        </div>
+      )}
     </article>
   );
 }
