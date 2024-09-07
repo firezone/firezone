@@ -430,7 +430,7 @@ impl<I: GuiIntegration> Controller<I> {
             IpcServerMsg::TerminatingGracefully => {
                 tracing::info!("Caught TerminatingGracefully");
                 self.tray
-                    .set_icon(system_tray::icon_terminating())
+                    .update(system_tray::AppState::terminating())
                     .ok();
                 Err(Error::IpcServiceTerminating)
             }
