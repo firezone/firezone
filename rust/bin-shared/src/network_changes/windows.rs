@@ -111,6 +111,35 @@ pub async fn new_network_notifier(
     )
 }
 
+// Async on Linux due to `zbus`
+#[allow(clippy::unused_async)]
+pub async fn new_network_notifier_2(
+    tokio_handle: tokio::runtime::Handle,
+    _method: DnsControlMethod,
+) -> Result<crate::worker_thread::Worker<()>> {
+    let (worker, _tx) = crate::worker_thread::Worker::new(
+        tokio_handle,
+        "Firezone network monitoring",
+        network_notifier_task,
+    )?;
+    Ok(worker)
+}
+
+async fn network_notifier_task(params: crate::worker_thread::Params<(), ()>) -> Result<()> {
+    let crate::worker_thread::Params {
+        in_rx: _,
+        stop_rx,
+        out_tx: tx,
+    } = params;
+    let tx = NotifySender { tx };
+    {
+        let com = ComGuard::new()?;
+        let _network_change_listener = Listener::new(&com, tx)?;
+        stop_rx.blocking_recv().ok();
+    }
+    Ok(())
+}
+
 /// Container for a worker thread that we can cooperatively stop.
 ///
 /// The worker thread emits notifications with no data in them.

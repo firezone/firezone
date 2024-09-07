@@ -17,20 +17,20 @@ use tokio::{
 ///
 /// The worker thread emits notifications with no data in them.
 pub struct Worker<Inbound: Send + 'static> {
-    inner: Option<WorkerInner>,
+    inner: Option<Inner>,
     thread_name: String,
     in_tx: mpsc::Sender<Inbound>,
 }
 
-struct WorkerInner {
+struct Inner {
     stop_tx: oneshot::Sender<()>,
     thread: thread::JoinHandle<Result<()>>,
 }
 
 pub struct Params<Inbound, Outbound> {
-    in_rx: mpsc::Receiver<Inbound>,
-    stop_rx: oneshot::Receiver<()>,
-    out_tx: mpsc::Sender<Outbound>,
+    pub in_rx: mpsc::Receiver<Inbound>,
+    pub stop_rx: oneshot::Receiver<()>,
+    pub out_tx: mpsc::Sender<Outbound>,
 }
 
 impl<Inbound: Send + 'static> Drop for Worker<Inbound> {
@@ -70,7 +70,7 @@ impl<Inbound: Send + 'static> Worker<Inbound> {
                 tokio_handle.block_on(task)
             })?;
 
-        let inner = WorkerInner { stop_tx, thread };
+        let inner = Inner { stop_tx, thread };
 
         Ok((
             Self {
@@ -125,7 +125,7 @@ mod tests {
     async fn ping() {
         let (mut worker, mut rx) = Worker::new(
             tokio::runtime::Handle::current(),
-            "Firezone test worker",
+            "Firezone test",
             ping_task,
         )
         .unwrap();
