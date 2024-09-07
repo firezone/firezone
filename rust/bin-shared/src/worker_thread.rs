@@ -92,18 +92,20 @@ impl<Inbound: Send + 'static> Worker<Inbound> {
             thread_name = self.thread_name,
             "Asking worker thread to stop gracefully."
         );
-        if let Err(_error) = inner
-            .stop_tx
-            .send(())
-        {
-            tracing::error!("Couldn't stop `{}` worker thread, maybe it crashed", self.thread_name);
+        if let Err(_error) = inner.stop_tx.send(()) {
+            tracing::error!(
+                "Couldn't stop `{}` worker thread, maybe it crashed",
+                self.thread_name
+            );
         }
         match inner.thread.join() {
             Err(error) => {
                 tracing::error!("Resuming unwind for worker thread");
                 std::panic::resume_unwind(error)
             }
-            Ok(x) => x.with_context(|| format!("Error inside worker thread `{}`", self.thread_name))?,
+            Ok(x) => {
+                x.with_context(|| format!("Error inside worker thread `{}`", self.thread_name))?
+            }
         }
         tracing::debug!("Worker thread `{}` stopped gracefully.", self.thread_name);
 

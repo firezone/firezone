@@ -714,7 +714,9 @@ impl NotifySender {
         // it needs to pick up anyway, so it's fine.
         match self.tx.try_send(()) {
             Ok(()) | Err(TrySendError::Full(())) => Ok(()),
-            Err(TrySendError::Closed(())) => Err(anyhow!("`TrySendError::Closed` in `NotifySender`")),
+            Err(TrySendError::Closed(())) => {
+                Err(anyhow!("`TrySendError::Closed` in `NotifySender`"))
+            }
         }
     }
 }
