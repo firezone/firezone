@@ -2,26 +2,31 @@
 # See discussion here: https://github.com/firezone/firezone/issues/2041
 # and PR changing it here: https://github.com/firezone/firezone/pull/2949
 
-# Release Instructions:
+# Release Instructions (Gateway/GUI/Headless)
 # 1. Publish the appropriate drafted release on GitHub
 # 2. Bump the appropriate version in this file
 # 3. Run `make version`
 # 4. Commit the changes
 # 5. Open a PR with the changes
 #
+# Release Instructions (Apple/Android)
+# 1. Run the Swift or Kotlin workflow on main. This will push a build to AppStore Connect or Firebase.
+# 2. Create a new release in AppStore Connect or Firebase appropriately and submit.
+# 3. When the release is approved and live, bump the appropriate version in this file.
+#
 # CI will prevent pushing assets to releases that are published, so you need to bump
 # the relevant versions in order to push to a newly drafted release.
 
 # Tracks the current version to use for generating download links and changelogs
-current-apple-version = 1.3.0
-current-android-version = 1.3.1
+current-apple-version = 1.3.1
+current-android-version = 1.3.2
 current-gateway-version = 1.3.1
 current-gui-version = 1.3.2
 current-headless-version = 1.3.1
 
 # Tracks the next version to release for each platform
-next-apple-version = 1.3.1
-next-android-version = 1.3.2
+next-apple-version = 1.3.2
+next-android-version = 1.3.3
 next-gateway-version = 1.3.2
 next-gui-version = 1.3.3
 next-headless-version = 1.3.2
