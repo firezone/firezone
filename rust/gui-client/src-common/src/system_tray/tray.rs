@@ -32,7 +32,65 @@ const UPDATE_READY_LAYER: &[u8] = icon_layer!("Update ready layer.png");
 // Strings
 const TOOLTIP: &str = "Firezone";
 
+// Based on `Worker` from the `network_changes` module
 pub(crate) struct Tray {
+    rx: mpsc::Receiver<Event>,
+    worker: Option<Worker>,
+}
+
+impl Drop for Tray {
+    fn drop(&mut self) {
+        self.close().expect("Should be able to close the tray menu worker thread cleanly.");
+    }
+}
+
+impl Tray {
+    pub(crate) fn new() -> Result<Self> {
+        // Hopefully we don't end up deadlocking here somehow.
+        let (tx, rx) = mpsc::channel(5);
+        let worker = Worker::new(tx, || {
+
+        })?;
+        Ok(Self {
+            rx,
+            worker,
+        })
+    }
+
+    pub(crate) fn close(&mut self) -> Result<()> {
+        let Some(worker) = self.worker.take() else {
+            return Ok(());
+        };
+
+        tracing::debug!("Asking tray menu worker thread to stop gracefully.");
+        worker.stopper.send(()).map_err(|_| anyhow!("Couldn't stop tray menu worker thread."))?;
+        match worker.thread.join() {
+            Err(error) => std::panic::resume_unwind(e),
+            Ok(x) => x?,
+        }
+        tracing::debug!("Tray menu worker thread stopped gracefully.");
+    }
+
+    pub(crate) async fn recv(&mut self) -> Result<Event> {
+        self.rx.recv().await.context("Couldn't receive next tray menu event.")?;
+        Ok(())
+    }
+}
+
+struct Worker {
+    stopper: oneshot::Sender<()>,
+    thread: thread::JoinHandle<Result<()>>,
+}
+
+impl Worker {
+    fn new<F: FnOnce(mpsc::Sender<Event>, oneshot::Receiver<()>) -> Result<()> + Send + 'static>(tx: mpsc::Sender<Event>, func: F) -> Result<Self> {
+        let (stopper, stopper_rx) = oneshot::channel();
+        let thread = thread::Builder::new().name("Firezone tray menu worker thread").spawn(move || func(tx, stopper_rx))?;
+        Ok(Self { stopper, thread })
+    }
+}
+
+struct Inner
     handle: tray_icon::TrayIcon,
     last_icon_set: Icon,
     /// Maps from `tray_icons` menu IDs to GUI Client events
@@ -62,7 +120,7 @@ impl Default for Icon {
     }
 }
 
-impl Tray {
+impl Inner {
     pub(crate) fn new() -> Result<(Self, mpsc::Receiver<tray_icon::TrayEvent>)> {
         // Hopefully this channel doesn't deadlock the GTK+ main loop by accident.
         let (tx, rx) = mpsc::channel(5);

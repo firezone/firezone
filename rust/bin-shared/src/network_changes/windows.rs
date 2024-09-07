@@ -189,8 +189,8 @@ impl WorkerInner {
         tx: NotifySender,
         func: F,
     ) -> Result<Self> {
-        let (stopper, stopper_rx) = tokio::sync::oneshot::channel();
-        let thread = std::thread::Builder::new()
+        let (stopper, stopper_rx) = oneshot::channel();
+        let thread = thread::Builder::new()
             .name(thread_name.into())
             .spawn(move || func(tx, stopper_rx))?;
 
