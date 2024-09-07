@@ -13,7 +13,7 @@ use connlib_shared::messages::{
 use connlib_shared::{callbacks, PublicKey, StaticSecret};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
+use ip_packet::{IpPacket, MutableIpPacket, Packet};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
@@ -677,6 +677,7 @@ impl ClientState {
                     src: None,
                     dst: server,
                     payload: Cow::Owned(payload),
+                    original_packet: Some(packet.packet().to_vec()),
                 });
 
                 Ok(None)

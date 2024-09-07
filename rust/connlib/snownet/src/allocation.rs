@@ -755,6 +755,7 @@ impl Allocation {
             src: None,
             dst: self.active_socket?,
             payload: Cow::Owned(channel_data),
+            original_packet: None,
         })
     }
 
@@ -980,6 +981,7 @@ impl Allocation {
             src: None,
             dst,
             payload: encode(message).into(),
+            original_packet: None,
         });
 
         true

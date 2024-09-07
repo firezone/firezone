@@ -13,7 +13,7 @@ use connlib_shared::{
 };
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
-use ip_packet::Packet;
+use ip_packet::{make::icmp_network_unreachable, MutableIpPacket, Packet};
 use rand::rngs::OsRng;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -128,14 +128,26 @@ impl ClientTunnel {
             }
 
             if let Some(transmit) = self.role_state.poll_transmit() {
+                let original_packet = transmit.original_packet.clone();
                 match self.io.send_network(transmit) {
-                    Ok(()) => continue,
+                    Ok(()) => {}
                     Err(e) if is_network_unreachable(&e) => {
-                        // todo!
-                        continue;
+                        let Some(mut original_packet) = original_packet else {
+                            continue;
+                        };
+                        let packet = MutableIpPacket::new(&mut original_packet[..]).unwrap();
+                        let Ok(icmp_response) = icmp_network_unreachable(
+                            packet.destination(),
+                            packet.source(),
+                            packet.packet(),
+                        ) else {
+                            continue;
+                        };
+                        self.io.send_device(icmp_response.to_immutable())?;
                     }
                     Err(e) => return Poll::Ready(Err(e)),
                 }
+                continue;
             }
 
             if let Some(timeout) = self.role_state.poll_timeout() {

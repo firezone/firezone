@@ -1265,6 +1265,7 @@ impl EncryptedPacket {
             payload: Cow::Borrowed(
                 &buf.inner[self.packet_start..(self.packet_start + self.packet_len)],
             ),
+            original_packet: None,
         }
     }
 
@@ -1286,6 +1287,8 @@ pub struct Transmit<'a> {
     pub dst: SocketAddr,
     /// The data that should be sent.
     pub payload: Cow<'a, [u8]>,
+    /// Packet that triggered this transmit
+    pub original_packet: Option<Vec<u8>>,
 }
 
 impl<'a> fmt::Debug for Transmit<'a> {
@@ -1304,6 +1307,7 @@ impl<'a> Transmit<'a> {
             src: self.src,
             dst: self.dst,
             payload: Cow::Owned(self.payload.into_owned()),
+            original_packet: self.original_packet,
         }
     }
 }
@@ -1658,6 +1662,7 @@ where
                     src: Some(source),
                     dst,
                     payload: Cow::Owned(packet.into()),
+                    original_packet: None,
                 });
                 continue;
             };
@@ -1846,6 +1851,7 @@ where
             src: Some(source),
             dst: remote,
             payload: Cow::Owned(message.into()),
+            original_packet: None,
         },
         PeerSocket::Relay { relay, dest: peer } => {
             encode_as_channel_data(relay, peer, message, allocations, now).ok()?
