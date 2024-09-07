@@ -1,9 +1,20 @@
+//! Code for the system tray AKA notification area
+//!
+//! This manages the icon, menu, and tooltip.
+//!
+//! "Notification Area" is Microsoft's official name instead of "System tray":
+//! <https://learn.microsoft.com/en-us/windows/win32/shell/notification-area?redirectedfrom=MSDN#notifications-and-the-notification-area>
+
+use crate::compositor::{self, Image};
 use crate::updates::Release;
+use anyhow::Result;
 use connlib_shared::{
     callbacks::{ResourceDescription, Status},
     messages::ResourceId,
 };
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
+use tokio::sync::mpsc;
+use tray_icon::menu as concrete;
 use url::Url;
 
 use builder::item;
@@ -27,6 +38,17 @@ const SIGN_OUT: &str = "Sign out";
 const DISCONNECT_AND_QUIT: &str = "Disconnect and quit Firezone";
 const DISABLE: &str = "Disable this resource";
 const ENABLE: &str = "Enable this resource";
+
+// Figma is the source of truth for the tray icon layers
+// <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=nHBOzOnSY5Ol4asV-0>
+const LOGO_BASE: &[u8] = include_bytes!("../../src-tauri/icons/tray/Logo.png");
+const LOGO_GREY_BASE: &[u8] = include_bytes!("../../src-tauri/icons/tray/Logo grey.png");
+const BUSY_LAYER: &[u8] = include_bytes!("../../src-tauri/icons/tray/Busy layer.png");
+const SIGNED_OUT_LAYER: &[u8] = include_bytes!("../../src-tauri/icons/tray/Signed out layer.png");
+const UPDATE_READY_LAYER: &[u8] =
+    include_bytes!("../../src-tauri/icons/tray/Update ready layer.png");
+
+const TOOLTIP: &str = "Firezone";
 
 mod builder;
 
@@ -92,7 +114,11 @@ impl<'a> SignedIn<'a> {
     /// Builds the submenu that has the resource address, name, desc,
     /// sites online, etc.
     fn resource_submenu(&self, res: &ResourceDescription) -> Menu {
-        let mut submenu = Menu::default().resource_description(res);
+        let mut name = res.name().to_string();
+        if res.is_internet_resource() {
+            name = append_status(&name, self.internet_resource_enabled.unwrap_or_default());
+        }
+        let mut submenu = Menu::new(name).resource_description(res);
 
         if res.is_internet_resource() {
             submenu.add_separator();
@@ -191,12 +217,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
             .iter()
             .filter(|res| favorite_resources.contains(&res.id()) || res.is_internet_resource())
         {
-            let mut name = res.name().to_string();
-            if res.is_internet_resource() {
-                name = append_status(&name, internet_resource_enabled.unwrap_or_default());
-            }
-
-            menu = menu.add_submenu(name, signed_in.resource_submenu(res));
+            menu = menu.add_submenu(signed_in.resource_submenu(res));
         }
     } else {
         // No favorites, show every Resource normally, just like before
@@ -204,25 +225,20 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         // Always show Resources in the original order
         menu = menu.disabled(RESOURCES);
         for res in *resources {
-            let mut name = res.name().to_string();
-            if res.is_internet_resource() {
-                name = append_status(&name, internet_resource_enabled.unwrap_or_default());
-            }
-
-            menu = menu.add_submenu(name, signed_in.resource_submenu(res));
+            menu = menu.add_submenu(signed_in.resource_submenu(res));
         }
     }
 
     if has_any_favorites {
-        let mut submenu = Menu::default();
+        let mut submenu = Menu::new(OTHER_RESOURCES);
         // Always show Resources in the original order
         for res in resources
             .iter()
             .filter(|res| !favorite_resources.contains(&res.id()) && !res.is_internet_resource())
         {
-            submenu = submenu.add_submenu(res.name(), signed_in.resource_submenu(res));
+            submenu = submenu.add_submenu(signed_in.resource_submenu(res));
         }
-        menu = menu.separator().add_submenu(OTHER_RESOURCES, submenu);
+        menu = menu.separator().add_submenu(submenu);
     }
 
     menu
@@ -265,8 +281,7 @@ impl Menu {
         self.item(Event::ShowWindow(Window::About), "About Firezone")
             .item(Event::AdminPortal, "Admin Portal...")
             .add_submenu(
-                "Help",
-                Menu::default()
+                Menu::new("Help")
                     .item(
                         Event::Url(utm_url("https://www.firezone.dev/kb")),
                         "Documentation...",
@@ -288,6 +303,159 @@ pub(crate) fn utm_url(base_url: &str) -> Url {
         std::env::consts::OS
     ))
     .expect("Hard-coded URL should always be parsable")
+}
+
+pub(crate) struct Tray {
+    handle: tray_icon::TrayIcon,
+    last_icon_set: Icon,
+    /// Maps from `tray_icons` menu IDs to GUI Client events
+    map: BTreeMap<u32, Event>,
+}
+
+fn build_icon(that: &Icon) -> tray_icon::icon::Icon {
+    let layers = match that.base {
+        IconBase::Busy => &[LOGO_GREY_BASE, BUSY_LAYER][..],
+        IconBase::SignedIn => &[LOGO_BASE][..],
+        IconBase::SignedOut => &[LOGO_GREY_BASE, SIGNED_OUT_LAYER][..],
+    }
+    .iter()
+    .copied()
+    .chain(that.update_ready.then_some(UPDATE_READY_LAYER));
+    let composed =
+        compositor::compose(layers).expect("PNG decoding should always succeed for baked-in PNGs");
+    build_image(composed)
+}
+
+fn build_image(val: Image) -> tray_icon::icon::Icon {
+    tray_icon::icon::Icon::from_rgba(val.rgba, val.width, val.height)
+        .expect("Should always be able to convert our icon format to that of `tray_icon`")
+}
+
+impl Tray {
+    pub(crate) fn new() -> Result<(Self, mpsc::Receiver<tray_icon::TrayEvent>)> {
+        // Hopefully this channel doesn't deadlock the GTK+ main loop by accident.
+        let (tx, rx) = mpsc::channel(5);
+        // This is global mutable state, but the GUI process will only ever have
+        // zero or one tray icons so it should be okay.
+        tray_icon::TrayEvent::set_event_handler(Some(move |event| {
+            if let Err(error) = tx.blocking_send(event) {
+                tracing::error!(?error, "Failed to send sys tray event to `Controller`.");
+            }
+        }));
+
+        let MenuAndMap { map, menu } = build_app_state(AppState {
+            connlib: ConnlibState::Loading,
+            release: None,
+        });
+        let icon = Default::default();
+        let tray_attrs = tray_icon::TrayIconAttributes {
+            tooltip: Some(TOOLTIP.to_string()),
+            menu: Some(Box::new(menu)),
+            icon: Some(build_icon(&icon)),
+            temp_dir_path: None, // This is probably where this silly PNGs get dumped.
+            icon_is_template: false,
+            menu_on_left_click: true, // Doesn't work on Windows
+            title: Some("TODO".to_string()),
+        };
+        let handle = tray_icon::TrayIcon::new(tray_attrs)?;
+
+        Ok((
+            Self {
+                handle,
+                last_icon_set: icon,
+                map,
+            },
+            rx,
+        ))
+    }
+
+    pub(crate) fn translate_event(&self, input: tray_icon::TrayEvent) -> Option<Event> {
+        self.map.get(&input.id).cloned()
+    }
+
+    pub(crate) fn update(&mut self, state: AppState) -> Result<()> {
+        let base = match &state.connlib {
+            ConnlibState::Loading
+            | ConnlibState::RetryingConnection
+            | ConnlibState::WaitingForBrowser
+            | ConnlibState::WaitingForPortal
+            | ConnlibState::WaitingForTunnel => IconBase::Busy,
+            ConnlibState::SignedOut => IconBase::SignedOut,
+            ConnlibState::SignedIn { .. } => IconBase::SignedIn,
+        };
+        let new_icon = Icon {
+            base,
+            update_ready: state.release.is_some(),
+        };
+
+        let MenuAndMap { map, menu } = build_app_state(state);
+
+        self.map = map;
+        self.handle.set_tooltip(Some(TOOLTIP))?;
+        self.handle.set_menu(Some(Box::new(menu)));
+        self.set_icon(new_icon)?;
+
+        Ok(())
+    }
+
+    // Only needed for the stress test
+    // Otherwise it would be inlined
+    pub(crate) fn set_icon(&mut self, icon: Icon) -> Result<()> {
+        if icon != self.last_icon_set {
+            // Don't call `set_icon` too often. On Linux it writes a PNG to `/run/user/$UID/tao/tray-icon-*.png` every single time.
+            // <https://github.com/tauri-apps/tao/blob/tao-v0.16.7/src/platform_impl/linux/system_tray.rs#L119>
+            // Yes, even if you use `Icon::File` and tell Tauri that the icon is already
+            // on disk.
+            self.handle.set_icon(Some(build_icon(&icon)))?;
+            self.last_icon_set = icon;
+        }
+        Ok(())
+    }
+}
+
+struct MenuAndMap {
+    map: BTreeMap<u32, Event>,
+    menu: concrete::Submenu,
+}
+
+fn build_app_state(that: AppState) -> MenuAndMap {
+    let mut map = BTreeMap::default();
+    let menu = build_menu(that.into_menu(), &mut map);
+    MenuAndMap { menu, map }
+}
+
+/// Builds this abstract `Menu` into a concrete menu.
+///
+/// This recurses but we never go deeper than 3 or 4 levels so it's fine.
+pub(crate) fn build_menu(that: Menu, map: &mut BTreeMap<u32, Event>) -> concrete::Submenu {
+    let menu = concrete::Submenu::new(that.title, true);
+    for entry in that.entries {
+        match entry {
+            Entry::Item(item) => menu.append(&build_item(item, map)),
+            Entry::Separator => menu.append(&concrete::PredefinedMenuItem::separator()),
+            Entry::Submenu(inner) => menu.append(&build_menu(inner, map)),
+        };
+    }
+    menu
+}
+
+/// Builds this abstract `Item` into a concrete item.
+fn build_item(item: Item, map: &mut BTreeMap<u32, Event>) -> concrete::CheckMenuItem {
+    let Item {
+        event,
+        selected,
+        title,
+    } = item;
+
+    let item = concrete::CheckMenuItem::new(title, event.is_some(), selected, None);
+
+    if let Some(event) = event {
+        if map.insert(item.id(), event).is_some() {
+            panic!("Can't have two menu items with the same ID.");
+        }
+    }
+
+    item
 }
 
 #[cfg(test)]

@@ -126,6 +126,32 @@ defmodule Domain.Policies.Condition.Evaluator do
 
   def fetch_conformation_expiration(
         %Condition{
+          property: :client_verified,
+          operator: :is,
+          values: ["true"]
+        },
+        %Clients.Client{verified_at: verified_at}
+      ) do
+    if is_nil(verified_at) do
+      :error
+    else
+      {:ok, nil}
+    end
+  end
+
+  def fetch_conformation_expiration(
+        %Condition{
+          property: :client_verified,
+          operator: :is,
+          values: _other
+        },
+        %Clients.Client{}
+      ) do
+    {:ok, nil}
+  end
+
+  def fetch_conformation_expiration(
+        %Condition{
           property: :current_utc_datetime,
           operator: :is_in_day_of_week_time_ranges,
           values: values

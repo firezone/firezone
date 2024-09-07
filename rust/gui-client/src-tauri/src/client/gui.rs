@@ -16,16 +16,14 @@ use firezone_gui_client_common::{
     errors::{self, Error},
     ipc,
     settings::AdvancedSettings,
-    updates,
+    system_tray, updates,
 };
 use firezone_headless_client::LogFilterReloader;
 use secrecy::{ExposeSecret as _, SecretString};
 use std::{path::PathBuf, str::FromStr, time::Duration};
-use tauri::{Manager, SystemTrayEvent};
+use tauri::Manager as _;
 use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
-
-pub(crate) mod system_tray;
 
 #[cfg(target_os = "linux")]
 #[path = "gui/os_linux.rs"]
@@ -43,8 +41,6 @@ mod os;
 #[allow(clippy::unnecessary_wraps)]
 mod os;
 
-pub(crate) use os::set_autostart;
-
 /// All managed state that we might need to access from odd places like Tauri commands.
 ///
 /// Note that this never gets Dropped because of
@@ -56,7 +52,6 @@ pub(crate) struct Managed {
 
 struct TauriIntegration {
     app: tauri::AppHandle,
-    tray: tray_icon::TrayIcon,
 }
 
 impl GuiIntegration for TauriIntegration {
@@ -76,14 +71,6 @@ impl GuiIntegration for TauriIntegration {
 
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
         Ok(tauri::api::shell::open(&self.app.shell_scope(), url, None)?)
-    }
-
-    fn set_tray_icon(&mut self, icon: common::system_tray::Icon) -> Result<()> {
-        self.tray.set_icon(icon)
-    }
-
-    fn set_tray_menu(&mut self, app_state: common::system_tray::AppState) -> Result<()> {
-        self.tray.update(app_state)
     }
 
     fn show_notification(&self, title: &str, body: &str) -> Result<()> {
@@ -144,7 +131,6 @@ pub(crate) fn run(
     let deep_link_server = rt.block_on(async { deep_link::Server::new().await })?;
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
-    let (updates_tx, updates_rx) = mpsc::channel(1);
 
     let managed = Managed {
         ctlr_tx: ctlr_tx.clone(),
@@ -178,22 +164,6 @@ pub(crate) fn run(
         ])
         .setup(move |app| {
             let setup_inner = move || {
-                // Hopefully this doesn't deadlock the GTK+ main loop by accident.
-                let (sys_tray_tx, sys_tray_rx) = mpsc::channel(5);
-                tray_icon::menu::MenuEvent::set_event_handler(Some(move |event| {
-                    if let Err(error) = sys_tray_tx.blocking_send(event) {
-                        tracing::error!(?error, "Failed to send sys tray event to `Controller`.");
-                    }
-                }));
-
-                // Check for updates
-                tokio::spawn(async move {
-                    if let Err(error) = updates::checker_task(updates_tx, cli.debug_update_check).await
-                    {
-                        tracing::error!(?error, "Error in updates::checker_task");
-                    }
-                });
-
                 if let Some(client::Cmd::SmokeTest) = &cli.command {
                     let ctlr_tx = ctlr_tx.clone();
                     tokio::spawn(async move {
@@ -238,16 +208,21 @@ pub(crate) fn run(
                     let app_handle_2 = app_handle.clone();
                     // Spawn two nested Tasks so the outer can catch panics from the inner
                     let task = tokio::spawn(async move {
-                        run_controller(
-                            app_handle_2,
-                            ctlr_tx,
-                            ctlr_rx,
+                        let integration = TauriIntegration { app: app_handle_2 };
+                        let controller = Controller::new(
+                            cli,
                             advanced_settings,
+                            ctlr_tx,
+                            integration,
                             reloader,
-                            sys_tray_rx,
-                            updates_rx,
-                        )
-                        .await
+                            ctlr_rx,
+                        ).await?;
+
+                        controller.main_loop().await?;
+
+                        // Last chance to do any drops / cleanup before the process crashes.
+
+                        Ok(())
                     });
 
                     // See <https://github.com/tauri-apps/tauri/issues/8631>
@@ -313,7 +288,7 @@ pub(crate) fn run(
 }
 
 #[cfg(not(debug_assertions))]
-async fn smoke_test(_: CtlrTx) -> Result<()> {
+async fn smoke_test(_: CtlrTx, _: mpsc::Sender<common::system_tray::Event>) -> Result<()> {
     bail!("Smoke test is not built for release binaries.");
 }
 
@@ -380,7 +355,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
 
     tracing::info!("Quitting on purpose because of `smoke-test` subcommand");
     ctlr_tx
-        .send(ControllerRequest::SystemTrayMenu(TrayMenuEvent::Quit))
+        .send(ControllerRequest::Quit)
         .await
         .context("Failed to send Quit request")?;
 
@@ -410,52 +385,4 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
         // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.
         server = deep_link::Server::new().await?;
     }
-}
-
-// TODO: Move this into `impl Controller`
-async fn run_controller(
-    app: tauri::AppHandle,
-    ctlr_tx: CtlrTx,
-    rx: mpsc::Receiver<ControllerRequest>,
-    advanced_settings: AdvancedSettings,
-    log_filter_reloader: LogFilterReloader,
-    sys_tray_rx: mpsc::Receiver<SystemTrayEvent>,
-    updates_rx: mpsc::Receiver<Option<updates::Notification>>,
-) -> Result<(), Error> {
-    tracing::info!("Entered `run_controller`");
-    let (ipc_tx, ipc_rx) = mpsc::channel(1);
-    let ipc_client = ipc::Client::new(ipc_tx).await?;
-    let tray_attrs = tray_icon::TrayIconAttributes {
-        tooltip: Some("TODO".to_string()),
-        menu: None,
-        icon: None,
-        temp_dir_path: None, // This is probably where this silly PNGs get dumped.
-        icon_is_template: false,
-        menu_on_left_click: true, // Doesn't work on Windows
-        title: Some("TODO".to_string()),
-    };
-    let tray = tray_icon::TrayIcon::new(tray_attrs);
-    let integration = TauriIntegration { app, tray };
-    let controller = Controller {
-        advanced_settings,
-        auth: auth::Auth::new()?,
-        clear_logs_callback: None,
-        ctlr_tx,
-        ipc_client,
-        ipc_rx,
-        integration,
-        log_filter_reloader,
-        release: None,
-        rx,
-        status: Default::default(),
-        sys_tray_rx,
-        updates_rx,
-        uptime: Default::default(),
-    };
-
-    controller.main_loop().await?;
-
-    // Last chance to do any drops / cleanup before the process crashes.
-
-    Ok(())
 }

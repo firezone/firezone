@@ -11,7 +11,8 @@ pub const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
 /// Equivalent to `tauri::SystemTrayMenu`
 #[derive(Debug, Default, PartialEq, Serialize)]
 pub struct Menu {
-    pub entries: Vec<Entry>,
+    pub(crate) entries: Vec<Entry>,
+    pub(crate) title: String,
 }
 
 /// Something that can be shown in a menu, including text items, separators, and submenus
@@ -21,7 +22,7 @@ pub struct Menu {
 pub enum Entry {
     Item(Item),
     Separator,
-    Submenu { title: String, inner: Menu },
+    Submenu(Menu),
 }
 
 /// Something that shows text and may be clickable
@@ -33,14 +34,14 @@ pub struct Item {
     ///
     /// If `None`, then the item is disabled and greyed out.
     pub event: Option<Event>,
-    /// The text displayed to the user
-    pub title: String,
     /// If true, show a checkmark next to the item
     pub selected: bool,
+    /// The text displayed to the user
+    pub title: String,
 }
 
 /// Events that the menu can send to the app
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Event {
     /// Marks this Resource as favorite
     AddFavorite(ResourceId),
@@ -73,7 +74,7 @@ pub enum Event {
     DisableInternetResource,
 }
 
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Window {
     About,
     Settings,
@@ -104,11 +105,8 @@ impl Menu {
         self.entries.push(Entry::Item(item));
     }
 
-    pub(crate) fn add_submenu<S: Into<String>>(mut self, title: S, inner: Menu) -> Self {
-        self.entries.push(Entry::Submenu {
-            inner,
-            title: title.into(),
-        });
+    pub(crate) fn add_submenu(mut self, inner: Menu) -> Self {
+        self.entries.push(Entry::Submenu(inner));
         self
     }
 
@@ -128,6 +126,13 @@ impl Menu {
     pub(crate) fn item<E: Into<Option<Event>>, S: Into<String>>(mut self, id: E, title: S) -> Self {
         self.add_item(item(id, title));
         self
+    }
+
+    pub(crate) fn new<S: Into<String>>(title: S) -> Self {
+        Self {
+            entries: Default::default(),
+            title: title.into(),
+        }
     }
 
     /// Appends a separator

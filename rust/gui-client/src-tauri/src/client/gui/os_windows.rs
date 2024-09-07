@@ -2,11 +2,6 @@ use super::{ControllerRequest, CtlrTx};
 use anyhow::{Context, Result};
 use firezone_bin_shared::BUNDLE_ID;
 
-#[allow(clippy::unused_async)]
-pub(crate) async fn set_autostart(_enabled: bool) -> Result<()> {
-    todo!()
-}
-
 /// Since clickable notifications don't work on Linux yet, the update text
 /// must be different on different platforms
 pub(crate) fn show_update_notification(

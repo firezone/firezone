@@ -1,5 +1,5 @@
 use crate::{
-    auth, deep_link,
+    auth, cli::{Cli, Failure}, deep_link,
     errors::Error,
     ipc, logging,
     settings::{self, AdvancedSettings},
@@ -26,22 +26,23 @@ pub type CtlrTx = mpsc::Sender<ControllerRequest>;
 
 pub struct Controller<I: GuiIntegration> {
     /// Debugging-only settings like API URL, auth URL, log filter
-    pub advanced_settings: AdvancedSettings,
+    advanced_settings: AdvancedSettings,
     // Sign-in state with the portal / deep links
-    pub auth: auth::Auth,
-    pub clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
-    pub ctlr_tx: CtlrTx,
-    pub ipc_client: ipc::Client,
-    pub ipc_rx: mpsc::Receiver<ipc::Event>,
-    pub integration: I,
-    pub log_filter_reloader: LogFilterReloader,
+    auth: auth::Auth,
+    clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
+    ctlr_tx: CtlrTx,
+    ipc_client: ipc::Client,
+    ipc_rx: mpsc::Receiver<ipc::Event>,
+    integration: I,
+    log_filter_reloader: LogFilterReloader,
     /// A release that's ready to download
-    pub release: Option<updates::Release>,
-    pub rx: mpsc::Receiver<ControllerRequest>,
-    pub status: Status,
-    pub sys_tray_rx: mpsc::Receiver<TrayMenuEvent>,
-    pub updates_rx: mpsc::Receiver<Option<updates::Notification>>,
-    pub uptime: crate::uptime::Tracker,
+    release: Option<updates::Release>,
+    rx: mpsc::Receiver<ControllerRequest>,
+    status: Status,
+    sys_tray_rx: mpsc::Receiver<tray_icon::TrayEvent>,
+    tray: system_tray::Tray,
+    updates_rx: mpsc::Receiver<Option<updates::Notification>>,
+    uptime: crate::uptime::Tracker,
 }
 
 pub trait GuiIntegration {
@@ -50,8 +51,6 @@ pub trait GuiIntegration {
     /// Also opens non-URLs
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()>;
 
-    fn set_tray_icon(&mut self, icon: system_tray::Icon) -> Result<()>;
-    fn set_tray_menu(&mut self, app_state: system_tray::AppState) -> Result<()>;
     fn show_notification(&self, title: &str, body: &str) -> Result<()>;
     fn show_update_notification(&self, ctlr_tx: CtlrTx, title: &str, url: url::Url) -> Result<()>;
 
@@ -59,6 +58,7 @@ pub trait GuiIntegration {
     fn show_window(&self, window: system_tray::Window) -> Result<()>;
 }
 
+// TODO: Rename `Req`
 // Allow dead code because `UpdateNotificationClicked` doesn't work on Linux yet
 #[allow(dead_code)]
 pub enum ControllerRequest {
@@ -73,21 +73,10 @@ pub enum ControllerRequest {
     },
     Fail(Failure),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
+    Quit,
     SchemeRequest(SecretString),
     SignIn,
     UpdateNotificationClicked(Url),
-}
-
-// The failure flags are all mutually exclusive
-// TODO: I can't figure out from the `clap` docs how to do this:
-// `app --fail-on-purpose crash-in-wintun-worker`
-// So the failure should be an `Option<Enum>` but _not_ a subcommand.
-// You can only have one subcommand per container, I've tried
-#[derive(Debug)]
-pub enum Failure {
-    Crash,
-    Error,
-    Panic,
 }
 
 pub enum Status {
@@ -143,6 +132,46 @@ impl Status {
 }
 
 impl<I: GuiIntegration> Controller<I> {
+    pub async fn new(
+        cli: Cli,
+        advanced_settings: AdvancedSettings,
+        ctlr_tx: mpsc::Sender<ControllerRequest>,
+        integration: I,
+        log_filter_reloader: LogFilterReloader,
+        rx: mpsc::Receiver<ControllerRequest>,
+    ) -> Result<Self> {
+        let (ipc_tx, ipc_rx) = mpsc::channel(1);
+        let ipc_client = ipc::Client::new(ipc_tx).await?;
+        let (tray, sys_tray_rx) = system_tray::Tray::new()?;
+
+        // Check for updates
+        let (updates_tx, updates_rx) = mpsc::channel(1);
+        tokio::spawn(async move {
+            if let Err(error) = updates::checker_task(updates_tx, cli.debug_update_check).await
+            {
+                tracing::error!(?error, "Error in updates::checker_task");
+            }
+        });
+
+        Ok(Controller {
+            advanced_settings,
+            auth: auth::Auth::new()?,
+            clear_logs_callback: None,
+            ctlr_tx,
+            ipc_client,
+            ipc_rx,
+            integration,
+            log_filter_reloader,
+            release: None,
+            rx,
+            status: Default::default(),
+            sys_tray_rx,
+            tray,
+            updates_rx,
+            uptime: Default::default(),
+        })
+    }
+
     pub async fn main_loop(mut self) -> Result<(), Error> {
         if let Some(token) = self
             .auth
@@ -204,12 +233,18 @@ impl<I: GuiIntegration> Controller<I> {
                         Req::Fail(Failure::Error) => Err(anyhow!("Test error"))?,
                         Req::Fail(Failure::Panic) => panic!("Test panic"),
                         // TODO: Should we really skip cleanup if a request fails?
-                        req => self.handle_request(req).await?,
+                        req => if let ControlFlow::Break(()) = self.handle_request(req).await? {
+                            break;
+                        },
                     }
                 }
-                event = self.sys_tray_rx.recv() => if let ControlFlow::Break(()) = self.handle_sys_tray(event.context("System tray event channel stopped")?).await? {
-                    break;
-                },
+                event = self.sys_tray_rx.recv() => {
+                    let event = event.context("System tray event channel stopped")?;
+                    let event = self.tray.translate_event(event).context("Could not translate system tray event")?;
+                    if let ControlFlow::Break(()) = self.handle_sys_tray(event).await? {
+                        break;
+                    }
+                }
                 notification = self.updates_rx.recv() => self.handle_update_notification(notification.context("Update checker task stopped")?)?,
             }
             // Code down here may not run because the `select` sometimes `continue`s.
@@ -272,7 +307,7 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    async fn handle_request(&mut self, req: ControllerRequest) -> Result<(), Error> {
+    async fn handle_request(&mut self, req: ControllerRequest) -> Result<ControlFlow<()>, Error> {
         match req {
             Req::ApplySettings(settings) => {
                 let filter = firezone_logging::try_filter(&self.advanced_settings.log_filter)
@@ -309,6 +344,7 @@ impl<I: GuiIntegration> Controller<I> {
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
+            Req::Quit => return Ok(ControlFlow::Break(())),
             Req::SchemeRequest(url) => {
                 if let Err(error) = self.handle_deep_link(&url).await {
                     tracing::error!(?error, "`handle_deep_link` failed");
@@ -322,7 +358,7 @@ impl<I: GuiIntegration> Controller<I> {
                     .context("Couldn't open update page")?;
             }
         }
-        Ok(())
+        Ok(ControlFlow::Continue(()))
     }
 
     async fn handle_ipc_event(&mut self, event: ipc::Event) -> Result<(), Error> {
@@ -393,8 +429,8 @@ impl<I: GuiIntegration> Controller<I> {
             }
             IpcServerMsg::TerminatingGracefully => {
                 tracing::info!("Caught TerminatingGracefully");
-                self.integration
-                    .set_tray_icon(system_tray::icon_terminating())
+                self.tray
+                    .set_icon(system_tray::icon_terminating())
                     .ok();
                 Err(Error::IpcServiceTerminating)
             }
@@ -590,10 +626,9 @@ impl<I: GuiIntegration> Controller<I> {
     async fn update_disabled_resources(&mut self) -> Result<()> {
         settings::save(&self.advanced_settings).await?;
 
-        let internet_resource = self
-            .status
-            .internet_resource()
-            .context("Tunnel not ready")?;
+        let Some(internet_resource) = self.status.internet_resource() else {
+            return Ok(());
+        };
 
         let mut disabled_resources = BTreeSet::new();
 
@@ -646,7 +681,7 @@ impl<I: GuiIntegration> Controller<I> {
         } else {
             system_tray::ConnlibState::SignedOut
         };
-        self.integration.set_tray_menu(system_tray::AppState {
+        self.tray.update(system_tray::AppState {
             connlib,
             release: self.release.clone(),
         })?;

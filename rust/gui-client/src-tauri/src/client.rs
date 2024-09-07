@@ -1,14 +1,13 @@
 use anyhow::{bail, Context as _, Result};
 use clap::{Args, Parser};
 use firezone_gui_client_common::{
-    self as common, controller::Failure, crash_handling, deep_link, settings::AdvancedSettings,
+    self as common, cli::{Cli, Cmd, Failure}, crash_handling, debug_commands, deep_link, settings::AdvancedSettings,
 };
 use std::path::PathBuf;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
 
 mod about;
-mod debug_commands;
 mod elevation;
 mod gui;
 mod logging;
@@ -133,75 +132,6 @@ fn start_logging(directives: &str) -> Result<common::logging::Handles> {
     );
 
     Ok(logging_handles)
-}
-
-/// The debug / test flags like `crash_on_purpose` and `test_update_notification`
-/// don't propagate when we use `RunAs` to elevate ourselves. So those must be run
-/// from an admin terminal, or with "Run as administrator" in the right-click menu.
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-struct Cli {
-    /// If true, check for updates every 30 seconds and pretend our current version is 1.0.0, so we'll always show the notification dot.
-    #[arg(long, hide = true)]
-    debug_update_check: bool,
-    #[command(subcommand)]
-    command: Option<Cmd>,
-
-    /// Crash the `Controller` task to test error handling
-    /// Formerly `--crash-on-purpose`
-    #[arg(long, hide = true)]
-    crash: bool,
-    /// Error out of the `Controller` task to test error handling
-    #[arg(long, hide = true)]
-    error: bool,
-    /// Panic the `Controller` task to test error handling
-    #[arg(long, hide = true)]
-    panic: bool,
-
-    /// If true, slow down I/O operations to test how the GUI handles slow I/O
-    #[arg(long, hide = true)]
-    inject_faults: bool,
-    /// If true, show a fake update notification that opens the Firezone release page when clicked
-    #[arg(long, hide = true)]
-    test_update_notification: bool,
-    /// For headless CI, disable deep links and allow the GUI to run as admin
-    #[arg(long, hide = true)]
-    no_deep_links: bool,
-}
-
-impl Cli {
-    fn fail_on_purpose(&self) -> Option<Failure> {
-        if self.crash {
-            Some(Failure::Crash)
-        } else if self.error {
-            Some(Failure::Error)
-        } else if self.panic {
-            Some(Failure::Panic)
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(clap::Subcommand)]
-pub enum Cmd {
-    CrashHandlerServer {
-        socket_path: PathBuf,
-    },
-    Debug {
-        #[command(subcommand)]
-        command: debug_commands::Cmd,
-    },
-    Elevated,
-    OpenDeepLink(DeepLink),
-    /// SmokeTest gets its own subcommand for historical reasons.
-    SmokeTest,
-}
-
-#[derive(Args)]
-pub struct DeepLink {
-    // TODO: Should be `Secret`?
-    pub url: url::Url,
 }
 
 #[cfg(test)]

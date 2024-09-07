@@ -60,6 +60,9 @@ defmodule Web.Live.Policies.NewTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
+             "policy[conditions][client_verified][operator]",
+             "policy[conditions][client_verified][property]",
+             "policy[conditions][client_verified][values][]",
              "policy[conditions][current_utc_datetime][operator]",
              "policy[conditions][current_utc_datetime][property]",
              "policy[conditions][current_utc_datetime][timezone]",
@@ -99,6 +102,9 @@ defmodule Web.Live.Policies.NewTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
+             "policy[conditions][client_verified][operator]",
+             "policy[conditions][client_verified][property]",
+             "policy[conditions][client_verified][values][]",
              "policy[conditions][current_utc_datetime][operator]",
              "policy[conditions][current_utc_datetime][property]",
              "policy[conditions][current_utc_datetime][timezone]",
@@ -149,6 +155,9 @@ defmodule Web.Live.Policies.NewTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
+             "policy[conditions][client_verified][operator]",
+             "policy[conditions][client_verified][property]",
+             "policy[conditions][client_verified][values][]",
              "policy[conditions][current_utc_datetime][operator]",
              "policy[conditions][current_utc_datetime][property]",
              "policy[conditions][current_utc_datetime][timezone]",

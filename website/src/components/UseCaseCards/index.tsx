@@ -27,7 +27,7 @@ function Card({
   return <div className={container}>{children}</div>;
 }
 
-function Button({ text, href }: { text: string; href: Route<string> | URL }) {
+function Button({ text, href }: { text: string; href: URL | Route<string> }) {
   return (
     <Link href={href}>
       <button className="group transform transition duration-50 hover:ring-1 hover:ring-neutral-900 inline-flex mt-6 gap-1 items-center bg-neutral-900 rounded-full text-neutral-50 text-sm px-5 py-2.5">

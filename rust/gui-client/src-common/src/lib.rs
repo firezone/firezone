@@ -1,7 +1,9 @@
 pub mod auth;
+pub mod cli;
 pub mod compositor;
 pub mod controller;
 pub mod crash_handling;
+pub mod debug_commands;
 pub mod deep_link;
 pub mod errors;
 pub mod ipc;

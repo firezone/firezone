@@ -15,6 +15,7 @@ defmodule Domain.Policies.Condition.Changeset do
   def valid_operators_for_property(:remote_ip), do: [:is_in_cidr, :is_not_in_cidr]
   def valid_operators_for_property(:provider_id), do: [:is_in, :is_not_in]
   def valid_operators_for_property(:current_utc_datetime), do: [:is_in_day_of_week_time_ranges]
+  def valid_operators_for_property(:client_verified), do: [:is]
 
   defp validate_operator(changeset) do
     case fetch_field(changeset, :property) do
@@ -43,6 +44,13 @@ defmodule Domain.Policies.Condition.Changeset do
         |> validate_list(:values, :string, fn changeset, field ->
           validate_day_of_week_time_ranges(changeset, field)
         end)
+
+      {_data_or_changes, :client_verified} ->
+        changeset
+        |> validate_required(:operator)
+        |> validate_inclusion(:operator, valid_operators_for_property(:client_verified))
+        |> validate_length(:values, min: 1, max: 1)
+        |> validate_list(:values, :boolean)
 
       {_data_or_changes, nil} ->
         changeset
