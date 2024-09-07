@@ -1,5 +1,7 @@
 use crate::{
-    auth, cli::{Cli, Failure}, deep_link,
+    auth,
+    cli::{Cli, Failure},
+    deep_link,
     errors::Error,
     ipc, logging,
     settings::{self, AdvancedSettings},
@@ -147,8 +149,7 @@ impl<I: GuiIntegration> Controller<I> {
         // Check for updates
         let (updates_tx, updates_rx) = mpsc::channel(1);
         tokio::spawn(async move {
-            if let Err(error) = updates::checker_task(updates_tx, cli.debug_update_check).await
-            {
+            if let Err(error) = updates::checker_task(updates_tx, cli.debug_update_check).await {
                 tracing::error!(?error, "Error in updates::checker_task");
             }
         });
@@ -429,9 +430,7 @@ impl<I: GuiIntegration> Controller<I> {
             }
             IpcServerMsg::TerminatingGracefully => {
                 tracing::info!("Caught TerminatingGracefully");
-                self.tray
-                    .update(system_tray::AppState::terminating())
-                    .ok();
+                self.tray.update(system_tray::AppState::terminating()).ok();
                 Err(Error::IpcServiceTerminating)
             }
             IpcServerMsg::TunnelReady => {

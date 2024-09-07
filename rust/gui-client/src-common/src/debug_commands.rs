@@ -50,7 +50,8 @@ mod platform {
             tokio::fs::create_dir_all(&dir)
                 .await
                 .context("Can't create autostart dir")?;
-            let target = std::path::Path::new("/usr/share/applications/firezone-client-gui.desktop");
+            let target =
+                std::path::Path::new("/usr/share/applications/firezone-client-gui.desktop");
             // If the link already exists, delete it
             tokio::fs::remove_file(&link).await.ok();
             tokio::fs::symlink(target, link)

@@ -1,7 +1,10 @@
 use anyhow::{bail, Context as _, Result};
 use clap::{Args, Parser};
 use firezone_gui_client_common::{
-    self as common, cli::{Cli, Cmd, Failure}, crash_handling, debug_commands, deep_link, settings::AdvancedSettings,
+    self as common,
+    cli::{Cli, Cmd, Failure},
+    crash_handling, debug_commands, deep_link,
+    settings::AdvancedSettings,
 };
 use std::path::PathBuf;
 use tracing::instrument;
