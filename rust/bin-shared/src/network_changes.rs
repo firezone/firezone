@@ -13,8 +13,8 @@ pub use imp::{new_dns_notifier, new_network_notifier};
 
 #[cfg(test)]
 mod tests {
-    use crate::platform::DnsControlMethod;
     use super::*;
+    use crate::platform::DnsControlMethod;
 
     /// Smoke test for the DNS and network change notifiers
     ///
@@ -23,8 +23,12 @@ mod tests {
     async fn notifiers() {
         let tokio_handle = tokio::runtime::Handle::current();
 
-        let mut dns = new_dns_notifier(tokio_handle.clone(), DnsControlMethod::default()).await.unwrap();
-        let mut net = new_network_notifier(tokio_handle, DnsControlMethod::default()).await.unwrap();
+        let mut dns = new_dns_notifier(tokio_handle.clone(), DnsControlMethod::default())
+            .await
+            .unwrap();
+        let mut net = new_network_notifier(tokio_handle, DnsControlMethod::default())
+            .await
+            .unwrap();
 
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
