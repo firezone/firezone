@@ -12,7 +12,7 @@ export default function Apple() {
       {/*
       <Entry version="1.3.2" date={new Date(todo)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6521">
+          <ChangeItem pull="6632">
           Fixes a bug where the addressDescription wasn't fully displayed in the macOS
           menu bar if it exceeded a certain length.
           </ChangeItem>
