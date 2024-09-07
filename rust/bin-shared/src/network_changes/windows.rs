@@ -95,34 +95,15 @@ pub async fn new_dns_notifier(
 // Async on Linux due to `zbus`
 #[allow(clippy::unused_async)]
 pub async fn new_network_notifier(
-    _tokio_handle: tokio::runtime::Handle,
-    _method: DnsControlMethod,
-) -> Result<Worker> {
-    Worker::new(
-        "Firezone network monitoring worker",
-        move |tx, stopper_rx| {
-            {
-                let com = ComGuard::new()?;
-                let _network_change_listener = Listener::new(&com, tx)?;
-                stopper_rx.blocking_recv().ok();
-            }
-            Ok(())
-        },
-    )
-}
-
-// Async on Linux due to `zbus`
-#[allow(clippy::unused_async)]
-pub async fn new_network_notifier_2(
     tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
-) -> Result<crate::worker_thread::Worker<()>> {
-    let (worker, _tx) = crate::worker_thread::Worker::new(
+) -> Result<(crate::worker_thread::Worker<()>, NotifyReceiver)> {
+    let (worker, rx) = crate::worker_thread::Worker::new(
         tokio_handle,
         "Firezone network monitoring",
         network_notifier_task,
     )?;
-    Ok(worker)
+    Ok((worker, NotifyReceiver { rx }))
 }
 
 async fn network_notifier_task(params: crate::worker_thread::Params<(), ()>) -> Result<()> {
@@ -133,9 +114,10 @@ async fn network_notifier_task(params: crate::worker_thread::Params<(), ()>) -> 
     } = params;
     let tx = NotifySender { tx };
     {
+        // Logs don't work inside here for some reason.
         let com = ComGuard::new()?;
         let _network_change_listener = Listener::new(&com, tx)?;
-        stop_rx.blocking_recv().ok();
+        stop_rx.await?;
     }
     Ok(())
 }
@@ -722,7 +704,7 @@ struct NotifySender {
     tx: mpsc::Sender<()>,
 }
 
-struct NotifyReceiver {
+pub struct NotifyReceiver {
     rx: mpsc::Receiver<()>,
 }
 
@@ -732,13 +714,13 @@ impl NotifySender {
         // it needs to pick up anyway, so it's fine.
         match self.tx.try_send(()) {
             Ok(()) | Err(TrySendError::Full(())) => Ok(()),
-            Err(TrySendError::Closed(())) => Err(anyhow!("TrySendError::Closed")),
+            Err(TrySendError::Closed(())) => Err(anyhow!("`TrySendError::Closed` in `NotifySender`")),
         }
     }
 }
 
 impl NotifyReceiver {
-    async fn notified(&mut self) -> Result<()> {
+    pub async fn notified(&mut self) -> Result<()> {
         self.rx
             .recv()
             .await

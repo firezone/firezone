@@ -6,7 +6,7 @@
 //!
 //! Using a worker thread and `LocalSet` appeases these APIs.
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context as _, Result};
 use std::{future::Future, thread};
 use tokio::{
     sync::{mpsc, oneshot},
@@ -92,13 +92,18 @@ impl<Inbound: Send + 'static> Worker<Inbound> {
             thread_name = self.thread_name,
             "Asking worker thread to stop gracefully."
         );
-        inner
+        if let Err(_error) = inner
             .stop_tx
             .send(())
-            .map_err(|_| anyhow!("Couldn't stop `{}` worker thread", self.thread_name))?;
+        {
+            tracing::error!("Couldn't stop `{}` worker thread, maybe it crashed", self.thread_name);
+        }
         match inner.thread.join() {
-            Err(error) => std::panic::resume_unwind(error),
-            Ok(x) => x?,
+            Err(error) => {
+                tracing::error!("Resuming unwind for worker thread");
+                std::panic::resume_unwind(error)
+            }
+            Ok(x) => x.with_context(|| format!("Error inside worker thread `{}`", self.thread_name))?,
         }
         tracing::debug!("Worker thread `{}` stopped gracefully.", self.thread_name);
 
@@ -123,9 +128,10 @@ mod tests {
 
     #[tokio::test]
     async fn ping() {
+        let _logs = firezone_logging::test("debug");
         let (mut worker, mut rx) = Worker::new(
             tokio::runtime::Handle::current(),
-            "Firezone test",
+            "Firezone ping",
             ping_task,
         )
         .unwrap();
@@ -136,7 +142,6 @@ mod tests {
         worker.close().unwrap();
     }
 
-    // Task that
     async fn ping_task(params: Params<u32, u32>) -> Result<()> {
         let Params {
             mut in_rx,
@@ -151,6 +156,34 @@ mod tests {
                 inbound = in_rx => out_tx.send(inbound.unwrap() * 2).await.unwrap(),
             }
         }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn notifier_worker() {
+        let _logs = firezone_logging::test("debug");
+
+        let (mut worker, mut rx) = Worker::new(
+            tokio::runtime::Handle::current(),
+            "Firezone bogus network notifier",
+            notifier_task,
+        )
+        .unwrap();
+
+        assert_eq!(rx.recv().await.unwrap(), ());
+        tracing::info!("Got notification");
+
+        worker.close().unwrap();
+    }
+
+    async fn notifier_task(params: Params<(), ()>) -> Result<()> {
+        let Params {
+            in_rx: _,
+            stop_rx,
+            out_tx,
+        } = params;
+        out_tx.try_send(())?;
+        stop_rx.await?;
         Ok(())
     }
 }
