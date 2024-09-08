@@ -149,12 +149,12 @@ impl SimClient {
             }
         }
 
-        Some(
-            self.sut
-                .encapsulate(packet, now, &mut self.enc_buffer)?
-                .to_transmit(&self.enc_buffer)
-                .into_owned(),
-        )
+        let Some(enc_packet) = self.sut.encapsulate(packet, now, &mut self.enc_buffer) else {
+            self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
+            return None;
+        };
+
+        Some(enc_packet.to_transmit(&self.enc_buffer).into_owned())
     }
 
     pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) {
