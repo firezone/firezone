@@ -6,10 +6,52 @@ import SummaryCard from "@/components/Blog/SummaryCard";
 import Pills from "@/components/Pills";
 import gravatar from "@/lib/gravatar";
 import { Route } from "next";
+import { Badge } from "@/components/Badges";
 
 export default function Posts() {
   const [filters, setFilters] = useState("All Posts");
   const posts = [
+    {
+      title: "September 2024 update",
+      date: "September 2, 2024",
+      href: "/blog/sep-2024-update",
+      authorName: "Jamil Bou Kheir",
+      authorAvatarSrc: gravatar("jamil@firezone.dev"),
+      type: "Announcement",
+      src: "/images/blog/sep-2024-update/sep-24-update.png",
+      description: (
+        <div className="mb-2">
+          <div className="mb-2">In this update:</div>
+          <ul className="space-y-2 list-inside list-disc ml-4">
+            <li>
+              <strong>New feature:</strong> Internet Resources
+            </li>
+            <li>
+              <strong>New feature:</strong> REST API{" "}
+              <Badge
+                text="Beta"
+                size="xs"
+                textColor="blue-800"
+                bgColor="blue-100"
+              />
+            </li>
+            <li>
+              <strong>New feature:</strong> Improved wildcard matching for DNS
+              Resources
+            </li>
+            <li>
+              <strong>Blog post:</strong>{" "}
+              <Link
+                href="/blog/sans-io"
+                className="text-accent-500 underline hover:no-underline"
+              >
+                sans-IO: The secret to effective Rust for network services
+              </Link>
+            </li>
+          </ul>
+        </div>
+      ),
+    },
     {
       title: "sans-IO: The secret to effective Rust for network services",
       date: "July 2, 2024",
