@@ -493,9 +493,7 @@ where
                 continue;
             };
 
-            for (cid, agent) in self.connections.agents_mut() {
-                let _span = info_span!("connection", %cid).entered();
-
+            for (cid, agent, _guard) in self.connections.agents_mut() {
                 for candidate in allocation
                     .current_candidates()
                     .filter(|c| c.kind() == CandidateKind::Relayed)
@@ -543,6 +541,7 @@ where
     #[allow(clippy::too_many_arguments)]
     fn init_connection(
         &mut self,
+        cid: TId,
         mut agent: IceAgent,
         remote: PublicKey,
         key: [u8; 32],
@@ -580,6 +579,7 @@ where
             relay,
             last_outgoing: now,
             last_incoming: now,
+            span: info_span!("connection", %cid),
         }
     }
 
@@ -596,9 +596,7 @@ where
 
         self.host_candidates.push(host_candidate.clone());
 
-        for (cid, agent) in self.connections.agents_mut() {
-            let _span = info_span!("connection", %cid).entered();
-
+        for (cid, agent, _span) in self.connections.agents_mut() {
             add_local_candidate(cid, agent, host_candidate.clone(), &mut self.pending_events);
         }
 
@@ -684,9 +682,7 @@ where
             return ControlFlow::Continue(());
         };
 
-        for (cid, agent) in self.connections.agents_mut() {
-            let _span = info_span!("connection", %cid).entered();
-
+        for (_, agent, _span) in self.connections.agents_mut() {
             if agent.accepts_message(&message) {
                 agent.handle_packet(
                     now,
@@ -716,8 +712,6 @@ where
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, (TId, MutableIpPacket<'b>)> {
         for (cid, conn) in self.connections.iter_established_mut() {
-            let _span = info_span!("connection", %cid).entered();
-
             if !conn.accepts(&from) {
                 continue;
             }
@@ -736,7 +730,7 @@ where
 
             // I can't think of a better way to detect this ...
             if !handshake_complete_before_decapsulate && handshake_complete_after_decapsulate {
-                tracing::info!(duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
+                tracing::info!(%cid, duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
 
                 self.pending_events
                     .push_back(Event::ConnectionEstablished(cid))
@@ -770,9 +764,7 @@ where
                     );
                 }
                 CandidateEvent::Invalid(candidate) => {
-                    for (cid, agent) in self.connections.agents_mut() {
-                        let _span = info_span!("connection", %cid).entered();
-
+                    for (cid, agent, _span) in self.connections.agents_mut() {
                         remove_local_candidate(cid, agent, &candidate, &mut self.pending_events);
                     }
                 }
@@ -827,6 +819,7 @@ where
             intent_sent_at,
             relay: self.sample_relay(),
             is_failed: false,
+            span: info_span!("connection", %cid),
         };
         let duration_since_intent = initial_connection.duration_since_intent(now);
 
@@ -862,6 +855,7 @@ where
         self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
 
         let connection = self.init_connection(
+            cid,
             agent,
             remote,
             *initial.session_key.expose_secret(),
@@ -924,6 +918,7 @@ where
         self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
 
         let connection = self.init_connection(
+            cid,
             agent,
             remote,
             *offer.session_key.expose_secret(),
@@ -1039,12 +1034,17 @@ where
         maybe_initial_connection.or(maybe_established_connection)
     }
 
-    fn agents_mut(&mut self) -> impl Iterator<Item = (TId, &mut IceAgent)> {
-        let initial_agents = self.initial.iter_mut().map(|(id, c)| (*id, &mut c.agent));
+    fn agents_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (TId, &mut IceAgent, tracing::span::Entered<'_>)> {
+        let initial_agents = self
+            .initial
+            .iter_mut()
+            .map(|(id, c)| (*id, &mut c.agent, c.span.enter()));
         let negotiated_agents = self
             .established
             .iter_mut()
-            .map(|(id, c)| (*id, &mut c.agent));
+            .map(|(id, c)| (*id, &mut c.agent, c.span.enter()));
 
         initial_agents.chain(negotiated_agents)
     }
@@ -1327,6 +1327,8 @@ struct InitialConnection<RId> {
     intent_sent_at: Instant,
 
     is_failed: bool,
+
+    span: tracing::Span,
 }
 
 impl<RId> InitialConnection<RId> {
@@ -1381,6 +1383,8 @@ struct Connection<RId> {
 
     last_outgoing: Instant,
     last_incoming: Instant,
+
+    span: tracing::Span,
 }
 
 enum ConnectionState<RId> {
@@ -1704,6 +1708,8 @@ where
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, MutableIpPacket<'b>> {
+        let _guard = self.span.enter();
+
         let control_flow = match self.tunnel.decapsulate(None, packet, &mut buffer[20..]) {
             TunnResult::Done => ControlFlow::Break(Ok(())),
             TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
