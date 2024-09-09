@@ -22,7 +22,7 @@ use domain::{
     base::{Message, Rtype, ToName},
     rdata::AllRecordData,
 };
-use ip_network::{Ipv4Network, Ipv6Network};
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use itertools::Itertools as _;
@@ -50,6 +50,9 @@ pub(crate) struct SimClient {
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     pub(crate) dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 
+    pub(crate) ipv4_routes: BTreeSet<Ipv4Network>,
+    pub(crate) ipv6_routes: BTreeSet<Ipv6Network>,
+
     pub(crate) sent_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket<'static>>,
     pub(crate) received_dns_responses: BTreeMap<(SocketAddr, QueryId), IpPacket<'static>>,
 
@@ -73,6 +76,8 @@ impl SimClient {
             received_icmp_replies: Default::default(),
             buffer: vec![0u8; (1 << 16) - 1],
             enc_buffer: EncryptBuffer::new((1 << 16) - 1),
+            ipv4_routes: Default::default(),
+            ipv6_routes: Default::default(),
         }
     }
 
@@ -269,6 +274,9 @@ pub struct RefClient {
     #[derivative(Debug = "ignore")]
     upstream_dns_resolvers: Vec<DnsServer>,
 
+    ipv4_routes: BTreeSet<Ipv4Network>,
+    ipv6_routes: BTreeSet<Ipv6Network>,
+
     /// Tracks all resources in the order they have been added in.
     ///
     /// When reconnecting to the portal, we simulate them being re-added in the same order.
@@ -331,10 +339,35 @@ impl RefClient {
     }
 
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
+        let maybe_cidr_resource = self
+            .cidr_resources
+            .iter()
+            .find_map(|(n, r)| (r == resource).then_some(n));
+
+        match maybe_cidr_resource {
+            Some(IpNetwork::V4(v4)) => {
+                tracing::debug!(%v4, "Removing CIDR route");
+
+                self.ipv4_routes.remove(&v4);
+            }
+            Some(IpNetwork::V6(v6)) => {
+                tracing::debug!(%v6, "Removing CIDR route");
+
+                self.ipv6_routes.remove(&v6);
+            }
+            _ => {}
+        }
+
         self.connected_cidr_resources.remove(resource);
         self.connected_dns_resources.retain(|(r, _)| r != resource);
+
         if self.internet_resource.is_some_and(|r| &r == resource) {
             self.connected_internet_resource = false;
+
+            tracing::debug!("Removing Internet Resource routes");
+
+            self.ipv4_routes.remove(&Ipv4Network::DEFAULT_ROUTE);
+            self.ipv6_routes.remove(&Ipv6Network::DEFAULT_ROUTE);
         }
     }
 
@@ -357,12 +390,29 @@ impl RefClient {
 
     pub(crate) fn add_internet_resource(&mut self, r: ResourceDescriptionInternet) {
         self.internet_resource = Some(r.id);
-        self.resources.push(ResourceDescription::Internet(r));
+        self.resources
+            .push(ResourceDescription::Internet(r.clone()));
+
+        if self.disabled_resources.contains(&r.id) {
+            return;
+        }
+
+        self.ipv4_routes.insert(Ipv4Network::DEFAULT_ROUTE);
+        self.ipv6_routes.insert(Ipv6Network::DEFAULT_ROUTE);
     }
 
     pub(crate) fn add_cidr_resource(&mut self, r: ResourceDescriptionCidr) {
         self.cidr_resources.insert(r.address, r.id);
-        self.resources.push(ResourceDescription::Cidr(r));
+        self.resources.push(ResourceDescription::Cidr(r.clone()));
+
+        if self.disabled_resources.contains(&r.id) {
+            return;
+        }
+
+        match r.address {
+            IpNetwork::V4(v4) => self.ipv4_routes.insert(v4),
+            IpNetwork::V6(v6) => self.ipv6_routes.insert(v6),
+        };
     }
 
     pub(crate) fn add_dns_resource(&mut self, r: ResourceDescriptionDns) {
@@ -655,6 +705,10 @@ impl RefClient {
             .collect()
     }
 
+    pub(crate) fn expected_routes(&self) -> (BTreeSet<Ipv4Network>, BTreeSet<Ipv6Network>) {
+        (self.ipv4_routes.clone(), self.ipv6_routes.clone())
+    }
+
     pub(crate) fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
         // Manually implement `longest_match` because we need to filter disabled resources _before_ we match.
         let (_, r) = self
@@ -830,6 +884,24 @@ fn ref_client(
                     expected_dns_handshakes: Default::default(),
                     disabled_resources: Default::default(),
                     resources: Default::default(),
+                    ipv4_routes: BTreeSet::from([
+                        Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11).unwrap(),
+                        Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24).unwrap(),
+                    ]),
+                    ipv6_routes: BTreeSet::from([
+                        Ipv6Network::new(
+                            Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0),
+                            107,
+                        )
+                        .unwrap(),
+                        Ipv6Network::new(
+                            Ipv6Addr::new(
+                                0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0,
+                            ),
+                            120,
+                        )
+                        .unwrap(),
+                    ]),
                 }
             },
         )

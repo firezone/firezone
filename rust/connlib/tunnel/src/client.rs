@@ -17,7 +17,7 @@ use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
-use crate::utils::{self, earliest, turn};
+use crate::utils::{earliest, turn};
 use crate::{ClientEvent, ClientTunnel, Tun};
 use domain::base::Message;
 use lru::LruCache;
@@ -73,13 +73,6 @@ impl ClientTunnel {
     pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
         self.role_state.set_resources(resources);
 
-        // FIXME: It would be good to add this event from _within_ `ClientState` but we don't want to emit duplicates.
-        self.role_state
-            .buffered_events
-            .push_back(ClientEvent::TunRoutesUpdated {
-                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
-                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
-            });
         self.role_state
             .buffered_events
             .push_back(ClientEvent::ResourcesChanged {
@@ -88,20 +81,8 @@ impl ClientTunnel {
     }
 
     pub fn set_disabled_resources(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
-        let old_routes = HashSet::<IpNetwork>::from_iter(self.role_state.routes());
         self.role_state
             .set_disabled_resource(new_disabled_resources);
-
-        if HashSet::<IpNetwork>::from_iter(self.role_state.routes()) == old_routes {
-            return;
-        }
-
-        self.role_state
-            .buffered_events
-            .push_back(ClientEvent::TunRoutesUpdated {
-                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
-                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
-            });
     }
 
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
@@ -119,12 +100,6 @@ impl ClientTunnel {
 
         self.role_state
             .buffered_events
-            .push_back(ClientEvent::TunRoutesUpdated {
-                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
-                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
-            });
-        self.role_state
-            .buffered_events
             .push_back(ClientEvent::ResourcesChanged {
                 resources: self.role_state.resources(),
             });
@@ -133,12 +108,6 @@ impl ClientTunnel {
     pub fn remove_resource(&mut self, id: ResourceId) {
         self.role_state.remove_resource(id);
 
-        self.role_state
-            .buffered_events
-            .push_back(ClientEvent::TunRoutesUpdated {
-                ip4: self.role_state.routes().filter_map(utils::ipv4).collect(),
-                ip6: self.role_state.routes().filter_map(utils::ipv6).collect(),
-            });
         self.role_state
             .buffered_events
             .push_back(ClientEvent::ResourcesChanged {
@@ -809,6 +778,8 @@ impl ClientState {
         for disabled_resource in &new_disabled_resources {
             self.disable_resource(*disabled_resource);
         }
+
+        self.maybe_update_tun_routes()
     }
 
     pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
@@ -880,11 +851,19 @@ impl ClientState {
                 existing.ip6 = config.ipv6;
             }
             None => {
-                self.tun_config = Some(TunConfig {
+                let (ipv4_routes, ipv6_routes) = self.routes().partition_map(|route| match route {
+                    IpNetwork::V4(v4) => itertools::Either::Left(v4),
+                    IpNetwork::V6(v6) => itertools::Either::Right(v6),
+                });
+                let new_tun_config = TunConfig {
                     ip4: config.ipv4,
                     ip6: config.ipv6,
                     dns_by_sentinel: Default::default(),
-                })
+                    ipv4_routes,
+                    ipv6_routes,
+                };
+
+                self.maybe_update_tun_config(new_tun_config);
             }
         }
 
@@ -912,6 +891,43 @@ impl ClientState {
         self.forwarded_dns_queries.retain(|_, (_, exp)| now < *exp);
 
         self.drain_node_events();
+    }
+
+    fn maybe_update_tun_routes(&mut self) {
+        let Some(config) = self.tun_config.clone() else {
+            return;
+        };
+
+        let (ipv4_routes, ipv6_routes) = self.routes().partition_map(|route| match route {
+            IpNetwork::V4(v4) => itertools::Either::Left(v4),
+            IpNetwork::V6(v6) => itertools::Either::Right(v6),
+        });
+
+        let new_tun_config = TunConfig {
+            ipv4_routes,
+            ipv6_routes,
+            ..config
+        };
+
+        self.maybe_update_tun_config(new_tun_config);
+    }
+
+    fn maybe_update_tun_config(&mut self, new_tun_config: TunConfig) {
+        if Some(&new_tun_config) == self.tun_config.as_ref() {
+            tracing::debug!(current = ?self.tun_config, "TUN device configuration unchanged");
+
+            return;
+        }
+
+        tracing::info!(config = ?new_tun_config, "Updating TUN device");
+
+        // Ensure we don't emit multiple interface updates in a row.
+        self.buffered_events
+            .retain(|e| !matches!(e, ClientEvent::TunInterfaceUpdated(_)));
+
+        self.tun_config = Some(new_tun_config.clone());
+        self.buffered_events
+            .push_back(ClientEvent::TunInterfaceUpdated(new_tun_config));
     }
 
     fn drain_node_events(&mut self) {
@@ -1031,6 +1047,8 @@ impl ClientState {
         for resource in new_resources {
             self.add_resource(resource)
         }
+
+        self.maybe_update_tun_routes();
     }
 
     pub(crate) fn add_resource(&mut self, new_resource: ResourceDescription) {
@@ -1075,6 +1093,8 @@ impl ClientState {
         let sites = new_resource.sites_string();
 
         tracing::info!(%name, address, %sites, "Activating resource");
+
+        self.maybe_update_tun_routes();
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
@@ -1103,6 +1123,7 @@ impl ClientState {
         let sites = resource.sites_string();
 
         tracing::info!(%name, address, %sites, "Deactivating resource");
+        self.maybe_update_tun_routes();
 
         self.awaiting_connection_details.remove(&id);
 
@@ -1165,6 +1186,11 @@ impl ClientState {
                 .collect_vec(),
         );
 
+        let (ipv4_routes, ipv6_routes) = self.routes().partition_map(|route| match route {
+            IpNetwork::V4(v4) => itertools::Either::Left(v4),
+            IpNetwork::V6(v6) => itertools::Either::Right(v6),
+        });
+
         let new_tun_config = TunConfig {
             ip4: config.ip4,
             ip6: config.ip6,
@@ -1172,21 +1198,12 @@ impl ClientState {
                 .iter()
                 .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
                 .collect::<BiMap<_, _>>(),
+            ipv4_routes,
+            ipv6_routes,
         };
 
         self.set_dns_mapping(dns_mapping);
-
-        if new_tun_config == config {
-            tracing::debug!(current = ?config, "TUN device configuration unchanged");
-
-            return;
-        }
-
-        tracing::info!(config = ?new_tun_config, "Updating TUN device");
-
-        self.tun_config = Some(new_tun_config.clone());
-        self.buffered_events
-            .push_back(ClientEvent::TunInterfaceUpdated(new_tun_config));
+        self.maybe_update_tun_config(new_tun_config);
     }
 
     pub fn update_relays(
