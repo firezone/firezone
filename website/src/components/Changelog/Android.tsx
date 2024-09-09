@@ -9,11 +9,11 @@ export default function Android() {
       href="https://play.google.com/store/apps/details?id=dev.firezone.android"
       title="Android"
     >
-      {/*
       <Entry version="1.3.2" date={new Date("2024-09-05")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6605">
-            Fixes a race condition causing a crashloop.
+            Fixes another bug where the tunnel would immediately disconnect
+            after connecting.
           </ChangeItem>
           <ChangeItem pull="6518">
             Minor improvements to the look of the internet resource and makes
@@ -21,7 +21,6 @@ export default function Android() {
           </ChangeItem>
         </ul>
       </Entry>
-      */}
       <Entry version="1.3.1" date={new Date("2024-08-31")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6517">

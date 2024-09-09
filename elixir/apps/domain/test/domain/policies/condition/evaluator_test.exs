@@ -199,7 +199,16 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
         values: ["false"]
       }
 
-      assert fetch_conformation_expiration(condition, verified_client) == :error
+      assert fetch_conformation_expiration(condition, verified_client) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, not_verified_client) == {:ok, nil}
+
+      condition = %Domain.Policies.Condition{
+        property: :client_verified,
+        operator: :is,
+        values: nil
+      }
+
+      assert fetch_conformation_expiration(condition, verified_client) == {:ok, nil}
       assert fetch_conformation_expiration(condition, not_verified_client) == {:ok, nil}
     end
 

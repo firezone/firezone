@@ -339,11 +339,6 @@ defmodule Web.Live.Policies.NewTest do
 
     assert policy.conditions == [
              %Domain.Policies.Condition{
-               property: :client_verified,
-               operator: :is,
-               values: nil
-             },
-             %Domain.Policies.Condition{
                property: :current_utc_datetime,
                operator: :is_in_day_of_week_time_ranges,
                values: [

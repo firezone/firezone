@@ -42,6 +42,10 @@ defmodule Web.Policies.Components do
          |> Enum.empty?())
   end
 
+  defp maybe_filter(%{}, empty_values: :drop) do
+    false
+  end
+
   defp maybe_filter(_condition_attrs, _opts) do
     true
   end
