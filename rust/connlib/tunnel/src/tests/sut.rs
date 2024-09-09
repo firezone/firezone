@@ -352,6 +352,7 @@ impl TunnelTest {
         assert_dns_packets_properties(ref_client, sim_client);
         assert_known_hosts_are_valid(ref_client, sim_client);
         assert_dns_servers_are_valid(ref_client, sim_client);
+        assert_routes_are_valid(ref_client, sim_client);
     }
 }
 
@@ -674,14 +675,20 @@ impl TunnelTest {
                 tracing::warn!("Unimplemented");
             }
             ClientEvent::TunInterfaceUpdated(config) => {
-                if self.client.inner().dns_by_sentinel == config.dns_by_sentinel {
-                    tracing::error!("Emitted `TunInterfaceUpdated` without changing DNS servers");
+                if self.client.inner().dns_by_sentinel == config.dns_by_sentinel
+                    && self.client.inner().ipv4_routes == config.ipv4_routes
+                    && self.client.inner().ipv6_routes == config.ipv6_routes
+                {
+                    tracing::error!(
+                        "Emitted `TunInterfaceUpdated` without changing DNS servers or routes"
+                    );
                 }
-
-                self.client
-                    .exec_mut(|c| c.dns_by_sentinel = config.dns_by_sentinel);
+                self.client.exec_mut(|c| {
+                    c.dns_by_sentinel = config.dns_by_sentinel;
+                    c.ipv4_routes = config.ipv4_routes;
+                    c.ipv6_routes = config.ipv6_routes;
+                });
             }
-            ClientEvent::TunRoutesUpdated { .. } => {}
             ClientEvent::RequestConnection {
                 gateway_id,
                 offer,
