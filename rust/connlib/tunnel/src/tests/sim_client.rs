@@ -309,6 +309,9 @@ pub struct RefClient {
     #[derivative(Debug = "ignore")]
     pub(crate) connected_dns_resources: HashSet<(ResourceId, DomainName)>,
 
+    #[derivative(Debug = "ignore")]
+    pub(crate) connected_gateways: BTreeSet<GatewayId>,
+
     /// Actively disabled resources by the UI
     #[derivative(Debug = "ignore")]
     pub(crate) disabled_resources: BTreeSet<ResourceId>,
@@ -524,7 +527,7 @@ impl RefClient {
 
         // If we have a resource, the first packet will initiate a connection to the gateway.
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.connect_to_internet_or_cidr_resource(rid);
+        self.connect_to_internet_or_cidr_resource(rid, gateway);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
@@ -572,6 +575,7 @@ impl RefClient {
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
         if !self.disabled_resources.contains(&resource) {
             self.connected_dns_resources.insert((resource, dst));
+            self.connected_gateways.insert(gateway);
         }
     }
 
@@ -579,14 +583,24 @@ impl RefClient {
         self.is_connected_to_cidr(resource) || self.is_connected_to_internet(resource)
     }
 
-    pub(crate) fn connect_to_internet_or_cidr_resource(&mut self, resource: ResourceId) {
+    pub(crate) fn is_connected_gateway(&self, gateway: GatewayId) -> bool {
+        self.connected_gateways.contains(&gateway)
+    }
+
+    pub(crate) fn connect_to_internet_or_cidr_resource(
+        &mut self,
+        resource: ResourceId,
+        gateway: GatewayId,
+    ) {
         if self.internet_resource.is_some_and(|r| r == resource) {
             self.connected_internet_resource = true;
+            self.connected_gateways.insert(gateway);
             return;
         }
 
         if self.cidr_resources.iter().any(|(_, r)| *r == resource) {
             self.connected_cidr_resources.insert(resource);
+            self.connected_gateways.insert(gateway);
         }
     }
 
@@ -902,6 +916,7 @@ fn ref_client(
                         )
                         .unwrap(),
                     ]),
+                    connected_gateways: Default::default(),
                 }
             },
         )
