@@ -576,14 +576,22 @@ impl<'a> MutableIpPacket<'a> {
     }
 
     fn set_tcp_checksum(&mut self) {
-        let checksum = if let Some(p) = self.as_immutable_tcp() {
-            self.to_immutable().tcp_checksum(&p.to_immutable())
-        } else {
+        let Some(tcp) = self.as_tcp() else {
             return;
         };
 
+        let checksum = match &self {
+            MutableIpPacket::Ipv4(v4) => tcp
+                .to_header()
+                .calc_checksum_ipv4(&v4.ip_header().to_header(), tcp.payload()),
+            MutableIpPacket::Ipv6(v6) => tcp
+                .to_header()
+                .calc_checksum_ipv6(&v6.header().to_header(), tcp.payload()),
+        }
+        .expect("size of payload was previously checked to be okay");
+
         self.as_tcp_mut()
-            .expect("Developer error: we can only get a TCP checksum if the packet is tcp")
+            .expect("Developer error: we can only get a UDP checksum if the packet is udp")
             .set_checksum(checksum);
     }
 
@@ -663,12 +671,6 @@ impl<'a> MutableIpPacket<'a> {
     fn as_icmpv6(&mut self) -> Option<MutableIcmpv6Packet> {
         self.is_icmpv6()
             .then(|| MutableIcmpv6Packet::new(self.payload_mut()))
-            .flatten()
-    }
-
-    fn as_immutable_tcp(&self) -> Option<TcpPacket> {
-        self.is_tcp()
-            .then(|| TcpPacket::new(self.payload()))
             .flatten()
     }
 
@@ -753,10 +755,6 @@ impl<'a> MutableIpPacket<'a> {
             Self::Ipv4(p) => p.ip_header().protocol(),
             Self::Ipv6(p) => p.header().next_header(),
         }
-    }
-
-    fn is_tcp(&self) -> bool {
-        self.next_header() == IpNumber::TCP
     }
 
     fn is_icmp(&self) -> bool {
@@ -912,13 +910,6 @@ impl<'a> IpPacket<'a> {
                 Some(IcmpPacket::Ipv6(icmpv6::Icmpv6Packet::new(v6.payload())?))
             }
             IpPacket::Ipv4(_) | IpPacket::Ipv6(_) => None,
-        }
-    }
-
-    fn tcp_checksum(&self, pkt: &TcpPacket<'_>) -> u16 {
-        match self {
-            Self::Ipv4(p) => tcp::ipv4_checksum(pkt, &p.get_source(), &p.get_destination()),
-            Self::Ipv6(p) => tcp::ipv6_checksum(pkt, &p.get_source(), &p.get_destination()),
         }
     }
 }
