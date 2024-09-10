@@ -396,7 +396,7 @@ impl ClientState {
     ) -> Option<snownet::EncryptedPacket> {
         let (packet, dst) = match self.try_handle_dns_query(packet, now) {
             Ok(response) => {
-                self.buffered_packets.push_back(response?.to_owned());
+                self.buffered_packets.push_back(response?);
                 return None;
             }
             Err(non_dns_packet) => non_dns_packet,
@@ -620,7 +620,7 @@ impl ClientState {
         &mut self,
         packet: MutableIpPacket<'a>,
         now: Instant,
-    ) -> Result<Option<IpPacket<'a>>, (MutableIpPacket<'a>, IpAddr)> {
+    ) -> Result<Option<IpPacket<'static>>, (MutableIpPacket<'a>, IpAddr)> {
         match self
             .stub_resolver
             .handle(&self.dns_mapping, packet.as_immutable())
