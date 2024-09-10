@@ -613,12 +613,7 @@ impl<'a> IpPacket<'a> {
     }
 
     pub fn as_udp_mut(&mut self) -> Option<UdpHeaderSliceMut> {
-        if !self.is_udp() {
-            return None;
-        }
-
-        // Safety: We checked that the packet is a UDP packet.
-        Some(unsafe { UdpHeaderSliceMut::from_slice_unchecked(self.payload_mut()) })
+        UdpHeaderSliceMut::from_slice(self.payload_mut()).ok()
     }
 
     pub fn as_tcp(&self) -> Option<TcpSlice> {
@@ -628,12 +623,7 @@ impl<'a> IpPacket<'a> {
     }
 
     pub fn as_tcp_mut(&mut self) -> Option<TcpHeaderSliceMut> {
-        if !self.is_tcp() {
-            return None;
-        }
-
-        // Safety: We checked that the packet is a TCP packet.
-        Some(unsafe { TcpHeaderSliceMut::from_slice_unchecked(self.payload_mut()) })
+        TcpHeaderSliceMut::from_slice(self.payload_mut()).ok()
     }
 
     pub fn is_icmp_v4_or_v6(&self) -> bool {

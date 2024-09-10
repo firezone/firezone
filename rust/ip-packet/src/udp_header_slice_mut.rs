@@ -7,14 +7,10 @@ pub struct UdpHeaderSliceMut<'a> {
 
 impl<'a> UdpHeaderSliceMut<'a> {
     /// Creates a new [`UdpHeaderSliceMut`].
-    ///
-    /// # Safety
-    ///
-    /// The byte slice must contain a valid Udp header.
-    pub unsafe fn from_slice_unchecked(slice: &'a mut [u8]) -> Self {
-        debug_assert!(UdpHeaderSlice::from_slice(slice).is_ok()); // Debug asserts are no-ops in release mode, so this is still "unchecked".
+    pub fn from_slice(slice: &'a mut [u8]) -> Result<Self, etherparse::err::LenError> {
+        UdpHeaderSlice::from_slice(slice)?;
 
-        Self { slice }
+        Ok(Self { slice })
     }
 
     pub fn set_source_port(&mut self, src: u16) {
@@ -52,7 +48,7 @@ mod tests {
             .write(&mut buf, &[])
             .unwrap();
 
-        let mut slice = unsafe { UdpHeaderSliceMut::from_slice_unchecked(&mut buf[20..]) };
+        let mut slice = UdpHeaderSliceMut::from_slice(&mut buf[20..]).unwrap();
 
         slice.set_source_port(30);
         slice.set_destination_port(40);
