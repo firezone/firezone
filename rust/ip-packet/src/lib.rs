@@ -626,13 +626,6 @@ impl<'a> IpPacket<'a> {
         TcpHeaderSliceMut::from_slice(self.payload_mut()).ok()
     }
 
-    pub fn is_icmp_v4_or_v6(&self) -> bool {
-        match self {
-            IpPacket::Ipv4(v4) => v4.ip_header().protocol() == IpNumber::ICMP,
-            IpPacket::Ipv6(v6) => v6.header().next_header() == IpNumber::IPV6_ICMP,
-        }
-    }
-
     fn set_icmpv6_checksum(&mut self) {
         let (src_addr, dst_addr) = match self {
             IpPacket::Ipv4(_) => return,
@@ -788,11 +781,11 @@ impl<'a> IpPacket<'a> {
         self.next_header() == IpNumber::TCP
     }
 
-    fn is_icmp(&self) -> bool {
+    pub fn is_icmp(&self) -> bool {
         self.next_header() == IpNumber::ICMP
     }
 
-    fn is_icmpv6(&self) -> bool {
+    pub fn is_icmpv6(&self) -> bool {
         self.next_header() == IpNumber::IPV6_ICMP
     }
 }
