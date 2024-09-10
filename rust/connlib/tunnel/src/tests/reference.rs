@@ -6,7 +6,7 @@ use crate::dns::is_subdomain;
 use connlib_shared::{
     messages::{
         client::{self, ResourceDescription},
-        GatewayId, RelayId,
+        GatewayId, RelayId, ResourceId,
     },
     DomainName, StaticSecret,
 };
@@ -14,7 +14,7 @@ use domain::base::Rtype;
 use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;
 use std::{
-    collections::{btree_map::Entry, BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     fmt, iter,
     net::{IpAddr, SocketAddr},
 };
@@ -320,7 +320,7 @@ impl ReferenceStateMachine for ReferenceState {
                 }
             }),
             Transition::SendDnsQueries(queries) => {
-                let mut new_connections_via_gateways = BTreeMap::new();
+                let mut new_connections_via_gateways = BTreeMap::<_, BTreeSet<ResourceId>>::new();
 
                 for query in queries {
                     // Some queries get answered locally.
@@ -354,13 +354,19 @@ impl ReferenceStateMachine for ReferenceState {
                         .inner()
                         .is_connected_to_internet_or_cidr(resource)
                     {
-                        // As part of batch-processing DNS queries, only the first resource per gateway will be connected / authorized.
-                        match new_connections_via_gateways.entry(gateway) {
-                            Entry::Vacant(v) => {
-                                v.insert(resource);
+                        tracing::debug!(%resource, %gateway, "Not connected yet, dropping packet");
+
+                        let connected_resources =
+                            new_connections_via_gateways.entry(gateway).or_default();
+
+                        if state.client.inner().is_connected_gateway(gateway) {
+                            connected_resources.insert(resource);
+                        } else {
+                            // As part of batch-processing DNS queries, only the first resource per gateway will be connected / authorized.
+                            if connected_resources.is_empty() {
+                                connected_resources.insert(resource);
                             }
-                            Entry::Occupied(_) => {}
-                        };
+                        }
 
                         continue;
                     }
@@ -368,10 +374,12 @@ impl ReferenceStateMachine for ReferenceState {
                     state.client.exec_mut(|client| client.on_dns_query(query));
                 }
 
-                for (_, resource) in new_connections_via_gateways {
-                    state
-                        .client
-                        .exec_mut(|client| client.connect_to_internet_or_cidr_resource(resource));
+                for (gateway, resources) in new_connections_via_gateways {
+                    for resource in resources {
+                        state.client.exec_mut(|client| {
+                            client.connect_to_internet_or_cidr_resource(resource, gateway)
+                        });
+                    }
                 }
             }
             Transition::SendICMPPacketToNonResourceIp {
