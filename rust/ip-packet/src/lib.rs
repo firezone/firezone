@@ -549,10 +549,12 @@ impl<'a> MutableIpPacket<'a> {
     }
 
     fn set_ipv4_checksum(&mut self) {
-        if let Self::Ipv4(p) = self {
-            let checksum = ipv4::checksum(&p.to_immutable());
-            p.ip_header_mut().set_checksum(checksum);
-        }
+        let Self::Ipv4(p) = self else {
+            return;
+        };
+
+        let checksum = p.ip_header().to_header().calc_header_checksum();
+        p.ip_header_mut().set_checksum(checksum);
     }
 
     fn set_udp_checksum(&mut self) {
