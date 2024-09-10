@@ -443,7 +443,7 @@ impl TunnelTest {
             }
             self.client.exec_mut(|sim| {
                 while let Some(packet) = sim.sut.poll_packets() {
-                    sim.on_received_packet(packet)
+                    sim.on_received_packet(packet.into_immutable())
                 }
             });
 

@@ -13,7 +13,7 @@ use connlib_shared::messages::{
 use connlib_shared::{callbacks, PublicKey, StaticSecret};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, MutableIpPacket};
+use ip_packet::MutableIpPacket;
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
@@ -251,7 +251,7 @@ pub struct ClientState {
     recently_connected_gateways: LruCache<GatewayId, ()>,
 
     buffered_events: VecDeque<ClientEvent>,
-    buffered_packets: VecDeque<IpPacket<'static>>,
+    buffered_packets: VecDeque<MutableIpPacket<'static>>,
     buffered_transmits: VecDeque<Transmit<'static>>,
 }
 
@@ -453,7 +453,7 @@ impl ClientState {
         packet: &[u8],
         now: Instant,
         buffer: &'b mut [u8],
-    ) -> Option<IpPacket<'b>> {
+    ) -> Option<MutableIpPacket<'b>> {
         if let Some(response) = self.try_handle_forwarded_dns_response(from, packet) {
             return Some(response);
         };
@@ -485,7 +485,7 @@ impl ClientState {
             now,
         );
 
-        Some(packet.into_immutable())
+        Some(packet)
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String, now: Instant) {
@@ -620,7 +620,7 @@ impl ClientState {
         &mut self,
         packet: MutableIpPacket<'a>,
         now: Instant,
-    ) -> Result<Option<IpPacket<'static>>, (MutableIpPacket<'a>, IpAddr)> {
+    ) -> Result<Option<MutableIpPacket<'static>>, (MutableIpPacket<'a>, IpAddr)> {
         match self
             .stub_resolver
             .handle(&self.dns_mapping, packet.as_immutable())
@@ -661,7 +661,7 @@ impl ClientState {
         &mut self,
         from: SocketAddr,
         packet: &[u8],
-    ) -> Option<IpPacket<'a>> {
+    ) -> Option<MutableIpPacket<'a>> {
         // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
         let saddr = *self.dns_mapping.get_by_right(&DnsServer::from(from))?;
         let sport = DNS_PORT;
@@ -680,7 +680,7 @@ impl ClientState {
             .inspect_err(|_| tracing::warn!("Failed to find original dst for DNS response"))
             .ok()?;
 
-        Some(ip_packet.into_immutable())
+        Some(ip_packet)
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
@@ -872,7 +872,7 @@ impl ClientState {
         self.update_dns_mapping()
     }
 
-    pub fn poll_packets(&mut self) -> Option<IpPacket<'static>> {
+    pub fn poll_packets(&mut self) -> Option<MutableIpPacket<'static>> {
         self.buffered_packets.pop_front()
     }
 

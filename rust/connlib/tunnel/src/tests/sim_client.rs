@@ -172,13 +172,13 @@ impl SimClient {
         ) else {
             return;
         };
-        let packet = packet.to_owned();
+        let packet = packet.as_immutable().to_owned();
 
         self.on_received_packet(packet);
     }
 
     /// Process an IP packet received on the client.
-    pub(crate) fn on_received_packet(&mut self, packet: IpPacket<'_>) {
+    pub(crate) fn on_received_packet(&mut self, packet: IpPacket<'static>) {
         if let Some(icmp) = packet.as_icmp() {
             let echo_reply = icmp.as_echo_reply().expect("to be echo reply");
 

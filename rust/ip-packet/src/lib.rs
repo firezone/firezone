@@ -635,7 +635,7 @@ impl<'a> MutableIpPacket<'a> {
         }
     }
 
-    fn as_icmp(&mut self) -> Option<MutableIcmpPacket> {
+    pub fn as_icmp(&mut self) -> Option<MutableIcmpPacket> {
         self.to_immutable()
             .is_icmp()
             .then(|| MutableIcmpPacket::new(self.payload_mut()))

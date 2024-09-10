@@ -56,6 +56,7 @@ impl SimGateway {
                 now,
                 &mut self.buffer,
             )?
+            .as_immutable()
             .to_owned();
 
         self.on_received_packet(global_dns_records, packet, now)
@@ -65,11 +66,9 @@ impl SimGateway {
     fn on_received_packet(
         &mut self,
         global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
-        packet: IpPacket<'_>,
+        packet: IpPacket<'static>,
         now: Instant,
     ) -> Option<Transmit<'static>> {
-        let packet = packet.to_owned();
-
         // TODO: Instead of handling these things inline, here, should we dispatch them via `RoutingTable`?
 
         if let Some(icmp) = packet.as_icmp() {

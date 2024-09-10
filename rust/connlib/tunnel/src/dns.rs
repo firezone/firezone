@@ -6,8 +6,8 @@ use domain::base::{
     Message, MessageBuilder, ToName,
 };
 use domain::rdata::AllRecordData;
-use ip_packet::IpPacket;
 use ip_packet::Packet as _;
+use ip_packet::{IpPacket, MutableIpPacket};
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::collections::{BTreeMap, HashMap};
@@ -33,7 +33,7 @@ pub struct StubResolver {
 #[derive(Debug)]
 pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
-    LocalResponse(IpPacket<'static>),
+    LocalResponse(MutableIpPacket<'static>),
     /// The query is for a non-Resource, forward it to an upstream or system resolver.
     ForwardQuery {
         upstream: SocketAddr,
@@ -245,8 +245,7 @@ impl StubResolver {
                 datagram.get_source(),
                 response,
             )
-            .expect("src and dst come from the same packet")
-            .into_immutable();
+            .expect("src and dst come from the same packet");
 
             return Some(ResolveStrategy::LocalResponse(packet));
         }
@@ -290,8 +289,7 @@ impl StubResolver {
             datagram.get_source(),
             response,
         )
-        .expect("src and dst come from the same packet")
-        .into_immutable();
+        .expect("src and dst come from the same packet");
 
         Some(ResolveStrategy::LocalResponse(packet))
     }

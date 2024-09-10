@@ -1,6 +1,6 @@
 use crate::{device_channel::Device, sockets::Sockets, BUF_SIZE};
 use futures_util::FutureExt as _;
-use ip_packet::{IpPacket, MutableIpPacket};
+use ip_packet::MutableIpPacket;
 use snownet::{EncryptBuffer, EncryptedPacket};
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -157,7 +157,7 @@ impl Io {
         Ok(())
     }
 
-    pub fn send_device(&self, packet: IpPacket<'_>) -> io::Result<()> {
+    pub fn send_device(&self, packet: MutableIpPacket<'_>) -> io::Result<()> {
         self.device.write(packet)?;
 
         Ok(())

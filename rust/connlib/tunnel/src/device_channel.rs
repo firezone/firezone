@@ -1,4 +1,4 @@
-use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
+use ip_packet::{MutableIpPacket, Packet as _};
 use std::io;
 use std::task::{Context, Poll, Waker};
 use tun::Tun;
@@ -59,12 +59,12 @@ impl Device {
         Poll::Ready(Ok(packet))
     }
 
-    pub fn write(&self, packet: IpPacket<'_>) -> io::Result<usize> {
+    pub fn write(&self, packet: MutableIpPacket<'_>) -> io::Result<usize> {
         tracing::trace!(target: "wire::dev::send", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         match packet {
-            IpPacket::Ipv4(msg) => self.tun()?.write4(msg.packet()),
-            IpPacket::Ipv6(msg) => self.tun()?.write6(msg.packet()),
+            MutableIpPacket::Ipv4(msg) => self.tun()?.write4(msg.packet()),
+            MutableIpPacket::Ipv6(msg) => self.tun()?.write6(msg.packet()),
         }
     }
 

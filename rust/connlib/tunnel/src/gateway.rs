@@ -11,7 +11,7 @@ use connlib_shared::messages::{
 };
 use connlib_shared::{DomainName, StaticSecret};
 use ip_network::{Ipv4Network, Ipv6Network};
-use ip_packet::{IpPacket, MutableIpPacket};
+use ip_packet::MutableIpPacket;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{EncryptBuffer, RelaySocket, ServerNode};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -195,7 +195,7 @@ impl GatewayState {
         packet: &[u8],
         now: Instant,
         buffer: &'b mut [u8],
-    ) -> Option<IpPacket<'b>> {
+    ) -> Option<MutableIpPacket<'b>> {
         let (cid, packet) = self.node.decapsulate(
             local,
             from,
@@ -217,7 +217,7 @@ impl GatewayState {
             .inspect_err(|e| tracing::debug!(%cid, "Invalid packet: {e:#}"))
             .ok()?;
 
-        Some(packet.into_immutable())
+        Some(packet)
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String, now: Instant) {
