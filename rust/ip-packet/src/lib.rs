@@ -425,6 +425,17 @@ impl<'a> MutableIpPacket<'a> {
         Some(packet)
     }
 
+    pub fn to_owned(&self) -> MutableIpPacket<'static> {
+        match self {
+            MutableIpPacket::Ipv4(i) => MutableIpPacket::Ipv4(ConvertibleIpv4Packet {
+                buf: MaybeOwned::Owned(i.buf.to_vec()),
+            }),
+            MutableIpPacket::Ipv6(i) => MutableIpPacket::Ipv6(ConvertibleIpv6Packet {
+                buf: MaybeOwned::Owned(i.buf.to_vec()),
+            }),
+        }
+    }
+
     pub fn to_immutable(&self) -> IpPacket {
         for_both!(self, |i| i.to_immutable().into())
     }
