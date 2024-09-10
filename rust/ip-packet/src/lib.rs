@@ -222,13 +222,11 @@ impl<'a> ConvertibleIpv4Packet<'a> {
     }
 
     fn ip_header(&self) -> Ipv4HeaderSlice {
-        // TODO: Make `_unchecked` variant public upstream.
         Ipv4HeaderSlice::from_slice(&self.buf[20..]).expect("we checked this during `new`")
     }
 
     fn ip_header_mut(&mut self) -> Ipv4HeaderSliceMut {
-        // Safety: We checked this in `new` / `owned`.
-        unsafe { Ipv4HeaderSliceMut::from_slice_unchecked(&mut self.buf[20..]) }
+        Ipv4HeaderSliceMut::from_slice(&mut self.buf[20..]).expect("we checked this during `new`")
     }
 
     pub fn get_source(&self) -> Ipv4Addr {
@@ -301,13 +299,11 @@ impl<'a> ConvertibleIpv6Packet<'a> {
     }
 
     fn header(&self) -> Ipv6HeaderSlice {
-        // FIXME: Make the `_unchecked` variant public upstream.
         Ipv6HeaderSlice::from_slice(&self.buf).expect("We checked this in `new` / `owned`")
     }
 
     fn header_mut(&mut self) -> Ipv6HeaderSliceMut {
-        // Safety: We checked this in `new` / `owned`.
-        unsafe { Ipv6HeaderSliceMut::from_slice_unchecked(&mut self.buf) }
+        Ipv6HeaderSliceMut::from_slice(&mut self.buf).expect("We checked this in `new` / `owned`")
     }
 
     pub fn get_source(&self) -> Ipv6Addr {
