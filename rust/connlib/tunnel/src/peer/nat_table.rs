@@ -1,7 +1,7 @@
 //! a stateful symmetric NAT table that performs conversion between a client's picked proxy ip and the actual resource's IP
 use anyhow::Context;
 use bimap::BiMap;
-use ip_packet::{MutableIpPacket, Protocol};
+use ip_packet::{IpPacket, Protocol};
 use std::collections::BTreeMap;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
@@ -44,7 +44,7 @@ impl NatTable {
 
     pub(crate) fn translate_outgoing(
         &mut self,
-        packet: &MutableIpPacket,
+        packet: &IpPacket,
         outside_dst: IpAddr,
         now: Instant,
     ) -> anyhow::Result<(Protocol, IpAddr)> {
@@ -84,7 +84,7 @@ impl NatTable {
 
     pub(crate) fn translate_incoming(
         &mut self,
-        packet: &MutableIpPacket,
+        packet: &IpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<(Protocol, IpAddr)>> {
         let outside = (packet.destination_protocol()?, packet.source());
@@ -105,12 +105,12 @@ impl NatTable {
 #[cfg(all(test, feature = "proptest"))]
 mod tests {
     use super::*;
-    use ip_packet::{proptest::*, MutableIpPacket};
+    use ip_packet::{proptest::*, IpPacket};
     use proptest::prelude::*;
 
     #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
     fn translates_back_and_forth_packet(
-        #[strategy(udp_or_tcp_or_icmp_packet())] packet: MutableIpPacket<'static>,
+        #[strategy(udp_or_tcp_or_icmp_packet())] packet: IpPacket<'static>,
         #[strategy(any::<IpAddr>())] outside_dst: IpAddr,
         #[strategy(0..120u64)] response_delay: u64,
     ) {
@@ -152,9 +152,9 @@ mod tests {
 
     #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
     fn can_handle_multiple_packets(
-        #[strategy(udp_or_tcp_or_icmp_packet())] packet1: MutableIpPacket<'static>,
+        #[strategy(udp_or_tcp_or_icmp_packet())] packet1: IpPacket<'static>,
         #[strategy(any::<IpAddr>())] outside_dst1: IpAddr,
-        #[strategy(udp_or_tcp_or_icmp_packet())] packet2: MutableIpPacket<'static>,
+        #[strategy(udp_or_tcp_or_icmp_packet())] packet2: IpPacket<'static>,
         #[strategy(any::<IpAddr>())] outside_dst2: IpAddr,
     ) {
         proptest::prop_assume!(packet1.destination().is_ipv4() == outside_dst1.is_ipv4()); // Required for our test to simulate a response.

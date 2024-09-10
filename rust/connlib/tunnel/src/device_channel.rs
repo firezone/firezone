@@ -1,4 +1,4 @@
-use ip_packet::{MutableIpPacket, Packet as _};
+use ip_packet::{IpPacket, Packet as _};
 use std::io;
 use std::task::{Context, Poll, Waker};
 use tun::Tun;
@@ -30,7 +30,7 @@ impl Device {
         &mut self,
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<MutableIpPacket<'b>>> {
+    ) -> Poll<io::Result<IpPacket<'b>>> {
         use ip_packet::Packet as _;
 
         let Some(tun) = self.tun.as_mut() else {
@@ -47,7 +47,7 @@ impl Device {
             )));
         }
 
-        let packet = MutableIpPacket::new(&mut buf[..(n + 20)]).ok_or_else(|| {
+        let packet = IpPacket::new(&mut buf[..(n + 20)]).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "received bytes are not an IP packet",
@@ -59,12 +59,12 @@ impl Device {
         Poll::Ready(Ok(packet))
     }
 
-    pub fn write(&self, packet: MutableIpPacket<'_>) -> io::Result<usize> {
+    pub fn write(&self, packet: IpPacket<'_>) -> io::Result<usize> {
         tracing::trace!(target: "wire::dev::send", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         match packet {
-            MutableIpPacket::Ipv4(msg) => self.tun()?.write4(msg.packet()),
-            MutableIpPacket::Ipv6(msg) => self.tun()?.write6(msg.packet()),
+            IpPacket::Ipv4(msg) => self.tun()?.write4(msg.packet()),
+            IpPacket::Ipv6(msg) => self.tun()?.write6(msg.packet()),
         }
     }
 

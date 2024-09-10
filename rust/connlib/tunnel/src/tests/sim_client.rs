@@ -24,7 +24,7 @@ use domain::{
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::MutableIpPacket;
+use ip_packet::IpPacket;
 use itertools::Itertools as _;
 use prop::collection;
 use proptest::prelude::*;
@@ -53,11 +53,11 @@ pub(crate) struct SimClient {
     pub(crate) ipv4_routes: BTreeSet<Ipv4Network>,
     pub(crate) ipv6_routes: BTreeSet<Ipv6Network>,
 
-    pub(crate) sent_dns_queries: HashMap<(SocketAddr, QueryId), MutableIpPacket<'static>>,
-    pub(crate) received_dns_responses: BTreeMap<(SocketAddr, QueryId), MutableIpPacket<'static>>,
+    pub(crate) sent_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket<'static>>,
+    pub(crate) received_dns_responses: BTreeMap<(SocketAddr, QueryId), IpPacket<'static>>,
 
-    pub(crate) sent_icmp_requests: HashMap<(u16, u16), MutableIpPacket<'static>>,
-    pub(crate) received_icmp_replies: BTreeMap<(u16, u16), MutableIpPacket<'static>>,
+    pub(crate) sent_icmp_requests: HashMap<(u16, u16), IpPacket<'static>>,
+    pub(crate) received_icmp_replies: BTreeMap<(u16, u16), IpPacket<'static>>,
 
     buffer: Vec<u8>,
     enc_buffer: EncryptBuffer,
@@ -120,7 +120,7 @@ impl SimClient {
 
     pub(crate) fn encapsulate(
         &mut self,
-        packet: MutableIpPacket<'static>,
+        packet: IpPacket<'static>,
         now: Instant,
     ) -> Option<snownet::Transmit<'static>> {
         {
@@ -174,7 +174,7 @@ impl SimClient {
     }
 
     /// Process an IP packet received on the client.
-    pub(crate) fn on_received_packet(&mut self, packet: MutableIpPacket<'static>) {
+    pub(crate) fn on_received_packet(&mut self, packet: IpPacket<'static>) {
         if let Some(icmp) = packet.as_icmp() {
             let echo_reply = icmp.echo_reply_header().expect("to be echo reply");
 

@@ -10,7 +10,7 @@ use connlib_shared::messages::{
 use connlib_shared::DomainName;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use ip_packet::MutableIpPacket;
+use ip_packet::IpPacket;
 use itertools::Itertools;
 use rangemap::RangeInclusiveSet;
 
@@ -40,7 +40,7 @@ impl FilterEngine {
         Self::PermitSome(AllowRules::new())
     }
 
-    fn is_allowed(&self, packet: &MutableIpPacket) -> bool {
+    fn is_allowed(&self, packet: &IpPacket) -> bool {
         match self {
             FilterEngine::PermitAll => true,
             FilterEngine::PermitSome(filter_engine) => filter_engine.is_allowed(packet),
@@ -68,7 +68,7 @@ impl AllowRules {
         }
     }
 
-    fn is_allowed(&self, packet: &MutableIpPacket) -> bool {
+    fn is_allowed(&self, packet: &IpPacket) -> bool {
         if let Some(tcp) = packet.as_tcp() {
             return self.tcp.contains(&tcp.destination_port());
         }
@@ -375,9 +375,9 @@ impl ClientOnGateway {
 
     fn transform_network_to_tun<'a>(
         &mut self,
-        packet: MutableIpPacket<'a>,
+        packet: IpPacket<'a>,
         now: Instant,
-    ) -> anyhow::Result<MutableIpPacket<'a>> {
+    ) -> anyhow::Result<IpPacket<'a>> {
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
             return Ok(packet);
         };
@@ -398,9 +398,9 @@ impl ClientOnGateway {
 
     pub fn decapsulate<'a>(
         &mut self,
-        packet: MutableIpPacket<'a>,
+        packet: IpPacket<'a>,
         now: Instant,
-    ) -> anyhow::Result<MutableIpPacket<'a>> {
+    ) -> anyhow::Result<IpPacket<'a>> {
         self.ensure_allowed_src(&packet)?;
 
         let packet = self.transform_network_to_tun(packet, now)?;
@@ -412,9 +412,9 @@ impl ClientOnGateway {
 
     pub fn encapsulate<'a>(
         &mut self,
-        packet: MutableIpPacket<'a>,
+        packet: IpPacket<'a>,
         now: Instant,
-    ) -> anyhow::Result<Option<MutableIpPacket<'a>>> {
+    ) -> anyhow::Result<Option<IpPacket<'a>>> {
         let Some((proto, ip)) = self.nat_table.translate_incoming(&packet, now)? else {
             return Ok(Some(packet));
         };
@@ -433,7 +433,7 @@ impl ClientOnGateway {
         Ok(Some(packet))
     }
 
-    fn ensure_allowed_src(&self, packet: &MutableIpPacket<'_>) -> anyhow::Result<()> {
+    fn ensure_allowed_src(&self, packet: &IpPacket<'_>) -> anyhow::Result<()> {
         let src = packet.source();
 
         if !self.allowed_ips().contains(&src) {
@@ -444,7 +444,7 @@ impl ClientOnGateway {
     }
 
     /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
-    fn ensure_allowed_dst(&mut self, packet: &MutableIpPacket<'_>) -> anyhow::Result<()> {
+    fn ensure_allowed_dst(&mut self, packet: &IpPacket<'_>) -> anyhow::Result<()> {
         let dst = packet.destination();
         if !self
             .filters
@@ -463,7 +463,7 @@ impl ClientOnGateway {
 }
 
 impl GatewayOnClient {
-    pub(crate) fn ensure_allowed_src(&self, packet: &MutableIpPacket) -> anyhow::Result<()> {
+    pub(crate) fn ensure_allowed_src(&self, packet: &IpPacket) -> anyhow::Result<()> {
         let src = packet.source();
 
         if self.allowed_ips.longest_match(src).is_none() {

@@ -1,6 +1,6 @@
 //! Factory module for making all kinds of packets.
 
-use crate::MutableIpPacket;
+use crate::IpPacket;
 use domain::{
     base::{
         iana::{Class, Opcode, Rcode},
@@ -22,7 +22,7 @@ macro_rules! build {
             .write(&mut std::io::Cursor::new(&mut buf[20..]), &$payload)
             .expect("Buffer should be big enough");
 
-        MutableIpPacket::owned(buf).expect("Should be a valid IP packet")
+        IpPacket::owned(buf).expect("Should be a valid IP packet")
     }};
 }
 
@@ -32,7 +32,7 @@ pub fn icmp_request_packet(
     seq: u16,
     identifier: u16,
     payload: &[u8],
-) -> Result<MutableIpPacket<'static>, IpVersionMismatch> {
+) -> Result<IpPacket<'static>, IpVersionMismatch> {
     match (src, dst.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64)
@@ -56,7 +56,7 @@ pub fn icmp_reply_packet(
     seq: u16,
     identifier: u16,
     payload: &[u8],
-) -> Result<MutableIpPacket<'static>, IpVersionMismatch> {
+) -> Result<IpPacket<'static>, IpVersionMismatch> {
     match (src, dst.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64)
@@ -80,7 +80,7 @@ pub fn tcp_packet<IP>(
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
-) -> Result<MutableIpPacket<'static>, IpVersionMismatch>
+) -> Result<IpPacket<'static>, IpVersionMismatch>
 where
     IP: Into<IpAddr>,
 {
@@ -107,7 +107,7 @@ pub fn udp_packet<IP>(
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
-) -> Result<MutableIpPacket<'static>, IpVersionMismatch>
+) -> Result<IpPacket<'static>, IpVersionMismatch>
 where
     IP: Into<IpAddr>,
 {
@@ -132,7 +132,7 @@ pub fn dns_query(
     src: SocketAddr,
     dst: SocketAddr,
     id: u16,
-) -> Result<MutableIpPacket<'static>, IpVersionMismatch> {
+) -> Result<IpPacket<'static>, IpVersionMismatch> {
     // Create the DNS query message
     let mut msg_builder = MessageBuilder::new_vec();
 
@@ -153,9 +153,9 @@ pub fn dns_query(
 
 /// Makes a DNS response to the given DNS query packet, using a resolver callback.
 pub fn dns_ok_response<I>(
-    packet: MutableIpPacket<'static>,
+    packet: IpPacket<'static>,
     resolve: impl Fn(&Name<Vec<u8>>) -> I,
-) -> MutableIpPacket<'static>
+) -> IpPacket<'static>
 where
     I: Iterator<Item = IpAddr>,
 {

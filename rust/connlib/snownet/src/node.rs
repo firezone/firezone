@@ -9,7 +9,7 @@ use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
 use hex_display::HexDisplayExt;
-use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, MutableIpPacket, Packet as _};
+use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, Packet as _};
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, SeedableRng};
@@ -292,7 +292,7 @@ where
         packet: &[u8],
         now: Instant,
         buffer: &'b mut [u8],
-    ) -> Result<Option<(TId, MutableIpPacket<'b>)>, Error> {
+    ) -> Result<Option<(TId, IpPacket<'b>)>, Error> {
         self.add_local_as_host_candidate(local)?;
 
         let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
@@ -326,7 +326,7 @@ where
     pub fn encapsulate(
         &mut self,
         connection: TId,
-        packet: MutableIpPacket<'_>,
+        packet: IpPacket<'_>,
         now: Instant,
         buffer: &mut EncryptBuffer,
     ) -> Result<Option<EncryptedPacket>, Error> {
@@ -714,7 +714,7 @@ where
         packet: &[u8],
         buffer: &'b mut [u8],
         now: Instant,
-    ) -> ControlFlow<Result<(), Error>, (TId, MutableIpPacket<'b>)> {
+    ) -> ControlFlow<Result<(), Error>, (TId, IpPacket<'b>)> {
         for (cid, conn) in self.connections.iter_established_mut() {
             if !conn.accepts(&from) {
                 continue;
@@ -1711,7 +1711,7 @@ where
         allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
-    ) -> ControlFlow<Result<(), Error>, MutableIpPacket<'b>> {
+    ) -> ControlFlow<Result<(), Error>, IpPacket<'b>> {
         let _guard = self.span.enter();
 
         let control_flow = match self.tunnel.decapsulate(None, packet, &mut buffer[20..]) {

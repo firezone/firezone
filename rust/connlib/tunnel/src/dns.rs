@@ -6,7 +6,7 @@ use domain::base::{
     Message, MessageBuilder, ToName,
 };
 use domain::rdata::AllRecordData;
-use ip_packet::MutableIpPacket;
+use ip_packet::IpPacket;
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::collections::{BTreeMap, HashMap};
@@ -32,7 +32,7 @@ pub struct StubResolver {
 #[derive(Debug)]
 pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
-    LocalResponse(MutableIpPacket<'static>),
+    LocalResponse(IpPacket<'static>),
     /// The query is for a non-Resource, forward it to an upstream or system resolver.
     ForwardQuery {
         upstream: SocketAddr,
@@ -208,7 +208,7 @@ impl StubResolver {
     pub(crate) fn handle(
         &mut self,
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
-        packet: &MutableIpPacket,
+        packet: &IpPacket,
     ) -> Option<ResolveStrategy> {
         let upstream = dns_mapping.get_by_left(&packet.destination())?.address();
         let datagram = packet.as_udp()?;

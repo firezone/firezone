@@ -149,7 +149,7 @@ pub enum IcmpType {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum MutableIpPacket<'a> {
+pub enum IpPacket<'a> {
     Ipv4(ConvertibleIpv4Packet<'a>),
     Ipv6(ConvertibleIpv6Packet<'a>),
 }
@@ -383,19 +383,17 @@ pub fn ipv6_translated(ip: Ipv6Addr) -> Option<Ipv4Addr> {
     ))
 }
 
-impl<'a> MutableIpPacket<'a> {
+impl<'a> IpPacket<'a> {
     // TODO: this API is a bit akward, since you have to pass the extra prepended 20 bytes
     pub fn new(buf: &'a mut [u8]) -> Option<Self> {
         match buf[20] >> 4 {
-            4 => Some(MutableIpPacket::Ipv4(ConvertibleIpv4Packet::new(buf)?)),
-            6 => Some(MutableIpPacket::Ipv6(ConvertibleIpv6Packet::new(
-                &mut buf[20..],
-            )?)),
+            4 => Some(IpPacket::Ipv4(ConvertibleIpv4Packet::new(buf)?)),
+            6 => Some(IpPacket::Ipv6(ConvertibleIpv6Packet::new(&mut buf[20..])?)),
             _ => None,
         }
     }
 
-    pub(crate) fn owned(mut data: Vec<u8>) -> Option<MutableIpPacket<'static>> {
+    pub(crate) fn owned(mut data: Vec<u8>) -> Option<IpPacket<'static>> {
         let packet = match data[20] >> 4 {
             4 => ConvertibleIpv4Packet::owned(data)?.into(),
             6 => {
@@ -408,40 +406,28 @@ impl<'a> MutableIpPacket<'a> {
         Some(packet)
     }
 
-    pub fn to_owned(&self) -> MutableIpPacket<'static> {
+    pub fn to_owned(&self) -> IpPacket<'static> {
         match self {
-            MutableIpPacket::Ipv4(i) => MutableIpPacket::Ipv4(ConvertibleIpv4Packet {
+            IpPacket::Ipv4(i) => IpPacket::Ipv4(ConvertibleIpv4Packet {
                 buf: MaybeOwned::Owned(i.buf.to_vec()),
             }),
-            MutableIpPacket::Ipv6(i) => MutableIpPacket::Ipv6(ConvertibleIpv6Packet {
+            IpPacket::Ipv6(i) => IpPacket::Ipv6(ConvertibleIpv6Packet {
                 buf: MaybeOwned::Owned(i.buf.to_vec()),
             }),
         }
     }
 
-    pub(crate) fn consume_to_ipv4(
-        self,
-        src: Ipv4Addr,
-        dst: Ipv4Addr,
-    ) -> Option<MutableIpPacket<'a>> {
+    pub(crate) fn consume_to_ipv4(self, src: Ipv4Addr, dst: Ipv4Addr) -> Option<IpPacket<'a>> {
         match self {
-            MutableIpPacket::Ipv4(pkt) => Some(MutableIpPacket::Ipv4(pkt)),
-            MutableIpPacket::Ipv6(pkt) => {
-                Some(MutableIpPacket::Ipv4(pkt.consume_to_ipv4(src, dst)?))
-            }
+            IpPacket::Ipv4(pkt) => Some(IpPacket::Ipv4(pkt)),
+            IpPacket::Ipv6(pkt) => Some(IpPacket::Ipv4(pkt.consume_to_ipv4(src, dst)?)),
         }
     }
 
-    pub(crate) fn consume_to_ipv6(
-        self,
-        src: Ipv6Addr,
-        dst: Ipv6Addr,
-    ) -> Option<MutableIpPacket<'a>> {
+    pub(crate) fn consume_to_ipv6(self, src: Ipv6Addr, dst: Ipv6Addr) -> Option<IpPacket<'a>> {
         match self {
-            MutableIpPacket::Ipv4(pkt) => {
-                Some(MutableIpPacket::Ipv6(pkt.consume_to_ipv6(src, dst)?))
-            }
-            MutableIpPacket::Ipv6(pkt) => Some(MutableIpPacket::Ipv6(pkt)),
+            IpPacket::Ipv4(pkt) => Some(IpPacket::Ipv6(pkt.consume_to_ipv6(src, dst)?)),
+            IpPacket::Ipv6(pkt) => Some(IpPacket::Ipv6(pkt)),
         }
     }
 
@@ -588,10 +574,10 @@ impl<'a> MutableIpPacket<'a> {
         };
 
         let checksum = match &self {
-            MutableIpPacket::Ipv4(v4) => udp
+            IpPacket::Ipv4(v4) => udp
                 .to_header()
                 .calc_checksum_ipv4(&v4.ip_header().to_header(), udp.payload()),
-            MutableIpPacket::Ipv6(v6) => udp
+            IpPacket::Ipv6(v6) => udp
                 .to_header()
                 .calc_checksum_ipv6(&v6.header().to_header(), udp.payload()),
         }
@@ -608,10 +594,10 @@ impl<'a> MutableIpPacket<'a> {
         };
 
         let checksum = match &self {
-            MutableIpPacket::Ipv4(v4) => tcp
+            IpPacket::Ipv4(v4) => tcp
                 .to_header()
                 .calc_checksum_ipv4(&v4.ip_header().to_header(), tcp.payload()),
-            MutableIpPacket::Ipv6(v6) => tcp
+            IpPacket::Ipv6(v6) => tcp
                 .to_header()
                 .calc_checksum_ipv6(&v6.header().to_header(), tcp.payload()),
         }
@@ -648,15 +634,15 @@ impl<'a> MutableIpPacket<'a> {
 
     pub fn is_icmp_v4_or_v6(&self) -> bool {
         match self {
-            MutableIpPacket::Ipv4(v4) => v4.ip_header().protocol() == IpNumber::ICMP,
-            MutableIpPacket::Ipv6(v6) => v6.header().next_header() == IpNumber::IPV6_ICMP,
+            IpPacket::Ipv4(v4) => v4.ip_header().protocol() == IpNumber::ICMP,
+            IpPacket::Ipv6(v6) => v6.header().next_header() == IpNumber::IPV6_ICMP,
         }
     }
 
     fn set_icmpv6_checksum(&mut self) {
         let (src_addr, dst_addr) = match self {
-            MutableIpPacket::Ipv4(_) => return,
-            MutableIpPacket::Ipv6(p) => (p.get_source(), p.get_destination()),
+            IpPacket::Ipv4(_) => return,
+            IpPacket::Ipv6(p) => (p.get_source(), p.get_destination()),
         };
         if let Some(mut pkt) = self.as_icmpv6() {
             let checksum = icmpv6::checksum(&pkt.to_immutable(), &src_addr, &dst_addr);
@@ -701,10 +687,10 @@ impl<'a> MutableIpPacket<'a> {
         src_v6: Ipv6Addr,
         src_proto: Protocol,
         dst: IpAddr,
-    ) -> Option<MutableIpPacket<'a>> {
+    ) -> Option<IpPacket<'a>> {
         let mut packet = match (&self, dst) {
-            (&MutableIpPacket::Ipv4(_), IpAddr::V6(dst)) => self.consume_to_ipv6(src_v6, dst)?,
-            (&MutableIpPacket::Ipv6(_), IpAddr::V4(dst)) => self.consume_to_ipv4(src_v4, dst)?,
+            (&IpPacket::Ipv4(_), IpAddr::V6(dst)) => self.consume_to_ipv6(src_v6, dst)?,
+            (&IpPacket::Ipv6(_), IpAddr::V4(dst)) => self.consume_to_ipv4(src_v4, dst)?,
             _ => {
                 self.set_dst(dst);
                 self
@@ -721,10 +707,10 @@ impl<'a> MutableIpPacket<'a> {
         dst_v6: Ipv6Addr,
         dst_proto: Protocol,
         src: IpAddr,
-    ) -> Option<MutableIpPacket<'a>> {
+    ) -> Option<IpPacket<'a>> {
         let mut packet = match (&self, src) {
-            (&MutableIpPacket::Ipv4(_), IpAddr::V6(src)) => self.consume_to_ipv6(src, dst_v6)?,
-            (&MutableIpPacket::Ipv6(_), IpAddr::V4(src)) => self.consume_to_ipv4(src, dst_v4)?,
+            (&IpPacket::Ipv4(_), IpAddr::V6(src)) => self.consume_to_ipv6(src, dst_v6)?,
+            (&IpPacket::Ipv6(_), IpAddr::V4(src)) => self.consume_to_ipv4(src, dst_v4)?,
             _ => {
                 self.set_src(src);
                 self
@@ -817,19 +803,19 @@ impl<'a> MutableIpPacket<'a> {
     }
 }
 
-impl<'a> From<ConvertibleIpv4Packet<'a>> for MutableIpPacket<'a> {
+impl<'a> From<ConvertibleIpv4Packet<'a>> for IpPacket<'a> {
     fn from(value: ConvertibleIpv4Packet<'a>) -> Self {
         Self::Ipv4(value)
     }
 }
 
-impl<'a> From<ConvertibleIpv6Packet<'a>> for MutableIpPacket<'a> {
+impl<'a> From<ConvertibleIpv6Packet<'a>> for IpPacket<'a> {
     fn from(value: ConvertibleIpv6Packet<'a>) -> Self {
         Self::Ipv6(value)
     }
 }
 
-impl pnet_packet::Packet for MutableIpPacket<'_> {
+impl pnet_packet::Packet for IpPacket<'_> {
     fn packet(&self) -> &[u8] {
         for_both!(self, |i| i.packet())
     }
@@ -839,7 +825,7 @@ impl pnet_packet::Packet for MutableIpPacket<'_> {
     }
 }
 
-impl pnet_packet::MutablePacket for MutableIpPacket<'_> {
+impl pnet_packet::MutablePacket for IpPacket<'_> {
     fn packet_mut(&mut self) -> &mut [u8] {
         for_both!(self, |i| i.packet_mut())
     }

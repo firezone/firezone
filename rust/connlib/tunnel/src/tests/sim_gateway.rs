@@ -9,7 +9,7 @@ use connlib_shared::{
     messages::{GatewayId, RelayId},
     DomainName,
 };
-use ip_packet::MutableIpPacket;
+use ip_packet::IpPacket;
 use proptest::prelude::*;
 use snownet::{EncryptBuffer, Transmit};
 use std::{
@@ -24,7 +24,7 @@ pub(crate) struct SimGateway {
     pub(crate) sut: GatewayState,
 
     /// The received ICMP packets, indexed by our custom ICMP payload.
-    pub(crate) received_icmp_requests: BTreeMap<u64, MutableIpPacket<'static>>,
+    pub(crate) received_icmp_requests: BTreeMap<u64, IpPacket<'static>>,
 
     buffer: Vec<u8>,
     enc_buffer: EncryptBuffer,
@@ -65,7 +65,7 @@ impl SimGateway {
     fn on_received_packet(
         &mut self,
         global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
-        packet: MutableIpPacket<'static>,
+        packet: IpPacket<'static>,
         now: Instant,
     ) -> Option<Transmit<'static>> {
         // TODO: Instead of handling these things inline, here, should we dispatch them via `RoutingTable`?
