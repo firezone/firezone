@@ -59,14 +59,18 @@ impl Sockets {
 
     pub fn send(&mut self, datagram: DatagramOut) -> io::Result<()> {
         let socket = match datagram.dst {
-            SocketAddr::V4(dst) => self.socket_v4.as_mut().ok_or(io::Error::new(
-                io::ErrorKind::NotConnected,
-                format!("failed send packet to {dst}: no IPv4 socket"),
-            ))?,
-            SocketAddr::V6(dst) => self.socket_v6.as_mut().ok_or(io::Error::new(
-                io::ErrorKind::NotConnected,
-                format!("failed send packet to {dst}: no IPv6 socket"),
-            ))?,
+            SocketAddr::V4(dst) => self.socket_v4.as_mut().ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotConnected,
+                    format!("failed send packet to {dst}: no IPv4 socket"),
+                )
+            })?,
+            SocketAddr::V6(dst) => self.socket_v6.as_mut().ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotConnected,
+                    format!("failed send packet to {dst}: no IPv6 socket"),
+                )
+            })?,
         };
         socket.send(datagram)?;
 
