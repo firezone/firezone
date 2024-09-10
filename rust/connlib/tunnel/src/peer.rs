@@ -10,8 +10,7 @@ use connlib_shared::messages::{
 use connlib_shared::DomainName;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use ip_packet::ip::IpNextHeaderProtocols;
-use ip_packet::{IpPacket, MutableIpPacket};
+use ip_packet::MutableIpPacket;
 use itertools::Itertools;
 use rangemap::RangeInclusiveSet;
 
@@ -41,7 +40,7 @@ impl FilterEngine {
         Self::PermitSome(AllowRules::new())
     }
 
-    fn is_allowed(&self, packet: &IpPacket) -> bool {
+    fn is_allowed(&self, packet: &MutableIpPacket) -> bool {
         match self {
             FilterEngine::PermitAll => true,
             FilterEngine::PermitSome(filter_engine) => filter_engine.is_allowed(packet),
@@ -69,21 +68,20 @@ impl AllowRules {
         }
     }
 
-    fn is_allowed(&self, packet: &IpPacket) -> bool {
-        match packet.next_header() {
-            // Note: possible optimization here
-            // if we want to get the port here, and we assume correct formatting
-            // we can do packet.payload()[2..=3] (for UDP and TCP bytes 2 and 3 are the port)
-            // but it might be a bit harder to read
-            IpNextHeaderProtocols::Tcp => packet
-                .as_tcp()
-                .is_some_and(|p| self.tcp.contains(&p.get_destination())),
-            IpNextHeaderProtocols::Udp => packet
-                .as_udp()
-                .is_some_and(|p| self.udp.contains(&p.get_destination())),
-            IpNextHeaderProtocols::Icmp | IpNextHeaderProtocols::Icmpv6 => self.icmp,
-            _ => false,
+    fn is_allowed(&self, packet: &MutableIpPacket) -> bool {
+        if let Some(tcp) = packet.as_tcp() {
+            return self.tcp.contains(&tcp.destination_port());
         }
+
+        if let Some(udp) = packet.as_udp() {
+            return self.udp.contains(&udp.destination_port());
+        }
+
+        if packet.is_icmp_v4_or_v6() {
+            return self.icmp;
+        }
+
+        false
     }
 
     fn add_filters<'a>(&mut self, filters: impl IntoIterator<Item = &'a Filter>) {
@@ -449,12 +447,12 @@ impl ClientOnGateway {
     }
 
     /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
-    fn ensure_allowed_dst(&self, packet: &MutableIpPacket<'_>) -> anyhow::Result<()> {
+    fn ensure_allowed_dst(&mut self, packet: &MutableIpPacket<'_>) -> anyhow::Result<()> {
         let dst = packet.destination();
         if !self
             .filters
             .longest_match(dst)
-            .is_some_and(|(_, filter)| filter.is_allowed(&packet.to_immutable()))
+            .is_some_and(|(_, filter)| filter.is_allowed(packet))
         {
             return Err(anyhow::Error::new(DstNotAllowed(dst)));
         };

@@ -13,7 +13,7 @@ use connlib_shared::messages::{
 use connlib_shared::{callbacks, PublicKey, StaticSecret};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
+use ip_packet::{IpPacket, MutableIpPacket};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
@@ -1367,7 +1367,7 @@ fn maybe_mangle_dns_response_from_cidr_resource<'p>(
         return packet;
     };
 
-    let src_port = udp.get_source();
+    let src_port = udp.source_port();
 
     let Some(sentinel) = dns_mapping.get_by_right(&DnsServer::from((src_ip, src_port))) else {
         return packet;

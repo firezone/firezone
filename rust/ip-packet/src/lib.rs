@@ -14,7 +14,9 @@ pub use pnet_packet::*;
 mod proptests;
 
 use domain::base::Message;
-use etherparse::{Ipv4Header, Ipv4HeaderSlice, Ipv6Header, Ipv6HeaderSlice};
+use etherparse::{
+    IpNumber, Ipv4Header, Ipv4HeaderSlice, Ipv6Header, Ipv6HeaderSlice, TcpSlice, UdpSlice,
+};
 use ipv4_header_slice_mut::Ipv4HeaderSliceMut;
 use ipv6_header_slice_mut::Ipv6HeaderSliceMut;
 use pnet_packet::{
@@ -462,11 +464,11 @@ impl<'a> MutableIpPacket<'a> {
     }
 
     pub fn set_source_protocol(&mut self, v: u16) {
-        if let Some(mut p) = self.as_tcp() {
+        if let Some(mut p) = self.as_tcp_mut() {
             p.set_source(v);
         }
 
-        if let Some(mut p) = self.as_udp() {
+        if let Some(mut p) = self.as_udp_mut() {
             p.set_source(v);
         }
 
@@ -474,11 +476,11 @@ impl<'a> MutableIpPacket<'a> {
     }
 
     pub fn set_destination_protocol(&mut self, v: u16) {
-        if let Some(mut p) = self.as_tcp() {
+        if let Some(mut p) = self.as_tcp_mut() {
             p.set_destination(v);
         }
 
-        if let Some(mut p) = self.as_udp() {
+        if let Some(mut p) = self.as_udp_mut() {
             p.set_destination(v);
         }
 
@@ -549,7 +551,7 @@ impl<'a> MutableIpPacket<'a> {
             return;
         };
 
-        self.as_udp()
+        self.as_udp_mut()
             .expect("Developer error: we can only get a UDP checksum if the packet is udp")
             .set_checksum(checksum);
     }
@@ -561,7 +563,7 @@ impl<'a> MutableIpPacket<'a> {
             return;
         };
 
-        self.as_tcp()
+        self.as_tcp_mut()
             .expect("Developer error: we can only get a TCP checksum if the packet is tcp")
             .set_checksum(checksum);
     }
@@ -580,18 +582,39 @@ impl<'a> MutableIpPacket<'a> {
         }
     }
 
-    pub fn as_udp(&mut self) -> Option<MutableUdpPacket> {
+    pub fn as_udp(&self) -> Option<UdpSlice> {
+        self.to_immutable()
+            .is_udp()
+            .then(|| UdpSlice::from_slice(self.payload()).ok())
+            .flatten()
+    }
+
+    pub fn as_udp_mut(&mut self) -> Option<MutableUdpPacket> {
         self.to_immutable()
             .is_udp()
             .then(|| MutableUdpPacket::new(self.payload_mut()))
             .flatten()
     }
 
-    fn as_tcp(&mut self) -> Option<MutableTcpPacket> {
+    pub fn as_tcp(&self) -> Option<TcpSlice> {
+        self.to_immutable()
+            .is_tcp()
+            .then(|| TcpSlice::from_slice(self.payload()).ok())
+            .flatten()
+    }
+
+    pub fn as_tcp_mut(&mut self) -> Option<MutableTcpPacket> {
         self.to_immutable()
             .is_tcp()
             .then(|| MutableTcpPacket::new(self.payload_mut()))
             .flatten()
+    }
+
+    pub fn is_icmp_v4_or_v6(&self) -> bool {
+        match self {
+            MutableIpPacket::Ipv4(v4) => v4.ip_header().protocol() == IpNumber::ICMP,
+            MutableIpPacket::Ipv6(v6) => v6.header().next_header() == IpNumber::IPV6_ICMP,
+        }
     }
 
     fn set_icmpv6_checksum(&mut self) {
