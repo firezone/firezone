@@ -7,6 +7,7 @@ mod nat64;
 #[cfg(feature = "proptest")]
 pub mod proptest;
 mod slice_utils;
+mod tcp_header_slice_mut;
 
 pub use pnet_packet::*;
 
@@ -25,13 +26,13 @@ use pnet_packet::{
         MutableIcmpPacket,
     },
     icmpv6::{Icmpv6Types, MutableIcmpv6Packet},
-    tcp::MutableTcpPacket,
     udp::MutableUdpPacket,
 };
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::{Deref, DerefMut},
 };
+use tcp_header_slice_mut::TcpHeaderSliceMut;
 
 macro_rules! for_both {
     ($this:ident, |$name:ident| $body:expr) => {
@@ -483,7 +484,7 @@ impl<'a> IpPacket<'a> {
 
     pub fn set_source_protocol(&mut self, v: u16) {
         if let Some(mut p) = self.as_tcp_mut() {
-            p.set_source(v);
+            p.set_source_port(v);
         }
 
         if let Some(mut p) = self.as_udp_mut() {
@@ -495,7 +496,7 @@ impl<'a> IpPacket<'a> {
 
     pub fn set_destination_protocol(&mut self, v: u16) {
         if let Some(mut p) = self.as_tcp_mut() {
-            p.set_destination(v);
+            p.set_destination_port(v);
         }
 
         if let Some(mut p) = self.as_udp_mut() {
@@ -622,10 +623,13 @@ impl<'a> IpPacket<'a> {
             .flatten()
     }
 
-    pub fn as_tcp_mut(&mut self) -> Option<MutableTcpPacket> {
-        self.is_tcp()
-            .then(|| MutableTcpPacket::new(self.payload_mut()))
-            .flatten()
+    pub fn as_tcp_mut(&mut self) -> Option<TcpHeaderSliceMut> {
+        if !self.is_tcp() {
+            return None;
+        }
+
+        // Safety: We checked that the packet is a TCP packet.
+        Some(unsafe { TcpHeaderSliceMut::from_slice_unchecked(self.payload_mut()) })
     }
 
     pub fn is_icmp_v4_or_v6(&self) -> bool {
