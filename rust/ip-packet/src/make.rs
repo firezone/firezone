@@ -11,7 +11,7 @@ use domain::{
 use etherparse::PacketBuilder;
 use std::net::{IpAddr, SocketAddr};
 
-/// Helper macro to turn a [`PacketBuilder`] into a [`MutableIpPacket`].
+/// Helper macro to turn a [`PacketBuilder`] into an [`IpPacket`].
 #[macro_export]
 macro_rules! build {
     ($packet:expr, $payload:ident) => {{
