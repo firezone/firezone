@@ -252,18 +252,6 @@ impl<'a> ConvertibleIpv4Packet<'a> {
         self.ip_header().destination_addr()
     }
 
-    fn consume_to_immutable(self) -> Ipv4Packet<'a> {
-        match self.buf {
-            MaybeOwned::RefMut(buf) => {
-                Ipv4Packet::new(&buf[20..]).expect("when constructed we checked that this is some")
-            }
-            MaybeOwned::Owned(mut owned) => {
-                owned.drain(..20);
-                Ipv4Packet::owned(owned).expect("when constructed we checked that this is some")
-            }
-        }
-    }
-
     fn consume_to_ipv6(
         mut self,
         src: Ipv6Addr,
@@ -345,17 +333,6 @@ impl<'a> ConvertibleIpv6Packet<'a> {
 
     fn get_destination(&self) -> Ipv6Addr {
         self.header().destination_addr()
-    }
-
-    fn consume_to_immutable(self) -> Ipv6Packet<'a> {
-        match self.buf {
-            MaybeOwned::RefMut(buf) => {
-                Ipv6Packet::new(buf).expect("when constructed we checked that this is some")
-            }
-            MaybeOwned::Owned(owned) => {
-                Ipv6Packet::owned(owned).expect("when constructed we checked that this is some")
-            }
-        }
     }
 
     fn consume_to_ipv4(

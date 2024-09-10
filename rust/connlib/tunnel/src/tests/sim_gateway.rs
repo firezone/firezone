@@ -9,7 +9,7 @@ use connlib_shared::{
     messages::{GatewayId, RelayId},
     DomainName,
 };
-use ip_packet::{IpPacket, MutableIpPacket};
+use ip_packet::MutableIpPacket;
 use proptest::prelude::*;
 use snownet::{EncryptBuffer, Transmit};
 use std::{

@@ -181,7 +181,7 @@ impl GatewayState {
 
         let transmit = self
             .node
-            .encapsulate(peer.id(), packet.as_immutable(), now, buffer)
+            .encapsulate(peer.id(), packet, now, buffer)
             .inspect_err(|e| tracing::debug!(%cid, "Failed to encapsulate: {e}"))
             .ok()??;
 

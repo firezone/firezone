@@ -9,9 +9,7 @@ use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
 use hex_display::HexDisplayExt;
-use ip_packet::{
-    ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, MutableIpPacket, Packet as _,
-};
+use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, MutableIpPacket, Packet as _};
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, SeedableRng};
@@ -328,7 +326,7 @@ where
     pub fn encapsulate(
         &mut self,
         connection: TId,
-        packet: IpPacket<'_>,
+        packet: MutableIpPacket<'_>,
         now: Instant,
         buffer: &mut EncryptBuffer,
     ) -> Result<Option<EncryptedPacket>, Error> {

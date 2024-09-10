@@ -439,7 +439,7 @@ impl ClientState {
 
         let transmit = self
             .node
-            .encapsulate(gid, packet.as_immutable(), now, buffer)
+            .encapsulate(gid, packet, now, buffer)
             .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
             .ok()??;
 
@@ -621,10 +621,7 @@ impl ClientState {
         packet: MutableIpPacket<'a>,
         now: Instant,
     ) -> Result<Option<MutableIpPacket<'static>>, (MutableIpPacket<'a>, IpAddr)> {
-        match self
-            .stub_resolver
-            .handle(&self.dns_mapping, packet.as_immutable())
-        {
+        match self.stub_resolver.handle(&self.dns_mapping, &packet) {
             Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
             Some(dns::ResolveStrategy::ForwardQuery {
                 upstream: server,
