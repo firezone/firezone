@@ -647,29 +647,25 @@ impl<'a> MutableIpPacket<'a> {
     }
 
     pub fn as_icmp(&mut self) -> Option<MutableIcmpPacket> {
-        self.to_immutable()
-            .is_icmp()
+        self.is_icmp()
             .then(|| MutableIcmpPacket::new(self.payload_mut()))
             .flatten()
     }
 
     fn as_icmpv6(&mut self) -> Option<MutableIcmpv6Packet> {
-        self.to_immutable()
-            .is_icmpv6()
+        self.is_icmpv6()
             .then(|| MutableIcmpv6Packet::new(self.payload_mut()))
             .flatten()
     }
 
     fn as_immutable_udp(&self) -> Option<UdpPacket> {
-        self.to_immutable()
-            .is_udp()
+        self.is_udp()
             .then(|| UdpPacket::new(self.payload()))
             .flatten()
     }
 
     fn as_immutable_tcp(&self) -> Option<TcpPacket> {
-        self.to_immutable()
-            .is_tcp()
+        self.is_tcp()
             .then(|| TcpPacket::new(self.payload()))
             .flatten()
     }
@@ -748,6 +744,29 @@ impl<'a> MutableIpPacket<'a> {
                 debug_assert!(false, "Cannot set an IPv4 address on an IPv6 packet")
             }
         }
+    }
+
+    fn next_header(&self) -> IpNumber {
+        match self {
+            Self::Ipv4(p) => p.ip_header().protocol(),
+            Self::Ipv6(p) => p.header().next_header(),
+        }
+    }
+
+    fn is_udp(&self) -> bool {
+        self.next_header() == IpNumber::UDP
+    }
+
+    fn is_tcp(&self) -> bool {
+        self.next_header() == IpNumber::TCP
+    }
+
+    fn is_icmp(&self) -> bool {
+        self.next_header() == IpNumber::ICMP
+    }
+
+    fn is_icmpv6(&self) -> bool {
+        self.next_header() == IpNumber::IPV6_ICMP
     }
 }
 
@@ -852,14 +871,6 @@ impl<'a> IpPacket<'a> {
 
     fn is_tcp(&self) -> bool {
         self.next_header() == IpNextHeaderProtocols::Tcp
-    }
-
-    fn is_icmp(&self) -> bool {
-        self.next_header() == IpNextHeaderProtocols::Icmp
-    }
-
-    fn is_icmpv6(&self) -> bool {
-        self.next_header() == IpNextHeaderProtocols::Icmpv6
     }
 
     pub fn as_udp(&self) -> Option<UdpPacket> {
