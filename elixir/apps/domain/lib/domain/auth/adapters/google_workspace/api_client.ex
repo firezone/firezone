@@ -123,6 +123,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
       URI.parse("#{endpoint}/admin/directory/v1/customer/my_customer/orgunits")
       |> URI.append_query(
         URI.encode_query(%{
+          "type" => "ALL",
           "maxResults" => @max_results
         })
       )
