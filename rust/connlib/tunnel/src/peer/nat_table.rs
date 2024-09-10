@@ -1,7 +1,7 @@
 //! a stateful symmetric NAT table that performs conversion between a client's picked proxy ip and the actual resource's IP
 use anyhow::Context;
 use bimap::BiMap;
-use ip_packet::{IpPacket, Protocol};
+use ip_packet::{MutableIpPacket, Protocol};
 use std::collections::BTreeMap;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
@@ -44,7 +44,7 @@ impl NatTable {
 
     pub(crate) fn translate_outgoing(
         &mut self,
-        packet: IpPacket,
+        packet: &MutableIpPacket,
         outside_dst: IpAddr,
         now: Instant,
     ) -> anyhow::Result<(Protocol, IpAddr)> {
@@ -84,7 +84,7 @@ impl NatTable {
 
     pub(crate) fn translate_incoming(
         &mut self,
-        packet: IpPacket,
+        packet: &MutableIpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<(Protocol, IpAddr)>> {
         let outside = (packet.destination_protocol()?, packet.source());
@@ -121,12 +121,12 @@ mod tests {
         let response_delay = Duration::from_secs(response_delay);
 
         // Remember original src_p and dst
-        let src = packet.as_immutable().source_protocol().unwrap();
+        let src = packet.source_protocol().unwrap();
         let dst = packet.destination();
 
         // Translate out
         let (new_source_protocol, new_dst_ip) = table
-            .translate_outgoing(packet.as_immutable(), outside_dst, sent_at)
+            .translate_outgoing(&packet, outside_dst, sent_at)
             .unwrap();
 
         // Pretend we are getting a response.
@@ -139,7 +139,7 @@ mod tests {
 
         // Translate in
         let translate_incoming = table
-            .translate_incoming(response.as_immutable(), sent_at + response_delay)
+            .translate_incoming(&response, sent_at + response_delay)
             .unwrap();
 
         // Assert
@@ -160,8 +160,7 @@ mod tests {
         proptest::prop_assume!(packet1.destination().is_ipv4() == outside_dst1.is_ipv4()); // Required for our test to simulate a response.
         proptest::prop_assume!(packet2.destination().is_ipv4() == outside_dst2.is_ipv4()); // Required for our test to simulate a response.
         proptest::prop_assume!(
-            packet1.as_immutable().source_protocol().unwrap()
-                != packet2.as_immutable().source_protocol().unwrap()
+            packet1.source_protocol().unwrap() != packet2.source_protocol().unwrap()
         );
 
         let mut table = NatTable::default();
@@ -171,14 +170,12 @@ mod tests {
         // Remember original src_p and dst
         let original_src_p_and_dst = packets
             .clone()
-            .map(|(p, _)| (p.as_immutable().source_protocol().unwrap(), p.destination()));
+            .map(|(p, _)| (p.source_protocol().unwrap(), p.destination()));
 
         // Translate out
-        let new_src_p_and_dst = packets.clone().map(|(p, d)| {
-            table
-                .translate_outgoing(p.as_immutable(), d, Instant::now())
-                .unwrap()
-        });
+        let new_src_p_and_dst = packets
+            .clone()
+            .map(|(p, d)| table.translate_outgoing(&p, d, Instant::now()).unwrap());
 
         // Pretend we are getting a response.
         for ((p, _), (new_src_p, new_d)) in packets.iter_mut().zip(new_src_p_and_dst) {
@@ -189,7 +186,7 @@ mod tests {
         // Translate in
         let responses = packets.map(|(p, _)| {
             table
-                .translate_incoming(p.as_immutable(), Instant::now())
+                .translate_incoming(&p, Instant::now())
                 .unwrap()
                 .unwrap()
         });

@@ -4,7 +4,7 @@ use super::{
 };
 use crate::tests::reference::ResourceDst;
 use connlib_shared::{messages::GatewayId, DomainName};
-use ip_packet::IpPacket;
+use ip_packet::MutableIpPacket;
 use itertools::Itertools;
 use std::{
     collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, VecDeque},
@@ -198,8 +198,8 @@ pub(crate) fn assert_dns_packets_properties(ref_client: &RefClient, sim_client: 
 }
 
 fn assert_correct_src_and_dst_ips(
-    client_sent_request: &IpPacket<'_>,
-    client_received_reply: &IpPacket<'_>,
+    client_sent_request: &MutableIpPacket<'_>,
+    client_received_reply: &MutableIpPacket<'_>,
 ) {
     let req_dst = client_sent_request.destination();
     let res_src = client_received_reply.source();
@@ -221,14 +221,14 @@ fn assert_correct_src_and_dst_ips(
 }
 
 fn assert_correct_src_and_dst_udp_ports(
-    client_sent_request: &IpPacket<'_>,
-    client_received_reply: &IpPacket<'_>,
+    client_sent_request: &MutableIpPacket<'_>,
+    client_received_reply: &MutableIpPacket<'_>,
 ) {
-    let client_sent_request = client_sent_request.unwrap_as_udp();
-    let client_received_reply = client_received_reply.unwrap_as_udp();
+    let client_sent_request = client_sent_request.as_udp().unwrap();
+    let client_received_reply = client_received_reply.as_udp().unwrap();
 
-    let req_dst = client_sent_request.get_destination();
-    let res_src = client_received_reply.get_source();
+    let req_dst = client_sent_request.destination_port();
+    let res_src = client_received_reply.source_port();
 
     if req_dst != res_src {
         tracing::error!(target: "assertions", %req_dst, %res_src, "❌ req dst port != res src port");
@@ -236,8 +236,8 @@ fn assert_correct_src_and_dst_udp_ports(
         tracing::info!(target: "assertions", port = %req_dst, "✅ req dst port == res src port");
     }
 
-    let req_src = client_sent_request.get_source();
-    let res_dst = client_received_reply.get_destination();
+    let req_src = client_sent_request.source_port();
+    let res_dst = client_received_reply.destination_port();
 
     if req_src != res_dst {
         tracing::error!(target: "assertions", %req_src, %res_dst, "❌ req src port != res dst port");
@@ -246,7 +246,10 @@ fn assert_correct_src_and_dst_udp_ports(
     }
 }
 
-fn assert_destination_is_cdir_resource(gateway_received_request: &IpPacket<'_>, expected: &IpAddr) {
+fn assert_destination_is_cdir_resource(
+    gateway_received_request: &MutableIpPacket<'_>,
+    expected: &IpAddr,
+) {
     let actual = gateway_received_request.destination();
 
     if actual != *expected {
@@ -257,7 +260,7 @@ fn assert_destination_is_cdir_resource(gateway_received_request: &IpPacket<'_>, 
 }
 
 fn assert_destination_is_dns_resource(
-    gateway_received_request: &IpPacket<'_>,
+    gateway_received_request: &MutableIpPacket<'_>,
     global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
     domain: &DomainName,
 ) {
@@ -280,8 +283,8 @@ fn assert_destination_is_dns_resource(
 /// Yet, we care that it remains stable to ensure that any form of sticky sessions don't get broken (i.e. packets to one IP are always routed to the same IP on the gateway).
 /// To assert this, we build up a map as we iterate through all packets that have been sent.
 fn assert_proxy_ip_mapping_is_stable(
-    client_sent_request: &IpPacket<'_>,
-    gateway_received_request: &IpPacket<'_>,
+    client_sent_request: &MutableIpPacket<'_>,
+    gateway_received_request: &MutableIpPacket<'_>,
     mapping: &mut HashMap<IpAddr, IpAddr>,
 ) {
     let proxy_ip = client_sent_request.destination();

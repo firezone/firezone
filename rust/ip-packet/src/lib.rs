@@ -13,7 +13,6 @@ pub use pnet_packet::*;
 #[cfg(all(test, feature = "proptest"))]
 mod proptests;
 
-use domain::base::Message;
 use etherparse::{
     IcmpEchoHeader, Icmpv4Slice, Icmpv4Type, Icmpv6Slice, Icmpv6Type, IpNumber, Ipv4Header,
     Ipv4HeaderSlice, Ipv6Header, Ipv6HeaderSlice, TcpSlice, UdpSlice,
@@ -498,6 +497,52 @@ impl<'a> MutableIpPacket<'a> {
         for_both!(self, |i| i.get_destination().into())
     }
 
+    pub fn source_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
+        if let Some(p) = self.as_tcp() {
+            return Ok(Protocol::Tcp(p.source_port()));
+        }
+
+        if let Some(p) = self.as_udp() {
+            return Ok(Protocol::Udp(p.source_port()));
+        }
+
+        if let Some(p) = self.as_icmp() {
+            let id = p.identifier().ok_or_else(|| match p.icmp_type() {
+                IcmpType::V4(v4) => UnsupportedProtocol::UnsupportedIcmpv4Type(v4),
+                IcmpType::V6(v6) => UnsupportedProtocol::UnsupportedIcmpv6Type(v6),
+            })?;
+
+            return Ok(Protocol::Icmp(id));
+        }
+
+        Err(UnsupportedProtocol::UnsupportedIpPayload(
+            self.next_header(),
+        ))
+    }
+
+    pub fn destination_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
+        if let Some(p) = self.as_tcp() {
+            return Ok(Protocol::Tcp(p.destination_port()));
+        }
+
+        if let Some(p) = self.as_udp() {
+            return Ok(Protocol::Udp(p.destination_port()));
+        }
+
+        if let Some(p) = self.as_icmp() {
+            let id = p.identifier().ok_or_else(|| match p.icmp_type() {
+                IcmpType::V4(v4) => UnsupportedProtocol::UnsupportedIcmpv4Type(v4),
+                IcmpType::V6(v6) => UnsupportedProtocol::UnsupportedIcmpv6Type(v6),
+            })?;
+
+            return Ok(Protocol::Icmp(id));
+        }
+
+        Err(UnsupportedProtocol::UnsupportedIpPayload(
+            self.next_header(),
+        ))
+    }
+
     pub fn set_source_protocol(&mut self, v: u16) {
         if let Some(mut p) = self.as_tcp_mut() {
             p.set_source(v);
@@ -523,7 +568,7 @@ impl<'a> MutableIpPacket<'a> {
     }
 
     fn set_icmp_identifier(&mut self, v: u16) {
-        if let Some(mut p) = self.as_icmp() {
+        if let Some(mut p) = self.as_icmp_mut() {
             if p.get_icmp_type() == IcmpTypes::EchoReply {
                 let Some(mut echo_reply) = MutableEchoReplyPacket::new(p.packet_mut()) else {
                     return;
@@ -621,13 +666,6 @@ impl<'a> MutableIpPacket<'a> {
             .set_checksum(checksum);
     }
 
-    pub fn into_immutable(self) -> IpPacket<'a> {
-        match self {
-            Self::Ipv4(p) => p.consume_to_immutable().into(),
-            Self::Ipv6(p) => p.consume_to_immutable().into(),
-        }
-    }
-
     pub fn as_immutable(&self) -> IpPacket<'_> {
         match self {
             Self::Ipv4(p) => IpPacket::Ipv4(p.to_immutable()),
@@ -682,13 +720,25 @@ impl<'a> MutableIpPacket<'a> {
     }
 
     fn set_icmpv4_checksum(&mut self) {
-        if let Some(mut pkt) = self.as_icmp() {
+        if let Some(mut pkt) = self.as_icmp_mut() {
             let checksum = icmp::checksum(&pkt.to_immutable());
             pkt.set_checksum(checksum);
         }
     }
 
-    pub fn as_icmp(&mut self) -> Option<MutableIcmpPacket> {
+    pub fn as_icmp(&self) -> Option<IcmpPacket> {
+        match self {
+            Self::Ipv4(v4) if self.is_icmp() => Some(IcmpPacket::Ipv4(
+                Icmpv4Slice::from_slice(v4.payload()).ok()?,
+            )),
+            Self::Ipv6(v6) if self.is_icmpv6() => Some(IcmpPacket::Ipv6(
+                Icmpv6Slice::from_slice(v6.payload()).ok()?,
+            )),
+            Self::Ipv4(_) | Self::Ipv6(_) => None,
+        }
+    }
+
+    pub fn as_icmp_mut(&mut self) -> Option<MutableIcmpPacket> {
         self.is_icmp()
             .then(|| MutableIcmpPacket::new(self.payload_mut()))
             .flatten()
@@ -826,52 +876,6 @@ impl<'a> IpPacket<'a> {
         }
     }
 
-    pub fn source_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
-        if let Some(p) = self.as_tcp() {
-            return Ok(Protocol::Tcp(p.get_source()));
-        }
-
-        if let Some(p) = self.as_udp() {
-            return Ok(Protocol::Udp(p.get_source()));
-        }
-
-        if let Some(p) = self.as_icmp() {
-            let id = p.identifier().ok_or_else(|| match p.icmp_type() {
-                IcmpType::V4(v4) => UnsupportedProtocol::UnsupportedIcmpv4Type(v4),
-                IcmpType::V6(v6) => UnsupportedProtocol::UnsupportedIcmpv6Type(v6),
-            })?;
-
-            return Ok(Protocol::Icmp(id));
-        }
-
-        Err(UnsupportedProtocol::UnsupportedIpPayload(
-            self.next_header(),
-        ))
-    }
-
-    pub fn destination_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
-        if let Some(p) = self.as_tcp() {
-            return Ok(Protocol::Tcp(p.get_destination()));
-        }
-
-        if let Some(p) = self.as_udp() {
-            return Ok(Protocol::Udp(p.get_destination()));
-        }
-
-        if let Some(p) = self.as_icmp() {
-            let id = p.identifier().ok_or_else(|| match p.icmp_type() {
-                IcmpType::V4(v4) => UnsupportedProtocol::UnsupportedIcmpv4Type(v4),
-                IcmpType::V6(v6) => UnsupportedProtocol::UnsupportedIcmpv6Type(v6),
-            })?;
-
-            return Ok(Protocol::Icmp(id));
-        }
-
-        Err(UnsupportedProtocol::UnsupportedIpPayload(
-            self.next_header(),
-        ))
-    }
-
     pub fn source(&self) -> IpAddr {
         for_both!(self, |i| i.get_source().into())
     }
@@ -901,42 +905,10 @@ impl<'a> IpPacket<'a> {
             .flatten()
     }
 
-    /// Unwrap this [`IpPacket`] as a [`UdpPacket`], panicking in case it is not.
-    pub fn unwrap_as_udp(&self) -> UdpPacket {
-        self.as_udp().expect("Packet is not a UDP packet")
-    }
-
-    /// Unwrap this [`IpPacket`] as a DNS message, panicking in case it is not.
-    pub fn unwrap_as_dns(&self) -> Message<Vec<u8>> {
-        let udp = self.unwrap_as_udp();
-        let message = match Message::from_octets(udp.payload().to_vec()) {
-            Ok(message) => message,
-            Err(e) => {
-                panic!("Failed to parse UDP payload as DNS message: {e}");
-            }
-        };
-
-        message
-    }
-
     pub fn as_tcp(&self) -> Option<TcpPacket> {
         self.is_tcp()
             .then(|| TcpPacket::new(self.payload()))
             .flatten()
-    }
-
-    pub fn as_icmp(&self) -> Option<IcmpPacket> {
-        match self {
-            IpPacket::Ipv4(v4) if v4.get_next_level_protocol() == IpNextHeaderProtocols::Icmp => {
-                Some(IcmpPacket::Ipv4(
-                    Icmpv4Slice::from_slice(v4.payload()).ok()?,
-                ))
-            }
-            IpPacket::Ipv6(v6) if v6.get_next_header() == IpNextHeaderProtocols::Icmpv6 => Some(
-                IcmpPacket::Ipv6(Icmpv6Slice::from_slice(v6.payload()).ok()?),
-            ),
-            IpPacket::Ipv4(_) | IpPacket::Ipv6(_) => None,
-        }
     }
 }
 
@@ -1014,8 +986,8 @@ impl<'a> PacketSize for IpPacket<'a> {
 
 #[derive(Debug, thiserror::Error)]
 pub enum UnsupportedProtocol {
-    #[error("Unsupported IP protocol: {0}")]
-    UnsupportedIpPayload(IpNextHeaderProtocol),
+    #[error("Unsupported IP protocol: {0:?}")]
+    UnsupportedIpPayload(IpNumber),
     #[error("Unsupported ICMPv4 type: {0:?}")]
     UnsupportedIcmpv4Type(Icmpv4Type),
     #[error("Unsupported ICMPv6 type: {0:?}")]

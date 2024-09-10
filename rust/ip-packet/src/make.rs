@@ -1,10 +1,10 @@
 //! Factory module for making all kinds of packets.
 
-use crate::{IpPacket, MutableIpPacket};
+use crate::MutableIpPacket;
 use domain::{
     base::{
         iana::{Class, Opcode, Rcode},
-        MessageBuilder, Name, Question, Record, Rtype, ToName, Ttl,
+        Message, MessageBuilder, Name, Question, Record, Rtype, ToName, Ttl,
     },
     rdata::AllRecordData,
 };
@@ -153,14 +153,14 @@ pub fn dns_query(
 
 /// Makes a DNS response to the given DNS query packet, using a resolver callback.
 pub fn dns_ok_response<I>(
-    packet: IpPacket<'static>,
+    packet: MutableIpPacket<'static>,
     resolve: impl Fn(&Name<Vec<u8>>) -> I,
 ) -> MutableIpPacket<'static>
 where
     I: Iterator<Item = IpAddr>,
 {
-    let udp = packet.unwrap_as_udp();
-    let query = packet.unwrap_as_dns();
+    let udp = packet.as_udp().unwrap();
+    let query = Message::from_octets(udp.payload().to_vec()).unwrap();
 
     let response = MessageBuilder::new_vec();
     let mut answers = response.start_answer(&query, Rcode::NOERROR).unwrap();
@@ -194,8 +194,8 @@ where
     udp_packet(
         packet.destination(),
         packet.source(),
-        udp.get_destination(),
-        udp.get_source(),
+        udp.destination_port(),
+        udp.source_port(),
         payload,
     )
     .expect("src and dst are retrieved from the same packet")

@@ -24,7 +24,7 @@ use domain::{
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
+use ip_packet::MutableIpPacket;
 use itertools::Itertools as _;
 use prop::collection;
 use proptest::prelude::*;
@@ -53,11 +53,11 @@ pub(crate) struct SimClient {
     pub(crate) ipv4_routes: BTreeSet<Ipv4Network>,
     pub(crate) ipv6_routes: BTreeSet<Ipv6Network>,
 
-    pub(crate) sent_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket<'static>>,
-    pub(crate) received_dns_responses: BTreeMap<(SocketAddr, QueryId), IpPacket<'static>>,
+    pub(crate) sent_dns_queries: HashMap<(SocketAddr, QueryId), MutableIpPacket<'static>>,
+    pub(crate) received_dns_responses: BTreeMap<(SocketAddr, QueryId), MutableIpPacket<'static>>,
 
-    pub(crate) sent_icmp_requests: HashMap<(u16, u16), IpPacket<'static>>,
-    pub(crate) received_icmp_replies: BTreeMap<(u16, u16), IpPacket<'static>>,
+    pub(crate) sent_icmp_requests: HashMap<(u16, u16), MutableIpPacket<'static>>,
+    pub(crate) received_icmp_replies: BTreeMap<(u16, u16), MutableIpPacket<'static>>,
 
     buffer: Vec<u8>,
     enc_buffer: EncryptBuffer,
@@ -124,19 +124,15 @@ impl SimClient {
         now: Instant,
     ) -> Option<snownet::Transmit<'static>> {
         {
-            let packet = packet.as_immutable().to_owned();
-
             if let Some(icmp) = packet.as_icmp() {
                 let echo_request = icmp.echo_request_header().expect("to be echo request");
 
                 self.sent_icmp_requests
-                    .insert((echo_request.seq, echo_request.id), packet);
+                    .insert((echo_request.seq, echo_request.id), packet.clone());
             }
         }
 
         {
-            let packet = packet.as_immutable().to_owned();
-
             if let Some(udp) = packet.as_udp() {
                 if let Ok(message) = Message::from_slice(udp.payload()) {
                     debug_assert!(
@@ -145,11 +141,11 @@ impl SimClient {
                     );
 
                     // Map back to upstream socket so we can assert on it correctly.
-                    let sentinel = SocketAddr::from((packet.destination(), udp.get_destination()));
+                    let sentinel = SocketAddr::from((packet.destination(), udp.destination_port()));
                     let upstream = self.upstream_dns_by_sentinel(&sentinel).unwrap();
 
                     self.sent_dns_queries
-                        .insert((upstream, message.header().id()), packet);
+                        .insert((upstream, message.header().id()), packet.clone());
                 }
             }
         }
@@ -172,33 +168,33 @@ impl SimClient {
         ) else {
             return;
         };
-        let packet = packet.as_immutable().to_owned();
+        let packet = packet.to_owned();
 
         self.on_received_packet(packet);
     }
 
     /// Process an IP packet received on the client.
-    pub(crate) fn on_received_packet(&mut self, packet: IpPacket<'static>) {
+    pub(crate) fn on_received_packet(&mut self, packet: MutableIpPacket<'static>) {
         if let Some(icmp) = packet.as_icmp() {
             let echo_reply = icmp.echo_reply_header().expect("to be echo reply");
 
             self.received_icmp_replies
-                .insert((echo_reply.seq, echo_reply.id), packet.to_owned());
+                .insert((echo_reply.seq, echo_reply.id), packet);
 
             return;
         };
 
         if let Some(udp) = packet.as_udp() {
-            if udp.get_source() == 53 {
+            if udp.source_port() == 53 {
                 let message = Message::from_slice(udp.payload())
                     .expect("ip packets on port 53 to be DNS packets");
 
                 // Map back to upstream socket so we can assert on it correctly.
-                let sentinel = SocketAddr::from((packet.source(), udp.get_source()));
+                let sentinel = SocketAddr::from((packet.source(), udp.source_port()));
                 let upstream = self.upstream_dns_by_sentinel(&sentinel).unwrap();
 
                 self.received_dns_responses
-                    .insert((upstream, message.header().id()), packet.to_owned());
+                    .insert((upstream, message.header().id()), packet.clone());
 
                 for record in message.answer().unwrap() {
                     let record = record.unwrap();

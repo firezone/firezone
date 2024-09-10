@@ -384,7 +384,7 @@ impl ClientOnGateway {
 
         let (source_protocol, real_ip) =
             self.nat_table
-                .translate_outgoing(packet.as_immutable(), state.resolved_ip, now)?;
+                .translate_outgoing(&packet, state.resolved_ip, now)?;
 
         let mut packet = packet
             .translate_destination(self.ipv4, self.ipv6, source_protocol, real_ip)
@@ -415,10 +415,7 @@ impl ClientOnGateway {
         packet: MutableIpPacket<'a>,
         now: Instant,
     ) -> anyhow::Result<Option<MutableIpPacket<'a>>> {
-        let Some((proto, ip)) = self
-            .nat_table
-            .translate_incoming(packet.as_immutable(), now)?
-        else {
+        let Some((proto, ip)) = self.nat_table.translate_incoming(&packet, now)? else {
             return Ok(Some(packet));
         };
 
