@@ -556,11 +556,19 @@ impl<'a> MutableIpPacket<'a> {
     }
 
     fn set_udp_checksum(&mut self) {
-        let checksum = if let Some(p) = self.as_immutable_udp() {
-            self.to_immutable().udp_checksum(&p.to_immutable())
-        } else {
+        let Some(udp) = self.as_udp() else {
             return;
         };
+
+        let checksum = match &self {
+            MutableIpPacket::Ipv4(v4) => udp
+                .to_header()
+                .calc_checksum_ipv4(&v4.ip_header().to_header(), udp.payload()),
+            MutableIpPacket::Ipv6(v6) => udp
+                .to_header()
+                .calc_checksum_ipv6(&v6.header().to_header(), udp.payload()),
+        }
+        .expect("size of payload was previously checked to be okay");
 
         self.as_udp_mut()
             .expect("Developer error: we can only get a UDP checksum if the packet is udp")
@@ -658,12 +666,6 @@ impl<'a> MutableIpPacket<'a> {
             .flatten()
     }
 
-    fn as_immutable_udp(&self) -> Option<UdpPacket> {
-        self.is_udp()
-            .then(|| UdpPacket::new(self.payload()))
-            .flatten()
-    }
-
     fn as_immutable_tcp(&self) -> Option<TcpPacket> {
         self.is_tcp()
             .then(|| TcpPacket::new(self.payload()))
@@ -751,10 +753,6 @@ impl<'a> MutableIpPacket<'a> {
             Self::Ipv4(p) => p.ip_header().protocol(),
             Self::Ipv6(p) => p.header().next_header(),
         }
-    }
-
-    fn is_udp(&self) -> bool {
-        self.next_header() == IpNumber::UDP
     }
 
     fn is_tcp(&self) -> bool {
@@ -914,13 +912,6 @@ impl<'a> IpPacket<'a> {
                 Some(IcmpPacket::Ipv6(icmpv6::Icmpv6Packet::new(v6.payload())?))
             }
             IpPacket::Ipv4(_) | IpPacket::Ipv6(_) => None,
-        }
-    }
-
-    fn udp_checksum(&self, dgm: &UdpPacket<'_>) -> u16 {
-        match self {
-            Self::Ipv4(p) => udp::ipv4_checksum(dgm, &p.get_source(), &p.get_destination()),
-            Self::Ipv6(p) => udp::ipv6_checksum(dgm, &p.get_source(), &p.get_destination()),
         }
     }
 
