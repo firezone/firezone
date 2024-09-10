@@ -240,10 +240,6 @@ impl<'a> ConvertibleIpv4Packet<'a> {
         unsafe { Ipv4HeaderSliceMut::from_slice_unchecked(&mut self.buf[20..]) }
     }
 
-    pub fn to_immutable(&self) -> Ipv4Packet {
-        Ipv4Packet::new(&self.buf[20..]).expect("when constructed we checked that this is some")
-    }
-
     pub fn get_source(&self) -> Ipv4Addr {
         self.ip_header().source_addr()
     }
@@ -321,10 +317,6 @@ impl<'a> ConvertibleIpv6Packet<'a> {
     fn header_mut(&mut self) -> Ipv6HeaderSliceMut {
         // Safety: We checked this in `new` / `owned`.
         unsafe { Ipv6HeaderSliceMut::from_slice_unchecked(&mut self.buf) }
-    }
-
-    fn to_immutable(&self) -> Ipv6Packet {
-        Ipv6Packet::new(&self.buf).expect("when constructed we checked that this is some")
     }
 
     pub fn get_source(&self) -> Ipv6Addr {
@@ -434,10 +426,6 @@ impl<'a> MutableIpPacket<'a> {
                 buf: MaybeOwned::Owned(i.buf.to_vec()),
             }),
         }
-    }
-
-    pub fn to_immutable(&self) -> IpPacket {
-        for_both!(self, |i| i.to_immutable().into())
     }
 
     pub(crate) fn consume_to_ipv4(
@@ -643,37 +631,26 @@ impl<'a> MutableIpPacket<'a> {
             .set_checksum(checksum);
     }
 
-    pub fn as_immutable(&self) -> IpPacket<'_> {
-        match self {
-            Self::Ipv4(p) => IpPacket::Ipv4(p.to_immutable()),
-            Self::Ipv6(p) => IpPacket::Ipv6(p.to_immutable()),
-        }
-    }
-
     pub fn as_udp(&self) -> Option<UdpSlice> {
-        self.to_immutable()
-            .is_udp()
+        self.is_udp()
             .then(|| UdpSlice::from_slice(self.payload()).ok())
             .flatten()
     }
 
     pub fn as_udp_mut(&mut self) -> Option<MutableUdpPacket> {
-        self.to_immutable()
-            .is_udp()
+        self.is_udp()
             .then(|| MutableUdpPacket::new(self.payload_mut()))
             .flatten()
     }
 
     pub fn as_tcp(&self) -> Option<TcpSlice> {
-        self.to_immutable()
-            .is_tcp()
+        self.is_tcp()
             .then(|| TcpSlice::from_slice(self.payload()).ok())
             .flatten()
     }
 
     pub fn as_tcp_mut(&mut self) -> Option<MutableTcpPacket> {
-        self.to_immutable()
-            .is_tcp()
+        self.is_tcp()
             .then(|| MutableTcpPacket::new(self.payload_mut()))
             .flatten()
     }
@@ -803,11 +780,41 @@ impl<'a> MutableIpPacket<'a> {
         }
     }
 
+    pub fn ipv4_header(&self) -> Option<Ipv4Header> {
+        match self {
+            Self::Ipv4(p) => Some(
+                Ipv4HeaderSlice::from_slice(p.packet())
+                    .expect("Should be a valid packet")
+                    .to_header(),
+            ),
+            Self::Ipv6(_) => None,
+        }
+    }
+
+    pub fn ipv6_header(&self) -> Option<Ipv6Header> {
+        match self {
+            Self::Ipv4(_) => None,
+            Self::Ipv6(p) => Some(
+                Ipv6HeaderSlice::from_slice(p.packet())
+                    .expect("Should be a valid packet")
+                    .to_header(),
+            ),
+        }
+    }
+
     fn next_header(&self) -> IpNumber {
         match self {
             Self::Ipv4(p) => p.ip_header().protocol(),
             Self::Ipv6(p) => p.header().next_header(),
         }
+    }
+
+    fn is_udp(&self) -> bool {
+        self.next_header() == IpNumber::UDP
+    }
+
+    fn is_tcp(&self) -> bool {
+        self.next_header() == IpNumber::TCP
     }
 
     fn is_icmp(&self) -> bool {
@@ -828,28 +835,6 @@ impl<'a> IpPacket<'a> {
             IpPacket::Ipv6(i) => Ipv6Packet::owned(i.packet().to_vec())
                 .expect("owned packet should still be valid")
                 .into(),
-        }
-    }
-
-    pub fn ipv4_header(&self) -> Option<Ipv4Header> {
-        match self {
-            IpPacket::Ipv4(p) => Some(
-                Ipv4HeaderSlice::from_slice(p.packet())
-                    .expect("Should be a valid packet")
-                    .to_header(),
-            ),
-            IpPacket::Ipv6(_) => None,
-        }
-    }
-
-    pub fn ipv6_header(&self) -> Option<Ipv6Header> {
-        match self {
-            IpPacket::Ipv4(_) => None,
-            IpPacket::Ipv6(p) => Some(
-                Ipv6HeaderSlice::from_slice(p.packet())
-                    .expect("Should be a valid packet")
-                    .to_header(),
-            ),
         }
     }
 

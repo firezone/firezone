@@ -193,7 +193,7 @@ fn nat_6446(
     #[strategy(any::<Ipv4Addr>())] new_src: Ipv4Addr,
     #[strategy(any::<Ipv4Addr>())] new_dst: Ipv4Addr,
 ) {
-    let header = packet_v6.as_immutable().ipv6_header().unwrap();
+    let header = packet_v6.ipv6_header().unwrap();
     let payload = packet_v6.payload().to_vec();
 
     let packet_v4 = packet_v6.consume_to_ipv4(new_src, new_dst).unwrap();
@@ -206,7 +206,7 @@ fn nat_6446(
         .unwrap();
     new_packet_v6.update_checksum();
 
-    assert_eq!(new_packet_v6.as_immutable().ipv6_header().unwrap(), header);
+    assert_eq!(new_packet_v6.ipv6_header().unwrap(), header);
     assert_eq!(new_packet_v6.payload(), payload);
 }
 
@@ -216,7 +216,7 @@ fn nat_4664(
     #[strategy(any::<Ipv6Addr>())] new_src: Ipv6Addr,
     #[strategy(any::<Ipv6Addr>())] new_dst: Ipv6Addr,
 ) {
-    let header = packet_v4.as_immutable().ipv4_header().unwrap();
+    let header = packet_v4.ipv4_header().unwrap();
     let payload = packet_v4.payload().to_vec();
 
     let packet_v6 = packet_v4.consume_to_ipv6(new_src, new_dst).unwrap();
@@ -236,9 +236,6 @@ fn nat_4664(
     };
     header_without_options.header_checksum = header_without_options.calc_header_checksum();
 
-    assert_eq!(
-        new_packet_v4.as_immutable().ipv4_header().unwrap(),
-        header_without_options
-    );
+    assert_eq!(new_packet_v4.ipv4_header().unwrap(), header_without_options);
     assert_eq!(new_packet_v4.payload(), payload);
 }
