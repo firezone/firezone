@@ -15,7 +15,8 @@ mod proptests;
 
 use domain::base::Message;
 use etherparse::{
-    IpNumber, Ipv4Header, Ipv4HeaderSlice, Ipv6Header, Ipv6HeaderSlice, TcpSlice, UdpSlice,
+    IcmpEchoHeader, Icmpv4Slice, Icmpv4Type, Icmpv6Slice, Icmpv6Type, IpNumber, Ipv4Header,
+    Ipv4HeaderSlice, Ipv6Header, Ipv6HeaderSlice, TcpSlice, UdpSlice,
 };
 use ipv4_header_slice_mut::Ipv4HeaderSliceMut;
 use ipv6_header_slice_mut::Ipv6HeaderSliceMut;
@@ -90,48 +91,71 @@ pub enum IpPacket<'a> {
 
 #[derive(Debug, PartialEq)]
 pub enum IcmpPacket<'a> {
-    Ipv4(icmp::IcmpPacket<'a>),
-    Ipv6(icmpv6::Icmpv6Packet<'a>),
+    Ipv4(Icmpv4Slice<'a>),
+    Ipv6(Icmpv6Slice<'a>),
 }
 
 impl<'a> IcmpPacket<'a> {
     pub fn icmp_type(&self) -> IcmpType {
         match self {
-            IcmpPacket::Ipv4(v4) => IcmpType::V4(v4.get_icmp_type()),
-            IcmpPacket::Ipv6(v6) => IcmpType::V6(v6.get_icmpv6_type()),
+            IcmpPacket::Ipv4(v4) => IcmpType::V4(v4.icmp_type()),
+            IcmpPacket::Ipv6(v6) => IcmpType::V6(v6.icmp_type()),
         }
     }
 
     pub fn identifier(&self) -> Option<u16> {
-        let request_id = self.as_echo_request().map(|r| r.identifier());
-        let reply_id = self.as_echo_reply().map(|r| r.identifier());
-
-        request_id.or(reply_id)
+        Some(self.echo_request_header().or(self.echo_reply_header())?.id)
     }
 
     pub fn sequence(&self) -> Option<u16> {
-        let request_id = self.as_echo_request().map(|r| r.sequence());
-        let reply_id = self.as_echo_reply().map(|r| r.sequence());
+        Some(self.echo_request_header().or(self.echo_reply_header())?.seq)
+    }
 
-        request_id.or(reply_id)
+    pub fn payload(&self) -> &[u8] {
+        match self {
+            IcmpPacket::Ipv4(v4) => v4.payload(),
+            IcmpPacket::Ipv6(v6) => v6.payload(),
+        }
+    }
+
+    pub fn echo_request_header(&self) -> Option<IcmpEchoHeader> {
+        #[allow(
+            clippy::wildcard_enum_match_arm,
+            reason = "We won't ever need to use other ICMP types here."
+        )]
+        match self {
+            IcmpPacket::Ipv4(v4) => match v4.header().icmp_type {
+                Icmpv4Type::EchoRequest(echo) => Some(echo),
+                _ => None,
+            },
+            IcmpPacket::Ipv6(v6) => match v6.header().icmp_type {
+                Icmpv6Type::EchoRequest(echo) => Some(echo),
+                _ => None,
+            },
+        }
+    }
+
+    pub fn echo_reply_header(&self) -> Option<IcmpEchoHeader> {
+        #[allow(
+            clippy::wildcard_enum_match_arm,
+            reason = "We won't ever need to use other ICMP types here."
+        )]
+        match self {
+            IcmpPacket::Ipv4(v4) => match v4.header().icmp_type {
+                Icmpv4Type::EchoReply(echo) => Some(echo),
+                _ => None,
+            },
+            IcmpPacket::Ipv6(v6) => match v6.header().icmp_type {
+                Icmpv6Type::EchoReply(echo) => Some(echo),
+                _ => None,
+            },
+        }
     }
 }
 
 pub enum IcmpType {
-    V4(icmp::IcmpType),
-    V6(icmpv6::Icmpv6Type),
-}
-
-#[derive(Debug, PartialEq)]
-pub enum IcmpEchoRequest<'a> {
-    Ipv4(icmp::echo_request::EchoRequestPacket<'a>),
-    Ipv6(icmpv6::echo_request::EchoRequestPacket<'a>),
-}
-
-#[derive(Debug, PartialEq)]
-pub enum IcmpEchoReply<'a> {
-    Ipv4(icmp::echo_reply::EchoReplyPacket<'a>),
-    Ipv6(icmpv6::echo_reply::EchoReplyPacket<'a>),
+    V4(Icmpv4Type),
+    V6(Icmpv6Type),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -813,8 +837,8 @@ impl<'a> IpPacket<'a> {
 
         if let Some(p) = self.as_icmp() {
             let id = p.identifier().ok_or_else(|| match p.icmp_type() {
-                IcmpType::V4(v4) => UnsupportedProtocol::UnsupportedIcmpv4Type(v4.0),
-                IcmpType::V6(v6) => UnsupportedProtocol::UnsupportedIcmpv6Type(v6.0),
+                IcmpType::V4(v4) => UnsupportedProtocol::UnsupportedIcmpv4Type(v4),
+                IcmpType::V6(v6) => UnsupportedProtocol::UnsupportedIcmpv6Type(v6),
             })?;
 
             return Ok(Protocol::Icmp(id));
@@ -836,8 +860,8 @@ impl<'a> IpPacket<'a> {
 
         if let Some(p) = self.as_icmp() {
             let id = p.identifier().ok_or_else(|| match p.icmp_type() {
-                IcmpType::V4(v4) => UnsupportedProtocol::UnsupportedIcmpv4Type(v4.0),
-                IcmpType::V6(v6) => UnsupportedProtocol::UnsupportedIcmpv6Type(v6.0),
+                IcmpType::V4(v4) => UnsupportedProtocol::UnsupportedIcmpv4Type(v4),
+                IcmpType::V6(v6) => UnsupportedProtocol::UnsupportedIcmpv6Type(v6),
             })?;
 
             return Ok(Protocol::Icmp(id));
@@ -904,85 +928,15 @@ impl<'a> IpPacket<'a> {
     pub fn as_icmp(&self) -> Option<IcmpPacket> {
         match self {
             IpPacket::Ipv4(v4) if v4.get_next_level_protocol() == IpNextHeaderProtocols::Icmp => {
-                Some(IcmpPacket::Ipv4(pnet_packet::icmp::IcmpPacket::new(
-                    v4.payload(),
-                )?))
+                Some(IcmpPacket::Ipv4(
+                    Icmpv4Slice::from_slice(v4.payload()).ok()?,
+                ))
             }
-            IpPacket::Ipv6(v6) if v6.get_next_header() == IpNextHeaderProtocols::Icmpv6 => {
-                Some(IcmpPacket::Ipv6(icmpv6::Icmpv6Packet::new(v6.payload())?))
-            }
+            IpPacket::Ipv6(v6) if v6.get_next_header() == IpNextHeaderProtocols::Icmpv6 => Some(
+                IcmpPacket::Ipv6(Icmpv6Slice::from_slice(v6.payload()).ok()?),
+            ),
             IpPacket::Ipv4(_) | IpPacket::Ipv6(_) => None,
         }
-    }
-}
-
-impl<'a> IcmpPacket<'a> {
-    pub fn as_echo_request(&self) -> Option<IcmpEchoRequest> {
-        match self {
-            IcmpPacket::Ipv4(v4) if matches!(v4.get_icmp_type(), icmp::IcmpTypes::EchoRequest) => {
-                Some(IcmpEchoRequest::Ipv4(
-                    icmp::echo_request::EchoRequestPacket::new(v4.packet())?,
-                ))
-            }
-            IcmpPacket::Ipv6(v6)
-                if matches!(v6.get_icmpv6_type(), icmpv6::Icmpv6Types::EchoRequest) =>
-            {
-                Some(IcmpEchoRequest::Ipv6(
-                    icmpv6::echo_request::EchoRequestPacket::new(v6.packet())?,
-                ))
-            }
-            IcmpPacket::Ipv4(_) | IcmpPacket::Ipv6(_) => None,
-        }
-    }
-
-    pub fn as_echo_reply(&self) -> Option<IcmpEchoReply> {
-        match self {
-            IcmpPacket::Ipv4(v4) if matches!(v4.get_icmp_type(), icmp::IcmpTypes::EchoReply) => {
-                Some(IcmpEchoReply::Ipv4(icmp::echo_reply::EchoReplyPacket::new(
-                    v4.packet(),
-                )?))
-            }
-            IcmpPacket::Ipv6(v6)
-                if matches!(v6.get_icmpv6_type(), icmpv6::Icmpv6Types::EchoReply) =>
-            {
-                Some(IcmpEchoReply::Ipv6(
-                    icmpv6::echo_reply::EchoReplyPacket::new(v6.packet())?,
-                ))
-            }
-            IcmpPacket::Ipv4(_) | IcmpPacket::Ipv6(_) => None,
-        }
-    }
-
-    pub fn is_echo_reply(&self) -> bool {
-        self.as_echo_reply().is_some()
-    }
-
-    pub fn is_echo_request(&self) -> bool {
-        self.as_echo_request().is_some()
-    }
-}
-
-impl<'a> IcmpEchoRequest<'a> {
-    pub fn sequence(&self) -> u16 {
-        for_both!(self, |i| i.get_sequence_number())
-    }
-
-    pub fn identifier(&self) -> u16 {
-        for_both!(self, |i| i.get_identifier())
-    }
-
-    pub fn payload(&self) -> &[u8] {
-        for_both!(self, |i| i.payload())
-    }
-}
-
-impl<'a> IcmpEchoReply<'a> {
-    pub fn sequence(&self) -> u16 {
-        for_both!(self, |i| i.get_sequence_number())
-    }
-
-    pub fn identifier(&self) -> u16 {
-        for_both!(self, |i| i.get_identifier())
     }
 }
 
@@ -1062,8 +1016,8 @@ impl<'a> PacketSize for IpPacket<'a> {
 pub enum UnsupportedProtocol {
     #[error("Unsupported IP protocol: {0}")]
     UnsupportedIpPayload(IpNextHeaderProtocol),
-    #[error("Unsupported ICMPv4 type: {0}")]
-    UnsupportedIcmpv4Type(u8),
-    #[error("Unsupported ICMPv6 type: {0}")]
-    UnsupportedIcmpv6Type(u8),
+    #[error("Unsupported ICMPv4 type: {0:?}")]
+    UnsupportedIcmpv4Type(Icmpv4Type),
+    #[error("Unsupported ICMPv6 type: {0:?}")]
+    UnsupportedIcmpv6Type(Icmpv6Type),
 }

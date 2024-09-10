@@ -127,10 +127,10 @@ impl SimClient {
             let packet = packet.as_immutable().to_owned();
 
             if let Some(icmp) = packet.as_icmp() {
-                let echo_request = icmp.as_echo_request().expect("to be echo request");
+                let echo_request = icmp.echo_request_header().expect("to be echo request");
 
                 self.sent_icmp_requests
-                    .insert((echo_request.sequence(), echo_request.identifier()), packet);
+                    .insert((echo_request.seq, echo_request.id), packet);
             }
         }
 
@@ -180,12 +180,10 @@ impl SimClient {
     /// Process an IP packet received on the client.
     pub(crate) fn on_received_packet(&mut self, packet: IpPacket<'static>) {
         if let Some(icmp) = packet.as_icmp() {
-            let echo_reply = icmp.as_echo_reply().expect("to be echo reply");
+            let echo_reply = icmp.echo_reply_header().expect("to be echo reply");
 
-            self.received_icmp_replies.insert(
-                (echo_reply.sequence(), echo_reply.identifier()),
-                packet.to_owned(),
-            );
+            self.received_icmp_replies
+                .insert((echo_reply.seq, echo_reply.id), packet.to_owned());
 
             return;
         };
