@@ -246,10 +246,7 @@ fn assert_correct_src_and_dst_udp_ports(
     }
 }
 
-fn assert_destination_is_cdir_resource(
-    gateway_received_request: &IpPacket<'_>,
-    expected: &IpAddr,
-) {
+fn assert_destination_is_cdir_resource(gateway_received_request: &IpPacket<'_>, expected: &IpAddr) {
     let actual = gateway_received_request.destination();
 
     if actual != *expected {
