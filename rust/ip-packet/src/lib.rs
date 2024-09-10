@@ -718,14 +718,6 @@ impl<'a> MutableIpPacket<'a> {
 }
 
 impl<'a> IpPacket<'a> {
-    pub fn new(buf: &'a [u8]) -> Option<Self> {
-        match buf[0] >> 4 {
-            4 => Some(IpPacket::Ipv4(Ipv4Packet::new(buf)?)),
-            6 => Some(IpPacket::Ipv6(Ipv6Packet::new(buf)?)),
-            _ => None,
-        }
-    }
-
     pub fn to_owned(&self) -> IpPacket<'static> {
         match self {
             IpPacket::Ipv4(i) => Ipv4Packet::owned(i.packet().to_vec())
