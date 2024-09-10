@@ -148,10 +148,12 @@ impl ClientTunnel {
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
+                    let now = Instant::now();
                     let Some(enc_packet) =
                         self.role_state
-                            .encapsulate(packet, Instant::now(), &mut self.encrypt_buf)
+                            .encapsulate(packet, now, &mut self.encrypt_buf)
                     else {
+                        self.role_state.handle_timeout(now);
                         continue;
                     };
 
@@ -166,7 +168,7 @@ impl ClientTunnel {
                             received.local,
                             received.from,
                             received.packet,
-                            std::time::Instant::now(),
+                            Instant::now(),
                             self.decrypt_buf.as_mut(),
                         ) else {
                             continue;
@@ -240,11 +242,12 @@ impl GatewayTunnel {
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
-                    let Some(enc_packet) = self.role_state.encapsulate(
-                        packet,
-                        std::time::Instant::now(),
-                        &mut self.encrypt_buf,
-                    ) else {
+                    let now = Instant::now();
+                    let Some(enc_packet) =
+                        self.role_state
+                            .encapsulate(packet, now, &mut self.encrypt_buf)
+                    else {
+                        self.role_state.handle_timeout(now, Utc::now());
                         continue;
                     };
 
@@ -259,7 +262,7 @@ impl GatewayTunnel {
                             received.local,
                             received.from,
                             received.packet,
-                            std::time::Instant::now(),
+                            Instant::now(),
                             self.device_read_buf.as_mut(),
                         ) else {
                             continue;

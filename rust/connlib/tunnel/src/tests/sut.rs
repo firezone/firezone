@@ -479,7 +479,11 @@ impl TunnelTest {
         while let Some(transmit) = self.client.poll_transmit(now) {
             self.client.exec_mut(|c| c.receive(transmit, now))
         }
-        self.client.exec_mut(|c| c.sut.handle_timeout(now));
+        self.client.exec_mut(|c| {
+            if c.sut.poll_timeout().is_some_and(|t| t <= now) {
+                c.sut.handle_timeout(now)
+            }
+        });
 
         for (_, gateway) in self.gateways.iter_mut() {
             while let Some(transmit) = gateway.poll_transmit(now) {
@@ -492,7 +496,11 @@ impl TunnelTest {
                 buffered_transmits.push_from(reply, gateway, now);
             }
 
-            gateway.exec_mut(|g| g.sut.handle_timeout(now, self.flux_capacitor.now()));
+            gateway.exec_mut(|g| {
+                if g.sut.poll_timeout().is_some_and(|t| t <= now) {
+                    g.sut.handle_timeout(now, self.flux_capacitor.now())
+                }
+            });
         }
 
         for (_, relay) in self.relays.iter_mut() {
@@ -504,7 +512,11 @@ impl TunnelTest {
                 buffered_transmits.push_from(reply, relay, now);
             }
 
-            relay.exec_mut(|r| r.sut.handle_timeout(now))
+            relay.exec_mut(|r| {
+                if r.sut.poll_timeout().is_some_and(|t| t <= now) {
+                    r.sut.handle_timeout(now)
+                }
+            })
         }
 
         for (_, dns_server) in self.dns_servers.iter_mut() {
