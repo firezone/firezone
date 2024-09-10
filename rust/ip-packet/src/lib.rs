@@ -25,11 +25,8 @@ use pnet_packet::{
         MutableIcmpPacket,
     },
     icmpv6::{Icmpv6Types, MutableIcmpv6Packet},
-    ip::{IpNextHeaderProtocol, IpNextHeaderProtocols},
-    ipv4::Ipv4Packet,
-    ipv6::Ipv6Packet,
-    tcp::{MutableTcpPacket, TcpPacket},
-    udp::{MutableUdpPacket, UdpPacket},
+    tcp::MutableTcpPacket,
+    udp::MutableUdpPacket,
 };
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -80,12 +77,6 @@ impl Protocol {
             Protocol::Icmp(_) => Protocol::Icmp(value),
         }
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum IpPacket<'a> {
-    Ipv4(Ipv4Packet<'a>),
-    Ipv6(Ipv6Packet<'a>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -826,75 +817,6 @@ impl<'a> MutableIpPacket<'a> {
     }
 }
 
-impl<'a> IpPacket<'a> {
-    pub fn to_owned(&self) -> IpPacket<'static> {
-        match self {
-            IpPacket::Ipv4(i) => Ipv4Packet::owned(i.packet().to_vec())
-                .expect("owned packet should still be valid")
-                .into(),
-            IpPacket::Ipv6(i) => Ipv6Packet::owned(i.packet().to_vec())
-                .expect("owned packet should still be valid")
-                .into(),
-        }
-    }
-
-    pub fn source(&self) -> IpAddr {
-        for_both!(self, |i| i.get_source().into())
-    }
-
-    pub fn destination(&self) -> IpAddr {
-        for_both!(self, |i| i.get_destination().into())
-    }
-
-    pub fn next_header(&self) -> IpNextHeaderProtocol {
-        match self {
-            Self::Ipv4(p) => p.get_next_level_protocol(),
-            Self::Ipv6(p) => p.get_next_header(),
-        }
-    }
-
-    fn is_udp(&self) -> bool {
-        self.next_header() == IpNextHeaderProtocols::Udp
-    }
-
-    fn is_tcp(&self) -> bool {
-        self.next_header() == IpNextHeaderProtocols::Tcp
-    }
-
-    pub fn as_udp(&self) -> Option<UdpPacket> {
-        self.is_udp()
-            .then(|| UdpPacket::new(self.payload()))
-            .flatten()
-    }
-
-    pub fn as_tcp(&self) -> Option<TcpPacket> {
-        self.is_tcp()
-            .then(|| TcpPacket::new(self.payload()))
-            .flatten()
-    }
-}
-
-impl Clone for IpPacket<'static> {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Ipv4(ip4) => Self::Ipv4(Ipv4Packet::owned(ip4.packet().to_vec()).unwrap()),
-            Self::Ipv6(ip6) => Self::Ipv6(Ipv6Packet::owned(ip6.packet().to_vec()).unwrap()),
-        }
-    }
-}
-
-impl<'a> From<Ipv4Packet<'a>> for IpPacket<'a> {
-    fn from(value: Ipv4Packet<'a>) -> Self {
-        Self::Ipv4(value)
-    }
-}
-
-impl<'a> From<Ipv6Packet<'a>> for IpPacket<'a> {
-    fn from(value: Ipv6Packet<'a>) -> Self {
-        Self::Ipv6(value)
-    }
-}
-
 impl<'a> From<ConvertibleIpv4Packet<'a>> for MutableIpPacket<'a> {
     fn from(value: ConvertibleIpv4Packet<'a>) -> Self {
         Self::Ipv4(value)
@@ -917,16 +839,6 @@ impl pnet_packet::Packet for MutableIpPacket<'_> {
     }
 }
 
-impl pnet_packet::Packet for IpPacket<'_> {
-    fn packet(&self) -> &[u8] {
-        for_both!(self, |i| i.packet())
-    }
-
-    fn payload(&self) -> &[u8] {
-        for_both!(self, |i| i.payload())
-    }
-}
-
 impl pnet_packet::MutablePacket for MutableIpPacket<'_> {
     fn packet_mut(&mut self) -> &mut [u8] {
         for_both!(self, |i| i.packet_mut())
@@ -934,15 +846,6 @@ impl pnet_packet::MutablePacket for MutableIpPacket<'_> {
 
     fn payload_mut(&mut self) -> &mut [u8] {
         for_both!(self, |i| i.payload_mut())
-    }
-}
-
-impl<'a> PacketSize for IpPacket<'a> {
-    fn packet_size(&self) -> usize {
-        match self {
-            Self::Ipv4(p) => p.packet_size(),
-            Self::Ipv6(p) => p.packet_size(),
-        }
     }
 }
 
