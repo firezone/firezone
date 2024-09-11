@@ -74,10 +74,19 @@ impl Protocol {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
 pub enum IpPacket<'a> {
     Ipv4(ConvertibleIpv4Packet<'a>),
     Ipv6(ConvertibleIpv6Packet<'a>),
+}
+
+impl<'a> std::fmt::Debug for IpPacket<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ipv4(arg0) => arg0.ip_header().to_header().fmt(f),
+            Self::Ipv6(arg0) => arg0.header().to_header().fmt(f),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
