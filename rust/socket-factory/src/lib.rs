@@ -32,8 +32,6 @@ pub fn tcp(addr: &SocketAddr) -> io::Result<TcpSocket> {
 }
 
 pub fn udp(std_addr: &SocketAddr) -> io::Result<UdpSocket> {
-    const MB: usize = 1024 * 1024;
-
     let addr = socket2::SockAddr::from(*std_addr);
     let socket = socket2::Socket::new(addr.domain(), socket2::Type::DGRAM, None)?;
 
@@ -44,10 +42,6 @@ pub fn udp(std_addr: &SocketAddr) -> io::Result<UdpSocket> {
 
     socket.set_nonblocking(true)?;
     socket.bind(&addr)?;
-
-    // Set increased buffer sizes but don't fail if the OS refuses.
-    let _ = socket.set_send_buffer_size(10 * MB);
-    let _ = socket.set_recv_buffer_size(10 * MB);
 
     let send_buf_size = socket.send_buffer_size()?;
     let recv_buf_size = socket.recv_buffer_size()?;
