@@ -9,7 +9,7 @@ use connlib_shared::{
     messages::{GatewayId, RelayId},
     DomainName,
 };
-use ip_packet::IpPacket;
+use ip_packet::{Icmpv4Type, IpPacket};
 use proptest::prelude::*;
 use snownet::{EncryptBuffer, Transmit};
 use std::{
@@ -70,8 +70,8 @@ impl SimGateway {
     ) -> Option<Transmit<'static>> {
         // TODO: Instead of handling these things inline, here, should we dispatch them via `RoutingTable`?
 
-        if let Some(icmp) = packet.as_icmp() {
-            if let Some(echo_request) = icmp.echo_request_header() {
+        if let Some(icmp) = packet.as_icmpv4() {
+            if let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type() {
                 let payload = icmp.payload();
                 let echo_id = u64::from_be_bytes(*payload.first_chunk().unwrap());
                 tracing::debug!(%echo_id, "Received ICMP request");
@@ -81,8 +81,8 @@ impl SimGateway {
                 let echo_response = ip_packet::make::icmp_reply_packet(
                     packet.destination(),
                     packet.source(),
-                    echo_request.seq,
-                    echo_request.id,
+                    echo.seq,
+                    echo.id,
                     payload,
                 )
                 .expect("src and dst are taken from incoming packet");
