@@ -13,7 +13,7 @@ use connlib_shared::messages::{
 use connlib_shared::{callbacks, PublicKey, StaticSecret};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
+use ip_packet::IpPacket;
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
@@ -390,7 +390,7 @@ impl ClientState {
 
     pub(crate) fn encapsulate(
         &mut self,
-        packet: MutableIpPacket<'_>,
+        packet: IpPacket<'_>,
         now: Instant,
         buffer: &mut EncryptBuffer,
     ) -> Option<snownet::EncryptedPacket> {
@@ -439,7 +439,7 @@ impl ClientState {
 
         let transmit = self
             .node
-            .encapsulate(gid, packet.as_immutable(), now, buffer)
+            .encapsulate(gid, packet, now, buffer)
             .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
             .ok()??;
 
@@ -485,7 +485,7 @@ impl ClientState {
             now,
         );
 
-        Some(packet.into_immutable())
+        Some(packet)
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String, now: Instant) {
@@ -618,13 +618,10 @@ impl ClientState {
     /// Returns `Err` if the packet is not a DNS query.
     fn try_handle_dns_query<'a>(
         &mut self,
-        packet: MutableIpPacket<'a>,
+        packet: IpPacket<'a>,
         now: Instant,
-    ) -> Result<Option<IpPacket<'static>>, (MutableIpPacket<'a>, IpAddr)> {
-        match self
-            .stub_resolver
-            .handle(&self.dns_mapping, packet.as_immutable())
-        {
+    ) -> Result<Option<IpPacket<'static>>, (IpPacket<'a>, IpAddr)> {
+        match self.stub_resolver.handle(&self.dns_mapping, &packet) {
             Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
             Some(dns::ResolveStrategy::ForwardQuery {
                 upstream: server,
@@ -680,7 +677,7 @@ impl ClientState {
             .inspect_err(|_| tracing::warn!("Failed to find original dst for DNS response"))
             .ok()?;
 
-        Some(ip_packet.into_immutable())
+        Some(ip_packet)
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
@@ -1327,11 +1324,11 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
 
 /// In case the given packet is a DNS query, change its source IP to that of the actual DNS server.
 fn maybe_mangle_dns_query_to_cidr_resource<'p>(
-    mut packet: MutableIpPacket<'p>,
+    mut packet: IpPacket<'p>,
     dns_mapping: &BiMap<IpAddr, DnsServer>,
     mangeled_dns_queries: &mut HashMap<u16, Instant>,
     now: Instant,
-) -> MutableIpPacket<'p> {
+) -> IpPacket<'p> {
     let dst = packet.destination();
 
     let Some(srv) = dns_mapping.get_by_left(&dst) else {
@@ -1356,18 +1353,18 @@ fn maybe_mangle_dns_query_to_cidr_resource<'p>(
 }
 
 fn maybe_mangle_dns_response_from_cidr_resource<'p>(
-    mut packet: MutableIpPacket<'p>,
+    mut packet: IpPacket<'p>,
     dns_mapping: &BiMap<IpAddr, DnsServer>,
     mangeled_dns_queries: &mut HashMap<u16, Instant>,
     now: Instant,
-) -> MutableIpPacket<'p> {
+) -> IpPacket<'p> {
     let src_ip = packet.source();
 
     let Some(udp) = packet.as_udp() else {
         return packet;
     };
 
-    let src_port = udp.get_source();
+    let src_port = udp.source_port();
 
     let Some(sentinel) = dns_mapping.get_by_right(&DnsServer::from((src_ip, src_port))) else {
         return packet;

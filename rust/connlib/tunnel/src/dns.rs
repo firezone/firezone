@@ -7,7 +7,6 @@ use domain::base::{
 };
 use domain::rdata::AllRecordData;
 use ip_packet::IpPacket;
-use ip_packet::Packet as _;
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::collections::{BTreeMap, HashMap};
@@ -209,13 +208,13 @@ impl StubResolver {
     pub(crate) fn handle(
         &mut self,
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
-        packet: IpPacket,
+        packet: &IpPacket,
     ) -> Option<ResolveStrategy> {
         let upstream = dns_mapping.get_by_left(&packet.destination())?.address();
         let datagram = packet.as_udp()?;
 
         // We only support DNS on port 53.
-        if datagram.get_destination() != DNS_PORT {
+        if datagram.destination_port() != DNS_PORT {
             return None;
         }
 
@@ -241,12 +240,11 @@ impl StubResolver {
             let packet = ip_packet::make::udp_packet(
                 packet.destination(),
                 packet.source(),
-                datagram.get_destination(),
-                datagram.get_source(),
+                datagram.destination_port(),
+                datagram.source_port(),
                 response,
             )
-            .expect("src and dst come from the same packet")
-            .into_immutable();
+            .expect("src and dst come from the same packet");
 
             return Some(ResolveStrategy::LocalResponse(packet));
         }
@@ -260,7 +258,7 @@ impl StubResolver {
                     upstream,
                     query_id: message.header().id(),
                     payload: message.into_octets().to_vec(),
-                    original_src: SocketAddr::new(packet.source(), datagram.get_source()),
+                    original_src: SocketAddr::new(packet.source(), datagram.source_port()),
                 })
             }
             (Rtype::A, Some(resource)) => self.get_or_assign_a_records(domain.clone(), resource),
@@ -277,7 +275,7 @@ impl StubResolver {
                     upstream,
                     query_id: message.header().id(),
                     payload: message.into_octets().to_vec(),
-                    original_src: SocketAddr::new(packet.source(), datagram.get_source()),
+                    original_src: SocketAddr::new(packet.source(), datagram.source_port()),
                 })
             }
         };
@@ -286,12 +284,11 @@ impl StubResolver {
         let packet = ip_packet::make::udp_packet(
             packet.destination(),
             packet.source(),
-            datagram.get_destination(),
-            datagram.get_source(),
+            datagram.destination_port(),
+            datagram.source_port(),
             response,
         )
-        .expect("src and dst come from the same packet")
-        .into_immutable();
+        .expect("src and dst come from the same packet");
 
         Some(ResolveStrategy::LocalResponse(packet))
     }

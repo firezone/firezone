@@ -11,7 +11,7 @@ use connlib_shared::messages::{
 };
 use connlib_shared::{DomainName, StaticSecret};
 use ip_network::{Ipv4Network, Ipv6Network};
-use ip_packet::{IpPacket, MutableIpPacket};
+use ip_packet::IpPacket;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{EncryptBuffer, RelaySocket, ServerNode};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -157,7 +157,7 @@ impl GatewayState {
 
     pub(crate) fn encapsulate(
         &mut self,
-        packet: MutableIpPacket<'_>,
+        packet: IpPacket<'_>,
         now: Instant,
         buffer: &mut EncryptBuffer,
     ) -> Option<snownet::EncryptedPacket> {
@@ -181,7 +181,7 @@ impl GatewayState {
 
         let transmit = self
             .node
-            .encapsulate(peer.id(), packet.as_immutable(), now, buffer)
+            .encapsulate(peer.id(), packet, now, buffer)
             .inspect_err(|e| tracing::debug!(%cid, "Failed to encapsulate: {e}"))
             .ok()??;
 
@@ -217,7 +217,7 @@ impl GatewayState {
             .inspect_err(|e| tracing::debug!(%cid, "Invalid packet: {e:#}"))
             .ok()?;
 
-        Some(packet.into_immutable())
+        Some(packet)
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String, now: Instant) {

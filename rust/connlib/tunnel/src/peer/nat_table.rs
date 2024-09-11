@@ -44,7 +44,7 @@ impl NatTable {
 
     pub(crate) fn translate_outgoing(
         &mut self,
-        packet: IpPacket,
+        packet: &IpPacket,
         outside_dst: IpAddr,
         now: Instant,
     ) -> anyhow::Result<(Protocol, IpAddr)> {
@@ -84,7 +84,7 @@ impl NatTable {
 
     pub(crate) fn translate_incoming(
         &mut self,
-        packet: IpPacket,
+        packet: &IpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<(Protocol, IpAddr)>> {
         let outside = (packet.destination_protocol()?, packet.source());
@@ -105,12 +105,12 @@ impl NatTable {
 #[cfg(all(test, feature = "proptest"))]
 mod tests {
     use super::*;
-    use ip_packet::{proptest::*, MutableIpPacket};
+    use ip_packet::{proptest::*, IpPacket};
     use proptest::prelude::*;
 
     #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
     fn translates_back_and_forth_packet(
-        #[strategy(udp_or_tcp_or_icmp_packet())] packet: MutableIpPacket<'static>,
+        #[strategy(udp_or_tcp_or_icmp_packet())] packet: IpPacket<'static>,
         #[strategy(any::<IpAddr>())] outside_dst: IpAddr,
         #[strategy(0..120u64)] response_delay: u64,
     ) {
@@ -121,12 +121,12 @@ mod tests {
         let response_delay = Duration::from_secs(response_delay);
 
         // Remember original src_p and dst
-        let src = packet.as_immutable().source_protocol().unwrap();
+        let src = packet.source_protocol().unwrap();
         let dst = packet.destination();
 
         // Translate out
         let (new_source_protocol, new_dst_ip) = table
-            .translate_outgoing(packet.as_immutable(), outside_dst, sent_at)
+            .translate_outgoing(&packet, outside_dst, sent_at)
             .unwrap();
 
         // Pretend we are getting a response.
@@ -139,7 +139,7 @@ mod tests {
 
         // Translate in
         let translate_incoming = table
-            .translate_incoming(response.as_immutable(), sent_at + response_delay)
+            .translate_incoming(&response, sent_at + response_delay)
             .unwrap();
 
         // Assert
@@ -152,16 +152,15 @@ mod tests {
 
     #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
     fn can_handle_multiple_packets(
-        #[strategy(udp_or_tcp_or_icmp_packet())] packet1: MutableIpPacket<'static>,
+        #[strategy(udp_or_tcp_or_icmp_packet())] packet1: IpPacket<'static>,
         #[strategy(any::<IpAddr>())] outside_dst1: IpAddr,
-        #[strategy(udp_or_tcp_or_icmp_packet())] packet2: MutableIpPacket<'static>,
+        #[strategy(udp_or_tcp_or_icmp_packet())] packet2: IpPacket<'static>,
         #[strategy(any::<IpAddr>())] outside_dst2: IpAddr,
     ) {
         proptest::prop_assume!(packet1.destination().is_ipv4() == outside_dst1.is_ipv4()); // Required for our test to simulate a response.
         proptest::prop_assume!(packet2.destination().is_ipv4() == outside_dst2.is_ipv4()); // Required for our test to simulate a response.
         proptest::prop_assume!(
-            packet1.as_immutable().source_protocol().unwrap()
-                != packet2.as_immutable().source_protocol().unwrap()
+            packet1.source_protocol().unwrap() != packet2.source_protocol().unwrap()
         );
 
         let mut table = NatTable::default();
@@ -171,14 +170,12 @@ mod tests {
         // Remember original src_p and dst
         let original_src_p_and_dst = packets
             .clone()
-            .map(|(p, _)| (p.as_immutable().source_protocol().unwrap(), p.destination()));
+            .map(|(p, _)| (p.source_protocol().unwrap(), p.destination()));
 
         // Translate out
-        let new_src_p_and_dst = packets.clone().map(|(p, d)| {
-            table
-                .translate_outgoing(p.as_immutable(), d, Instant::now())
-                .unwrap()
-        });
+        let new_src_p_and_dst = packets
+            .clone()
+            .map(|(p, d)| table.translate_outgoing(&p, d, Instant::now()).unwrap());
 
         // Pretend we are getting a response.
         for ((p, _), (new_src_p, new_d)) in packets.iter_mut().zip(new_src_p_and_dst) {
@@ -189,7 +186,7 @@ mod tests {
         // Translate in
         let responses = packets.map(|(p, _)| {
             table
-                .translate_incoming(p.as_immutable(), Instant::now())
+                .translate_incoming(&p, Instant::now())
                 .unwrap()
                 .unwrap()
         });

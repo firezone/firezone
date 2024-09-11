@@ -1,6 +1,6 @@
 use crate::{device_channel::Device, sockets::Sockets, BUF_SIZE};
 use futures_util::FutureExt as _;
-use ip_packet::{IpPacket, MutableIpPacket};
+use ip_packet::IpPacket;
 use snownet::{EncryptBuffer, EncryptedPacket};
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -29,7 +29,7 @@ pub struct Io {
 
 pub enum Input<'a, I> {
     Timeout(Instant),
-    Device(MutableIpPacket<'a>),
+    Device(IpPacket<'a>),
     Network(I),
 }
 
