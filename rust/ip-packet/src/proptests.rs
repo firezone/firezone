@@ -1,6 +1,5 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use pnet_packet::Packet;
 use proptest::arbitrary::any;
 use proptest::prop_oneof;
 use proptest::strategy::Strategy;

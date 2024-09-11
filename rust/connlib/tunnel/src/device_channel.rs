@@ -1,4 +1,4 @@
-use ip_packet::{IpPacket, Packet as _};
+use ip_packet::IpPacket;
 use std::io;
 use std::task::{Context, Poll, Waker};
 use tun::Tun;
@@ -31,8 +31,6 @@ impl Device {
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<IpPacket<'b>>> {
-        use ip_packet::Packet as _;
-
         let Some(tun) = self.tun.as_mut() else {
             self.waker = Some(cx.waker().clone());
             return Poll::Pending;

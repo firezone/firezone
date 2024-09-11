@@ -24,7 +24,7 @@ mod platform {
 mod platform {
     use anyhow::Result;
     use firezone_bin_shared::TunDeviceManager;
-    use ip_packet::{IpPacket, Packet as _};
+    use ip_packet::IpPacket;
     use std::{
         future::poll_fn,
         net::{Ipv4Addr, Ipv6Addr},

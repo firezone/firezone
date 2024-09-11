@@ -24,7 +24,7 @@ use domain::{
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::IpPacket;
+use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket};
 use itertools::Itertools as _;
 use prop::collection;
 use proptest::prelude::*;
@@ -123,12 +123,17 @@ impl SimClient {
         packet: IpPacket<'static>,
         now: Instant,
     ) -> Option<snownet::Transmit<'static>> {
-        {
-            if let Some(icmp) = packet.as_icmp() {
-                let echo_request = icmp.echo_request_header().expect("to be echo request");
-
+        if let Some(icmp) = packet.as_icmpv4() {
+            if let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type() {
                 self.sent_icmp_requests
-                    .insert((echo_request.seq, echo_request.id), packet.clone());
+                    .insert((echo.seq, echo.id), packet.clone());
+            }
+        }
+
+        if let Some(icmp) = packet.as_icmpv6() {
+            if let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type() {
+                self.sent_icmp_requests
+                    .insert((echo.seq, echo.id), packet.clone());
             }
         }
 
@@ -175,14 +180,23 @@ impl SimClient {
 
     /// Process an IP packet received on the client.
     pub(crate) fn on_received_packet(&mut self, packet: IpPacket<'static>) {
-        if let Some(icmp) = packet.as_icmp() {
-            let echo_reply = icmp.echo_reply_header().expect("to be echo reply");
+        if let Some(icmp) = packet.as_icmpv4() {
+            if let Icmpv4Type::EchoReply(echo) = icmp.icmp_type() {
+                self.received_icmp_replies
+                    .insert((echo.seq, echo.id), packet.clone());
 
-            self.received_icmp_replies
-                .insert((echo_reply.seq, echo_reply.id), packet);
+                return;
+            }
+        }
 
-            return;
-        };
+        if let Some(icmp) = packet.as_icmpv6() {
+            if let Icmpv6Type::EchoReply(echo) = icmp.icmp_type() {
+                self.received_icmp_replies
+                    .insert((echo.seq, echo.id), packet.clone());
+
+                return;
+            }
+        }
 
         if let Some(udp) = packet.as_udp() {
             if udp.source_port() == 53 {
@@ -225,7 +239,7 @@ impl SimClient {
             }
         }
 
-        tracing::error!("Unhandled packet");
+        tracing::error!(?packet, "Unhandled packet");
     }
 
     pub(crate) fn update_relays<'a>(

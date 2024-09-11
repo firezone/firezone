@@ -9,7 +9,7 @@ use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
 use hex_display::HexDisplayExt;
-use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, Packet as _};
+use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket};
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, SeedableRng};

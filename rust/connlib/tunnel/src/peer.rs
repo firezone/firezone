@@ -77,7 +77,7 @@ impl AllowRules {
             return self.udp.contains(&udp.destination_port());
         }
 
-        if packet.is_icmp_v4_or_v6() {
+        if packet.is_icmp() || packet.is_icmpv6() {
             return self.icmp;
         }
 

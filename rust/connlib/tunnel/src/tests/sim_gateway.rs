@@ -9,7 +9,7 @@ use connlib_shared::{
     messages::{GatewayId, RelayId},
     DomainName,
 };
-use ip_packet::IpPacket;
+use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
 use proptest::prelude::*;
 use snownet::{EncryptBuffer, Transmit};
 use std::{
@@ -70,29 +70,15 @@ impl SimGateway {
     ) -> Option<Transmit<'static>> {
         // TODO: Instead of handling these things inline, here, should we dispatch them via `RoutingTable`?
 
-        if let Some(icmp) = packet.as_icmp() {
-            if let Some(echo_request) = icmp.echo_request_header() {
-                let payload = icmp.payload();
-                let echo_id = u64::from_be_bytes(*payload.first_chunk().unwrap());
-                tracing::debug!(%echo_id, "Received ICMP request");
+        if let Some(icmp) = packet.as_icmpv4() {
+            if let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type() {
+                return self.handle_icmp_request(&packet, echo, icmp.payload(), now);
+            }
+        }
 
-                self.received_icmp_requests.insert(echo_id, packet.clone());
-
-                let echo_response = ip_packet::make::icmp_reply_packet(
-                    packet.destination(),
-                    packet.source(),
-                    echo_request.seq,
-                    echo_request.id,
-                    payload,
-                )
-                .expect("src and dst are taken from incoming packet");
-                let transmit = self
-                    .sut
-                    .encapsulate(echo_response, now, &mut self.enc_buffer)?
-                    .to_transmit(&self.enc_buffer)
-                    .into_owned();
-
-                return Some(transmit);
+        if let Some(icmp) = packet.as_icmpv6() {
+            if let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type() {
+                return self.handle_icmp_request(&packet, echo, icmp.payload(), now);
             }
         }
 
@@ -110,7 +96,7 @@ impl SimGateway {
             return Some(transmit);
         }
 
-        tracing::error!("Unhandled packet");
+        tracing::error!(?packet, "Unhandled packet");
         None
     }
 
@@ -125,6 +111,35 @@ impl SimGateway {
             map_explode(to_add, format!("gateway_{}", self.id)).collect(),
             now,
         )
+    }
+
+    fn handle_icmp_request(
+        &mut self,
+        packet: &IpPacket<'static>,
+        echo: IcmpEchoHeader,
+        payload: &[u8],
+        now: Instant,
+    ) -> Option<Transmit<'static>> {
+        let echo_id = u64::from_be_bytes(*payload.first_chunk().unwrap());
+        self.received_icmp_requests.insert(echo_id, packet.clone());
+
+        tracing::debug!(%echo_id, "Received ICMP request");
+
+        let echo_response = ip_packet::make::icmp_reply_packet(
+            packet.destination(),
+            packet.source(),
+            echo.seq,
+            echo.id,
+            payload,
+        )
+        .expect("src and dst are taken from incoming packet");
+        let transmit = self
+            .sut
+            .encapsulate(echo_response, now, &mut self.enc_buffer)?
+            .to_transmit(&self.enc_buffer)
+            .into_owned();
+
+        Some(transmit)
     }
 }
 

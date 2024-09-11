@@ -1,5 +1,7 @@
 pub mod make;
 
+mod icmpv4_header_slice_mut;
+mod icmpv6_header_slice_mut;
 mod ipv4_header_slice_mut;
 mod ipv6_header_slice_mut;
 mod nat46;
@@ -7,31 +9,24 @@ mod nat64;
 #[cfg(feature = "proptest")]
 pub mod proptest;
 mod slice_utils;
+mod tcp_header_slice_mut;
+mod udp_header_slice_mut;
 
-pub use pnet_packet::*;
+pub use etherparse::*;
 
 #[cfg(all(test, feature = "proptest"))]
 mod proptests;
 
-use etherparse::{
-    IcmpEchoHeader, Icmpv4Slice, Icmpv4Type, Icmpv6Slice, Icmpv6Type, IpNumber, Ipv4Header,
-    Ipv4HeaderSlice, Ipv6Header, Ipv6HeaderSlice, TcpSlice, UdpSlice,
-};
+use icmpv4_header_slice_mut::Icmpv4HeaderSliceMut;
+use icmpv6_header_slice_mut::Icmpv6EchoHeaderSliceMut;
 use ipv4_header_slice_mut::Ipv4HeaderSliceMut;
 use ipv6_header_slice_mut::Ipv6HeaderSliceMut;
-use pnet_packet::{
-    icmp::{
-        echo_reply::MutableEchoReplyPacket, echo_request::MutableEchoRequestPacket, IcmpTypes,
-        MutableIcmpPacket,
-    },
-    icmpv6::{Icmpv6Types, MutableIcmpv6Packet},
-    tcp::MutableTcpPacket,
-    udp::MutableUdpPacket,
-};
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::{Deref, DerefMut},
 };
+use tcp_header_slice_mut::TcpHeaderSliceMut;
+use udp_header_slice_mut::UdpHeaderSliceMut;
 
 macro_rules! for_both {
     ($this:ident, |$name:ident| $body:expr) => {
@@ -79,79 +74,19 @@ impl Protocol {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum IcmpPacket<'a> {
-    Ipv4(Icmpv4Slice<'a>),
-    Ipv6(Icmpv6Slice<'a>),
-}
-
-impl<'a> IcmpPacket<'a> {
-    pub fn icmp_type(&self) -> IcmpType {
-        match self {
-            IcmpPacket::Ipv4(v4) => IcmpType::V4(v4.icmp_type()),
-            IcmpPacket::Ipv6(v6) => IcmpType::V6(v6.icmp_type()),
-        }
-    }
-
-    pub fn identifier(&self) -> Option<u16> {
-        Some(self.echo_request_header().or(self.echo_reply_header())?.id)
-    }
-
-    pub fn sequence(&self) -> Option<u16> {
-        Some(self.echo_request_header().or(self.echo_reply_header())?.seq)
-    }
-
-    pub fn payload(&self) -> &[u8] {
-        match self {
-            IcmpPacket::Ipv4(v4) => v4.payload(),
-            IcmpPacket::Ipv6(v6) => v6.payload(),
-        }
-    }
-
-    pub fn echo_request_header(&self) -> Option<IcmpEchoHeader> {
-        #[allow(
-            clippy::wildcard_enum_match_arm,
-            reason = "We won't ever need to use other ICMP types here."
-        )]
-        match self {
-            IcmpPacket::Ipv4(v4) => match v4.header().icmp_type {
-                Icmpv4Type::EchoRequest(echo) => Some(echo),
-                _ => None,
-            },
-            IcmpPacket::Ipv6(v6) => match v6.header().icmp_type {
-                Icmpv6Type::EchoRequest(echo) => Some(echo),
-                _ => None,
-            },
-        }
-    }
-
-    pub fn echo_reply_header(&self) -> Option<IcmpEchoHeader> {
-        #[allow(
-            clippy::wildcard_enum_match_arm,
-            reason = "We won't ever need to use other ICMP types here."
-        )]
-        match self {
-            IcmpPacket::Ipv4(v4) => match v4.header().icmp_type {
-                Icmpv4Type::EchoReply(echo) => Some(echo),
-                _ => None,
-            },
-            IcmpPacket::Ipv6(v6) => match v6.header().icmp_type {
-                Icmpv6Type::EchoReply(echo) => Some(echo),
-                _ => None,
-            },
-        }
-    }
-}
-
-pub enum IcmpType {
-    V4(Icmpv4Type),
-    V6(Icmpv6Type),
-}
-
-#[derive(Debug, PartialEq, Clone)]
+#[derive(PartialEq, Clone)]
 pub enum IpPacket<'a> {
     Ipv4(ConvertibleIpv4Packet<'a>),
     Ipv6(ConvertibleIpv6Packet<'a>),
+}
+
+impl<'a> std::fmt::Debug for IpPacket<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ipv4(arg0) => arg0.ip_header().to_header().fmt(f),
+            Self::Ipv6(arg0) => arg0.header().to_header().fmt(f),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -222,11 +157,11 @@ impl<'a> ConvertibleIpv4Packet<'a> {
     }
 
     fn ip_header(&self) -> Ipv4HeaderSlice {
-        Ipv4HeaderSlice::from_slice(&self.buf[20..]).expect("we checked this during `new`")
+        Ipv4HeaderSlice::from_slice(self.packet()).expect("we checked this during `new`")
     }
 
     fn ip_header_mut(&mut self) -> Ipv4HeaderSliceMut {
-        Ipv4HeaderSliceMut::from_slice(&mut self.buf[20..]).expect("we checked this during `new`")
+        Ipv4HeaderSliceMut::from_slice(self.packet_mut()).expect("we checked this during `new`")
     }
 
     pub fn get_source(&self) -> Ipv4Addr {
@@ -253,26 +188,13 @@ impl<'a> ConvertibleIpv4Packet<'a> {
     fn header_length(&self) -> usize {
         (self.ip_header().ihl() * 4) as usize
     }
-}
 
-impl<'a> Packet for ConvertibleIpv4Packet<'a> {
-    fn packet(&self) -> &[u8] {
+    pub fn packet(&self) -> &[u8] {
         &self.buf[20..]
     }
 
-    fn payload(&self) -> &[u8] {
-        &self.buf[(self.header_length() + 20)..]
-    }
-}
-
-impl<'a> MutablePacket for ConvertibleIpv4Packet<'a> {
     fn packet_mut(&mut self) -> &mut [u8] {
         &mut self.buf[20..]
-    }
-
-    fn payload_mut(&mut self) -> &mut [u8] {
-        let header_len = self.header_length();
-        &mut self.buf[(header_len + 20)..]
     }
 }
 
@@ -299,11 +221,12 @@ impl<'a> ConvertibleIpv6Packet<'a> {
     }
 
     fn header(&self) -> Ipv6HeaderSlice {
-        Ipv6HeaderSlice::from_slice(&self.buf).expect("We checked this in `new` / `owned`")
+        Ipv6HeaderSlice::from_slice(self.packet()).expect("We checked this in `new` / `owned`")
     }
 
     fn header_mut(&mut self) -> Ipv6HeaderSliceMut {
-        Ipv6HeaderSliceMut::from_slice(&mut self.buf).expect("We checked this in `new` / `owned`")
+        Ipv6HeaderSliceMut::from_slice(self.packet_mut())
+            .expect("We checked this in `new` / `owned`")
     }
 
     pub fn get_source(&self) -> Ipv6Addr {
@@ -325,25 +248,13 @@ impl<'a> ConvertibleIpv6Packet<'a> {
 
         Some(ConvertibleIpv4Packet { buf: self.buf })
     }
-}
 
-impl<'a> Packet for ConvertibleIpv6Packet<'a> {
-    fn packet(&self) -> &[u8] {
+    pub fn packet(&self) -> &[u8] {
         &self.buf
     }
 
-    fn payload(&self) -> &[u8] {
-        &self.buf[Ipv6Header::LEN..]
-    }
-}
-
-impl<'a> MutablePacket for ConvertibleIpv6Packet<'a> {
     fn packet_mut(&mut self) -> &mut [u8] {
         &mut self.buf
-    }
-
-    fn payload_mut(&mut self) -> &mut [u8] {
-        &mut self.buf[Ipv6Header::LEN..]
     }
 }
 
@@ -444,11 +355,20 @@ impl<'a> IpPacket<'a> {
             return Ok(Protocol::Udp(p.source_port()));
         }
 
-        if let Some(p) = self.as_icmp() {
-            let id = p.identifier().ok_or_else(|| match p.icmp_type() {
-                IcmpType::V4(v4) => UnsupportedProtocol::UnsupportedIcmpv4Type(v4),
-                IcmpType::V6(v6) => UnsupportedProtocol::UnsupportedIcmpv6Type(v6),
-            })?;
+        if let Some(p) = self.as_icmpv4() {
+            let id = self
+                .icmpv4_echo_header()
+                .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv4Type(p.icmp_type()))?
+                .id;
+
+            return Ok(Protocol::Icmp(id));
+        }
+
+        if let Some(p) = self.as_icmpv6() {
+            let id = self
+                .icmpv6_echo_header()
+                .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv6Type(p.icmp_type()))?
+                .id;
 
             return Ok(Protocol::Icmp(id));
         }
@@ -467,11 +387,20 @@ impl<'a> IpPacket<'a> {
             return Ok(Protocol::Udp(p.destination_port()));
         }
 
-        if let Some(p) = self.as_icmp() {
-            let id = p.identifier().ok_or_else(|| match p.icmp_type() {
-                IcmpType::V4(v4) => UnsupportedProtocol::UnsupportedIcmpv4Type(v4),
-                IcmpType::V6(v6) => UnsupportedProtocol::UnsupportedIcmpv6Type(v6),
-            })?;
+        if let Some(p) = self.as_icmpv4() {
+            let id = self
+                .icmpv4_echo_header()
+                .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv4Type(p.icmp_type()))?
+                .id;
+
+            return Ok(Protocol::Icmp(id));
+        }
+
+        if let Some(p) = self.as_icmpv6() {
+            let id = self
+                .icmpv6_echo_header()
+                .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv6Type(p.icmp_type()))?
+                .id;
 
             return Ok(Protocol::Icmp(id));
         }
@@ -483,11 +412,11 @@ impl<'a> IpPacket<'a> {
 
     pub fn set_source_protocol(&mut self, v: u16) {
         if let Some(mut p) = self.as_tcp_mut() {
-            p.set_source(v);
+            p.set_source_port(v);
         }
 
         if let Some(mut p) = self.as_udp_mut() {
-            p.set_source(v);
+            p.set_source_port(v);
         }
 
         self.set_icmp_identifier(v);
@@ -495,51 +424,23 @@ impl<'a> IpPacket<'a> {
 
     pub fn set_destination_protocol(&mut self, v: u16) {
         if let Some(mut p) = self.as_tcp_mut() {
-            p.set_destination(v);
+            p.set_destination_port(v);
         }
 
         if let Some(mut p) = self.as_udp_mut() {
-            p.set_destination(v);
+            p.set_destination_port(v);
         }
 
         self.set_icmp_identifier(v);
     }
 
     fn set_icmp_identifier(&mut self, v: u16) {
-        if let Some(mut p) = self.as_icmp_mut() {
-            if p.get_icmp_type() == IcmpTypes::EchoReply {
-                let Some(mut echo_reply) = MutableEchoReplyPacket::new(p.packet_mut()) else {
-                    return;
-                };
-                echo_reply.set_identifier(v)
-            }
-
-            if p.get_icmp_type() == IcmpTypes::EchoRequest {
-                let Some(mut echo_request) = MutableEchoRequestPacket::new(p.packet_mut()) else {
-                    return;
-                };
-                echo_request.set_identifier(v);
-            }
+        if let Some(mut p) = self.as_icmpv4_mut() {
+            p.set_identifier(v);
         }
 
-        if let Some(mut p) = self.as_icmpv6() {
-            if p.get_icmpv6_type() == Icmpv6Types::EchoReply {
-                let Some(mut echo_reply) =
-                    icmpv6::echo_reply::MutableEchoReplyPacket::new(p.packet_mut())
-                else {
-                    return;
-                };
-                echo_reply.set_identifier(v)
-            }
-
-            if p.get_icmpv6_type() == Icmpv6Types::EchoRequest {
-                let Some(mut echo_request) =
-                    icmpv6::echo_request::MutableEchoRequestPacket::new(p.packet_mut())
-                else {
-                    return;
-                };
-                echo_request.set_identifier(v);
-            }
+        if let Some(mut p) = self.as_icmpv6_mut() {
+            p.set_identifier(v);
         }
     }
 
@@ -605,76 +506,132 @@ impl<'a> IpPacket<'a> {
     }
 
     pub fn as_udp(&self) -> Option<UdpSlice> {
-        self.is_udp()
-            .then(|| UdpSlice::from_slice(self.payload()).ok())
-            .flatten()
+        if !self.is_udp() {
+            return None;
+        }
+
+        UdpSlice::from_slice(self.payload()).ok()
     }
 
-    pub fn as_udp_mut(&mut self) -> Option<MutableUdpPacket> {
-        self.is_udp()
-            .then(|| MutableUdpPacket::new(self.payload_mut()))
-            .flatten()
+    pub fn as_udp_mut(&mut self) -> Option<UdpHeaderSliceMut> {
+        if !self.is_udp() {
+            return None;
+        }
+
+        UdpHeaderSliceMut::from_slice(self.payload_mut()).ok()
     }
 
     pub fn as_tcp(&self) -> Option<TcpSlice> {
-        self.is_tcp()
-            .then(|| TcpSlice::from_slice(self.payload()).ok())
-            .flatten()
-    }
-
-    pub fn as_tcp_mut(&mut self) -> Option<MutableTcpPacket> {
-        self.is_tcp()
-            .then(|| MutableTcpPacket::new(self.payload_mut()))
-            .flatten()
-    }
-
-    pub fn is_icmp_v4_or_v6(&self) -> bool {
-        match self {
-            IpPacket::Ipv4(v4) => v4.ip_header().protocol() == IpNumber::ICMP,
-            IpPacket::Ipv6(v6) => v6.header().next_header() == IpNumber::IPV6_ICMP,
+        if !self.is_tcp() {
+            return None;
         }
+
+        TcpSlice::from_slice(self.payload()).ok()
+    }
+
+    pub fn as_tcp_mut(&mut self) -> Option<TcpHeaderSliceMut> {
+        if !self.is_tcp() {
+            return None;
+        }
+
+        TcpHeaderSliceMut::from_slice(self.payload_mut()).ok()
     }
 
     fn set_icmpv6_checksum(&mut self) {
-        let (src_addr, dst_addr) = match self {
-            IpPacket::Ipv4(_) => return,
-            IpPacket::Ipv6(p) => (p.get_source(), p.get_destination()),
+        let Some(i) = self.as_icmpv6() else {
+            return;
         };
-        if let Some(mut pkt) = self.as_icmpv6() {
-            let checksum = icmpv6::checksum(&pkt.to_immutable(), &src_addr, &dst_addr);
-            pkt.set_checksum(checksum);
-        }
+
+        let IpPacket::Ipv6(p) = &self else {
+            return;
+        };
+
+        let checksum = i
+            .icmp_type()
+            .calc_checksum(
+                p.get_source().octets(),
+                p.get_destination().octets(),
+                i.payload(),
+            )
+            .expect("Payload came from the original packet");
+
+        let Some(mut i) = self.as_icmpv6_mut() else {
+            return;
+        };
+
+        i.set_checksum(checksum);
     }
 
     fn set_icmpv4_checksum(&mut self) {
-        if let Some(mut pkt) = self.as_icmp_mut() {
-            let checksum = icmp::checksum(&pkt.to_immutable());
-            pkt.set_checksum(checksum);
+        let Some(i) = self.as_icmpv4() else {
+            return;
+        };
+
+        let checksum = i.icmp_type().calc_checksum(i.payload());
+
+        let Some(mut i) = self.as_icmpv4_mut() else {
+            return;
+        };
+
+        i.set_checksum(checksum);
+    }
+
+    pub fn as_icmpv4(&self) -> Option<Icmpv4Slice> {
+        if !self.is_icmp() {
+            return None;
         }
+
+        Icmpv4Slice::from_slice(self.payload()).ok()
     }
 
-    pub fn as_icmp(&self) -> Option<IcmpPacket> {
-        match self {
-            Self::Ipv4(v4) if self.is_icmp() => Some(IcmpPacket::Ipv4(
-                Icmpv4Slice::from_slice(v4.payload()).ok()?,
-            )),
-            Self::Ipv6(v6) if self.is_icmpv6() => Some(IcmpPacket::Ipv6(
-                Icmpv6Slice::from_slice(v6.payload()).ok()?,
-            )),
-            Self::Ipv4(_) | Self::Ipv6(_) => None,
+    pub fn as_icmpv4_mut(&mut self) -> Option<Icmpv4HeaderSliceMut> {
+        if !self.is_icmp() {
+            return None;
         }
+
+        Icmpv4HeaderSliceMut::from_slice(self.payload_mut()).ok()
     }
 
-    pub fn as_icmp_mut(&mut self) -> Option<MutableIcmpPacket> {
-        self.is_icmp()
-            .then(|| MutableIcmpPacket::new(self.payload_mut()))
-            .flatten()
+    pub fn as_icmpv6(&self) -> Option<Icmpv6Slice> {
+        if !self.is_icmpv6() {
+            return None;
+        }
+
+        Icmpv6Slice::from_slice(self.payload()).ok()
     }
 
-    fn as_icmpv6(&mut self) -> Option<MutableIcmpv6Packet> {
-        self.is_icmpv6()
-            .then(|| MutableIcmpv6Packet::new(self.payload_mut()))
-            .flatten()
+    pub fn as_icmpv6_mut(&mut self) -> Option<Icmpv6EchoHeaderSliceMut> {
+        if !self.is_icmpv6() {
+            return None;
+        }
+
+        Icmpv6EchoHeaderSliceMut::from_slice(self.payload_mut()).ok()
+    }
+
+    fn icmpv4_echo_header(&self) -> Option<IcmpEchoHeader> {
+        let p = self.as_icmpv4()?;
+
+        use Icmpv4Type::*;
+        let icmp_type = p.icmp_type();
+
+        let (EchoReply(header) | EchoRequest(header)) = icmp_type else {
+            return None;
+        };
+
+        Some(header)
+    }
+
+    fn icmpv6_echo_header(&self) -> Option<IcmpEchoHeader> {
+        let p = self.as_icmpv6()?;
+
+        use Icmpv6Type::*;
+        let icmp_type = p.icmp_type();
+
+        let (EchoReply(header) | EchoRequest(header)) = icmp_type else {
+            return None;
+        };
+
+        Some(header)
     }
 
     pub fn translate_destination(
@@ -790,12 +747,45 @@ impl<'a> IpPacket<'a> {
         self.next_header() == IpNumber::TCP
     }
 
-    fn is_icmp(&self) -> bool {
+    pub fn is_icmp(&self) -> bool {
         self.next_header() == IpNumber::ICMP
     }
 
-    fn is_icmpv6(&self) -> bool {
+    pub fn is_icmpv6(&self) -> bool {
         self.next_header() == IpNumber::IPV6_ICMP
+    }
+
+    fn header_length(&self) -> usize {
+        match self {
+            IpPacket::Ipv4(v4) => v4.header_length(),
+            IpPacket::Ipv6(v6) => v6.header().header_len(),
+        }
+    }
+
+    pub fn packet(&self) -> &[u8] {
+        match self {
+            IpPacket::Ipv4(v4) => v4.packet(),
+            IpPacket::Ipv6(v6) => v6.packet(),
+        }
+    }
+
+    fn packet_mut(&mut self) -> &mut [u8] {
+        match self {
+            IpPacket::Ipv4(v4) => v4.packet_mut(),
+            IpPacket::Ipv6(v6) => v6.packet_mut(),
+        }
+    }
+
+    fn payload(&self) -> &[u8] {
+        let start = self.header_length();
+
+        &self.packet()[start..]
+    }
+
+    fn payload_mut(&mut self) -> &mut [u8] {
+        let start = self.header_length();
+
+        &mut self.packet_mut()[start..]
     }
 }
 
@@ -808,26 +798,6 @@ impl<'a> From<ConvertibleIpv4Packet<'a>> for IpPacket<'a> {
 impl<'a> From<ConvertibleIpv6Packet<'a>> for IpPacket<'a> {
     fn from(value: ConvertibleIpv6Packet<'a>) -> Self {
         Self::Ipv6(value)
-    }
-}
-
-impl pnet_packet::Packet for IpPacket<'_> {
-    fn packet(&self) -> &[u8] {
-        for_both!(self, |i| i.packet())
-    }
-
-    fn payload(&self) -> &[u8] {
-        for_both!(self, |i| i.payload())
-    }
-}
-
-impl pnet_packet::MutablePacket for IpPacket<'_> {
-    fn packet_mut(&mut self) -> &mut [u8] {
-        for_both!(self, |i| i.packet_mut())
-    }
-
-    fn payload_mut(&mut self) -> &mut [u8] {
-        for_both!(self, |i| i.payload_mut())
     }
 }
 
