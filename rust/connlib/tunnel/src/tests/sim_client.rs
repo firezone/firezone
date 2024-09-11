@@ -182,15 +182,19 @@ impl SimClient {
     pub(crate) fn on_received_packet(&mut self, packet: IpPacket<'static>) {
         if let Some(icmp) = packet.as_icmpv4() {
             if let Icmpv4Type::EchoReply(echo) = icmp.icmp_type() {
-                self.sent_icmp_requests
+                self.received_icmp_replies
                     .insert((echo.seq, echo.id), packet.clone());
+
+                return;
             }
         }
 
         if let Some(icmp) = packet.as_icmpv6() {
             if let Icmpv6Type::EchoReply(echo) = icmp.icmp_type() {
-                self.sent_icmp_requests
+                self.received_icmp_replies
                     .insert((echo.seq, echo.id), packet.clone());
+
+                return;
             }
         }
 
@@ -235,7 +239,7 @@ impl SimClient {
             }
         }
 
-        tracing::error!("Unhandled packet");
+        tracing::error!(?packet, "Unhandled packet");
     }
 
     pub(crate) fn update_relays<'a>(
