@@ -607,22 +607,34 @@ impl<'a> IpPacket<'a> {
     }
 
     pub fn as_udp(&self) -> Option<UdpSlice> {
-        self.is_udp()
-            .then(|| UdpSlice::from_slice(self.payload()).ok())
-            .flatten()
+        if !self.is_udp() {
+            return None;
+        }
+
+        UdpSlice::from_slice(self.payload()).ok()
     }
 
     pub fn as_udp_mut(&mut self) -> Option<UdpHeaderSliceMut> {
+        if !self.is_udp() {
+            return None;
+        }
+
         UdpHeaderSliceMut::from_slice(self.payload_mut()).ok()
     }
 
     pub fn as_tcp(&self) -> Option<TcpSlice> {
-        self.is_tcp()
-            .then(|| TcpSlice::from_slice(self.payload()).ok())
-            .flatten()
+        if !self.is_tcp() {
+            return None;
+        }
+
+        TcpSlice::from_slice(self.payload()).ok()
     }
 
     pub fn as_tcp_mut(&mut self) -> Option<TcpHeaderSliceMut> {
+        if !self.is_tcp() {
+            return None;
+        }
+
         TcpHeaderSliceMut::from_slice(self.payload_mut()).ok()
     }
 
