@@ -9,7 +9,7 @@ pub struct Icmpv6EchoHeaderSliceMut<'a> {
 }
 
 impl<'a> Icmpv6EchoHeaderSliceMut<'a> {
-    /// Creates a new [`Icmpv6SliceMut`].
+    /// Creates a new [`Icmpv6EchoHeaderSliceMut`].
     pub fn from_slice(slice: &'a mut [u8]) -> Result<Self, etherparse::err::LenError> {
         Icmpv6Slice::from_slice(slice)?;
 

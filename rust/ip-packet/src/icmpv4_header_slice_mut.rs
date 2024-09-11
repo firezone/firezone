@@ -9,7 +9,7 @@ pub struct Icmpv4HeaderSliceMut<'a> {
 }
 
 impl<'a> Icmpv4HeaderSliceMut<'a> {
-    /// Creates a new [`Icmpv4SliceMut`].
+    /// Creates a new [`Icmpv4HeaderSliceMut`].
     pub fn from_slice(slice: &'a mut [u8]) -> Result<Self, etherparse::err::LenError> {
         Icmpv4Slice::from_slice(slice)?;
 
