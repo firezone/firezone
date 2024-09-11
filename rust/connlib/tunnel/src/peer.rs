@@ -10,8 +10,7 @@ use connlib_shared::messages::{
 use connlib_shared::DomainName;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use ip_packet::ip::IpNextHeaderProtocols;
-use ip_packet::{IpPacket, MutableIpPacket};
+use ip_packet::IpPacket;
 use itertools::Itertools;
 use rangemap::RangeInclusiveSet;
 
@@ -70,20 +69,19 @@ impl AllowRules {
     }
 
     fn is_allowed(&self, packet: &IpPacket) -> bool {
-        match packet.next_header() {
-            // Note: possible optimization here
-            // if we want to get the port here, and we assume correct formatting
-            // we can do packet.payload()[2..=3] (for UDP and TCP bytes 2 and 3 are the port)
-            // but it might be a bit harder to read
-            IpNextHeaderProtocols::Tcp => packet
-                .as_tcp()
-                .is_some_and(|p| self.tcp.contains(&p.get_destination())),
-            IpNextHeaderProtocols::Udp => packet
-                .as_udp()
-                .is_some_and(|p| self.udp.contains(&p.get_destination())),
-            IpNextHeaderProtocols::Icmp | IpNextHeaderProtocols::Icmpv6 => self.icmp,
-            _ => false,
+        if let Some(tcp) = packet.as_tcp() {
+            return self.tcp.contains(&tcp.destination_port());
         }
+
+        if let Some(udp) = packet.as_udp() {
+            return self.udp.contains(&udp.destination_port());
+        }
+
+        if packet.is_icmp_v4_or_v6() {
+            return self.icmp;
+        }
+
+        false
     }
 
     fn add_filters<'a>(&mut self, filters: impl IntoIterator<Item = &'a Filter>) {
@@ -377,16 +375,16 @@ impl ClientOnGateway {
 
     fn transform_network_to_tun<'a>(
         &mut self,
-        packet: MutableIpPacket<'a>,
+        packet: IpPacket<'a>,
         now: Instant,
-    ) -> anyhow::Result<MutableIpPacket<'a>> {
+    ) -> anyhow::Result<IpPacket<'a>> {
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
             return Ok(packet);
         };
 
         let (source_protocol, real_ip) =
             self.nat_table
-                .translate_outgoing(packet.as_immutable(), state.resolved_ip, now)?;
+                .translate_outgoing(&packet, state.resolved_ip, now)?;
 
         let mut packet = packet
             .translate_destination(self.ipv4, self.ipv6, source_protocol, real_ip)
@@ -400,9 +398,9 @@ impl ClientOnGateway {
 
     pub fn decapsulate<'a>(
         &mut self,
-        packet: MutableIpPacket<'a>,
+        packet: IpPacket<'a>,
         now: Instant,
-    ) -> anyhow::Result<MutableIpPacket<'a>> {
+    ) -> anyhow::Result<IpPacket<'a>> {
         self.ensure_allowed_src(&packet)?;
 
         let packet = self.transform_network_to_tun(packet, now)?;
@@ -414,13 +412,10 @@ impl ClientOnGateway {
 
     pub fn encapsulate<'a>(
         &mut self,
-        packet: MutableIpPacket<'a>,
+        packet: IpPacket<'a>,
         now: Instant,
-    ) -> anyhow::Result<Option<MutableIpPacket<'a>>> {
-        let Some((proto, ip)) = self
-            .nat_table
-            .translate_incoming(packet.as_immutable(), now)?
-        else {
+    ) -> anyhow::Result<Option<IpPacket<'a>>> {
+        let Some((proto, ip)) = self.nat_table.translate_incoming(&packet, now)? else {
             return Ok(Some(packet));
         };
 
@@ -438,7 +433,7 @@ impl ClientOnGateway {
         Ok(Some(packet))
     }
 
-    fn ensure_allowed_src(&self, packet: &MutableIpPacket<'_>) -> anyhow::Result<()> {
+    fn ensure_allowed_src(&self, packet: &IpPacket<'_>) -> anyhow::Result<()> {
         let src = packet.source();
 
         if !self.allowed_ips().contains(&src) {
@@ -449,12 +444,12 @@ impl ClientOnGateway {
     }
 
     /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
-    fn ensure_allowed_dst(&self, packet: &MutableIpPacket<'_>) -> anyhow::Result<()> {
+    fn ensure_allowed_dst(&mut self, packet: &IpPacket<'_>) -> anyhow::Result<()> {
         let dst = packet.destination();
         if !self
             .filters
             .longest_match(dst)
-            .is_some_and(|(_, filter)| filter.is_allowed(&packet.to_immutable()))
+            .is_some_and(|(_, filter)| filter.is_allowed(packet))
         {
             return Err(anyhow::Error::new(DstNotAllowed(dst)));
         };
@@ -468,7 +463,7 @@ impl ClientOnGateway {
 }
 
 impl GatewayOnClient {
-    pub(crate) fn ensure_allowed_src(&self, packet: &MutableIpPacket) -> anyhow::Result<()> {
+    pub(crate) fn ensure_allowed_src(&self, packet: &IpPacket) -> anyhow::Result<()> {
         let src = packet.source();
 
         if self.allowed_ips.longest_match(src).is_none() {

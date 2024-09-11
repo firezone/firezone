@@ -1,4 +1,4 @@
-use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
+use ip_packet::{IpPacket, Packet as _};
 use std::io;
 use std::task::{Context, Poll, Waker};
 use tun::Tun;
@@ -30,7 +30,7 @@ impl Device {
         &mut self,
         buf: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<MutableIpPacket<'b>>> {
+    ) -> Poll<io::Result<IpPacket<'b>>> {
         use ip_packet::Packet as _;
 
         let Some(tun) = self.tun.as_mut() else {
@@ -47,7 +47,7 @@ impl Device {
             )));
         }
 
-        let packet = MutableIpPacket::new(&mut buf[..(n + 20)]).ok_or_else(|| {
+        let packet = IpPacket::new(&mut buf[..(n + 20)]).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "received bytes are not an IP packet",

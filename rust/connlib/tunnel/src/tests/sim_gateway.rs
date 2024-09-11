@@ -65,26 +65,25 @@ impl SimGateway {
     fn on_received_packet(
         &mut self,
         global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
-        packet: IpPacket<'_>,
+        packet: IpPacket<'static>,
         now: Instant,
     ) -> Option<Transmit<'static>> {
-        let packet = packet.to_owned();
-
         // TODO: Instead of handling these things inline, here, should we dispatch them via `RoutingTable`?
 
         if let Some(icmp) = packet.as_icmp() {
-            if let Some(request) = icmp.as_echo_request() {
-                let payload = u64::from_be_bytes(*request.payload().first_chunk().unwrap());
-                tracing::debug!(%payload, "Received ICMP request");
+            if let Some(echo_request) = icmp.echo_request_header() {
+                let payload = icmp.payload();
+                let echo_id = u64::from_be_bytes(*payload.first_chunk().unwrap());
+                tracing::debug!(%echo_id, "Received ICMP request");
 
-                self.received_icmp_requests.insert(payload, packet.clone());
+                self.received_icmp_requests.insert(echo_id, packet.clone());
 
                 let echo_response = ip_packet::make::icmp_reply_packet(
                     packet.destination(),
                     packet.source(),
-                    request.sequence(),
-                    request.identifier(),
-                    request.payload(),
+                    echo_request.seq,
+                    echo_request.id,
+                    payload,
                 )
                 .expect("src and dst are taken from incoming packet");
                 let transmit = self
