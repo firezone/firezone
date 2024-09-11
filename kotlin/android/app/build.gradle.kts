@@ -47,7 +47,7 @@ android {
 
     // Life is easier if we just match the default NDK on the Ubuntu 22.04 runners
     // https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2204-Readme.md#android
-    ndkVersion = "27.1.12297006"
+    ndkVersion = "27"
 
     defaultConfig {
         applicationId = "dev.firezone.android"
