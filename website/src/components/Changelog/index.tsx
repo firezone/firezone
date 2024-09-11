@@ -16,9 +16,9 @@ export default function Changelog() {
 
   useEffect(() => {
     const fetchSha = async () => {
-      const response = await fetch("/api/deployed-sha");
-      const data = await response.json();
-      setSha(data.sha);
+      const response = await fetch("/api/releases");
+      const versions = await response.json();
+      setSha(versions.portal);
     };
     fetchSha();
   }, []);
@@ -47,7 +47,7 @@ export default function Changelog() {
       </TabsGroup>
       {sha && (
         <p className="text-sm md:text-lg mt-4 md:mt-8">
-          Current SHA of Portal and Relays in production is{" "}
+          Current SHA of Portal and Relays in production:{" "}
           <Link
             href={`https://www.github.com/firezone/firezone/tree/${sha}`}
             className="underline hover:no-underline text-accent-500"
