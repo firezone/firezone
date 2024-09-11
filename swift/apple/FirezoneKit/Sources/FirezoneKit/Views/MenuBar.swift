@@ -27,6 +27,10 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private var cancellables: Set<AnyCancellable> = []
 
+  private var updateChecker: UpdateChecker = UpdateChecker()
+
+
+
   @ObservedObject var model: SessionViewModel
 
   private lazy var signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
