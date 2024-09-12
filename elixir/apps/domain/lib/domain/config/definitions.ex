@@ -556,7 +556,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:outbound_email_from, :string,
     default: fn ->
-      external_uri = URI.parse(compile_config!(:external_url))
+      external_uri = URI.parse(compile_config!(:web_external_url))
       "firezone@#{external_uri.host}"
     end,
     sensitive: true,
