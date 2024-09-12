@@ -36,6 +36,8 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
+        assert!(net.notified().await.is_ok());
+
         tracing::debug!("Closing DNS notifier...");
         dns.close().unwrap();
         tracing::debug!("Closing network notifier...");

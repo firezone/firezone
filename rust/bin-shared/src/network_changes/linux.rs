@@ -56,7 +56,10 @@ pub async fn new_network_notifier(
     method: DnsControlMethod,
 ) -> Result<Worker> {
     match method {
-        DnsControlMethod::Disabled | DnsControlMethod::EtcResolvConf => Ok(Worker::Null),
+        DnsControlMethod::Disabled | DnsControlMethod::EtcResolvConf => Ok(Worker {
+            just_started: false,
+            inner: Inner::Null,
+        }),
         DnsControlMethod::SystemdResolved => {
             Worker::new_dbus(SignalParams {
                 dest: "org.freedesktop.NetworkManager",
@@ -69,7 +72,12 @@ pub async fn new_network_notifier(
     }
 }
 
-pub enum Worker {
+pub(crate) struct Worker {
+    just_started: bool,
+    inner: Inner,
+}
+
+enum Inner {
     Closed,
     DBus(zbus::proxy::SignalStream<'static>),
     DnsPoller(Interval),
@@ -80,7 +88,10 @@ impl Worker {
     fn new_dns_poller() -> Self {
         let mut interval = tokio::time::interval(Duration::from_secs(5));
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        Self::DnsPoller(interval)
+        Self {
+            just_started: true,
+            inner: Inner::DnsPoller(interval),
+        }
     }
 
     async fn new_dbus(params: SignalParams) -> Result<Self> {
@@ -94,30 +105,39 @@ impl Worker {
         let cxn = zbus::Connection::system().await?;
         let proxy = zbus::Proxy::new_owned(cxn, dest, path, interface).await?;
         let stream = proxy.receive_signal(member).await?;
-        Ok(Self::DBus(stream))
+        Ok(Self {
+            just_started: true,
+            inner: Inner::DBus(stream),
+        })
     }
 
     // Needed to match Windows
-    pub fn close(&mut self) -> Result<()> {
-        *self = Self::Closed;
+    pub(crate) fn close(&mut self) -> Result<()> {
+        self.just_started = false;
+        self.inner = Inner::Closed;
         Ok(())
     }
 
     // `Result` needed to match Windows
     #[allow(clippy::unnecessary_wraps)]
-    pub async fn notified(&mut self) -> Result<()> {
-        match self {
-            Self::Closed => bail!("Notifier is closed"),
-            Self::DnsPoller(interval) => {
+    pub(crate) async fn notified(&mut self) -> Result<()> {
+        if self.just_started {
+            // Always notify after startup to prevent gaps
+            self.just_started = false;
+            return Ok(());
+        }
+        match &mut self.inner {
+            Inner::Closed => bail!("Notifier is closed"),
+            Inner::DnsPoller(interval) => {
                 interval.tick().await;
             }
-            Self::DBus(stream) => {
+            Inner::DBus(stream) => {
                 if stream.next().await.is_none() {
                     futures::future::pending::<()>().await;
                 }
                 tracing::debug!("DBus notified us");
             }
-            Self::Null => futures::future::pending::<()>().await,
+            Inner::Null => futures::future::pending::<()>().await,
         }
         Ok(())
     }
