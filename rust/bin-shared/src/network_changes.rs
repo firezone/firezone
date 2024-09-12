@@ -41,7 +41,7 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
-        // The notifiers always notify once they starts listening for changes, to avoid gaps during startup.
+        // The notifiers always notify once they start listening for changes, to avoid gaps during startup.
         timeout(Duration::from_secs(1), dns.notified())
             .await
             .unwrap()
