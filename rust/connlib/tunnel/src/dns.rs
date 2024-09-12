@@ -34,7 +34,7 @@ pub struct StubResolver {
 #[derive(Debug)]
 pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
-    LocalResponse(IpPacket<'static>),
+    LocalResponse(IpPacket),
     /// The query is for a non-Resource, forward it to an upstream or system resolver.
     ForwardQuery {
         upstream: SocketAddr,

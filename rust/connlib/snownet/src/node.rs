@@ -285,14 +285,13 @@ where
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
     /// - `Ok(Some)` if the packet was an encrypted wireguard packet from a peer.
     ///   The `Option` contains the connection on which the packet was decrypted.
-    pub fn decapsulate<'b>(
+    pub fn decapsulate(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-        buffer: &'b mut [u8],
-    ) -> Result<Option<(TId, IpPacket<'b>)>, Error> {
+    ) -> Result<Option<(TId, IpPacket)>, Error> {
         self.add_local_as_host_candidate(local)?;
 
         let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
@@ -309,7 +308,7 @@ where
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        let (id, packet) = match self.connections_try_handle(from, packet, buffer, now) {
+        let (id, packet) = match self.connections_try_handle(from, packet, now) {
             ControlFlow::Continue(c) => c,
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
@@ -326,7 +325,7 @@ where
     pub fn encapsulate(
         &mut self,
         connection: TId,
-        packet: IpPacket<'_>,
+        packet: IpPacket,
         now: Instant,
         buffer: &mut EncryptBuffer,
     ) -> Result<Option<EncryptedPacket>, Error> {
@@ -707,13 +706,12 @@ where
     }
 
     #[must_use]
-    fn connections_try_handle<'b>(
+    fn connections_try_handle(
         &mut self,
         from: SocketAddr,
         packet: &[u8],
-        buffer: &'b mut [u8],
         now: Instant,
-    ) -> ControlFlow<Result<(), Error>, (TId, IpPacket<'b>)> {
+    ) -> ControlFlow<Result<(), Error>, (TId, IpPacket)> {
         for (cid, conn) in self.connections.iter_established_mut() {
             if !conn.accepts(&from) {
                 continue;
@@ -723,7 +721,6 @@ where
 
             let control_flow = conn.decapsulate(
                 packet,
-                buffer,
                 &mut self.allocations,
                 &mut self.buffered_transmits,
                 now,
@@ -1702,15 +1699,15 @@ where
         Ok(Some(&buffer[..len]))
     }
 
-    fn decapsulate<'b>(
+    fn decapsulate(
         &mut self,
         packet: &[u8],
-        buffer: &'b mut [u8],
         allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
-    ) -> ControlFlow<Result<(), Error>, IpPacket<'b>> {
+    ) -> ControlFlow<Result<(), Error>, IpPacket> {
         let _guard = self.span.enter();
+        let mut buffer = [0u8; 1336];
 
         let control_flow = match self.tunnel.decapsulate(None, packet, &mut buffer[20..]) {
             TunnResult::Done => ControlFlow::Break(Ok(())),
@@ -1722,7 +1719,7 @@ where
             // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
             TunnResult::WriteToTunnelV4(packet, ip) => {
                 let packet_len = packet.len();
-                let ipv4_packet = ConvertibleIpv4Packet::new(&mut buffer[..(packet_len + 20)])
+                let ipv4_packet = ConvertibleIpv4Packet::new(buffer, 20, packet_len)
                     .expect("boringtun verifies validity");
                 debug_assert_eq!(ipv4_packet.get_source(), ip);
 
@@ -1733,7 +1730,7 @@ where
                 // for ipv6 we just need this to convince the borrow-checker that `packet`'s lifetime isn't `'b`, otherwise it's taken
                 // as `'b` for all branches.
                 let packet_len = packet.len();
-                let ipv6_packet = ConvertibleIpv6Packet::new(&mut buffer[20..(packet_len + 20)])
+                let ipv6_packet = ConvertibleIpv6Packet::new(buffer, 20, packet_len)
                     .expect("boringtun verifies validity");
                 debug_assert_eq!(ipv6_packet.get_source(), ip);
 

@@ -27,9 +27,9 @@ pub struct Io {
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
 }
 
-pub enum Input<'a, I> {
+pub enum Input<I> {
     Timeout(Instant),
-    Device(IpPacket<'a>),
+    Device(IpPacket),
     Network(I),
 }
 
@@ -58,21 +58,20 @@ impl Io {
         self.sockets.poll_has_sockets(cx)
     }
 
-    pub fn poll<'b1, 'b2>(
+    pub fn poll<'b>(
         &mut self,
         cx: &mut Context<'_>,
-        ip4_buffer: &'b1 mut [u8],
-        ip6_bffer: &'b1 mut [u8],
-        device_buffer: &'b2 mut [u8],
+        ip4_buffer: &'b mut [u8],
+        ip6_bffer: &'b mut [u8],
         encrypt_buffer: &EncryptBuffer,
-    ) -> Poll<io::Result<Input<'b2, impl Iterator<Item = DatagramIn<'b1>>>>> {
+    ) -> Poll<io::Result<Input<impl Iterator<Item = DatagramIn<'b>>>>> {
         ready!(self.poll_send_unwritten(cx, encrypt_buffer)?);
 
         if let Poll::Ready(network) = self.sockets.poll_recv_from(ip4_buffer, ip6_bffer, cx)? {
             return Poll::Ready(Ok(Input::Network(network.filter(is_max_wg_packet_size))));
         }
 
-        if let Poll::Ready(packet) = self.device.poll_read(device_buffer, cx)? {
+        if let Poll::Ready(packet) = self.device.poll_read(cx)? {
             return Poll::Ready(Ok(Input::Device(packet)));
         }
 
@@ -157,7 +156,7 @@ impl Io {
         Ok(())
     }
 
-    pub fn send_device(&self, packet: IpPacket<'_>) -> io::Result<()> {
+    pub fn send_device(&self, packet: IpPacket) -> io::Result<()> {
         self.device.write(packet)?;
 
         Ok(())

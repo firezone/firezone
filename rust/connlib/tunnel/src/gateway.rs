@@ -157,7 +157,7 @@ impl GatewayState {
 
     pub(crate) fn encapsulate(
         &mut self,
-        packet: IpPacket<'_>,
+        packet: IpPacket,
         now: Instant,
         buffer: &mut EncryptBuffer,
     ) -> Option<snownet::EncryptedPacket> {
@@ -188,20 +188,18 @@ impl GatewayState {
         Some(transmit)
     }
 
-    pub(crate) fn decapsulate<'b>(
+    pub(crate) fn decapsulate(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-        buffer: &'b mut [u8],
-    ) -> Option<IpPacket<'b>> {
+    ) -> Option<IpPacket> {
         let (cid, packet) = self.node.decapsulate(
             local,
             from,
             packet,
             now,
-            buffer,
         )
         .inspect_err(|e| tracing::debug!(%from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;

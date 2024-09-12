@@ -21,10 +21,7 @@ use icmpv4_header_slice_mut::Icmpv4HeaderSliceMut;
 use icmpv6_header_slice_mut::Icmpv6EchoHeaderSliceMut;
 use ipv4_header_slice_mut::Ipv4HeaderSliceMut;
 use ipv6_header_slice_mut::Ipv6HeaderSliceMut;
-use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    ops::{Deref, DerefMut},
-};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use tcp_header_slice_mut::TcpHeaderSliceMut;
 use udp_header_slice_mut::UdpHeaderSliceMut;
 
@@ -75,12 +72,12 @@ impl Protocol {
 }
 
 #[derive(PartialEq, Clone)]
-pub enum IpPacket<'a> {
-    Ipv4(ConvertibleIpv4Packet<'a>),
-    Ipv6(ConvertibleIpv6Packet<'a>),
+pub enum IpPacket {
+    Ipv4(ConvertibleIpv4Packet),
+    Ipv6(ConvertibleIpv6Packet),
 }
 
-impl<'a> std::fmt::Debug for IpPacket<'a> {
+impl std::fmt::Debug for IpPacket {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut dbg = f.debug_struct("Packet");
 
@@ -117,71 +114,17 @@ impl<'a> std::fmt::Debug for IpPacket<'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
-enum MaybeOwned<'a> {
-    RefMut(&'a mut [u8]),
-    Owned(Vec<u8>),
-}
-
-impl<'a> MaybeOwned<'a> {
-    fn remove_from_head(self, bytes: usize) -> MaybeOwned<'a> {
-        match self {
-            MaybeOwned::RefMut(ref_mut) => MaybeOwned::RefMut(&mut ref_mut[bytes..]),
-            MaybeOwned::Owned(mut owned) => {
-                owned.drain(0..bytes);
-                MaybeOwned::Owned(owned)
-            }
-        }
-    }
-}
-
-impl<'a> Clone for MaybeOwned<'a> {
-    fn clone(&self) -> Self {
-        match self {
-            Self::RefMut(i) => Self::Owned(i.to_vec()),
-            Self::Owned(i) => Self::Owned(i.clone()),
-        }
-    }
-}
-
-impl<'a> Deref for MaybeOwned<'a> {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            MaybeOwned::RefMut(ref_mut) => ref_mut,
-            MaybeOwned::Owned(owned) => owned,
-        }
-    }
-}
-
-impl<'a> DerefMut for MaybeOwned<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self {
-            MaybeOwned::RefMut(ref_mut) => ref_mut,
-            MaybeOwned::Owned(owned) => owned,
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Clone)]
-pub struct ConvertibleIpv4Packet<'a> {
-    buf: MaybeOwned<'a>,
+pub struct ConvertibleIpv4Packet {
+    buf: [u8; 1336],
+    start: usize,
+    len: usize,
 }
 
-impl<'a> ConvertibleIpv4Packet<'a> {
-    pub fn new(buf: &'a mut [u8]) -> Option<ConvertibleIpv4Packet<'a>> {
-        Ipv4HeaderSlice::from_slice(&buf[20..]).ok()?;
-        Some(Self {
-            buf: MaybeOwned::RefMut(buf),
-        })
-    }
-
-    fn owned(buf: Vec<u8>) -> Option<ConvertibleIpv4Packet<'a>> {
-        Ipv4HeaderSlice::from_slice(&buf[20..]).ok()?;
-        Some(Self {
-            buf: MaybeOwned::Owned(buf),
-        })
+impl ConvertibleIpv4Packet {
+    pub fn new(buf: [u8; 1336], start: usize, len: usize) -> Option<ConvertibleIpv4Packet> {
+        Ipv4HeaderSlice::from_slice(&buf[start..(start + len)]).ok()?;
+        Some(Self { buf, start, len })
     }
 
     fn ip_header(&self) -> Ipv4HeaderSlice {
@@ -200,17 +143,18 @@ impl<'a> ConvertibleIpv4Packet<'a> {
         self.ip_header().destination_addr()
     }
 
-    fn consume_to_ipv6(
-        mut self,
-        src: Ipv6Addr,
-        dst: Ipv6Addr,
-    ) -> Option<ConvertibleIpv6Packet<'a>> {
+    fn consume_to_ipv6(mut self, src: Ipv6Addr, dst: Ipv6Addr) -> Option<ConvertibleIpv6Packet> {
         let offset = nat46::translate_in_place(&mut self.buf, src, dst)
             .inspect_err(|e| tracing::trace!("NAT64 failed: {e:#}"))
             .ok()?;
-        let buf = self.buf.remove_from_head(offset);
 
-        Some(ConvertibleIpv6Packet { buf })
+        let len_diff = self.start - offset;
+
+        Some(ConvertibleIpv6Packet {
+            buf: self.buf,
+            start: offset,
+            len: self.len + len_diff,
+        })
     }
 
     fn header_length(&self) -> usize {
@@ -218,34 +162,26 @@ impl<'a> ConvertibleIpv4Packet<'a> {
     }
 
     pub fn packet(&self) -> &[u8] {
-        &self.buf[20..]
+        &self.buf[self.start..(self.start + self.len)]
     }
 
     fn packet_mut(&mut self) -> &mut [u8] {
-        &mut self.buf[20..]
+        &mut self.buf[self.start..(self.start + self.len)]
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ConvertibleIpv6Packet<'a> {
-    buf: MaybeOwned<'a>,
+pub struct ConvertibleIpv6Packet {
+    buf: [u8; 1336],
+    start: usize,
+    len: usize,
 }
 
-impl<'a> ConvertibleIpv6Packet<'a> {
-    pub fn new(buf: &'a mut [u8]) -> Option<ConvertibleIpv6Packet<'a>> {
-        Ipv6HeaderSlice::from_slice(buf).ok()?;
+impl ConvertibleIpv6Packet {
+    pub fn new(buf: [u8; 1336], start: usize, len: usize) -> Option<ConvertibleIpv6Packet> {
+        Ipv6HeaderSlice::from_slice(&buf[start..(start + len)]).ok()?;
 
-        Some(Self {
-            buf: MaybeOwned::RefMut(buf),
-        })
-    }
-
-    fn owned(buf: Vec<u8>) -> Option<ConvertibleIpv6Packet<'a>> {
-        Ipv6HeaderSlice::from_slice(&buf).ok()?;
-
-        Some(Self {
-            buf: MaybeOwned::Owned(buf),
-        })
+        Some(Self { buf, start, len })
     }
 
     fn header(&self) -> Ipv6HeaderSlice {
@@ -265,24 +201,24 @@ impl<'a> ConvertibleIpv6Packet<'a> {
         self.header().destination_addr()
     }
 
-    fn consume_to_ipv4(
-        mut self,
-        src: Ipv4Addr,
-        dst: Ipv4Addr,
-    ) -> Option<ConvertibleIpv4Packet<'a>> {
+    fn consume_to_ipv4(mut self, src: Ipv4Addr, dst: Ipv4Addr) -> Option<ConvertibleIpv4Packet> {
         nat64::translate_in_place(&mut self.buf, src, dst)
             .inspect_err(|e| tracing::trace!("NAT64 failed: {e:#}"))
             .ok()?;
 
-        Some(ConvertibleIpv4Packet { buf: self.buf })
+        Some(ConvertibleIpv4Packet {
+            buf: self.buf,
+            start: 0,
+            len: self.len,
+        })
     }
 
     pub fn packet(&self) -> &[u8] {
-        &self.buf
+        &self.buf[self.start..(self.start + self.len)]
     }
 
     fn packet_mut(&mut self) -> &mut [u8] {
-        &mut self.buf
+        &mut self.buf[self.start..(self.start + self.len)]
     }
 }
 
@@ -318,48 +254,24 @@ pub fn ipv6_translated(ip: Ipv6Addr) -> Option<Ipv4Addr> {
     ))
 }
 
-impl<'a> IpPacket<'a> {
+impl IpPacket {
     // TODO: this API is a bit akward, since you have to pass the extra prepended 20 bytes
-    pub fn new(buf: &'a mut [u8]) -> Option<Self> {
-        match buf[20] >> 4 {
-            4 => Some(IpPacket::Ipv4(ConvertibleIpv4Packet::new(buf)?)),
-            6 => Some(IpPacket::Ipv6(ConvertibleIpv6Packet::new(&mut buf[20..])?)),
+    pub fn new(buf: [u8; 1336], start: usize, end: usize) -> Option<Self> {
+        match buf[start] >> 4 {
+            4 => Some(IpPacket::Ipv4(ConvertibleIpv4Packet::new(buf, start, end)?)),
+            6 => Some(IpPacket::Ipv6(ConvertibleIpv6Packet::new(buf, start, end)?)),
             _ => None,
         }
     }
 
-    pub(crate) fn owned(mut data: Vec<u8>) -> Option<IpPacket<'static>> {
-        let packet = match data[20] >> 4 {
-            4 => ConvertibleIpv4Packet::owned(data)?.into(),
-            6 => {
-                data.drain(0..20);
-                ConvertibleIpv6Packet::owned(data)?.into()
-            }
-            _ => return None,
-        };
-
-        Some(packet)
-    }
-
-    pub fn to_owned(&self) -> IpPacket<'static> {
-        match self {
-            IpPacket::Ipv4(i) => IpPacket::Ipv4(ConvertibleIpv4Packet {
-                buf: MaybeOwned::Owned(i.buf.to_vec()),
-            }),
-            IpPacket::Ipv6(i) => IpPacket::Ipv6(ConvertibleIpv6Packet {
-                buf: MaybeOwned::Owned(i.buf.to_vec()),
-            }),
-        }
-    }
-
-    pub(crate) fn consume_to_ipv4(self, src: Ipv4Addr, dst: Ipv4Addr) -> Option<IpPacket<'a>> {
+    pub(crate) fn consume_to_ipv4(self, src: Ipv4Addr, dst: Ipv4Addr) -> Option<IpPacket> {
         match self {
             IpPacket::Ipv4(pkt) => Some(IpPacket::Ipv4(pkt)),
             IpPacket::Ipv6(pkt) => Some(IpPacket::Ipv4(pkt.consume_to_ipv4(src, dst)?)),
         }
     }
 
-    pub(crate) fn consume_to_ipv6(self, src: Ipv6Addr, dst: Ipv6Addr) -> Option<IpPacket<'a>> {
+    pub(crate) fn consume_to_ipv6(self, src: Ipv6Addr, dst: Ipv6Addr) -> Option<IpPacket> {
         match self {
             IpPacket::Ipv4(pkt) => Some(IpPacket::Ipv6(pkt.consume_to_ipv6(src, dst)?)),
             IpPacket::Ipv6(pkt) => Some(IpPacket::Ipv6(pkt)),
@@ -668,7 +580,7 @@ impl<'a> IpPacket<'a> {
         src_v6: Ipv6Addr,
         src_proto: Protocol,
         dst: IpAddr,
-    ) -> Option<IpPacket<'a>> {
+    ) -> Option<IpPacket> {
         let mut packet = match (&self, dst) {
             (&IpPacket::Ipv4(_), IpAddr::V6(dst)) => self.consume_to_ipv6(src_v6, dst)?,
             (&IpPacket::Ipv6(_), IpAddr::V4(dst)) => self.consume_to_ipv4(src_v4, dst)?,
@@ -688,7 +600,7 @@ impl<'a> IpPacket<'a> {
         dst_v6: Ipv6Addr,
         dst_proto: Protocol,
         src: IpAddr,
-    ) -> Option<IpPacket<'a>> {
+    ) -> Option<IpPacket> {
         let mut packet = match (&self, src) {
             (&IpPacket::Ipv4(_), IpAddr::V6(src)) => self.consume_to_ipv6(src, dst_v6)?,
             (&IpPacket::Ipv6(_), IpAddr::V4(src)) => self.consume_to_ipv4(src, dst_v4)?,
@@ -817,14 +729,14 @@ impl<'a> IpPacket<'a> {
     }
 }
 
-impl<'a> From<ConvertibleIpv4Packet<'a>> for IpPacket<'a> {
-    fn from(value: ConvertibleIpv4Packet<'a>) -> Self {
+impl From<ConvertibleIpv4Packet> for IpPacket {
+    fn from(value: ConvertibleIpv4Packet) -> Self {
         Self::Ipv4(value)
     }
 }
 
-impl<'a> From<ConvertibleIpv6Packet<'a>> for IpPacket<'a> {
-    fn from(value: ConvertibleIpv6Packet<'a>) -> Self {
+impl From<ConvertibleIpv6Packet> for IpPacket {
+    fn from(value: ConvertibleIpv6Packet) -> Self {
         Self::Ipv6(value)
     }
 }

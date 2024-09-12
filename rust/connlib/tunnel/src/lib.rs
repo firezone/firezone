@@ -83,10 +83,6 @@ pub struct Tunnel<TRoleState> {
     ip4_read_buf: Box<[u8; MAX_UDP_SIZE]>,
     ip6_read_buf: Box<[u8; MAX_UDP_SIZE]>,
 
-    /// Buffer for reading a single IP packet.
-    device_read_buf: Box<[u8; BUF_SIZE]>,
-    /// Buffer for decryping a single packet.
-    decrypt_buf: Box<[u8; BUF_SIZE]>,
     /// Buffer for encrypting a single packet.
     encrypt_buf: EncryptBuffer,
 }
@@ -101,11 +97,9 @@ impl ClientTunnel {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: ClientState::new(private_key, known_hosts, rand::random()),
-            device_read_buf: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             encrypt_buf: EncryptBuffer::new(BUF_SIZE),
-            decrypt_buf: Box::new([0u8; BUF_SIZE]),
         }
     }
 
@@ -140,7 +134,6 @@ impl ClientTunnel {
                 cx,
                 self.ip4_read_buf.as_mut(),
                 self.ip6_read_buf.as_mut(),
-                self.device_read_buf.as_mut(),
                 &self.encrypt_buf,
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
@@ -169,7 +162,6 @@ impl ClientTunnel {
                             received.from,
                             received.packet,
                             Instant::now(),
-                            self.decrypt_buf.as_mut(),
                         ) else {
                             continue;
                         };
@@ -200,11 +192,9 @@ impl GatewayTunnel {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: GatewayState::new(private_key, rand::random()),
-            device_read_buf: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             encrypt_buf: EncryptBuffer::new(BUF_SIZE),
-            decrypt_buf: Box::new([0u8; BUF_SIZE]),
         }
     }
 
@@ -234,7 +224,6 @@ impl GatewayTunnel {
                 cx,
                 self.ip4_read_buf.as_mut(),
                 self.ip6_read_buf.as_mut(),
-                self.device_read_buf.as_mut(),
                 &self.encrypt_buf,
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
@@ -263,7 +252,6 @@ impl GatewayTunnel {
                             received.from,
                             received.packet,
                             Instant::now(),
-                            self.device_read_buf.as_mut(),
                         ) else {
                             continue;
                         };
