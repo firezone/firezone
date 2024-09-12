@@ -33,6 +33,9 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
+        // The network notifier always notifies once it starts listening for changes, to avoid gaps during startup.
+        assert!(net.notified().await.is_ok());
+
         dns.close().unwrap();
         net.close().unwrap();
     }
