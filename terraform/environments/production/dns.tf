@@ -168,19 +168,6 @@ resource "google_dns_record_set" "trust-dns-caa" {
   ttl = 3600
 }
 
-resource "google_dns_record_set" "oneleet-trust" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  name = "trust.${module.google-cloud-dns.dns_name}"
-  type = "CNAME"
-  ttl  = 3600
-
-  rrdatas = [
-    "trust.oneleet.com."
-  ]
-}
-
 # Stripe checkout pages
 
 resource "google_dns_record_set" "stripe-checkout" {
