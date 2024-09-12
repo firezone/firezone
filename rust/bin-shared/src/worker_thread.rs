@@ -7,7 +7,7 @@
 //! Using a worker thread and `LocalSet` appeases these APIs.
 
 use anyhow::{anyhow, Context as _, Result};
-use std::{future::Future, thread};
+use std::thread;
 use tokio::sync::{mpsc, oneshot};
 
 /// Container for a worker thread that we can cooperatively stop.

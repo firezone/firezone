@@ -98,9 +98,8 @@ pub async fn new_dns_notifier(
         let out_tx = NotifySender { tx: out_tx };
         let local = LocalSet::new();
         let tokio_handle_2 = tokio_handle.clone();
-        let task = local.run_until(async move {
-            async_dns::worker_task(tokio_handle, out_tx, stop_rx).await
-        });
+        let task = local
+            .run_until(async move { async_dns::worker_task(tokio_handle, out_tx, stop_rx).await });
         tokio_handle_2.block_on(task)
     })
 }

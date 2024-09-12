@@ -163,13 +163,13 @@ impl<I: GuiIntegration> Controller<I> {
         let dns_control_method = Default::default();
 
         let mut dns_notifier = new_dns_notifier(tokio_handle.clone(), dns_control_method).await?;
-        let (mut net_notify_worker, mut net_notify_rx) =
+        let mut net_notifier =
             new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
         drop(tokio_handle);
 
         loop {
             tokio::select! {
-                result = net_notify_rx.notified() => {
+                result = net_notifier.notified() => {
                     result?;
                     if self.status.needs_network_changes() {
                         tracing::debug!("Internet up/down changed, calling `Session::reset`");
@@ -219,7 +219,7 @@ impl<I: GuiIntegration> Controller<I> {
         if let Err(error) = dns_notifier.close() {
             tracing::error!(?error, "dns_notifier");
         }
-        if let Err(error) = net_notify_worker.close() {
+        if let Err(error) = net_notifier.close() {
             tracing::error!(?error, "net_notify_worker");
         }
         if let Err(error) = self.ipc_client.disconnect_from_ipc().await {

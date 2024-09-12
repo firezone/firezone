@@ -221,7 +221,7 @@ fn main() -> Result<()> {
 
         let mut dns_notifier = new_dns_notifier(tokio_handle.clone(), dns_control_method).await?;
 
-        let (mut net_notify_worker, mut net_notify_rx) =
+        let mut net_notifier =
             new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
         drop(tokio_handle);
 
@@ -231,7 +231,7 @@ fn main() -> Result<()> {
 
         let result = loop {
             let mut dns_changed = pin!(dns_notifier.notified().fuse());
-            let mut network_changed = pin!(net_notify_rx.notified().fuse());
+            let mut network_changed = pin!(net_notifier.notified().fuse());
 
             let cb = futures::select! {
                 () = terminate => {
@@ -295,7 +295,7 @@ fn main() -> Result<()> {
             tracing::error!(?error, "DNS listener");
         }
 
-        if let Err(error) = net_notify_worker.close() {
+        if let Err(error) = net_notifier.close() {
             tracing::error!(?error, "network listener");
         }
 
