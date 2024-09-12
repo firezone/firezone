@@ -22,6 +22,7 @@ mod tests {
     /// This tests that the threads quit gracefully when we call `close`, and they don't crash on startup.
     #[tokio::test]
     async fn notifiers() {
+        firezone_logging::test_global("debug");
         let tokio_handle = tokio::runtime::Handle::current();
 
         let mut dns = new_dns_notifier(tokio_handle.clone(), DnsControlMethod::default())

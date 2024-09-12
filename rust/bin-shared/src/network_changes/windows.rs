@@ -86,7 +86,7 @@ pub async fn new_dns_notifier(
     tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
 ) -> Result<Worker> {
-    Worker::new("Firezone DNS monitoring worker", move |tx, stopper_rx| {
+    Worker::new("Firezone DNS notifier worker", move |tx, stopper_rx| {
         async_dns::worker_thread(tokio_handle, tx, stopper_rx)?;
         Ok(())
     })
@@ -98,17 +98,15 @@ pub async fn new_network_notifier(
     _tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
 ) -> Result<Worker> {
-    Worker::new(
-        "Firezone network monitoring worker",
-        move |tx, stopper_rx| {
-            {
-                let com = ComGuard::new()?;
-                let _network_change_listener = Listener::new(&com, tx)?;
-                stopper_rx.blocking_recv().ok();
-            }
-            Ok(())
-        },
-    )
+    Worker::new("Firezone network notifier worker", move |tx, stopper_rx| {
+        {
+            let com = ComGuard::new()?;
+            let listener = Listener::new(&com, tx)?;
+            stopper_rx.blocking_recv().ok();
+            listener.close()?;
+        }
+        Ok(())
+    })
 }
 
 /// Container for a worker thread that we can cooperatively stop.
@@ -146,7 +144,7 @@ impl Worker {
     /// Same as `drop`, but you can catch errors
     pub fn close(&mut self) -> Result<()> {
         if let Some(inner) = self.inner.take() {
-            tracing::debug!(
+            tracing::trace!(
                 thread_name = self.thread_name,
                 "Asking worker thread to stop gracefully"
             );
@@ -158,7 +156,7 @@ impl Worker {
                 Err(e) => std::panic::resume_unwind(e),
                 Ok(x) => x?,
             }
-            tracing::debug!("Worker thread stopped gracefully");
+            tracing::trace!("Worker thread stopped gracefully");
         }
         Ok(())
     }
@@ -236,7 +234,7 @@ impl Drop for ComGuard {
             // Safety: Make sure all the COM objects are dropped before we call
             // CoUninitialize or the program might segfault.
             unsafe { Com::CoUninitialize() };
-            tracing::debug!("Uninitialized COM");
+            tracing::trace!("Uninitialized COM");
         }
     }
 }
@@ -265,7 +263,7 @@ impl<'a> Drop for Listener<'a> {
     // we crash the GUI process before we can get back to the main thread
     // and drop the DNS listeners
     fn drop(&mut self) {
-        self.close().unwrap();
+        self.close_dont_drop().unwrap();
     }
 }
 
@@ -325,12 +323,16 @@ impl<'a> Listener<'a> {
     /// Like `drop`, but you can catch errors
     ///
     /// Unregisters the network change callbacks
-    pub fn close(&mut self) -> Result<()> {
+    pub fn close(mut self) -> Result<()> {
+        self.close_dont_drop()
+    }
+
+    fn close_dont_drop(&mut self) -> Result<()> {
         if let Some(cookie) = self.advise_cookie_net.take() {
             // SAFETY: I don't see any memory safety issues.
             unsafe { self.cxn_point_net.Unadvise(cookie) }
                 .context("Failed to unadvise connection point")?;
-            tracing::debug!("Unadvised");
+            tracing::trace!("Unadvised");
         }
         Ok(())
     }
@@ -367,7 +369,7 @@ impl INetworkEvents_Impl for Callback_Impl {
 
 impl Drop for Callback {
     fn drop(&mut self) {
-        tracing::debug!("Dropped `network_changes::Callback`");
+        tracing::trace!("Dropped `network_changes::Callback`");
     }
 }
 
@@ -435,6 +437,13 @@ mod async_dns {
                 }
             }
 
+            if let Err(error) = listener_4.close() {
+                tracing::error!(?error, "Error while closing IPv4 DNS listener");
+            }
+            if let Err(error) = listener_6.close() {
+                tracing::error!(?error, "Error while closing IPv6 DNS listener");
+            }
+
             Ok(())
         });
 
@@ -456,6 +465,11 @@ mod async_dns {
         // So don't ever do `self._tx = $ANYTHING` after `new`, it'll break the callback.
         _tx: Box<mpsc::Sender<()>>,
         rx: mpsc::Receiver<()>,
+        // Separated so that multiple `drop` calls are safe and wont' panic
+        inner: Option<ListenerInner>,
+    }
+
+    struct ListenerInner {
         /// A handle representing our registered callback from `RegisterWaitForSingleObject`
         ///
         /// This doesn't get signalled, it's just used so we can unregister and stop the
@@ -505,12 +519,12 @@ mod async_dns {
                 )
             }?;
 
+            let inner = ListenerInner { wait_handle, event };
             let mut that = Self {
                 key,
                 _tx: tx,
                 rx,
-                wait_handle,
-                event,
+                inner: Some(inner),
             };
             that.register_callback()?;
 
@@ -552,6 +566,10 @@ mod async_dns {
         //
         // > Each time a process calls RegNotifyChangeKeyValue with the same set of parameters, it establishes another wait operation, creating a resource leak. Therefore, check that you are not calling RegNotifyChangeKeyValue with the same parameters until the previous wait operation has completed.
         fn register_callback(&mut self) -> Result<()> {
+            let inner = self
+                .inner
+                .as_ref()
+                .context("Can't register callback after dropped")?;
             let key_handle = Registry::HKEY(self.key.raw_handle() as *mut c_void);
             let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
                 | Registry::REG_NOTIFY_CHANGE_LAST_SET
@@ -559,20 +577,32 @@ mod async_dns {
             // Ask Windows to signal our event once when anything inside this key changes.
             // We can't ask for repeated signals.
             unsafe {
-                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, self.event, true)
+                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, inner.event, true)
             }
             .ok()
             .context("`RegNotifyChangeKeyValue` failed")?;
+            Ok(())
+        }
+
+        fn close(mut self) -> Result<()> {
+            self.close_dont_drop()
+        }
+
+        fn close_dont_drop(&mut self) -> Result<()> {
+            if let Some(inner) = self.inner.take() {
+                unsafe { UnregisterWaitEx(inner.wait_handle, INVALID_HANDLE_VALUE) }
+                    .context("Should be able to `UnregisterWaitEx` in the DNS change listener")?;
+                unsafe { CloseHandle(inner.event) }
+                    .context("Should be able to `CloseHandle` in the DNS change listener")?;
+            }
             Ok(())
         }
     }
 
     impl Drop for Listener {
         fn drop(&mut self) {
-            unsafe { UnregisterWaitEx(self.wait_handle, INVALID_HANDLE_VALUE) }
-                .expect("Should be able to `UnregisterWaitEx` in the DNS change listener");
-            unsafe { CloseHandle(self.event) }
-                .expect("Should be able to `CloseHandle` in the DNS change listener");
+            self.close_dont_drop()
+                .expect("Should be able to close DNS listener");
         }
     }
 
