@@ -5,6 +5,7 @@ use super::{
 use crate::tests::reference::ResourceDst;
 use connlib_shared::{messages::GatewayId, DomainName};
 use ip_packet::IpPacket;
+use itertools::Itertools;
 use std::{
     collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, VecDeque},
     marker::PhantomData,
@@ -136,6 +137,33 @@ pub(crate) fn assert_dns_servers_are_valid(ref_client: &RefClient, sim_client: &
     }
 }
 
+pub(crate) fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimClient) {
+    let (expected_ipv4, expected_ipv6) = ref_client.expected_routes();
+    let (actual_ipv4, actual_ipv6) = (
+        sim_client.ipv4_routes.clone(),
+        sim_client.ipv6_routes.clone(),
+    );
+
+    let expected_ipv4 = BTreeSet::from_iter(expected_ipv4);
+    let actual_ipv4 = BTreeSet::from_iter(actual_ipv4);
+    let expected_ipv6 = BTreeSet::from_iter(expected_ipv6);
+    let actual_ipv6 = BTreeSet::from_iter(actual_ipv6);
+
+    if actual_ipv4 != expected_ipv4 {
+        let expected_ipv4 = expected_ipv4.iter().join(", ");
+        let actual_ipv4 = actual_ipv4.iter().join(", ");
+
+        tracing::error!(target: "assertions", actual = ?actual_ipv4, expected = ?expected_ipv4, "❌ IPv4 routes don't match");
+    }
+
+    if actual_ipv6 != expected_ipv6 {
+        let expected_ipv6 = expected_ipv6.iter().join(", ");
+        let actual_ipv6 = actual_ipv6.iter().join(", ");
+
+        tracing::error!(target: "assertions", actual = ?actual_ipv6, expected = ?expected_ipv6, "❌ IPv6 routes don't match");
+    }
+}
+
 pub(crate) fn assert_dns_packets_properties(ref_client: &RefClient, sim_client: &SimClient) {
     let unexpected_dns_replies = find_unexpected_entries(
         &ref_client.expected_dns_handshakes,
@@ -196,11 +224,11 @@ fn assert_correct_src_and_dst_udp_ports(
     client_sent_request: &IpPacket<'_>,
     client_received_reply: &IpPacket<'_>,
 ) {
-    let client_sent_request = client_sent_request.unwrap_as_udp();
-    let client_received_reply = client_received_reply.unwrap_as_udp();
+    let client_sent_request = client_sent_request.as_udp().unwrap();
+    let client_received_reply = client_received_reply.as_udp().unwrap();
 
-    let req_dst = client_sent_request.get_destination();
-    let res_src = client_received_reply.get_source();
+    let req_dst = client_sent_request.destination_port();
+    let res_src = client_received_reply.source_port();
 
     if req_dst != res_src {
         tracing::error!(target: "assertions", %req_dst, %res_src, "❌ req dst port != res src port");
@@ -208,8 +236,8 @@ fn assert_correct_src_and_dst_udp_ports(
         tracing::info!(target: "assertions", port = %req_dst, "✅ req dst port == res src port");
     }
 
-    let req_src = client_sent_request.get_source();
-    let res_dst = client_received_reply.get_destination();
+    let req_src = client_sent_request.source_port();
+    let res_dst = client_received_reply.destination_port();
 
     if req_src != res_dst {
         tracing::error!(target: "assertions", %req_src, %res_dst, "❌ req src port != res dst port");
