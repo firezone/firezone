@@ -280,6 +280,7 @@ RUN set -xe \
     # Install Firezone runtime deps
     && apk add --no-cache --update-cache \
     curl \
+    jq \
     tini
 
 # Create default user and home directory, set owner to default
