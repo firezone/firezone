@@ -543,7 +543,7 @@ public final class MenuBar: NSObject, ObservableObject {
   private func nonInternetResourceHeader(resource: Resource) -> NSMenu {
     let subMenu = NSMenu()
 
-    // AddressDescription first -- will be most common action
+    // Show addressDescription first if it's present
     let resourceAddressDescriptionItem = NSMenuItem()
     if let addressDescription = resource.addressDescription {
       resourceAddressDescriptionItem.title = addressDescription
@@ -554,11 +554,10 @@ public final class MenuBar: NSObject, ObservableObject {
         resourceAddressDescriptionItem.action = #selector(resourceURLTapped(_:))
         resourceAddressDescriptionItem.toolTip = "Click to open"
 
-        // TODO: Expose markdown support? Blocked by Tauri clients.
         // Using Markdown here only to highlight the URL
-        resourceAddressDescriptionItem.attributedTitle = try? NSAttributedString(markdown: "**[\(addressDescription)](\(addressDescription))**")
+        resourceAddressDescriptionItem.attributedTitle = try? NSAttributedString(markdown: "[\(addressDescription)](\(addressDescription))")
       } else {
-        resourceAddressDescriptionItem.attributedTitle = try? NSAttributedString(markdown: "**\(addressDescription)**")
+        resourceAddressDescriptionItem.title = addressDescription
         resourceAddressDescriptionItem.action = #selector(resourceValueTapped(_:))
         resourceAddressDescriptionItem.toolTip = "Click to copy"
       }

@@ -354,6 +354,7 @@ defmodule Domain.Config.Definitions do
         Elixir.Cluster.Strategy.Epmd,
         Elixir.Cluster.Strategy.Gossip,
         Elixir.Cluster.Strategy.Kubernetes,
+        Elixir.Cluster.Strategy.DNSPoll,
         Elixir.Domain.Cluster.GoogleComputeLabelsStrategy
       ]
     ),

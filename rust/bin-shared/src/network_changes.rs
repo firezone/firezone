@@ -34,7 +34,6 @@ mod tests {
 
         // Network change notifier always notifies once on startup
         assert!(net.notified().await.is_ok());
-
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
         dns.close().unwrap();

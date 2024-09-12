@@ -1,17 +1,17 @@
 //! Factory module for making all kinds of packets.
 
-use crate::{IpPacket, MutableIpPacket};
+use crate::IpPacket;
 use domain::{
     base::{
         iana::{Class, Opcode, Rcode},
-        MessageBuilder, Name, Question, Record, Rtype, ToName, Ttl,
+        Message, MessageBuilder, Name, Question, Record, Rtype, ToName, Ttl,
     },
     rdata::AllRecordData,
 };
 use etherparse::PacketBuilder;
 use std::net::{IpAddr, SocketAddr};
 
-/// Helper macro to turn a [`PacketBuilder`] into a [`MutableIpPacket`].
+/// Helper macro to turn a [`PacketBuilder`] into an [`IpPacket`].
 #[macro_export]
 macro_rules! build {
     ($packet:expr, $payload:ident) => {{
@@ -22,7 +22,7 @@ macro_rules! build {
             .write(&mut std::io::Cursor::new(&mut buf[20..]), &$payload)
             .expect("Buffer should be big enough");
 
-        MutableIpPacket::owned(buf).expect("Should be a valid IP packet")
+        IpPacket::owned(buf).expect("Should be a valid IP packet")
     }};
 }
 
@@ -32,7 +32,7 @@ pub fn icmp_request_packet(
     seq: u16,
     identifier: u16,
     payload: &[u8],
-) -> Result<MutableIpPacket<'static>, IpVersionMismatch> {
+) -> Result<IpPacket<'static>, IpVersionMismatch> {
     match (src, dst.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64)
@@ -56,7 +56,7 @@ pub fn icmp_reply_packet(
     seq: u16,
     identifier: u16,
     payload: &[u8],
-) -> Result<MutableIpPacket<'static>, IpVersionMismatch> {
+) -> Result<IpPacket<'static>, IpVersionMismatch> {
     match (src, dst.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64)
@@ -80,7 +80,7 @@ pub fn tcp_packet<IP>(
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
-) -> Result<MutableIpPacket<'static>, IpVersionMismatch>
+) -> Result<IpPacket<'static>, IpVersionMismatch>
 where
     IP: Into<IpAddr>,
 {
@@ -107,7 +107,7 @@ pub fn udp_packet<IP>(
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
-) -> Result<MutableIpPacket<'static>, IpVersionMismatch>
+) -> Result<IpPacket<'static>, IpVersionMismatch>
 where
     IP: Into<IpAddr>,
 {
@@ -132,7 +132,7 @@ pub fn dns_query(
     src: SocketAddr,
     dst: SocketAddr,
     id: u16,
-) -> Result<MutableIpPacket<'static>, IpVersionMismatch> {
+) -> Result<IpPacket<'static>, IpVersionMismatch> {
     // Create the DNS query message
     let mut msg_builder = MessageBuilder::new_vec();
 
@@ -155,12 +155,12 @@ pub fn dns_query(
 pub fn dns_ok_response<I>(
     packet: IpPacket<'static>,
     resolve: impl Fn(&Name<Vec<u8>>) -> I,
-) -> MutableIpPacket<'static>
+) -> IpPacket<'static>
 where
     I: Iterator<Item = IpAddr>,
 {
-    let udp = packet.unwrap_as_udp();
-    let query = packet.unwrap_as_dns();
+    let udp = packet.as_udp().unwrap();
+    let query = Message::from_octets(udp.payload().to_vec()).unwrap();
 
     let response = MessageBuilder::new_vec();
     let mut answers = response.start_answer(&query, Rcode::NOERROR).unwrap();
@@ -194,8 +194,8 @@ where
     udp_packet(
         packet.destination(),
         packet.source(),
-        udp.get_destination(),
-        udp.get_source(),
+        udp.destination_port(),
+        udp.source_port(),
         payload,
     )
     .expect("src and dst are retrieved from the same packet")
