@@ -162,7 +162,7 @@ mod tests {
         let (mut worker, mut rx) =
             Worker::new("Firezone bogus network notifier", notifier_task).unwrap();
 
-        assert_eq!(rx.recv().await.unwrap(), ());
+        rx.recv().await.unwrap();
         tracing::info!("Got notification");
 
         worker.close().unwrap();
