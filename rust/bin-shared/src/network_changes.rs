@@ -27,12 +27,12 @@ mod tests {
         let mut dns = new_dns_notifier(tokio_handle.clone(), DnsControlMethod::default())
             .await
             .unwrap();
-        let (mut net, mut net_rx) = new_network_notifier(tokio_handle, DnsControlMethod::default())
+        let mut net = new_network_notifier(tokio_handle, DnsControlMethod::default())
             .await
             .unwrap();
 
         // Network change notifier always notifies once on startup
-        assert!(net_rx.notified().await.is_ok());
+        assert!(net.notified().await.is_ok());
 
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
@@ -40,6 +40,6 @@ mod tests {
         net.close().unwrap();
 
         // After that first notification, we closed the worker, so the channel should be empty.
-        assert!(net_rx.notified().await.is_err());
+        assert!(net.notified().await.is_err());
     }
 }

@@ -8,10 +8,7 @@
 
 use anyhow::{anyhow, Context as _, Result};
 use std::{future::Future, thread};
-use tokio::{
-    sync::{mpsc, oneshot},
-    task::LocalSet,
-};
+use tokio::sync::{mpsc, oneshot};
 
 /// Container for a worker thread that we can cooperatively stop.
 ///
@@ -27,10 +24,11 @@ struct Inner {
     thread: thread::JoinHandle<Result<()>>,
 }
 
+/// Inbound to the worker thread, outbound from the worker thread.
 pub struct Params<Inbound, Outbound> {
     pub in_rx: mpsc::Receiver<Inbound>,
-    pub stop_rx: oneshot::Receiver<()>,
     pub out_tx: mpsc::Sender<Outbound>,
+    pub stop_rx: oneshot::Receiver<()>,
 }
 
 impl<Inbound: Send + 'static> Drop for Worker<Inbound> {
@@ -45,10 +43,8 @@ impl<Inbound: Send + 'static> Worker<Inbound> {
     pub fn new<
         Outbound: Send + 'static,
         S: Into<String>,
-        Fut: Future<Output = Result<()>>,
-        F: FnOnce(Params<Inbound, Outbound>) -> Fut + Send + 'static,
+        F: FnOnce(Params<Inbound, Outbound>) -> Result<()> + Send + 'static,
     >(
-        tokio_handle: tokio::runtime::Handle,
         thread_name: S,
         func: F,
     ) -> Result<(Self, mpsc::Receiver<Outbound>)> {
@@ -58,17 +54,13 @@ impl<Inbound: Send + 'static> Worker<Inbound> {
 
         let params = Params {
             in_rx,
-            stop_rx,
             out_tx,
+            stop_rx,
         };
         let thread_name = thread_name.into();
         let thread = thread::Builder::new()
             .name(thread_name.clone())
-            .spawn(move || {
-                let local = LocalSet::new();
-                let task = local.run_until(func(params));
-                tokio_handle.block_on(task)
-            })?;
+            .spawn(move || func(params))?;
 
         let inner = Inner { stop_tx, thread };
 
@@ -127,15 +119,17 @@ mod tests {
     use super::*;
     use futures::FutureExt;
     use std::pin::pin;
+    use tokio::task::LocalSet;
 
     #[tokio::test]
     async fn ping() {
         let _logs = firezone_logging::test("debug");
-        let (mut worker, mut rx) = Worker::new(
-            tokio::runtime::Handle::current(),
-            "Firezone ping",
-            ping_task,
-        )
+        let tokio_handle = tokio::runtime::Handle::current();
+        let (mut worker, mut rx) = Worker::new("Firezone ping", move |params| {
+            let local = LocalSet::new();
+            let task = local.run_until(ping_task(params));
+            tokio_handle.block_on(task)
+        })
         .unwrap();
 
         worker.send(42).await.unwrap();
@@ -147,8 +141,8 @@ mod tests {
     async fn ping_task(params: Params<u32, u32>) -> Result<()> {
         let Params {
             mut in_rx,
-            stop_rx,
             out_tx,
+            stop_rx,
         } = params;
         let mut stop_rx = pin!(stop_rx.fuse());
         loop {
@@ -165,12 +159,8 @@ mod tests {
     async fn notifier_worker() {
         let _logs = firezone_logging::test("debug");
 
-        let (mut worker, mut rx) = Worker::new(
-            tokio::runtime::Handle::current(),
-            "Firezone bogus network notifier",
-            notifier_task,
-        )
-        .unwrap();
+        let (mut worker, mut rx) =
+            Worker::new("Firezone bogus network notifier", notifier_task).unwrap();
 
         assert_eq!(rx.recv().await.unwrap(), ());
         tracing::info!("Got notification");
@@ -178,14 +168,14 @@ mod tests {
         worker.close().unwrap();
     }
 
-    async fn notifier_task(params: Params<(), ()>) -> Result<()> {
+    fn notifier_task(params: Params<(), ()>) -> Result<()> {
         let Params {
             in_rx: _,
-            stop_rx,
             out_tx,
+            stop_rx,
         } = params;
         out_tx.try_send(())?;
-        stop_rx.await?;
+        stop_rx.blocking_recv()?;
         Ok(())
     }
 }

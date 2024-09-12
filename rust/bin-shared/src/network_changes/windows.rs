@@ -65,9 +65,12 @@
 use crate::platform::DnsControlMethod;
 use anyhow::{anyhow, Context as _, Result};
 use std::thread;
-use tokio::sync::{
-    mpsc::{self, error::TrySendError},
-    oneshot,
+use tokio::{
+    sync::{
+        mpsc::{self, error::TrySendError},
+        oneshot,
+    },
+    task::LocalSet,
 };
 use windows::{
     core::{Interface, Result as WinResult, GUID},
@@ -86,9 +89,19 @@ pub async fn new_dns_notifier(
     tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
 ) -> Result<Worker> {
-    Worker::new("Firezone DNS monitoring worker", move |tx, stopper_rx| {
-        async_dns::worker_thread(tokio_handle, tx, stopper_rx)?;
-        Ok(())
+    Worker::new("Firezone DNS monitoring", move |params| {
+        let crate::worker_thread::Params {
+            in_rx: _,
+            out_tx,
+            stop_rx,
+        } = params;
+        let out_tx = NotifySender { tx: out_tx };
+        let local = LocalSet::new();
+        let tokio_handle_2 = tokio_handle.clone();
+        let task = local.run_until(async move {
+            async_dns::worker_task(tokio_handle, out_tx, stop_rx).await
+        });
+        tokio_handle_2.block_on(task)
     })
 }
 
@@ -97,38 +110,30 @@ pub async fn new_dns_notifier(
 pub async fn new_network_notifier(
     tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
-) -> Result<(crate::worker_thread::Worker<()>, NotifyReceiver)> {
-    let (worker, rx) = crate::worker_thread::Worker::new(
-        tokio_handle,
-        "Firezone network monitoring",
-        network_notifier_task,
-    )?;
-    Ok((worker, NotifyReceiver { rx }))
-}
-
-async fn network_notifier_task(params: crate::worker_thread::Params<(), ()>) -> Result<()> {
-    let crate::worker_thread::Params {
-        in_rx: _,
-        stop_rx,
-        out_tx: tx,
-    } = params;
-    let tx = NotifySender { tx };
-    {
-        // Logs don't work inside here for some reason.
-        let com = ComGuard::new()?;
-        let _network_change_listener = Listener::new(&com, tx)?;
-        stop_rx.await?;
-    }
-    Ok(())
+) -> Result<Worker> {
+    Worker::new("Firezone network monitoring", move |params| {
+        let crate::worker_thread::Params {
+            in_rx: _,
+            out_tx,
+            stop_rx,
+        } = params;
+        let out_tx = NotifySender { tx: out_tx };
+        // This explicit block is important but I can't remember why.
+        {
+            let com = ComGuard::new()?;
+            let _listener = Listener::new(&com, out_tx)?;
+            stop_rx.blocking_recv().ok();
+        }
+        Ok(())
+    })
 }
 
 /// Container for a worker thread that we can cooperatively stop.
 ///
 /// The worker thread emits notifications with no data in them.
 pub struct Worker {
-    inner: Option<WorkerInner>,
+    inner: crate::worker_thread::Worker<()>,
     rx: NotifyReceiver,
-    thread_name: String,
 }
 
 impl Drop for Worker {
@@ -141,37 +146,17 @@ impl Drop for Worker {
 impl Worker {
     fn new<F, S>(thread_name: S, func: F) -> Result<Self>
     where
-        F: FnOnce(NotifySender, oneshot::Receiver<()>) -> Result<()> + Send + 'static,
+        F: FnOnce(crate::worker_thread::Params<(), ()>) -> Result<()> + Send + 'static,
         S: Into<String>,
     {
-        let thread_name = thread_name.into();
-        let (tx, rx) = notify_channel();
-        let inner = WorkerInner::new(thread_name.clone(), tx, func)?;
-        Ok(Self {
-            inner: Some(inner),
-            rx,
-            thread_name,
-        })
+        let (inner, rx) = crate::worker_thread::Worker::new(thread_name, func)?;
+        let rx = NotifyReceiver { rx };
+        Ok(Self { inner, rx })
     }
 
     /// Same as `drop`, but you can catch errors
     pub fn close(&mut self) -> Result<()> {
-        if let Some(inner) = self.inner.take() {
-            tracing::debug!(
-                thread_name = self.thread_name,
-                "Asking worker thread to stop gracefully"
-            );
-            inner
-                .stopper
-                .send(())
-                .map_err(|_| anyhow!("Couldn't stop `NetworkNotifier` worker thread"))?;
-            match inner.thread.join() {
-                Err(e) => std::panic::resume_unwind(e),
-                Ok(x) => x?,
-            }
-            tracing::debug!("Worker thread stopped gracefully");
-        }
-        Ok(())
+        self.inner.close()
     }
 
     // `Result` needed to match Linux
@@ -386,10 +371,7 @@ mod async_dns {
     use anyhow::{Context as _, Result};
     use futures::FutureExt as _;
     use std::{ffi::c_void, ops::Deref, path::Path, pin::pin};
-    use tokio::{
-        sync::{mpsc, oneshot},
-        task::LocalSet,
-    };
+    use tokio::sync::{mpsc, oneshot};
     use windows::Win32::{
         Foundation::{CloseHandle, BOOLEAN, HANDLE, INVALID_HANDLE_VALUE},
         System::Registry,
@@ -424,32 +406,27 @@ mod async_dns {
         ))
     }
 
-    pub fn worker_thread(
+    pub async fn worker_task(
         tokio_handle: tokio::runtime::Handle,
         tx: super::NotifySender,
         stopper_rx: oneshot::Receiver<()>,
     ) -> Result<()> {
-        let local = LocalSet::new();
-        let task = local.run_until(async move {
-            let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
-            let mut listener_4 = Listener::new(key_ipv4)?;
-            let mut listener_6 = Listener::new(key_ipv6)?;
+        let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
+        let mut listener_4 = Listener::new(key_ipv4)?;
+        let mut listener_6 = Listener::new(key_ipv6)?;
 
-            let mut stop = pin!(stopper_rx.fuse());
-            loop {
-                let mut fut_4 = pin!(listener_4.notified().fuse());
-                let mut fut_6 = pin!(listener_6.notified().fuse());
-                futures::select! {
-                    _ = stop => break,
-                    _ = fut_4 => tx.notify()?,
-                    _ = fut_6 => tx.notify()?,
-                }
+        let mut stop = pin!(stopper_rx.fuse());
+        loop {
+            let mut fut_4 = pin!(listener_4.notified().fuse());
+            let mut fut_6 = pin!(listener_6.notified().fuse());
+            futures::select! {
+                _ = stop => break,
+                _ = fut_4 => tx.notify()?,
+                _ = fut_6 => tx.notify()?,
             }
+        }
 
-            Ok(())
-        });
-
-        tokio_handle.block_on(task)
+        Ok(())
     }
 
     /// Listens to one registry key for changes. Callers should await `notified`.
