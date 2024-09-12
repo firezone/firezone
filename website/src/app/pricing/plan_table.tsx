@@ -418,6 +418,22 @@ export default function PlanTable() {
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">
+            <Tooltip content="Require Clients to be marked as verified in the admin portal before they can access Resources">
+              Client verification
+            </Tooltip>
+          </td>
+          <td className="gmx-1 py-4">
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4">
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+          <td className="gmx-1 py-4">
+            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
+          </td>
+        </tr>
+        <tr className="border-b border-1 border-neutral-200">
+          <td className="gmx-1 py-4">
             <Tooltip content="Show where your users are connecting from">
               GeoIP Mapping
             </Tooltip>
