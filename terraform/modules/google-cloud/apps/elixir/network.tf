@@ -9,7 +9,7 @@ locals {
     "35.191.0.0/16"
   ]
 
-  public_application = var.application_dns_tld_v4 != null
+  public_application = var.application_dns_tld != null
 }
 
 # Define a security policy which allows to filter traffic by IP address,
@@ -299,8 +299,7 @@ resource "google_compute_managed_ssl_certificate" "default" {
 
   managed {
     domains = [
-      var.application_dns_tld_v4,
-      var.application_dns_tld_v6,
+      var.application_dns_tld,
     ]
   }
 
@@ -308,6 +307,10 @@ resource "google_compute_managed_ssl_certificate" "default" {
     google_project_service.compute,
     google_project_service.servicenetworking,
   ]
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 ## Create URL map for the application

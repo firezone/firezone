@@ -17,6 +17,7 @@ use rand::rngs::OsRng;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
     task::{ready, Context, Poll},
@@ -147,10 +148,12 @@ impl ClientTunnel {
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
+                    let now = Instant::now();
                     let Some(enc_packet) =
                         self.role_state
-                            .encapsulate(packet, Instant::now(), &mut self.encrypt_buf)
+                            .encapsulate(packet, now, &mut self.encrypt_buf)
                     else {
+                        self.role_state.handle_timeout(now);
                         continue;
                     };
 
@@ -165,7 +168,7 @@ impl ClientTunnel {
                             received.local,
                             received.from,
                             received.packet,
-                            std::time::Instant::now(),
+                            Instant::now(),
                             self.decrypt_buf.as_mut(),
                         ) else {
                             continue;
@@ -239,11 +242,12 @@ impl GatewayTunnel {
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
-                    let Some(enc_packet) = self.role_state.encapsulate(
-                        packet,
-                        std::time::Instant::now(),
-                        &mut self.encrypt_buf,
-                    ) else {
+                    let now = Instant::now();
+                    let Some(enc_packet) =
+                        self.role_state
+                            .encapsulate(packet, now, &mut self.encrypt_buf)
+                    else {
+                        self.role_state.handle_timeout(now, Utc::now());
                         continue;
                     };
 
@@ -258,7 +262,7 @@ impl GatewayTunnel {
                             received.local,
                             received.from,
                             received.packet,
-                            std::time::Instant::now(),
+                            Instant::now(),
                             self.device_read_buf.as_mut(),
                         ) else {
                             continue;
@@ -318,15 +322,11 @@ pub enum ClientEvent {
     ResourcesChanged {
         resources: Vec<callbacks::ResourceDescription>,
     },
-    // TODO: Make this more fine-granular.
     TunInterfaceUpdated(TunConfig),
-    TunRoutesUpdated {
-        ip4: Vec<Ipv4Network>,
-        ip6: Vec<Ipv6Network>,
-    },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, derivative::Derivative, PartialEq, Eq)]
+#[derivative(Debug)]
 pub struct TunConfig {
     pub ip4: Ipv4Addr,
     pub ip6: Ipv6Addr,
@@ -337,6 +337,11 @@ pub struct TunConfig {
     ///   If upstream DNS servers are configured (in the portal), we will use those.
     ///   Otherwise, we will use the DNS servers configured on the system.
     pub dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+
+    #[derivative(Debug(format_with = "fmt_routes"))]
+    pub ipv4_routes: BTreeSet<Ipv4Network>,
+    #[derivative(Debug(format_with = "fmt_routes"))]
+    pub ipv6_routes: BTreeSet<Ipv6Network>,
 }
 
 #[derive(Debug, Clone)]
@@ -361,4 +366,17 @@ pub fn keypair() -> (StaticSecret, PublicKey) {
     let public_key = PublicKey::from(&private_key);
 
     (private_key, public_key)
+}
+
+fn fmt_routes<T>(routes: &BTreeSet<T>, f: &mut fmt::Formatter) -> fmt::Result
+where
+    T: fmt::Display,
+{
+    let mut list = f.debug_list();
+
+    for route in routes {
+        list.entry(&format_args!("{route}"));
+    }
+
+    list.finish()
 }

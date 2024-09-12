@@ -19,7 +19,7 @@ defmodule Domain.Actors.Group.Changeset do
     |> changeset()
     |> put_change(:account_id, account.id)
     |> cast_membership_assocs(account.id)
-    |> put_created_by(subject)
+    |> put_subject_trail(:created_by, subject)
   end
 
   def create(%Accounts.Account{} = account, attrs) do
