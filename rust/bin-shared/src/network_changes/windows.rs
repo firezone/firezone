@@ -426,6 +426,15 @@ mod async_dns {
             let mut listener_4 = Listener::new(key_ipv4)?;
             let mut listener_6 = Listener::new(key_ipv6)?;
 
+            // Notify once we start listening, to be consistent with other notifiers. This is intended to cover gaps during startup, e.g.:
+            //
+            // 1. Caller records network state / DNS resolvers
+            // 2. Caller creates a notifier
+            // 3. While we're setting up the notifier, the network or DNS state changes
+            // 4. The caller is now stuck on a stale state until the first notification comes through.
+
+            tx.notify()?;
+
             let mut stop = pin!(stopper_rx.fuse());
             loop {
                 let mut fut_4 = pin!(listener_4.notified().fuse());

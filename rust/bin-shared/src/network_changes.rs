@@ -19,7 +19,9 @@ mod tests {
     use std::{
         pin::pin,
         task::{Context, Poll},
+        time::Duration,
     };
+    use tokio::time::timeout;
 
     /// Smoke test for the DNS and network change notifiers
     ///
@@ -40,8 +42,8 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
         // The notifiers always notify once they starts listening for changes, to avoid gaps during startup.
-        assert!(dns.notified().await.is_ok());
-        assert!(net.notified().await.is_ok());
+        timeout(Duration::from_secs(1), dns.notified()).await.unwrap().unwrap();
+        timeout(Duration::from_secs(1), net.notified()).await.unwrap().unwrap();
 
         // After that first notification, we shouldn't get any other notifications during a normal unit test.
 
