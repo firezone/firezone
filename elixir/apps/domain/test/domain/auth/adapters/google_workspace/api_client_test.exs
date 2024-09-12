@@ -65,7 +65,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       end
 
       assert_receive {:bypass_request, conn}
-      assert conn.params == %{"maxResults" => "350"}
+      assert conn.params == %{"maxResults" => "350", "type" => "ALL"}
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer #{api_token}"]
     end
 
