@@ -1,7 +1,7 @@
 //! Not implemented for Linux yet
 
 use crate::platform::DnsControlMethod;
-use anyhow::{bail, Result};
+use anyhow::Result;
 use futures::StreamExt as _;
 use std::time::Duration;
 use tokio::time::{Interval, MissedTickBehavior};
@@ -78,7 +78,6 @@ pub struct Worker {
 }
 
 pub enum Inner {
-    Closed,
     DBus(zbus::proxy::SignalStream<'static>),
     DnsPoller(Interval),
     Null,
@@ -112,9 +111,7 @@ impl Worker {
     }
 
     // Needed to match Windows
-    pub fn close(&mut self) -> Result<()> {
-        self.just_started = false;
-        self.inner = Inner::Closed;
+    pub fn close(self) -> Result<()> {
         Ok(())
     }
 
@@ -126,7 +123,6 @@ impl Worker {
             return Ok(());
         }
         match &mut self.inner {
-            Inner::Closed => bail!("Notifier is closed"),
             Inner::DnsPoller(interval) => {
                 interval.tick().await;
             }
