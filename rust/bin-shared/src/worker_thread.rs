@@ -13,10 +13,11 @@ use tokio::sync::{mpsc, oneshot};
 /// Container for a worker thread that we can cooperatively stop.
 ///
 /// The worker thread emits notifications with no data in them.
-pub struct Worker<Inbound: Send + 'static> {
+pub(crate) struct Worker<Inbound: Send + 'static> {
     inner: Option<Inner>,
     thread_name: String,
-    in_tx: mpsc::Sender<Inbound>,
+    /// This will be needed later when the system tray uses this code
+    _in_tx: mpsc::Sender<Inbound>,
 }
 
 struct Inner {
@@ -25,10 +26,11 @@ struct Inner {
 }
 
 /// Inbound to the worker thread, outbound from the worker thread.
-pub struct Params<Inbound, Outbound> {
-    pub in_rx: mpsc::Receiver<Inbound>,
-    pub out_tx: mpsc::Sender<Outbound>,
-    pub stop_rx: oneshot::Receiver<()>,
+pub(crate) struct Params<Inbound, Outbound> {
+    /// This will be needed later when the system tray uses this code
+    pub(crate) _in_rx: mpsc::Receiver<Inbound>,
+    pub(crate) out_tx: mpsc::Sender<Outbound>,
+    pub(crate) stop_rx: oneshot::Receiver<()>,
 }
 
 impl<Inbound: Send + 'static> Drop for Worker<Inbound> {
@@ -40,7 +42,7 @@ impl<Inbound: Send + 'static> Drop for Worker<Inbound> {
 
 impl<Inbound: Send + 'static> Worker<Inbound> {
     /// Spawn and run a new worker thread.
-    pub fn new<
+    pub(crate) fn new<
         Outbound: Send + 'static,
         S: Into<String>,
         F: FnOnce(Params<Inbound, Outbound>) -> Result<()> + Send + 'static,
@@ -48,12 +50,12 @@ impl<Inbound: Send + 'static> Worker<Inbound> {
         thread_name: S,
         func: F,
     ) -> Result<(Self, mpsc::Receiver<Outbound>)> {
-        let (in_tx, in_rx) = mpsc::channel(1);
+        let (_in_tx, _in_rx) = mpsc::channel(1);
         let (out_tx, out_rx) = mpsc::channel(1);
         let (stop_tx, stop_rx) = oneshot::channel();
 
         let params = Params {
-            in_rx,
+            _in_rx,
             out_tx,
             stop_rx,
         };
@@ -68,14 +70,14 @@ impl<Inbound: Send + 'static> Worker<Inbound> {
             Self {
                 inner: Some(inner),
                 thread_name,
-                in_tx,
+                _in_tx,
             },
             out_rx,
         ))
     }
 
     /// Same as `drop`, but you can catch and log errors
-    pub fn close(&mut self) -> Result<()> {
+    pub(crate) fn close(&mut self) -> Result<()> {
         let Some(inner) = self.inner.take() else {
             return Ok(());
         };
@@ -104,8 +106,9 @@ impl<Inbound: Send + 'static> Worker<Inbound> {
         Ok(())
     }
 
-    pub async fn send(&self, inbound: Inbound) -> Result<()> {
-        self.in_tx.send(inbound).await.map_err(|_| {
+    /// This will be needed later when the system tray uses this code
+    pub(crate) async fn _send(&self, inbound: Inbound) -> Result<()> {
+        self._in_tx.send(inbound).await.map_err(|_| {
             anyhow!(
                 "Can't send to worker thread `{}`, maybe it crashed",
                 self.thread_name
@@ -132,7 +135,7 @@ mod tests {
         })
         .unwrap();
 
-        worker.send(42).await.unwrap();
+        worker._send(42).await.unwrap();
         assert_eq!(rx.recv().await.unwrap(), 84);
 
         worker.close().unwrap();
@@ -140,13 +143,13 @@ mod tests {
 
     async fn ping_task(params: Params<u32, u32>) -> Result<()> {
         let Params {
-            mut in_rx,
+            mut _in_rx,
             out_tx,
             stop_rx,
         } = params;
         let mut stop_rx = pin!(stop_rx.fuse());
         loop {
-            let mut in_rx = pin!(in_rx.recv().fuse());
+            let mut in_rx = pin!(_in_rx.recv().fuse());
             futures::select! {
                 _ = stop_rx => break,
                 inbound = in_rx => out_tx.send(inbound.unwrap() * 2).await.unwrap(),
@@ -170,7 +173,7 @@ mod tests {
 
     fn notifier_task(params: Params<(), ()>) -> Result<()> {
         let Params {
-            in_rx: _,
+            _in_rx,
             out_tx,
             stop_rx,
         } = params;

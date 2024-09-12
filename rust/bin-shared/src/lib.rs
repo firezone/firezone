@@ -45,9 +45,6 @@ pub use network_changes::{new_dns_notifier, new_network_notifier};
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use tun_device_manager::TunDeviceManager;
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-pub use worker_thread::Worker;
-
 /// Output of `git describe` at compile time
 /// e.g. `1.0.0-pre.4-20-ged5437c88-modified` where:
 ///

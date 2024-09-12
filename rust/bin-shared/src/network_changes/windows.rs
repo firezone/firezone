@@ -87,7 +87,7 @@ pub async fn new_dns_notifier(
 ) -> Result<Worker> {
     Worker::new("Firezone DNS monitoring", move |params| {
         let crate::worker_thread::Params {
-            in_rx: _,
+            _in_rx,
             out_tx,
             stop_rx,
         } = params;
@@ -106,7 +106,7 @@ pub async fn new_network_notifier(
 ) -> Result<Worker> {
     Worker::new("Firezone network monitoring", move |params| {
         let crate::worker_thread::Params {
-            in_rx: _,
+            _in_rx,
             out_tx,
             stop_rx,
         } = params;
