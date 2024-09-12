@@ -60,7 +60,7 @@ defmodule API.MixProject do
       {:jason, "~> 1.2"},
       {:remote_ip, "~> 1.1"},
       {:open_api_spex, "~> 3.18"},
-      {:ymlr, "~> 2.0"},
+      {:ymlr, "~> 5.0"},
 
       # Test deps
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false},

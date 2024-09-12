@@ -57,7 +57,7 @@ pub async fn new_network_notifier(
 ) -> Result<Worker> {
     match method {
         DnsControlMethod::Disabled | DnsControlMethod::EtcResolvConf => Ok(Worker {
-            just_started: false,
+            just_started: true,
             inner: Inner::Null,
         }),
         DnsControlMethod::SystemdResolved => {
@@ -78,7 +78,6 @@ pub struct Worker {
 }
 
 enum Inner {
-    Closed,
     DBus(zbus::proxy::SignalStream<'static>),
     DnsPoller(Interval),
     Null,
@@ -112,9 +111,7 @@ impl Worker {
     }
 
     // Needed to match Windows
-    pub fn close(&mut self) -> Result<()> {
-        self.just_started = false;
-        self.inner = Inner::Closed;
+    pub fn close(self) -> Result<()> {
         Ok(())
     }
 
@@ -127,7 +124,6 @@ impl Worker {
             return Ok(());
         }
         match &mut self.inner {
-            Inner::Closed => bail!("Notifier is closed"),
             Inner::DnsPoller(interval) => {
                 interval.tick().await;
             }

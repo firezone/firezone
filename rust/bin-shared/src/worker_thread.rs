@@ -82,7 +82,7 @@ impl<Inbound: Send + 'static> Worker<Inbound> {
             return Ok(());
         };
 
-        tracing::debug!(
+        tracing::trace!(
             thread_name = self.thread_name,
             "Asking worker thread to stop gracefully."
         );
@@ -101,7 +101,7 @@ impl<Inbound: Send + 'static> Worker<Inbound> {
                 x.with_context(|| format!("Error inside worker thread `{}`", self.thread_name))?
             }
         }
-        tracing::debug!("Worker thread `{}` stopped gracefully.", self.thread_name);
+        tracing::trace!("Worker thread `{}` stopped gracefully.", self.thread_name);
 
         Ok(())
     }

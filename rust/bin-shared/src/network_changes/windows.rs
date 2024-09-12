@@ -85,7 +85,7 @@ pub async fn new_dns_notifier(
     tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
 ) -> Result<Worker> {
-    Worker::new("Firezone DNS monitoring", move |params| {
+    Worker::new("Firezone DNS notifier worker", move |params| {
         let crate::worker_thread::Params {
             _in_rx,
             out_tx,
@@ -104,7 +104,7 @@ pub async fn new_network_notifier(
     _tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
 ) -> Result<Worker> {
-    Worker::new("Firezone network monitoring", move |params| {
+    Worker::new("Firezone network notifier worker", move |params| {
         let crate::worker_thread::Params {
             _in_rx,
             out_tx,
@@ -114,8 +114,9 @@ pub async fn new_network_notifier(
         // This explicit block is important but I can't remember why.
         {
             let com = ComGuard::new()?;
-            let _listener = Listener::new(&com, out_tx)?;
-            stop_rx.blocking_recv().ok();
+            let listener = Listener::new(&com, tx)?;
+            stopper_rx.blocking_recv().ok();
+            listener.close()?;
         }
         Ok(())
     })
@@ -201,7 +202,7 @@ impl Drop for ComGuard {
             // Safety: Make sure all the COM objects are dropped before we call
             // CoUninitialize or the program might segfault.
             unsafe { Com::CoUninitialize() };
-            tracing::debug!("Uninitialized COM");
+            tracing::trace!("Uninitialized COM");
         }
     }
 }
@@ -230,7 +231,7 @@ impl<'a> Drop for Listener<'a> {
     // we crash the GUI process before we can get back to the main thread
     // and drop the DNS listeners
     fn drop(&mut self) {
-        self.close().unwrap();
+        self.close_dont_drop().unwrap();
     }
 }
 
@@ -290,12 +291,16 @@ impl<'a> Listener<'a> {
     /// Like `drop`, but you can catch errors
     ///
     /// Unregisters the network change callbacks
-    pub fn close(&mut self) -> Result<()> {
+    pub fn close(mut self) -> Result<()> {
+        self.close_dont_drop()
+    }
+
+    fn close_dont_drop(&mut self) -> Result<()> {
         if let Some(cookie) = self.advise_cookie_net.take() {
             // SAFETY: I don't see any memory safety issues.
             unsafe { self.cxn_point_net.Unadvise(cookie) }
                 .context("Failed to unadvise connection point")?;
-            tracing::debug!("Unadvised");
+            tracing::trace!("Unadvised");
         }
         Ok(())
     }
@@ -332,7 +337,7 @@ impl INetworkEvents_Impl for Callback_Impl {
 
 impl Drop for Callback {
     fn drop(&mut self) {
-        tracing::debug!("Dropped `network_changes::Callback`");
+        tracing::trace!("Dropped `network_changes::Callback`");
     }
 }
 
@@ -383,6 +388,15 @@ mod async_dns {
         let mut listener_4 = Listener::new(key_ipv4)?;
         let mut listener_6 = Listener::new(key_ipv6)?;
 
+        // Notify once we start listening, to be consistent with other notifiers. This is intended to cover gaps during startup, e.g.:
+        //
+        // 1. Caller records network state / DNS resolvers
+        // 2. Caller creates a notifier
+        // 3. While we're setting up the notifier, the network or DNS state changes
+        // 4. The caller is now stuck on a stale state until the first notification comes through.
+
+        tx.notify()?;
+
         let mut stop = pin!(stopper_rx.fuse());
         loop {
             let mut fut_4 = pin!(listener_4.notified().fuse());
@@ -394,7 +408,18 @@ mod async_dns {
             }
         }
 
-        Ok(())
+        let mut result = Ok(());
+        if let Err(error) = listener_4.close() {
+            tracing::error!(?error, "Error while closing IPv4 DNS notifier");
+            // At least try to bubble one of the errors if we get any.
+            result = Err(error);
+        }
+        if let Err(error) = listener_6.close() {
+            tracing::error!(?error, "Error while closing IPv6 DNS notifier");
+            result = Err(error);
+        }
+
+        result
     }
 
     /// Listens to one registry key for changes. Callers should await `notified`.
@@ -412,6 +437,11 @@ mod async_dns {
         // So don't ever do `self._tx = $ANYTHING` after `new`, it'll break the callback.
         _tx: Box<mpsc::Sender<()>>,
         rx: mpsc::Receiver<()>,
+        // Separated so that multiple `drop` calls are safe and wont' panic
+        inner: Option<ListenerInner>,
+    }
+
+    struct ListenerInner {
         /// A handle representing our registered callback from `RegisterWaitForSingleObject`
         ///
         /// This doesn't get signalled, it's just used so we can unregister and stop the
@@ -461,12 +491,12 @@ mod async_dns {
                 )
             }?;
 
+            let inner = ListenerInner { wait_handle, event };
             let mut that = Self {
                 key,
                 _tx: tx,
                 rx,
-                wait_handle,
-                event,
+                inner: Some(inner),
             };
             that.register_callback()?;
 
@@ -508,6 +538,10 @@ mod async_dns {
         //
         // > Each time a process calls RegNotifyChangeKeyValue with the same set of parameters, it establishes another wait operation, creating a resource leak. Therefore, check that you are not calling RegNotifyChangeKeyValue with the same parameters until the previous wait operation has completed.
         fn register_callback(&mut self) -> Result<()> {
+            let inner = self
+                .inner
+                .as_ref()
+                .context("Can't register callback after dropped")?;
             let key_handle = Registry::HKEY(self.key.raw_handle() as *mut c_void);
             let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
                 | Registry::REG_NOTIFY_CHANGE_LAST_SET
@@ -515,20 +549,32 @@ mod async_dns {
             // Ask Windows to signal our event once when anything inside this key changes.
             // We can't ask for repeated signals.
             unsafe {
-                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, self.event, true)
+                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, inner.event, true)
             }
             .ok()
             .context("`RegNotifyChangeKeyValue` failed")?;
+            Ok(())
+        }
+
+        fn close(mut self) -> Result<()> {
+            self.close_dont_drop()
+        }
+
+        fn close_dont_drop(&mut self) -> Result<()> {
+            if let Some(inner) = self.inner.take() {
+                unsafe { UnregisterWaitEx(inner.wait_handle, INVALID_HANDLE_VALUE) }
+                    .context("Should be able to `UnregisterWaitEx` in the DNS change listener")?;
+                unsafe { CloseHandle(inner.event) }
+                    .context("Should be able to `CloseHandle` in the DNS change listener")?;
+            }
             Ok(())
         }
     }
 
     impl Drop for Listener {
         fn drop(&mut self) {
-            unsafe { UnregisterWaitEx(self.wait_handle, INVALID_HANDLE_VALUE) }
-                .expect("Should be able to `UnregisterWaitEx` in the DNS change listener");
-            unsafe { CloseHandle(self.event) }
-                .expect("Should be able to `CloseHandle` in the DNS change listener");
+            self.close_dont_drop()
+                .expect("Should be able to close DNS listener");
         }
     }
 

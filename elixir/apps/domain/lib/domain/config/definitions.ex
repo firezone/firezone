@@ -556,7 +556,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:outbound_email_from, :string,
     default: fn ->
-      external_uri = URI.parse(compile_config!(:external_url))
+      external_uri = URI.parse(compile_config!(:web_external_url))
       "firezone@#{external_uri.host}"
     end,
     sensitive: true,
@@ -607,7 +607,7 @@ defmodule Domain.Config.Definitions do
     dump: fn map ->
       Dumper.keyword(map)
       |> Keyword.update(:tls_options, nil, &Dumper.dump_ssl_opts/1)
-      |> Keyword.update(:sockopts, nil, &Dumper.dump_ssl_opts/1)
+      |> Keyword.update(:sockopts, [], &Dumper.dump_ssl_opts/1)
     end
   )
 
