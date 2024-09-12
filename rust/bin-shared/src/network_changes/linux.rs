@@ -72,7 +72,7 @@ pub async fn new_network_notifier(
     }
 }
 
-pub(crate) struct Worker {
+pub struct Worker {
     just_started: bool,
     inner: Inner,
 }
@@ -112,7 +112,7 @@ impl Worker {
     }
 
     // Needed to match Windows
-    pub(crate) fn close(&mut self) -> Result<()> {
+    pub fn close(&mut self) -> Result<()> {
         self.just_started = false;
         self.inner = Inner::Closed;
         Ok(())
@@ -120,7 +120,7 @@ impl Worker {
 
     // `Result` needed to match Windows
     #[allow(clippy::unnecessary_wraps)]
-    pub(crate) async fn notified(&mut self) -> Result<()> {
+    pub async fn notified(&mut self) -> Result<()> {
         if self.just_started {
             // Always notify after startup to prevent gaps
             self.just_started = false;
