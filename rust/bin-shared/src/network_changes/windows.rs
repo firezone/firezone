@@ -64,12 +64,8 @@
 
 use crate::platform::DnsControlMethod;
 use anyhow::{anyhow, Context as _, Result};
-use std::thread;
 use tokio::{
-    sync::{
-        mpsc::{self, error::TrySendError},
-        oneshot,
-    },
+    sync::mpsc::{self, error::TrySendError},
     task::LocalSet,
 };
 use windows::{
@@ -97,17 +93,15 @@ pub async fn new_dns_notifier(
         } = params;
         let out_tx = NotifySender { tx: out_tx };
         let local = LocalSet::new();
-        let tokio_handle_2 = tokio_handle.clone();
-        let task = local
-            .run_until(async move { async_dns::worker_task(tokio_handle, out_tx, stop_rx).await });
-        tokio_handle_2.block_on(task)
+        let task = local.run_until(async move { async_dns::worker_task(out_tx, stop_rx).await });
+        tokio_handle.block_on(task)
     })
 }
 
 // Async on Linux due to `zbus`
 #[allow(clippy::unused_async)]
 pub async fn new_network_notifier(
-    tokio_handle: tokio::runtime::Handle,
+    _tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
 ) -> Result<Worker> {
     Worker::new("Firezone network monitoring", move |params| {
@@ -166,30 +160,6 @@ impl Worker {
             .await
             .context("Couldn't listen to notifications.")?;
         Ok(())
-    }
-}
-
-/// Needed so that `Drop` can consume the oneshot Sender and the thread's JoinHandle
-struct WorkerInner {
-    stopper: oneshot::Sender<()>,
-    thread: thread::JoinHandle<Result<()>>,
-}
-
-impl WorkerInner {
-    fn new<
-        F: FnOnce(NotifySender, oneshot::Receiver<()>) -> Result<()> + Send + 'static,
-        S: Into<String>,
-    >(
-        thread_name: S,
-        tx: NotifySender,
-        func: F,
-    ) -> Result<Self> {
-        let (stopper, stopper_rx) = tokio::sync::oneshot::channel();
-        let thread = std::thread::Builder::new()
-            .name(thread_name.into())
-            .spawn(move || func(tx, stopper_rx))?;
-
-        Ok(Self { stopper, thread })
     }
 }
 
@@ -405,8 +375,7 @@ mod async_dns {
         ))
     }
 
-    pub async fn worker_task(
-        tokio_handle: tokio::runtime::Handle,
+    pub(crate) async fn worker_task(
         tx: super::NotifySender,
         stopper_rx: oneshot::Receiver<()>,
     ) -> Result<()> {
@@ -704,9 +673,4 @@ impl NotifyReceiver {
             .await
             .context("All NotifySender instances are closed")
     }
-}
-
-fn notify_channel() -> (NotifySender, NotifyReceiver) {
-    let (tx, rx) = mpsc::channel(1);
-    (NotifySender { tx }, NotifyReceiver { rx })
 }
