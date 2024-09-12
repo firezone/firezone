@@ -1907,6 +1907,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "subtle",
  "tauri",
  "tauri-build",
  "tauri-runtime",
