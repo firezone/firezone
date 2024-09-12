@@ -19,6 +19,7 @@ mod tests {
     /// Smoke test for the DNS and network change notifiers
     ///
     /// Turn them on, wait a second, turn them off.
+    /// This tests that the threads quit gracefully when we call `close`, and they don't crash on startup.
     #[tokio::test]
     async fn notifiers() {
         let _logs = firezone_logging::test("debug");
