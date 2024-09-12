@@ -114,8 +114,8 @@ pub async fn new_network_notifier(
         // This explicit block is important but I can't remember why.
         {
             let com = ComGuard::new()?;
-            let listener = Listener::new(&com, tx)?;
-            stopper_rx.blocking_recv().ok();
+            let listener = Listener::new(&com, out_tx)?;
+            stop_rx.blocking_recv().ok();
             listener.close()?;
         }
         Ok(())
