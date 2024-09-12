@@ -166,7 +166,7 @@ impl ClientTunnel {
                             continue;
                         };
 
-                        self.io.device_mut().write(packet)?;
+                        self.io.send_tun(packet);
                     }
 
                     continue;
@@ -256,7 +256,7 @@ impl GatewayTunnel {
                             continue;
                         };
 
-                        self.io.device_mut().write(packet)?;
+                        self.io.send_tun(packet);
                     }
 
                     continue;

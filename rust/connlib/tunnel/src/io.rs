@@ -10,6 +10,7 @@ use std::{
     task::{ready, Context, Poll},
     time::Instant,
 };
+use tun::Tun;
 
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
@@ -104,8 +105,12 @@ impl Io {
         Poll::Ready(Ok(()))
     }
 
-    pub fn device_mut(&mut self) -> &mut Device {
-        &mut self.device
+    pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
+        self.device.set_tun(tun)
+    }
+
+    pub fn send_tun(&mut self, packet: IpPacket) {
+        self.device.write(packet).unwrap();
     }
 
     pub fn rebind_sockets(&mut self) {

@@ -87,7 +87,7 @@ impl ClientTunnel {
     }
 
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
-        self.io.device_mut().set_tun(tun);
+        self.io.set_tun(tun);
     }
 
     pub fn update_relays(&mut self, to_remove: BTreeSet<RelayId>, to_add: Vec<Relay>) {

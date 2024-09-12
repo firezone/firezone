@@ -33,7 +33,7 @@ const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 
 impl GatewayTunnel {
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
-        self.io.device_mut().set_tun(tun);
+        self.io.set_tun(tun);
     }
 
     /// Accept a connection request from a client.
