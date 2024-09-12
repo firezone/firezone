@@ -1,4 +1,5 @@
 use crate::{device_channel::Device, sockets::Sockets, BUF_SIZE};
+use futures::future::{self, Either};
 use futures_util::FutureExt as _;
 use ip_packet::IpPacket;
 use snownet::{EncryptBuffer, EncryptedPacket};
@@ -10,14 +11,11 @@ use std::{
     task::{ready, Context, Poll},
     time::Instant,
 };
+use tokio::sync::mpsc;
 use tun::Tun;
 
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
-    /// The TUN device offered to the user.
-    ///
-    /// This is the `tun-firezone` network interface that users see when they e.g. type `ip addr` on Linux.
-    device: Device,
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
     unwritten_packet: Option<EncryptedPacket>,
@@ -26,12 +24,19 @@ pub struct Io {
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
+    outbound_packet_sender: mpsc::Sender<TunMsg>,
+    inbound_packet_receiver: mpsc::Receiver<IpPacket>,
 }
 
 pub enum Input<I> {
     Timeout(Instant),
     Device(IpPacket),
     Network(I),
+}
+
+enum TunMsg {
+    Packet(IpPacket),
+    NewTun(Box<dyn Tun>),
 }
 
 impl Io {
@@ -45,8 +50,53 @@ impl Io {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.as_ref()); // Bind sockets on startup. Must happen within a tokio runtime context.
 
+        let (inbound_packet_sender, inbound_packet_receiver) = mpsc::channel(100);
+        let (outbound_packet_sender, mut outbound_packet_receiver) = mpsc::channel(100);
+
+        tokio::spawn(async move {
+            let mut device = Device::new();
+
+            loop {
+                match future::select(
+                    std::future::poll_fn(|cx| device.poll_read(cx)),
+                    std::pin::pin!(outbound_packet_receiver.recv()),
+                )
+                .await
+                {
+                    Either::Left((Ok(packet), _)) => {
+                        match inbound_packet_sender.send(packet).await {
+                            Ok(()) => {}
+                            Err(_) => {
+                                tracing::warn!("Inbound packet channel is closed");
+                                return;
+                            }
+                        };
+                    }
+                    Either::Left((Err(e), _)) => {
+                        tracing::debug!("Failed to read packet from TUN device: {e}")
+                    }
+                    Either::Right((Some(TunMsg::NewTun(tun)), _)) => {
+                        device.set_tun(tun);
+                    }
+                    Either::Right((Some(TunMsg::Packet(packet)), _)) => {
+                        match device.write(packet) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::debug!("Failed to write packet to TUN interface: {e}");
+                            }
+                        }
+                    }
+                    Either::Right((None, _)) => {
+                        tracing::warn!("Outbound packet channel is closed");
+                        return;
+                    }
+                }
+            }
+        });
+
         Self {
-            device: Device::new(),
+            outbound_packet_sender,
+            inbound_packet_receiver,
             timeout: None,
             sockets,
             _tcp_socket_factory: tcp_socket_factory,
@@ -72,7 +122,7 @@ impl Io {
             return Poll::Ready(Ok(Input::Network(network.filter(is_max_wg_packet_size))));
         }
 
-        if let Poll::Ready(packet) = self.device.poll_read(cx)? {
+        if let Poll::Ready(Some(packet)) = self.inbound_packet_receiver.poll_recv(cx) {
             return Poll::Ready(Ok(Input::Device(packet)));
         }
 
@@ -106,11 +156,13 @@ impl Io {
     }
 
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
-        self.device.set_tun(tun)
+        self.outbound_packet_sender
+            .try_send(TunMsg::NewTun(tun))
+            .unwrap(); // TODO: Maybe we need two channels for proper back-pressure?
     }
 
     pub fn send_tun(&mut self, packet: IpPacket) {
-        self.device.write(packet).unwrap();
+        let _ = self.outbound_packet_sender.try_send(TunMsg::Packet(packet));
     }
 
     pub fn rebind_sockets(&mut self) {
@@ -157,12 +209,6 @@ impl Io {
         }
 
         res?;
-
-        Ok(())
-    }
-
-    pub fn send_device(&self, packet: IpPacket) -> io::Result<()> {
-        self.device.write(packet)?;
 
         Ok(())
     }

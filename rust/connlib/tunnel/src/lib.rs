@@ -117,7 +117,7 @@ impl ClientTunnel {
             }
 
             if let Some(packet) = self.role_state.poll_packets() {
-                self.io.send_device(packet)?;
+                self.io.send_tun(packet);
                 continue;
             }
 
