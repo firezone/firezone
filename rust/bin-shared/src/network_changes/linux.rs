@@ -1,7 +1,7 @@
 //! Not implemented for Linux yet
 
 use crate::platform::DnsControlMethod;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use futures::StreamExt as _;
 use std::time::Duration;
 use tokio::time::{Interval, MissedTickBehavior};
@@ -70,6 +70,7 @@ pub async fn new_network_notifier(
 }
 
 pub enum Worker {
+    Closed,
     DBus(zbus::proxy::SignalStream<'static>),
     DnsPoller(Interval),
     Null,
@@ -98,6 +99,7 @@ impl Worker {
 
     // Needed to match Windows
     pub fn close(&mut self) -> Result<()> {
+        *self = Self::Closed;
         Ok(())
     }
 
@@ -105,6 +107,7 @@ impl Worker {
     #[allow(clippy::unnecessary_wraps)]
     pub async fn notified(&mut self) -> Result<()> {
         match self {
+            Self::Closed => bail!("Notifier is closed"),
             Self::DnsPoller(interval) => {
                 interval.tick().await;
             }

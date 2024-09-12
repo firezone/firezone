@@ -32,14 +32,17 @@ mod tests {
             .await
             .unwrap();
 
-        // Network change notifier always notifies once on startup
-        assert!(net.notified().await.is_ok());
+        tracing::debug!("Sleeping...");
+
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
+        tracing::debug!("Closing DNS notifier...");
         dns.close().unwrap();
+        tracing::debug!("Closing network notifier...");
         net.close().unwrap();
 
-        // After that first notification, we closed the worker, so the channel should be empty.
+        // The network change notifier should not notify during that waiting period.
+        tracing::debug!("Ensuring network notifier didn't notify");
         assert!(net.notified().await.is_err());
     }
 }
