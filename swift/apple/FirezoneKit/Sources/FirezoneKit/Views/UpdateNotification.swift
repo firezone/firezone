@@ -89,7 +89,6 @@ private class UpdateNotifier: NSObject, UNUserNotificationCenterDelegate {
   static let notificationIdentifier = "UPDATE_CATEGORY"
 
   override public init() {
-    try! setLastDissmissedVersion(version:  SemanticVersion.from(string: "0.0.0")!)
     self.decision = .notDetermined
     super.init()
 
@@ -98,7 +97,7 @@ private class UpdateNotifier: NSObject, UNUserNotificationCenterDelegate {
     // Define a custom action
     let dismissAction = UNNotificationAction(identifier: "DISMISS_ACTION",
                                              title: "Dismiss This Version",
-                                             options: [.foreground])
+                                             options: [])
 
     // Define a notification category with the action
     let notificationCategory = UNNotificationCategory(identifier: UpdateNotifier.notificationIdentifier,
@@ -118,7 +117,6 @@ private class UpdateNotifier: NSObject, UNUserNotificationCenterDelegate {
   }
 
   public func updateNotification(version: SemanticVersion) {
-    Log.app.error("Last dismissed version: \(getLastDismissedVersion())")
     if let lastDismissedVersion = getLastDismissedVersion(), lastDismissedVersion >= version {
       return
     }
@@ -149,7 +147,6 @@ private class UpdateNotifier: NSObject, UNUserNotificationCenterDelegate {
                               didReceive response: UNNotificationResponse,
                               withCompletionHandler completionHandler: @escaping () -> Void) {
       if response.actionIdentifier == "DISMISS_ACTION" {
-        Log.app.error("Dismissing version \(lastNotifiedVersion)")
         try? setLastDissmissedVersion(version: lastNotifiedVersion!)
         return
       }
@@ -159,6 +156,15 @@ private class UpdateNotifier: NSObject, UNUserNotificationCenterDelegate {
       }
 
       completionHandler()
+  }
+
+  func applicationDidFinishLaunching(_ notification: Notification) {
+      UNUserNotificationCenter.current().delegate = self
+  }
+
+  func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+      // Show the notification even when the app is in the foreground
+    completionHandler([.badge, .banner, .sound])
   }
 }
 
@@ -204,10 +210,9 @@ class UpdateChecker {
             return
           }
 
-          let latestVersion = versionInfo.apple
+          //let latestVersion = versionInfo.apple
 
-          Log.app.error("Latest version: \(latestVersion)")
-
+          let latestVersion = SemanticVersion.from(string: "3.0.0")!
           if latestVersion > currentVersion {
             self.updateNotifier.updateNotification(version: latestVersion)
           }
