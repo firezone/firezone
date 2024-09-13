@@ -380,8 +380,12 @@ fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()
     };
 
     // SAFETY: TODO
-    if unsafe { GetIpInterfaceEntry(&mut row) }.ok().is_err() {
-        tracing::warn!(?family, "Couldn't set MTU");
+    if let Err(error) = unsafe { GetIpInterfaceEntry(&mut row) }.ok() {
+        if family == AF_INET6 && error.code() == windows_core::HRESULT::from_win32(0x80070490) {
+            tracing::debug!(?family, "Couldn't set MTU, maybe IPv6 is disabled.");
+        } else {
+            tracing::warn!(?family, ?error, "Couldn't set MTU");
+        }
         return Ok(());
     }
 
