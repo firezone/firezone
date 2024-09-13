@@ -222,7 +222,9 @@ async fn tun_send_recv(
         .await
         {
             Either::Left((Some(Command::SendPacket(p)), _)) => {
-                device.write(p).expect("todo");
+                if let Err(e) = device.write(p) {
+                    tracing::debug!("Failed to write TUN packet: {e}");
+                };
             }
             Either::Left((Some(Command::UpdateTun(tun)), _)) => {
                 device.set_tun(tun);
