@@ -28,12 +28,20 @@ pub struct Io {
     inbound_packet_receiver: mpsc::Receiver<IpPacket>,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "We purposely don't want to allocate each IP packet."
+)]
 pub enum Input<I> {
     Timeout(Instant),
     Device(IpPacket),
     Network(I),
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "We purposely don't want to allocate each IP packet."
+)]
 enum TunMsg {
     Packet(IpPacket),
     NewTun(Box<dyn Tun>),
@@ -53,45 +61,47 @@ impl Io {
         let (inbound_packet_sender, inbound_packet_receiver) = mpsc::channel(100);
         let (outbound_packet_sender, mut outbound_packet_receiver) = mpsc::channel(100);
 
-        tokio::spawn(async move {
-            let mut device = Device::new();
+        std::thread::spawn(|| {
+            futures::executor::block_on(async move {
+                let mut device = Device::new();
 
-            loop {
-                match future::select(
-                    std::future::poll_fn(|cx| device.poll_read(cx)),
-                    std::pin::pin!(outbound_packet_receiver.recv()),
-                )
-                .await
-                {
-                    Either::Left((Ok(packet), _)) => {
-                        match inbound_packet_sender.send(packet).await {
-                            Ok(()) => {}
-                            Err(_) => {
-                                tracing::warn!("Inbound packet channel is closed");
-                                return;
-                            }
-                        };
-                    }
-                    Either::Left((Err(e), _)) => {
-                        tracing::debug!("Failed to read packet from TUN device: {e}")
-                    }
-                    Either::Right((Some(TunMsg::NewTun(tun)), _)) => {
-                        device.set_tun(tun);
-                    }
-                    Either::Right((Some(TunMsg::Packet(packet)), _)) => {
-                        match device.write(packet) {
-                            Ok(_) => {}
-                            Err(e) => {
-                                tracing::debug!("Failed to write packet to TUN interface: {e}");
+                loop {
+                    match future::select(
+                        std::future::poll_fn(|cx| device.poll_read(cx)),
+                        std::pin::pin!(outbound_packet_receiver.recv()),
+                    )
+                    .await
+                    {
+                        Either::Left((Ok(packet), _)) => {
+                            match inbound_packet_sender.send(packet).await {
+                                Ok(()) => {}
+                                Err(_) => {
+                                    tracing::warn!("Inbound packet channel is closed");
+                                    return;
+                                }
+                            };
+                        }
+                        Either::Left((Err(e), _)) => {
+                            tracing::debug!("Failed to read packet from TUN device: {e}")
+                        }
+                        Either::Right((Some(TunMsg::NewTun(tun)), _)) => {
+                            device.set_tun(tun);
+                        }
+                        Either::Right((Some(TunMsg::Packet(packet)), _)) => {
+                            match device.write(packet) {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    tracing::debug!("Failed to write packet to TUN interface: {e}");
+                                }
                             }
                         }
-                    }
-                    Either::Right((None, _)) => {
-                        tracing::warn!("Outbound packet channel is closed");
-                        return;
+                        Either::Right((None, _)) => {
+                            tracing::warn!("Outbound packet channel is closed");
+                            return;
+                        }
                     }
                 }
-            }
+            })
         });
 
         Self {
