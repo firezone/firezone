@@ -87,6 +87,7 @@ private class UpdateNotifier: NSObject, UNUserNotificationCenterDelegate {
   private var lastNotifiedVersion: SemanticVersion?
   static let lastDismissedVersionKey = "lastDismissedVersion"
   static let notificationIdentifier = "UPDATE_CATEGORY"
+  static let appStoreLink = URL(string: "https://apps.apple.com/us/app/firezone/id6443661826")!
 
   override public init() {
     self.decision = .notDetermined
@@ -151,9 +152,7 @@ private class UpdateNotifier: NSObject, UNUserNotificationCenterDelegate {
         return
       }
 
-      if let url = URL(string: "https://apps.apple.com/us/app/firezone/id6443661826") {
-        NSWorkspace.shared.open(url)
-      }
+      NSWorkspace.shared.open(UpdateNotifier.appStoreLink)
 
       completionHandler()
   }
@@ -170,13 +169,23 @@ private class UpdateNotifier: NSObject, UNUserNotificationCenterDelegate {
 
 class UpdateChecker {
   private var timer: Timer?
+  private var updateAvailable: Bool = false
   private let updateNotifier: UpdateNotifier = UpdateNotifier()
   private let versionCheckUrl: URL = URL(string: "https://www.firezone.dev/api/releases")!
+  public let appStoreLink: URL = UpdateNotifier.appStoreLink
+  private var refreshMenu: (() -> Void) = {}
 
-    init() {
-        // Initialize the timer to call the checkForUpdates method every 60 seconds
-        startCheckingForUpdates()
-    }
+  init() {
+      startCheckingForUpdates()
+  }
+
+  public func setRefresh(refreshMenu: @escaping () -> Void) {
+    self.refreshMenu = refreshMenu
+  }
+
+  public func isUpdateAvailable() -> Bool {
+    updateAvailable
+  }
 
     private func startCheckingForUpdates() {
         timer = Timer.scheduledTimer(timeInterval: 6 * 60 * 60, target: self, selector: #selector(checkForUpdates), userInfo: nil, repeats: true)
@@ -184,8 +193,7 @@ class UpdateChecker {
     }
 
     @objc private func checkForUpdates() {
-      //let marketingVersion = Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String
-      let marketingVersion = "1.3.0"
+      let marketingVersion = Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String
 
       let currentVersion = SemanticVersion.from(string: marketingVersion)!
         let task = URLSession.shared.dataTask(with: versionCheckUrl) { [weak self] data, response, error in
@@ -210,10 +218,11 @@ class UpdateChecker {
             return
           }
 
-          //let latestVersion = versionInfo.apple
+          let latestVersion = versionInfo.apple
 
-          let latestVersion = SemanticVersion.from(string: "3.0.0")!
           if latestVersion > currentVersion {
+            self.updateAvailable = true
+            refreshMenu()
             self.updateNotifier.updateNotification(version: latestVersion)
           }
 

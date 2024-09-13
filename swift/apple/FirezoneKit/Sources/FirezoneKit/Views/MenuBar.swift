@@ -27,6 +27,8 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private var cancellables: Set<AnyCancellable> = []
 
+  private var vpnStatus: NEVPNStatus = .disconnected
+
   private var updateChecker: UpdateChecker = UpdateChecker()
 
 
@@ -34,6 +36,8 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private lazy var signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
   private lazy var signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
+  private lazy var signedOutIconNotification = NSImage(named: "MenuBarIconSignedOutNotification")
+  private lazy var signedInConnectedIconNotification = NSImage(named: "MenuBarIconSignedInConnectedNotification")
 
   private lazy var connectingAnimationImages = [
     NSImage(named: "MenuBarIconConnecting1"),
@@ -48,10 +52,9 @@ public final class MenuBar: NSObject, ObservableObject {
     self.model = model
 
     super.init()
+    self.updateChecker.setRefresh(refreshMenu: self.updateStatusItemIcon)
 
-    if let button = statusItem.button {
-      button.image = signedOutIcon
-    }
+    updateStatusItemIcon()
 
     createMenu()
     setupObservers()
@@ -84,7 +87,8 @@ public final class MenuBar: NSObject, ObservableObject {
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] status in
         guard let self = self else { return }
-        self.updateStatusItemIcon(status: model.status)
+        self.vpnStatus = model.status
+        self.updateStatusItemIcon()
       }).store(in: &cancellables)
   }
 
@@ -153,6 +157,15 @@ public final class MenuBar: NSObject, ObservableObject {
     )
     return menuItem
   }()
+  private lazy var updateAvailableMenu: NSMenuItem = {
+    let menuItem = createMenuItem(
+      menu,
+      title: "Update available...",
+      action: #selector(updateAvailableButtonTapped),
+      target: self
+    )
+    return menuItem
+  }()
   private lazy var documentationMenuItem: NSMenuItem = {
     let menuItem = createMenuItem(
       menu,
@@ -217,6 +230,11 @@ public final class MenuBar: NSObject, ObservableObject {
     menu.addItem(adminPortalMenuItem)
     menu.addItem(helpMenuItem)
     menu.addItem(settingsMenuItem)
+    if (updateChecker.isUpdateAvailable()) {
+      menu.addItem(NSMenuItem.separator())
+
+      menu.addItem(updateAvailableMenu)
+    }
     menu.addItem(NSMenuItem.separator())
     menu.addItem(quitMenuItem)
 
@@ -261,6 +279,10 @@ public final class MenuBar: NSObject, ObservableObject {
     NSWorkspace.shared.open(url)
   }
 
+  @objc private func updateAvailableButtonTapped() {
+    NSWorkspace.shared.open(updateChecker.appStoreLink)
+  }
+
   @objc private func documentationButtonTapped() {
     let url = URL(string: "https://www.firezone.dev/kb?utm_source=macos-client")!
     NSWorkspace.shared.open(url)
@@ -283,22 +305,38 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  private func updateStatusItemIcon(status: NEVPNStatus) {
-    statusItem.button?.image = {
-      switch status {
-      case .invalid, .disconnected:
-        self.stopConnectingAnimation()
-        return self.signedOutIcon
-      case .connected:
-        self.stopConnectingAnimation()
-        return self.signedInConnectedIcon
-      case .connecting, .disconnecting, .reasserting:
-        self.startConnectingAnimation()
-        return self.connectingAnimationImages.last!
-      @unknown default:
-        return nil
-      }
-    }()
+  private func updateAnimation(status: NEVPNStatus) {
+    switch status {
+    case .invalid, .disconnected:
+      self.stopConnectingAnimation()
+    case .connected:
+      self.stopConnectingAnimation()
+    case .connecting, .disconnecting, .reasserting:
+      self.startConnectingAnimation()
+    @unknown default:
+      return
+    }
+  }
+
+  private func getStatusIcon(status: NEVPNStatus, notification: Bool) -> NSImage? {
+    if status == .connecting || status == .disconnecting || status == .reasserting {
+      return self.connectingAnimationImages.last!
+    }
+
+    switch status {
+    case .invalid, .disconnected:
+      return notification ? self.signedOutIconNotification : self.signedOutIcon
+    case .connected:
+      return notification ? self.signedInConnectedIconNotification : self.signedInConnectedIcon
+    default:
+      return nil
+    }
+  }
+
+  private func updateStatusItemIcon() {
+    updateAnimation(status: vpnStatus)
+    statusItem.button?.image = getStatusIcon(status: vpnStatus, notification: updateChecker.isUpdateAvailable())
+
   }
 
   private func startConnectingAnimation() {
@@ -319,8 +357,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func connectingAnimationShowNextFrame() {
-    statusItem.button?.image =
-    connectingAnimationImages[connectingAnimationImageIndex]
+    statusItem.button?.image = connectingAnimationImages[connectingAnimationImageIndex]
     connectingAnimationImageIndex =
     (connectingAnimationImageIndex + 1) % connectingAnimationImages.count
   }
