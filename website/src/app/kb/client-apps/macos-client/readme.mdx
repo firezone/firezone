@@ -118,6 +118,14 @@ Normal system DNS:
 
 ## Known issues
 
+- [**SSH session disconnects**](https://github.com/firezone/firezone/issues/6347):
+  SSH sessions on macOS may disconnect when not used for a period of time. As a
+  workaround, try setting the `ServerAliveInterval` in `$HOME/.ssh/config` to 4
+  minutes:
+  ```text
+  Host *
+      ServerAliveInterval 240
+  ```
 - **DNS Resources**: Web browsers that enable "Secure DNS" or DNS-over-HTTPS by
   default may interfere with DNS resolution because they force all DNS traffic
   through the browser's configured resolvers. See
