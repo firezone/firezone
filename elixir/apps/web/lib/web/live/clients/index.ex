@@ -66,10 +66,12 @@ defmodule Web.Clients.Index do
           metadata={@clients_metadata}
         >
           <:col :let={client} field={{:clients, :name}} label="name">
-            <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
-              <%= client.name %>
-            </.link>
-            <.icon :if={not is_nil(client.verified_at)} name="hero-shield-check" class="w-4 h-4" />
+            <div class="flex items-center space-x-1">
+              <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
+                <%= client.name %>
+              </.link>
+              <.icon :if={not is_nil(client.verified_at)} name="hero-shield-check" class="w-4 h-4" />
+            </div>
           </:col>
           <:col :let={client} label="user">
             <.link navigate={~p"/#{@account}/actors/#{client.actor.id}"} class={[link_style()]}>
