@@ -47,6 +47,8 @@ enum TunMsg {
     NewTun(Box<dyn Tun>),
 }
 
+const IP_CHANNEL_SIZE: usize = 1000;
+
 impl Io {
     /// Creates a new I/O abstraction
     ///
@@ -58,8 +60,8 @@ impl Io {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.as_ref()); // Bind sockets on startup. Must happen within a tokio runtime context.
 
-        let (inbound_packet_sender, inbound_packet_receiver) = mpsc::channel(100);
-        let (outbound_packet_sender, mut outbound_packet_receiver) = mpsc::channel(100);
+        let (inbound_packet_sender, inbound_packet_receiver) = mpsc::channel(IP_CHANNEL_SIZE);
+        let (outbound_packet_sender, mut outbound_packet_receiver) = mpsc::channel(IP_CHANNEL_SIZE);
 
         std::thread::spawn(|| {
             futures::executor::block_on(async move {
@@ -233,4 +235,17 @@ fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
     }
 
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn max_ip_channel_size_is_reasonable() {
+        let one_ip_packet = std::mem::size_of::<IpPacket>();
+        let max_channel_size = IP_CHANNEL_SIZE * one_ip_packet;
+
+        assert_eq!(max_channel_size, 1_360_000); // 1.36MB is fine, we only have 2 of these channels, meaning less than 3MB additional buffer in total.
+    }
 }
