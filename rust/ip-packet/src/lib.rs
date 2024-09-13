@@ -202,13 +202,13 @@ impl ConvertibleIpv6Packet {
     }
 
     fn consume_to_ipv4(mut self, src: Ipv4Addr, dst: Ipv4Addr) -> Option<ConvertibleIpv4Packet> {
-        nat64::translate_in_place(&mut self.buf, src, dst)
+        nat64::translate_in_place(self.packet_mut(), src, dst)
             .inspect_err(|e| tracing::trace!("NAT64 failed: {e:#}"))
             .ok()?;
 
         Some(ConvertibleIpv4Packet {
             buf: self.buf,
-            start: 0,
+            start: self.start + 20,
             len: self.len,
         })
     }
