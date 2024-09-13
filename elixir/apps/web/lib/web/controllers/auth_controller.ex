@@ -19,6 +19,8 @@ defmodule Web.AuthController do
     http_only: true
   ]
 
+  @constant_execution_time Application.compile_env(:web, :constant_execution_time, 2000)
+
   action_fallback Web.FallbackController
 
   @doc """
@@ -145,7 +147,7 @@ defmodule Web.AuthController do
               })
           end
         end,
-        2000
+        @constant_execution_time
       )
 
     put_auth_state(conn, provider.id, {fragment, provider_identifier, redirect_params})
