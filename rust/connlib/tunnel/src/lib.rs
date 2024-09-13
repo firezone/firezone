@@ -117,7 +117,7 @@ impl ClientTunnel {
             }
 
             if let Some(packet) = self.role_state.poll_packets() {
-                self.io.send_tun(packet);
+                self.io.send_tun(packet)?;
                 continue;
             }
 
@@ -166,7 +166,7 @@ impl ClientTunnel {
                             continue;
                         };
 
-                        self.io.send_tun(packet);
+                        self.io.send_tun(packet)?;
                     }
 
                     continue;
@@ -256,7 +256,7 @@ impl GatewayTunnel {
                             continue;
                         };
 
-                        self.io.send_tun(packet);
+                        self.io.send_tun(packet)?;
                     }
 
                     continue;

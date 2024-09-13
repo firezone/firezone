@@ -1,5 +1,8 @@
 use crate::{device_channel::Device, sockets::Sockets, BUF_SIZE};
-use futures::future::{self, Either};
+use futures::{
+    future::{self, Either},
+    stream, Stream, StreamExt,
+};
 use futures_util::FutureExt as _;
 use ip_packet::IpPacket;
 use snownet::{EncryptBuffer, EncryptedPacket};
@@ -24,8 +27,9 @@ pub struct Io {
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
-    outbound_packet_sender: mpsc::Sender<TunMsg>,
-    inbound_packet_receiver: mpsc::Receiver<IpPacket>,
+    tun_tx: mpsc::Sender<Box<dyn Tun>>,
+    outbound_packet_tx: mpsc::Sender<IpPacket>,
+    inbound_packet_rx: mpsc::Receiver<IpPacket>,
 }
 
 #[expect(
@@ -36,15 +40,6 @@ pub enum Input<I> {
     Timeout(Instant),
     Device(IpPacket),
     Network(I),
-}
-
-#[expect(
-    clippy::large_enum_variant,
-    reason = "We purposely don't want to allocate each IP packet."
-)]
-enum TunMsg {
-    Packet(IpPacket),
-    NewTun(Box<dyn Tun>),
 }
 
 const IP_CHANNEL_SIZE: usize = 1000;
@@ -62,14 +57,20 @@ impl Io {
 
         let (inbound_packet_tx, inbound_packet_rx) = mpsc::channel(IP_CHANNEL_SIZE);
         let (outbound_packet_tx, outbound_packet_rx) = mpsc::channel(IP_CHANNEL_SIZE);
+        let (tun_tx, tun_rx) = mpsc::channel(10);
 
         std::thread::spawn(|| {
-            futures::executor::block_on(tun_send_recv(outbound_packet_rx, inbound_packet_tx))
+            futures::executor::block_on(tun_send_recv(
+                tun_rx,
+                outbound_packet_rx,
+                inbound_packet_tx,
+            ))
         });
 
         Self {
-            outbound_packet_sender: outbound_packet_tx,
-            inbound_packet_receiver: inbound_packet_rx,
+            tun_tx,
+            outbound_packet_tx,
+            inbound_packet_rx,
             timeout: None,
             sockets,
             _tcp_socket_factory: tcp_socket_factory,
@@ -95,7 +96,7 @@ impl Io {
             return Poll::Ready(Ok(Input::Network(network.filter(is_max_wg_packet_size))));
         }
 
-        if let Poll::Ready(Some(packet)) = self.inbound_packet_receiver.poll_recv(cx) {
+        if let Poll::Ready(Some(packet)) = self.inbound_packet_rx.poll_recv(cx) {
             return Poll::Ready(Ok(Input::Device(packet)));
         }
 
@@ -129,13 +130,27 @@ impl Io {
     }
 
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
-        self.outbound_packet_sender
-            .try_send(TunMsg::NewTun(tun))
-            .unwrap(); // TODO: Maybe we need two channels for proper back-pressure?
+        // If we can't set a new TUN device, shut down connlib.
+
+        self.tun_tx
+            .try_send(tun)
+            .expect("Channel to set new TUN device should always have capacity");
     }
 
-    pub fn send_tun(&mut self, packet: IpPacket) {
-        let _ = self.outbound_packet_sender.try_send(TunMsg::Packet(packet));
+    pub fn send_tun(&mut self, packet: IpPacket) -> io::Result<()> {
+        let Err(e) = self.outbound_packet_tx.try_send(packet) else {
+            return Ok(());
+        };
+
+        match e {
+            mpsc::error::TrySendError::Full(_) => {
+                Err(io::Error::other("Outbound packet channel is at capacity"))
+            }
+            mpsc::error::TrySendError::Closed(_) => Err(io::Error::new(
+                io::ErrorKind::NotConnected,
+                "Outbound packet channel is disconnected",
+            )),
+        }
     }
 
     pub fn rebind_sockets(&mut self) {
@@ -188,45 +203,75 @@ impl Io {
 }
 
 async fn tun_send_recv(
-    mut outbound_packet_receiver: mpsc::Receiver<TunMsg>,
-    inbound_packet_sender: mpsc::Sender<IpPacket>,
+    mut tun_rx: mpsc::Receiver<Box<dyn Tun>>,
+    mut outbound_packet_rx: mpsc::Receiver<IpPacket>,
+    inbound_packet_tx: mpsc::Sender<IpPacket>,
 ) {
     let mut device = Device::new();
 
+    let mut command_stream = stream::select_all([
+        new_tun_stream(&mut tun_rx),
+        outgoing_packet_stream(&mut outbound_packet_rx),
+    ]);
+
     loop {
         match future::select(
-            std::future::poll_fn(|cx| device.poll_read(cx)),
-            std::pin::pin!(outbound_packet_receiver.recv()),
+            command_stream.next(),
+            future::poll_fn(|cx| device.poll_read(cx)),
         )
         .await
         {
-            Either::Left((Ok(packet), _)) => {
-                match inbound_packet_sender.send(packet).await {
-                    Ok(()) => {}
-                    Err(_) => {
-                        tracing::warn!("Inbound packet channel is closed");
-                        return;
-                    }
-                };
+            Either::Left((Some(Command::SendPacket(p)), _)) => {
+                device.write(p).expect("todo");
             }
-            Either::Left((Err(e), _)) => {
-                tracing::debug!("Failed to read packet from TUN device: {e}")
-            }
-            Either::Right((Some(TunMsg::NewTun(tun)), _)) => {
+            Either::Left((Some(Command::UpdateTun(tun)), _)) => {
                 device.set_tun(tun);
             }
-            Either::Right((Some(TunMsg::Packet(packet)), _)) => match device.write(packet) {
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::debug!("Failed to write packet to TUN interface: {e}");
-                }
-            },
-            Either::Right((None, _)) => {
-                tracing::warn!("Outbound packet channel is closed");
+            Either::Left((None, _)) => {
+                tracing::debug!("Command stream closed");
                 return;
             }
-        }
+            Either::Right((Ok(p), _)) => {
+                if inbound_packet_tx.send(p).await.is_err() {
+                    tracing::debug!("Inbound packet channel closed");
+                    return;
+                };
+            }
+            Either::Right((Err(e), _)) => {
+                tracing::debug!("Failed to read packet from TUN device: {e}");
+                return;
+            }
+        };
     }
+}
+
+#[expect(
+    clippy::large_enum_variant,
+    reason = "We purposely don't want to allocate each IP packet."
+)]
+enum Command {
+    UpdateTun(Box<dyn Tun>),
+    SendPacket(IpPacket),
+}
+
+fn new_tun_stream(
+    tun_rx: &mut mpsc::Receiver<Box<dyn Tun>>,
+) -> Pin<Box<dyn Stream<Item = Command> + '_>> {
+    Box::pin(stream::poll_fn(|cx| {
+        tun_rx
+            .poll_recv(cx)
+            .map(|maybe_t| maybe_t.map(Command::UpdateTun))
+    }))
+}
+
+fn outgoing_packet_stream(
+    outbound_packet_rx: &mut mpsc::Receiver<IpPacket>,
+) -> Pin<Box<dyn Stream<Item = Command> + '_>> {
+    Box::pin(stream::poll_fn(|cx| {
+        outbound_packet_rx
+            .poll_recv(cx)
+            .map(|maybe_p| maybe_p.map(Command::SendPacket))
+    }))
 }
 
 fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
