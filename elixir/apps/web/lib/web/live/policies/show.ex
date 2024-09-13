@@ -6,7 +6,13 @@ defmodule Web.Policies.Show do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
            Policies.fetch_policy_by_id(id, socket.assigns.subject,
-             preload: [actor_group: [:provider], resource: [], created_by_identity: :actor]
+             preload: [
+               actor_group: [:provider],
+               resource: [],
+               created_by_identity: :actor,
+               replaced_by_policy: [:actor_group, :resource],
+               replaces_policy: [:actor_group, :resource]
+             ]
            ) do
       providers = Auth.all_active_providers_for_account!(socket.assigns.account)
 
@@ -68,7 +74,16 @@ defmodule Web.Policies.Show do
       <:title>
         <.policy_name policy={@policy} />
         <span :if={not is_nil(@policy.disabled_at)} class="text-primary-600">(disabled)</span>
-        <span :if={not is_nil(@policy.deleted_at)} class="text-red-600">(deleted)</span>
+        <span
+          :if={not is_nil(@policy.deleted_at) and is_nil(@policy.replaced_by_policy_id)}
+          }
+          class="text-red-600"
+        >
+          (deleted)
+        </span>
+        <span :if={not is_nil(@policy.replaced_by_policy_id)} class={["text-red-500"]}>
+          (replaced)
+        </span>
       </:title>
       <:action :if={is_nil(@policy.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/policies/#{@policy}/edit"}>
@@ -127,6 +142,40 @@ defmodule Web.Policies.Show do
             </:label>
             <:value>
               <%= @policy.id %>
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>
+              Persistent ID
+            </:label>
+            <:value>
+              <%= @policy.persistent_id %>
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row :if={not is_nil(@policy.replaced_by_policy)}>
+            <:label>
+              Replaced by Policy
+            </:label>
+            <:value>
+              <.link
+                navigate={~p"/#{@account}/policies/#{@policy.replaced_by_policy}"}
+                class={["text-accent-600"] ++ link_style()}
+              >
+                <.policy_name policy={@policy.replaced_by_policy} />
+              </.link>
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row :if={not is_nil(@policy.replaces_policy)}>
+            <:label>
+              Replaced Policy
+            </:label>
+            <:value>
+              <.link
+                navigate={~p"/#{@account}/policies/#{@policy.replaces_policy}"}
+                class={["text-accent-600"] ++ link_style()}
+              >
+                <.policy_name policy={@policy.replaces_policy} />
+              </.link>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -260,7 +309,13 @@ defmodule Web.Policies.Show do
   def handle_info({_action, _policy_id}, socket) do
     {:ok, policy} =
       Policies.fetch_policy_by_id(socket.assigns.policy.id, socket.assigns.subject,
-        preload: [actor_group: [:provider], resource: [], created_by_identity: :actor]
+        preload: [
+          actor_group: [:provider],
+          resource: [],
+          created_by_identity: :actor,
+          replaced_by_policy: [:actor_group, :resource],
+          replaces_policy: [:actor_group, :resource]
+        ]
       )
 
     {:noreply, assign(socket, policy: policy)}
@@ -276,7 +331,9 @@ defmodule Web.Policies.Show do
       policy
       | actor_group: socket.assigns.policy.actor_group,
         resource: socket.assigns.policy.resource,
-        created_by_identity: socket.assigns.policy.created_by_identity
+        created_by_identity: socket.assigns.policy.created_by_identity,
+        replaced_by_policy: socket.assigns.policy.replaced_by_policy,
+        replaces_policy: socket.assigns.policy.replaces_policy
     }
 
     {:noreply, assign(socket, policy: policy)}
@@ -289,7 +346,9 @@ defmodule Web.Policies.Show do
       policy
       | actor_group: socket.assigns.policy.actor_group,
         resource: socket.assigns.policy.resource,
-        created_by_identity: socket.assigns.policy.created_by_identity
+        created_by_identity: socket.assigns.policy.created_by_identity,
+        replaced_by_policy: socket.assigns.policy.replaced_by_policy,
+        replaces_policy: socket.assigns.policy.replaces_policy
     }
 
     {:noreply, assign(socket, policy: policy)}

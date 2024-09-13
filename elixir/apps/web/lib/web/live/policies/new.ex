@@ -3,13 +3,6 @@ defmodule Web.Policies.New do
   import Web.Policies.Components
   alias Domain.{Resources, Actors, Policies, Auth}
 
-  @resource_types %{
-    internet: %{index: 1, label: nil},
-    dns: %{index: 2, label: "DNS"},
-    ip: %{index: 3, label: "IP"},
-    cidr: %{index: 4, label: "CIDR"}
-  }
-
   def mount(params, _session, socket) do
     # TODO: unify this dropdown and the one we use for live table filters
     resources = Resources.all_resources!(socket.assigns.subject, preload: [:gateway_groups])
@@ -85,7 +78,7 @@ defmodule Web.Policies.New do
                   field={@form[:resource_id]}
                   label="Resource"
                   type="group_select"
-                  options={to_options(@resources, @account)}
+                  options={resource_options(@resources, @account)}
                   value={resource_id}
                   disabled={not is_nil(@resource_id)}
                   required
@@ -138,50 +131,6 @@ defmodule Web.Policies.New do
       </:content>
     </.section>
     """
-  end
-
-  defp to_options(resources, account) do
-    resources
-    |> Enum.group_by(& &1.type)
-    |> Enum.sort_by(fn {type, _} ->
-      Map.fetch!(@resource_types, type) |> Map.fetch!(:index)
-    end)
-    |> Enum.map(fn {type, resources} ->
-      options =
-        resources
-        |> Enum.sort_by(fn resource -> resource.name end)
-        |> Enum.map(&resource_option(&1, account))
-
-      label = Map.fetch!(@resource_types, type) |> Map.fetch!(:label)
-
-      {label, options}
-    end)
-  end
-
-  defp resource_option(%{type: :internet} = resource, account) do
-    gateway_group_names = resource.gateway_groups |> Enum.map(& &1.name)
-
-    if Domain.Accounts.internet_resource_enabled?(account) do
-      [
-        key: "Internet - #{Enum.join(gateway_group_names, ",")}",
-        value: resource.id
-      ]
-    else
-      [
-        key: "Internet - upgrade to unlock",
-        value: resource.id,
-        disabled: true
-      ]
-    end
-  end
-
-  defp resource_option(resource, _account) do
-    gateway_group_names = resource.gateway_groups |> Enum.map(& &1.name)
-
-    [
-      key: "#{resource.name} - #{Enum.join(gateway_group_names, ",")}",
-      value: resource.id
-    ]
   end
 
   def handle_event("validate", %{"policy" => params}, socket) do

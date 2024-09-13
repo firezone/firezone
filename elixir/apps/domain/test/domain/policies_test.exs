@@ -342,7 +342,7 @@ defmodule Domain.PoliciesTest do
     end
   end
 
-  describe "update_policy/3" do
+  describe "update_or_replace_policy/3" do
     setup context do
       policy =
         Fixtures.Policies.create_policy(
@@ -361,20 +361,20 @@ defmodule Domain.PoliciesTest do
     end
 
     test "does nothing on empty params", %{policy: policy, subject: subject} do
-      assert {:ok, _policy} = update_policy(policy, %{}, subject)
+      assert {:ok, _policy} = update_or_replace_policy(policy, %{}, subject)
     end
 
     test "returns changeset error on invalid params", %{account: account, subject: subject} do
       policy = Fixtures.Policies.create_policy(account: account, subject: subject)
 
       attrs = %{description: String.duplicate("a", 1025)}
-      assert {:error, changeset} = update_policy(policy, attrs, subject)
+      assert {:error, changeset} = update_or_replace_policy(policy, attrs, subject)
       assert errors_on(changeset) == %{description: ["should be at most 1024 character(s)"]}
     end
 
     test "allows update to description", %{policy: policy, subject: subject} do
       attrs = %{description: "updated policy description"}
-      assert {:ok, updated_policy} = update_policy(policy, attrs, subject)
+      assert {:ok, updated_policy} = update_or_replace_policy(policy, attrs, subject)
       assert updated_policy.description == attrs.description
     end
 
@@ -386,7 +386,7 @@ defmodule Domain.PoliciesTest do
       :ok = subscribe_to_events_for_account(account)
 
       attrs = %{description: "updated policy description"}
-      assert {:ok, policy} = update_policy(policy, attrs, subject)
+      assert {:ok, policy} = update_or_replace_policy(policy, attrs, subject)
 
       assert_receive {:update_policy, policy_id}
       assert policy_id == policy.id
@@ -399,7 +399,7 @@ defmodule Domain.PoliciesTest do
       :ok = subscribe_to_events_for_policy(policy)
 
       attrs = %{description: "updated policy description"}
-      assert {:ok, updated_policy} = update_policy(policy, attrs, subject)
+      assert {:ok, updated_policy} = update_or_replace_policy(policy, attrs, subject)
       assert updated_policy.id == policy.id
 
       assert_receive {:update_policy, policy_id}
@@ -413,7 +413,7 @@ defmodule Domain.PoliciesTest do
       :ok = subscribe_to_events_for_actor_group(policy.actor_group_id)
 
       attrs = %{description: "updated policy description"}
-      assert {:ok, _policy} = update_policy(policy, attrs, subject)
+      assert {:ok, _policy} = update_or_replace_policy(policy, attrs, subject)
 
       refute_receive {:allow_access, _policy_id, _actor_group_id, _resource_id}
       refute_receive {:reject_access, _policy_id, _actor_group_id, _resource_id}
@@ -428,7 +428,7 @@ defmodule Domain.PoliciesTest do
 
       attrs = %{resource_id: new_resource.id}
 
-      assert {:ok, replaced_policy} = update_policy(policy, attrs, subject)
+      assert {:ok, replaced_policy} = update_or_replace_policy(policy, attrs, subject)
 
       assert replaced_policy.resource_id == policy.resource_id
       assert replaced_policy.actor_group_id == policy.actor_group_id
@@ -455,7 +455,7 @@ defmodule Domain.PoliciesTest do
 
       attrs = %{actor_group_id: new_actor_group.id}
 
-      assert {:ok, replaced_policy} = update_policy(policy, attrs, subject)
+      assert {:ok, replaced_policy} = update_or_replace_policy(policy, attrs, subject)
       assert replaced_policy.resource_id == policy.resource_id
       assert replaced_policy.actor_group_id == policy.actor_group_id
       assert replaced_policy.conditions == policy.conditions
@@ -486,7 +486,7 @@ defmodule Domain.PoliciesTest do
         ]
       }
 
-      assert {:ok, replaced_policy} = update_policy(policy, attrs, subject)
+      assert {:ok, replaced_policy} = update_or_replace_policy(policy, attrs, subject)
 
       assert replaced_policy.id == policy.id
       assert not is_nil(replaced_policy.deleted_at)
@@ -532,7 +532,7 @@ defmodule Domain.PoliciesTest do
 
       attrs = %{resource_id: new_resource.id}
 
-      assert {:ok, replaced_policy} = update_policy(policy, attrs, subject)
+      assert {:ok, replaced_policy} = update_or_replace_policy(policy, attrs, subject)
 
       assert_receive {:delete_policy, policy_id}
       assert policy_id == replaced_policy.id
@@ -553,7 +553,7 @@ defmodule Domain.PoliciesTest do
       subject = Fixtures.Auth.remove_permissions(subject)
       attrs = %{description: "Name Change Attempt"}
 
-      assert update_policy(policy, attrs, subject) ==
+      assert update_or_replace_policy(policy, attrs, subject) ==
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,
@@ -569,7 +569,11 @@ defmodule Domain.PoliciesTest do
       other_identity = Fixtures.Auth.create_identity(account: other_account, actor: other_actor)
       other_subject = Fixtures.Auth.create_subject(identity: other_identity)
 
-      assert update_policy(policy, %{description: "Should not be allowed"}, other_subject) ==
+      assert update_or_replace_policy(
+               policy,
+               %{description: "Should not be allowed"},
+               other_subject
+             ) ==
                {:error, :unauthorized}
     end
   end

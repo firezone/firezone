@@ -92,7 +92,7 @@ defmodule API.PolicyController do
     subject = conn.assigns.subject
 
     with {:ok, policy} <- Policies.fetch_policy_by_id(id, subject),
-         {:ok, policy} <- Policies.update_policy(policy, params, subject) do
+         {:ok, policy} <- Policies.update_or_replace_policy(policy, params, subject) do
       render(conn, :show, policy: policy)
     end
   end

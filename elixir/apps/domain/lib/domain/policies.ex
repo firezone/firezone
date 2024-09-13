@@ -60,7 +60,14 @@ defmodule Domain.Policies do
     end
   end
 
-  def update_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
+  def change_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
+    case Policy.Changeset.update_or_replace(policy, attrs, subject) do
+      {update_changeset, nil} -> update_changeset
+      {_update_changeset, create_changeset} -> create_changeset
+    end
+  end
+
+  def update_or_replace_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()),
          :ok <- ensure_has_access_to(subject, policy) do
       Ecto.Multi.new()
@@ -102,12 +109,12 @@ defmodule Domain.Policies do
       |> case do
         {:ok, %{update_policy: updated_policy, create_policy: nil}} ->
           :ok = broadcast_policy_events(:update, updated_policy)
-          {:ok, updated_policy}
+          {:updated, updated_policy}
 
-        {:ok, %{replace_policy: replaced_policy}} ->
+        {:ok, %{replace_policy: replaced_policy, create_policy: create_policy}} ->
           {:ok, _flows} = Flows.expire_flows_for(replaced_policy, subject)
           :ok = broadcast_policy_events(:delete, replaced_policy)
-          {:ok, replaced_policy}
+          {:replaced, replaced_policy, create_policy}
 
         {:error, :policy, changeset, _changes_so_far} ->
           {:error, changeset}
