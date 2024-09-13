@@ -388,7 +388,6 @@ fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()
     // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
     row.SitePrefixLength = 0;
 
-    // Set MTU for IPv4
     row.NlMtu = mtu;
 
     // SAFETY: TODO
