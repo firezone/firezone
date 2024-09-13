@@ -295,6 +295,11 @@ impl<'a> Listener<'a> {
         self.close_dont_drop()
     }
 
+    /// Close without consuming `self`
+    ///
+    /// This must be factored out so that we can have both:
+    /// - `close` which consumes `self` and returns a `Result` for error bubbling
+    /// - `drop` which does not consume `self` and does not bubble errors, but which runs even if we forget to call `close`
     fn close_dont_drop(&mut self) -> Result<()> {
         if let Some(cookie) = self.advise_cookie_net.take() {
             // SAFETY: I don't see any memory safety issues.
@@ -560,6 +565,11 @@ mod async_dns {
             self.close_dont_drop()
         }
 
+        /// Close without consuming `self`
+        ///
+        /// This must be factored out so that we can have both:
+        /// - `close` which consumes `self` and returns a `Result` for error bubbling
+        /// - `drop` which does not consume `self` and does not bubble errors, but which runs even if we forget to call `close`
         fn close_dont_drop(&mut self) -> Result<()> {
             if let Some(inner) = self.inner.take() {
                 unsafe { UnregisterWaitEx(inner.wait_handle, INVALID_HANDLE_VALUE) }
