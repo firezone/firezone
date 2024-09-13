@@ -972,8 +972,8 @@ defmodule Web.CoreComponents do
         class="text-accent-500 hover:underline"
         navigate={~p"/#{@schema.account_id}/actors/#{@schema.verified_by_identity.actor_id}"}
       >
-      <%= assigns.schema.verified_by_actor.name %>
-    </.link>
+        <%= assigns.schema.verified_by_actor.name %>
+      </.link>
     </div>
     """
   end
