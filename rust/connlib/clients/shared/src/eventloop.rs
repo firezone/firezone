@@ -180,9 +180,10 @@ where
 
                 self.callbacks
                     .on_set_interface_config(config.ip4, config.ip6, dns_servers);
-            }
-            firezone_tunnel::ClientEvent::TunRoutesUpdated { ip4, ip6 } => {
-                self.callbacks.on_update_routes(ip4, ip6);
+                self.callbacks.on_update_routes(
+                    Vec::from_iter(config.ipv4_routes),
+                    Vec::from_iter(config.ipv6_routes),
+                );
             }
             firezone_tunnel::ClientEvent::RequestConnection {
                 gateway_id,

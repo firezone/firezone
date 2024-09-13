@@ -47,7 +47,7 @@ android {
 
     // Life is easier if we just match the default NDK on the Ubuntu 22.04 runners
     // https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2204-Readme.md#android
-    ndkVersion = "27.0.12077973"
+    ndkVersion = "27.1.12297006"
 
     defaultConfig {
         applicationId = "dev.firezone.android"
@@ -56,7 +56,7 @@ android {
         targetSdk = 35
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
-        versionName = "1.3.2"
+        versionName = "1.3.3"
         multiDexEnabled = true
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
 
@@ -185,7 +185,7 @@ dependencies {
     // Instrumented Tests
     androidTestImplementation("com.google.dagger:hilt-android-testing:2.52")
     kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.52")
-    androidTestImplementation("androidx.test:runner:1.6.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.navigation:navigation-testing:2.7.7")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.6.1")

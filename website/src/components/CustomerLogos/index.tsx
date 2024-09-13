@@ -4,11 +4,11 @@ import Marquee from "react-fast-marquee";
 
 export function CustomerLogosGrayscale() {
   return (
-    <div className="lg:fade-side overflow-hidden w-full">
+    <div className="lg:fade-side overflow-hidden flex justify-center w-full">
       <div className="animate-left inline-block whitespace-nowrap">
-        <div className="inline-flex mr-12 lg:mr-0">
+        <div className="inline-flex">
           <Link
-            className="shrink-0 h-12 mr-20 place-content-center"
+            className="h-16 mr-20 place-content-center"
             href="https://corrdyn.com"
           >
             <Image
@@ -19,7 +19,7 @@ export function CustomerLogosGrayscale() {
             />
           </Link>
           <Link
-            className="shrink-0 h-12 mr-20 place-content-center"
+            className="h-16 mr-20 place-content-center"
             href="https://square1.io"
           >
             <Image
@@ -30,7 +30,7 @@ export function CustomerLogosGrayscale() {
             />
           </Link>
           <Link
-            className="shrink-0 h-12 mr-20 place-content-center"
+            className="h-16 mr-20 place-content-center"
             href="https://bunq.com"
           >
             <Image
@@ -41,7 +41,7 @@ export function CustomerLogosGrayscale() {
             />
           </Link>
           <Link
-            className="shrink-0 h-12 mr-20 place-content-center"
+            className="h-16 mr-20 place-content-center"
             href="https://wolfram.com"
           >
             <Image
@@ -52,7 +52,7 @@ export function CustomerLogosGrayscale() {
             />
           </Link>
           <Link
-            className="shrink-0 h-12 mr-20 place-content-center"
+            className="h-16 mr-20 place-content-center"
             href="https://teracloud.com"
           >
             <Image
@@ -64,7 +64,7 @@ export function CustomerLogosGrayscale() {
             />
           </Link>
           <Link
-            className="shrink-0 h-12 mr-20 place-content-center"
+            className="h-16 mr-20 place-content-center"
             href="https://double11.co.uk"
           >
             <Image
@@ -77,7 +77,7 @@ export function CustomerLogosGrayscale() {
         </div>
         <div className="inline-flex">
           <Link
-            className="shrink-0 h-12 mr-20 place-content-center"
+            className="h-16 mr-20 place-content-center"
             href="https://corrdyn.com"
           >
             <Image
@@ -88,7 +88,7 @@ export function CustomerLogosGrayscale() {
             />
           </Link>
           <Link
-            className="shrink-0 h-12 mr-20 place-content-center"
+            className="h-16 mr-20 place-content-center"
             href="https://square1.io"
           >
             <Image
@@ -99,7 +99,7 @@ export function CustomerLogosGrayscale() {
             />
           </Link>
           <Link
-            className="shrink-0 h-12 mr-20 place-content-center"
+            className="h-16 mr-20 place-content-center"
             href="https://bunq.com"
           >
             <Image
@@ -110,7 +110,7 @@ export function CustomerLogosGrayscale() {
             />
           </Link>
           <Link
-            className="shrink-0 h-12 mr-20 place-content-center"
+            className="h-16 mr-20 place-content-center"
             href="https://wolfram.com"
           >
             <Image
@@ -121,7 +121,7 @@ export function CustomerLogosGrayscale() {
             />
           </Link>
           <Link
-            className="shrink-0 h-12 mr-20 place-content-center"
+            className="h-16 mr-20 place-content-center"
             href="https://teracloud.com"
           >
             <Image
@@ -132,7 +132,7 @@ export function CustomerLogosGrayscale() {
             />
           </Link>
           <Link
-            className="shrink-0 h-12 mr-20 place-content-center"
+            className="h-16 mr-20 place-content-center"
             href="https://double11.co.uk"
           >
             <Image

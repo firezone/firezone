@@ -13,6 +13,15 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This cannot be done when the issue's PR merges. */}
+      {/*
+      <Entry version="1.3.3" date={new Date("invalid")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem enable={title === "Windows"} pull="6681">
+            Fixes a bug where sign-in fails if IPv6 is disabled
+          </ChangeItem>
+        </ul>
+      </Entry>
+      */}
       <Entry version="1.3.2" date={new Date("2024-09-06")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6624">

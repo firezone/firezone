@@ -87,7 +87,7 @@ export default function Page() {
             </div>
           </div>
         </div>
-        <div className="pt-24 pb-4 max-w-screen-xl mx-auto">
+        <div className="pt-24 pb-4 max-w-[1020px] mx-auto">
           <div className="text-center text-sm mb-6 font-base text-neutral-500">
             Backed by{" "}
             <Image

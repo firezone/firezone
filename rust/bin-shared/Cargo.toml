@@ -32,7 +32,7 @@ rtnetlink = { workspace = true }
 zbus = "4.4" # Can't use `zbus`'s `tokio` feature here, or it will break toast popups all the way over in `gui-client`.
 
 [target.'cfg(windows)'.dependencies]
-known-folders = "1.1.0"
+known-folders = "1.2.0"
 ring = "0.17"
 uuid = { version = "1.10.0", features = ["v4"] }
 windows-core = "0.58.0"

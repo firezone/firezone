@@ -143,7 +143,7 @@ defmodule Web.Clients.Show do
           <.vertical_table_row>
             <:label>Last used sign in method</:label>
             <:value>
-              <span :if={@client.actor.type != :service_account}>
+              <div :if={@client.actor.type != :service_account} class="flex items-center">
                 <.identity_identifier account={@account} identity={@client.last_used_token.identity} />
                 <.link
                   navigate={
@@ -153,8 +153,8 @@ defmodule Web.Clients.Show do
                 >
                   show tokens
                 </.link>
-              </span>
-              <span :if={@client.actor.type == :service_account}>
+              </div>
+              <div :if={@client.actor.type == :service_account}>
                 token
                 <.link
                   navigate={
@@ -167,7 +167,7 @@ defmodule Web.Clients.Show do
                 <span :if={not is_nil(@client.last_used_token.deleted_at)}>
                   (deleted)
                 </span>
-              </span>
+              </div>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
