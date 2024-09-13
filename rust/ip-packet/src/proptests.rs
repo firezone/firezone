@@ -1,17 +1,16 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use pnet_packet::Packet;
 use proptest::arbitrary::any;
 use proptest::prop_oneof;
 use proptest::strategy::Strategy;
 
-use crate::{build, MutableIpPacket};
+use crate::{build, IpPacket};
 use etherparse::{Ipv4Extensions, Ipv4Header, Ipv4Options, PacketBuilder};
 use proptest::prelude::Just;
 
 const EMPTY_PAYLOAD: &[u8] = &[];
 
-fn tcp_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
+fn tcp_packet_v4() -> impl Strategy<Value = IpPacket<'static>> {
     (
         any::<Ipv4Addr>(),
         any::<Ipv4Addr>(),
@@ -27,7 +26,7 @@ fn tcp_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
         })
 }
 
-fn tcp_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
+fn tcp_packet_v6() -> impl Strategy<Value = IpPacket<'static>> {
     (
         any::<Ipv6Addr>(),
         any::<Ipv6Addr>(),
@@ -43,7 +42,7 @@ fn tcp_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
         })
 }
 
-fn udp_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
+fn udp_packet_v4() -> impl Strategy<Value = IpPacket<'static>> {
     (
         any::<Ipv4Addr>(),
         any::<Ipv4Addr>(),
@@ -59,7 +58,7 @@ fn udp_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
         })
 }
 
-fn udp_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
+fn udp_packet_v6() -> impl Strategy<Value = IpPacket<'static>> {
     (
         any::<Ipv6Addr>(),
         any::<Ipv6Addr>(),
@@ -75,7 +74,7 @@ fn udp_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
         })
 }
 
-fn icmp_request_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
+fn icmp_request_packet_v4() -> impl Strategy<Value = IpPacket<'static>> {
     (
         any::<Ipv4Addr>(),
         any::<Ipv4Addr>(),
@@ -99,7 +98,7 @@ fn icmp_request_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
         })
 }
 
-fn icmp_reply_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
+fn icmp_reply_packet_v4() -> impl Strategy<Value = IpPacket<'static>> {
     (
         any::<Ipv4Addr>(),
         any::<Ipv4Addr>(),
@@ -123,7 +122,7 @@ fn icmp_reply_packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
         })
 }
 
-fn icmp_request_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
+fn icmp_request_packet_v6() -> impl Strategy<Value = IpPacket<'static>> {
     (
         any::<Ipv6Addr>(),
         any::<Ipv6Addr>(),
@@ -138,7 +137,7 @@ fn icmp_request_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
         })
 }
 
-fn icmp_reply_packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
+fn icmp_reply_packet_v6() -> impl Strategy<Value = IpPacket<'static>> {
     (
         any::<Ipv6Addr>(),
         any::<Ipv6Addr>(),
@@ -169,7 +168,7 @@ fn ipv4_options() -> impl Strategy<Value = Ipv4Options> {
     ]
 }
 
-fn packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
+fn packet_v4() -> impl Strategy<Value = IpPacket<'static>> {
     prop_oneof![
         tcp_packet_v4(),
         udp_packet_v4(),
@@ -178,7 +177,7 @@ fn packet_v4() -> impl Strategy<Value = MutableIpPacket<'static>> {
     ]
 }
 
-fn packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
+fn packet_v6() -> impl Strategy<Value = IpPacket<'static>> {
     prop_oneof![
         tcp_packet_v6(),
         udp_packet_v6(),
@@ -189,11 +188,11 @@ fn packet_v6() -> impl Strategy<Value = MutableIpPacket<'static>> {
 
 #[test_strategy::proptest()]
 fn nat_6446(
-    #[strategy(packet_v6())] packet_v6: MutableIpPacket<'static>,
+    #[strategy(packet_v6())] packet_v6: IpPacket<'static>,
     #[strategy(any::<Ipv4Addr>())] new_src: Ipv4Addr,
     #[strategy(any::<Ipv4Addr>())] new_dst: Ipv4Addr,
 ) {
-    let header = packet_v6.as_immutable().ipv6_header().unwrap();
+    let header = packet_v6.ipv6_header().unwrap();
     let payload = packet_v6.payload().to_vec();
 
     let packet_v4 = packet_v6.consume_to_ipv4(new_src, new_dst).unwrap();
@@ -206,17 +205,17 @@ fn nat_6446(
         .unwrap();
     new_packet_v6.update_checksum();
 
-    assert_eq!(new_packet_v6.as_immutable().ipv6_header().unwrap(), header);
+    assert_eq!(new_packet_v6.ipv6_header().unwrap(), header);
     assert_eq!(new_packet_v6.payload(), payload);
 }
 
 #[test_strategy::proptest()]
 fn nat_4664(
-    #[strategy(packet_v4())] packet_v4: MutableIpPacket<'static>,
+    #[strategy(packet_v4())] packet_v4: IpPacket<'static>,
     #[strategy(any::<Ipv6Addr>())] new_src: Ipv6Addr,
     #[strategy(any::<Ipv6Addr>())] new_dst: Ipv6Addr,
 ) {
-    let header = packet_v4.as_immutable().ipv4_header().unwrap();
+    let header = packet_v4.ipv4_header().unwrap();
     let payload = packet_v4.payload().to_vec();
 
     let packet_v6 = packet_v4.consume_to_ipv6(new_src, new_dst).unwrap();
@@ -236,9 +235,6 @@ fn nat_4664(
     };
     header_without_options.header_checksum = header_without_options.calc_header_checksum();
 
-    assert_eq!(
-        new_packet_v4.as_immutable().ipv4_header().unwrap(),
-        header_without_options
-    );
+    assert_eq!(new_packet_v4.ipv4_header().unwrap(), header_without_options);
     assert_eq!(new_packet_v4.payload(), payload);
 }

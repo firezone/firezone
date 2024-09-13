@@ -7,15 +7,12 @@ pub struct Ipv4HeaderSliceMut<'a> {
 
 impl<'a> Ipv4HeaderSliceMut<'a> {
     /// Creates a new [`Ipv4HeaderSliceMut`].
-    ///
-    /// # Safety
-    ///
-    /// - The byte array must be at least of length 20.
-    /// - The IP version must be 4.
-    pub unsafe fn from_slice_unchecked(slice: &'a mut [u8]) -> Self {
-        debug_assert!(Ipv4HeaderSlice::from_slice(slice).is_ok()); // Debug asserts are no-ops in release mode, so this is still "unchecked".
+    pub fn from_slice(
+        slice: &'a mut [u8],
+    ) -> Result<Self, etherparse::err::ipv4::HeaderSliceError> {
+        Ipv4HeaderSlice::from_slice(slice)?;
 
-        Self { slice }
+        Ok(Self { slice })
     }
 
     pub fn set_checksum(&mut self, checksum: u16) {

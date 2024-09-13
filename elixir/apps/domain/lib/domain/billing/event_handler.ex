@@ -156,6 +156,7 @@ defmodule Domain.Billing.EventHandler do
             "id" => subscription_id,
             "customer" => customer_id,
             "metadata" => subscription_metadata,
+            "trial_end" => trial_end,
             "items" => %{
               "data" => [
                 %{
@@ -179,7 +180,8 @@ defmodule Domain.Billing.EventHandler do
     attrs =
       account_update_attrs(quantity, product_metadata, subscription_metadata, %{
         "subscription_id" => subscription_id,
-        "product_name" => product_name
+        "product_name" => product_name,
+        "trial_ends_at" => if(trial_end, do: DateTime.from_unix!(trial_end))
       })
       |> Map.put(:disabled_at, nil)
       |> Map.put(:disabled_reason, nil)

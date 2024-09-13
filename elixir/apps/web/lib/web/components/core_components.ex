@@ -273,6 +273,7 @@ defmodule Web.CoreComponents do
     values: [:success, :info, :warning, :error],
     doc: "used for styling and flash lookup"
 
+  attr :class, :any, default: nil
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
   attr :style, :string, default: "pill"
 
@@ -289,7 +290,8 @@ defmodule Web.CoreComponents do
         @kind == :info && "text-blue-800 bg-blue-100",
         @kind == :warning && "text-yellow-800 bg-yellow-100",
         @kind == :error && "text-red-800 bg-red-100",
-        @style != "wide" && "mb-4 rounded"
+        @style != "wide" && "mb-4 rounded",
+        @class
       ]}
       role="alert"
       {@rest}

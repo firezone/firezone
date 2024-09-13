@@ -8,7 +8,7 @@ pub unsafe fn write_to_offset_unchecked<const N: usize>(
     offset: usize,
     bytes: [u8; N],
 ) {
-    debug_assert!(offset + N < slice.len());
+    debug_assert!(offset + N <= slice.len());
 
     let (_front, rest) = unsafe { slice.split_at_mut_unchecked(offset) };
     let (target, _rest) = unsafe { rest.split_at_mut_unchecked(N) };

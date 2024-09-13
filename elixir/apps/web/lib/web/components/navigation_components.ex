@@ -24,7 +24,7 @@ defmodule Web.NavigationComponents do
           </button>
           <a href={~p"/"} class="flex items-center justify-between mr-4">
             <img src={~p"/images/logo.svg"} class="mr-3 h-8" alt="Firezone Logo" />
-            <span class="self-center text-2xl font-medium whitespace-nowrap">
+            <span class="self-center text-2xl font-semibold tracking-tight whitespace-nowrap">
               Firezone
             </span>
           </a>
@@ -110,7 +110,7 @@ defmodule Web.NavigationComponents do
         bg-white border-r border-neutral-200
         lg:translate-x-0
       ]} aria-label="Sidenav" id="drawer-navigation">
-      <div class="overflow-y-auto py-1 px-1 h-full bg-white">
+      <div class="overflow-y-auto py-1 px-2 h-full bg-white">
         <ul>
           <%= render_slot(@inner_block) %>
         </ul>
@@ -162,7 +162,7 @@ defmodule Web.NavigationComponents do
     ~H"""
     <li>
       <.link navigate={@navigate} class={~w[
-      flex items-center p-2
+      flex items-center px-4 py-2
       text-base
       rounded
       #{sidebar_item_active?(@current_path, @navigate) && @active_class}
@@ -211,7 +211,7 @@ defmodule Web.NavigationComponents do
       <button
         type="button"
         class={~w[
-          flex items-center p-2 w-full rounded
+          flex items-center px-4 py-2 w-full rounded
           text-lg text-neutral-700
           transition duration-75
           hover:bg-neutral-100 hover:text-neutral-900]}
@@ -228,7 +228,7 @@ defmodule Web.NavigationComponents do
       <ul id={"dropdown-#{@id}"} class={if @dropdown_hidden, do: "hidden", else: ""}>
         <li :for={item <- @item}>
           <.link navigate={item.navigate} class={~w[
-              flex items-center p-2 pl-10 w-full group rounded
+              flex items-center p-2 pl-12 w-full group rounded
               text-lg text-neutral-700
               #{String.starts_with?(@current_path, item.navigate) && @active_class}
               hover:text-neutral-900
