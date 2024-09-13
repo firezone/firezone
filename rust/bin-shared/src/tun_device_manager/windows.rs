@@ -23,7 +23,7 @@ use windows::Win32::{
         },
         Ndis::NET_LUID_LH,
     },
-    Networking::WinSock::{AF_INET, AF_INET6},
+    Networking::WinSock::{ADDRESS_FAMILY, AF_INET, AF_INET6},
 };
 use wintun::Adapter;
 
@@ -367,47 +367,32 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
         Value: unsafe { luid.Value },
     };
 
+    try_set_mtu(luid, AF_INET, mtu)?;
+    try_set_mtu(luid, AF_INET6, mtu)?;
+    Ok(())
+}
+
+fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()> {
+    let mut row = MIB_IPINTERFACE_ROW {
+        Family: family,
+        InterfaceLuid: luid,
+        ..Default::default()
+    };
+
+    // SAFETY: TODO
+    if unsafe { GetIpInterfaceEntry(&mut row) }.ok().is_err() {
+        tracing::warn!(?family, "Couldn't set MTU");
+        return Ok(());
+    }
+
+    // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
+    row.SitePrefixLength = 0;
+
     // Set MTU for IPv4
-    {
-        let mut row = MIB_IPINTERFACE_ROW {
-            Family: AF_INET,
-            InterfaceLuid: luid,
-            ..Default::default()
-        };
+    row.NlMtu = mtu;
 
-        // SAFETY: TODO
-        unsafe { GetIpInterfaceEntry(&mut row) }.ok()?;
-
-        // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
-        row.SitePrefixLength = 0;
-
-        // Set MTU for IPv4
-        row.NlMtu = mtu;
-
-        // SAFETY: TODO
-        unsafe { SetIpInterfaceEntry(&mut row) }.ok()?;
-    }
-
-    // Set MTU for IPv6
-    {
-        let mut row = MIB_IPINTERFACE_ROW {
-            Family: AF_INET6,
-            InterfaceLuid: luid,
-            ..Default::default()
-        };
-
-        // SAFETY: TODO
-        unsafe { GetIpInterfaceEntry(&mut row) }.ok()?;
-
-        // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
-        row.SitePrefixLength = 0;
-
-        // Set MTU for IPv4
-        row.NlMtu = mtu;
-
-        // SAFETY: TODO
-        unsafe { SetIpInterfaceEntry(&mut row) }.ok()?;
-    }
+    // SAFETY: TODO
+    unsafe { SetIpInterfaceEntry(&mut row) }.ok()?;
     Ok(())
 }
 
