@@ -347,7 +347,14 @@ defmodule Domain.PoliciesTest do
       policy =
         Fixtures.Policies.create_policy(
           account: context.account,
-          subject: context.subject
+          subject: context.subject,
+          conditions: [
+            %{
+              property: :remote_ip,
+              operator: :is_in_cidr,
+              values: ["1.0.0.0/24"]
+            }
+          ]
         )
 
       Map.put(context, :policy, policy)
@@ -392,7 +399,8 @@ defmodule Domain.PoliciesTest do
       :ok = subscribe_to_events_for_policy(policy)
 
       attrs = %{description: "updated policy description"}
-      assert {:ok, policy} = update_policy(policy, attrs, subject)
+      assert {:ok, updated_policy} = update_policy(policy, attrs, subject)
+      assert updated_policy.id == policy.id
 
       assert_receive {:update_policy, policy_id}
       assert policy_id == policy.id
@@ -411,20 +419,7 @@ defmodule Domain.PoliciesTest do
       refute_receive {:reject_access, _policy_id, _actor_group_id, _resource_id}
     end
 
-    test "does not allow update to actor_group_id", %{
-      policy: policy,
-      account: account,
-      subject: subject
-    } do
-      new_actor_group = Fixtures.Actors.create_group(account: account)
-
-      attrs = %{actor_group_id: new_actor_group.id}
-      assert {:ok, updated_policy} = update_policy(policy, attrs, subject)
-
-      assert updated_policy.actor_group_id == policy.actor_group_id
-    end
-
-    test "does not allow update to resource_id", %{
+    test "creates a replacement policy when resource_id is changed", %{
       policy: policy,
       account: account,
       subject: subject
@@ -432,9 +427,123 @@ defmodule Domain.PoliciesTest do
       new_resource = Fixtures.Resources.create_resource(account: account)
 
       attrs = %{resource_id: new_resource.id}
-      assert {:ok, updated_policy} = update_policy(policy, attrs, subject)
 
-      assert updated_policy.resource_id == policy.resource_id
+      assert {:ok, replaced_policy} = update_policy(policy, attrs, subject)
+
+      assert replaced_policy.resource_id == policy.resource_id
+      assert replaced_policy.actor_group_id == policy.actor_group_id
+      assert replaced_policy.conditions == policy.conditions
+      assert not is_nil(replaced_policy.deleted_at)
+
+      assert %{replaced_by_policy: replacement_policy} =
+               Repo.preload(replaced_policy, :replaced_by_policy)
+
+      assert replacement_policy.resource_id == new_resource.id
+      assert replacement_policy.actor_group_id == policy.actor_group_id
+      assert replacement_policy.conditions == policy.conditions
+      assert is_nil(replacement_policy.deleted_at)
+
+      assert replaced_policy.persistent_id == replacement_policy.persistent_id
+    end
+
+    test "creates a replacement policy when actor_group_id is changed", %{
+      policy: policy,
+      account: account,
+      subject: subject
+    } do
+      new_actor_group = Fixtures.Actors.create_group(account: account)
+
+      attrs = %{actor_group_id: new_actor_group.id}
+
+      assert {:ok, replaced_policy} = update_policy(policy, attrs, subject)
+      assert replaced_policy.resource_id == policy.resource_id
+      assert replaced_policy.actor_group_id == policy.actor_group_id
+      assert replaced_policy.conditions == policy.conditions
+      assert not is_nil(replaced_policy.deleted_at)
+
+      assert %{replaced_by_policy: replacement_policy} =
+               Repo.preload(replaced_policy, :replaced_by_policy)
+
+      assert replacement_policy.resource_id == policy.resource_id
+      assert replacement_policy.actor_group_id == new_actor_group.id
+      assert replacement_policy.conditions == policy.conditions
+      assert is_nil(replacement_policy.deleted_at)
+
+      assert replaced_policy.persistent_id == replacement_policy.persistent_id
+    end
+
+    test "creates a replacement policy when conditions are changed", %{
+      policy: policy,
+      subject: subject
+    } do
+      attrs = %{
+        conditions: [
+          %{
+            property: :remote_ip,
+            operator: :is_in_cidr,
+            values: ["2.0.0.0/24"]
+          }
+        ]
+      }
+
+      assert {:ok, replaced_policy} = update_policy(policy, attrs, subject)
+
+      assert replaced_policy.id == policy.id
+      assert not is_nil(replaced_policy.deleted_at)
+      assert replaced_policy.resource_id == policy.resource_id
+      assert replaced_policy.actor_group_id == policy.actor_group_id
+
+      assert replaced_policy.conditions == [
+               %Domain.Policies.Condition{
+                 property: :remote_ip,
+                 operator: :is_in_cidr,
+                 values: ["1.0.0.0/24"]
+               }
+             ]
+
+      assert %{replaced_by_policy: replacement_policy} =
+               Repo.preload(replaced_policy, :replaced_by_policy)
+
+      assert replacement_policy.id != policy.id
+      assert is_nil(replacement_policy.deleted_at)
+      assert replacement_policy.resource_id == policy.resource_id
+      assert replacement_policy.actor_group_id == policy.actor_group_id
+
+      assert replacement_policy.conditions == [
+               %Domain.Policies.Condition{
+                 property: :remote_ip,
+                 operator: :is_in_cidr,
+                 values: ["2.0.0.0/24"]
+               }
+             ]
+    end
+
+    test "broadcasts events and expires flow for replaced policy", %{
+      policy: policy,
+      account: account,
+      subject: subject
+    } do
+      flow = Fixtures.Flows.create_flow(account: account, subject: subject, policy: policy)
+      new_resource = Fixtures.Resources.create_resource(account: account)
+
+      :ok = subscribe_to_events_for_policy(policy)
+      :ok = subscribe_to_events_for_actor_group(policy.actor_group_id)
+      :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
+
+      attrs = %{resource_id: new_resource.id}
+
+      assert {:ok, replaced_policy} = update_policy(policy, attrs, subject)
+
+      assert_receive {:delete_policy, policy_id}
+      assert policy_id == replaced_policy.id
+
+      assert_receive {:reject_access, policy_id, actor_group_id, resource_id}
+      assert policy_id == replaced_policy.id
+      assert actor_group_id == replaced_policy.actor_group_id
+      assert resource_id == replaced_policy.resource_id
+
+      assert_received {:expire_flow, flow_id, _flow_client_id, _flow_resource_id}
+      assert flow_id == flow.id
     end
 
     test "returns error when subject has no permission to update policies", %{
@@ -501,17 +610,23 @@ defmodule Domain.PoliciesTest do
     } do
       client = Fixtures.Clients.create_client(account: account, identity: identity)
 
-      Fixtures.Flows.create_flow(
-        account: account,
-        subject: subject,
-        client: client,
-        policy: policy
-      )
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          policy: policy
+        )
+
+      :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
 
       assert {:ok, _policy} = disable_policy(policy, subject)
 
       expires_at = Repo.one(Domain.Flows.Flow).expires_at
       assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
+
+      assert_received {:expire_flow, flow_id, _flow_client_id, _flow_resource_id}
+      assert flow_id == flow.id
     end
 
     test "broadcasts an account message when policy is disabled", %{
@@ -691,6 +806,33 @@ defmodule Domain.PoliciesTest do
     test "deletes policy", %{policy: policy, subject: subject} do
       assert {:ok, deleted_policy} = delete_policy(policy, subject)
       assert deleted_policy.deleted_at != nil
+    end
+
+    test "expires policy flows", %{
+      account: account,
+      policy: policy,
+      identity: identity,
+      subject: subject
+    } do
+      client = Fixtures.Clients.create_client(account: account, identity: identity)
+
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          policy: policy
+        )
+
+      :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
+
+      assert {:ok, _policy} = delete_policy(policy, subject)
+
+      expires_at = Repo.one(Domain.Flows.Flow).expires_at
+      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
+
+      assert_received {:expire_flow, flow_id, _flow_client_id, _flow_resource_id}
+      assert flow_id == flow.id
     end
 
     test "broadcasts an account message when policy is deleted", %{

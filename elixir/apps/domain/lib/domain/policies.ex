@@ -2,6 +2,7 @@ defmodule Domain.Policies do
   alias Domain.{Repo, PubSub}
   alias Domain.{Auth, Accounts, Actors, Clients, Resources, Flows}
   alias Domain.Policies.{Authorizer, Policy, Condition}
+  require Ecto.Query
 
   def fetch_policy_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
@@ -62,13 +63,58 @@ defmodule Domain.Policies do
   def update_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()),
          :ok <- ensure_has_access_to(subject, policy) do
-      Policy.Query.not_deleted()
-      |> Policy.Query.by_id(policy.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Policy.Query,
-        with: &Policy.Changeset.update(&1, attrs),
-        after_commit: &broadcast_policy_events(:update, &1)
-      )
+      Ecto.Multi.new()
+      |> Ecto.Multi.one(:policy, fn
+        _effects_so_far ->
+          Policy.Query.not_deleted()
+          |> Policy.Query.by_id(policy.id)
+          |> Authorizer.for_subject(subject)
+          |> Ecto.Query.lock("FOR NO KEY UPDATE")
+      end)
+      |> Ecto.Multi.run(:changesets, fn
+        _repo, %{policy: policy} ->
+          {update_changeset, create_changeset} =
+            Policy.Changeset.update_or_replace(policy, attrs, subject)
+
+          {:ok, {update_changeset, create_changeset}}
+      end)
+      |> Ecto.Multi.update(:update_policy, fn
+        %{changesets: {update_changeset, _create_changeset}} ->
+          update_changeset
+      end)
+      |> Ecto.Multi.run(:create_policy, fn
+        _repo, %{changesets: {_update_changeset, nil}} ->
+          {:ok, nil}
+
+        repo, %{changesets: {_update_changeset, create_changeset}} ->
+          {:ok, created_policy} = repo.insert(create_changeset)
+          {:ok, created_policy}
+      end)
+      |> Ecto.Multi.run(:replace_policy, fn
+        _repo, %{update_policy: _updated_policy, create_policy: nil} ->
+          {:ok, nil}
+
+        repo, %{update_policy: updated_policy, create_policy: created_policy} ->
+          Ecto.Changeset.change(updated_policy, replaced_by_policy_id: created_policy.id)
+          |> repo.update()
+      end)
+      |> Repo.transaction()
+      |> case do
+        {:ok, %{update_policy: updated_policy, create_policy: nil}} ->
+          :ok = broadcast_policy_events(:update, updated_policy)
+          {:ok, updated_policy}
+
+        {:ok, %{replace_policy: replaced_policy}} ->
+          {:ok, _flows} = Flows.expire_flows_for(replaced_policy, subject)
+          :ok = broadcast_policy_events(:delete, replaced_policy)
+          {:ok, replaced_policy}
+
+        {:error, :policy, changeset, _changes_so_far} ->
+          {:error, changeset}
+
+        {:error, :update_policy, changeset, _changes_so_far} ->
+          {:error, changeset}
+      end
     end
   end
 

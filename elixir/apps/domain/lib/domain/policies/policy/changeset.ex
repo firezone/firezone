@@ -4,7 +4,8 @@ defmodule Domain.Policies.Policy.Changeset do
   alias Domain.Policies.Policy
 
   @fields ~w[description actor_group_id resource_id]a
-  @update_fields ~w[description]a
+  @update_fields ~w[description actor_group_id resource_id]a
+  @replace_fields ~w[actor_group_id resource_id conditions]a
   @required_fields ~w[actor_group_id resource_id]a
 
   def create(attrs, %Auth.Subject{} = subject) do
@@ -15,13 +16,41 @@ defmodule Domain.Policies.Policy.Changeset do
     |> changeset()
     |> put_change(:account_id, subject.account.id)
     |> put_subject_trail(:created_by, subject)
+    |> put_change(:persistent_id, Ecto.UUID.generate())
   end
 
-  def update(%Policy{} = policy, attrs) do
+  def update_or_replace(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
     policy
     |> cast(attrs, @update_fields)
     |> validate_required(@required_fields)
+    |> cast_embed(:conditions, with: &Domain.Policies.Condition.Changeset.changeset/3)
     |> changeset()
+    |> maybe_replace(policy, subject)
+  end
+
+  defp maybe_replace(%{valid?: false} = changeset, _policy, _subject),
+    do: {changeset, nil}
+
+  defp maybe_replace(changeset, policy, subject) do
+    if any_field_changed?(changeset, @replace_fields) do
+      new_changeset =
+        changeset
+        |> apply_changes()
+        |> Map.from_struct()
+        |> Map.update(:conditions, [], fn conditions ->
+          Enum.map(conditions, &Map.from_struct/1)
+        end)
+        |> create(subject)
+        |> put_change(:persistent_id, policy.persistent_id)
+
+      changeset =
+        policy
+        |> change(deleted_at: DateTime.utc_now())
+
+      {changeset, new_changeset}
+    else
+      {changeset, nil}
+    end
   end
 
   def disable(%Policy{} = policy, %Auth.Subject{}) do
