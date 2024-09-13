@@ -361,7 +361,7 @@ defmodule Domain.PoliciesTest do
     end
 
     test "does nothing on empty params", %{policy: policy, subject: subject} do
-      assert {:ok, _policy} = update_or_replace_policy(policy, %{}, subject)
+      assert {:updated, _policy} = update_or_replace_policy(policy, %{}, subject)
     end
 
     test "returns changeset error on invalid params", %{account: account, subject: subject} do
@@ -374,7 +374,7 @@ defmodule Domain.PoliciesTest do
 
     test "allows update to description", %{policy: policy, subject: subject} do
       attrs = %{description: "updated policy description"}
-      assert {:ok, updated_policy} = update_or_replace_policy(policy, attrs, subject)
+      assert {:updated, updated_policy} = update_or_replace_policy(policy, attrs, subject)
       assert updated_policy.description == attrs.description
     end
 
@@ -386,7 +386,7 @@ defmodule Domain.PoliciesTest do
       :ok = subscribe_to_events_for_account(account)
 
       attrs = %{description: "updated policy description"}
-      assert {:ok, policy} = update_or_replace_policy(policy, attrs, subject)
+      assert {:updated, policy} = update_or_replace_policy(policy, attrs, subject)
 
       assert_receive {:update_policy, policy_id}
       assert policy_id == policy.id
@@ -399,7 +399,7 @@ defmodule Domain.PoliciesTest do
       :ok = subscribe_to_events_for_policy(policy)
 
       attrs = %{description: "updated policy description"}
-      assert {:ok, updated_policy} = update_or_replace_policy(policy, attrs, subject)
+      assert {:updated, updated_policy} = update_or_replace_policy(policy, attrs, subject)
       assert updated_policy.id == policy.id
 
       assert_receive {:update_policy, policy_id}
@@ -413,7 +413,7 @@ defmodule Domain.PoliciesTest do
       :ok = subscribe_to_events_for_actor_group(policy.actor_group_id)
 
       attrs = %{description: "updated policy description"}
-      assert {:ok, _policy} = update_or_replace_policy(policy, attrs, subject)
+      assert {:updated, _policy} = update_or_replace_policy(policy, attrs, subject)
 
       refute_receive {:allow_access, _policy_id, _actor_group_id, _resource_id}
       refute_receive {:reject_access, _policy_id, _actor_group_id, _resource_id}
@@ -428,15 +428,14 @@ defmodule Domain.PoliciesTest do
 
       attrs = %{resource_id: new_resource.id}
 
-      assert {:ok, replaced_policy} = update_or_replace_policy(policy, attrs, subject)
+      assert {:replaced, replaced_policy, replacement_policy} =
+               update_or_replace_policy(policy, attrs, subject)
 
       assert replaced_policy.resource_id == policy.resource_id
       assert replaced_policy.actor_group_id == policy.actor_group_id
       assert replaced_policy.conditions == policy.conditions
       assert not is_nil(replaced_policy.deleted_at)
-
-      assert %{replaced_by_policy: replacement_policy} =
-               Repo.preload(replaced_policy, :replaced_by_policy)
+      assert replaced_policy.replaced_by_policy_id == replacement_policy.id
 
       assert replacement_policy.resource_id == new_resource.id
       assert replacement_policy.actor_group_id == policy.actor_group_id
@@ -455,14 +454,14 @@ defmodule Domain.PoliciesTest do
 
       attrs = %{actor_group_id: new_actor_group.id}
 
-      assert {:ok, replaced_policy} = update_or_replace_policy(policy, attrs, subject)
+      assert {:replaced, replaced_policy, replacement_policy} =
+               update_or_replace_policy(policy, attrs, subject)
+
       assert replaced_policy.resource_id == policy.resource_id
       assert replaced_policy.actor_group_id == policy.actor_group_id
       assert replaced_policy.conditions == policy.conditions
       assert not is_nil(replaced_policy.deleted_at)
-
-      assert %{replaced_by_policy: replacement_policy} =
-               Repo.preload(replaced_policy, :replaced_by_policy)
+      assert replaced_policy.replaced_by_policy_id == replacement_policy.id
 
       assert replacement_policy.resource_id == policy.resource_id
       assert replacement_policy.actor_group_id == new_actor_group.id
@@ -486,7 +485,8 @@ defmodule Domain.PoliciesTest do
         ]
       }
 
-      assert {:ok, replaced_policy} = update_or_replace_policy(policy, attrs, subject)
+      assert {:replaced, replaced_policy, replacement_policy} =
+               update_or_replace_policy(policy, attrs, subject)
 
       assert replaced_policy.id == policy.id
       assert not is_nil(replaced_policy.deleted_at)
@@ -500,9 +500,6 @@ defmodule Domain.PoliciesTest do
                  values: ["1.0.0.0/24"]
                }
              ]
-
-      assert %{replaced_by_policy: replacement_policy} =
-               Repo.preload(replaced_policy, :replaced_by_policy)
 
       assert replacement_policy.id != policy.id
       assert is_nil(replacement_policy.deleted_at)
@@ -532,7 +529,8 @@ defmodule Domain.PoliciesTest do
 
       attrs = %{resource_id: new_resource.id}
 
-      assert {:ok, replaced_policy} = update_or_replace_policy(policy, attrs, subject)
+      assert {:replaced, replaced_policy, _replacement_policy} =
+               update_or_replace_policy(policy, attrs, subject)
 
       assert_receive {:delete_policy, policy_id}
       assert policy_id == replaced_policy.id
