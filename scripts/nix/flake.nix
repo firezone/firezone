@@ -57,7 +57,7 @@
             packages = [ pkgs.cargo-tauri pkgs.iptables pkgs.nodePackages.pnpm cargo-udeps pkgs.cargo-sort ];
             buildInputs = packages ++ [
               (rustVersion.override {
-                extensions = [ "rust-src" ];
+                extensions = [ "rust-src" "rust-analyzer" ];
                 targets = [ "x86_64-unknown-linux-musl" ];
               })
             ];
