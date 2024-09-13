@@ -22,8 +22,6 @@ class DisconnectMonitor(private val tunnelService: TunnelService) : Connectivity
         network: Network,
         linkProperties: LinkProperties,
     ) {
-        Log.d("DisconnectMonitor", "properties: $linkProperties")
-
         super.onLinkPropertiesChanged(network, linkProperties)
 
         if (tunnelService.tunnelIpv4Address.isNullOrBlank() || tunnelService.tunnelIpv6Address.isNullOrBlank()) {
@@ -46,12 +44,11 @@ class DisconnectMonitor(private val tunnelService: TunnelService) : Connectivity
         if (network == vpnNetwork) {
             Log.d("DisconnectMonitor", "Scheduling a session disconnect for $network")
 
-            // We delay the execution of disconnecting the tunnel when the network is lost since
-            // when the tunnel is rebuild we get an onLost just like with disabling the VPN and we
-            // can't distinguish between those save for getting an onLinkProperties changed later
+            // We can't easily tell the difference between a user disconnecting the VPN from
+            // system settings, and the system "disconnecting" our VPN due to the fd being swapped out during buildVpnService. Both call onLost with the VPN network ID.
+            // If we're rebuilding the VPN, however, we'll expect an onLinkPropertiesChanged to happen soon after onLost, so delay the tunnel disconnect here and clear the scheduled disconnect if we "resume" the VPN within a couple seconds.
             sessionStopperHandle.postDelayed(
                 {
-                    Log.d("DisconnectMonitor", "Disconnect tunnel service due to network lost $network")
                     tunnelService.disconnect()
                 },
                 2000,
