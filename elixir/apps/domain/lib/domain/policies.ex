@@ -2,7 +2,6 @@ defmodule Domain.Policies do
   alias Domain.{Repo, PubSub}
   alias Domain.{Auth, Accounts, Actors, Clients, Resources, Flows}
   alias Domain.Policies.{Authorizer, Policy, Condition}
-  require Ecto.Query
 
   def fetch_policy_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
