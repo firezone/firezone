@@ -397,6 +397,7 @@ impl RefClient {
         self.connected_cidr_resources.clear();
         self.connected_dns_resources.clear();
         self.connected_internet_resource = false;
+        self.connected_gateways.clear();
     }
 
     pub(crate) fn add_internet_resource(&mut self, r: ResourceDescriptionInternet) {
