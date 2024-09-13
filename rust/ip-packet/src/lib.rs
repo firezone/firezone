@@ -145,7 +145,7 @@ impl ConvertibleIpv4Packet {
 
     fn consume_to_ipv6(mut self, src: Ipv6Addr, dst: Ipv6Addr) -> Option<ConvertibleIpv6Packet> {
         let offset = nat46::translate_in_place(&mut self.buf, src, dst)
-            .inspect_err(|e| tracing::trace!("NAT64 failed: {e:#}"))
+            .inspect_err(|e| tracing::trace!("NAT46 failed: {e:#}"))
             .ok()?;
 
         let len_diff = self.start - offset;
