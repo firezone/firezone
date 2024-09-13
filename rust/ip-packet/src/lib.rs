@@ -144,16 +144,28 @@ impl ConvertibleIpv4Packet {
     }
 
     fn consume_to_ipv6(mut self, src: Ipv6Addr, dst: Ipv6Addr) -> Option<ConvertibleIpv6Packet> {
-        let offset = nat46::translate_in_place(&mut self.buf, src, dst)
-            .inspect_err(|e| tracing::trace!("NAT46 failed: {e:#}"))
-            .ok()?;
+        // `translate_in_place` expects the packet to sit at a 20-byte offset.
+        // `self.start` tells us where the packet actually starts, thus we need to pass `self.start - 20` to the function.
+        let start_minus_padding = self.start.checked_sub(20)?;
 
-        let len_diff = self.start - offset;
+        let offset = nat46::translate_in_place(
+            &mut self.buf[start_minus_padding..(self.start + self.len)],
+            src,
+            dst,
+        )
+        .inspect_err(|e| tracing::trace!("NAT46 failed: {e:#}"))
+        .ok()?;
+
+        let len = match self.start.cmp(&offset) {
+            std::cmp::Ordering::Less => self.len - (offset - self.start),
+            std::cmp::Ordering::Equal => self.len,
+            std::cmp::Ordering::Greater => self.len + (self.start - offset),
+        };
 
         Some(ConvertibleIpv6Packet {
             buf: self.buf,
             start: offset,
-            len: self.len + len_diff,
+            len,
         })
     }
 
@@ -209,7 +221,7 @@ impl ConvertibleIpv6Packet {
         Some(ConvertibleIpv4Packet {
             buf: self.buf,
             start: self.start + 20,
-            len: self.len,
+            len: self.len - 20,
         })
     }
 
