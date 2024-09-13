@@ -149,12 +149,10 @@ pub fn translate_in_place(buf: &mut [u8], src: Ipv6Addr, dst: Ipv6Addr) -> Resul
 
     let start_of_ipv6_header = start_of_ip_payload - Ipv6Header::LEN;
 
-    let (excess_padding, ipv6_header_buf) = buf.split_at_mut(start_of_ipv6_header);
+    let (_, ipv6_header_buf) = buf.split_at_mut(start_of_ipv6_header);
     ipv6_header.write(&mut Cursor::new(ipv6_header_buf))?;
 
-    let excess_padding_length = excess_padding.len();
-
-    Ok(excess_padding_length)
+    Ok(start_of_ipv6_header)
 }
 
 fn translate_icmpv4_header(
