@@ -60,55 +60,16 @@ impl Io {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.as_ref()); // Bind sockets on startup. Must happen within a tokio runtime context.
 
-        let (inbound_packet_sender, inbound_packet_receiver) = mpsc::channel(IP_CHANNEL_SIZE);
-        let (outbound_packet_sender, mut outbound_packet_receiver) = mpsc::channel(IP_CHANNEL_SIZE);
+        let (inbound_packet_tx, inbound_packet_rx) = mpsc::channel(IP_CHANNEL_SIZE);
+        let (outbound_packet_tx, outbound_packet_rx) = mpsc::channel(IP_CHANNEL_SIZE);
 
         std::thread::spawn(|| {
-            futures::executor::block_on(async move {
-                let mut device = Device::new();
-
-                loop {
-                    match future::select(
-                        std::future::poll_fn(|cx| device.poll_read(cx)),
-                        std::pin::pin!(outbound_packet_receiver.recv()),
-                    )
-                    .await
-                    {
-                        Either::Left((Ok(packet), _)) => {
-                            match inbound_packet_sender.send(packet).await {
-                                Ok(()) => {}
-                                Err(_) => {
-                                    tracing::warn!("Inbound packet channel is closed");
-                                    return;
-                                }
-                            };
-                        }
-                        Either::Left((Err(e), _)) => {
-                            tracing::debug!("Failed to read packet from TUN device: {e}")
-                        }
-                        Either::Right((Some(TunMsg::NewTun(tun)), _)) => {
-                            device.set_tun(tun);
-                        }
-                        Either::Right((Some(TunMsg::Packet(packet)), _)) => {
-                            match device.write(packet) {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    tracing::debug!("Failed to write packet to TUN interface: {e}");
-                                }
-                            }
-                        }
-                        Either::Right((None, _)) => {
-                            tracing::warn!("Outbound packet channel is closed");
-                            return;
-                        }
-                    }
-                }
-            })
+            futures::executor::block_on(tun_send_recv(outbound_packet_rx, inbound_packet_tx))
         });
 
         Self {
-            outbound_packet_sender,
-            inbound_packet_receiver,
+            outbound_packet_sender: outbound_packet_tx,
+            inbound_packet_receiver: inbound_packet_rx,
             timeout: None,
             sockets,
             _tcp_socket_factory: tcp_socket_factory,
@@ -223,6 +184,48 @@ impl Io {
         res?;
 
         Ok(())
+    }
+}
+
+async fn tun_send_recv(
+    mut outbound_packet_receiver: mpsc::Receiver<TunMsg>,
+    inbound_packet_sender: mpsc::Sender<IpPacket>,
+) {
+    let mut device = Device::new();
+
+    loop {
+        match future::select(
+            std::future::poll_fn(|cx| device.poll_read(cx)),
+            std::pin::pin!(outbound_packet_receiver.recv()),
+        )
+        .await
+        {
+            Either::Left((Ok(packet), _)) => {
+                match inbound_packet_sender.send(packet).await {
+                    Ok(()) => {}
+                    Err(_) => {
+                        tracing::warn!("Inbound packet channel is closed");
+                        return;
+                    }
+                };
+            }
+            Either::Left((Err(e), _)) => {
+                tracing::debug!("Failed to read packet from TUN device: {e}")
+            }
+            Either::Right((Some(TunMsg::NewTun(tun)), _)) => {
+                device.set_tun(tun);
+            }
+            Either::Right((Some(TunMsg::Packet(packet)), _)) => match device.write(packet) {
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::debug!("Failed to write packet to TUN interface: {e}");
+                }
+            },
+            Either::Right((None, _)) => {
+                tracing::warn!("Outbound packet channel is closed");
+                return;
+            }
+        }
     }
 }
 
