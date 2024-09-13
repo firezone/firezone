@@ -95,7 +95,9 @@ defmodule Web.Settings.Billing do
       </:content>
     </.section>
 
-    <.section>
+    <.section :if={
+      @account.limits |> Map.from_struct() |> Enum.any?(fn {_, value} -> not is_nil(value) end)
+    }>
       <:title>
         Limits
       </:title>
