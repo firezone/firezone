@@ -11,7 +11,6 @@ import NetworkExtension
 import OSLog
 import SwiftUI
 
-
 #if os(macOS)
 @MainActor
 // TODO: Refactor to MenuBarExtra for macOS 13+
@@ -30,7 +29,6 @@ public final class MenuBar: NSObject, ObservableObject {
   private var vpnStatus: NEVPNStatus = .disconnected
 
   private var updateChecker: UpdateChecker = UpdateChecker()
-
 
   @ObservedObject var model: SessionViewModel
 

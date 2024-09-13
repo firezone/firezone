@@ -20,7 +20,7 @@ struct SemanticVersion: Decodable, Encodable, Comparable {
       self.minor = minor
       self.patch = patch
   }
-  
+
   // This doesn't conform to the full semver spec but it's enough for our use-case
   private static func parse(versionString: String) -> (major: Int, minor: Int, patch: Int)? {
       let components = versionString.split(separator: ".")
