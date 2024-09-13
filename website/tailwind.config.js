@@ -48,7 +48,7 @@ const firezoneColors = {
     950: "#050505",
   },
 
-  // grey: cool-grey
+  // gray: cool-gray
   "cool-gray": {
     50: "#F8FAFC",
     100: "#F1F5F9",
