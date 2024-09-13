@@ -3,7 +3,6 @@ use anyhow::Result;
 use firezone_headless_client::{ipc, IpcServiceError, FIREZONE_GROUP};
 
 // TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
-#[allow(dead_code)]
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Failed to connect to Firezone for non-Portal-related reason")]

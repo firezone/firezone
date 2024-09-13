@@ -80,8 +80,7 @@ use windows::{
     },
 };
 
-// async needed to match Linux
-#[allow(clippy::unused_async)]
+#[expect(clippy::unused_async, reason = "Must match signature of Linux code")]
 pub async fn new_dns_notifier(
     tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
@@ -92,8 +91,7 @@ pub async fn new_dns_notifier(
     })
 }
 
-// Async on Linux due to `zbus`
-#[allow(clippy::unused_async)]
+#[expect(clippy::unused_async, reason = "Async on Linux due to `zbus`")]
 pub async fn new_network_notifier(
     _tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
@@ -161,8 +159,6 @@ impl Worker {
         Ok(())
     }
 
-    // `Result` needed to match Linux
-    #[allow(clippy::unnecessary_wraps)]
     pub async fn notified(&mut self) -> Result<()> {
         self.rx
             .notified()

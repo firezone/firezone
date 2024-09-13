@@ -10,8 +10,10 @@ fn main() -> Result<()> {
 
 #[cfg(not(target_os = "windows"))]
 mod platform {
-    #[allow(clippy::unnecessary_wraps)]
-    #[allow(clippy::unused_async)]
+    #[expect(
+        clippy::unused_async,
+        reason = "Must match signature of Windows platform"
+    )]
     pub(crate) async fn perf() -> anyhow::Result<()> {
         Ok(())
     }

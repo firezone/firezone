@@ -29,18 +29,17 @@ pub(crate) mod system_tray;
 
 #[cfg(target_os = "linux")]
 #[path = "gui/os_linux.rs"]
-#[allow(clippy::unnecessary_wraps)]
 mod os;
 
 // Stub only
 #[cfg(target_os = "macos")]
 #[path = "gui/os_macos.rs"]
-#[allow(clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps)]
 mod os;
 
 #[cfg(target_os = "windows")]
 #[path = "gui/os_windows.rs"]
-#[allow(clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps)]
 mod os;
 
 pub(crate) use os::set_autostart;
@@ -299,7 +298,7 @@ pub(crate) fn run(
         Ok(x) => x,
         Err(error) => {
             tracing::error!(?error, "Failed to build Tauri app instance");
-            #[allow(clippy::wildcard_enum_match_arm)]
+            #[expect(clippy::wildcard_enum_match_arm)]
             match error {
                 tauri::Error::Runtime(tauri_runtime::Error::CreateWebview(_)) => {
                     return Err(Error::WebViewNotInstalled);

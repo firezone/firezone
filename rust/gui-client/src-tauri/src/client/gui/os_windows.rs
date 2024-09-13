@@ -2,7 +2,7 @@ use super::{ControllerRequest, CtlrTx};
 use anyhow::{Context, Result};
 use firezone_bin_shared::BUNDLE_ID;
 
-#[allow(clippy::unused_async)]
+#[expect(clippy::unused_async)]
 pub(crate) async fn set_autostart(_enabled: bool) -> Result<()> {
     todo!()
 }

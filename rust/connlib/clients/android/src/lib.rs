@@ -321,7 +321,7 @@ macro_rules! string_from_jstring {
 
 // TODO: Refactor this when we refactor PhoenixChannel.
 // See https://github.com/firezone/firezone/issues/2158
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 fn connect(
     env: &mut JNIEnv,
     api_url: JString,
@@ -395,7 +395,6 @@ fn connect(
 /// # Safety
 /// Pointers must be valid
 /// fd must be a valid file descriptor
-#[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_connect(
     mut env: JNIEnv,
@@ -444,13 +443,11 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
 pub struct SessionWrapper {
     inner: Session,
 
-    #[allow(dead_code)] // Only here so we don't drop the memory early.
     runtime: Runtime,
 }
 
 /// # Safety
 /// session_ptr should have been obtained from `connect` function
-#[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_disconnect(
     mut env: JNIEnv,
@@ -468,7 +465,6 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
 /// # Safety
 /// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
 /// at any point before or during operation of this function.
-#[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setDisabledResources(
     mut env: JNIEnv,
@@ -500,7 +496,6 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
 /// # Safety
 /// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
 /// at any point before or during operation of this function.
-#[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setDns(
     mut env: JNIEnv,
@@ -524,7 +519,6 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
 /// # Safety
 /// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
 /// at any point before or during operation of this function.
-#[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reset(
     _: JNIEnv,
@@ -538,7 +532,6 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_re
 /// # Safety
 /// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
 /// at any point before or during operation of this function.
-#[allow(non_snake_case)]
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setTun(
     mut env: JNIEnv,

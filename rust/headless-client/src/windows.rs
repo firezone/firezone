@@ -8,7 +8,7 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 // The return value is useful on Linux
-#[allow(clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps)]
 pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
     // TODO: For Headless Client, make sure the token is only readable by admin / our service user on Windows
     Ok(())
@@ -22,7 +22,7 @@ pub(crate) fn default_token_path() -> std::path::PathBuf {
 // Does nothing on Windows. On Linux this notifies systemd that we're ready.
 // When we eventually have a system service for the Windows Headless Client,
 // this could notify the Windows service controller too.
-#[allow(clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps)]
 pub(crate) fn notify_service_controller() -> Result<()> {
     Ok(())
 }
