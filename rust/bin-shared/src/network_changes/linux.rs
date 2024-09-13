@@ -77,7 +77,7 @@ pub struct Worker {
     inner: Inner,
 }
 
-pub enum Inner {
+enum Inner {
     DBus(zbus::proxy::SignalStream<'static>),
     DnsPoller(Interval),
     Null,
