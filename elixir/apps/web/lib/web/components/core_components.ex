@@ -946,29 +946,35 @@ defmodule Web.CoreComponents do
 
   def verified_by(%{schema: %{verified_by: :system}} = assigns) do
     ~H"""
-    <.icon name="hero-shield-check" class="w-4 h-4 mr-1" /> Verified
-    <.relative_datetime datetime={@schema.verified_at} /> by system
+    <div class="flex items-center gap-x-1">
+      <.icon name="hero-shield-check" class="w-4 h-4" /> Verified
+      <.relative_datetime datetime={@schema.verified_at} /> by system
+    </div>
     """
   end
 
   def verified_by(%{schema: %{verified_by: :actor}} = assigns) do
     ~H"""
-    <.icon name="hero-shield-check" class="w-4 h-4 mr-1" /> Verified
-    <.relative_datetime datetime={@schema.verified_at} /> by
-    <.actor_link account={@account} actor={@schema.verified_by_actor} />
+    <div class="flex items-center gap-x-1">
+      <.icon name="hero-shield-check" class="w-4 h-4" /> Verified
+      <.relative_datetime datetime={@schema.verified_at} /> by
+      <.actor_link account={@account} actor={@schema.verified_by_actor} />
+    </div>
     """
   end
 
   def verified_by(%{schema: %{verified_by: :identity}} = assigns) do
     ~H"""
-    <.icon name="hero-shield-check" class="w-4 h-4 mr-1" /> Verified
-    <.relative_datetime datetime={@schema.verified_at} /> by
-    <.link
-      class="text-accent-500 hover:underline"
-      navigate={~p"/#{@schema.account_id}/actors/#{@schema.verified_by_identity.actor_id}"}
-    >
-      <%= assigns.schema.verified_by_actor.name %>
-    </.link>
+    <div class="flex items-center gap-x-1">
+      <.icon name="hero-shield-check" class="w-4 h-4" /> Verified
+      <.relative_datetime datetime={@schema.verified_at} /> by
+      <.link
+        class="text-accent-500 hover:underline"
+        navigate={~p"/#{@schema.account_id}/actors/#{@schema.verified_by_identity.actor_id}"}
+      >
+        <%= assigns.schema.verified_by_actor.name %>
+      </.link>
+    </div>
     """
   end
 
