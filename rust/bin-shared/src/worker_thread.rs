@@ -26,6 +26,8 @@ struct Inner {
 }
 
 /// Inbound to the worker thread, outbound from the worker thread.
+// Remove this macro once #6634 merges
+#[allow(unused)]
 pub(crate) struct Params<Inbound, Outbound> {
     /// This will be needed later when the system tray uses this code
     pub(crate) _in_rx: mpsc::Receiver<Inbound>,
@@ -42,6 +44,8 @@ impl<Inbound: Send + 'static> Drop for Worker<Inbound> {
 
 impl<Inbound: Send + 'static> Worker<Inbound> {
     /// Spawn and run a new worker thread.
+    // Remove this macro once #6634 merges
+    #[allow(unused)]
     pub(crate) fn new<
         Outbound: Send + 'static,
         S: Into<String>,
@@ -77,6 +81,8 @@ impl<Inbound: Send + 'static> Worker<Inbound> {
     }
 
     /// Same as `drop`, but you can catch and log errors
+    // Remove this macro once #6634 merges
+    #[allow(unused)]
     pub(crate) fn close(&mut self) -> Result<()> {
         let Some(inner) = self.inner.take() else {
             return Ok(());

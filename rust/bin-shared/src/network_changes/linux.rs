@@ -1,7 +1,7 @@
 //! Not implemented for Linux yet
 
 use crate::platform::DnsControlMethod;
-use anyhow::{bail, Result};
+use anyhow::Result;
 use futures::StreamExt as _;
 use std::time::Duration;
 use tokio::time::{Interval, MissedTickBehavior};
