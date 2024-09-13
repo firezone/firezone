@@ -4,7 +4,8 @@
 //  LICENSE: Apache-2.0
 //
 
-
+// Note: it should be easy to expand this module to iOS
+#if os(macOS)
 import Foundation
 import UserNotifications
 import Cocoa
@@ -250,3 +251,4 @@ func setLastDissmissedVersion(version: SemanticVersion) throws {
   let encodedVersion = try JSONEncoder().encode(version)
   UserDefaults.standard.setValue(String(data: encodedVersion, encoding: .utf8), forKey: UpdateNotifier.lastDismissedVersionKey)
 }
+#endif
