@@ -180,6 +180,38 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
                {:ok, nil}
     end
 
+    test "when client verified is required" do
+      verified_client = %Domain.Clients.Client{verified_at: DateTime.utc_now()}
+      not_verified_client = %Domain.Clients.Client{verified_at: nil}
+
+      condition = %Domain.Policies.Condition{
+        property: :client_verified,
+        operator: :is,
+        values: ["true"]
+      }
+
+      assert fetch_conformation_expiration(condition, verified_client) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, not_verified_client) == :error
+
+      condition = %Domain.Policies.Condition{
+        property: :client_verified,
+        operator: :is,
+        values: ["false"]
+      }
+
+      assert fetch_conformation_expiration(condition, verified_client) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, not_verified_client) == {:ok, nil}
+
+      condition = %Domain.Policies.Condition{
+        property: :client_verified,
+        operator: :is,
+        values: nil
+      }
+
+      assert fetch_conformation_expiration(condition, verified_client) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, not_verified_client) == {:ok, nil}
+    end
+
     test "when client current UTC datetime is in the day of the week time ranges" do
       # this is deeply tested separately in find_day_of_the_week_time_range/2
       condition = %Domain.Policies.Condition{
