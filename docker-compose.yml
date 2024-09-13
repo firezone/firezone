@@ -68,7 +68,7 @@ services:
       # Erlang
       ERLANG_DISTRIBUTION_PORT: 9000
       ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
-      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@web.cluster.local"]}'
+      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@domain.cluster.local"]}'
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       RELEASE_HOSTNAME: "web.cluster.local"
       RELEASE_NAME: "web"
@@ -140,7 +140,7 @@ services:
       # Erlang
       ERLANG_DISTRIBUTION_PORT: 9000
       ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
-      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@web.cluster.local"]}'
+      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@domain.cluster.local"]}'
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       RELEASE_HOSTNAME: "api.cluster.local"
       RELEASE_NAME: "api"
