@@ -65,10 +65,10 @@ mod platform {
             let mut response_pkt = None;
             let mut time_spent = Duration::from_millis(0);
             loop {
-                let mut req_buf = [0u8; MTU + 20];
-                poll_fn(|cx| tun.poll_read(&mut req_buf[20..], cx)).await?;
+                let mut req_buf = [0u8; 1336];
+                let n = poll_fn(|cx| tun.poll_read(&mut req_buf[20..], cx)).await?;
                 let start = Instant::now();
-                let original_pkt = IpPacket::new(&mut req_buf).unwrap();
+                let original_pkt = IpPacket::new(req_buf, 20, n).unwrap();
                 let Some(original_udp) = original_pkt.as_udp() else {
                     continue;
                 };
