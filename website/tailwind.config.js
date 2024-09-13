@@ -132,7 +132,7 @@ module.exports = {
         primary: firezoneColors["heat-wave"],
         accent: firezoneColors["electric-violet"],
         neutral: firezoneColors["night-rider"],
-        grey: firezoneColors["cool-grey"],
+        grey: firezoneColors["cool-gray"],
       },
     },
   },
