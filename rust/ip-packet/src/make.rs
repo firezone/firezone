@@ -16,13 +16,13 @@ use std::net::{IpAddr, SocketAddr};
 macro_rules! build {
     ($packet:expr, $payload:ident) => {{
         let size = $packet.size($payload.len());
-        let mut buf = [0u8; $crate::MAX_IP_SIZE];
+        let mut ip = $crate::IpPacketBuf::new();
 
         $packet
-            .write(&mut std::io::Cursor::new(&mut buf[20..]), &$payload)
+            .write(&mut std::io::Cursor::new(ip.buf()), &$payload)
             .expect("Buffer should be big enough");
 
-        IpPacket::new(buf, 20, size).expect("Should be a valid IP packet")
+        IpPacket::new(ip, size).expect("Should be a valid IP packet")
     }};
 }
 

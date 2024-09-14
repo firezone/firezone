@@ -1,4 +1,4 @@
-use ip_packet::IpPacket;
+use ip_packet::{IpPacket, IpPacketBuf};
 use std::io;
 use std::task::{Context, Poll, Waker};
 use tun::Tun;
@@ -32,9 +32,8 @@ impl Device {
             return Poll::Pending;
         };
 
-        let mut buf = [0u8; ip_packet::MAX_IP_SIZE];
-
-        let n = std::task::ready!(tun.poll_read(&mut buf[20..], cx))?;
+        let mut ip_packet = IpPacketBuf::new();
+        let n = std::task::ready!(tun.poll_read(ip_packet.buf(), cx))?;
 
         if n == 0 {
             return Poll::Ready(Err(io::Error::new(
@@ -43,7 +42,7 @@ impl Device {
             )));
         }
 
-        let packet = IpPacket::new(buf, 20, n).ok_or_else(|| {
+        let packet = IpPacket::new(ip_packet, n).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "received bytes are not an IP packet",

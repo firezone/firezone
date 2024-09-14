@@ -82,6 +82,29 @@ impl Protocol {
     }
 }
 
+/// A buffer for reading a new [`IpPacket`] from the network.
+pub struct IpPacketBuf {
+    inner: [u8; MAX_IP_SIZE],
+}
+
+impl IpPacketBuf {
+    pub fn new() -> Self {
+        Self {
+            inner: [0u8; MAX_IP_SIZE],
+        }
+    }
+
+    pub fn buf(&mut self) -> &mut [u8] {
+        &mut self.inner[NAT46_OVERHEAD..] // We read packets at an offset so we can convert without copying.
+    }
+}
+
+impl Default for IpPacketBuf {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(PartialEq, Clone)]
 pub enum IpPacket {
     Ipv4(ConvertibleIpv4Packet),
@@ -133,9 +156,15 @@ pub struct ConvertibleIpv4Packet {
 }
 
 impl ConvertibleIpv4Packet {
-    pub fn new(buf: [u8; MAX_IP_SIZE], start: usize, len: usize) -> Option<ConvertibleIpv4Packet> {
-        Ipv4HeaderSlice::from_slice(&buf[start..(start + len)]).ok()?;
-        Some(Self { buf, start, len })
+    pub fn new(buf: IpPacketBuf, len: usize) -> Option<ConvertibleIpv4Packet> {
+        let buf = buf.inner;
+
+        Ipv4HeaderSlice::from_slice(&buf[NAT46_OVERHEAD..(NAT46_OVERHEAD + len)]).ok()?;
+        Some(Self {
+            buf,
+            start: NAT46_OVERHEAD,
+            len,
+        })
     }
 
     fn ip_header(&self) -> Ipv4HeaderSlice {
@@ -201,10 +230,15 @@ pub struct ConvertibleIpv6Packet {
 }
 
 impl ConvertibleIpv6Packet {
-    pub fn new(buf: [u8; MAX_IP_SIZE], start: usize, len: usize) -> Option<ConvertibleIpv6Packet> {
-        Ipv6HeaderSlice::from_slice(&buf[start..(start + len)]).ok()?;
+    pub fn new(buf: IpPacketBuf, len: usize) -> Option<ConvertibleIpv6Packet> {
+        let buf = buf.inner;
+        Ipv6HeaderSlice::from_slice(&buf[NAT46_OVERHEAD..(NAT46_OVERHEAD + len)]).ok()?;
 
-        Some(Self { buf, start, len })
+        Some(Self {
+            buf,
+            start: NAT46_OVERHEAD,
+            len,
+        })
     }
 
     fn header(&self) -> Ipv6HeaderSlice {
@@ -278,10 +312,10 @@ pub fn ipv6_translated(ip: Ipv6Addr) -> Option<Ipv4Addr> {
 }
 
 impl IpPacket {
-    pub fn new(buf: [u8; MAX_IP_SIZE], start: usize, end: usize) -> Option<Self> {
-        match buf[start] >> 4 {
-            4 => Some(IpPacket::Ipv4(ConvertibleIpv4Packet::new(buf, start, end)?)),
-            6 => Some(IpPacket::Ipv6(ConvertibleIpv6Packet::new(buf, start, end)?)),
+    pub fn new(buf: IpPacketBuf, len: usize) -> Option<Self> {
+        match buf.inner[NAT46_OVERHEAD] >> 4 {
+            4 => Some(IpPacket::Ipv4(ConvertibleIpv4Packet::new(buf, len)?)),
+            6 => Some(IpPacket::Ipv6(ConvertibleIpv6Packet::new(buf, len)?)),
             _ => None,
         }
     }

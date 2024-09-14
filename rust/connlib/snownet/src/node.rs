@@ -9,7 +9,7 @@ use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
 use hex_display::HexDisplayExt;
-use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket};
+use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf};
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, SeedableRng};
@@ -1707,9 +1707,9 @@ where
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, IpPacket> {
         let _guard = self.span.enter();
-        let mut buffer = [0u8; ip_packet::MAX_IP_SIZE];
+        let mut ip_packet = IpPacketBuf::new();
 
-        let control_flow = match self.tunnel.decapsulate(None, packet, &mut buffer[20..]) {
+        let control_flow = match self.tunnel.decapsulate(None, packet, ip_packet.buf()) {
             TunnResult::Done => ControlFlow::Break(Ok(())),
             TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
 
@@ -1719,7 +1719,7 @@ where
             // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
             TunnResult::WriteToTunnelV4(packet, ip) => {
                 let packet_len = packet.len();
-                let ipv4_packet = ConvertibleIpv4Packet::new(buffer, 20, packet_len)
+                let ipv4_packet = ConvertibleIpv4Packet::new(ip_packet, packet_len)
                     .expect("boringtun verifies validity");
                 debug_assert_eq!(ipv4_packet.get_source(), ip);
 
@@ -1730,7 +1730,7 @@ where
                 // for ipv6 we just need this to convince the borrow-checker that `packet`'s lifetime isn't `'b`, otherwise it's taken
                 // as `'b` for all branches.
                 let packet_len = packet.len();
-                let ipv6_packet = ConvertibleIpv6Packet::new(buffer, 20, packet_len)
+                let ipv6_packet = ConvertibleIpv6Packet::new(ip_packet, packet_len)
                     .expect("boringtun verifies validity");
                 debug_assert_eq!(ipv6_packet.get_source(), ip);
 
