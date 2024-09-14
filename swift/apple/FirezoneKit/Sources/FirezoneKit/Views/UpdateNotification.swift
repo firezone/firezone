@@ -83,96 +83,11 @@ private struct VersionInfo: Decodable {
   let apple: SemanticVersion
 }
 
-private class UpdateNotifier: NSObject, UNUserNotificationCenterDelegate {
-  @Published private(set) var decision: UNAuthorizationStatus
-  private var lastNotifiedVersion: SemanticVersion?
-  static let lastDismissedVersionKey = "lastDismissedVersion"
-  static let notificationIdentifier = "UPDATE_CATEGORY"
-  static let appStoreLink = URL(string: "https://apps.apple.com/us/app/firezone/id6443661826")!
-
-  override public init() {
-    self.decision = .notDetermined
-    super.init()
-
-    let notificationCenter = UNUserNotificationCenter.current()
-
-    // Define a custom action
-    let dismissAction = UNNotificationAction(identifier: "DISMISS_ACTION",
-                                             title: "Dismiss This Version",
-                                             options: [])
-
-    // Define a notification category with the action
-    let notificationCategory = UNNotificationCategory(identifier: UpdateNotifier.notificationIdentifier,
-                                                       actions: [dismissAction],
-                                                       intentIdentifiers: [],
-                                                       options: [])
-
-    notificationCenter.setNotificationCategories([notificationCategory])
-
-    notificationCenter.delegate = self
-    notificationCenter.requestAuthorization(options: [.sound, .badge, .alert]) { granted, error in
-      notificationCenter.getNotificationSettings { notificationSettings in
-        self.decision = notificationSettings.authorizationStatus
-      }
-    }
-
-  }
-
-  public func updateNotification(version: SemanticVersion) {
-    if let lastDismissedVersion = getLastDismissedVersion(), lastDismissedVersion >= version {
-      return
-    }
-
-    let content = UNMutableNotificationContent()
-    lastNotifiedVersion = version
-    content.title = "Update Firezone"
-    content.body = "New Firezone version available"
-    content.sound = .default
-    content.categoryIdentifier = UpdateNotifier.notificationIdentifier
-
-    let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-
-    let uuidString = UUID().uuidString
-    let request = UNNotificationRequest(
-      identifier: uuidString, content: content, trigger: trigger
-    )
-
-    UNUserNotificationCenter.current().add(request) { error in
-      if let error = error {
-        Log.app.error("\(#function): Error requesting notification: \(error)")
-      }
-    }
-
-  }
-
-  func userNotificationCenter(_ center: UNUserNotificationCenter,
-                              didReceive response: UNNotificationResponse,
-                              withCompletionHandler completionHandler: @escaping () -> Void) {
-      if response.actionIdentifier == "DISMISS_ACTION" {
-        try? setLastDissmissedVersion(version: lastNotifiedVersion!)
-        return
-      }
-
-      NSWorkspace.shared.open(UpdateNotifier.appStoreLink)
-
-      completionHandler()
-  }
-
-  func applicationDidFinishLaunching(_ notification: Notification) {
-      UNUserNotificationCenter.current().delegate = self
-  }
-
-  func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-      // Show the notification even when the app is in the foreground
-    completionHandler([.badge, .banner, .sound])
-  }
-}
-
 class UpdateChecker {
   private var timer: Timer?
-  private let updateNotifier: UpdateNotifier = UpdateNotifier()
+  private let notificationAdapter: NotificationAdapter = NotificationAdapter()
   private let versionCheckUrl: URL = URL(string: "https://www.firezone.dev/api/releases")!
-  public let appStoreLink: URL = UpdateNotifier.appStoreLink
+  private let marketingVersion = Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String
 
   @Published public var updateAvailable: Bool = false
 
@@ -185,8 +100,11 @@ class UpdateChecker {
         checkForUpdates()
     }
 
+    deinit {
+        timer?.invalidate()
+    }
+
     @objc private func checkForUpdates() {
-      let marketingVersion = Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String
 
       let currentVersion = SemanticVersion.from(string: marketingVersion)!
         let task = URLSession.shared.dataTask(with: versionCheckUrl) { [weak self] data, response, error in
@@ -194,7 +112,7 @@ class UpdateChecker {
 
 
           if let error = error {
-            Log.app.error("Error fetching updates: \(error)")
+            Log.app.error("Error fetching version manifest: \(error)")
             return
           }
 
@@ -215,22 +133,102 @@ class UpdateChecker {
 
           if latestVersion > currentVersion {
             self.updateAvailable = true
-            self.updateNotifier.updateNotification(version: latestVersion)
+            self.notificationAdapter.showUpdateNotification(version: latestVersion)
           }
 
         }
 
         task.resume()
     }
+}
 
-    deinit {
-        timer?.invalidate()
+public let appStoreLink = URL(string: "https://apps.apple.com/app/firezone/id6443661826")!
+
+private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
+  private var lastNotifiedVersion: SemanticVersion?
+  static let notificationIdentifier = "UPDATE_CATEGORY"
+  static let dismissIdentifier = "DISMISS_ACTION"
+
+  override public init() {
+    super.init()
+
+    let notificationCenter = UNUserNotificationCenter.current()
+
+    let dismissAction = UNNotificationAction(identifier: NotificationAdapter.dismissIdentifier,
+                                             title: "Dismiss This Version",
+                                             options: [])
+
+    let notificationCategory = UNNotificationCategory(identifier: NotificationAdapter.notificationIdentifier,
+                                                       actions: [dismissAction],
+                                                       intentIdentifiers: [],
+                                                       options: [])
+
+    notificationCenter.setNotificationCategories([notificationCategory])
+
+    notificationCenter.delegate = self
+    notificationCenter.requestAuthorization(options: [.sound, .badge, .alert]) { _, error in
+	  if let error = error {
+	    Log.app.error("Failed to request authorization for notifications: \(error)")
+	  }
     }
+
+  }
+
+  func showUpdateNotification(version: SemanticVersion) {
+    if let lastDismissedVersion = getLastDismissedVersion(), lastDismissedVersion >= version {
+      return
+    }
+
+    let content = UNMutableNotificationContent()
+    lastNotifiedVersion = version
+    content.title = "Update Firezone"
+    content.body = "New Firezone version available"
+    content.sound = .default
+    content.categoryIdentifier = NotificationAdapter.notificationIdentifier
+
+
+    let request = UNNotificationRequest(
+      identifier: UUID().uuidString,
+	  content: content,
+	  trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+	)
+
+    UNUserNotificationCenter.current().add(request) { error in
+      if let error = error {
+        Log.app.error("\(#function): Error requesting notification: \(error)")
+      }
+    }
+
+  }
+
+  func userNotificationCenter(_ center: UNUserNotificationCenter,
+                              didReceive response: UNNotificationResponse,
+                              withCompletionHandler completionHandler: @escaping () -> Void) {
+      if response.actionIdentifier == NotificationAdapter.dismissIdentifier {
+        try? setLastDismissedVersion(version: lastNotifiedVersion!)
+        return
+      }
+
+      NSWorkspace.shared.open(appStoreLink)
+
+      completionHandler()
+  }
+
+  func applicationDidFinishLaunching(_ notification: Notification) {
+      UNUserNotificationCenter.current().delegate = self
+  }
+
+  func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+      // Show the notification even when the app is in the foreground
+    completionHandler([.badge, .banner, .sound])
+  }
 }
 
 
+let lastDismissedVersionKey = "lastDismissedVersion"
+
 func getLastDismissedVersion() -> SemanticVersion? {
-  let versionString = UserDefaults.standard.string(forKey: UpdateNotifier.lastDismissedVersionKey)
+  let versionString = UserDefaults.standard.string(forKey: lastDismissedVersionKey)
   guard let versionData = versionString?.data(using: .utf8) else {
     return nil
   }
@@ -238,8 +236,8 @@ func getLastDismissedVersion() -> SemanticVersion? {
   return try? JSONDecoder().decode(SemanticVersion.self, from: versionData)
 }
 
-func setLastDissmissedVersion(version: SemanticVersion) throws {
+func setLastDismissedVersion(version: SemanticVersion) throws {
   let encodedVersion = try JSONEncoder().encode(version)
-  UserDefaults.standard.setValue(String(data: encodedVersion, encoding: .utf8), forKey: UpdateNotifier.lastDismissedVersionKey)
+  UserDefaults.standard.setValue(String(data: encodedVersion, encoding: .utf8), forKey: lastDismissedVersionKey)
 }
 #endif

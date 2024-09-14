@@ -281,7 +281,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func updateAvailableButtonTapped() {
-    NSWorkspace.shared.open(updateChecker.appStoreLink)
+    NSWorkspace.shared.open(appStoreLink)
   }
 
   @objc private func documentationButtonTapped() {
