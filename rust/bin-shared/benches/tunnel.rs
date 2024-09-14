@@ -65,7 +65,7 @@ mod platform {
             let mut response_pkt = None;
             let mut time_spent = Duration::from_millis(0);
             loop {
-                let mut req_buf = [0u8; 1336];
+                let mut req_buf = [0u8; ip_packet::MAX_IP_SIZE];
                 let n = poll_fn(|cx| tun.poll_read(&mut req_buf[20..], cx)).await?;
                 let start = Instant::now();
                 let original_pkt = IpPacket::new(req_buf, 20, n).unwrap();

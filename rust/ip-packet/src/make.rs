@@ -16,7 +16,7 @@ use std::net::{IpAddr, SocketAddr};
 macro_rules! build {
     ($packet:expr, $payload:ident) => {{
         let size = $packet.size($payload.len());
-        let mut buf = [0u8; 1336];
+        let mut buf = [0u8; $crate::MAX_IP_SIZE];
 
         $packet
             .write(&mut std::io::Cursor::new(&mut buf[20..]), &$payload)

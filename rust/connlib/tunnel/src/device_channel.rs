@@ -32,7 +32,7 @@ impl Device {
             return Poll::Pending;
         };
 
-        let mut buf = [0u8; 1336];
+        let mut buf = [0u8; ip_packet::MAX_IP_SIZE];
 
         let n = std::task::ready!(tun.poll_read(&mut buf[20..], cx))?;
 

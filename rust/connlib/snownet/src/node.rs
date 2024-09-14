@@ -1707,7 +1707,7 @@ where
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, IpPacket> {
         let _guard = self.span.enter();
-        let mut buffer = [0u8; 1336];
+        let mut buffer = [0u8; ip_packet::MAX_IP_SIZE];
 
         let control_flow = match self.tunnel.decapsulate(None, packet, &mut buffer[20..]) {
             TunnResult::Done => ControlFlow::Break(Ok(())),
