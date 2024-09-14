@@ -92,8 +92,6 @@ pub struct Node<T, TId, RId> {
     connections: Connections<TId, RId>,
     pending_events: VecDeque<Event<TId>>,
 
-    buffer: Vec<u8>,
-
     stats: NodeStats,
 
     marker: PhantomData<T>,
@@ -123,7 +121,7 @@ where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
-    pub fn new(private_key: StaticSecret, buf_size: usize, seed: [u8; 32]) -> Self {
+    pub fn new(private_key: StaticSecret, seed: [u8; 32]) -> Self {
         let public_key = &(&private_key).into();
         Self {
             rng: StdRng::from_seed(seed), // TODO: Use this seed for private key too. Requires refactoring of how we generate the login-url because that one needs to know the public key.
@@ -137,7 +135,6 @@ where
             buffered_transmits: VecDeque::default(),
             next_rate_limiter_reset: None,
             pending_events: VecDeque::default(),
-            buffer: vec![0; buf_size],
             allocations: Default::default(),
             connections: Default::default(),
             stats: Default::default(),
@@ -571,7 +568,7 @@ where
             ),
             next_timer_update: now,
             stats: Default::default(),
-            buffer: vec![0; self.buffer.capacity()],
+            buffer: vec![0; ip_packet::MAX_IP_SIZE],
             intent_sent_at,
             signalling_completed_at: now,
             remote_pub_key: remote,

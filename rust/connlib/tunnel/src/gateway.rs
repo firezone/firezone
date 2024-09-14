@@ -11,7 +11,7 @@ use connlib_shared::messages::{
 };
 use connlib_shared::{DomainName, StaticSecret};
 use ip_network::{Ipv4Network, Ipv6Network};
-use ip_packet::{IpPacket, MAX_IP_SIZE};
+use ip_packet::IpPacket;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{EncryptBuffer, RelaySocket, ServerNode};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -144,7 +144,7 @@ impl GatewayState {
     pub(crate) fn new(private_key: impl Into<StaticSecret>, seed: [u8; 32]) -> Self {
         Self {
             peers: Default::default(),
-            node: ServerNode::new(private_key.into(), MAX_IP_SIZE, seed),
+            node: ServerNode::new(private_key.into(), seed),
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
         }
