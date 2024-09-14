@@ -80,7 +80,6 @@ use windows::{
     },
 };
 
-#[expect(clippy::unused_async, reason = "Must match signature of Linux code")]
 pub async fn new_dns_notifier(
     tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
@@ -91,7 +90,6 @@ pub async fn new_dns_notifier(
     })
 }
 
-#[expect(clippy::unused_async, reason = "Async on Linux due to `zbus`")]
 pub async fn new_network_notifier(
     _tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,

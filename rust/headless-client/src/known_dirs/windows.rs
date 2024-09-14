@@ -9,7 +9,6 @@ use std::path::PathBuf;
 /// by both programs. All writes should use `atomicwrites`.
 ///
 /// On Windows, `C:/ProgramData/$BUNDLE_ID/config`
-#[expect(clippy::unnecessary_wraps)]
 pub fn ipc_service_config() -> Option<PathBuf> {
     Some(
         get_known_folder_path(KnownFolder::ProgramData)?

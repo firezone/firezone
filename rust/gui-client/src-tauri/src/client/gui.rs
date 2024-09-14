@@ -39,7 +39,6 @@ mod os;
 
 #[cfg(target_os = "windows")]
 #[path = "gui/os_windows.rs"]
-#[expect(clippy::unnecessary_wraps)]
 mod os;
 
 pub(crate) use os::set_autostart;
