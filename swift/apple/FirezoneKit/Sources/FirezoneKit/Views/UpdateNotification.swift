@@ -211,8 +211,8 @@ class UpdateChecker {
             return
           }
 
-          //let latestVersion = versionInfo.apple
-          let latestVersion = SemanticVersion.from(string: "100000.0.0")!
+          let latestVersion = versionInfo.apple
+
           if latestVersion > currentVersion {
             self.updateAvailable = true
             self.updateNotifier.updateNotification(version: latestVersion)
