@@ -11,7 +11,6 @@ import CryptoKit
 import Foundation
 import NetworkExtension
 
-
 enum TunnelManagerError: Error {
   case cannotSaveIfMissing
 }

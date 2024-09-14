@@ -29,6 +29,7 @@ public final class MenuBar: NSObject, ObservableObject {
   private var vpnStatus: NEVPNStatus = .disconnected
 
   private var updateChecker: UpdateChecker = UpdateChecker()
+  private var updateMenuDisplayed: Bool = false
 
   @ObservedObject var model: SessionViewModel
 
@@ -50,7 +51,6 @@ public final class MenuBar: NSObject, ObservableObject {
     self.model = model
 
     super.init()
-    self.updateChecker.setRefresh(refreshMenu: self.updateStatusItemIcon)
 
     updateStatusItemIcon()
 
@@ -87,6 +87,14 @@ public final class MenuBar: NSObject, ObservableObject {
         guard let self = self else { return }
         self.vpnStatus = model.status
         self.updateStatusItemIcon()
+      }).store(in: &cancellables)
+
+    updateChecker.$updateAvailable
+      .receive(on: DispatchQueue.main)
+      .sink(receiveValue: {[weak self] _ in
+            guard  let self = self else { return }
+            self.updateStatusItemIcon()
+            self.refreshUpdateItem()
       }).store(in: &cancellables)
   }
 
@@ -228,11 +236,6 @@ public final class MenuBar: NSObject, ObservableObject {
     menu.addItem(adminPortalMenuItem)
     menu.addItem(helpMenuItem)
     menu.addItem(settingsMenuItem)
-    if (updateChecker.isUpdateAvailable()) {
-      menu.addItem(NSMenuItem.separator())
-
-      menu.addItem(updateAvailableMenu)
-    }
     menu.addItem(NSMenuItem.separator())
     menu.addItem(quitMenuItem)
 
@@ -333,8 +336,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private func updateStatusItemIcon() {
     updateAnimation(status: vpnStatus)
-    statusItem.button?.image = getStatusIcon(status: vpnStatus, notification: updateChecker.isUpdateAvailable())
-
+    statusItem.button?.image = getStatusIcon(status: vpnStatus, notification: updateChecker.updateAvailable)
   }
 
   private func startConnectingAnimation() {
@@ -479,6 +481,18 @@ public final class MenuBar: NSObject, ObservableObject {
     }
 
     return wasInternetResourceEnabled != model.store.internetResourceEnabled()
+  }
+
+  private func refreshUpdateItem() {
+      // We don't ever need to remove this as the whole menu will be recreated
+      // if the user updates, and there's no reason for the update to no longer be available
+      // versions should be monotonically increased.
+      if (updateChecker.updateAvailable && !updateMenuDisplayed) {
+        updateMenuDisplayed = true
+        let index = menu.index(of: settingsMenuItem) + 1
+        menu.insertItem(NSMenuItem.separator(), at: index)
+        menu.insertItem(updateAvailableMenu, at: index + 1)
+      }
   }
 
   private func populateFavoriteResourcesMenu(_ newFavorites: [Resource]) {

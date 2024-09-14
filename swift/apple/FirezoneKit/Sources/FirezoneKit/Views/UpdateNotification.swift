@@ -170,22 +170,14 @@ private class UpdateNotifier: NSObject, UNUserNotificationCenterDelegate {
 
 class UpdateChecker {
   private var timer: Timer?
-  private var updateAvailable: Bool = false
   private let updateNotifier: UpdateNotifier = UpdateNotifier()
   private let versionCheckUrl: URL = URL(string: "https://www.firezone.dev/api/releases")!
   public let appStoreLink: URL = UpdateNotifier.appStoreLink
-  private var refreshMenu: (() -> Void) = {}
+
+  @Published public var updateAvailable: Bool = false
 
   init() {
       startCheckingForUpdates()
-  }
-
-  public func setRefresh(refreshMenu: @escaping () -> Void) {
-    self.refreshMenu = refreshMenu
-  }
-
-  public func isUpdateAvailable() -> Bool {
-    updateAvailable
   }
 
     private func startCheckingForUpdates() {
@@ -219,11 +211,10 @@ class UpdateChecker {
             return
           }
 
-          let latestVersion = versionInfo.apple
-
+          //let latestVersion = versionInfo.apple
+          let latestVersion = SemanticVersion.from(string: "100000.0.0")!
           if latestVersion > currentVersion {
             self.updateAvailable = true
-            refreshMenu()
             self.updateNotifier.updateNotification(version: latestVersion)
           }
 
