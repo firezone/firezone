@@ -156,15 +156,15 @@ pub struct ConvertibleIpv4Packet {
 }
 
 impl ConvertibleIpv4Packet {
-    pub fn new(buf: IpPacketBuf, len: usize) -> Option<ConvertibleIpv4Packet> {
-        let buf = buf.inner;
-
-        Ipv4HeaderSlice::from_slice(&buf[NAT46_OVERHEAD..(NAT46_OVERHEAD + len)]).ok()?;
-        Some(Self {
-            buf,
+    pub fn new(ip: IpPacketBuf, len: usize) -> Option<ConvertibleIpv4Packet> {
+        let this = Self {
+            buf: ip.inner,
             start: NAT46_OVERHEAD,
             len,
-        })
+        };
+        Ipv4HeaderSlice::from_slice(this.packet()).ok()?;
+
+        Some(this)
     }
 
     fn ip_header(&self) -> Ipv4HeaderSlice {
@@ -186,7 +186,7 @@ impl ConvertibleIpv4Packet {
     fn consume_to_ipv6(mut self, src: Ipv6Addr, dst: Ipv6Addr) -> Option<ConvertibleIpv6Packet> {
         // `translate_in_place` expects the packet to sit at a 20-byte offset.
         // `self.start` tells us where the packet actually starts, thus we need to pass `self.start - 20` to the function.
-        let start_minus_padding = self.start.checked_sub(20)?;
+        let start_minus_padding = self.start.checked_sub(NAT46_OVERHEAD)?;
 
         let offset = nat46::translate_in_place(
             &mut self.buf[start_minus_padding..(self.start + self.len)],
@@ -196,16 +196,20 @@ impl ConvertibleIpv4Packet {
         .inspect_err(|e| tracing::trace!("NAT46 failed: {e:#}"))
         .ok()?;
 
-        let len = match self.start.cmp(&offset) {
-            std::cmp::Ordering::Less => self.len - (offset - self.start),
-            std::cmp::Ordering::Equal => self.len,
-            std::cmp::Ordering::Greater => self.len + (self.start - offset),
-        };
+        // We need to handle 2 cases here:
+        // `offset` > NAT46_OVERHEAD
+        // `offset` < NAT46_OVERHEAD
+        // By casting to an `isize` we can simply compute the _difference_ of the packet length.
+        // `offset` points into the buffer we passed to `translate_in_place`.
+        // We passed 20 (NAT46_OVERHEAD) bytes more to that function.
+        // Thus, 20 - offset tells us the difference in length of the new packet.
+        let len_diff = (NAT46_OVERHEAD as isize) - (offset as isize);
+        let len = (self.len as isize) + len_diff;
 
         Some(ConvertibleIpv6Packet {
             buf: self.buf,
-            start: offset,
-            len,
+            start: start_minus_padding + offset,
+            len: len as usize,
         })
     }
 
@@ -230,15 +234,16 @@ pub struct ConvertibleIpv6Packet {
 }
 
 impl ConvertibleIpv6Packet {
-    pub fn new(buf: IpPacketBuf, len: usize) -> Option<ConvertibleIpv6Packet> {
-        let buf = buf.inner;
-        Ipv6HeaderSlice::from_slice(&buf[NAT46_OVERHEAD..(NAT46_OVERHEAD + len)]).ok()?;
-
-        Some(Self {
-            buf,
+    pub fn new(ip: IpPacketBuf, len: usize) -> Option<ConvertibleIpv6Packet> {
+        let this = Self {
+            buf: ip.inner,
             start: NAT46_OVERHEAD,
             len,
-        })
+        };
+
+        Ipv6HeaderSlice::from_slice(this.packet()).ok()?;
+
+        Some(this)
     }
 
     fn header(&self) -> Ipv6HeaderSlice {
@@ -708,11 +713,7 @@ impl IpPacket {
 
     pub fn ipv4_header(&self) -> Option<Ipv4Header> {
         match self {
-            Self::Ipv4(p) => Some(
-                Ipv4HeaderSlice::from_slice(p.packet())
-                    .expect("Should be a valid packet")
-                    .to_header(),
-            ),
+            Self::Ipv4(p) => Some(p.ip_header().to_header()),
             Self::Ipv6(_) => None,
         }
     }
@@ -720,11 +721,7 @@ impl IpPacket {
     pub fn ipv6_header(&self) -> Option<Ipv6Header> {
         match self {
             Self::Ipv4(_) => None,
-            Self::Ipv6(p) => Some(
-                Ipv6HeaderSlice::from_slice(p.packet())
-                    .expect("Should be a valid packet")
-                    .to_header(),
-            ),
+            Self::Ipv6(p) => Some(p.header().to_header()),
         }
     }
 

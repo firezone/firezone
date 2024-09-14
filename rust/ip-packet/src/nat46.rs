@@ -6,16 +6,18 @@ use etherparse::{
 };
 use std::{io::Cursor, net::Ipv6Addr};
 
+use crate::NAT46_OVERHEAD;
+
 /// Performs IPv4 -> IPv6 NAT on the packet in `buf` to the given src & dst IP.
 ///
 /// An IPv6 IP-header may be up to 20 bytes bigger than its corresponding IPv4 counterpart.
-/// Thus, the IPv4 packet is expected to sit at an offset of 20 bytes in `buf`.
+/// Thus, the IPv4 packet is expected to sit at an offset of [`NAT46_OVERHEAD`] bytes in `buf`.
 ///
 /// # Returns
 ///
 /// - Ok(offset): The offset within `buf` at which the new IPv6 packet starts.
 pub fn translate_in_place(buf: &mut [u8], src: Ipv6Addr, dst: Ipv6Addr) -> Result<usize> {
-    let ipv4_packet = &buf[20..];
+    let ipv4_packet = &buf[NAT46_OVERHEAD..];
 
     let (headers, payload) = etherparse::IpHeaders::from_ipv4_slice(ipv4_packet)?;
     let (ipv4_header, _extensions) = headers.ipv4().expect("We successfully parsed as IPv4");
