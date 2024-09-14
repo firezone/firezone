@@ -1,6 +1,6 @@
 use crate::dns::StubResolver;
 use crate::peer_store::PeerStore;
-use crate::{dns, TunConfig, BUF_SIZE};
+use crate::{dns, TunConfig};
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_shared::callbacks::Status;
@@ -13,7 +13,7 @@ use connlib_shared::messages::{
 use connlib_shared::{callbacks, PublicKey, StaticSecret};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::IpPacket;
+use ip_packet::{IpPacket, MAX_IP_SIZE};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
@@ -278,7 +278,7 @@ impl ClientState {
             buffered_events: Default::default(),
             tun_config: Default::default(),
             buffered_packets: Default::default(),
-            node: ClientNode::new(private_key.into(), BUF_SIZE, seed),
+            node: ClientNode::new(private_key.into(), MAX_IP_SIZE, seed),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),

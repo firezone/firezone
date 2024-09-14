@@ -25,6 +25,17 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use tcp_header_slice_mut::TcpHeaderSliceMut;
 use udp_header_slice_mut::UdpHeaderSliceMut;
 
+pub const MAX_IP_SIZE: usize = MTU + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNEL_OVERHEAD;
+
+pub const MTU: usize = 1280;
+
+/// Wireguard has a 32-byte overhead (4b message type + 4b receiver idx + 8b packet counter + 16b AEAD tag)
+const WG_OVERHEAD: usize = 32;
+/// In order to do NAT46 without copying, we need 20 extra byte in the buffer (IPv6 packets are 20 byte bigger than IPv4).
+const NAT46_OVERHEAD: usize = 20;
+/// TURN's data channels have a 4 byte overhead.
+const DATA_CHANNEL_OVERHEAD: usize = 4;
+
 macro_rules! for_both {
     ($this:ident, |$name:ident| $body:expr) => {
         match $this {
@@ -116,13 +127,13 @@ impl std::fmt::Debug for IpPacket {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ConvertibleIpv4Packet {
-    buf: [u8; 1336],
+    buf: [u8; MAX_IP_SIZE],
     start: usize,
     len: usize,
 }
 
 impl ConvertibleIpv4Packet {
-    pub fn new(buf: [u8; 1336], start: usize, len: usize) -> Option<ConvertibleIpv4Packet> {
+    pub fn new(buf: [u8; MAX_IP_SIZE], start: usize, len: usize) -> Option<ConvertibleIpv4Packet> {
         Ipv4HeaderSlice::from_slice(&buf[start..(start + len)]).ok()?;
         Some(Self { buf, start, len })
     }
@@ -184,13 +195,13 @@ impl ConvertibleIpv4Packet {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ConvertibleIpv6Packet {
-    buf: [u8; 1336],
+    buf: [u8; MAX_IP_SIZE],
     start: usize,
     len: usize,
 }
 
 impl ConvertibleIpv6Packet {
-    pub fn new(buf: [u8; 1336], start: usize, len: usize) -> Option<ConvertibleIpv6Packet> {
+    pub fn new(buf: [u8; MAX_IP_SIZE], start: usize, len: usize) -> Option<ConvertibleIpv6Packet> {
         Ipv6HeaderSlice::from_slice(&buf[start..(start + len)]).ok()?;
 
         Some(Self { buf, start, len })
@@ -267,8 +278,7 @@ pub fn ipv6_translated(ip: Ipv6Addr) -> Option<Ipv4Addr> {
 }
 
 impl IpPacket {
-    // TODO: this API is a bit akward, since you have to pass the extra prepended 20 bytes
-    pub fn new(buf: [u8; 1336], start: usize, end: usize) -> Option<Self> {
+    pub fn new(buf: [u8; MAX_IP_SIZE], start: usize, end: usize) -> Option<Self> {
         match buf[start] >> 4 {
             4 => Some(IpPacket::Ipv4(ConvertibleIpv4Packet::new(buf, start, end)?)),
             6 => Some(IpPacket::Ipv6(ConvertibleIpv6Packet::new(buf, start, end)?)),

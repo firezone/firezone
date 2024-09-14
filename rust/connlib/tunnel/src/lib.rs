@@ -9,10 +9,11 @@ use chrono::Utc;
 use connlib_shared::{
     callbacks,
     messages::{ClientId, GatewayId, Offer, Relay, RelayId, ResolveRequest, ResourceId, SecretKey},
-    DomainName, PublicKey, DEFAULT_MTU,
+    DomainName, PublicKey,
 };
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
+use ip_packet::MAX_IP_SIZE;
 use rand::rngs::OsRng;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -50,15 +51,6 @@ const REALM: &str = "firezone";
 /// With 5000, we could not reproduce the force-yielding to be needed.
 /// Thus, it is chosen as a safe, upper boundary that is not meant to be hit (and thus doesn't affect performance), yet acts as a safe guard, just in case.
 const MAX_EVENTLOOP_ITERS: u32 = 5000;
-
-/// Wireguard has a 32-byte overhead (4b message type + 4b receiver idx + 8b packet counter + 16b AEAD tag)
-const WG_OVERHEAD: usize = 32;
-/// In order to do NAT46 without copying, we need 20 extra byte in the buffer (IPv6 packets are 20 byte bigger than IPv4).
-const NAT46_OVERHEAD: usize = 20;
-/// TURN's data channels have a 4 byte overhead.
-const DATA_CHANNEL_OVERHEAD: usize = 4;
-
-const BUF_SIZE: usize = DEFAULT_MTU + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNEL_OVERHEAD;
 
 pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
@@ -99,7 +91,7 @@ impl ClientTunnel {
             role_state: ClientState::new(private_key, known_hosts, rand::random()),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            encrypt_buf: EncryptBuffer::new(BUF_SIZE),
+            encrypt_buf: EncryptBuffer::new(MAX_IP_SIZE),
         }
     }
 
@@ -194,7 +186,7 @@ impl GatewayTunnel {
             role_state: GatewayState::new(private_key, rand::random()),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            encrypt_buf: EncryptBuffer::new(BUF_SIZE),
+            encrypt_buf: EncryptBuffer::new(MAX_IP_SIZE),
         }
     }
 

@@ -21,6 +21,7 @@ firezone-logging = { workspace = true }
 firezone-tunnel = { workspace = true }
 futures = "0.3.29"
 futures-bounded = { workspace = true }
+ip-packet = { workspace = true }
 ip_network = { version = "0.4", default-features = false }
 libc = { version = "0.2", default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
 phoenix-channel = { workspace = true }

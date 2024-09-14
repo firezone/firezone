@@ -4,7 +4,7 @@ use anyhow::{anyhow, Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_client_shared::{keypair, ConnectArgs, LoginUrl, Session};
-use connlib_shared::{get_user_agent, DEFAULT_MTU};
+use connlib_shared::get_user_agent;
 use firezone_bin_shared::{
     new_dns_notifier, new_network_notifier,
     platform::{tcp_socket_factory, udp_socket_factory},
@@ -213,7 +213,7 @@ fn main() -> Result<()> {
         // Deactivate Firezone DNS control in case the system or IPC service crashed
         // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
         dns_controller.deactivate()?;
-        let mut tun_device = TunDeviceManager::new(DEFAULT_MTU)?;
+        let mut tun_device = TunDeviceManager::new(ip_packet::MTU)?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
         let tokio_handle = tokio::runtime::Handle::current();

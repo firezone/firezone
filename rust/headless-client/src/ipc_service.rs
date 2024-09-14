@@ -25,7 +25,7 @@ use url::Url;
 
 pub mod ipc;
 use backoff::ExponentialBackoffBuilder;
-use connlib_shared::{get_user_agent, messages::ResourceId, DEFAULT_MTU};
+use connlib_shared::{get_user_agent, messages::ResourceId};
 use ipc::{Server as IpcServer, ServiceId};
 use phoenix_channel::PhoenixChannel;
 use secrecy::Secret;
@@ -277,7 +277,7 @@ impl<'a> Handler<'a> {
             .next_client_split()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
-        let tun_device = TunDeviceManager::new(DEFAULT_MTU)?;
+        let tun_device = TunDeviceManager::new(ip_packet::MTU)?;
 
         Ok(Self {
             dns_controller,
