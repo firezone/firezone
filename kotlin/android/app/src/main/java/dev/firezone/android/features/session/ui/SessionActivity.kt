@@ -147,6 +147,8 @@ class SessionActivity : AppCompatActivity() {
             refreshList()
         }
 
+        // This coroutine could still resume while the Activity is not shown, but this is probably
+        // fine since the Flow will only emit if the user interacts with the UI anyway.
         lifecycleScope.launch {
             viewModel.repo.favorites.collect {
                 refreshList()
