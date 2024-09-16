@@ -496,7 +496,10 @@ defmodule API.Client.ChannelTest do
       subject: subject
     } do
       assert_push "init", %{}
-      {:ok, _resource} = Domain.Resources.update_resource(resource, %{name: "foobar"}, subject)
+
+      {:updated, _resource} =
+        Domain.Resources.update_or_replace_resource(resource, %{name: "foobar"}, subject)
+
       assert_push "resource_created_or_updated", %{}
     end
 
@@ -1252,8 +1255,8 @@ defmodule API.Client.ChannelTest do
           }
         )
 
-      {:ok, resource} =
-        Domain.Resources.update_resource(
+      {:updated, resource} =
+        Domain.Resources.update_or_replace_resource(
           resource,
           %{connections: [%{gateway_group_id: gateway_group.id}]},
           subject

@@ -79,9 +79,10 @@ defmodule Domain.Policies do
           |> repo.update()
         end,
         after_update_commit: &broadcast_policy_events(:update, &1),
-        after_replace_commit: fn {replaced_policy, _created_policy}, _changesets ->
+        after_replace_commit: fn {replaced_policy, created_policy}, _changesets ->
           {:ok, _flows} = Flows.expire_flows_for(replaced_policy, subject)
           :ok = broadcast_policy_events(:delete, replaced_policy)
+          :ok = broadcast_policy_events(:create, created_policy)
         end
       )
     end
