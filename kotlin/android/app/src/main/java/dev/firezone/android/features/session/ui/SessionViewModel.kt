@@ -5,13 +5,9 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.tunnel.TunnelService.Companion.State
 import dev.firezone.android.tunnel.model.Resource
-import dev.firezone.android.tunnel.model.isInternetResource
 import javax.inject.Inject
-import kotlinx.coroutines.launch;
-import androidx.lifecycle.viewModelScope;
 
 @HiltViewModel
 internal class SessionViewModel
