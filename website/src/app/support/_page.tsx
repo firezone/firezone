@@ -192,28 +192,29 @@ export default function _Page() {
               </tr>
             </thead>
             <tbody>
-              <tr className="bg-white border-b">
-                <th
-                  scope="row"
-                  className="px-6 py-4 font-medium text-neutral-800"
-                >
-                  <span className="flex items-center">
-                    <HiOutlineChatBubbleOvalLeft className="w-5 h-5 mr-2" />
-                    Live chat
-                  </span>
-                </th>
-                <td className="px-6 py-4">
-                  <Link
-                    href="#"
-                    onClick={openChat}
-                    className="text-accent-500 hover:underline"
-                  >
-                    Start a chat
-                  </Link>
-                </td>
-                <td className="px-6 py-4">1 - 2 minutes</td>
-                <td className="px-6 py-4">M-F 9:00a - 5:00p Pacific</td>
-              </tr>
+              {/* MOSTLY SPAM */}
+              {/* <tr className="bg-white border-b"> */}
+              {/*   <th */}
+              {/*     scope="row" */}
+              {/*     className="px-6 py-4 font-medium text-neutral-800" */}
+              {/*   > */}
+              {/*     <span className="flex items-center"> */}
+              {/*       <HiOutlineChatBubbleOvalLeft className="w-5 h-5 mr-2" /> */}
+              {/*       Live chat */}
+              {/*     </span> */}
+              {/*   </th> */}
+              {/*   <td className="px-6 py-4"> */}
+              {/*     <Link */}
+              {/*       href="#" */}
+              {/*       onClick={openChat} */}
+              {/*       className="text-accent-500 hover:underline" */}
+              {/*     > */}
+              {/*       Start a chat */}
+              {/*     </Link> */}
+              {/*   </td> */}
+              {/*   <td className="px-6 py-4">1 - 2 minutes</td> */}
+              {/*   <td className="px-6 py-4">M-F 9:00a - 5:00p Pacific</td> */}
+              {/* </tr> */}
               <tr className="bg-white border-b">
                 <th
                   scope="row"
@@ -241,6 +242,29 @@ export default function _Page() {
                   className="px-6 py-4 font-medium text-neutral-800"
                 >
                   <span className="flex items-center">
+                    <FaSlack className="w-5 h-5 mr-2" />
+                    Dedicated Slack channel
+                  </span>
+                </th>
+                <td className="px-6 py-4">
+                  Available on Enterprise plans.{" "}
+                  <Link
+                    href="/contact/sales"
+                    className="text-accent-500 hover:underline"
+                  >
+                    Contact sales
+                  </Link>{" "}
+                  for details.
+                </td>
+                <td className="px-6 py-4">Under 8 hours</td>
+                <td className="px-6 py-4">M-F</td>
+              </tr>
+              <tr className="bg-white border-b">
+                <th
+                  scope="row"
+                  className="px-6 py-4 font-medium text-neutral-800"
+                >
+                  <span className="flex items-center">
                     <AiOutlineDiscord className="w-5 h-5 mr-2" />
                     Community Discord
                   </span>
@@ -254,7 +278,7 @@ export default function _Page() {
                   </Link>
                 </td>
               </tr>
-              <tr className="bg-white border-b">
+              <tr className="bg-white">
                 <th
                   scope="row"
                   className="px-6 py-4 font-medium text-neutral-800"
@@ -271,27 +295,6 @@ export default function _Page() {
                   >
                     https://discourse.firez.one
                   </Link>
-                </td>
-              </tr>
-              <tr className="bg-white">
-                <th
-                  scope="row"
-                  className="px-6 py-4 font-medium text-neutral-800"
-                >
-                  <span className="flex items-center">
-                    <FaSlack className="w-5 h-5 mr-2" />
-                    Dedicated Slack channel
-                  </span>
-                </th>
-                <td className="px-6 py-4" colSpan={3}>
-                  Available on Enterprise plans.{" "}
-                  <Link
-                    href="/contact/sales"
-                    className="text-accent-500 hover:underline"
-                  >
-                    Contact sales
-                  </Link>{" "}
-                  for details.
                 </td>
               </tr>
             </tbody>
