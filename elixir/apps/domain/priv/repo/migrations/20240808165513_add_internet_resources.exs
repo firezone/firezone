@@ -21,10 +21,10 @@ defmodule Domain.Repo.Migrations.AddInternetResources do
     )
 
     # Manual migration that needs to be run after deployment
-    # Domain.Accounts.Account.Query.not_deleted()
+    # (Domain.Accounts.Account.Query.not_deleted()
     # |> Domain.Repo.all()
     # |> Enum.each(fn account ->
     #   Domain.Resources.create_internet_resource(account)
-    # end)
+    # end))
   end
 end

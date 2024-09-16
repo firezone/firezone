@@ -1806,7 +1806,7 @@ mod proptests {
         )
     }
 
-    #[allow(clippy::redundant_clone)] // False positive.
+    #[expect(clippy::redundant_clone)] // False positive.
     pub fn hashset<T: std::hash::Hash + Eq, B: ToOwned<Owned = T>>(
         val: impl IntoIterator<Item = B>,
     ) -> HashSet<T> {

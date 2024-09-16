@@ -59,7 +59,6 @@ pub trait GuiIntegration {
 }
 
 // Allow dead code because `UpdateNotificationClicked` doesn't work on Linux yet
-#[allow(dead_code)]
 pub enum ControllerRequest {
     /// The GUI wants us to use these settings in-memory, they've already been saved to disk
     ApplySettings(Box<AdvancedSettings>),
@@ -132,7 +131,7 @@ impl Status {
     }
 
     fn internet_resource(&self) -> Option<ResourceDescription> {
-        #[allow(clippy::wildcard_enum_match_arm)]
+        #[expect(clippy::wildcard_enum_match_arm)]
         match self {
             Status::TunnelReady { resources } => {
                 resources.iter().find(|r| r.is_internet_resource()).cloned()
@@ -194,7 +193,7 @@ impl<I: GuiIntegration> Controller<I> {
                         break;
                     };
 
-                    #[allow(clippy::wildcard_enum_match_arm)]
+                    #[expect(clippy::wildcard_enum_match_arm)]
                     match req {
                         // SAFETY: Crashing is unsafe
                         Req::Fail(Failure::Crash) => {

@@ -24,7 +24,7 @@ impl Server {
     ///
     /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
     /// On Windows this uses async because of #5143 and #5566.
-    #[allow(clippy::unused_async)]
+    #[expect(clippy::unused_async)]
     pub async fn new() -> Result<Self, super::Error> {
         let path = sock_path()?;
         let dir = path

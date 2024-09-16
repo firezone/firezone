@@ -14,7 +14,7 @@ use std::{
 /// The possible transitions of the state machine.
 #[derive(Clone, derivative::Derivative)]
 #[derivative(Debug)]
-#[allow(clippy::large_enum_variant)]
+#[expect(clippy::large_enum_variant)]
 pub(crate) enum Transition {
     /// Activate a resource on the client.
     ActivateResource(ResourceDescription),
