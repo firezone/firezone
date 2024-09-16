@@ -21,6 +21,7 @@ import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
 import androidx.lifecycle.lifecycleScope
+import dev.firezone.android.tunnel.model.isInternetResource
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
@@ -28,6 +29,7 @@ class SessionActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySessionBinding
     private var tunnelService: TunnelService? = null
     private var serviceBound = false
+    private var showOnlyFavorites = false
     private val viewModel: SessionViewModel by viewModels()
 
     private val serviceConnection =
@@ -118,7 +120,7 @@ class SessionActivity : AppCompatActivity() {
         binding.tabLayout.addOnTabSelectedListener(
             object : TabLayout.OnTabSelectedListener {
                 override fun onTabSelected(tab: TabLayout.Tab) {
-                    viewModel.tabSelected(tab.position)
+                    tabSelected(tab.position)
 
                     refreshList {
                         // TODO: we might want to remember the old position?
@@ -146,14 +148,34 @@ class SessionActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch {
-            viewModel.repo.favorites.collect { refreshList() }
+            viewModel.repo.favorites.collect {
+                refreshList()
+                if (forceAllResourcesTab()) {
+                    showOnlyFavorites = false
+                }
+            }
         }
-        viewModel.tabSelected(binding.tabLayout.selectedTabPosition)
+        tabSelected(binding.tabLayout.selectedTabPosition)
+    }
+
+    fun tabSelected(position: Int) {
+        showOnlyFavorites =
+            when (position) {
+                RESOURCES_TAB_FAVORITES -> {
+                    true
+                }
+
+                RESOURCES_TAB_ALL -> {
+                    false
+                }
+
+                else -> throw IllegalArgumentException("Invalid tab position: $position")
+            }
     }
 
     private fun refreshList(afterLoad: () -> Unit = {}) {
-        if (viewModel.forceAllResourcesTab()) {
-            binding.tabLayout.selectTab(binding.tabLayout.getTabAt(SessionViewModel.RESOURCES_TAB_ALL), true)
+        if (forceAllResourcesTab()) {
+            binding.tabLayout.selectTab(binding.tabLayout.getTabAt(RESOURCES_TAB_ALL), true)
         }
         binding.tabLayout.visibility =
             if (viewModel.showFavoritesTab()) {
@@ -162,12 +184,39 @@ class SessionActivity : AppCompatActivity() {
                 View.GONE
             }
 
-        resourcesAdapter.submitList(viewModel.resourcesList(internetState())) {
+        resourcesAdapter.submitList(resourcesList(internetState())) {
             afterLoad()
         }
     }
 
+    // The subset of Resources to actually render
+    fun resourcesList(isInternetResourceEnabled: ResourceState): List<ResourceViewModel> {
+        val resources =
+            viewModel.resourcesLiveData.value!!.map {
+                if (it.isInternetResource()) {
+                    ResourceViewModel(it, isInternetResourceEnabled)
+                } else {
+                    ResourceViewModel(it, ResourceState.ENABLED)
+                }
+            }
+
+        return if (viewModel.repo.favorites.value.isEmpty()) {
+            resources
+        } else if (showOnlyFavorites) {
+            resources.filter { viewModel.repo.favorites.value.contains(it.id) }
+        } else {
+            resources
+        }
+    }
+
+    fun forceAllResourcesTab(): Boolean {
+        return viewModel.repo.favorites.value.isEmpty()
+    }
+
     companion object {
         private const val TAG = "SessionActivity"
+
+        private const val RESOURCES_TAB_FAVORITES = 0
+        private const val RESOURCES_TAB_ALL = 1
     }
 }
