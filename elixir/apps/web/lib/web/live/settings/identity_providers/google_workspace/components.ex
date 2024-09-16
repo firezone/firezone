@@ -99,7 +99,9 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
               </li>
               <li>
                 <strong>Authorized domains</strong>:
-                <code class="px-1 py-0.5 text-sm bg-neutral-600 text-white">firezone.dev</code>
+                <code class="px-1 py-0.5 text-sm bg-neutral-600 text-white rounded">
+                  firezone.dev
+                </code>
               </li>
             </ul>
             <p class="mb-4">
@@ -186,6 +188,23 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
               page of the Google Cloud Console and click <strong>Create Service Account</strong>.
             </p>
             <p class="mb-4">
+              Use the following values on the next screen:
+              <ul class="ml-4 mb-4 list-disc list-inside">
+                <li>
+                  <strong>Service account name</strong>: Firezone directory sync
+                </li>
+                <li>
+                  <strong>Service account ID</strong>:
+                  <code class="px-1 py-0.5 text-sm bg-neutral-600 text-white rounded">
+                    firezone-directory-sync
+                  </code>
+                </li>
+              </ul>
+            </p>
+            <p class="mb-4">
+              Leave the rest of the options as they are, and click <strong>DONE</strong>.
+            </p>
+            <p class="mb-4">
               Click on the created service account, then click the <strong>Keys</strong>
               tab, <strong>Add Key</strong>
               and select <strong>Create new key</strong>. Select <strong>JSON</strong>
@@ -199,19 +218,19 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
               (OAuth 2 Client ID). You will need it for the next step.
             </p>
             <p class="mb-4">
-              Sign in to the Google Workspace Admin Console and go to <strong>Security</strong>, then <strong>Access and Data Control</strong>, and then <a
-                href="https://admin.google.com/ac/owl"
-                target="_blank"
-                class={link_style()}
-              ><strong>API Controls</strong></a>. Click <strong>Manage Domain Wide Delegation</strong>,
-              <strong>Add new</strong>
+              Next, go to the
+              <a href="https://admin.google.com/ac/owl" target="_blank" class={link_style()}>
+                <strong>API Controls</strong>
+              </a>
+              section of the Google Workspace Admin console.
+              Click <strong>Manage Domain Wide Delegation</strong>, <strong>Add new</strong>
               and paste the <strong>Unique ID</strong>
               from the previous step to the <strong>Client ID</strong>
               field and add the following scopes: <.code_block
                 id="oauth-scopes"
                 class="w-full text-xs mb-4 whitespace-pre-line rounded"
                 phx-no-format
-              ><%= Enum.join(GoogleWorkspace.Settings.scope(), "\n") %></.code_block>
+              ><%= Enum.join(GoogleWorkspace.Settings.scope(), ",\n") %></.code_block>
             </p>
             <p class="mb-4">
               Finally, click <strong>Authorize</strong>.
