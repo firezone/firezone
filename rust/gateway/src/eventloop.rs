@@ -5,7 +5,7 @@ use crate::messages::{
 use anyhow::Result;
 use boringtun::x25519::PublicKey;
 use connlib_shared::messages::{
-    ClientId, ConnectionAccepted, Interface, RelaysPresence, ResourceAccepted, ResourceId,
+    ClientId, ConnectionAccepted, Interface, RelaysPresence, ResourceId,
 };
 use connlib_shared::{messages::GatewayResponse, DomainName};
 #[cfg(not(target_os = "windows"))]
@@ -158,7 +158,7 @@ impl Eventloop {
                 if self
                     .resolve_tasks
                     .try_push(
-                        resolve(req.client.payload.domain.as_ref().map(|r| r.name())),
+                        resolve(req.client.payload.domain.as_ref().map(|r| r.name.clone())),
                         ResolveTrigger::RequestConnection(req),
                     )
                     .is_err()
@@ -173,7 +173,7 @@ impl Eventloop {
                 if self
                     .resolve_tasks
                     .try_push(
-                        resolve(req.payload.as_ref().map(|r| r.name())),
+                        resolve(req.payload.as_ref().map(|r| r.name.clone())),
                         ResolveTrigger::AllowAccess(req),
                     )
                     .is_err()
@@ -272,40 +272,30 @@ impl Eventloop {
             PublicKey::from(req.client.peer.public_key.0),
         );
 
-        match self.tunnel.allow_access(
+        if let Err(e) = self.tunnel.allow_access(
             req.client.id,
             req.client.peer.ipv4,
             req.client.peer.ipv6,
             req.client.payload.domain.as_ref().map(|r| r.as_tuple()),
             req.expires_at,
-            req.resource.into_resolved(addresses.clone()),
+            req.resource.into_resolved(addresses),
         ) {
-            Ok(()) => {
-                self.portal.send(
-                    PHOENIX_TOPIC,
-                    EgressMessages::ConnectionReady(ConnectionReady {
-                        reference: req.reference,
-                        gateway_payload: GatewayResponse::ConnectionAccepted(ConnectionAccepted {
-                            ice_parameters: answer,
-                            domain_response: req.client.payload.domain.map(|r| {
-                                connlib_shared::messages::DomainResponse {
-                                    domain: r.name(),
-                                    address: addresses,
-                                }
-                            }),
-                        }),
-                    }),
-                );
+            let client = req.client.id;
 
-                // TODO: If outbound request fails, cleanup connection.
-            }
-            Err(e) => {
-                let client = req.client.id;
-
-                self.tunnel.cleanup_connection(&client);
-                tracing::debug!(%client, "Connection request failed: {e:#}");
-            }
+            self.tunnel.cleanup_connection(&client);
+            tracing::debug!(%client, "Connection request failed: {e:#}");
+            return;
         }
+
+        self.portal.send(
+            PHOENIX_TOPIC,
+            EgressMessages::ConnectionReady(ConnectionReady {
+                reference: req.reference,
+                gateway_payload: GatewayResponse::ConnectionAccepted(ConnectionAccepted {
+                    ice_parameters: answer,
+                }),
+            }),
+        );
     }
 
     pub fn allow_access(&mut self, result: Result<Vec<IpAddr>, Timeout>, req: AllowAccess) {
@@ -313,30 +303,16 @@ impl Eventloop {
             .inspect_err(|e| tracing::debug!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request: {e}"))
             .unwrap_or_default();
 
-        if let (Ok(()), Some(resolve_request)) = (
-            self.tunnel.allow_access(
-                req.client_id,
-                req.client_ipv4,
-                req.client_ipv6,
-                req.payload.as_ref().map(|r| r.as_tuple()),
-                req.expires_at,
-                req.resource.into_resolved(addresses.clone()),
-            ),
-            req.payload,
+        if let Err(e) = self.tunnel.allow_access(
+            req.client_id,
+            req.client_ipv4,
+            req.client_ipv6,
+            req.payload.as_ref().map(|r| r.as_tuple()),
+            req.expires_at,
+            req.resource.into_resolved(addresses),
         ) {
-            self.portal.send(
-                PHOENIX_TOPIC,
-                EgressMessages::ConnectionReady(ConnectionReady {
-                    reference: req.reference,
-                    gateway_payload: GatewayResponse::ResourceAccepted(ResourceAccepted {
-                        domain_response: connlib_shared::messages::DomainResponse {
-                            domain: resolve_request.name(),
-                            address: addresses,
-                        },
-                    }),
-                }),
-            );
-        }
+            tracing::warn!(client = %req.client_id, "Allow access request failed: {e:#}");
+        };
     }
 
     pub fn refresh_translation(

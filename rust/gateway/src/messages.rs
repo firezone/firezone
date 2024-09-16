@@ -57,32 +57,14 @@ pub struct RemoveResource {
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
-#[serde(untagged)]
-pub enum ResolveRequest {
-    ReturnResponse(DomainName),
-    MapResponse {
-        name: DomainName,
-        proxy_ips: Vec<IpAddr>,
-    },
+pub struct ResolveRequest {
+    pub name: DomainName,
+    pub proxy_ips: Vec<IpAddr>,
 }
 
 impl ResolveRequest {
-    pub fn name(&self) -> DomainName {
-        match self {
-            ResolveRequest::ReturnResponse(name) => name.clone(),
-            ResolveRequest::MapResponse { name, .. } => name.clone(),
-        }
-    }
-
-    // TODO: remove me
     pub fn as_tuple(&self) -> (DomainName, Vec<IpAddr>) {
-        match self {
-            ResolveRequest::ReturnResponse(name) => (name.clone(), Vec::new()),
-            ResolveRequest::MapResponse {
-                name,
-                proxy_ips: proxy,
-            } => (name.clone(), proxy.clone()),
-        }
+        (self.name.clone(), self.proxy_ips.clone())
     }
 }
 

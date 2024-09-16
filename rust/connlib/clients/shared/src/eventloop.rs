@@ -9,7 +9,7 @@ use crate::{
 use anyhow::Result;
 use connlib_shared::messages::{
     ClientPayload, ConnectionAccepted, GatewayResponse, RelaysPresence, RequestConnection,
-    ResourceAccepted, ResourceId, ReuseConnection,
+    ResourceId, ReuseConnection,
 };
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
@@ -293,12 +293,6 @@ where
                 ) {
                     tracing::warn!("Failed to accept connection: {e}");
                 }
-            }
-            ReplyMessages::Connect(Connect {
-                gateway_payload: GatewayResponse::ResourceAccepted(ResourceAccepted { .. }),
-                ..
-            }) => {
-                tracing::trace!("Connection response received, ignored as it's deprecated")
             }
             ReplyMessages::ConnectionDetails(ConnectionDetails {
                 gateway_id,
