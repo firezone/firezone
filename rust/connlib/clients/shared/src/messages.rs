@@ -75,7 +75,6 @@ pub struct GatewayIceCandidates {
 /// The replies that can arrive from the channel by a client
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(untagged)]
-#[allow(clippy::large_enum_variant)]
 pub enum ReplyMessages {
     ConnectionDetails(ConnectionDetails),
     Connect(Connect),

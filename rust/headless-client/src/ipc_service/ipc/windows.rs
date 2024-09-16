@@ -22,8 +22,8 @@ pub(crate) type ServerStream = named_pipe::NamedPipeServer;
 /// Connect to the IPC service
 ///
 /// This is async on Linux
-#[allow(clippy::unused_async)]
-#[allow(clippy::wildcard_enum_match_arm)]
+#[expect(clippy::unused_async)]
+#[expect(clippy::wildcard_enum_match_arm)]
 pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Error> {
     let path = ipc_path(id);
     let stream = named_pipe::ClientOptions::new()
@@ -47,7 +47,7 @@ impl Server {
     /// Platform-specific setup
     ///
     /// This is async on Linux
-    #[allow(clippy::unused_async)]
+    #[expect(clippy::unused_async)]
     pub(crate) async fn new(id: ServiceId) -> Result<Self> {
         let pipe_path = ipc_path(id);
         Ok(Self { pipe_path })

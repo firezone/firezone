@@ -36,7 +36,7 @@ impl FluxCapacitor {
     const SMALL_TICK: Duration = Duration::from_millis(10);
     const LARGE_TICK: Duration = Duration::from_millis(100);
 
-    #[allow(private_bounds)]
+    #[expect(private_bounds)]
     pub(crate) fn now<T>(&self) -> T
     where
         T: PickNow,

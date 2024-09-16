@@ -6,7 +6,6 @@ use std::{net::IpAddr, process::Command, str::FromStr};
 mod etc_resolv_conf;
 
 impl DnsController {
-    #[allow(clippy::unnecessary_wraps)]
     pub fn deactivate(&mut self) -> Result<()> {
         tracing::debug!("Deactivating DNS control...");
         if let DnsControlMethod::EtcResolvConf = self.dns_control_method {

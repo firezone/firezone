@@ -70,7 +70,7 @@ pub struct CliCommon {
 ///
 /// i.e. callbacks
 // The names are CamelCase versions of the connlib callbacks.
-#[allow(clippy::enum_variant_names)]
+#[expect(clippy::enum_variant_names)]
 pub enum ConnlibMsg {
     OnDisconnect {
         error_msg: String,

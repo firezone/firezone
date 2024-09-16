@@ -30,7 +30,7 @@ impl Terminate {
 }
 
 impl Hangup {
-    #[allow(clippy::unnecessary_wraps)]
+    #[expect(clippy::unnecessary_wraps)]
     pub fn new() -> Result<Self> {
         Ok(Self {})
     }

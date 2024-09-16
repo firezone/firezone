@@ -170,13 +170,10 @@ where
         let name = query.qname().to_name();
 
         let records = resolve(&name)
-            .filter(|ip| {
-                #[allow(clippy::wildcard_enum_match_arm)]
-                match query.qtype() {
-                    Rtype::A => ip.is_ipv4(),
-                    Rtype::AAAA => ip.is_ipv6(),
-                    _ => todo!(),
-                }
+            .filter(|ip| match query.qtype() {
+                Rtype::A => ip.is_ipv4(),
+                Rtype::AAAA => ip.is_ipv6(),
+                _ => todo!(),
             })
             .map(|ip| match ip {
                 IpAddr::V4(v4) => AllRecordData::<Vec<_>, Name<Vec<_>>>::A(v4.into()),

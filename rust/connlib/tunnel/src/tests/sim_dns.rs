@@ -67,13 +67,10 @@ impl SimDns {
             .get(&name)
             .into_iter()
             .flatten()
-            .filter(|ip| {
-                #[allow(clippy::wildcard_enum_match_arm)]
-                match qtype {
-                    Rtype::A => ip.is_ipv4(),
-                    Rtype::AAAA => ip.is_ipv6(),
-                    _ => todo!(),
-                }
+            .filter(|ip| match qtype {
+                Rtype::A => ip.is_ipv4(),
+                Rtype::AAAA => ip.is_ipv6(),
+                _ => todo!(),
             })
             .copied()
             .map(|ip| match ip {

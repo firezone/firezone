@@ -17,7 +17,7 @@ pub type ClientStream = UnixStream;
 pub(crate) type ServerStream = UnixStream;
 
 /// Connect to the IPC service
-#[allow(clippy::wildcard_enum_match_arm)]
+#[expect(clippy::wildcard_enum_match_arm)]
 pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Error> {
     let path = ipc_path(id);
     let stream = UnixStream::connect(&path)

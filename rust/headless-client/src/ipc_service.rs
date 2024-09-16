@@ -120,7 +120,6 @@ pub fn run_only_ipc_service() -> Result<()> {
     // SAFETY: We haven't spawned any other threads, this code should be the first
     // thing to run after entering `main` and parsing CLI args.
     // So nobody else is reading the environment.
-    #[allow(unused_unsafe)]
     unsafe {
         // This removes the token from the environment per <https://security.stackexchange.com/a/271285>. We run as root so it may not do anything besides defense-in-depth.
         std::env::remove_var(TOKEN_ENV_KEY);

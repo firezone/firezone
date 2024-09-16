@@ -28,7 +28,7 @@ type IcmpSeq = u16;
 type IcmpIdentifier = u16;
 
 #[test]
-#[allow(clippy::print_stdout, clippy::print_stderr)]
+#[expect(clippy::print_stdout, clippy::print_stderr)]
 fn tunnel_test() {
     let config = Config {
         source_file: Some(file!()),

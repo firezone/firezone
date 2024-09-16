@@ -46,8 +46,7 @@ pub struct TunDeviceManager {
 }
 
 impl TunDeviceManager {
-    // Fallible on Linux
-    #[allow(clippy::unnecessary_wraps)]
+    #[expect(clippy::unnecessary_wraps, reason = "Fallible on Linux")]
     pub fn new(mtu: usize) -> Result<Self> {
         Ok(Self {
             iface_idx: None,
@@ -260,7 +259,10 @@ impl Tun {
     }
 
     // Moves packets from the Internet towards the user
-    #[allow(clippy::unnecessary_wraps)] // Fn signature must align with other platform implementations.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "Fn signature must align with other platform implementations"
+    )]
     fn write(&self, bytes: &[u8]) -> io::Result<usize> {
         let len = bytes
             .len()

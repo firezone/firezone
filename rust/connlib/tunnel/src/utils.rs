@@ -70,7 +70,7 @@ pub(crate) fn network_contains_network(ip_a: IpNetwork, ip_b: IpNetwork) -> bool
     ip_a.contains(ip_b.network_address()) && ip_a.netmask() <= ip_b.netmask()
 }
 
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) fn ipv4(ip: IpNetwork) -> Option<Ipv4Network> {
     match ip {
         IpNetwork::V4(v4) => Some(v4),
@@ -78,7 +78,7 @@ pub(crate) fn ipv4(ip: IpNetwork) -> Option<Ipv4Network> {
     }
 }
 
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) fn ipv6(ip: IpNetwork) -> Option<Ipv6Network> {
     match ip {
         IpNetwork::V4(_) => None,

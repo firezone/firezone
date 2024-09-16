@@ -90,10 +90,16 @@ mod ffi {
 pub struct WrappedSession {
     inner: Session,
 
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "Runtime must be kept alive until Session is dropped"
+    )]
     runtime: Runtime,
 
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "Logger handle must be kept alive until Session is dropped"
+    )]
     logger: firezone_logging::file::Handle,
 }
 
@@ -171,7 +177,7 @@ fn init_logging(
 impl WrappedSession {
     // TODO: Refactor this when we refactor PhoenixChannel.
     // See https://github.com/firezone/firezone/issues/2158
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn connect(
         api_url: String,
         token: String,

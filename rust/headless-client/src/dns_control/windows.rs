@@ -52,7 +52,7 @@ impl DnsController {
     /// it would be bad if this was called from 2 threads at once.
     ///
     /// Must be async and an owned `Vec` to match the Linux signature
-    #[allow(clippy::unused_async)]
+    #[expect(clippy::unused_async)]
     pub async fn set_dns(&mut self, dns_config: Vec<IpAddr>) -> Result<()> {
         match self.dns_control_method {
             DnsControlMethod::Disabled => {}

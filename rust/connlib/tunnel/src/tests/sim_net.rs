@@ -182,7 +182,6 @@ impl Default for RoutingTable {
 }
 
 impl RoutingTable {
-    #[allow(private_bounds)]
     pub(crate) fn add_host<T>(&mut self, id: impl Into<HostId>, host: &Host<T>) -> bool {
         let id = id.into();
 
@@ -218,7 +217,6 @@ impl RoutingTable {
         true
     }
 
-    #[allow(private_bounds)]
     pub(crate) fn remove_host<T>(&mut self, host: &Host<T>) {
         match (host.ip4, host.ip6) {
             (None, None) => panic!("Node must have at least one network IP"),

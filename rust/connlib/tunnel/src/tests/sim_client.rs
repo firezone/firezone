@@ -214,7 +214,7 @@ impl SimClient {
                     let record = record.unwrap();
                     let domain = record.owner().to_name();
 
-                    #[allow(clippy::wildcard_enum_match_arm)]
+                    #[expect(clippy::wildcard_enum_match_arm)]
                     let ip = match record
                         .into_any_record::<AllRecordData<_, _>>()
                         .unwrap()

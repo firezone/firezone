@@ -43,7 +43,7 @@ mod platform {
     ///
     /// On Windows, some users will run as admin, and the GUI does work correctly,
     /// unlike on Linux where most distros don't like to mix root GUI apps with X11 / Wayland.
-    #[allow(clippy::unnecessary_wraps)]
+    #[expect(clippy::unnecessary_wraps)]
     pub(crate) fn gui_check() -> Result<bool, Error> {
         Ok(true)
     }
