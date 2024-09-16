@@ -99,7 +99,11 @@ defmodule Web.Policies.New do
                   data-validation-error-for="policy[resource_id]"
                 >
                   <.icon name="hero-exclamation-triangle-mini" class="h-4 w-4" />
-                  This Resource isn't linked to any Sites, so Clients won't be able to access it.
+                  This Resource isn't linked to any Sites.
+                  <.link navigate={~p"/#{@account}/resources/#{resource}/edit"} class={link_style()}>
+                    Edit the Resource
+                  </.link>
+                  to link it to a Site before creating a Policy.
                 </p>
 
                 <.input
