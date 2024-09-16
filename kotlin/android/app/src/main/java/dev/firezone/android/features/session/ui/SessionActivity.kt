@@ -20,6 +20,8 @@ import dev.firezone.android.core.data.toggle
 import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class SessionActivity : AppCompatActivity() {
@@ -143,11 +145,10 @@ class SessionActivity : AppCompatActivity() {
             refreshList()
         }
 
-        viewModel.favoriteResourcesLiveData.observe(this) {
-            refreshList()
+        lifecycleScope.launch {
+            viewModel.repo.favorites.collect { refreshList() }
         }
         viewModel.tabSelected(binding.tabLayout.selectedTabPosition)
-        viewModel.favoriteResourcesLiveData.value = viewModel.repo.getFavoritesSync()
     }
 
     private fun refreshList(afterLoad: () -> Unit = {}) {

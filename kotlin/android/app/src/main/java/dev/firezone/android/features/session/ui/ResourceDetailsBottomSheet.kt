@@ -136,11 +136,11 @@ class ResourceDetailsBottomSheet(
         val resourceAddressTextView: TextView = view.findViewById(R.id.tvResourceAddress)
 
         addToFavoritesBtn.setOnClickListener {
-            viewModel.addFavoriteResource(resource.id)
+            viewModel.repo.addFavoriteResource(resource.id)
             refreshButtons()
         }
         removeFromFavoritesBtn.setOnClickListener {
-            viewModel.removeFavoriteResource(resource.id)
+            viewModel.repo.removeFavoriteResource(resource.id)
             refreshButtons()
         }
         refreshButtons()
@@ -172,7 +172,7 @@ class ResourceDetailsBottomSheet(
     private fun refreshButtons() {
         val addToFavoritesBtn: MaterialButton = view.findViewById(R.id.addToFavoritesBtn)
         val removeFromFavoritesBtn: MaterialButton = view.findViewById(R.id.removeFromFavoritesBtn)
-        val isFavorite = viewModel.favoriteResourcesLiveData.value!!.contains(resource.id)
+        val isFavorite = viewModel.repo.favorites.value.contains(resource.id)
         addToFavoritesBtn.visibility = if (isFavorite) View.GONE else View.VISIBLE
         removeFromFavoritesBtn.visibility = if (isFavorite) View.VISIBLE else View.GONE
     }

@@ -10,6 +10,8 @@ import dev.firezone.android.tunnel.TunnelService.Companion.State
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.isInternetResource
 import javax.inject.Inject
+import kotlinx.coroutines.launch;
+import androidx.lifecycle.viewModelScope;
 
 @HiltViewModel
 internal class SessionViewModel
@@ -17,44 +19,27 @@ internal class SessionViewModel
     constructor() : ViewModel() {
         @Inject
         internal lateinit var repo: Repository
-        private val _favoriteResourcesLiveData = MutableLiveData<HashSet<String>>(HashSet())
         private val _serviceStatusLiveData = MutableLiveData<State>()
         private val _resourcesLiveData = MutableLiveData<List<Resource>>(emptyList())
         private var showOnlyFavorites: Boolean = false
 
-        val favoriteResourcesLiveData: MutableLiveData<HashSet<String>>
-            get() = _favoriteResourcesLiveData
+        init {
+            viewModelScope.launch {
+                repo.favorites.collect { _ -> if (forceAllResourcesTab()) {
+                    showOnlyFavorites = false
+                } }
+            }
+        }
+
         val serviceStatusLiveData: MutableLiveData<State>
             get() = _serviceStatusLiveData
         val resourcesLiveData: MutableLiveData<List<Resource>>
             get() = _resourcesLiveData
 
-        private val favoriteResources: HashSet<String>
-            get() = favoriteResourcesLiveData.value!!
-
         // Actor name
         fun clearActorName() = repo.clearActorName()
 
         fun getActorName() = repo.getActorNameSync()
-
-        fun addFavoriteResource(id: String) {
-            val value = favoriteResources
-            value.add(id)
-            repo.saveFavoritesSync(value)
-            // Update LiveData
-            _favoriteResourcesLiveData.value = value
-        }
-
-        fun removeFavoriteResource(id: String) {
-            val value = favoriteResources
-            value.remove(id)
-            repo.saveFavoritesSync(value)
-            if (forceAllResourcesTab()) {
-                showOnlyFavorites = false
-            }
-            // Update LiveData
-            _favoriteResourcesLiveData.value = value
-        }
 
         fun clearToken() = repo.clearToken()
 
@@ -69,21 +54,21 @@ internal class SessionViewModel
                     }
                 }
 
-            return if (favoriteResources.isEmpty()) {
+            return if (repo.favorites.value.isEmpty()) {
                 resources
             } else if (showOnlyFavorites) {
-                resources.filter { favoriteResources.contains(it.id) }
+                resources.filter { repo.favorites.value.contains(it.id) }
             } else {
                 resources
             }
         }
 
         fun forceAllResourcesTab(): Boolean {
-            return favoriteResources.isEmpty()
+            return repo.favorites.value.isEmpty()
         }
 
         fun showFavoritesTab(): Boolean {
-            return favoriteResources.isNotEmpty()
+            return repo.favorites.value.isNotEmpty()
         }
 
         fun tabSelected(position: Int) {

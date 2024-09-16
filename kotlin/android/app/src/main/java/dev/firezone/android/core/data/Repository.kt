@@ -10,8 +10,12 @@ import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.data.model.Config
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.update
 import java.security.MessageDigest
 import javax.inject.Inject
 
@@ -56,6 +60,11 @@ internal class Repository
         private val coroutineDispatcher: CoroutineDispatcher,
         private val sharedPreferences: SharedPreferences,
     ) {
+        // We are the only thing that can modify favorites so we shouldn't need to reload it after
+        // this initial load
+        private val _favorites: MutableStateFlow<HashSet<String>> = MutableStateFlow(HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty()))
+        val favorites: StateFlow<HashSet<String>> = _favorites.asStateFlow()
+
         fun getConfigSync(): Config {
             return Config(
                 sharedPreferences.getString(AUTH_BASE_URL_KEY, null)
@@ -98,9 +107,22 @@ internal class Repository
 
         fun getDeviceIdSync(): String? = sharedPreferences.getString(DEVICE_ID_KEY, null)
 
-        fun getFavoritesSync(): HashSet<String> = HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())
+        private fun saveFavoritesSync(value: HashSet<String>) {
+            sharedPreferences.edit().putStringSet(FAVORITE_RESOURCES_KEY, value).apply()
+            _favorites.update { value }
+        }
 
-        fun saveFavoritesSync(value: HashSet<String>) = sharedPreferences.edit().putStringSet(FAVORITE_RESOURCES_KEY, value).apply()
+        fun addFavoriteResource(id: String) {
+            val favorites = favorites.value
+            favorites.add(id)
+            saveFavoritesSync(favorites)
+        }
+
+        fun removeFavoriteResource(id: String) {
+            val favorites = favorites.value
+            favorites.remove(id)
+            saveFavoritesSync(favorites)
+        }
 
         fun getToken(): Flow<String?> =
             flow {
