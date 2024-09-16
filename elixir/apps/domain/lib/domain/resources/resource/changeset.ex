@@ -124,7 +124,7 @@ defmodule Domain.Resources.Resource.Changeset do
   defp validate_cidr_address(changeset, account) do
     internet_resource_message =
       if Accounts.internet_resource_enabled?(account) do
-        "please use the Internet Resource to route all traffic through Firezone instead"
+        "the Internet Resource is already created in your account. Define a Policy for it instead"
       else
         "routing all traffic through Firezone is available on paid plans using the Internet Resource"
       end
