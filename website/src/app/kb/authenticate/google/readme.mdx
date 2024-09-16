@@ -315,10 +315,7 @@ safe place as they won't be shown again.
 
 ### Step 6: Create service account
 
-Next, you'll create a service account to use for the directory sync. Using a
-service account ensures the sync process is decoupled from your admin user
-account and can continue to operate unobstructed even if you or another admin
-user leaves the organization.
+Next, you'll create a service account to use for the directory sync.
 
 Navigate to the
 [Service Accounts section](https://console.cloud.google.com/iam-admin/serviceaccounts)
@@ -497,6 +494,15 @@ done! Your Google Workspace connector is now successfully configured. If
 directory sync is enabled, the first sync will occur within about 10 minutes.
 After that, users will be able to authenticate to Firezone using their Google
 Workspace accounts.
+
+<Alert color="warning">
+
+If the admin who connected the Google Workspace connector is removed or
+suspended from the Google Workspace account, the connector will be disabled and
+need to be reconnected by a different, active admin. Unfortunately this is a
+limitation of Google's APIs for the time being.
+
+</Alert>
 
 <Alert color="info">
 
