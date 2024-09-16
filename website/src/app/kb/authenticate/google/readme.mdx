@@ -313,11 +313,171 @@ Click **CREATE**.
 **Important**: Make sure to save the `Client ID` and `Client secret` fields in a
 safe place as they won't be shown again.
 
-### Step 6: Configure Firezone
+### Step 6: Create service account
+
+Next, you'll create a service account to use for the directory sync. Using a
+service account ensures the sync process is decoupled from your admin user
+account and can continue to operate unobstructed even if you or another admin
+user leaves the organization.
+
+Navigate to the
+[Service Accounts section](https://console.cloud.google.com/iam-admin/serviceaccounts)
+of the Google Cloud Console and click **CREATE SERVICE ACCOUNT**.
+
+<Link
+  href="/images/kb/authenticate/google/gcp-create-service-account.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-create-service-account.png"
+    alt="Create service account"
+    width={1200}
+    height={1200}
+    className="mx-auto"
+  />
+</Link>
+
+Enter the following information:
+
+- **Service account name**: `Firezone directory sync`
+- **Service account ID**: `firezone-directory-sync`
+
+Leave the `Grant this service account access to project` field and
+`Grant users access to this service account` fields as they are, then click
+**DONE**.
+
+<Link
+  href="/images/kb/authenticate/google/gcp-service-account-details.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-service-account-details.png"
+    alt="Service account details"
+    width={1200}
+    height={1200}
+    className="mx-auto"
+  />
+</Link>
+
+Next, navigate to the newly-created service account, then click the **KEYS**
+tab. Click **ADD KEY**, **Create new key**, and select **JSON** as the key type.
+
+<Link
+  href="/images/kb/authenticate/google/gcp-service-account-create-key.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-service-account-create-key.png"
+    alt="Create service account key"
+    width={1200}
+    height={1200}
+    className="mx-auto"
+  />
+</Link>
+
+<Link
+  href="/images/kb/authenticate/google/gcp-service-account-json-key.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-service-account-json-key.png"
+    alt="Create service account key"
+    width={1200}
+    height={1200}
+    className="mx-auto"
+  />
+</Link>
+
+Save the JSON key file to a secure location. You'll need to copy the contents of
+this file into the Firezone admin portal in the final step.
+
+Next, you'll need the key's unique ID to grant it access to the Admin SDK API
+for directory sync. Go back to the **DETAILS** tab of the service account and
+copy the **Unique ID**.
+
+<Link
+  href="/images/kb/authenticate/google/gcp-service-account-unique-id.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-service-account-unique-id.png"
+    alt="Service account unique ID"
+    width={1200}
+    height={1200}
+    className="mx-auto"
+  />
+</Link>
+
+Now, you'll configure the Admin SDK API to allow the service account to read
+users, groups, and organizational units from your Google Workspace account.
+
+Navigate to the [API controls](https://admin.google.com/ac/owl) section of the
+Google Workspace admin console and click **MANAGE DOMAIN WIDE DELEGATION**.
+
+<Link
+  href="/images/kb/authenticate/google/gcp-domain-wide-delegation.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-domain-wide-delegation.png"
+    alt="Domain-wide delegation"
+    width={1200}
+    height={1200}
+    className="mx-auto"
+  />
+</Link>
+
+Click **Add new**.
+
+<Link
+  href="/images/kb/authenticate/google/gcp-api-clients-add-new.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-api-clients-add-new.png"
+    alt="Add new API client"
+    width={1200}
+    height={1200}
+    className="mx-auto"
+  />
+</Link>
+
+Enter the Unique ID you copied from the service account key into the **Client
+ID** field, and then enter the following scopes into the **OAuth scopes** field:
+
+```text
+openid,
+email,
+profile,
+https://www.googleapis.com/auth/admin.directory.customer.readonly,
+https://www.googleapis.com/auth/admin.directory.orgunit.readonly,
+https://www.googleapis.com/auth/admin.directory.group.readonly,
+https://www.googleapis.com/auth/admin.directory.user.readonly
+```
+
+Finally, click **AUTHORIZE**.
+
+<Link
+  href="/images/kb/authenticate/google/gcp-service-account-scopes.png"
+  target="_blank"
+>
+  <Image
+    src="/images/kb/authenticate/google/gcp-service-account-scopes.png"
+    alt="Service account scopes"
+    width={1200}
+    height={1200}
+    className="mx-auto"
+  />
+</Link>
+
+### Step 7: Configure Firezone
 
 Go back to the Firezone admin portal, and enter the `Client ID` and
-`Client secret` you copied from the previous step in the appropriate fields in
-"Create Identity Provider" form.
+`Client secret` from the **OAuth client** you created in **Step 5** into the
+appropriate fields in "Create Identity Provider" form.
+
+Copy the contents of the JSON key file you downloaded for the service account in
+**Step 6** into the "Service Account Key" field.
 
 Finally, click **Connect Identity Provider** and click **Allow** when Google
 prompts you.
