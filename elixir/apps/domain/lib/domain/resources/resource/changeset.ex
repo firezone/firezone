@@ -221,6 +221,7 @@ defmodule Domain.Resources.Resource.Changeset do
     |> cast_embed(:filters, with: &cast_filter/2)
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)
+    |> unique_constraint(:type, name: :unique_internet_resource_per_account)
   end
 
   def delete(%Resource{} = resource) do
