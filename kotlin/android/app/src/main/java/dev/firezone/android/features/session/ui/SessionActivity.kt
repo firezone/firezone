@@ -178,7 +178,7 @@ class SessionActivity : AppCompatActivity() {
             binding.tabLayout.selectTab(binding.tabLayout.getTabAt(RESOURCES_TAB_ALL), true)
         }
         binding.tabLayout.visibility =
-            if (viewModel.showFavoritesTab()) {
+            if (viewModel.repo.favorites.value.inner.isNotEmpty()) {
                 View.VISIBLE
             } else {
                 View.GONE

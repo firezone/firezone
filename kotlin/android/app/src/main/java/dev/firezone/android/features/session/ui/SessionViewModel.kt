@@ -29,8 +29,4 @@ internal class SessionViewModel
         fun getActorName() = repo.getActorNameSync()
 
         fun clearToken() = repo.clearToken()
-
-        fun showFavoritesTab(): Boolean {
-            return repo.favorites.value.inner.isNotEmpty()
-        }
     }
