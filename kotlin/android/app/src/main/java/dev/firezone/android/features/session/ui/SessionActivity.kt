@@ -200,17 +200,17 @@ class SessionActivity : AppCompatActivity() {
                 }
             }
 
-        return if (viewModel.repo.favorites.value.isEmpty()) {
+        return if (viewModel.repo.favorites.value.inner.isEmpty()) {
             resources
         } else if (showOnlyFavorites) {
-            resources.filter { viewModel.repo.favorites.value.contains(it.id) }
+            resources.filter { viewModel.repo.favorites.value.inner.contains(it.id) }
         } else {
             resources
         }
     }
 
     fun forceAllResourcesTab(): Boolean {
-        return viewModel.repo.favorites.value.isEmpty()
+        return viewModel.repo.favorites.value.inner.isEmpty()
     }
 
     companion object {

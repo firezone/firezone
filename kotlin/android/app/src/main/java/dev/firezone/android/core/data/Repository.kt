@@ -53,6 +53,10 @@ fun ResourceState.toggle(): ResourceState {
     }
 }
 
+/// Wrapper class used because `MutableStateFlow` will not
+/// notify subscribers if you submit the same object that's already in it.
+class Favorites(val inner: HashSet<String>);
+
 internal class Repository
     @Inject
     constructor(
@@ -62,8 +66,8 @@ internal class Repository
     ) {
         // We are the only thing that can modify favorites so we shouldn't need to reload it after
         // this initial load
-        private val _favorites: MutableStateFlow<HashSet<String>> = MutableStateFlow(HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty()))
-        val favorites: StateFlow<HashSet<String>> = _favorites.asStateFlow()
+        private val _favorites = MutableStateFlow(Favorites(HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())))
+        val favorites = _favorites.asStateFlow()
 
         fun getConfigSync(): Config {
             return Config(
@@ -107,21 +111,24 @@ internal class Repository
 
         fun getDeviceIdSync(): String? = sharedPreferences.getString(DEVICE_ID_KEY, null)
 
-        private fun saveFavoritesSync(value: HashSet<String>) {
-            sharedPreferences.edit().putStringSet(FAVORITE_RESOURCES_KEY, value).apply()
-            _favorites.update { value }
+        private fun saveFavoritesSync() {
+            sharedPreferences.edit().putStringSet(FAVORITE_RESOURCES_KEY, favorites.value.inner).apply()
+            _favorites.value = Favorites(favorites.value.inner)
         }
 
         fun addFavoriteResource(id: String) {
-            val favorites = favorites.value
-            favorites.add(id)
-            saveFavoritesSync(favorites)
+            favorites.value.inner.add(id)
+            saveFavoritesSync()
         }
 
         fun removeFavoriteResource(id: String) {
-            val favorites = favorites.value
-            favorites.remove(id)
-            saveFavoritesSync(favorites)
+            favorites.value.inner.remove(id)
+            saveFavoritesSync()
+        }
+
+        fun resetFavorites() {
+            favorites.value.inner.clear()
+            saveFavoritesSync()
         }
 
         fun getToken(): Flow<String?> =

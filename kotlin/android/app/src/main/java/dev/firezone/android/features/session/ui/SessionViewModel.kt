@@ -35,6 +35,6 @@ internal class SessionViewModel
         fun clearToken() = repo.clearToken()
 
         fun showFavoritesTab(): Boolean {
-            return repo.favorites.value.isNotEmpty()
+            return repo.favorites.value.inner.isNotEmpty()
         }
     }
