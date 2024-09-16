@@ -259,7 +259,7 @@ impl GatewayState {
         peer.refresh_translation(name, resource_id, resolved_ips, now);
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub fn allow_access(
         &mut self,
         client: ClientId,

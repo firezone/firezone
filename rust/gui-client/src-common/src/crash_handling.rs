@@ -131,7 +131,7 @@ impl Default for Handler {
 impl minidumper::ServerHandler for Handler {
     /// Called when a crash has been received and a backing file needs to be
     /// created to store it.
-    #[allow(clippy::print_stderr)]
+    #[expect(clippy::print_stderr)]
     fn create_minidump_file(&self) -> Result<(File, PathBuf), std::io::Error> {
         let format = time::format_description::parse(firezone_logging::file::TIME_FORMAT)
             .expect("static format description should always be parsable");
