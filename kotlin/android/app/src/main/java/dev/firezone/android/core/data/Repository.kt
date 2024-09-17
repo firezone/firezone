@@ -11,11 +11,9 @@ import dev.firezone.android.core.data.model.Config
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.update
 import java.security.MessageDigest
 import javax.inject.Inject
 
@@ -53,9 +51,9 @@ fun ResourceState.toggle(): ResourceState {
     }
 }
 
-/// Wrapper class used because `MutableStateFlow` will not
-/// notify subscribers if you submit the same object that's already in it.
-class Favorites(val inner: HashSet<String>);
+// Wrapper class used because `MutableStateFlow` will not
+// notify subscribers if you submit the same object that's already in it.
+class Favorites(val inner: HashSet<String>)
 
 internal class Repository
     @Inject
@@ -66,7 +64,8 @@ internal class Repository
     ) {
         // We are the only thing that can modify favorites so we shouldn't need to reload it after
         // this initial load
-        private val _favorites = MutableStateFlow(Favorites(HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())))
+        private val _favorites =
+            MutableStateFlow(Favorites(HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())))
         val favorites = _favorites.asStateFlow()
 
         fun getConfigSync(): Config {
