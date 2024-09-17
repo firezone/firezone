@@ -25,8 +25,6 @@ jobs:
         uses: gradle/actions/wrapper-validation@v4
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          build-root-directory: ./kotlin/android
       - run: touch local.properties
       - name: Run linter
         run: ./gradlew spotlessCheck
@@ -46,8 +44,6 @@ jobs:
           java-version: 17
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          build-root-directory: ./kotlin/android
       - run: touch local.properties
       - name: Bundle and sign release
         env:
@@ -92,8 +88,6 @@ jobs:
           java-version: 17
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          build-root-directory: ./kotlin/android
       - run: touch local.properties
       - name: Build debug APK
         run: |
