@@ -8,9 +8,9 @@ import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
-import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
@@ -20,6 +20,7 @@ import dev.firezone.android.core.data.toggle
 import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class SessionActivity : AppCompatActivity() {
@@ -129,6 +130,7 @@ class SessionActivity : AppCompatActivity() {
                 override fun onTabReselected(tab: TabLayout.Tab) {}
             },
         )
+        viewModel.tabSelected(binding.tabLayout.selectedTabPosition)
     }
 
     private fun setupObservers() {
@@ -143,24 +145,20 @@ class SessionActivity : AppCompatActivity() {
             refreshList()
         }
 
-        viewModel.favoriteResourcesLiveData.observe(this) {
-            refreshList()
+        // This coroutine could still resume while the Activity is not shown, but this is probably
+        // fine since the Flow will only emit if the user interacts with the UI anyway.
+        lifecycleScope.launch {
+            viewModel.favorites.collect {
+                refreshList()
+            }
         }
         viewModel.tabSelected(binding.tabLayout.selectedTabPosition)
-        viewModel.favoriteResourcesLiveData.value = viewModel.repo.getFavoritesSync()
     }
 
     private fun refreshList(afterLoad: () -> Unit = {}) {
-        if (viewModel.forceAllResourcesTab()) {
-            binding.tabLayout.selectTab(binding.tabLayout.getTabAt(SessionViewModel.RESOURCES_TAB_ALL), true)
-        }
-        binding.tabLayout.visibility =
-            if (viewModel.showFavoritesTab()) {
-                View.VISIBLE
-            } else {
-                View.GONE
-            }
+        viewModel.forceTab()?.let { tab -> binding.tabLayout.selectTab(binding.tabLayout.getTabAt(tab), true) }
 
+        binding.tabLayout.visibility = viewModel.tabLayoutVisibility()
         resourcesAdapter.submitList(viewModel.resourcesList(internetState())) {
             afterLoad()
         }

@@ -9,6 +9,15 @@ export default function Android() {
       href="https://play.google.com/store/apps/details?id=dev.firezone.android"
       title="Android"
     >
+      {/*
+      <Entry version="1.3.3" date={new Date("todo")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6707">
+            Resetting the settings now resets the list of favorited Resources, too.
+          </ChangeItem>
+        </ul>
+      </Entry>
+      */}
       <Entry version="1.3.2" date={new Date("2024-09-05")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6605">
