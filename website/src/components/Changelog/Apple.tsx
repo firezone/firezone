@@ -20,6 +20,14 @@ export default function Apple() {
       </Entry>
       <Entry version="1.3.2" date={new Date(todo)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6722">
+          Fixes a bug where routes weren't correctly generated for overlapping CIDR
+          resources
+          </ChangeItem>
+        </ul>
+      </Entry>
+      <Entry version="1.3.2" date={new Date(todo)}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6679">
           Displays a notification when a new version is available.
           </ChangeItem>
