@@ -21,7 +21,7 @@ export default function Apple() {
       <Entry version="1.3.2" date={new Date(todo)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6722">
-          Fixes a bug where routes weren't correctly generated for overlapping CIDR
+          Fixes a routing bug when one of several overlapping CIDR resources gets disabled / removed.
           resources
           </ChangeItem>
         </ul>
