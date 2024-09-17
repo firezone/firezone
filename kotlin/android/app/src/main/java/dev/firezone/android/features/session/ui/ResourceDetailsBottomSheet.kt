@@ -136,11 +136,11 @@ class ResourceDetailsBottomSheet(
         val resourceAddressTextView: TextView = view.findViewById(R.id.tvResourceAddress)
 
         addToFavoritesBtn.setOnClickListener {
-            viewModel.repo.addFavoriteResource(resource.id)
+            viewModel.addFavoriteResource(resource.id)
             refreshButtons()
         }
         removeFromFavoritesBtn.setOnClickListener {
-            viewModel.repo.removeFavoriteResource(resource.id)
+            viewModel.removeFavoriteResource(resource.id)
             refreshButtons()
         }
         refreshButtons()

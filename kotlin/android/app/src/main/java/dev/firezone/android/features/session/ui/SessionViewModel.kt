@@ -45,6 +45,14 @@ internal class SessionViewModel
                 null
             }
 
+        fun addFavoriteResource(id: String) {
+            repo.addFavoriteResource(id)
+        }
+
+        fun removeFavoriteResource(id: String) {
+            repo.removeFavoriteResource(id)
+        }
+
         // The subset of Resources to actually render
         fun resourcesList(isInternetResourceEnabled: ResourceState): List<ResourceViewModel> {
             val resources =
