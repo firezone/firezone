@@ -7,7 +7,7 @@ use crate::client::{
     self, about, logging,
     settings::{self},
 };
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use common::system_tray::Event as TrayMenuEvent;
 use firezone_gui_client_common::{
     self as common, auth,
@@ -20,7 +20,7 @@ use firezone_gui_client_common::{
 };
 use firezone_headless_client::LogFilterReloader;
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{path::PathBuf, str::FromStr, time::Duration};
+use std::{str::FromStr, time::Duration};
 use tauri::{Manager, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
@@ -29,18 +29,16 @@ pub(crate) mod system_tray;
 
 #[cfg(target_os = "linux")]
 #[path = "gui/os_linux.rs"]
-#[allow(clippy::unnecessary_wraps)]
 mod os;
 
 // Stub only
 #[cfg(target_os = "macos")]
 #[path = "gui/os_macos.rs"]
-#[allow(clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps)]
 mod os;
 
 #[cfg(target_os = "windows")]
 #[path = "gui/os_windows.rs"]
-#[allow(clippy::unnecessary_wraps)]
 mod os;
 
 pub(crate) use os::set_autostart;
@@ -151,8 +149,7 @@ pub(crate) fn run(
         inject_faults: cli.inject_faults,
     };
 
-    let (setup_result_tx, mut setup_result_rx) =
-        tokio::sync::oneshot::channel::<Result<(), Error>>();
+    let (setup_result_tx, mut setup_result_rx) = oneshot::channel::<Result<(), Error>>();
     let app = tauri::Builder::default()
         .manage(managed)
         .on_window_event(|event| {
@@ -299,7 +296,7 @@ pub(crate) fn run(
         Ok(x) => x,
         Err(error) => {
             tracing::error!(?error, "Failed to build Tauri app instance");
-            #[allow(clippy::wildcard_enum_match_arm)]
+            #[expect(clippy::wildcard_enum_match_arm)]
             match error {
                 tauri::Error::Runtime(tauri_runtime::Error::CreateWebview(_)) => {
                     return Err(Error::WebViewNotInstalled);
@@ -336,7 +333,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     let quit_time = tokio::time::Instant::now() + Duration::from_secs(delay);
 
     // Test log exporting
-    let path = PathBuf::from("smoke_test_log_export.zip");
+    let path = std::path::PathBuf::from("smoke_test_log_export.zip");
 
     let stem = "connlib-smoke-test".into();
     match tokio::fs::remove_file(&path).await {
@@ -361,7 +358,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         .context("Failed to send `ClearLogs` request")?;
     rx.await
         .context("Failed to await `ClearLogs` result")?
-        .map_err(|s| anyhow!(s))
+        .map_err(|s| anyhow::anyhow!(s))
         .context("`ClearLogs` failed")?;
 
     // Give the app some time to export the zip and reach steady state
