@@ -215,12 +215,6 @@ export default function _Page() {
               <li className="flex space-x-2.5">
                 <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight text-neutral-900">
-                  Faster relay network
-                </span>
-              </li>
-              <li className="flex space-x-2.5">
-                <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
-                <span className="leading-tight text-neutral-900">
                   Priority email support
                 </span>
               </li>
@@ -274,12 +268,6 @@ export default function _Page() {
                 <FaCheck className="mt-0.5 flex-shrink-0 text-primary-450 w-4 h-4" />
                 <span className="leading-tight font-bold text-neutral-50">
                   Unlimited users
-                </span>
-              </li>
-              <li className="flex space-x-2.5">
-                <FaCheck className="mt-0.5 flex-shrink-0 text-primary-450 w-4 h-4" />
-                <span className="leading-tight font-bold text-neutral-50">
-                  Unthrottled relay network
                 </span>
               </li>
               <li className="flex space-x-2.5">
