@@ -16,6 +16,11 @@ defaults:
   run:
     working-directory: ./rust/gui-client
 
+# Never tolerate warnings. Source of truth is `_rust.yml`
+env:
+  RUSTFLAGS: "-Dwarnings"
+  RUSTDOCFLAGS: "-D warnings"
+
 jobs:
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
