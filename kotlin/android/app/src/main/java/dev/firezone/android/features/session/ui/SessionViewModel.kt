@@ -53,6 +53,8 @@ internal class SessionViewModel
             repo.removeFavoriteResource(id)
         }
 
+        fun isFavorite(id: String) = repo.favorites.value.inner.contains(id)
+
         // The subset of Resources to actually render
         fun resourcesList(isInternetResourceEnabled: ResourceState): List<ResourceViewModel> {
             val resources =
