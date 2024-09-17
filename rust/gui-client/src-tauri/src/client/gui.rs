@@ -149,8 +149,7 @@ pub(crate) fn run(
         inject_faults: cli.inject_faults,
     };
 
-    let (setup_result_tx, mut setup_result_rx) =
-        oneshot::channel::<Result<(), Error>>();
+    let (setup_result_tx, mut setup_result_rx) = oneshot::channel::<Result<(), Error>>();
     let app = tauri::Builder::default()
         .manage(managed)
         .on_window_event(|event| {
