@@ -101,7 +101,7 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
     let content = UNMutableNotificationContent()
     lastNotifiedVersion = version
     content.title = "Update Firezone"
-    content.body = "New Firezone version available"
+    content.body = "New version available"
     content.sound = .default
     content.categoryIdentifier = NotificationAdapter.notificationIdentifier
 
