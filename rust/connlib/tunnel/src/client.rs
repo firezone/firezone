@@ -388,6 +388,14 @@ impl ClientState {
         )
     }
 
+    fn is_cidr_resource_connected(&self, resource: &ResourceId) -> bool {
+        let Some(gateway_id) = self.resources_gateways.get(resource) else {
+            return false;
+        };
+
+        self.peers.get(gateway_id).is_some()
+    }
+
     pub(crate) fn encapsulate(
         &mut self,
         packet: IpPacket<'_>,
@@ -912,15 +920,23 @@ impl ClientState {
     }
 
     fn recalculate_active_cidr_resources(&self) -> IpNetworkTable<ResourceDescriptionCidr> {
-        let mut active_cidr_resources = IpNetworkTable::new();
+        let mut active_cidr_resources = IpNetworkTable::<ResourceDescriptionCidr>::new();
 
         for resource in self.resources_by_id.values() {
             let ResourceDescription::Cidr(resource) = resource else {
                 continue;
             };
-            if self.disabled_resources.contains(&resource.id) {
+
+            if !self.is_resource_enabled(&resource.id) {
                 continue;
             }
+
+            if let Some(active_resource) = active_cidr_resources.exact_match(resource.address) {
+                if self.is_cidr_resource_connected(&active_resource.id) {
+                    continue;
+                }
+            }
+
             active_cidr_resources.insert(resource.address, resource.clone());
         }
 

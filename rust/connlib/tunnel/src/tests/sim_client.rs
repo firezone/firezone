@@ -364,12 +364,36 @@ impl RefClient {
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
         self.disconnect_resource(resource);
 
-        self.cidr_resources.retain(|_, r| r != resource);
         if self.internet_resource.is_some_and(|r| &r == resource) {
             self.internet_resource = None;
         }
 
         self.resources.retain(|r| r.id() != *resource);
+
+        self.cidr_resources = self.recalculate_cidr_routes();
+    }
+
+    fn recalculate_cidr_routes(&mut self) -> IpNetworkTable<ResourceId> {
+        let mut table = IpNetworkTable::<ResourceId>::new();
+        for resource in self.resources.iter().sorted_by_key(|r| r.id()) {
+            let ResourceDescription::Cidr(resource) = resource else {
+                continue;
+            };
+
+            if self.disabled_resources.contains(&resource.id) {
+                continue;
+            }
+
+            if let Some(resource) = table.exact_match(resource.address) {
+                if self.is_connected_to_internet_or_cidr(*resource) {
+                    continue;
+                }
+            }
+
+            table.insert(resource.address, resource.id);
+        }
+
+        table
     }
 
     pub(crate) fn reset_connections(&mut self) {
@@ -393,8 +417,8 @@ impl RefClient {
     }
 
     pub(crate) fn add_cidr_resource(&mut self, r: ResourceDescriptionCidr) {
-        self.cidr_resources.insert(r.address, r.id);
         self.resources.push(ResourceDescription::Cidr(r.clone()));
+        self.cidr_resources = self.recalculate_cidr_routes();
 
         if self.disabled_resources.contains(&r.id) {
             return;
