@@ -11,7 +11,7 @@ permissions:
   contents: 'read'
   id-token: 'write'
 
-# Never tolerate warnings.
+# Never tolerate warnings. Duplicated in `_tauri.yml`
 env:
   RUSTFLAGS: "-Dwarnings"
   RUSTDOCFLAGS: "-D warnings"

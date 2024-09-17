@@ -115,8 +115,6 @@ impl Worker {
         Ok(())
     }
 
-    // `Result` needed to match Windows
-    #[allow(clippy::unnecessary_wraps)]
     pub async fn notified(&mut self) -> Result<()> {
         if self.just_started {
             self.just_started = false;

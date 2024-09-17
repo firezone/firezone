@@ -204,7 +204,6 @@ pub struct DatagramOut<'a> {
 }
 
 impl UdpSocket {
-    #[allow(clippy::type_complexity)]
     pub fn poll_recv_from<'b>(
         &self,
         buffer: &'b mut [u8],

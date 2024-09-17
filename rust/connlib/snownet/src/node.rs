@@ -536,7 +536,7 @@ where
     }
 
     #[must_use]
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn init_connection(
         &mut self,
         cid: TId,
@@ -619,7 +619,6 @@ where
     /// Those are fully encrypted and thus any byte pattern may appear at the front of the packet.
     /// We can detect this by further checking the origin of the packet.
     #[must_use]
-    #[allow(clippy::type_complexity)]
     fn allocations_try_handle<'p>(
         &mut self,
         from: SocketAddr,
@@ -1703,7 +1702,6 @@ where
         Ok(Some(&buffer[..len]))
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn decapsulate<'b>(
         &mut self,
         packet: &[u8],

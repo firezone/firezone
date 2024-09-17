@@ -107,14 +107,8 @@ organization.
 
 The Internet Resource is a special Resource available on paid plans that allows
 you to route `0.0.0.0/0` and `::/0` through Firezone in a full-tunnel
-configuration.
-
-The Internet Resource functions as a fallback for traffic that doesn't match any
-other Resources.
-
-The Internet Resource is automatically enabled on Team and Enterprise plans. To
-configure it, simply define a Policy for it like you would for any other
-Resource.
+configuration. It functions as a fallback for traffic that doesn't match any
+other Resource.
 
 <Alert color="warning">
   Unlike regular Resources, the Internet Resource can be disabled by end-users
@@ -122,6 +116,15 @@ Resource.
   arise. The Internet Resource is <strong>disabled by default</strong> in Client
   apps when it is first assigned a policy.
 </Alert>
+
+The Internet Resource is automatically enabled on Team and Enterprise plans. To
+use it, follow these steps:
+
+1. Find the `Internet` Resource in the Resources section of the admin portal.
+   Edit it, and make sure it has at least one Site assigned to it.
+1. [Create a Policy](/kb/deploy/policies) using the Internet Resource.
+1. In the client app, remember to enable the Internet Resource by selecting
+   `Enable this resource` in the Resource list.
 
 <NextStep href="/kb/deploy/groups">Next: Create Groups</NextStep>
 

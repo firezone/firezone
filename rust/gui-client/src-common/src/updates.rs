@@ -258,7 +258,6 @@ pub(crate) async fn check() -> Result<Release> {
     })
 }
 
-#[allow(clippy::print_stderr)]
 fn parse_version_from_url(url: &Url) -> Result<Version> {
     let filename = url
         .path_segments()
