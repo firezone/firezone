@@ -891,6 +891,8 @@ impl ClientState {
     }
 
     fn maybe_update_tun_routes(&mut self) {
+        self.active_cidr_resources = self.recalculate_active_cidr_resources();
+
         let Some(config) = self.tun_config.clone() else {
             return;
         };
@@ -907,6 +909,22 @@ impl ClientState {
         };
 
         self.maybe_update_tun_config(new_tun_config);
+    }
+
+    fn recalculate_active_cidr_resources(&self) -> IpNetworkTable<ResourceDescriptionCidr> {
+        let mut active_cidr_resources = IpNetworkTable::new();
+
+        for resource in self.resources_by_id.values() {
+            let ResourceDescription::Cidr(resource) = resource else {
+                continue;
+            };
+            if self.disabled_resources.contains(&resource.id) {
+                continue;
+            }
+            active_cidr_resources.insert(resource.address, resource.clone());
+        }
+
+        active_cidr_resources
     }
 
     fn maybe_update_tun_config(&mut self, new_tun_config: TunConfig) {
@@ -1067,9 +1085,7 @@ impl ClientState {
                 self.stub_resolver.add_resource(dns.id, dns.address.clone())
             }
             ResourceDescription::Cidr(cidr) => {
-                let existing = self
-                    .active_cidr_resources
-                    .insert(cidr.address, cidr.clone());
+                let existing = self.active_cidr_resources.exact_match(cidr.address);
 
                 match existing {
                     Some(existing) => existing.id != cidr.id,
@@ -1098,6 +1114,7 @@ impl ClientState {
     pub(crate) fn remove_resource(&mut self, id: ResourceId) {
         self.disable_resource(id);
         self.resources_by_id.remove(&id);
+        self.maybe_update_tun_routes();
     }
 
     fn disable_resource(&mut self, id: ResourceId) {
@@ -1107,7 +1124,7 @@ impl ClientState {
 
         match resource {
             ResourceDescription::Dns(_) => self.stub_resolver.remove_resource(id),
-            ResourceDescription::Cidr(_) => self.active_cidr_resources.retain(|_, r| r.id != id),
+            ResourceDescription::Cidr(_) => {}
             ResourceDescription::Internet(_) => {
                 if self.internet_resource.is_some_and(|r_id| r_id == id) {
                     self.internet_resource = None;
@@ -1120,7 +1137,6 @@ impl ClientState {
         let sites = resource.sites_string();
 
         tracing::info!(%name, address, %sites, "Deactivating resource");
-        self.maybe_update_tun_routes();
 
         self.awaiting_connection_details.remove(&id);
 
