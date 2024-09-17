@@ -350,8 +350,8 @@ impl RefClient {
     }
 
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
-        self.ipv4_routes.remove(&resource);
-        self.ipv6_routes.remove(&resource);
+        self.ipv4_routes.remove(resource);
+        self.ipv6_routes.remove(resource);
 
         self.connected_cidr_resources.remove(resource);
         self.connected_dns_resources.retain(|(r, _)| r != resource);
@@ -716,12 +716,12 @@ impl RefClient {
             self.ipv4_routes
                 .values()
                 .cloned()
-                .chain(default_routes_v4().into_iter())
+                .chain(default_routes_v4())
                 .collect(),
             self.ipv6_routes
                 .values()
                 .cloned()
-                .chain(default_routes_v6().into_iter())
+                .chain(default_routes_v6())
                 .collect(),
         )
     }
