@@ -7,7 +7,7 @@ use crate::client::{
     self, about, logging,
     settings::{self},
 };
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use common::system_tray::Event as TrayMenuEvent;
 use firezone_gui_client_common::{
     self as common, auth,
@@ -20,7 +20,7 @@ use firezone_gui_client_common::{
 };
 use firezone_headless_client::LogFilterReloader;
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{path::PathBuf, str::FromStr, time::Duration};
+use std::{str::FromStr, time::Duration};
 use tauri::{Manager, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
@@ -149,8 +149,7 @@ pub(crate) fn run(
         inject_faults: cli.inject_faults,
     };
 
-    let (setup_result_tx, mut setup_result_rx) =
-        tokio::sync::oneshot::channel::<Result<(), Error>>();
+    let (setup_result_tx, mut setup_result_rx) = oneshot::channel::<Result<(), Error>>();
     let app = tauri::Builder::default()
         .manage(managed)
         .on_window_event(|event| {
@@ -334,7 +333,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     let quit_time = tokio::time::Instant::now() + Duration::from_secs(delay);
 
     // Test log exporting
-    let path = PathBuf::from("smoke_test_log_export.zip");
+    let path = std::path::PathBuf::from("smoke_test_log_export.zip");
 
     let stem = "connlib-smoke-test".into();
     match tokio::fs::remove_file(&path).await {
@@ -359,7 +358,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         .context("Failed to send `ClearLogs` request")?;
     rx.await
         .context("Failed to await `ClearLogs` result")?
-        .map_err(|s| anyhow!(s))
+        .map_err(|s| anyhow::anyhow!(s))
         .context("`ClearLogs` failed")?;
 
     // Give the app some time to export the zip and reach steady state
