@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "statusitem-signedin-disconnected-light.svg",
+      "filename" : "statusitem-signedout-light.svg",
       "idiom" : "universal"
     },
     {
@@ -11,7 +11,7 @@
           "value" : "dark"
         }
       ],
-      "filename" : "statusitem-signedin-disconnected-dark.svg",
+      "filename" : "statusitem-signedout-dark.svg",
       "idiom" : "universal"
     }
   ],
