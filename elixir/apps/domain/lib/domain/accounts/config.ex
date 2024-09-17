@@ -7,6 +7,29 @@ defmodule Domain.Accounts.Config do
       field :protocol, Ecto.Enum, values: [:ip_port, :dns_over_tls, :dns_over_http]
       field :address, :string
     end
+
+    # TODO: BRIAN - remove this when everything is working
+    # embeds_many :notifications, Notification,
+    #  primary_key: false,
+    #  on_replace: :delete do
+    #  field :name, Ecto.Enum, values: [:outdated_gateway, :idp_sync_error]
+    #  field :state, Ecto.Enum, values: [:enabled, :disabled]
+    #  field :last_notified, :utc_datetime
+    # end
+
+    embeds_one :notifications, Notifications,
+      primary_key: false,
+      on_replace: :update do
+      embeds_one :outdated_gateway, OutdatedGateway, primary_key: false, on_replace: :update do
+        field :enabled, :boolean
+        field :last_notified, :utc_datetime
+      end
+
+      embeds_one :idp_sync_error, IDPSyncError, primary_key: false, on_replace: :update do
+        field :enabled, :boolean
+        field :last_notified, :utc_datetime
+      end
+    end
   end
 
   def supported_dns_protocols, do: ~w[ip_port]a

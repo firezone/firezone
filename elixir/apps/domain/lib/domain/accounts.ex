@@ -18,6 +18,17 @@ defmodule Domain.Accounts do
     end
   end
 
+  def all_active_paid_accounts! do
+    ["Team", "Enterprise"]
+    |> Enum.flat_map(&all_active_accounts_by_type!/1)
+  end
+
+  def all_active_accounts_by_type!(account_type) do
+    Account.Query.not_disabled()
+    |> Account.Query.by_stripe_product_name(account_type)
+    |> Repo.all()
+  end
+
   def fetch_account_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_account_permission()),
          true <- Repo.valid_uuid?(id) do

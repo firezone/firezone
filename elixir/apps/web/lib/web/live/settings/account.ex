@@ -48,6 +48,22 @@ defmodule Web.Settings.Account do
 
     <.section>
       <:title>
+        Notifications
+      </:title>
+      <:action>
+        <.edit_button navigate={~p"/#{@account}/settings/account/notifications/edit"}>
+          Edit Notifications
+        </.edit_button>
+      </:action>
+      <:content>
+        <div class="relative overflow-x-auto">
+          <.notifications_table notifications={@account.config.notifications} />
+        </div>
+      </:content>
+    </.section>
+
+    <.section>
+      <:title>
         Danger zone
       </:title>
       <:content>
@@ -64,6 +80,51 @@ defmodule Web.Settings.Account do
         </p>
       </:content>
     </.section>
+    """
+  end
+
+  defp notifications_table(assigns) do
+    ~H"""
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left text-neutral-500">
+        <thead class="text-xs text-neutral-700 uppercase bg-neutral-50">
+          <tr>
+            <th class="px-4 py-3 font-medium">Notification Type</th>
+            <th class="px-4 py-3 font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b">
+            <td class="px-4 py-3">
+              Gateway Upgrade Available
+            </td>
+            <td class="px-4 py-3">
+              <.notification_badge notification={
+                Map.get(@notifications || %{}, :outdated_gateway, %{enabled: false})
+              } />
+            </td>
+          </tr>
+          <tr class="border-b">
+            <td class="px-4 py-3">
+              Identity Provider Sync Error
+            </td>
+            <td class="px-4 py-3">
+              <.notification_badge notification={
+                Map.get(@notifications || %{}, :idp_sync_error, %{enabled: false})
+              } />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    """
+  end
+
+  defp notification_badge(assigns) do
+    ~H"""
+    <.badge type={if @notification.enabled, do: "success", else: "neutral"}>
+      <%= if @notification.enabled, do: "Enabled", else: "Disabled" %>
+    </.badge>
     """
   end
 end
