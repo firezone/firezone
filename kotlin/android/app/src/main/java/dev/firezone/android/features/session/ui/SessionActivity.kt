@@ -21,7 +21,6 @@ import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
 import androidx.lifecycle.lifecycleScope
-import dev.firezone.android.tunnel.model.isInternetResource
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
@@ -29,7 +28,6 @@ class SessionActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySessionBinding
     private var tunnelService: TunnelService? = null
     private var serviceBound = false
-    private var showOnlyFavorites = false
     private val viewModel: SessionViewModel by viewModels()
 
     private val serviceConnection =
@@ -120,7 +118,7 @@ class SessionActivity : AppCompatActivity() {
         binding.tabLayout.addOnTabSelectedListener(
             object : TabLayout.OnTabSelectedListener {
                 override fun onTabSelected(tab: TabLayout.Tab) {
-                    tabSelected(tab.position)
+                    viewModel.tabSelected(tab.position)
 
                     refreshList {
                         // TODO: we might want to remember the old position?
@@ -133,6 +131,7 @@ class SessionActivity : AppCompatActivity() {
                 override fun onTabReselected(tab: TabLayout.Tab) {}
             },
         )
+        viewModel.tabSelected(binding.tabLayout.selectedTabPosition)
     }
 
     private fun setupObservers() {
@@ -150,75 +149,23 @@ class SessionActivity : AppCompatActivity() {
         // This coroutine could still resume while the Activity is not shown, but this is probably
         // fine since the Flow will only emit if the user interacts with the UI anyway.
         lifecycleScope.launch {
-            viewModel.repo.favorites.collect {
+            viewModel.favorites.collect {
                 refreshList()
-                if (forceAllResourcesTab()) {
-                    showOnlyFavorites = false
-                }
             }
         }
-        tabSelected(binding.tabLayout.selectedTabPosition)
-    }
-
-    fun tabSelected(position: Int) {
-        showOnlyFavorites =
-            when (position) {
-                RESOURCES_TAB_FAVORITES -> {
-                    true
-                }
-
-                RESOURCES_TAB_ALL -> {
-                    false
-                }
-
-                else -> throw IllegalArgumentException("Invalid tab position: $position")
-            }
+        viewModel.tabSelected(binding.tabLayout.selectedTabPosition)
     }
 
     private fun refreshList(afterLoad: () -> Unit = {}) {
-        if (forceAllResourcesTab()) {
-            binding.tabLayout.selectTab(binding.tabLayout.getTabAt(RESOURCES_TAB_ALL), true)
-        }
-        binding.tabLayout.visibility =
-            if (viewModel.repo.favorites.value.inner.isNotEmpty()) {
-                View.VISIBLE
-            } else {
-                View.GONE
-            }
+        viewModel.forceTab()?.let { tab -> binding.tabLayout.selectTab(binding.tabLayout.getTabAt(tab), true) }
 
-        resourcesAdapter.submitList(resourcesList(internetState())) {
+        binding.tabLayout.visibility = viewModel.tabLayoutVisibility()
+        resourcesAdapter.submitList(viewModel.resourcesList(internetState())) {
             afterLoad()
         }
     }
 
-    // The subset of Resources to actually render
-    fun resourcesList(isInternetResourceEnabled: ResourceState): List<ResourceViewModel> {
-        val resources =
-            viewModel.resourcesLiveData.value!!.map {
-                if (it.isInternetResource()) {
-                    ResourceViewModel(it, isInternetResourceEnabled)
-                } else {
-                    ResourceViewModel(it, ResourceState.ENABLED)
-                }
-            }
-
-        return if (viewModel.repo.favorites.value.inner.isEmpty()) {
-            resources
-        } else if (showOnlyFavorites) {
-            resources.filter { viewModel.repo.favorites.value.inner.contains(it.id) }
-        } else {
-            resources
-        }
-    }
-
-    fun forceAllResourcesTab(): Boolean {
-        return viewModel.repo.favorites.value.inner.isEmpty()
-    }
-
     companion object {
         private const val TAG = "SessionActivity"
-
-        private const val RESOURCES_TAB_FAVORITES = 0
-        private const val RESOURCES_TAB_ALL = 1
     }
 }
