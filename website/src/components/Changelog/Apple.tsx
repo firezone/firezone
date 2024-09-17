@@ -21,7 +21,7 @@ export default function Apple() {
       <Entry version="1.3.2" date={new Date(todo)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6679">
-          Displays notification when new updates are available.
+          Displays a notification when a new version is available.
           </ChangeItem>
         </ul>
       </Entry>
