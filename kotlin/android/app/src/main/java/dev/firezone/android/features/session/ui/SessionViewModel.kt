@@ -37,14 +37,6 @@ internal class SessionViewModel
 
         fun getActorName() = repo.getActorNameSync()
 
-        fun clearToken() = repo.clearToken()
-
-        fun forceTab(): Int? = if (repo.favorites.value.inner.isEmpty()) {
-                RESOURCES_TAB_ALL
-            } else {
-                null
-            }
-
         fun addFavoriteResource(id: String) {
             repo.addFavoriteResource(id)
         }
@@ -53,7 +45,7 @@ internal class SessionViewModel
             repo.removeFavoriteResource(id)
         }
 
-        fun isFavorite(id: String) = repo.favorites.value.inner.contains(id)
+        fun clearToken() = repo.clearToken()
 
         // The subset of Resources to actually render
         fun resourcesList(isInternetResourceEnabled: ResourceState): List<ResourceViewModel> {
@@ -75,9 +67,18 @@ internal class SessionViewModel
             }
         }
 
+        fun forceTab(): Int? = if (repo.favorites.value.inner.isEmpty()) {
+            RESOURCES_TAB_ALL
+        } else {
+            null
+        }
+
+
         fun tabSelected(position: Int) {
             selectedTab = position
         }
+
+        fun isFavorite(id: String) = repo.favorites.value.inner.contains(id)
 
         fun tabLayoutVisibility(): Int = if (repo.favorites.value.inner.isNotEmpty()) {
                 View.VISIBLE
