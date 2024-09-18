@@ -813,8 +813,6 @@ impl ClientState {
             .map(|(ip, _)| ip)
             .chain(iter::once(IPV4_RESOURCES.into()))
             .chain(iter::once(IPV6_RESOURCES.into()))
-            .chain(iter::once(DNS_SENTINELS_V4.into()))
-            .chain(iter::once(DNS_SENTINELS_V6.into()))
             .chain(
                 self.internet_resource
                     .map(|_| Ipv4Network::DEFAULT_ROUTE.into()),
@@ -1841,9 +1839,7 @@ mod proptests {
             resource_routes
                 .into_iter()
                 .chain(iter::once(IPV4_RESOURCES.into()))
-                .chain(iter::once(IPV6_RESOURCES.into()))
-                .chain(iter::once(DNS_SENTINELS_V4.into()))
-                .chain(iter::once(DNS_SENTINELS_V6.into())),
+                .chain(iter::once(IPV6_RESOURCES.into())),
         )
     }
 
