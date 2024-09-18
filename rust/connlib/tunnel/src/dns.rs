@@ -212,7 +212,7 @@ impl StubResolver {
         packet: &IpPacket,
     ) -> Option<ResolveStrategy> {
         let dst = packet.destination();
-        let _guard = tracing::debug_span!("packet", %dst);
+        let _guard = tracing::debug_span!("packet", %dst).entered();
         let upstream = dns_mapping.get_by_left(&dst)?.address();
 
         let Some(datagram) = packet.as_udp() else {
