@@ -668,6 +668,15 @@ impl ClientState {
 
         let (destination, _) = self.forwarded_dns_queries.remove(&(query_id, from))?;
 
+        if message.header().tc() {
+            let domain = message
+                .first_question()
+                .map(|q| q.into_qname())
+                .map(tracing::field::display);
+
+            tracing::warn!(server = %from, domain, "Upstream DNS server had to truncate response");
+        }
+
         tracing::trace!(server = %from, %query_id, "Received forwarded DNS response");
 
         let daddr = destination.ip();
