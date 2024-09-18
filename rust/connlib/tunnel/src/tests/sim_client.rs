@@ -282,8 +282,8 @@ pub struct RefClient {
     #[derivative(Debug = "ignore")]
     upstream_dns_resolvers: Vec<DnsServer>,
 
-    ipv4_routes: BTreeSet<Ipv4Network>,
-    ipv6_routes: BTreeSet<Ipv6Network>,
+    ipv4_routes: BTreeMap<ResourceId, Ipv4Network>,
+    ipv6_routes: BTreeMap<ResourceId, Ipv6Network>,
 
     /// Tracks all resources in the order they have been added in.
     ///
@@ -350,47 +350,50 @@ impl RefClient {
     }
 
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
-        let maybe_cidr_resource = self
-            .cidr_resources
-            .iter()
-            .find_map(|(n, r)| (r == resource).then_some(n));
-
-        match maybe_cidr_resource {
-            Some(IpNetwork::V4(v4)) => {
-                tracing::debug!(%v4, "Removing CIDR route");
-
-                self.ipv4_routes.remove(&v4);
-            }
-            Some(IpNetwork::V6(v6)) => {
-                tracing::debug!(%v6, "Removing CIDR route");
-
-                self.ipv6_routes.remove(&v6);
-            }
-            _ => {}
-        }
+        self.ipv4_routes.remove(resource);
+        self.ipv6_routes.remove(resource);
 
         self.connected_cidr_resources.remove(resource);
         self.connected_dns_resources.retain(|(r, _)| r != resource);
 
         if self.internet_resource.is_some_and(|r| &r == resource) {
             self.connected_internet_resource = false;
-
-            tracing::debug!("Removing Internet Resource routes");
-
-            self.ipv4_routes.remove(&Ipv4Network::DEFAULT_ROUTE);
-            self.ipv6_routes.remove(&Ipv6Network::DEFAULT_ROUTE);
         }
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
         self.disconnect_resource(resource);
 
-        self.cidr_resources.retain(|_, r| r != resource);
         if self.internet_resource.is_some_and(|r| &r == resource) {
             self.internet_resource = None;
         }
 
         self.resources.retain(|r| r.id() != *resource);
+
+        self.cidr_resources = self.recalculate_cidr_routes();
+    }
+
+    fn recalculate_cidr_routes(&mut self) -> IpNetworkTable<ResourceId> {
+        let mut table = IpNetworkTable::<ResourceId>::new();
+        for resource in self.resources.iter().sorted_by_key(|r| r.id()) {
+            let ResourceDescription::Cidr(resource) = resource else {
+                continue;
+            };
+
+            if self.disabled_resources.contains(&resource.id) {
+                continue;
+            }
+
+            if let Some(resource) = table.exact_match(resource.address) {
+                if self.is_connected_to_internet_or_cidr(*resource) {
+                    continue;
+                }
+            }
+
+            table.insert(resource.address, resource.id);
+        }
+
+        table
     }
 
     pub(crate) fn reset_connections(&mut self) {
@@ -409,22 +412,26 @@ impl RefClient {
             return;
         }
 
-        self.ipv4_routes.insert(Ipv4Network::DEFAULT_ROUTE);
-        self.ipv6_routes.insert(Ipv6Network::DEFAULT_ROUTE);
+        self.ipv4_routes.insert(r.id, Ipv4Network::DEFAULT_ROUTE);
+        self.ipv6_routes.insert(r.id, Ipv6Network::DEFAULT_ROUTE);
     }
 
     pub(crate) fn add_cidr_resource(&mut self, r: ResourceDescriptionCidr) {
-        self.cidr_resources.insert(r.address, r.id);
         self.resources.push(ResourceDescription::Cidr(r.clone()));
+        self.cidr_resources = self.recalculate_cidr_routes();
 
         if self.disabled_resources.contains(&r.id) {
             return;
         }
 
         match r.address {
-            IpNetwork::V4(v4) => self.ipv4_routes.insert(v4),
-            IpNetwork::V6(v6) => self.ipv6_routes.insert(v6),
-        };
+            IpNetwork::V4(v4) => {
+                self.ipv4_routes.insert(r.id, v4);
+            }
+            IpNetwork::V6(v6) => {
+                self.ipv6_routes.insert(r.id, v6);
+            }
+        }
     }
 
     pub(crate) fn add_dns_resource(&mut self, r: ResourceDescriptionDns) {
@@ -729,7 +736,18 @@ impl RefClient {
     }
 
     pub(crate) fn expected_routes(&self) -> (BTreeSet<Ipv4Network>, BTreeSet<Ipv6Network>) {
-        (self.ipv4_routes.clone(), self.ipv6_routes.clone())
+        (
+            self.ipv4_routes
+                .values()
+                .cloned()
+                .chain(default_routes_v4())
+                .collect(),
+            self.ipv6_routes
+                .values()
+                .cloned()
+                .chain(default_routes_v6())
+                .collect(),
+        )
     }
 
     pub(crate) fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
@@ -907,28 +925,34 @@ fn ref_client(
                     expected_dns_handshakes: Default::default(),
                     disabled_resources: Default::default(),
                     resources: Default::default(),
-                    ipv4_routes: BTreeSet::from([
-                        Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11).unwrap(),
-                        Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24).unwrap(),
-                    ]),
-                    ipv6_routes: BTreeSet::from([
-                        Ipv6Network::new(
-                            Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0),
-                            107,
-                        )
-                        .unwrap(),
-                        Ipv6Network::new(
-                            Ipv6Addr::new(
-                                0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0,
-                            ),
-                            120,
-                        )
-                        .unwrap(),
-                    ]),
+                    ipv4_routes: Default::default(),
+                    ipv6_routes: Default::default(),
                     connected_gateways: Default::default(),
                 }
             },
         )
+}
+
+fn default_routes_v4() -> Vec<Ipv4Network> {
+    vec![
+        Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11).unwrap(),
+        Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24).unwrap(),
+    ]
+}
+
+fn default_routes_v6() -> Vec<Ipv6Network> {
+    vec![
+        Ipv6Network::new(
+            Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0),
+            107,
+        )
+        .unwrap(),
+        Ipv6Network::new(
+            Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0),
+            120,
+        )
+        .unwrap(),
+    ]
 }
 
 fn known_hosts() -> impl Strategy<Value = BTreeMap<String, Vec<IpAddr>>> {

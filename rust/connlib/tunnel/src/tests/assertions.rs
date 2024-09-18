@@ -144,11 +144,6 @@ pub(crate) fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimCl
         sim_client.ipv6_routes.clone(),
     );
 
-    let expected_ipv4 = BTreeSet::from_iter(expected_ipv4);
-    let actual_ipv4 = BTreeSet::from_iter(actual_ipv4);
-    let expected_ipv6 = BTreeSet::from_iter(expected_ipv6);
-    let actual_ipv6 = BTreeSet::from_iter(actual_ipv6);
-
     if actual_ipv4 != expected_ipv4 {
         let expected_ipv4 = expected_ipv4.iter().join(", ");
         let actual_ipv4 = actual_ipv4.iter().join(", ");
