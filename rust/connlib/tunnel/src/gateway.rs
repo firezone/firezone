@@ -168,7 +168,7 @@ impl GatewayState {
         }
 
         let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
-            tracing::warn!(%dst, "Couldn't find connection by IP");
+            tracing::trace!(%dst, "Couldn't find connection by IP");
 
             return None;
         };
