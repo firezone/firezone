@@ -119,29 +119,30 @@ defmodule Web.Live.Policies.ShowTest do
     assert table["replaced by policy"] =~ replacement_policy.resource.name
   end
 
-  test "renders replacement policy", %{
-    account: account,
-    policy: policy,
-    identity: identity,
-    conn: conn
-  } do
-    {replaced_policy, replacement_policy} = Fixtures.Policies.replace_policy(policy)
+  # For now we don't show prev/next version buttons in the UI of the latest version of a policy
+  # test "renders replacement policy", %{
+  #   account: account,
+  #   policy: policy,
+  #   identity: identity,
+  #   conn: conn
+  # } do
+  #   {replaced_policy, replacement_policy} = Fixtures.Policies.replace_policy(policy)
 
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/policies/#{replacement_policy}")
+  #   {:ok, lv, _html} =
+  #     conn
+  #     |> authorize_conn(identity)
+  #     |> live(~p"/#{account}/policies/#{replacement_policy}")
 
-    table =
-      lv
-      |> element("#policy")
-      |> render()
-      |> vertical_table_to_map()
+  #   table =
+  #     lv
+  #     |> element("#policy")
+  #     |> render()
+  #     |> vertical_table_to_map()
 
-    replaced_policy = Repo.preload(replaced_policy, [:actor_group, :resource])
-    assert table["replaced policy"] =~ replaced_policy.actor_group.name
-    assert table["replaced policy"] =~ replaced_policy.resource.name
-  end
+  #   replaced_policy = Repo.preload(replaced_policy, [:actor_group, :resource])
+  #   assert table["replaced policy"] =~ replaced_policy.actor_group.name
+  #   assert table["replaced policy"] =~ replaced_policy.resource.name
+  # end
 
   test "renders breadcrumbs item", %{
     account: account,

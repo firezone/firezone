@@ -128,7 +128,7 @@ defmodule Web.Resources.Show do
               <%= @resource.id %>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row>
+          <.vertical_table_row :if={not is_nil(@resource.deleted_at)}>
             <:label>
               Persistent ID
             </:label>
@@ -136,7 +136,6 @@ defmodule Web.Resources.Show do
               <%= @resource.persistent_id %>
             </:value>
           </.vertical_table_row>
-
           <.vertical_table_row>
             <:label>
               Name
@@ -212,7 +211,9 @@ defmodule Web.Resources.Show do
               </div>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row :if={not is_nil(@resource.replaced_by_resource)}>
+          <.vertical_table_row :if={
+            not is_nil(@resource.deleted_at) and not is_nil(@resource.replaced_by_resource)
+          }>
             <:label>
               Replaced by Resource
             </:label>
@@ -225,7 +226,9 @@ defmodule Web.Resources.Show do
               </.link>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row :if={not is_nil(@resource.replaces_resource)}>
+          <.vertical_table_row :if={
+            not is_nil(@resource.deleted_at) and not is_nil(@resource.replaces_resource)
+          }>
             <:label>
               Replaced Resource
             </:label>

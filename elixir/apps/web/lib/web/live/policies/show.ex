@@ -144,7 +144,7 @@ defmodule Web.Policies.Show do
               <%= @policy.id %>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row>
+          <.vertical_table_row :if={not is_nil(@policy.deleted_at)}>
             <:label>
               Persistent ID
             </:label>
@@ -152,7 +152,9 @@ defmodule Web.Policies.Show do
               <%= @policy.persistent_id %>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row :if={not is_nil(@policy.replaced_by_policy)}>
+          <.vertical_table_row :if={
+            not is_nil(@policy.deleted_at) and not is_nil(@policy.replaced_by_policy)
+          }>
             <:label>
               Replaced by Policy
             </:label>
@@ -165,7 +167,9 @@ defmodule Web.Policies.Show do
               </.link>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row :if={not is_nil(@policy.replaces_policy)}>
+          <.vertical_table_row :if={
+            not is_nil(@policy.deleted_at) and not is_nil(@policy.replaces_policy)
+          }>
             <:label>
               Replaced Policy
             </:label>
