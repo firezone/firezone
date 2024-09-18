@@ -515,6 +515,23 @@ defmodule Domain.PoliciesTest do
              ]
     end
 
+    test "keeps replaced policy disabled if original was disabled too", %{
+      policy: policy,
+      account: account,
+      subject: subject
+    } do
+      policy = Fixtures.Policies.disable_policy(policy)
+      new_resource = Fixtures.Resources.create_resource(account: account)
+
+      attrs = %{resource_id: new_resource.id}
+
+      assert {:replaced, replaced_policy, replacement_policy} =
+               update_or_replace_policy(policy, attrs, subject)
+
+      assert replaced_policy.disabled_at
+      assert replacement_policy.disabled_at
+    end
+
     test "broadcasts events and expires flow for replaced policy", %{
       policy: policy,
       account: account,
