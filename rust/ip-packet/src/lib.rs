@@ -732,7 +732,7 @@ impl<'a> IpPacket<'a> {
         }
     }
 
-    fn next_header(&self) -> IpNumber {
+    pub fn next_header(&self) -> IpNumber {
         match self {
             Self::Ipv4(p) => p.ip_header().protocol(),
             Self::Ipv6(p) => p.header().next_header(),
