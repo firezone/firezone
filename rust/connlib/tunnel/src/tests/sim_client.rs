@@ -658,6 +658,13 @@ impl RefClient {
         let is_dns_resource = self.dns_resource_by_domain(domain).is_some();
         let is_suppported_type = matches!(rtype, Rtype::A | Rtype::AAAA | Rtype::PTR);
 
+        if matches!(rtype, Rtype::PTR)
+            && crate::dns::reverse_dns_addr(&domain.to_string())
+                .is_some_and(|ip| self.known_hosts.values().flatten().any(|c| c == &ip))
+        {
+            return true;
+        }
+
         (is_known_host || is_dns_resource) && is_suppported_type
     }
 

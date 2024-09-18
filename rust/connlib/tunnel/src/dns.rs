@@ -286,8 +286,6 @@ impl StubResolver {
                     });
                 };
 
-                tracing::trace!(%domain, %fqdn, "Resolved PTR query to domain");
-
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
             }
             _ => {
@@ -299,6 +297,8 @@ impl StubResolver {
                 })
             }
         };
+
+        tracing::trace!(%qtype, %domain, records = ?resource_records, "Forming DNS response");
 
         let response = build_dns_with_answer(message, domain, resource_records)?;
         let packet = ip_packet::make::udp_packet(
@@ -361,7 +361,7 @@ pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
     pattern.matches(&candidate)
 }
 
-fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
+pub(crate) fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
     let mut dns_parts = name.split('.').rev();
     if dns_parts.next()? != REVERSE_DNS_ADDRESS_END {
         return None;
