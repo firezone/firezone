@@ -1,36 +1,36 @@
 /* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.session.ui
 
+import android.view.View
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.firezone.android.core.data.Favorites
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.tunnel.TunnelService.Companion.State
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.isInternetResource
+import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 
 @HiltViewModel
 internal class SessionViewModel
     @Inject
     constructor() : ViewModel() {
+        // Must be `internal` because Dagger does not support injection into `private` fields
         @Inject
         internal lateinit var repo: Repository
-        private val _favoriteResourcesLiveData = MutableLiveData<HashSet<String>>(HashSet())
         private val _serviceStatusLiveData = MutableLiveData<State>()
         private val _resourcesLiveData = MutableLiveData<List<Resource>>(emptyList())
-        private var showOnlyFavorites: Boolean = false
+        private var selectedTab = RESOURCES_TAB_FAVORITES
 
-        val favoriteResourcesLiveData: MutableLiveData<HashSet<String>>
-            get() = _favoriteResourcesLiveData
         val serviceStatusLiveData: MutableLiveData<State>
             get() = _serviceStatusLiveData
         val resourcesLiveData: MutableLiveData<List<Resource>>
             get() = _resourcesLiveData
-
-        private val favoriteResources: HashSet<String>
-            get() = favoriteResourcesLiveData.value!!
+        val favorites: StateFlow<Favorites>
+            get() = repo.favorites
 
         // Actor name
         fun clearActorName() = repo.clearActorName()
@@ -38,22 +38,11 @@ internal class SessionViewModel
         fun getActorName() = repo.getActorNameSync()
 
         fun addFavoriteResource(id: String) {
-            val value = favoriteResources
-            value.add(id)
-            repo.saveFavoritesSync(value)
-            // Update LiveData
-            _favoriteResourcesLiveData.value = value
+            repo.addFavoriteResource(id)
         }
 
         fun removeFavoriteResource(id: String) {
-            val value = favoriteResources
-            value.remove(id)
-            repo.saveFavoritesSync(value)
-            if (forceAllResourcesTab()) {
-                showOnlyFavorites = false
-            }
-            // Update LiveData
-            _favoriteResourcesLiveData.value = value
+            repo.removeFavoriteResource(id)
         }
 
         fun clearToken() = repo.clearToken()
@@ -69,40 +58,37 @@ internal class SessionViewModel
                     }
                 }
 
-            return if (favoriteResources.isEmpty()) {
+            return if (repo.favorites.value.inner.isEmpty()) {
                 resources
-            } else if (showOnlyFavorites) {
-                resources.filter { favoriteResources.contains(it.id) }
+            } else if (selectedTab == RESOURCES_TAB_FAVORITES) {
+                resources.filter { repo.favorites.value.inner.contains(it.id) }
             } else {
                 resources
             }
         }
 
-        fun forceAllResourcesTab(): Boolean {
-            return favoriteResources.isEmpty()
-        }
-
-        fun showFavoritesTab(): Boolean {
-            return favoriteResources.isNotEmpty()
-        }
+        fun forceTab(): Int? =
+            if (repo.favorites.value.inner.isEmpty()) {
+                RESOURCES_TAB_ALL
+            } else {
+                null
+            }
 
         fun tabSelected(position: Int) {
-            showOnlyFavorites =
-                when (position) {
-                    RESOURCES_TAB_FAVORITES -> {
-                        true
-                    }
-
-                    RESOURCES_TAB_ALL -> {
-                        false
-                    }
-
-                    else -> throw IllegalArgumentException("Invalid tab position: $position")
-                }
+            selectedTab = position
         }
 
+        fun isFavorite(id: String) = repo.favorites.value.inner.contains(id)
+
+        fun tabLayoutVisibility(): Int =
+            if (repo.favorites.value.inner.isNotEmpty()) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+
         companion object {
-            const val RESOURCES_TAB_FAVORITES = 0
-            const val RESOURCES_TAB_ALL = 1
+            private const val RESOURCES_TAB_FAVORITES = 0
+            private const val RESOURCES_TAB_ALL = 1
         }
     }

@@ -73,6 +73,8 @@ if config_env() == :prod do
 
   config :domain, outbound_email_adapter_configured?: !!compile_config!(:outbound_email_adapter)
 
+  config :domain, web_external_url: compile_config!(:web_external_url)
+
   # Enable background jobs only on dedicated nodes
   config :domain, Domain.Tokens.Jobs.DeleteExpiredTokens,
     enabled: compile_config!(:background_jobs_enabled)
@@ -221,8 +223,8 @@ if config_env() == :prod do
   config :openid_connect,
     finch_transport_opts: compile_config!(:http_client_ssl_opts)
 
-  config :web,
-         Web.Mailer,
+  config :domain,
+         Domain.Mailer,
          [
            adapter: compile_config!(:outbound_email_adapter),
            from_email: compile_config!(:outbound_email_from)

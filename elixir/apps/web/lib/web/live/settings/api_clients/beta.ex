@@ -62,11 +62,11 @@ defmodule Web.Settings.ApiClients.Beta do
   end
 
   def handle_event("request_access", _params, socket) do
-    Web.Mailer.BetaEmail.rest_api_beta_email(
+    Domain.Mailer.BetaEmail.rest_api_beta_email(
       socket.assigns.account,
       socket.assigns.subject
     )
-    |> Web.Mailer.deliver()
+    |> Domain.Mailer.deliver()
 
     socket =
       socket

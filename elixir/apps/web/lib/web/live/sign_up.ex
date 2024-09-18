@@ -469,13 +469,13 @@ defmodule Web.SignUp do
     |> Ecto.Multi.run(
       :send_email,
       fn _repo, %{account: account, identity: identity} ->
-        Web.Mailer.AuthEmail.sign_up_link_email(
+        Domain.Mailer.AuthEmail.sign_up_link_email(
           account,
           identity,
           socket.assigns.user_agent,
           socket.assigns.real_ip
         )
-        |> Web.Mailer.deliver_with_rate_limit(
+        |> Domain.Mailer.deliver_with_rate_limit(
           rate_limit_key: {:sign_up_link, String.downcase(identity.provider_identifier)},
           rate_limit: 3,
           rate_limit_interval: :timer.minutes(30)

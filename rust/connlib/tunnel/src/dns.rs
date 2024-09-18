@@ -150,10 +150,11 @@ impl StubResolver {
             .fqdn_to_ips
             .entry(fqdn.clone())
             .or_insert_with(|| {
-                // TODO: the side effeccts are executed even if this is not inserted
-                // make it so that's not the case
                 let mut ips = self.ip_provider.get_n_ipv4(4);
                 ips.extend_from_slice(&self.ip_provider.get_n_ipv6(4));
+
+                tracing::debug!(domain = %fqdn, ?ips, "Assigning proxy IPs");
+
                 ips
             })
             .clone();
@@ -210,11 +211,21 @@ impl StubResolver {
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
         packet: &IpPacket,
     ) -> Option<ResolveStrategy> {
-        let upstream = dns_mapping.get_by_left(&packet.destination())?.address();
-        let datagram = packet.as_udp()?;
+        let dst = packet.destination();
+        let _guard = tracing::debug_span!("packet", %dst).entered();
+        let upstream = dns_mapping.get_by_left(&dst)?.address();
 
-        // We only support DNS on port 53.
-        if datagram.destination_port() != DNS_PORT {
+        let Some(datagram) = packet.as_udp() else {
+            let protocol = packet.next_header().keyword_str().unwrap_or("unassigned");
+
+            tracing::debug!(%protocol, "DNS is only supported over UDP");
+            return None;
+        };
+
+        let port = datagram.destination_port();
+
+        if port != DNS_PORT {
+            tracing::debug!(%port, "DNS over UDP is only supported on port 53");
             return None;
         }
 

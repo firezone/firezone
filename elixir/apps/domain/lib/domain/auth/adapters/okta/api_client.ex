@@ -100,6 +100,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
     end
   end
 
+  # TODO: Need to catch 401/403 specifically when error message is in header
   defp list(uri, headers, api_token) do
     headers = headers ++ [{"Authorization", "Bearer #{api_token}"}]
     request = Finch.build(:get, uri, headers)

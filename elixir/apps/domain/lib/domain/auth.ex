@@ -352,6 +352,12 @@ defmodule Domain.Auth do
     end
   end
 
+  def all_identities_for(%Actors.Actor{} = actor, opts \\ []) do
+    Identity.Query.not_deleted()
+    |> Identity.Query.by_actor_id(actor.id)
+    |> Repo.all(opts)
+  end
+
   def list_identities_for(%Actors.Actor{} = actor, %Subject{} = subject, opts \\ []) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
       Identity.Query.not_deleted()
@@ -371,6 +377,19 @@ defmodule Domain.Auth do
     |> Identity.Query.by_membership_rules(membership_rules)
     |> Identity.Query.returning_distinct_actor_ids()
     |> Repo.all()
+  end
+
+  def get_identity_email(%Identity{} = identity) do
+    provider_email(identity) || identity.provider_identifier
+  end
+
+  def identity_has_email?(%Identity{} = identity) do
+    not is_nil(provider_email(identity)) or identity.provider.adapter == :email or
+      identity.provider_identifier =~ "@"
+  end
+
+  defp provider_email(%Identity{} = identity) do
+    get_in(identity.provider_state, ["userinfo", "email"])
   end
 
   # used by IdP adapters

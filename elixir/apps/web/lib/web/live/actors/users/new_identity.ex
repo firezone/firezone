@@ -111,12 +111,12 @@ defmodule Web.Actors.Users.NewIdentity do
              socket.assigns.subject
            ) do
       if socket.assigns.provider.adapter == :email do
-        Web.Mailer.AuthEmail.new_user_email(
+        Domain.Mailer.AuthEmail.new_user_email(
           socket.assigns.account,
           identity,
           socket.assigns.subject
         )
-        |> Web.Mailer.deliver()
+        |> Domain.Mailer.deliver()
       end
 
       socket = push_navigate(socket, to: next_path(socket))
