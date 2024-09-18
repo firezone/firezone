@@ -47,6 +47,8 @@ config :web, Web.Plugs.SecureHeaders,
     "script-src 'self' 'unsafe-inline' https://cdn.mxpnl.com https://*.hs-analytics.net"
   ]
 
+config :web, :constant_execution_time, 1
+
 ###############################
 ##### API #####################
 ###############################
