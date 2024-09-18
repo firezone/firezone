@@ -15,6 +15,9 @@ export default function Headless() {
           <ChangeItem pull="6765">
             Fixes a bug where DNS PTR queries by the system did not get answered.
           </ChangeItem>
+          <ChangeItem pull="6722">
+            Fixes a routing bug when one of several overlapping CIDR resources gets disabled / removed.
+          </ChangeItem>
         </ul>
       </Entry>
       */}

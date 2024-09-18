@@ -16,6 +16,9 @@ export default function Apple() {
             Fixes a bug where the addressDescription wasn't fully displayed in the macOS
             menu bar if it exceeded a certain length.
           </ChangeItem>
+          <ChangeItem pull="6722">
+          Fixes a routing bug when one of several overlapping CIDR resources gets disabled / removed.
+          </ChangeItem>
           <ChangeItem pull="6679">
             Displays a notification when a new version is available.
           </ChangeItem>
