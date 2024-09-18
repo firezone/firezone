@@ -210,11 +210,21 @@ impl StubResolver {
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
         packet: &IpPacket,
     ) -> Option<ResolveStrategy> {
-        let upstream = dns_mapping.get_by_left(&packet.destination())?.address();
-        let datagram = packet.as_udp()?;
+        let dst = packet.destination();
+        let _guard = tracing::debug_span!("packet", %dst);
+        let upstream = dns_mapping.get_by_left(&dst)?.address();
 
-        // We only support DNS on port 53.
-        if datagram.destination_port() != DNS_PORT {
+        let Some(datagram) = packet.as_udp() else {
+            let protocol = packet.next_header().keyword_str().unwrap_or("unassigned");
+
+            tracing::debug!(%protocol, "DNS is only support over UDP");
+            return None;
+        };
+
+        let port = datagram.destination_port();
+
+        if port != DNS_PORT {
+            tracing::debug!(%port, "DNS over UDP is only supported on port 53");
             return None;
         }
 
