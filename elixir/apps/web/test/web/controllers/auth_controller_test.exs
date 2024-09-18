@@ -779,7 +779,7 @@ defmodule Web.AuthControllerTest do
       email_secret: email_secret
     } do
       key = {:sign_in_link, identity.id}
-      Web.Mailer.RateLimiter.rate_limit(key, 3, 60_000, fn -> :ok end)
+      Domain.Mailer.RateLimiter.rate_limit(key, 3, 60_000, fn -> :ok end)
 
       conn =
         conn
@@ -791,7 +791,7 @@ defmodule Web.AuthControllerTest do
       assert conn.assigns.flash == %{}
       assert redirected_to(conn) == ~p"/#{account}/sites"
 
-      refute :ets.tab2list(Web.Mailer.RateLimiter.ETS)
+      refute :ets.tab2list(Domain.Mailer.RateLimiter.ETS)
              |> Enum.any?(fn {ets_key, _, _} -> ets_key == key end)
     end
   end

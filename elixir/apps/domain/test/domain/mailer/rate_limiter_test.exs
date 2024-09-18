@@ -1,6 +1,6 @@
-defmodule Web.Mailer.RateLimiterTest do
+defmodule Domain.Mailer.RateLimiterTest do
   use ExUnit.Case, async: true
-  import Web.Mailer.RateLimiter
+  import Domain.Mailer.RateLimiter
 
   describe "init/1" do
     test "creates a ETS table" do

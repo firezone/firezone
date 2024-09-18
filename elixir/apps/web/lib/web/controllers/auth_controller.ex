@@ -159,14 +159,14 @@ defmodule Web.AuthController do
     # attacks where you can trick user into logging in into an attacker account.
     fragment = identity.provider_virtual_state.fragment
 
-    Web.Mailer.AuthEmail.sign_in_link_email(
+    Domain.Mailer.AuthEmail.sign_in_link_email(
       identity,
       nonce,
       conn.assigns.user_agent,
       conn.remote_ip,
       redirect_params
     )
-    |> Web.Mailer.deliver_with_rate_limit(
+    |> Domain.Mailer.deliver_with_rate_limit(
       rate_limit_key: {:sign_in_link, identity.id},
       rate_limit: 3,
       rate_limit_interval: :timer.minutes(5)
@@ -207,7 +207,7 @@ defmodule Web.AuthController do
       with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
            {:ok, identity, encoded_fragment} <-
              Domain.Auth.sign_in(provider, identity_id, nonce, secret, context) do
-        :ok = Web.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, identity.id})
+        :ok = Domain.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, identity.id})
         Web.Auth.signed_in(conn, provider, identity, context, encoded_fragment, redirect_params)
       else
         {:error, :not_found} ->

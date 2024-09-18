@@ -1,7 +1,8 @@
 [
   import_deps: [
     :ecto,
-    :plug
+    :plug,
+    :phoenix
   ],
   inputs: [
     "*.{heex,ex,exs}",

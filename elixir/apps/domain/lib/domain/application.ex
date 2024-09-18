@@ -30,6 +30,8 @@ defmodule Domain.Application do
       Domain.Gateways,
       Domain.Clients,
       Domain.Billing,
+      Domain.Mailer,
+      Domain.Mailer.RateLimiter,
 
       # Observability
       Domain.Telemetry

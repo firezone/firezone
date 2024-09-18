@@ -402,6 +402,16 @@ defmodule Domain.Actors do
     end)
   end
 
+  def all_admins_for_account!(%Accounts.Account{} = account, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+    Actor.Query.not_disabled()
+    |> Actor.Query.by_account_id(account.id)
+    |> Actor.Query.by_type(:account_admin_user)
+    |> Repo.all(opts)
+    |> Repo.preload(preload)
+  end
+
   def list_actors(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       Actor.Query.not_deleted()

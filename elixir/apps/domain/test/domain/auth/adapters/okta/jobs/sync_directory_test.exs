@@ -33,8 +33,6 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
     end
 
     test "syncs IdP data", %{provider: provider, bypass: bypass} do
-      # bypass = Bypass.open(port: bypass.port)
-
       groups = [
         %{
           "id" => "GROUP_DEVOPS_ID",
@@ -243,7 +241,8 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         OktaDirectory.mock_group_members_list_endpoint(bypass, group["id"], members)
       end)
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       groups = Actors.Group |> Repo.all()
       assert length(groups) == 2
@@ -287,7 +286,8 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
     test "does not crash on endpoint errors", %{bypass: bypass} do
       Bypass.down(bypass)
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert Repo.aggregate(Actors.Group, :count) == 0
     end
@@ -337,7 +337,8 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       OktaDirectory.mock_groups_list_endpoint(bypass, [])
       OktaDirectory.mock_users_list_endpoint(bypass, users)
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert updated_identity =
                Repo.get(Domain.Auth.Identity, identity.id)
@@ -666,7 +667,8 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         one_member
       )
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert updated_group = Repo.get(Domain.Actors.Group, group.id)
       assert updated_group.name == "Group:Engineering"
@@ -758,7 +760,8 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         end)
       end
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert updated_provider = Repo.get(Domain.Auth.Provider, provider.id)
       refute updated_provider.last_synced_at
@@ -774,12 +777,48 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         end)
       end
 
-      assert execute(%{}) == :ok
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert updated_provider = Repo.get(Domain.Auth.Provider, provider.id)
       refute updated_provider.last_synced_at
       assert updated_provider.last_syncs_failed == 2
       assert updated_provider.last_sync_error == "Okta API is temporarily unavailable"
+
+      cancel_bypass_expectations_check(bypass)
+    end
+
+    test "sends email on failed directory sync", %{
+      account: account,
+      bypass: bypass
+    } do
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      _identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+
+      response = %{
+        "errorCode" => "E0000011",
+        "errorSummary" => "Invalid token provided",
+        "errorLink" => "E0000011",
+        "errorId" => "sampleU-5P2FZVslkYBMP_Rsq",
+        "errorCauses" => []
+      }
+
+      for path <- [
+            "api/v1/users",
+            "api/v1/groups"
+          ] do
+        Bypass.stub(bypass, "GET", path, fn conn ->
+          Plug.Conn.send_resp(conn, 401, Jason.encode!(response))
+        end)
+      end
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      assert_email_sent(fn email ->
+        assert email.subject == "Firezone Identity Provider Sync Error"
+        assert email.text_body =~ "failed to sync 1 times"
+      end)
 
       cancel_bypass_expectations_check(bypass)
     end

@@ -8,8 +8,6 @@ defmodule Web.Application do
     _ = OpentelemetryPhoenix.setup(adapter: :cowboy2)
 
     children = [
-      Web.Mailer,
-      Web.Mailer.RateLimiter,
       Web.Endpoint
     ]
 

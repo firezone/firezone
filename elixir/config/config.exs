@@ -100,6 +100,8 @@ config :domain, docker_registry: "us-east1-docker.pkg.dev/firezone-staging/firez
 
 config :domain, outbound_email_adapter_configured?: false
 
+config :domain, web_external_url: "http://localhost:13000"
+
 ###############################
 ##### Web #####################
 ###############################
@@ -213,7 +215,7 @@ config :phoenix, :json_library, Jason
 
 config :swoosh, :api_client, Swoosh.ApiClient.Finch
 
-config :web, Web.Mailer,
+config :domain, Domain.Mailer,
   adapter: Domain.Mailer.NoopAdapter,
   from_email: "test@firez.one"
 

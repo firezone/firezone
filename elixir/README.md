@@ -418,7 +418,7 @@ iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)5> context = %Domain.Aut
 iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)6> {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
 {:ok, ...}
 
-iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)7> Web.Mailer.AuthEmail.sign_in_link_email(identity) |> Web.Mailer.deliver()
+iex(web@web-3vmw.us-east1-d.c.firezone-staging.internal)7> Domain.Mailer.AuthEmail.sign_in_link_email(identity) |> Domain.Mailer.deliver()
 {:ok, %{id: "d24dbe9a-d0f5-4049-ac0d-0df793725a80"}}
 ```
 

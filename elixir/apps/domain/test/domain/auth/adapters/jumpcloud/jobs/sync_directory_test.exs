@@ -561,5 +561,36 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
 
       cancel_bypass_expectations_check(bypass)
     end
+
+    test "sends email on failed directory sync", %{account: account} do
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      _identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+
+      bypass = Bypass.open()
+
+      WorkOSDirectory.override_base_url("http://localhost:#{bypass.port}")
+
+      for path <- [
+            "/directories",
+            "/directory_users",
+            "/directory_groups"
+          ] do
+        Bypass.stub(bypass, "GET", path, fn conn ->
+          conn
+          |> Plug.Conn.prepend_resp_headers([{"content-type", "application/json"}])
+          |> Plug.Conn.send_resp(500, Jason.encode!(%{}))
+        end)
+      end
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      assert_email_sent(fn email ->
+        assert email.subject == "Firezone Identity Provider Sync Error"
+        assert email.text_body =~ "failed to sync 1 times"
+      end)
+
+      cancel_bypass_expectations_check(bypass)
+    end
   end
 end

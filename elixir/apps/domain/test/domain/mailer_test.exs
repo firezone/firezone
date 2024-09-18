@@ -1,6 +1,6 @@
-defmodule Web.MailerTest do
+defmodule Domain.MailerTest do
   use ExUnit.Case, async: true
-  import Web.Mailer
+  import Domain.Mailer
 
   describe "deliver_with_rate_limit/2" do
     test "delivers email with rate limit" do
