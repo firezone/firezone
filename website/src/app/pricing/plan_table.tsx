@@ -238,7 +238,7 @@ export default function PlanTable() {
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">
-            <Tooltip content="Clients automatically switch from unhealthy Gateways to healthy ones">
+            <Tooltip content="Route all traffic from select Clients through Firezone">
               Full-tunnel routing
             </Tooltip>
           </td>
@@ -249,16 +249,6 @@ export default function PlanTable() {
           <td className="gmx-1 py-4">
             <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
-        </tr>
-        <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">
-            <Tooltip content="Speed and availability of Firezone-managed relays that are used when a direct connection is not possible.">
-              Global Relay network
-            </Tooltip>
-          </td>
-          <td className="gmx-1 py-4 flex-wrap text-center">Basic</td>
-          <td className="gmx-1 py-4 flex-wrap text-center">Standard</td>
-          <td className="gmx-1 py-4 flex-wrap text-center">Unthrottled</td>
         </tr>
         <tr>
           <td
