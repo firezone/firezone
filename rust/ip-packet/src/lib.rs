@@ -164,6 +164,11 @@ impl<'a> ConvertibleIpv4Packet<'a> {
         Ipv4HeaderSliceMut::from_slice(self.packet_mut()).expect("we checked this during `new`")
     }
 
+    #[must_use]
+    fn are_checksums_valid(&self) -> bool {
+        true
+    }
+
     pub fn get_source(&self) -> Ipv4Addr {
         self.ip_header().source_addr()
     }
@@ -227,6 +232,11 @@ impl<'a> ConvertibleIpv6Packet<'a> {
     fn header_mut(&mut self) -> Ipv6HeaderSliceMut {
         Ipv6HeaderSliceMut::from_slice(self.packet_mut())
             .expect("We checked this in `new` / `owned`")
+    }
+
+    #[must_use]
+    fn are_checksums_valid(&self) -> bool {
+        true
     }
 
     pub fn get_source(&self) -> Ipv6Addr {
@@ -311,6 +321,14 @@ impl<'a> IpPacket<'a> {
         };
 
         Some(packet)
+    }
+
+    #[must_use]
+    pub fn are_checksums_valid(&self) -> bool {
+        match self {
+            IpPacket::Ipv4(v4) => v4.are_checksums_valid(),
+            IpPacket::Ipv6(v6) => v6.are_checksums_valid(),
+        }
     }
 
     pub fn to_owned(&self) -> IpPacket<'static> {
