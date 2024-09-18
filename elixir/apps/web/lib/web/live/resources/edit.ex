@@ -61,7 +61,7 @@ defmodule Web.Resources.Edit do
                     type="radio_button_group"
                     field={@form[:type]}
                     value="dns"
-                    checked={@form[:type].value == :dns}
+                    checked={to_string(@form[:type].value) == "dns"}
                     required
                   />
                   <label for="resource-type--dns" class={~w[
@@ -86,7 +86,7 @@ defmodule Web.Resources.Edit do
                     type="radio_button_group"
                     field={@form[:type]}
                     value="ip"
-                    checked={@form[:type].value == :ip}
+                    checked={to_string(@form[:type].value) == "ip"}
                     required
                   />
                   <label for="resource-type--ip" class={~w[
@@ -111,7 +111,7 @@ defmodule Web.Resources.Edit do
                     type="radio_button_group"
                     field={@form[:type]}
                     value="cidr"
-                    checked={@form[:type].value == :cidr}
+                    checked={to_string(@form[:type].value) == "cidr"}
                     required
                   />
                   <label for="resource-type--cidr" class={~w[
@@ -140,9 +140,9 @@ defmodule Web.Resources.Edit do
                 label="Address"
                 placeholder={
                   cond do
-                    @form[:type].value == :dns -> "gitlab.company.com"
-                    @form[:type].value == :cidr -> "10.0.0.0/24"
-                    @form[:type].value == :ip -> "10.3.2.1"
+                    to_string(@form[:type].value) == "dns" -> "gitlab.company.com"
+                    to_string(@form[:type].value) == "cidr" -> "10.0.0.0/24"
+                    to_string(@form[:type].value) == "ip" -> "10.3.2.1"
                     true -> "First select a type above"
                   end
                 }
@@ -153,7 +153,7 @@ defmodule Web.Resources.Edit do
 
               <p
                 :if={
-                  @form[:type].value == :dns and
+                  to_string(@form[:type].value) == "dns" and
                     is_binary(@form[:address].value) and
                     @form[:address].value
                     |> String.codepoints()
@@ -164,7 +164,7 @@ defmodule Web.Resources.Edit do
                 <.icon name="hero-exclamation-triangle" class="w-4 h-4" />
                 This is an advanced address format. This Resource will be available to Clients and Gateways v1.2.0 and higher only.
               </p>
-              <div :if={@form[:type].value == :dns}>
+              <div :if={to_string(@form[:type].value) == "dns"}>
                 <div class="mt-2 text-xs text-neutral-500">
                   <.badge type="info" class="p-0 mr-2">NEW</.badge>
                   Wildcard matching is supported:
@@ -183,10 +183,10 @@ defmodule Web.Resources.Edit do
                   matches a single character (e.g. <code class="px-0.5 font-semibold">us-east1.c.com</code>).
                 </div>
               </div>
-              <div :if={@form[:type].value == :ip} class="mt-2 text-xs text-neutral-500">
+              <div :if={to_string(@form[:type].value) == "ip"} class="mt-2 text-xs text-neutral-500">
                 IPv4 and IPv6 addresses are supported.
               </div>
-              <div :if={@form[:type].value == :cidr} class="mt-2 text-xs text-neutral-500">
+              <div :if={to_string(@form[:type].value) == "cidr"} class="mt-2 text-xs text-neutral-500">
                 IPv4 and IPv6 CIDR ranges are supported.
               </div>
             </div>
