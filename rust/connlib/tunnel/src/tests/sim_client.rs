@@ -222,6 +222,9 @@ impl SimClient {
                     {
                         AllRecordData::A(a) => IpAddr::from(a.addr()),
                         AllRecordData::Aaaa(aaaa) => IpAddr::from(aaaa.addr()),
+                        AllRecordData::Ptr(_) => {
+                            continue;
+                        }
                         unhandled => {
                             panic!("Unexpected record data: {unhandled:?}")
                         }
@@ -650,11 +653,12 @@ impl RefClient {
             .filter(|r| !self.disabled_resources.contains(r))
     }
 
-    pub(crate) fn is_locally_answered_query(&self, domain: &DomainName) -> bool {
+    pub(crate) fn is_locally_answered_query(&self, domain: &DomainName, rtype: Rtype) -> bool {
         let is_known_host = self.known_hosts.contains_key(&domain.to_string());
         let is_dns_resource = self.dns_resource_by_domain(domain).is_some();
+        let is_suppported_type = matches!(rtype, Rtype::A | Rtype::AAAA | Rtype::PTR);
 
-        is_known_host || is_dns_resource
+        (is_known_host || is_dns_resource) && is_suppported_type
     }
 
     pub(crate) fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
@@ -794,7 +798,9 @@ impl RefClient {
         }
 
         // If we are querying a DNS resource, we will issue a connection intent to the DNS resource, not the CIDR resource.
-        if self.dns_resource_by_domain(&query.domain).is_some() {
+        if self.dns_resource_by_domain(&query.domain).is_some()
+            && matches!(query.r_type, Rtype::A | Rtype::AAAA | Rtype::PTR)
+        {
             return None;
         }
 

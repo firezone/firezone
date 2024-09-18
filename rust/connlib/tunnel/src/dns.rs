@@ -279,6 +279,8 @@ impl StubResolver {
             (Rtype::PTR, _) => {
                 let fqdn = self.resource_address_name_by_reservse_dns(&domain)?;
 
+                tracing::trace!(%domain, %fqdn, "Resolved PTR query to domain");
+
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
             }
             _ => {
