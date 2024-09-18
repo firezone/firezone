@@ -156,7 +156,7 @@ If you are using Nix, see [scripts/nix/README](../scripts/nix/README.md).
 ### Pre-commit
 
 We use [pre-commit](https://pre-commit.com) to catch any static analysis issues
-before code is committed. 
+before code is committed.
 
 - Install pre-commit and other Python packages with `pip install -r .github/requirements.txt`
 - Install the repo-specific checks with `pre-commit install --config .github/pre-commit-config.yaml`
