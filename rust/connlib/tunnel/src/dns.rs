@@ -217,7 +217,7 @@ impl StubResolver {
         let Some(datagram) = packet.as_udp() else {
             let protocol = packet.next_header().keyword_str().unwrap_or("unassigned");
 
-            tracing::debug!(%protocol, "DNS is only support over UDP");
+            tracing::debug!(%protocol, "DNS is only supported over UDP");
             return None;
         };
 
