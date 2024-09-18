@@ -150,10 +150,11 @@ impl StubResolver {
             .fqdn_to_ips
             .entry(fqdn.clone())
             .or_insert_with(|| {
-                // TODO: the side effeccts are executed even if this is not inserted
-                // make it so that's not the case
                 let mut ips = self.ip_provider.get_n_ipv4(4);
                 ips.extend_from_slice(&self.ip_provider.get_n_ipv6(4));
+
+                tracing::debug!(domain = %fqdn, ?ips, "Assigning proxy IPs");
+
                 ips
             })
             .clone();
