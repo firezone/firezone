@@ -18,7 +18,6 @@ export default function GUI({ title }: { title: string }) {
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6722">
           Fixes a routing bug when one of several overlapping CIDR resources gets disabled / removed.
-          resources
           </ChangeItem>
         </ul>
       </Entry>
