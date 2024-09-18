@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-iced = { version = "0.12.1", features = ["image", "multi-window"], default-features = false }
+# `tiny-skia` uses less RAM than the GPU backends. About 6.5 MiB on Ubuntu.
+iced = { version = "0.13", features = ["image", "tiny-skia", "multi-window"], default-features = false }
 
 [lints]
 workspace = true

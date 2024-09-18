@@ -1,26 +1,63 @@
 use iced::{
-    event, executor,
-    multi_window::Application,
+    event,
     widget::{button, column, container, image, row, text, text_input},
-    window, Alignment, Background, Border, Color, Command, Event, Length, Renderer, Settings,
-    Subscription,
+    window, Alignment, Background, Border, Color, Event, Length, Renderer, Subscription,
 };
 
 type Element<'a> = iced::Element<'a, Message, FzTheme, Renderer>;
 
 pub fn main() -> iced::Result {
+    // The main icon should be at least 90x90, since Ubuntu's default
+    // desktop wants 48 px, and that's nearly doubled if Ubuntu is
+    // running in a HiDPI Parallels VM on a Mac.
     let icon = window::icon::from_file_data(
         include_bytes!("../../gui-client/src-tauri/icons/32x32.png"),
         None,
     )
     .expect("Baked-in icon PNG should always be decodable");
 
+    /*
     let mut settings = Settings::with_flags(Flags { icon: icon.clone() });
     settings.window.exit_on_close_request = false;
     settings.window.icon = Some(icon);
     settings.window.size = [640, 480].into();
+    */
 
-    FirezoneApp::run(settings)
+    let logo = image::Handle::from_bytes(&include_bytes!("../../gui-client/src/logo.png")[..]);
+
+    let settings = window::Settings {
+        exit_on_close_request: false,
+        icon: Some(icon),
+        size: [640.0f32, 480.0].into(),
+        ..Default::default()
+    };
+
+    let (about_window, about_task) = window::open(settings.clone());
+    let (settings_window, settings_task) = window::open(settings.clone());
+    let (welcome_window, welcome_task) = window::open(settings);
+
+    let tasks = iced::Task::batch([about_task, settings_task, welcome_task]);
+
+    let app_state = FirezoneApp {
+        about_window,
+        settings_window,
+        welcome_window,
+
+        logo,
+
+        settings_tab: Default::default(),
+
+        auth_base_url: String::new(),
+        api_url: String::new(),
+        log_filter: String::new(),
+    };
+
+    // What `iced` calls "daemon" here is a GUI app that doesn't
+    // open any windows by default, has no "main" window, and continues
+    // to run after all its windows are closed.
+    let daemon = iced::daemon(FirezoneApp::title, FirezoneApp::update, FirezoneApp::view)
+        .subscription(FirezoneApp::subscription);
+    daemon.run_with(|| (app_state, tasks.map(|_| Message::WindowsAllOpen)))
 }
 
 struct FirezoneApp {
@@ -59,10 +96,11 @@ impl Default for SettingsTab {
 #[derive(Clone, Debug)]
 enum Message {
     ChangeSettingsTab(SettingsTab),
+    CloseRequested(window::Id),
     InputChanged((SettingsField, String)),
     SignIn,
-    SubscribedEvent(iced::Event),
     Quit,
+    WindowsAllOpen,
 }
 
 enum FzWindow {
@@ -71,60 +109,15 @@ enum FzWindow {
     Welcome,
 }
 
-struct Flags {
-    icon: window::Icon,
-}
-
-impl Default for Flags {
-    fn default() -> Self {
-        unreachable!()
-    }
-}
-
-impl Application for FirezoneApp {
-    type Executor = executor::Default;
-    type Flags = Flags;
-    type Message = Message;
-    type Theme = FzTheme;
-
-    // I don't know why `iced` calls these params `flags`.
-    fn new(flags: Self::Flags) -> (Self, Command<Message>) {
-        let logo = image::Handle::from_memory(include_bytes!("../../gui-client/src/logo.png"));
-
-        let settings = window::Settings {
-            exit_on_close_request: false,
-            icon: Some(flags.icon),
-            size: [640, 480].into(),
-            ..Default::default()
-        };
-
-        let (about_window, about_cmd) = window::spawn(settings.clone());
-        let (settings_window, settings_cmd) = window::spawn(settings);
-
-        (
-            Self {
-                about_window,
-                settings_window,
-                welcome_window: window::Id::MAIN,
-
-                logo,
-
-                settings_tab: Default::default(),
-
-                auth_base_url: String::new(),
-                api_url: String::new(),
-                log_filter: String::new(),
-            },
-            Command::batch([about_cmd, settings_cmd]),
-        )
-    }
-
-    fn subscription(&self) -> Subscription<Self::Message> {
-        event::listen().map(Message::SubscribedEvent)
-    }
-
-    fn theme(&self, _window: window::Id) -> Self::Theme {
-        Default::default()
+impl FirezoneApp {
+    fn subscription(&self) -> Subscription<Message> {
+        event::listen_with(|event, _status, id| match event {
+            Event::Keyboard(_) => None,
+            Event::Mouse(_) => None,
+            Event::Touch(_) => None,
+            Event::Window(iced::window::Event::CloseRequested) => Some(Message::CloseRequested(id)),
+            Event::Window(_) => None,
+        })
     }
 
     fn title(&self, id: window::Id) -> String {
@@ -136,7 +129,7 @@ impl Application for FirezoneApp {
         .into()
     }
 
-    fn update(&mut self, message: Message) -> Command<Message> {
+    fn update(&mut self, message: Message) -> iced::Task<Message> {
         match message {
             Message::ChangeSettingsTab(new_tab) => self.settings_tab = new_tab,
             Message::InputChanged((field, s)) => match field {
@@ -144,20 +137,21 @@ impl Application for FirezoneApp {
                 SettingsField::ApiUrl => self.api_url = s,
                 SettingsField::LogFilter => self.log_filter = s,
             },
-            Message::SubscribedEvent(Event::Window(id, window::Event::CloseRequested)) => {
+            Message::CloseRequested(id) => {
                 return window::change_mode::<Message>(id, window::Mode::Hidden)
             }
-            Message::SignIn | Message::SubscribedEvent(_) => {}
+            Message::SignIn => {}
             // Closing all windows causes Iced to exit the app
             Message::Quit => {
-                return Command::batch([
+                return iced::Task::batch([
                     window::close(self.about_window),
                     window::close(self.settings_window),
                     window::close(self.welcome_window),
                 ])
             }
+            Message::WindowsAllOpen => {}
         }
-        Command::none()
+        iced::Task::none()
     }
 
     fn view(&self, id: window::Id) -> Element {
@@ -167,21 +161,17 @@ impl Application for FirezoneApp {
             FzWindow::Welcome => self.view_welcome(),
         }
     }
-}
 
-impl FirezoneApp {
     fn view_about(&self) -> Element {
         let content = column![
             image::Image::new(self.logo.clone()).width(240).height(240),
             text("Version 42.9000"),
             button("Quit").on_press(Message::Quit).padding(16),
         ]
-        .align_items(Alignment::Center);
+        .align_x(Alignment::Center);
         container(content)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .center_x()
-            .center_y()
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
             .into()
     }
 
@@ -191,7 +181,7 @@ impl FirezoneApp {
             button("DiagnosticLogs")
                 .on_press(Message::ChangeSettingsTab(SettingsTab::DiagnosticLogs)),
         ];
-        let tabs = container(tabs).width(Length::Fill).center_x();
+        let tabs = container(tabs).center_x(Length::Fill);
 
         let content = match self.settings_tab {
             SettingsTab::Advanced => self.tab_advanced_settings(),
@@ -214,21 +204,17 @@ impl FirezoneApp {
             .padding(20)
         ]
         .padding(20)
-        .align_items(Alignment::Center);
+        .align_x(Alignment::Center);
         container(content)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .center_x()
-            .center_y()
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
             .into()
     }
 
     fn tab_diagnostic_logs(&self) -> Element {
         container(text("TODO"))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .center_x()
-            .center_y()
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
             .into()
     }
 
@@ -240,13 +226,11 @@ impl FirezoneApp {
             button("Sign in").on_press(Message::SignIn).padding(16),
         ]
         .padding(20)
-        .align_items(Alignment::Center);
+        .align_x(Alignment::Center);
 
         container(content)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .center_x()
-            .center_y()
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
             .into()
     }
 
@@ -266,116 +250,98 @@ impl FirezoneApp {
 #[derive(Clone, Default)]
 struct FzTheme {}
 
-impl iced::application::StyleSheet for FzTheme {
-    type Style = ();
-
-    fn appearance(&self, _style: &Self::Style) -> iced::application::Appearance {
-        iced::application::Appearance {
+impl iced::daemon::DefaultStyle for FzTheme {
+    fn default_style(&self) -> iced::daemon::Appearance {
+        iced::daemon::Appearance {
             background_color: Color::from_rgb8(0xf5, 0xf5, 0xf5),
             text_color: Color::from_rgb8(0x11, 0x18, 0x27),
         }
     }
 }
 
-impl button::StyleSheet for FzTheme {
-    type Style = ();
+impl button::Catalog for FzTheme {
+    type Class<'a> = ();
 
-    fn active(&self, _style: &Self::Style) -> button::Appearance {
-        button::Appearance {
-            background: Some(Background::Color(Color::from_rgb8(94, 0, 214))),
-            border: Border {
-                color: Color::from_rgb8(0, 0, 0),
-                width: 0.0,
-                radius: 4.into(),
+    fn default<'a>() -> Self::Class<'a> {}
+
+    fn style(&self, _: &Self::Class<'_>, status: button::Status) -> button::Style {
+        match status {
+            button::Status::Active | button::Status::Pressed => button::Style {
+                background: Some(Background::Color(Color::from_rgb8(94, 0, 214))),
+                border: Border {
+                    color: Color::from_rgb8(0, 0, 0),
+                    width: 0.0,
+                    radius: 4.into(),
+                },
+                text_color: Color::from_rgb8(255, 255, 255),
+                ..Default::default()
             },
-            text_color: Color::from_rgb8(255, 255, 255),
-            ..Default::default()
-        }
-    }
-
-    fn hovered(&self, _style: &Self::Style) -> button::Appearance {
-        button::Appearance {
-            background: Some(Background::Color(Color::from_rgb8(94, 0, 214))),
-            border: Border {
-                color: Color::from_rgb8(0xf5, 0xf5, 0xf5),
-                width: 2.0,
-                radius: 4.into(),
+            button::Status::Hovered => button::Style {
+                background: Some(Background::Color(Color::from_rgb8(94, 0, 214))),
+                border: Border {
+                    color: Color::from_rgb8(0xf5, 0xf5, 0xf5),
+                    width: 2.0,
+                    radius: 4.into(),
+                },
+                text_color: Color::from_rgb8(255, 255, 255),
+                ..Default::default()
             },
-            text_color: Color::from_rgb8(255, 255, 255),
-            ..Default::default()
-        }
-    }
-
-    fn pressed(&self, style: &Self::Style) -> button::Appearance {
-        button::StyleSheet::active(self, style)
-    }
-
-    fn disabled(&self, _style: &Self::Style) -> button::Appearance {
-        button::Appearance {
-            background: Some(Background::Color(Color::from_rgb8(96, 96, 96))),
-            border: Border {
-                color: Color::from_rgb8(0, 0, 0),
-                width: 0.0,
-                radius: 4.into(),
+            button::Status::Disabled => button::Style {
+                background: Some(Background::Color(Color::from_rgb8(96, 96, 96))),
+                border: Border {
+                    color: Color::from_rgb8(0, 0, 0),
+                    width: 0.0,
+                    radius: 4.into(),
+                },
+                text_color: Color::from_rgb8(0, 0, 0),
+                ..Default::default()
             },
-            text_color: Color::from_rgb8(0, 0, 0),
-            ..Default::default()
         }
     }
 }
 
-impl container::StyleSheet for FzTheme {
-    type Style = ();
+impl container::Catalog for FzTheme {
+    type Class<'a> = ();
 
-    fn appearance(&self, _style: &Self::Style) -> container::Appearance {
+    fn default<'a>() -> Self::Class<'a> {}
+
+    fn style(&self, _: &Self::Class<'_>) -> container::Style {
         Default::default()
     }
 }
 
-impl text::StyleSheet for FzTheme {
-    type Style = ();
+impl text::Catalog for FzTheme {
+    type Class<'a> = ();
 
-    fn appearance(&self, _style: Self::Style) -> text::Appearance {
+    fn default<'a>() -> Self::Class<'a> {}
+
+    fn style(&self, _: &Self::Class<'_>) -> text::Style {
         Default::default()
     }
 }
 
-impl text_input::StyleSheet for FzTheme {
-    type Style = ();
+impl text_input::Catalog for FzTheme {
+    type Class<'a> = ();
 
-    fn active(&self, _style: &Self::Style) -> text_input::Appearance {
-        text_input::Appearance {
-            background: Background::Color(Color::from_rgba8(0, 0, 0, 0.0)),
-            border: Border {
-                color: Color::from_rgb8(0, 0, 0),
-                radius: 0.0.into(),
-                width: 0.0,
+    fn default<'a>() -> Self::Class<'a> {}
+
+    fn style(&self, _: &Self::Class<'_>, status: text_input::Status) -> text_input::Style {
+        match status {
+            text_input::Status::Active
+            | text_input::Status::Disabled
+            | text_input::Status::Focused
+            | text_input::Status::Hovered => text_input::Style {
+                background: Background::Color(Color::from_rgba8(0, 0, 0, 0.0)),
+                border: Border {
+                    color: Color::from_rgb8(0, 0, 0),
+                    radius: 0.0.into(),
+                    width: 0.0,
+                },
+                icon: Color::from_rgb8(0, 0, 0),
+                placeholder: Color::from_rgb8(180, 180, 180),
+                value: Color::from_rgb8(0, 0, 0),
+                selection: Color::from_rgb8(0, 0, 255),
             },
-            icon_color: Color::from_rgb8(0, 0, 0),
         }
-    }
-
-    fn focused(&self, style: &Self::Style) -> text_input::Appearance {
-        text_input::StyleSheet::active(self, style)
-    }
-
-    fn placeholder_color(&self, _style: &Self::Style) -> Color {
-        Color::from_rgb8(180, 180, 180)
-    }
-
-    fn value_color(&self, _style: &Self::Style) -> Color {
-        Color::from_rgb8(0, 0, 0)
-    }
-
-    fn disabled_color(&self, _style: &Self::Style) -> Color {
-        todo!()
-    }
-
-    fn selection_color(&self, _style: &Self::Style) -> Color {
-        Color::from_rgb8(0, 0, 255)
-    }
-
-    fn disabled(&self, style: &Self::Style) -> text_input::Appearance {
-        text_input::StyleSheet::active(self, style)
     }
 }
