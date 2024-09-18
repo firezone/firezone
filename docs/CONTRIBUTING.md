@@ -159,6 +159,7 @@ We use [pre-commit](https://pre-commit.com) to catch any static analysis issues
 before code is committed. 
 
 - Install system-wide with Homebrew: `brew install pre-commit` or pip: `pip install pre-commit`.
+- Install Python packages we need with `pip install -r .github/requirements.txt`
 - Install the repo-specific checks with `pre-commit install --config .github/pre-commit-config.yaml`
   (As in `.github/workflows/_static-analysis.yml`)
 
