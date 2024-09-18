@@ -1,3 +1,8 @@
+use crate::{
+    client::{IPV4_RESOURCES, IPV6_RESOURCES},
+    proptest::{host_v4, host_v6},
+};
+
 use super::sim_net::{any_ip_stack, any_port, Host};
 use connlib_shared::{
     messages::{client::ResourceDescription, DnsServer, RelayId, ResourceId},
@@ -186,28 +191,49 @@ pub(crate) fn dns_queries(
         let zipped = unique_queries.zip(domains);
 
         zipped
-            .map(|((dns_server, query_id), domain)| {
+            .map(move |((dns_server, query_id), domain)| {
                 (
                     Just(domain),
                     Just(dns_server),
-                    intercepted_query_type(),
+                    query_type(),
                     Just(query_id),
+                    ptr_query_ip(),
                 )
-                    .prop_map(move |(domain, dns_server, r_type, query_id)| {
-                        DnsQuery {
-                            domain,
-                            r_type,
-                            query_id,
-                            dns_server,
-                        }
-                    })
+                    .prop_map(
+                        |(mut domain, dns_server, r_type, query_id, maybe_reverse_record)| {
+                            if matches!(r_type, Rtype::PTR) {
+                                domain =
+                                    DomainName::reverse_from_addr(maybe_reverse_record).unwrap();
+                            }
+
+                            DnsQuery {
+                                domain,
+                                r_type,
+                                query_id,
+                                dns_server,
+                            }
+                        },
+                    )
             })
             .collect::<Vec<_>>()
     })
 }
 
-pub(crate) fn intercepted_query_type() -> impl Strategy<Value = Rtype> {
-    prop_oneof![Just(Rtype::A), Just(Rtype::AAAA)]
+fn ptr_query_ip() -> impl Strategy<Value = IpAddr> {
+    prop_oneof![
+        host_v4(IPV4_RESOURCES).prop_map_into(),
+        host_v6(IPV6_RESOURCES).prop_map_into(),
+        any::<IpAddr>(),
+    ]
+}
+
+pub(crate) fn query_type() -> impl Strategy<Value = Rtype> {
+    prop_oneof![
+        Just(Rtype::A),
+        Just(Rtype::AAAA),
+        Just(Rtype::MX),
+        Just(Rtype::PTR),
+    ]
 }
 
 pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {

@@ -67,15 +67,15 @@ impl SimDns {
             .get(&name)
             .into_iter()
             .flatten()
-            .filter(|ip| match qtype {
-                Rtype::A => ip.is_ipv4(),
-                Rtype::AAAA => ip.is_ipv6(),
-                _ => todo!(),
-            })
             .copied()
-            .map(|ip| match ip {
-                IpAddr::V4(v4) => AllRecordData::<Vec<_>, DomainName>::A(v4.into()),
-                IpAddr::V6(v6) => AllRecordData::<Vec<_>, DomainName>::Aaaa(v6.into()),
+            .filter_map(|ip| match (qtype, ip) {
+                (Rtype::A, IpAddr::V4(v4)) => {
+                    Some(AllRecordData::<Vec<_>, DomainName>::A(v4.into()))
+                }
+                (Rtype::AAAA, IpAddr::V6(v6)) => {
+                    Some(AllRecordData::<Vec<_>, DomainName>::Aaaa(v6.into()))
+                }
+                _ => None,
             })
             .map(|rdata| Record::new(name.clone(), Class::IN, Ttl::from_days(1), rdata));
 

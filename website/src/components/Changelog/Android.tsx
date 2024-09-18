@@ -15,6 +15,9 @@ export default function Android() {
           <ChangeItem pull="6707">
             Resetting the settings now resets the list of favorited Resources, too.
           </ChangeItem>
+          <ChangeItem pull="6765">
+            Fixes a bug where DNS PTR queries by the system did not get answered.
+          </ChangeItem>
         </ul>
       <Entry version="1.3.3" date={new Date(todo)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
