@@ -58,6 +58,11 @@ impl Device {
     }
 
     pub fn write(&self, packet: IpPacket<'_>) -> io::Result<usize> {
+        debug_assert!(
+            packet.are_checksums_valid(),
+            "Attempted to write IP packet with invalid checksums"
+        );
+
         tracing::trace!(target: "wire::dev::send", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         match packet {
