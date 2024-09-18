@@ -42,6 +42,7 @@ defmodule Domain.Policies.Policy.Changeset do
         end)
         |> create(subject)
         |> put_change(:persistent_id, policy.persistent_id)
+        |> put_change(:disabled_at, if(policy.disabled_at, do: DateTime.utc_now()))
 
       changeset =
         policy
