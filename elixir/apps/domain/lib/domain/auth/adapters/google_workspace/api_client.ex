@@ -34,6 +34,49 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
     [conn_opts: [transport_opts: transport_opts]]
   end
 
+  def fetch_service_account_token(jwt) do
+    endpoint =
+      Domain.Config.fetch_env!(:domain, __MODULE__)
+      |> Keyword.fetch!(:token_endpoint)
+
+    token_endpoint = Path.join(endpoint, "token")
+
+    payload =
+      URI.encode_query(%{
+        "grant_type" => "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        "assertion" => jwt
+      })
+
+    request =
+      Finch.build(
+        :post,
+        token_endpoint,
+        [{"Content-Type", "application/x-www-form-urlencoded"}],
+        payload
+      )
+
+    with {:ok, %Finch.Response{body: response, status: status}} when status in 200..299 <-
+           Finch.request(request, @pool_name),
+         {:ok, %{"access_token" => access_token}} <- Jason.decode(response) do
+      {:ok, access_token}
+    else
+      {:ok, %Finch.Response{status: status}} when status in 500..599 ->
+        {:error, :retry_later}
+
+      {:ok, %Finch.Response{body: response, status: status}} ->
+        case Jason.decode(response) do
+          {:ok, json_response} ->
+            {:error, {status, json_response}}
+
+          _error ->
+            {:error, {status, response}}
+        end
+
+      other ->
+        other
+    end
+  end
+
   def list_users(api_token) do
     endpoint =
       Domain.Config.fetch_env!(:domain, __MODULE__)
@@ -80,6 +123,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
       URI.parse("#{endpoint}/admin/directory/v1/customer/my_customer/orgunits")
       |> URI.append_query(
         URI.encode_query(%{
+          "type" => "ALL",
           "maxResults" => @max_results
         })
       )

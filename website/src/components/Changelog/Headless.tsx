@@ -9,6 +9,20 @@ export default function Headless() {
 
   return (
     <Entries href={href} arches={arches} title="Linux headless">
+      <Entry version="1.3.1" date={new Date("2024-09-05")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6563">
+            Removes unnecessary packet buffers for a minor performance increase.
+          </ChangeItem>
+        </ul>
+      </Entry>
+      <Entry version="1.3.0" date={new Date("2024-08-30")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6434">
+            Adds the Internet Resource feature.
+          </ChangeItem>
+        </ul>
+      </Entry>
       <Entry version="1.2.0" date={new Date("2024-08-21")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="5901">

@@ -11,7 +11,7 @@ permissions:
   contents: 'read'
   id-token: 'write'
 
-# Never tolerate warnings.
+# Never tolerate warnings. Duplicated in `_tauri.yml`
 env:
   RUSTFLAGS: "-Dwarnings"
   RUSTDOCFLAGS: "-D warnings"
@@ -58,8 +58,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: |
-          rustup install --no-self-update nightly-2024-06-01 --profile minimal # The exact nightly version doesn't matter, just pin a random one.
-          cargo +nightly-2024-06-01 udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
+          rustup install --no-self-update nightly-2024-09-01 --profile minimal # The exact nightly version doesn't matter, just pin a random one.
+          cargo +nightly-2024-09-01 udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
         name: Check for unused dependencies
       - run: cargo fmt -- --check
       - run: cargo doc --all-features --no-deps --document-private-items ${{ steps.setup-rust.outputs.packages }}
@@ -99,13 +99,17 @@ jobs:
         shell: bash
         run: |
 
+          set -x
+
           # First, run all tests.
           cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored --nocapture
 
-          # Assert that we sample certain transitions
-          rg SendICMPPacketToCidrResource $TESTCASES_DIR
-          rg SendICMPPacketToDnsResource $TESTCASES_DIR
-          rg SendDnsQueries $TESTCASES_DIR
+          # Poor man's test coverage testing: Grep the generated logs for specific patterns / lines.
+          rg --count --no-ignore SendICMPPacketToCidrResource $TESTCASES_DIR
+          rg --count --no-ignore SendICMPPacketToDnsResource $TESTCASES_DIR
+          rg --count --no-ignore SendDnsQueries $TESTCASES_DIR
+          rg --count --no-ignore "Performed IP-NAT46" $TESTCASES_DIR
+          rg --count --no-ignore "Performed IP-NAT64" $TESTCASES_DIR
 
           # Backup dumped state and transition samples
           mv $TESTCASES_DIR $TESTCASES_BACKUP_DIR
@@ -131,16 +135,6 @@ jobs:
           CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
           TESTCASES_DIR: "connlib/tunnel/testcases"
           TESTCASES_BACKUP_DIR: "connlib/tunnel/testcases_backup"
-      - name: Upload testcase data
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
-        with:
-          overwrite: true
-          name: proptest-cases
-          path: |
-            rust/connlib/tunnel/testcases
-            rust/connlib/tunnel/testcases_backup
-          retention-days: 7
 
   # Runs the Tauri client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>

@@ -22,13 +22,13 @@ use domain::{
     base::{Message, Rtype, ToName},
     rdata::AllRecordData,
 };
-use ip_network::{Ipv4Network, Ipv6Network};
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, MutableIpPacket, Packet as _};
+use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket};
 use itertools::Itertools as _;
 use prop::collection;
 use proptest::prelude::*;
-use snownet::Transmit;
+use snownet::{EncryptBuffer, Transmit};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     mem,
@@ -50,6 +50,9 @@ pub(crate) struct SimClient {
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     pub(crate) dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 
+    pub(crate) ipv4_routes: BTreeSet<Ipv4Network>,
+    pub(crate) ipv6_routes: BTreeSet<Ipv6Network>,
+
     pub(crate) sent_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket<'static>>,
     pub(crate) received_dns_responses: BTreeMap<(SocketAddr, QueryId), IpPacket<'static>>,
 
@@ -57,6 +60,7 @@ pub(crate) struct SimClient {
     pub(crate) received_icmp_replies: BTreeMap<(u16, u16), IpPacket<'static>>,
 
     buffer: Vec<u8>,
+    enc_buffer: EncryptBuffer,
 }
 
 impl SimClient {
@@ -71,6 +75,9 @@ impl SimClient {
             sent_icmp_requests: Default::default(),
             received_icmp_replies: Default::default(),
             buffer: vec![0u8; (1 << 16) - 1],
+            enc_buffer: EncryptBuffer::new((1 << 16) - 1),
+            ipv4_routes: Default::default(),
+            ipv6_routes: Default::default(),
         }
     }
 
@@ -113,23 +120,24 @@ impl SimClient {
 
     pub(crate) fn encapsulate(
         &mut self,
-        packet: MutableIpPacket<'static>,
+        packet: IpPacket<'static>,
         now: Instant,
     ) -> Option<snownet::Transmit<'static>> {
-        {
-            let packet = packet.to_owned().into_immutable();
-
-            if let Some(icmp) = packet.as_icmp() {
-                let echo_request = icmp.as_echo_request().expect("to be echo request");
-
+        if let Some(icmp) = packet.as_icmpv4() {
+            if let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type() {
                 self.sent_icmp_requests
-                    .insert((echo_request.sequence(), echo_request.identifier()), packet);
+                    .insert((echo.seq, echo.id), packet.clone());
+            }
+        }
+
+        if let Some(icmp) = packet.as_icmpv6() {
+            if let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type() {
+                self.sent_icmp_requests
+                    .insert((echo.seq, echo.id), packet.clone());
             }
         }
 
         {
-            let packet = packet.to_owned().into_immutable();
-
             if let Some(udp) = packet.as_udp() {
                 if let Ok(message) = Message::from_slice(udp.payload()) {
                     debug_assert!(
@@ -138,16 +146,21 @@ impl SimClient {
                     );
 
                     // Map back to upstream socket so we can assert on it correctly.
-                    let sentinel = SocketAddr::from((packet.destination(), udp.get_destination()));
+                    let sentinel = SocketAddr::from((packet.destination(), udp.destination_port()));
                     let upstream = self.upstream_dns_by_sentinel(&sentinel).unwrap();
 
                     self.sent_dns_queries
-                        .insert((upstream, message.header().id()), packet);
+                        .insert((upstream, message.header().id()), packet.clone());
                 }
             }
         }
 
-        Some(self.sut.encapsulate(packet, now)?.into_owned())
+        let Some(enc_packet) = self.sut.encapsulate(packet, now, &mut self.enc_buffer) else {
+            self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
+            return None;
+        };
+
+        Some(enc_packet.to_transmit(&self.enc_buffer).into_owned())
     }
 
     pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) {
@@ -166,35 +179,42 @@ impl SimClient {
     }
 
     /// Process an IP packet received on the client.
-    pub(crate) fn on_received_packet(&mut self, packet: IpPacket<'_>) {
-        if let Some(icmp) = packet.as_icmp() {
-            let echo_reply = icmp.as_echo_reply().expect("to be echo reply");
+    pub(crate) fn on_received_packet(&mut self, packet: IpPacket<'static>) {
+        if let Some(icmp) = packet.as_icmpv4() {
+            if let Icmpv4Type::EchoReply(echo) = icmp.icmp_type() {
+                self.received_icmp_replies
+                    .insert((echo.seq, echo.id), packet.clone());
 
-            self.received_icmp_replies.insert(
-                (echo_reply.sequence(), echo_reply.identifier()),
-                packet.to_owned(),
-            );
+                return;
+            }
+        }
 
-            return;
-        };
+        if let Some(icmp) = packet.as_icmpv6() {
+            if let Icmpv6Type::EchoReply(echo) = icmp.icmp_type() {
+                self.received_icmp_replies
+                    .insert((echo.seq, echo.id), packet.clone());
+
+                return;
+            }
+        }
 
         if let Some(udp) = packet.as_udp() {
-            if udp.get_source() == 53 {
+            if udp.source_port() == 53 {
                 let message = Message::from_slice(udp.payload())
                     .expect("ip packets on port 53 to be DNS packets");
 
                 // Map back to upstream socket so we can assert on it correctly.
-                let sentinel = SocketAddr::from((packet.source(), udp.get_source()));
+                let sentinel = SocketAddr::from((packet.source(), udp.source_port()));
                 let upstream = self.upstream_dns_by_sentinel(&sentinel).unwrap();
 
                 self.received_dns_responses
-                    .insert((upstream, message.header().id()), packet.to_owned());
+                    .insert((upstream, message.header().id()), packet.clone());
 
                 for record in message.answer().unwrap() {
                     let record = record.unwrap();
                     let domain = record.owner().to_name();
 
-                    #[allow(clippy::wildcard_enum_match_arm)]
+                    #[expect(clippy::wildcard_enum_match_arm)]
                     let ip = match record
                         .into_any_record::<AllRecordData<_, _>>()
                         .unwrap()
@@ -219,7 +239,7 @@ impl SimClient {
             }
         }
 
-        unimplemented!("Unhandled packet")
+        tracing::error!(?packet, "Unhandled packet");
     }
 
     pub(crate) fn update_relays<'a>(
@@ -262,6 +282,9 @@ pub struct RefClient {
     #[derivative(Debug = "ignore")]
     upstream_dns_resolvers: Vec<DnsServer>,
 
+    ipv4_routes: BTreeSet<Ipv4Network>,
+    ipv6_routes: BTreeSet<Ipv6Network>,
+
     /// Tracks all resources in the order they have been added in.
     ///
     /// When reconnecting to the portal, we simulate them being re-added in the same order.
@@ -294,6 +317,9 @@ pub struct RefClient {
     #[derivative(Debug = "ignore")]
     pub(crate) connected_dns_resources: HashSet<(ResourceId, DomainName)>,
 
+    #[derivative(Debug = "ignore")]
+    pub(crate) connected_gateways: BTreeSet<GatewayId>,
+
     /// Actively disabled resources by the UI
     #[derivative(Debug = "ignore")]
     pub(crate) disabled_resources: BTreeSet<ResourceId>,
@@ -324,10 +350,35 @@ impl RefClient {
     }
 
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
+        let maybe_cidr_resource = self
+            .cidr_resources
+            .iter()
+            .find_map(|(n, r)| (r == resource).then_some(n));
+
+        match maybe_cidr_resource {
+            Some(IpNetwork::V4(v4)) => {
+                tracing::debug!(%v4, "Removing CIDR route");
+
+                self.ipv4_routes.remove(&v4);
+            }
+            Some(IpNetwork::V6(v6)) => {
+                tracing::debug!(%v6, "Removing CIDR route");
+
+                self.ipv6_routes.remove(&v6);
+            }
+            _ => {}
+        }
+
         self.connected_cidr_resources.remove(resource);
         self.connected_dns_resources.retain(|(r, _)| r != resource);
+
         if self.internet_resource.is_some_and(|r| &r == resource) {
             self.connected_internet_resource = false;
+
+            tracing::debug!("Removing Internet Resource routes");
+
+            self.ipv4_routes.remove(&Ipv4Network::DEFAULT_ROUTE);
+            self.ipv6_routes.remove(&Ipv6Network::DEFAULT_ROUTE);
         }
     }
 
@@ -346,16 +397,34 @@ impl RefClient {
         self.connected_cidr_resources.clear();
         self.connected_dns_resources.clear();
         self.connected_internet_resource = false;
+        self.connected_gateways.clear();
     }
 
     pub(crate) fn add_internet_resource(&mut self, r: ResourceDescriptionInternet) {
         self.internet_resource = Some(r.id);
-        self.resources.push(ResourceDescription::Internet(r));
+        self.resources
+            .push(ResourceDescription::Internet(r.clone()));
+
+        if self.disabled_resources.contains(&r.id) {
+            return;
+        }
+
+        self.ipv4_routes.insert(Ipv4Network::DEFAULT_ROUTE);
+        self.ipv6_routes.insert(Ipv6Network::DEFAULT_ROUTE);
     }
 
     pub(crate) fn add_cidr_resource(&mut self, r: ResourceDescriptionCidr) {
         self.cidr_resources.insert(r.address, r.id);
-        self.resources.push(ResourceDescription::Cidr(r));
+        self.resources.push(ResourceDescription::Cidr(r.clone()));
+
+        if self.disabled_resources.contains(&r.id) {
+            return;
+        }
+
+        match r.address {
+            IpNetwork::V4(v4) => self.ipv4_routes.insert(v4),
+            IpNetwork::V6(v6) => self.ipv6_routes.insert(v6),
+        };
     }
 
     pub(crate) fn add_dns_resource(&mut self, r: ResourceDescriptionDns) {
@@ -467,7 +536,7 @@ impl RefClient {
 
         // If we have a resource, the first packet will initiate a connection to the gateway.
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.connect_to_internet_or_cidr_resource(rid);
+        self.connect_to_internet_or_cidr_resource(rid, gateway);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
@@ -515,6 +584,7 @@ impl RefClient {
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
         if !self.disabled_resources.contains(&resource) {
             self.connected_dns_resources.insert((resource, dst));
+            self.connected_gateways.insert(gateway);
         }
     }
 
@@ -522,14 +592,24 @@ impl RefClient {
         self.is_connected_to_cidr(resource) || self.is_connected_to_internet(resource)
     }
 
-    pub(crate) fn connect_to_internet_or_cidr_resource(&mut self, resource: ResourceId) {
+    pub(crate) fn is_connected_gateway(&self, gateway: GatewayId) -> bool {
+        self.connected_gateways.contains(&gateway)
+    }
+
+    pub(crate) fn connect_to_internet_or_cidr_resource(
+        &mut self,
+        resource: ResourceId,
+        gateway: GatewayId,
+    ) {
         if self.internet_resource.is_some_and(|r| r == resource) {
             self.connected_internet_resource = true;
+            self.connected_gateways.insert(gateway);
             return;
         }
 
         if self.cidr_resources.iter().any(|(_, r)| *r == resource) {
             self.connected_cidr_resources.insert(resource);
+            self.connected_gateways.insert(gateway);
         }
     }
 
@@ -646,6 +726,10 @@ impl RefClient {
             .iter()
             .map(|ip| SocketAddr::new(*ip, 53))
             .collect()
+    }
+
+    pub(crate) fn expected_routes(&self) -> (BTreeSet<Ipv4Network>, BTreeSet<Ipv6Network>) {
+        (self.ipv4_routes.clone(), self.ipv6_routes.clone())
     }
 
     pub(crate) fn cidr_resource_by_ip(&self, ip: IpAddr) -> Option<ResourceId> {
@@ -823,6 +907,25 @@ fn ref_client(
                     expected_dns_handshakes: Default::default(),
                     disabled_resources: Default::default(),
                     resources: Default::default(),
+                    ipv4_routes: BTreeSet::from([
+                        Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11).unwrap(),
+                        Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24).unwrap(),
+                    ]),
+                    ipv6_routes: BTreeSet::from([
+                        Ipv6Network::new(
+                            Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0),
+                            107,
+                        )
+                        .unwrap(),
+                        Ipv6Network::new(
+                            Ipv6Addr::new(
+                                0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0,
+                            ),
+                            120,
+                        )
+                        .unwrap(),
+                    ]),
+                    connected_gateways: Default::default(),
                 }
             },
         )

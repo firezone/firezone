@@ -461,6 +461,12 @@ defmodule Web.SignUp do
       end
     )
     |> Ecto.Multi.run(
+      :default_site,
+      fn _repo, %{account: account} ->
+        Domain.Gateways.create_group(account, %{name: "Default Site"})
+      end
+    )
+    |> Ecto.Multi.run(
       :send_email,
       fn _repo, %{account: account, identity: identity} ->
         Domain.Mailer.AuthEmail.sign_up_link_email(
@@ -472,7 +478,7 @@ defmodule Web.SignUp do
         |> Domain.Mailer.deliver_with_rate_limit(
           rate_limit_key: {:sign_up_link, String.downcase(identity.provider_identifier)},
           rate_limit: 3,
-          rate_limit_interval: :timer.minutes(60)
+          rate_limit_interval: :timer.minutes(30)
         )
       end
     )

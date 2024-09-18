@@ -23,7 +23,7 @@ use windows::Win32::{
         },
         Ndis::NET_LUID_LH,
     },
-    Networking::WinSock::{AF_INET, AF_INET6},
+    Networking::WinSock::{ADDRESS_FAMILY, AF_INET, AF_INET6},
 };
 use wintun::Adapter;
 
@@ -46,8 +46,7 @@ pub struct TunDeviceManager {
 }
 
 impl TunDeviceManager {
-    // Fallible on Linux
-    #[allow(clippy::unnecessary_wraps)]
+    #[expect(clippy::unnecessary_wraps, reason = "Fallible on Linux")]
     pub fn new(mtu: usize) -> Result<Self> {
         Ok(Self {
             iface_idx: None,
@@ -130,6 +129,8 @@ fn add_route(route: IpNetwork, iface_idx: u32) {
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
     let Err(e) = unsafe { CreateIpForwardEntry2(&entry) }.ok() else {
+        tracing::debug!(%route, %iface_idx, "Created new route");
+
         return;
     };
 
@@ -149,6 +150,8 @@ fn remove_route(route: IpNetwork, iface_idx: u32) {
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
 
     let Err(e) = unsafe { DeleteIpForwardEntry2(&entry) }.ok() else {
+        tracing::debug!(%route, %iface_idx, "Removed route");
+
         return;
     };
 
@@ -226,7 +229,13 @@ impl Tun {
         let uuid = uuid::Uuid::from_str(TUNNEL_UUID)
             .expect("static UUID should always parse correctly")
             .as_u128();
-        let adapter = &Adapter::create(&wintun, TUNNEL_NAME, TUNNEL_NAME, Some(uuid))?;
+        let adapter = match Adapter::create(&wintun, TUNNEL_NAME, TUNNEL_NAME, Some(uuid)) {
+            Ok(x) => x,
+            Err(error) => {
+                tracing::error!(?error, "Failed in `Adapter::create`");
+                return Err(error)?;
+            }
+        };
         let iface_idx = adapter.get_adapter_index()?;
 
         set_iface_config(adapter.get_luid(), mtu)?;
@@ -250,7 +259,10 @@ impl Tun {
     }
 
     // Moves packets from the Internet towards the user
-    #[allow(clippy::unnecessary_wraps)] // Fn signature must align with other platform implementations.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "Fn signature must align with other platform implementations"
+    )]
     fn write(&self, bytes: &[u8]) -> io::Result<usize> {
         let len = bytes
             .len()
@@ -357,47 +369,35 @@ fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
         Value: unsafe { luid.Value },
     };
 
-    // Set MTU for IPv4
-    {
-        let mut row = MIB_IPINTERFACE_ROW {
-            Family: AF_INET,
-            InterfaceLuid: luid,
-            ..Default::default()
-        };
+    try_set_mtu(luid, AF_INET, mtu)?;
+    try_set_mtu(luid, AF_INET6, mtu)?;
+    Ok(())
+}
 
-        // SAFETY: TODO
-        unsafe { GetIpInterfaceEntry(&mut row) }.ok()?;
+fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()> {
+    let mut row = MIB_IPINTERFACE_ROW {
+        Family: family,
+        InterfaceLuid: luid,
+        ..Default::default()
+    };
 
-        // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
-        row.SitePrefixLength = 0;
-
-        // Set MTU for IPv4
-        row.NlMtu = mtu;
-
-        // SAFETY: TODO
-        unsafe { SetIpInterfaceEntry(&mut row) }.ok()?;
+    // SAFETY: TODO
+    if let Err(error) = unsafe { GetIpInterfaceEntry(&mut row) }.ok() {
+        if family == AF_INET6 && error.code() == windows_core::HRESULT::from_win32(0x80070490) {
+            tracing::debug!(?family, "Couldn't set MTU, maybe IPv6 is disabled.");
+        } else {
+            tracing::warn!(?family, ?error, "Couldn't set MTU");
+        }
+        return Ok(());
     }
 
-    // Set MTU for IPv6
-    {
-        let mut row = MIB_IPINTERFACE_ROW {
-            Family: AF_INET6,
-            InterfaceLuid: luid,
-            ..Default::default()
-        };
+    // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
+    row.SitePrefixLength = 0;
 
-        // SAFETY: TODO
-        unsafe { GetIpInterfaceEntry(&mut row) }.ok()?;
+    row.NlMtu = mtu;
 
-        // https://stackoverflow.com/questions/54857292/setipinterfaceentry-returns-error-invalid-parameter
-        row.SitePrefixLength = 0;
-
-        // Set MTU for IPv4
-        row.NlMtu = mtu;
-
-        // SAFETY: TODO
-        unsafe { SetIpInterfaceEntry(&mut row) }.ok()?;
-    }
+    // SAFETY: TODO
+    unsafe { SetIpInterfaceEntry(&mut row) }.ok()?;
     Ok(())
 }
 

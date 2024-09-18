@@ -156,6 +156,8 @@ defmodule Domain.Billing.EventHandler do
             "id" => subscription_id,
             "customer" => customer_id,
             "metadata" => subscription_metadata,
+            "trial_end" => trial_end,
+            "status" => status,
             "items" => %{
               "data" => [
                 %{
@@ -176,10 +178,13 @@ defmodule Domain.Billing.EventHandler do
        "metadata" => product_metadata
      }} = Billing.fetch_product(product_id)
 
+    subscription_trialing? = not is_nil(trial_end) and status in ["trialing", "paused"]
+
     attrs =
       account_update_attrs(quantity, product_metadata, subscription_metadata, %{
         "subscription_id" => subscription_id,
-        "product_name" => product_name
+        "product_name" => product_name,
+        "trial_ends_at" => if(subscription_trialing?, do: DateTime.from_unix!(trial_end))
       })
       |> Map.put(:disabled_at, nil)
       |> Map.put(:disabled_reason, nil)
@@ -287,6 +292,8 @@ defmodule Domain.Billing.EventHandler do
             })
 
           {:ok, _resource} = Domain.Resources.create_internet_resource(account)
+
+          {:ok, _gateway_group} = Domain.Gateways.create_group(account, %{name: "Default Site"})
 
           :ok
         else

@@ -49,3 +49,13 @@ pub fn test(directives: &str) -> DefaultGuard {
         .with_env_filter(directives)
         .set_default()
 }
+
+pub fn test_global(directives: &str) {
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::fmt()
+            .with_test_writer()
+            .with_env_filter(directives)
+            .finish(),
+    )
+    .ok();
+}

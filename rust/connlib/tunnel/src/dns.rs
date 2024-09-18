@@ -7,7 +7,6 @@ use domain::base::{
 };
 use domain::rdata::AllRecordData;
 use ip_packet::IpPacket;
-use ip_packet::Packet as _;
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::collections::{BTreeMap, HashMap};
@@ -151,10 +150,11 @@ impl StubResolver {
             .fqdn_to_ips
             .entry(fqdn.clone())
             .or_insert_with(|| {
-                // TODO: the side effeccts are executed even if this is not inserted
-                // make it so that's not the case
                 let mut ips = self.ip_provider.get_n_ipv4(4);
                 ips.extend_from_slice(&self.ip_provider.get_n_ipv6(4));
+
+                tracing::debug!(domain = %fqdn, ?ips, "Assigning proxy IPs");
+
                 ips
             })
             .clone();
@@ -168,9 +168,9 @@ impl StubResolver {
     /// Attempts to match the given domain against our list of possible patterns.
     ///
     /// This performs a linear search and is thus O(N) and **must not** be called in the hot-path of packet routing.
-    #[tracing::instrument(level = "trace", skip_all, fields(domain))]
-    fn match_resource_linear(&self, domain_name: &DomainName) -> Option<ResourceId> {
-        let name = Candidate::from_domain(domain_name);
+    #[tracing::instrument(level = "trace", skip_all, fields(%domain))]
+    fn match_resource_linear(&self, domain: &DomainName) -> Option<ResourceId> {
+        let name = Candidate::from_domain(domain);
 
         for (pattern, id) in &self.dns_resources {
             if pattern.matches(&name) {
@@ -209,13 +209,13 @@ impl StubResolver {
     pub(crate) fn handle(
         &mut self,
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
-        packet: IpPacket,
+        packet: &IpPacket,
     ) -> Option<ResolveStrategy> {
         let upstream = dns_mapping.get_by_left(&packet.destination())?.address();
         let datagram = packet.as_udp()?;
 
         // We only support DNS on port 53.
-        if datagram.get_destination() != DNS_PORT {
+        if datagram.destination_port() != DNS_PORT {
             return None;
         }
 
@@ -241,12 +241,11 @@ impl StubResolver {
             let packet = ip_packet::make::udp_packet(
                 packet.destination(),
                 packet.source(),
-                datagram.get_destination(),
-                datagram.get_source(),
+                datagram.destination_port(),
+                datagram.source_port(),
                 response,
             )
-            .expect("src and dst come from the same packet")
-            .into_immutable();
+            .expect("src and dst come from the same packet");
 
             return Some(ResolveStrategy::LocalResponse(packet));
         }
@@ -260,7 +259,7 @@ impl StubResolver {
                     upstream,
                     query_id: message.header().id(),
                     payload: message.into_octets().to_vec(),
-                    original_src: SocketAddr::new(packet.source(), datagram.get_source()),
+                    original_src: SocketAddr::new(packet.source(), datagram.source_port()),
                 })
             }
             (Rtype::A, Some(resource)) => self.get_or_assign_a_records(domain.clone(), resource),
@@ -277,7 +276,7 @@ impl StubResolver {
                     upstream,
                     query_id: message.header().id(),
                     payload: message.into_octets().to_vec(),
-                    original_src: SocketAddr::new(packet.source(), datagram.get_source()),
+                    original_src: SocketAddr::new(packet.source(), datagram.source_port()),
                 })
             }
         };
@@ -286,12 +285,11 @@ impl StubResolver {
         let packet = ip_packet::make::udp_packet(
             packet.destination(),
             packet.source(),
-            datagram.get_destination(),
-            datagram.get_source(),
+            datagram.destination_port(),
+            datagram.source_port(),
             response,
         )
-        .expect("src and dst come from the same packet")
-        .into_immutable();
+        .expect("src and dst come from the same packet");
 
         Some(ResolveStrategy::LocalResponse(packet))
     }

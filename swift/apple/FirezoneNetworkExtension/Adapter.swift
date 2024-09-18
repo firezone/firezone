@@ -52,18 +52,19 @@ class Adapter {
   /// Track our last fetched DNS resolvers to know whether to tell connlib they've updated
   private var lastFetchedResolvers: [String] = []
 
-  /// Used to avoid needlessly sending resets to connlib
-  private var primaryInterfaceName: String?
+  /// Remembers the last _relevant_ path update.
+  /// A path update is considered relevant if certain properties change that require us to reset connlib's network state.
+  private var lastRelevantPath: Network.NWPath?
 
   /// Private queue used to ensure consistent ordering among path update and connlib callbacks
   /// This is the primary async primitive used in this class.
   private let workQueue = DispatchQueue(label: "FirezoneAdapterWorkQueue")
 
   /// Currently disabled resources
-  private var disabledResources: Set<String> = []
+  private var internetResourceEnabled: Bool = false
 
-  /// Cache of resources that can be disabled
-  private var canBeDisabled: Set<String> = []
+  /// Cache of internet resource
+  private var internetResource: Resource?
 
   /// Adapter state.
   private var state: AdapterState {
@@ -85,7 +86,7 @@ class Adapter {
     apiURL: String,
     token: String,
     logFilter: String,
-    disabledResources: Set<String>,
+    internetResourceEnabled: Bool,
     packetTunnelProvider: PacketTunnelProvider
   ) {
     self.apiURL = apiURL
@@ -96,7 +97,7 @@ class Adapter {
     self.logFilter = logFilter
     self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
     self.networkSettings = nil
-    self.disabledResources = disabledResources
+    self.internetResourceEnabled = internetResourceEnabled
   }
 
   // Could happen abruptly if the process is killed.
@@ -203,10 +204,10 @@ class Adapter {
     return (try? decoder.decode([Resource].self, from: resourceList.data(using: .utf8)!)) ?? []
   }
 
-  public func setDisabledResources(newDisabledResources: Set<String>) {
+  public func setInternetResourceEnabled(_ enabled: Bool) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      self.disabledResources = newDisabledResources
+      self.internetResourceEnabled = enabled
       self.resourcesUpdated()
     }
   }
@@ -217,9 +218,13 @@ class Adapter {
     let decoder = JSONDecoder()
     decoder.keyDecodingStrategy = .convertFromSnakeCase
 
-    canBeDisabled = Set(resources().filter({ $0.canBeDisabled }).map({ $0.id }))
+    internetResource = resources().filter{ $0.isInternetResource() }.first
 
-    let disablingResources = disabledResources.filter({ canBeDisabled.contains($0) })
+    var disablingResources: Set<String> = []
+    if let internetResource = internetResource, !internetResourceEnabled {
+      disablingResources.insert(internetResource.id)
+    }
+
 
     let currentlyDisabled = try! JSONEncoder().encode(disablingResources)
     session.setDisabledResources(String(data: currentlyDisabled, encoding: .utf8)!)
@@ -281,24 +286,20 @@ extension Adapter {
     guard case .tunnelStarted(let session) = state else { return }
 
     if path.status == .unsatisfied {
-      Log.tunnel.log("\(#function): Detected network change: Offline.")
-
       // Check if we need to set reasserting, avoids OS log spam and potentially other side effects
       if packetTunnelProvider?.reasserting == false {
         // Tell the UI we're not connected
         packetTunnelProvider?.reasserting = true
       }
     } else {
-      Log.tunnel.log("\(#function): Detected network change: Online.")
-
-      // Hint to connlib we're back online, but only do so if our primary interface changes,
-      // and therefore we need to bump sockets. On darwin, this is needed to send packets
+      // Tell connlib to reset network state, but only do so if our connectivity has
+      // meaningfully changed. On darwin, this is needed to send packets
       // out of a different interface even when 0.0.0.0 is used as the source.
       // If our primary interface changes, we can be certain the old socket shouldn't be
       // used anymore.
-      if path.availableInterfaces.first?.name != primaryInterfaceName {
+      if lastRelevantPath?.connectivityDifferentFrom(path: path) != false {
+        lastRelevantPath = path
         session.reset()
-        primaryInterfaceName = path.availableInterfaces.first?.name
       }
 
       if shouldFetchSystemResolvers(path: path) {
@@ -492,3 +493,14 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 #endif
+
+extension Network.NWPath {
+  func connectivityDifferentFrom(path: Network.NWPath) -> Bool {
+    // We define a path as different from another if the following properties change
+    return path.supportsIPv4 != self.supportsIPv4 ||
+      path.supportsIPv6 != self.supportsIPv6 ||
+      path.availableInterfaces.first?.name != self.availableInterfaces.first?.name ||
+      // Apple provides no documentation on whether order is meaningful, so assume it isn't.
+      Set(self.gateways) != Set(path.gateways)
+  }
+}

@@ -40,8 +40,6 @@
 //! Connecting to Wi-Fi usually notifies while Windows is showing the progress bar
 //! in the Wi-Fi menu.
 //!
-//! DNS server changes are (TODO <https://github.com/firezone/firezone/issues/3343>)
-//!
 //! # Worker thread
 //!
 //! `Listener` must live in a worker thread if used from Tauri.
@@ -66,7 +64,11 @@
 
 use crate::platform::DnsControlMethod;
 use anyhow::{anyhow, Context as _, Result};
-use tokio::sync::mpsc;
+use std::thread;
+use tokio::sync::{
+    mpsc::{self, error::TrySendError},
+    oneshot,
+};
 use windows::{
     core::{Interface, Result as WinResult, GUID},
     Win32::{
@@ -78,64 +80,70 @@ use windows::{
     },
 };
 
-// async needed to match Linux
-#[allow(clippy::unused_async)]
 pub async fn new_dns_notifier(
-    _tokio_handle: tokio::runtime::Handle,
+    tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
-) -> Result<async_dns::DnsNotifier> {
-    async_dns::DnsNotifier::new()
+) -> Result<Worker> {
+    Worker::new("Firezone DNS notifier worker", move |tx, stopper_rx| {
+        async_dns::worker_thread(tokio_handle, tx, stopper_rx)?;
+        Ok(())
+    })
 }
 
 pub async fn new_network_notifier(
     _tokio_handle: tokio::runtime::Handle,
     _method: DnsControlMethod,
-) -> Result<NetworkNotifier> {
-    NetworkNotifier::new().await
+) -> Result<Worker> {
+    Worker::new("Firezone network notifier worker", move |tx, stopper_rx| {
+        {
+            let com = ComGuard::new()?;
+            let listener = Listener::new(&com, tx)?;
+            stopper_rx.blocking_recv().ok();
+            listener.close()?;
+        }
+        Ok(())
+    })
 }
 
-/// Notifies when we change Wi-Fi networks, change between Wi-Fi and Ethernet, or gain / lose Internet
-pub struct NetworkNotifier {
+/// Container for a worker thread that we can cooperatively stop.
+///
+/// The worker thread emits notifications with no data in them.
+pub struct Worker {
     inner: Option<WorkerInner>,
-    rx: mpsc::Receiver<()>,
+    rx: NotifyReceiver,
+    thread_name: String,
 }
 
-/// Needed so that `Drop` can consume the oneshot Sender and the thread's JoinHandle
-struct WorkerInner {
-    thread: std::thread::JoinHandle<Result<()>>,
-    stopper: tokio::sync::oneshot::Sender<()>,
+impl Drop for Worker {
+    fn drop(&mut self) {
+        self.close()
+            .expect("should be able to close WorkerInner cleanly");
+    }
 }
 
-impl NetworkNotifier {
-    // Async on Linux due to `zbus`
-    #[allow(clippy::unused_async)]
-    pub async fn new() -> Result<Self> {
-        let (tx, rx) = mpsc::channel(1);
-
-        let (stopper, stopper_rx) = tokio::sync::oneshot::channel();
-        let thread = {
-            std::thread::Builder::new()
-                .name("Firezone COM worker".into())
-                .spawn(move || {
-                    {
-                        let com = ComGuard::new()?;
-                        let _network_change_listener = Listener::new(&com, tx)?;
-                        stopper_rx.blocking_recv().ok();
-                    }
-                    tracing::debug!("COM worker thread shut down gracefully");
-                    Ok(())
-                })?
-        };
-
+impl Worker {
+    fn new<F, S>(thread_name: S, func: F) -> Result<Self>
+    where
+        F: FnOnce(NotifySender, oneshot::Receiver<()>) -> Result<()> + Send + 'static,
+        S: Into<String>,
+    {
+        let thread_name = thread_name.into();
+        let (tx, rx) = notify_channel();
+        let inner = WorkerInner::new(thread_name.clone(), tx, func)?;
         Ok(Self {
-            inner: Some(WorkerInner { thread, stopper }),
+            inner: Some(inner),
             rx,
+            thread_name,
         })
     }
 
     /// Same as `drop`, but you can catch errors
     pub fn close(&mut self) -> Result<()> {
         if let Some(inner) = self.inner.take() {
+            tracing::trace!(
+                thread_name = self.thread_name,
+                "Asking worker thread to stop gracefully"
+            );
             inner
                 .stopper
                 .send(())
@@ -144,22 +152,41 @@ impl NetworkNotifier {
                 Err(e) => std::panic::resume_unwind(e),
                 Ok(x) => x?,
             }
+            tracing::trace!("Worker thread stopped gracefully");
         }
         Ok(())
     }
 
-    // `Result` needed to match Linux
-    #[allow(clippy::unnecessary_wraps)]
     pub async fn notified(&mut self) -> Result<()> {
-        self.rx.recv().await;
+        self.rx
+            .notified()
+            .await
+            .context("Couldn't listen to notifications.")?;
         Ok(())
     }
 }
 
-impl Drop for NetworkNotifier {
-    fn drop(&mut self) {
-        self.close()
-            .expect("should be able to close Worker cleanly");
+/// Needed so that `Drop` can consume the oneshot Sender and the thread's JoinHandle
+struct WorkerInner {
+    stopper: oneshot::Sender<()>,
+    thread: thread::JoinHandle<Result<()>>,
+}
+
+impl WorkerInner {
+    fn new<
+        F: FnOnce(NotifySender, oneshot::Receiver<()>) -> Result<()> + Send + 'static,
+        S: Into<String>,
+    >(
+        thread_name: S,
+        tx: NotifySender,
+        func: F,
+    ) -> Result<Self> {
+        let (stopper, stopper_rx) = tokio::sync::oneshot::channel();
+        let thread = std::thread::Builder::new()
+            .name(thread_name.into())
+            .spawn(move || func(tx, stopper_rx))?;
+
+        Ok(Self { stopper, thread })
     }
 }
 
@@ -201,7 +228,7 @@ impl Drop for ComGuard {
             // Safety: Make sure all the COM objects are dropped before we call
             // CoUninitialize or the program might segfault.
             unsafe { Com::CoUninitialize() };
-            tracing::debug!("Uninitialized COM");
+            tracing::trace!("Uninitialized COM");
         }
     }
 }
@@ -222,12 +249,15 @@ struct Listener<'a> {
 // https://kennykerr.ca/rust-getting-started/how-to-implement-com-interface.html
 #[windows_implement::implement(INetworkEvents)]
 struct Callback {
-    tx: mpsc::Sender<()>,
+    tx: NotifySender,
 }
 
 impl<'a> Drop for Listener<'a> {
+    // Might never be called. Due to the way the scopes ended up,
+    // we crash the GUI process before we can get back to the main thread
+    // and drop the DNS listeners
     fn drop(&mut self) {
-        self.close().unwrap();
+        self.close_dont_drop().unwrap();
     }
 }
 
@@ -240,7 +270,7 @@ impl<'a> Listener<'a> {
     ///   on the same thread as `new` is called on.
     /// * `tx` - A Sender to notify when Windows detects
     ///   connectivity changes. Some notifications may be spurious.
-    fn new(com: &'a ComGuard, tx: mpsc::Sender<()>) -> Result<Self> {
+    fn new(com: &'a ComGuard, tx: NotifySender) -> Result<Self> {
         // `windows-rs` automatically releases (de-refs) COM objects on Drop:
         // https://github.com/microsoft/windows-rs/issues/2123#issuecomment-1293194755
         // https://github.com/microsoft/windows-rs/blob/cefdabd15e4a7a7f71b7a2d8b12d5dc148c99adb/crates/samples/windows/wmi/src/main.rs#L22
@@ -279,7 +309,7 @@ impl<'a> Listener<'a> {
         // 2. Caller continues setup, checks Internet is connected
         // 3. Internet gets disconnected but caller isn't notified
         // 4. Worker thread finally gets scheduled, but we never notify that the Internet was lost during setup. Caller is now out of sync with ground truth.
-        tx.try_send(()).ok();
+        tx.notify()?;
 
         Ok(this)
     }
@@ -287,18 +317,28 @@ impl<'a> Listener<'a> {
     /// Like `drop`, but you can catch errors
     ///
     /// Unregisters the network change callbacks
-    pub fn close(&mut self) -> Result<()> {
+    pub fn close(mut self) -> Result<()> {
+        self.close_dont_drop()
+    }
+
+    /// Close without consuming `self`
+    ///
+    /// This must be factored out so that we can have both:
+    /// - `close` which consumes `self` and returns a `Result` for error bubbling
+    /// - `drop` which does not consume `self` and does not bubble errors, but which runs even if we forget to call `close`
+    fn close_dont_drop(&mut self) -> Result<()> {
         if let Some(cookie) = self.advise_cookie_net.take() {
             // SAFETY: I don't see any memory safety issues.
             unsafe { self.cxn_point_net.Unadvise(cookie) }
                 .context("Failed to unadvise connection point")?;
-            tracing::debug!("Unadvised");
+            tracing::trace!("Unadvised");
         }
         Ok(())
     }
 }
 
-impl INetworkEvents_Impl for Callback {
+// <https://github.com/microsoft/windows-rs/pull/3065>
+impl INetworkEvents_Impl for Callback_Impl {
     fn NetworkAdded(&self, _networkid: &GUID) -> WinResult<()> {
         Ok(())
     }
@@ -312,8 +352,8 @@ impl INetworkEvents_Impl for Callback {
         _networkid: &GUID,
         _newconnectivity: NLM_CONNECTIVITY,
     ) -> WinResult<()> {
-        // Use `try_send` because we're only sending a notification to wake up the receiver.
-        self.tx.try_send(()).ok();
+        // No reasonable way to translate this error into a Windows error
+        self.tx.notify().ok();
         Ok(())
     }
 
@@ -328,15 +368,18 @@ impl INetworkEvents_Impl for Callback {
 
 impl Drop for Callback {
     fn drop(&mut self) {
-        tracing::debug!("Dropped `network_changes::Callback`");
+        tracing::trace!("Dropped `network_changes::Callback`");
     }
 }
 
 mod async_dns {
-    use anyhow::{Context, Result};
+    use anyhow::{Context as _, Result};
     use futures::FutureExt as _;
     use std::{ffi::c_void, ops::Deref, path::Path, pin::pin};
-    use tokio::sync::mpsc;
+    use tokio::{
+        sync::{mpsc, oneshot},
+        task::LocalSet,
+    };
     use windows::Win32::{
         Foundation::{CloseHandle, BOOLEAN, HANDLE, INVALID_HANDLE_VALUE},
         System::Registry,
@@ -371,32 +414,48 @@ mod async_dns {
         ))
     }
 
-    pub struct DnsNotifier {
-        listener_4: Listener,
-        listener_6: Listener,
-    }
-
-    impl DnsNotifier {
-        pub fn new() -> Result<Self> {
+    pub fn worker_thread(
+        tokio_handle: tokio::runtime::Handle,
+        tx: super::NotifySender,
+        stopper_rx: oneshot::Receiver<()>,
+    ) -> Result<()> {
+        let local = LocalSet::new();
+        let task = local.run_until(async move {
             let (key_ipv4, key_ipv6) = open_network_registry_keys()?;
-            let listener_4 = Listener::new(key_ipv4)?;
-            let listener_6 = Listener::new(key_ipv6)?;
+            let mut listener_4 = Listener::new(key_ipv4)?;
+            let mut listener_6 = Listener::new(key_ipv6)?;
 
-            Ok(Self {
-                listener_4,
-                listener_6,
-            })
-        }
+            // Notify once we start listening, to be consistent with other notifiers. This is intended to cover gaps during startup, e.g.:
+            //
+            // 1. Caller records network state / DNS resolvers
+            // 2. Caller creates a notifier
+            // 3. While we're setting up the notifier, the network or DNS state changes
+            // 4. The caller is now stuck on a stale state until the first notification comes through.
 
-        pub async fn notified(&mut self) -> Result<()> {
-            let mut fut_4 = pin!(self.listener_4.notified().fuse());
-            let mut fut_6 = pin!(self.listener_6.notified().fuse());
-            futures::select! {
-                r = fut_4 => r?,
-                r = fut_6 => r?,
+            tx.notify()?;
+
+            let mut stop = pin!(stopper_rx.fuse());
+            loop {
+                let mut fut_4 = pin!(listener_4.notified().fuse());
+                let mut fut_6 = pin!(listener_6.notified().fuse());
+                futures::select! {
+                    _ = stop => break,
+                    _ = fut_4 => tx.notify()?,
+                    _ = fut_6 => tx.notify()?,
+                }
             }
+
+            if let Err(error) = listener_4.close() {
+                tracing::error!(?error, "Error while closing IPv4 DNS listener");
+            }
+            if let Err(error) = listener_6.close() {
+                tracing::error!(?error, "Error while closing IPv6 DNS listener");
+            }
+
             Ok(())
-        }
+        });
+
+        tokio_handle.block_on(task)
     }
 
     /// Listens to one registry key for changes. Callers should await `notified`.
@@ -414,6 +473,11 @@ mod async_dns {
         // So don't ever do `self._tx = $ANYTHING` after `new`, it'll break the callback.
         _tx: Box<mpsc::Sender<()>>,
         rx: mpsc::Receiver<()>,
+        // Separated so that multiple `drop` calls are safe and wont' panic
+        inner: Option<ListenerInner>,
+    }
+
+    struct ListenerInner {
         /// A handle representing our registered callback from `RegisterWaitForSingleObject`
         ///
         /// This doesn't get signalled, it's just used so we can unregister and stop the
@@ -433,7 +497,7 @@ mod async_dns {
             let tx = Box::new(tx);
             let tx_ptr: *const _ = tx.deref();
             let event = unsafe { CreateEventA(None, false, false, None) }?;
-            let mut wait_handle = HANDLE(0isize);
+            let mut wait_handle = HANDLE::default();
 
             // The docs say that `RegisterWaitForSingleObject` uses "a worker thread" from
             // "the thread pool".
@@ -463,12 +527,12 @@ mod async_dns {
                 )
             }?;
 
+            let inner = ListenerInner { wait_handle, event };
             let mut that = Self {
                 key,
                 _tx: tx,
                 rx,
-                wait_handle,
-                event,
+                inner: Some(inner),
             };
             that.register_callback()?;
 
@@ -510,28 +574,48 @@ mod async_dns {
         //
         // > Each time a process calls RegNotifyChangeKeyValue with the same set of parameters, it establishes another wait operation, creating a resource leak. Therefore, check that you are not calling RegNotifyChangeKeyValue with the same parameters until the previous wait operation has completed.
         fn register_callback(&mut self) -> Result<()> {
-            let key_handle = Registry::HKEY(self.key.raw_handle());
+            let inner = self
+                .inner
+                .as_ref()
+                .context("Can't register callback after dropped")?;
+            let key_handle = Registry::HKEY(self.key.raw_handle() as *mut c_void);
             let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
                 | Registry::REG_NOTIFY_CHANGE_LAST_SET
                 | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
             // Ask Windows to signal our event once when anything inside this key changes.
             // We can't ask for repeated signals.
             unsafe {
-                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, self.event, true)
+                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, inner.event, true)
             }
             .ok()
             .context("`RegNotifyChangeKeyValue` failed")?;
+            Ok(())
+        }
+
+        fn close(mut self) -> Result<()> {
+            self.close_dont_drop()
+        }
+
+        /// Close without consuming `self`
+        ///
+        /// This must be factored out so that we can have both:
+        /// - `close` which consumes `self` and returns a `Result` for error bubbling
+        /// - `drop` which does not consume `self` and does not bubble errors, but which runs even if we forget to call `close`
+        fn close_dont_drop(&mut self) -> Result<()> {
+            if let Some(inner) = self.inner.take() {
+                unsafe { UnregisterWaitEx(inner.wait_handle, INVALID_HANDLE_VALUE) }
+                    .context("Should be able to `UnregisterWaitEx` in the DNS change listener")?;
+                unsafe { CloseHandle(inner.event) }
+                    .context("Should be able to `CloseHandle` in the DNS change listener")?;
+            }
             Ok(())
         }
     }
 
     impl Drop for Listener {
         fn drop(&mut self) {
-            unsafe { UnregisterWaitEx(self.wait_handle, INVALID_HANDLE_VALUE) }
-                .expect("Should be able to `UnregisterWaitEx` in the DNS change listener");
-            unsafe { CloseHandle(self.event) }
-                .expect("Should be able to `CloseHandle` in the DNS change listener");
-            tracing::debug!("Gracefully closed DNS change listener");
+            self.close_dont_drop()
+                .expect("Should be able to close DNS listener");
         }
     }
 
@@ -564,7 +648,7 @@ mod async_dns {
             let notify_flags = Registry::REG_NOTIFY_CHANGE_NAME
                 | Registry::REG_NOTIFY_CHANGE_LAST_SET
                 | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
-            let key_handle = Registry::HKEY(key.raw_handle());
+            let key_handle = Registry::HKEY(key.raw_handle() as *mut c_void);
             unsafe {
                 Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, event, true)
             }
@@ -644,4 +728,39 @@ mod async_dns {
                 .expect("Should be able to delete test key");
         }
     }
+}
+
+/// Wraps an MPSC channel of capacity 1 to use as a cancel-safe notifier
+#[derive(Clone)]
+struct NotifySender {
+    tx: mpsc::Sender<()>,
+}
+
+struct NotifyReceiver {
+    rx: mpsc::Receiver<()>,
+}
+
+impl NotifySender {
+    fn notify(&self) -> Result<()> {
+        // If there isn't capacity to send, it's because the receiver has a notification
+        // it needs to pick up anyway, so it's fine.
+        match self.tx.try_send(()) {
+            Ok(()) | Err(TrySendError::Full(())) => Ok(()),
+            Err(TrySendError::Closed(())) => Err(anyhow!("TrySendError::Closed")),
+        }
+    }
+}
+
+impl NotifyReceiver {
+    async fn notified(&mut self) -> Result<()> {
+        self.rx
+            .recv()
+            .await
+            .context("All NotifySender instances are closed")
+    }
+}
+
+fn notify_channel() -> (NotifySender, NotifyReceiver) {
+    let (tx, rx) = mpsc::channel(1);
+    (NotifySender { tx }, NotifyReceiver { rx })
 }

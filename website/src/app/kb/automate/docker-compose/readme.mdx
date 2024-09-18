@@ -50,7 +50,7 @@ services:
       - net.ipv6.conf.all.forwarding=1
       - net.ipv6.conf.default.forwarding=1
     healthcheck:
-      test: ["CMD", "ip", "link", "|", "grep", "tun-firezone"]
+      test: ["CMD-SHELL", "ip link | grep tun-firezone"]
       interval: 5s
       timeout: 10s
       retries: 3

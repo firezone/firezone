@@ -803,10 +803,16 @@ defmodule Domain.BillingTest do
 
       quantity = 13
 
+      trial_ends_at =
+        DateTime.utc_now()
+        |> DateTime.add(2, :day)
+
       event =
         Stripe.build_event(
           "customer.subscription.updated",
           Stripe.subscription_object(customer_id, subscription_metadata, %{}, quantity)
+          |> Map.put("trial_end", DateTime.to_unix(trial_ends_at))
+          |> Map.put("status", "trialing")
         )
 
       assert handle_events([event]) == :ok
@@ -817,6 +823,9 @@ defmodule Domain.BillingTest do
       assert account.metadata.stripe.subscription_id
       assert account.metadata.stripe.product_name == "Enterprise"
       assert account.metadata.stripe.support_type == "email"
+
+      assert DateTime.truncate(account.metadata.stripe.trial_ends_at, :second) ==
+               DateTime.truncate(trial_ends_at, :second)
 
       assert account.limits == %Domain.Accounts.Limits{
                monthly_active_users_count: 15,
@@ -832,6 +841,38 @@ defmodule Domain.BillingTest do
                self_hosted_relays: true,
                traffic_filters: false
              }
+    end
+
+    test "resets trial ended when subscription becomes active", %{
+      account: account,
+      customer_id: customer_id
+    } do
+      account = Fixtures.Accounts.update_account(account, %{})
+
+      Bypass.open()
+      |> Stripe.mock_fetch_customer_endpoint(account)
+      |> Stripe.mock_fetch_product_endpoint("prod_Na6dGcTsmU0I4R", %{})
+
+      subscription_metadata = %{}
+      quantity = 13
+
+      trial_ends_at =
+        DateTime.utc_now()
+        |> DateTime.add(-2, :day)
+
+      event =
+        Stripe.build_event(
+          "customer.subscription.updated",
+          Stripe.subscription_object(customer_id, subscription_metadata, %{}, quantity)
+          |> Map.put("trial_end", DateTime.to_unix(trial_ends_at))
+          |> Map.put("status", "active")
+        )
+
+      assert handle_events([event]) == :ok
+
+      assert account = Repo.get(Domain.Accounts.Account, account.id)
+
+      assert is_nil(account.metadata.stripe.trial_ends_at)
     end
   end
 end

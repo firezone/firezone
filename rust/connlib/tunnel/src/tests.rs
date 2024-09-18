@@ -4,7 +4,6 @@ use proptest::test_runner::{Config, TestError, TestRunner};
 use proptest_state_machine::ReferenceStateMachine;
 use reference::ReferenceState;
 use std::sync::atomic::{self, AtomicU32};
-use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
     layer::SubscriberExt as _, util::SubscriberInitExt as _, EnvFilter, Layer,
 };
@@ -29,7 +28,7 @@ type IcmpSeq = u16;
 type IcmpIdentifier = u16;
 
 #[test]
-#[allow(clippy::print_stdout, clippy::print_stderr)]
+#[expect(clippy::print_stdout, clippy::print_stderr)]
 fn tunnel_test() {
     let config = Config {
         source_file: Some(file!()),
@@ -136,13 +135,16 @@ fn init_logging(
                 .with_writer(std::fs::File::create(format!("testcases/{test_index}.log")).unwrap())
                 .with_timer(flux_capacitor)
                 .with_ansi(false)
-                .with_filter(
-                    EnvFilter::builder()
-                        .with_default_directive(LevelFilter::DEBUG.into())
-                        .from_env()
-                        .unwrap(),
-                ),
+                .with_filter(log_file_filter()),
         )
         .with(PanicOnErrorEvents::new(test_index))
         .set_default()
+}
+
+fn log_file_filter() -> EnvFilter {
+    let default_filter =
+        "debug,firezone_tunnel=trace,firezone_tunnel::tests=debug,ip_packet=trace".to_owned();
+    let env_filter = std::env::var("RUST_LOG").unwrap_or_default();
+
+    EnvFilter::new([default_filter, env_filter].join(","))
 }

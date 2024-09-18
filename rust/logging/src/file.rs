@@ -40,6 +40,7 @@ where
     let (appender_fmt, handle_fmt) = new_appender(log_dir.to_path_buf(), "log");
     let layer_fmt = tracing_subscriber::fmt::layer()
         .with_writer(appender_fmt)
+        .with_ansi(false)
         .boxed();
 
     let handle = Handle {
@@ -148,7 +149,7 @@ impl Appender {
 
     /// Does nothing on non-Linux systems
     #[cfg(not(target_os = "linux"))]
-    #[allow(clippy::unnecessary_wraps)]
+    #[expect(clippy::unnecessary_wraps)]
     fn set_permissions(_f: &fs::File) -> io::Result<()> {
         Ok(())
     }

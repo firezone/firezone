@@ -67,7 +67,28 @@ Restrict access to a specific IP address or range of Client IP addresses.
 />
 
 Restrict access based on the authentication provider that was used to
-authenticate the Client.
+authenticate the Client. This is useful when you want to apply a stricter set of
+authentication requirements for certain Groups or Resources using a separate SSO
+app in your identity provider.
+
+### Client verification
+
+<Image
+  src="/images/kb/deploy/policies/client_verification.png"
+  alt="Client verification"
+  width={600}
+  height={600}
+  className="mx-auto shadow rounded"
+/>
+
+Restrict access only to verified Clients. When enabled, any Client being used by
+the Actors in the group will not be able to access the Resource unless it has
+been explicitly marked as verified in the admin portal.
+
+This feature acts as a lightweight device management solution, ideal for
+organizations looking to enforce device policies (e.g., preventing mobile device
+access to production databases) without requiring a full-fledged MDM system to
+be in place.
 
 ### Time of day
 
@@ -86,6 +107,23 @@ The time zone determines the offset used when determining whether to allow
 access for a particular Client. For example, if you specify a time window of
 `08:00-17:00` and time zone of `Eastern`, Clients in the `Pacific` timezone 3
 hours behind will be allowed access from `05:00-14:00` Eastern time.
+
+### How conflicting policies are resolved
+
+The policy engine resolves access on a boolean OR basis. That means when two or
+more policies with conflicting conditions apply to a given Actor-Resource pair,
+access will be allowed to the Resource **if any of the policies evaluate true**.
+
+As an example, consider the following policies:
+
+| Policy | Group       | Resource      | Condition                |
+| ------ | ----------- | ------------- | ------------------------ |
+| `A`    | Engineering | Production DB | Time of day: 08:00-17:00 |
+| `B`    | DevOps      | Production DB | None                     |
+
+If an Actor is a member of both the Engineering and DevOps groups, they will be
+able to access the Production DB at any time of day since Policy `B` will always
+evaluate to true.
 
 <NextStep href="/kb/deploy/clients">Next: Install Clients</NextStep>
 

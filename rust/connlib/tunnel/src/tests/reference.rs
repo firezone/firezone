@@ -6,7 +6,7 @@ use crate::dns::is_subdomain;
 use connlib_shared::{
     messages::{
         client::{self, ResourceDescription},
-        GatewayId, RelayId,
+        GatewayId, RelayId, ResourceId,
     },
     DomainName, StaticSecret,
 };
@@ -320,7 +320,7 @@ impl ReferenceStateMachine for ReferenceState {
                 }
             }),
             Transition::SendDnsQueries(queries) => {
-                let mut pending_connections = HashSet::new();
+                let mut new_connections_via_gateways = BTreeMap::<_, BTreeSet<ResourceId>>::new();
 
                 for query in queries {
                     // Some queries get answered locally.
@@ -342,27 +342,44 @@ impl ReferenceStateMachine for ReferenceState {
                         continue;
                     };
 
-                    tracing::debug!("Expecting DNS query via resource");
-
-                    if pending_connections.contains(&resource) {
-                        // DNS server is a CIDR resource and a previous query of this batch is already triggering a connection.
-                        // That connection isn't ready yet so further queries to the same resource are dropped until then.
+                    let Some(gateway) = state.portal.gateway_for_resource(resource).copied() else {
+                        tracing::error!("Unknown gateway for resource");
                         continue;
-                    }
+                    };
+
+                    tracing::debug!(%resource, %gateway, "Expecting DNS query via resource");
 
                     if !state
                         .client
                         .inner()
                         .is_connected_to_internet_or_cidr(resource)
                     {
-                        state.client.exec_mut(|client| {
-                            client.connect_to_internet_or_cidr_resource(resource)
-                        });
-                        pending_connections.insert(resource);
+                        tracing::debug!(%resource, %gateway, "Not connected yet, dropping packet");
+
+                        let connected_resources =
+                            new_connections_via_gateways.entry(gateway).or_default();
+
+                        if state.client.inner().is_connected_gateway(gateway) {
+                            connected_resources.insert(resource);
+                        } else {
+                            // As part of batch-processing DNS queries, only the first resource per gateway will be connected / authorized.
+                            if connected_resources.is_empty() {
+                                connected_resources.insert(resource);
+                            }
+                        }
+
                         continue;
                     }
 
                     state.client.exec_mut(|client| client.on_dns_query(query));
+                }
+
+                for (gateway, resources) in new_connections_via_gateways {
+                    for resource in resources {
+                        state.client.exec_mut(|client| {
+                            client.connect_to_internet_or_cidr_resource(resource, gateway)
+                        });
+                    }
                 }
             }
             Transition::SendICMPPacketToNonResourceIp {

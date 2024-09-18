@@ -24,18 +24,51 @@ mod tests {
         net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
         time::Duration,
     };
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
     #[tokio::test]
     #[ignore = "Needs admin / sudo and Internet"]
     async fn tunnel() {
         let _guard = firezone_logging::test("debug");
 
-        no_packet_loops().await;
+        no_packet_loops_tcp().await;
+        no_packet_loops_udp().await;
         tunnel_drop();
     }
 
-    // Starts up a WinTUN device, adds a "full-route" (`0.0.0.0/0`) and checks if we can still send packets to IPs outside of our tunnel.
-    async fn no_packet_loops() {
+    // Starts up a WinTun device, claims all routes, and checks if we can still make
+    // TCP connections outside of our tunnel.
+    async fn no_packet_loops_tcp() {
+        let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
+        let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
+
+        let mut device_manager = TunDeviceManager::new(1280).unwrap();
+        let _tun = device_manager.make_tun().unwrap();
+        device_manager.set_ips(ipv4, ipv6).await.unwrap();
+
+        // Configure `0.0.0.0/0` route.
+        device_manager
+            .set_routes(
+                vec![Ipv4Network::new(Ipv4Addr::UNSPECIFIED, 0).unwrap()],
+                vec![],
+            )
+            .await
+            .unwrap();
+
+        let remote = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from([1, 1, 1, 1]), 80));
+        let socket = crate::platform::tcp_socket_factory(&remote).unwrap();
+        let mut stream = socket.connect(remote).await.unwrap();
+
+        // Send an HTTP request
+        stream.write_all("GET /\r\n\r\n".as_bytes()).await.unwrap();
+        let mut bytes = vec![];
+        stream.read_to_end(&mut bytes).await.unwrap();
+        let s = String::from_utf8(bytes).unwrap();
+        assert_eq!(s, "<html>\r\n<head><title>400 Bad Request</title></head>\r\n<body>\r\n<center><h1>400 Bad Request</h1></center>\r\n<hr><center>cloudflare</center>\r\n</body>\r\n</html>\r\n");
+    }
+
+    // Starts up a WinTUN device, adds a "full-route" (`0.0.0.0/0`), and checks if we can still send packets to IPs outside of our tunnel.
+    async fn no_packet_loops_udp() {
         let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
         let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
 
@@ -59,6 +92,10 @@ mod tests {
         )))
         .unwrap();
 
+        std::future::poll_fn(|cx| socket.poll_send_ready(cx))
+            .await
+            .unwrap();
+
         // Send a STUN request.
         socket
             .send(DatagramOut {
@@ -68,11 +105,6 @@ mod tests {
                     "000100002112A4420123456789abcdef01234567"
                 )),
             })
-            .unwrap();
-
-        // First send seems to always result as would block
-        std::future::poll_fn(|cx| socket.poll_flush(cx))
-            .await
             .unwrap();
 
         let task = std::future::poll_fn(|cx| {

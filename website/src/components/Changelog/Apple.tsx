@@ -9,6 +9,43 @@ export default function Apple() {
       href="https://apps.apple.com/us/app/firezone/id6443661826"
       title="macOS / iOS"
     >
+      {/*
+      <Entry version="1.3.2" date={new Date(todo)}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6632">
+          Fixes a bug where the addressDescription wasn't fully displayed in the macOS
+          menu bar if it exceeded a certain length.
+          </ChangeItem>
+        </ul>
+      </Entry>
+      <Entry version="1.3.2" date={new Date(todo)}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6679">
+          Displays a notification when a new version is available.
+          </ChangeItem>
+        </ul>
+      </Entry>
+      */}
+      <Entry version="1.3.1" date={new Date("2024-09-05")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6521">
+            Gracefully handles cases where the device's local interface
+            IPv4/IPv6 address or local network gateway changes while the client
+            is connected.
+          </ChangeItem>
+          <ChangeItem pull="6518">
+            Minor improvements to the look of the internet resource and makes
+            the Internet resource off by default.
+          </ChangeItem>
+        </ul>
+      </Entry>
+      <Entry version="1.3.0" date={new Date("2024-08-30")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6434">
+            Adds the Internet Resource feature.
+          </ChangeItem>
+        </ul>
+      </Entry>
       <Entry version="1.2.1" date={new Date("2024-08-22")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6406">

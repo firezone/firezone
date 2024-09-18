@@ -8,16 +8,19 @@ import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
-import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
 import dagger.hilt.android.AndroidEntryPoint
+import dev.firezone.android.core.data.ResourceState
+import dev.firezone.android.core.data.toggle
 import dev.firezone.android.databinding.ActivitySessionBinding
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class SessionActivity : AppCompatActivity() {
@@ -34,9 +37,12 @@ class SessionActivity : AppCompatActivity() {
             ) {
                 val binder = service as TunnelService.LocalBinder
                 tunnelService = binder.getService()
-                serviceBound = true
-                tunnelService?.setServiceStateLiveData(viewModel.serviceStatusLiveData)
-                tunnelService?.setResourcesLiveData(viewModel.resourcesLiveData)
+
+                tunnelService?.let {
+                    serviceBound = true
+                    it.setServiceStateLiveData(viewModel.serviceStatusLiveData)
+                    it.setResourcesLiveData(viewModel.resourcesLiveData)
+                }
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
@@ -44,7 +50,7 @@ class SessionActivity : AppCompatActivity() {
             }
         }
 
-    private val resourcesAdapter = ResourcesAdapter(this)
+    private val resourcesAdapter = ResourcesAdapter { this.onInternetResourceToggled() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,16 +66,27 @@ class SessionActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         if (serviceBound) {
             unbindService(serviceConnection)
             serviceBound = false
+            tunnelService = null
         }
+
+        super.onDestroy()
     }
 
-    fun onViewResourceToggled(resourceToggled: ViewResource) {
-        Log.d(TAG, "Resource toggled $resourceToggled")
-        tunnelService?.resourceToggled(resourceToggled)
+    fun internetState(): ResourceState {
+        return tunnelService?.internetState() ?: ResourceState.UNSET
+    }
+
+    private fun onInternetResourceToggled(): ResourceState {
+        tunnelService?.let {
+            it.internetResourceToggled(internetState().toggle())
+            refreshList()
+            Log.d(TAG, "Internet resource toggled ${internetState()}")
+        }
+
+        return internetState()
     }
 
     private fun setupViews() {
@@ -113,6 +130,7 @@ class SessionActivity : AppCompatActivity() {
                 override fun onTabReselected(tab: TabLayout.Tab) {}
             },
         )
+        viewModel.tabSelected(binding.tabLayout.selectedTabPosition)
     }
 
     private fun setupObservers() {
@@ -127,25 +145,21 @@ class SessionActivity : AppCompatActivity() {
             refreshList()
         }
 
-        viewModel.favoriteResourcesLiveData.observe(this) {
-            refreshList()
+        // This coroutine could still resume while the Activity is not shown, but this is probably
+        // fine since the Flow will only emit if the user interacts with the UI anyway.
+        lifecycleScope.launch {
+            viewModel.favorites.collect {
+                refreshList()
+            }
         }
         viewModel.tabSelected(binding.tabLayout.selectedTabPosition)
-        viewModel.favoriteResourcesLiveData.value = viewModel.repo.getFavoritesSync()
     }
 
     private fun refreshList(afterLoad: () -> Unit = {}) {
-        if (viewModel.forceAllResourcesTab()) {
-            binding.tabLayout.selectTab(binding.tabLayout.getTabAt(SessionViewModel.RESOURCES_TAB_ALL), true)
-        }
-        binding.tabLayout.visibility =
-            if (viewModel.showFavoritesTab()) {
-                View.VISIBLE
-            } else {
-                View.GONE
-            }
+        viewModel.forceTab()?.let { tab -> binding.tabLayout.selectTab(binding.tabLayout.getTabAt(tab), true) }
 
-        resourcesAdapter.submitList(viewModel.resourcesList()) {
+        binding.tabLayout.visibility = viewModel.tabLayoutVisibility()
+        resourcesAdapter.submitList(viewModel.resourcesList(internetState())) {
             afterLoad()
         }
     }

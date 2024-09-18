@@ -73,6 +73,15 @@ defmodule Web.Live.SignUpTest do
       assert email.subject == "Welcome to Firezone"
       assert email.text_body =~ url(~p"/#{account}")
     end)
+
+    internet_resource = Repo.one(Domain.Resources.Resource)
+    assert internet_resource.account_id == account.id
+    assert internet_resource.name == "Internet"
+    assert internet_resource.type == :internet
+
+    gateway_group = Repo.one(Domain.Gateways.Group)
+    assert gateway_group.account_id == account.id
+    assert gateway_group.name == "Default Site"
   end
 
   test "rate limits welcome emails", %{conn: conn} do

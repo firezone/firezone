@@ -9,9 +9,7 @@ use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
 use hex_display::HexDisplayExt;
-use ip_packet::{
-    ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, MutableIpPacket, Packet as _,
-};
+use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket};
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, SeedableRng};
@@ -287,14 +285,14 @@ where
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
     /// - `Ok(Some)` if the packet was an encrypted wireguard packet from a peer.
     ///   The `Option` contains the connection on which the packet was decrypted.
-    pub fn decapsulate<'s>(
+    pub fn decapsulate<'b>(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-        buffer: &'s mut [u8],
-    ) -> Result<Option<(TId, MutableIpPacket<'s>)>, Error> {
+        buffer: &'b mut [u8],
+    ) -> Result<Option<(TId, IpPacket<'b>)>, Error> {
         self.add_local_as_host_candidate(local)?;
 
         let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
@@ -325,12 +323,13 @@ where
     /// Wireguard is an IP tunnel, so we "enforce" that only IP packets are sent through it.
     /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
     /// Nevertheless, using [`IpPacket`] in our API has good documentation value.
-    pub fn encapsulate<'s>(
-        &'s mut self,
+    pub fn encapsulate(
+        &mut self,
         connection: TId,
         packet: IpPacket<'_>,
         now: Instant,
-    ) -> Result<Option<Transmit<'s>>, Error> {
+        buffer: &mut EncryptBuffer,
+    ) -> Result<Option<EncryptedPacket>, Error> {
         let conn = self
             .connections
             .get_established_mut(&connection)
@@ -341,7 +340,7 @@ where
 
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
-            .encapsulate(packet.packet(), &mut self.buffer[4..], now)?
+            .encapsulate(packet.packet(), &mut buffer.inner[4..], now)?
             .map(|p| p.len())
         // Mapping to len() here terminate the mutable borrow of buffer, allowing re-borrowing further down.
         else {
@@ -355,30 +354,26 @@ where
             PeerSocket::Direct {
                 dest: remote,
                 source,
-            } => {
-                // Re-borrow the actual packet.
-                let packet = &self.buffer[packet_start..packet_end];
-
-                Ok(Some(Transmit {
-                    src: Some(source),
-                    dst: remote,
-                    payload: Cow::Borrowed(packet),
-                }))
-            }
+            } => Ok(Some(EncryptedPacket {
+                src: Some(source),
+                dst: remote,
+                packet_start,
+                packet_len,
+            })),
             PeerSocket::Relay { relay, dest: peer } => {
                 let Some(allocation) = self.allocations.get(&relay) else {
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
-                let packet = &mut self.buffer[..packet_end];
+                let packet = &mut buffer.inner[..packet_end];
 
-                let Some(transmit) = allocation.encode_to_borrowed_transmit(peer, packet, now)
+                let Some(enc_packet) = allocation.encode_to_encrypted_packet(peer, packet, now)
                 else {
                     tracing::warn!(%peer, "No channel");
                     return Ok(None);
                 };
 
-                Ok(Some(transmit))
+                Ok(Some(enc_packet))
             }
         }
     }
@@ -496,9 +491,7 @@ where
                 continue;
             };
 
-            for (cid, agent) in self.connections.agents_mut() {
-                let _span = info_span!("connection", %cid).entered();
-
+            for (cid, agent, _guard) in self.connections.agents_mut() {
                 for candidate in allocation
                     .current_candidates()
                     .filter(|c| c.kind() == CandidateKind::Relayed)
@@ -543,9 +536,10 @@ where
     }
 
     #[must_use]
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     fn init_connection(
         &mut self,
+        cid: TId,
         mut agent: IceAgent,
         remote: PublicKey,
         key: [u8; 32],
@@ -559,6 +553,12 @@ where
         ///
         /// Without such a timeout, using a tunnel after the REKEY_TIMEOUT requires handshaking a new session which delays the new application packet by 1 RTT.
         const WG_KEEP_ALIVE: Option<u16> = Some(10);
+
+        if self.allocations.is_empty() {
+            tracing::warn!(
+                "No TURN servers connected; connection will very likely fail to establish"
+            );
+        }
 
         Connection {
             agent,
@@ -583,6 +583,7 @@ where
             relay,
             last_outgoing: now,
             last_incoming: now,
+            span: info_span!("connection", %cid),
         }
     }
 
@@ -599,9 +600,7 @@ where
 
         self.host_candidates.push(host_candidate.clone());
 
-        for (cid, agent) in self.connections.agents_mut() {
-            let _span = info_span!("connection", %cid).entered();
-
+        for (cid, agent, _span) in self.connections.agents_mut() {
             add_local_candidate(cid, agent, host_candidate.clone(), &mut self.pending_events);
         }
 
@@ -620,7 +619,6 @@ where
     /// Those are fully encrypted and thus any byte pattern may appear at the front of the packet.
     /// We can detect this by further checking the origin of the packet.
     #[must_use]
-    #[allow(clippy::type_complexity)]
     fn allocations_try_handle<'p>(
         &mut self,
         from: SocketAddr,
@@ -687,9 +685,7 @@ where
             return ControlFlow::Continue(());
         };
 
-        for (cid, agent) in self.connections.agents_mut() {
-            let _span = info_span!("connection", %cid).entered();
-
+        for (_, agent, _span) in self.connections.agents_mut() {
             if agent.accepts_message(&message) {
                 agent.handle_packet(
                     now,
@@ -717,10 +713,8 @@ where
         packet: &[u8],
         buffer: &'b mut [u8],
         now: Instant,
-    ) -> ControlFlow<Result<(), Error>, (TId, MutableIpPacket<'b>)> {
+    ) -> ControlFlow<Result<(), Error>, (TId, IpPacket<'b>)> {
         for (cid, conn) in self.connections.iter_established_mut() {
-            let _span = info_span!("connection", %cid).entered();
-
             if !conn.accepts(&from) {
                 continue;
             }
@@ -739,7 +733,7 @@ where
 
             // I can't think of a better way to detect this ...
             if !handshake_complete_before_decapsulate && handshake_complete_after_decapsulate {
-                tracing::info!(duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
+                tracing::info!(%cid, duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
 
                 self.pending_events
                     .push_back(Event::ConnectionEstablished(cid))
@@ -773,9 +767,7 @@ where
                     );
                 }
                 CandidateEvent::Invalid(candidate) => {
-                    for (cid, agent) in self.connections.agents_mut() {
-                        let _span = info_span!("connection", %cid).entered();
-
+                    for (cid, agent, _span) in self.connections.agents_mut() {
                         remove_local_candidate(cid, agent, &candidate, &mut self.pending_events);
                     }
                 }
@@ -830,6 +822,7 @@ where
             intent_sent_at,
             relay: self.sample_relay(),
             is_failed: false,
+            span: info_span!("connection", %cid),
         };
         let duration_since_intent = initial_connection.duration_since_intent(now);
 
@@ -865,6 +858,7 @@ where
         self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
 
         let connection = self.init_connection(
+            cid,
             agent,
             remote,
             *initial.session_key.expose_secret(),
@@ -927,6 +921,7 @@ where
         self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
 
         let connection = self.init_connection(
+            cid,
             agent,
             remote,
             *offer.session_key.expose_secret(),
@@ -1042,12 +1037,17 @@ where
         maybe_initial_connection.or(maybe_established_connection)
     }
 
-    fn agents_mut(&mut self) -> impl Iterator<Item = (TId, &mut IceAgent)> {
-        let initial_agents = self.initial.iter_mut().map(|(id, c)| (*id, &mut c.agent));
+    fn agents_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (TId, &mut IceAgent, tracing::span::Entered<'_>)> {
+        let initial_agents = self
+            .initial
+            .iter_mut()
+            .map(|(id, c)| (*id, &mut c.agent, c.span.enter()));
         let negotiated_agents = self
             .established
             .iter_mut()
-            .map(|(id, c)| (*id, &mut c.agent));
+            .map(|(id, c)| (*id, &mut c.agent, c.span.enter()));
 
         initial_agents.chain(negotiated_agents)
     }
@@ -1240,6 +1240,42 @@ pub enum Event<TId> {
     ConnectionClosed(TId),
 }
 
+pub struct EncryptBuffer {
+    inner: Vec<u8>,
+}
+
+impl EncryptBuffer {
+    pub fn new(len: usize) -> Self {
+        Self {
+            inner: vec![0u8; len],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EncryptedPacket {
+    pub(crate) src: Option<SocketAddr>,
+    pub(crate) dst: SocketAddr,
+    pub(crate) packet_start: usize,
+    pub(crate) packet_len: usize,
+}
+
+impl EncryptedPacket {
+    pub fn to_transmit(self, buf: &EncryptBuffer) -> Transmit<'_> {
+        Transmit {
+            src: self.src,
+            dst: self.dst,
+            payload: Cow::Borrowed(
+                &buf.inner[self.packet_start..(self.packet_start + self.packet_len)],
+            ),
+        }
+    }
+
+    pub fn dst(&self) -> SocketAddr {
+        self.dst
+    }
+}
+
 #[derive(Clone, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Transmit<'a> {
     /// The local interface from which this packet should be sent.
@@ -1294,6 +1330,8 @@ struct InitialConnection<RId> {
     intent_sent_at: Instant,
 
     is_failed: bool,
+
+    span: tracing::Span,
 }
 
 impl<RId> InitialConnection<RId> {
@@ -1348,6 +1386,8 @@ struct Connection<RId> {
 
     last_outgoing: Instant,
     last_incoming: Instant,
+
+    span: tracing::Span,
 }
 
 enum ConnectionState<RId> {
@@ -1662,7 +1702,6 @@ where
         Ok(Some(&buffer[..len]))
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn decapsulate<'b>(
         &mut self,
         packet: &[u8],
@@ -1670,7 +1709,9 @@ where
         allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit<'static>>,
         now: Instant,
-    ) -> ControlFlow<Result<(), Error>, MutableIpPacket<'b>> {
+    ) -> ControlFlow<Result<(), Error>, IpPacket<'b>> {
+        let _guard = self.span.enter();
+
         let control_flow = match self.tunnel.decapsulate(None, packet, &mut buffer[20..]) {
             TunnResult::Done => ControlFlow::Break(Ok(())),
             TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),

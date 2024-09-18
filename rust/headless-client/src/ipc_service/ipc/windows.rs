@@ -22,8 +22,8 @@ pub(crate) type ServerStream = named_pipe::NamedPipeServer;
 /// Connect to the IPC service
 ///
 /// This is async on Linux
-#[allow(clippy::unused_async)]
-#[allow(clippy::wildcard_enum_match_arm)]
+#[expect(clippy::unused_async)]
+#[expect(clippy::wildcard_enum_match_arm)]
 pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Error> {
     let path = ipc_path(id);
     let stream = named_pipe::ClientOptions::new()
@@ -32,7 +32,7 @@ pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Er
             ErrorKind::NotFound => Error::NotFound(path),
             _ => Error::Other(error.into()),
         })?;
-    let handle = HANDLE(stream.as_raw_handle() as isize);
+    let handle = HANDLE(stream.as_raw_handle());
     let mut server_pid: u32 = 0;
     // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
     // from Tokio, so it should be valid.
@@ -47,7 +47,7 @@ impl Server {
     /// Platform-specific setup
     ///
     /// This is async on Linux
-    #[allow(clippy::unused_async)]
+    #[expect(clippy::unused_async)]
     pub(crate) async fn new(id: ServiceId) -> Result<Self> {
         let pipe_path = ipc_path(id);
         Ok(Self { pipe_path })
@@ -74,7 +74,7 @@ impl Server {
             .connect()
             .await
             .context("Couldn't accept IPC connection from GUI")?;
-        let handle = HANDLE(server.as_raw_handle() as isize);
+        let handle = HANDLE(server.as_raw_handle());
         let mut client_pid: u32 = 0;
         // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
         // from Tokio, so it should be valid.

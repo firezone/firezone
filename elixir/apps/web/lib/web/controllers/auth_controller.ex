@@ -169,7 +169,7 @@ defmodule Web.AuthController do
     |> Domain.Mailer.deliver_with_rate_limit(
       rate_limit_key: {:sign_in_link, identity.id},
       rate_limit: 3,
-      rate_limit_interval: :timer.minutes(15)
+      rate_limit_interval: :timer.minutes(5)
     )
     |> case do
       {:ok, _} -> {:ok, fragment}
@@ -207,6 +207,7 @@ defmodule Web.AuthController do
       with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
            {:ok, identity, encoded_fragment} <-
              Domain.Auth.sign_in(provider, identity_id, nonce, secret, context) do
+        :ok = Web.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, identity.id})
         Web.Auth.signed_in(conn, provider, identity, context, encoded_fragment, redirect_params)
       else
         {:error, :not_found} ->

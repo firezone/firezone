@@ -23,7 +23,7 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
 
 /// Returns true if the IPC service can run properly
 // Fallible on Windows
-#[allow(clippy::unnecessary_wraps)]
+#[expect(clippy::unnecessary_wraps)]
 pub(crate) fn elevation_check() -> Result<bool> {
     Ok(nix::unistd::getuid().is_root())
 }

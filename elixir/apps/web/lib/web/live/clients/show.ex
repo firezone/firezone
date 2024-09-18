@@ -6,7 +6,13 @@ defmodule Web.Clients.Show do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, client} <-
            Clients.fetch_client_by_id(id, socket.assigns.subject,
-             preload: [:online?, :actor, last_used_token: [identity: [:provider]]]
+             preload: [
+               :online?,
+               :actor,
+               :verified_by_identity,
+               :verified_by_actor,
+               last_used_token: [identity: [:provider]]
+             ]
            ) do
       if connected?(socket) do
         :ok = Clients.subscribe_to_clients_presence_for_actor(client.actor)
@@ -68,6 +74,47 @@ defmodule Web.Clients.Show do
         Client Details
         <span :if={not is_nil(@client.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
+
+      <:action :if={is_nil(@client.deleted_at) and not is_nil(@client.verified_at)}>
+        <.button_with_confirmation
+          id="remove_client_verification"
+          style="danger"
+          icon="hero-shield-exclamation"
+          on_confirm="remove_client_verification"
+        >
+          <:dialog_title>Remove verification</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to remove verification of this Client?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Remove
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
+          Remove verification
+        </.button_with_confirmation>
+      </:action>
+      <:action :if={is_nil(@client.deleted_at) and is_nil(@client.verified_at)}>
+        <.button_with_confirmation
+          id="verify_client"
+          style="warning"
+          icon="hero-shield-check"
+          on_confirm="verify_client"
+        >
+          <:dialog_title>Verify Client</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to verify this Client?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Verify
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
+          Verify
+        </.button_with_confirmation>
+      </:action>
       <:action :if={is_nil(@client.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/clients/#{@client}/edit"}>
           Edit Client
@@ -85,12 +132,18 @@ defmodule Web.Clients.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Status</:label>
-            <:value><.connection_status schema={@client} /></:value>
+            <:value><.connection_status class="ml-1/2" schema={@client} /></:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>Verification</:label>
+            <:value>
+              <.verified_by account={@account} schema={@client} />
+            </:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Last used sign in method</:label>
             <:value>
-              <span :if={@client.actor.type != :service_account}>
+              <div :if={@client.actor.type != :service_account} class="flex items-center">
                 <.identity_identifier account={@account} identity={@client.last_used_token.identity} />
                 <.link
                   navigate={
@@ -100,8 +153,8 @@ defmodule Web.Clients.Show do
                 >
                   show tokens
                 </.link>
-              </span>
-              <span :if={@client.actor.type == :service_account}>
+              </div>
+              <div :if={@client.actor.type == :service_account}>
                 token
                 <.link
                   navigate={
@@ -114,7 +167,7 @@ defmodule Web.Clients.Show do
                 <span :if={not is_nil(@client.last_used_token.deleted_at)}>
                   (deleted)
                 </span>
-              </span>
+              </div>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -219,7 +272,12 @@ defmodule Web.Clients.Show do
         Map.has_key?(payload.joins, client.id) ->
           {:ok, client} =
             Clients.fetch_client_by_id(client.id, socket.assigns.subject,
-              preload: [:actor, last_used_token: [identity: [:provider]]]
+              preload: [
+                :actor,
+                :verified_by_identity,
+                :verified_by_actor,
+                last_used_token: [identity: [:provider]]
+              ]
             )
 
           assign(socket, client: %{client | online?: true})
@@ -232,6 +290,33 @@ defmodule Web.Clients.Show do
       end
 
     {:noreply, socket}
+  end
+
+  def handle_event("verify_client", _params, socket) do
+    {:ok, client} = Clients.verify_client(socket.assigns.client, socket.assigns.subject)
+
+    client = %{
+      client
+      | online?: socket.assigns.client.online?,
+        actor: socket.assigns.client.actor,
+        last_used_token: socket.assigns.client.last_used_token
+    }
+
+    {:noreply, assign(socket, :client, client)}
+  end
+
+  def handle_event("remove_client_verification", _params, socket) do
+    {:ok, client} =
+      Clients.remove_client_verification(socket.assigns.client, socket.assigns.subject)
+
+    client = %{
+      client
+      | online?: socket.assigns.client.online?,
+        actor: socket.assigns.client.actor,
+        last_used_token: socket.assigns.client.last_used_token
+    }
+
+    {:noreply, assign(socket, :client, client)}
   end
 
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],

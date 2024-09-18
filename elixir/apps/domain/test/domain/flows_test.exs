@@ -600,6 +600,7 @@ defmodule Domain.FlowsTest do
         destination: destination,
         rx_bytes: 100,
         tx_bytes: 200,
+        blocked_tx_bytes: 0,
         connectivity_type: :direct,
         flow_id: flow.id,
         account_id: account.id
@@ -938,6 +939,15 @@ defmodule Domain.FlowsTest do
       identity: identity
     } do
       assert {:ok, [expired_flow]} = expire_flows_for(identity)
+      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
+      assert expired_flow.id == flow.id
+    end
+
+    test "expires flows for client", %{
+      flow: flow,
+      client: client
+    } do
+      assert {:ok, [expired_flow]} = expire_flows_for(client)
       assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
       assert expired_flow.id == flow.id
     end

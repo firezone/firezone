@@ -1,3 +1,4 @@
+/** @type {import('tailwindcss').Config} */
 import flowbite from "flowbite-react/tailwind";
 
 const firezoneColors = {
@@ -46,6 +47,21 @@ const firezoneColors = {
     900: "#1b140e",
     950: "#050505",
   },
+
+  // gray: cool-gray
+  "cool-gray": {
+    50: "#F8FAFC",
+    100: "#F1F5F9",
+    200: "#E2E8F0",
+    300: "#CBD5E1",
+    400: "#94A3B8",
+    500: "#64748B",
+    600: "#475569",
+    700: "#334155",
+    800: "#1E293B",
+    900: "#0F172A",
+    950: "#020617",
+  },
 };
 
 /** @type {import('tailwindcss').Config} */
@@ -58,6 +74,15 @@ module.exports = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-source-sans)"],
+        manrope: ["var(--font-manrope)"],
+      },
+      boxShadow: {
+        drop: "0px 16px 32px -4px rgba(12, 12, 13, 0.1), 0px 4px 4px -4px rgba(12, 12, 13, 0.05)",
+        light:
+          "0px 4px 8px 3px rgba(12, 12, 13, 0.08), 0px 1px 3px 0 rgba(12, 12, 13, 0.15)",
+      },
       gridTemplateColumns: {
         // Simple 16 column grid
         16: "repeat(16, minmax(0, 1fr))",
@@ -107,6 +132,7 @@ module.exports = {
         primary: firezoneColors["heat-wave"],
         accent: firezoneColors["electric-violet"],
         neutral: firezoneColors["night-rider"],
+        grey: firezoneColors["cool-gray"],
       },
     },
   },

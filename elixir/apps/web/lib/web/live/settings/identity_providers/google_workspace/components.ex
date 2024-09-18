@@ -1,5 +1,19 @@
 defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
   use Web, :component_library
+  alias Domain.Auth.Adapters.GoogleWorkspace
+
+  def map_provider_form_attrs(attrs) do
+    attrs
+    |> Map.put("adapter", :google_workspace)
+    |> Map.update("adapter_config", %{}, fn adapter_config ->
+      Map.update(adapter_config, "service_account_json_key", nil, fn service_account_json_key ->
+        case Jason.decode(service_account_json_key) do
+          {:ok, map} -> map
+          {:error, _} -> service_account_json_key
+        end
+      end)
+    end)
+  end
 
   def provider_form(assigns) do
     ~H"""
@@ -85,7 +99,9 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
               </li>
               <li>
                 <strong>Authorized domains</strong>:
-                <code class="px-1 py-0.5 text-sm bg-neutral-600 text-white">firezone.dev</code>
+                <code class="px-1 py-0.5 text-sm bg-neutral-600 text-white rounded">
+                  firezone.dev
+                </code>
               </li>
             </ul>
             <p class="mb-4">
@@ -104,7 +120,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
               id="oauth-scopes"
               class="w-full text-xs mb-4 whitespace-pre-line rounded"
               phx-no-format
-            ><%= scopes() %></.code_block>
+            ><%= Enum.join(GoogleWorkspace.Settings.scope(), "\n") %></.code_block>
             <p class="mb-4">
               Then click <strong>UPDATE</strong>.
             </p>
@@ -152,13 +168,78 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
             <p class="mb-4">
               Click <strong>CREATE</strong>. Copy the <strong>Client ID</strong>
               and <strong>Client secret</strong>
-              values from the next screen.
+              values from the next screen to the form below.
             </p>
           </:content>
         </.step>
 
         <.step>
-          <:title>Step 6. Configure Firezone</:title>
+          <:title>Step 6: Create service account with domain-wide delegation</:title>
+          <:content>
+            <p class="mb-4">
+              Go to the
+              <a
+                href="https://console.cloud.google.com/iam-admin/serviceaccounts"
+                target="_blank"
+                class={link_style()}
+              >
+                <strong>Service Accounts</strong>
+              </a>
+              page of the Google Cloud Console and click <strong>Create Service Account</strong>.
+            </p>
+            <p class="mb-4">
+              Use the following values on the next screen:
+              <ul class="ml-4 mb-4 list-disc list-inside">
+                <li>
+                  <strong>Service account name</strong>: Firezone directory sync
+                </li>
+                <li>
+                  <strong>Service account ID</strong>:
+                  <code class="px-1 py-0.5 text-sm bg-neutral-600 text-white rounded">
+                    firezone-directory-sync
+                  </code>
+                </li>
+              </ul>
+            </p>
+            <p class="mb-4">
+              Leave the rest of the options as they are, and click <strong>DONE</strong>.
+            </p>
+            <p class="mb-4">
+              Click on the created service account, then click the <strong>Keys</strong>
+              tab, <strong>Add Key</strong>
+              and select <strong>Create new key</strong>. Select <strong>JSON</strong>
+              and click <strong>Create</strong>. The contents of the downloaded JSON will be used for the
+              <strong>Service Account JSON Key</strong>
+              field of the form below.
+            </p>
+            <p class="mb-4">
+              Go back to the <strong>Details</strong>
+              tab and copy the <strong>Unique ID</strong>
+              (OAuth 2 Client ID). You will need it for the next step.
+            </p>
+            <p class="mb-4">
+              Next, go to the
+              <a href="https://admin.google.com/ac/owl" target="_blank" class={link_style()}>
+                <strong>API Controls</strong>
+              </a>
+              section of the Google Workspace Admin console.
+              Click <strong>Manage Domain Wide Delegation</strong>, <strong>Add new</strong>
+              and paste the <strong>Unique ID</strong>
+              from the previous step to the <strong>Client ID</strong>
+              field and add the following scopes: <.code_block
+                id="oauth-scopes"
+                class="w-full text-xs mb-4 whitespace-pre-line rounded"
+                phx-no-format
+              ><%= Enum.join(GoogleWorkspace.Settings.scope(), ",\n") %></.code_block>
+            </p>
+            <p class="mb-4">
+              Finally, click <strong>Authorize</strong>.
+            </p>
+          </:content>
+        </.step>
+
+        <.step>
+          <:title>Step 7. Configure Firezone</:title>
           <:content>
             <.base_error form={@form} field={:base} />
 
@@ -185,7 +266,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
                     required
                   />
                   <p class="mt-2 text-xs text-neutral-500">
-                    The Client ID from the previous step.
+                    The Client ID from Step 5.
                   </p>
                 </div>
 
@@ -197,7 +278,41 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
                     required
                   />
                   <p class="mt-2 text-xs text-neutral-500">
-                    The Client secret from the previous step.
+                    The Client secret from Step 5.
+                  </p>
+                </div>
+
+                <div>
+                  <.input
+                    type="textarea"
+                    label="Service Account JSON Key"
+                    autocomplete="off"
+                    field={adapter_config_form[:service_account_json_key]}
+                    placeholder='{"type":"service_account","project_id":...}'
+                    value={
+                      case adapter_config_form[:service_account_json_key].value do
+                        nil ->
+                          nil
+
+                        %Ecto.Changeset{} = changeset ->
+                          changeset
+                          |> Ecto.Changeset.apply_changes()
+                          |> Map.from_struct()
+                          |> Jason.encode!()
+
+                        %GoogleWorkspace.Settings.GoogleServiceAccountKey{} = struct ->
+                          struct
+                          |> Map.from_struct()
+                          |> Jason.encode!()
+
+                        binary when is_binary(binary) ->
+                          binary
+                      end
+                    }
+                    required
+                  />
+                  <p class="mt-2 text-xs text-neutral-500">
+                    The Service Account JSON Key from Step 6.
                   </p>
                 </div>
               </.inputs_for>
@@ -220,17 +335,6 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
         </.step>
       </.form>
     </div>
-    """
-  end
-
-  def scopes do
-    """
-    openid
-    profile
-    email
-    https://www.googleapis.com/auth/admin.directory.orgunit.readonly
-    https://www.googleapis.com/auth/admin.directory.group.readonly
-    https://www.googleapis.com/auth/admin.directory.user.readonly
     """
   end
 end

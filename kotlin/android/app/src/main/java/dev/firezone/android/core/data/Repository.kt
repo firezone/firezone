@@ -4,15 +4,56 @@ package dev.firezone.android.core.data
 import android.content.Context
 import android.content.SharedPreferences
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.data.model.Config
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import java.security.MessageDigest
 import javax.inject.Inject
+
+const val ON_SYMBOL: String = "<->"
+const val OFF_SYMBOL: String = " — "
+
+enum class ResourceState {
+    @SerializedName("enabled")
+    ENABLED,
+
+    @SerializedName("disabled")
+    DISABLED,
+
+    @SerializedName("unset")
+    UNSET,
+}
+
+fun ResourceState.isEnabled(): Boolean {
+    return this == ResourceState.ENABLED
+}
+
+fun ResourceState.stateSymbol(): String {
+    return if (this.isEnabled()) {
+        ON_SYMBOL
+    } else {
+        OFF_SYMBOL
+    }
+}
+
+fun ResourceState.toggle(): ResourceState {
+    return if (this.isEnabled()) {
+        ResourceState.DISABLED
+    } else {
+        ResourceState.ENABLED
+    }
+}
+
+// Wrapper class used because `MutableStateFlow` will not
+// notify subscribers if you submit the same object that's already in it.
+class Favorites(val inner: HashSet<String>)
 
 internal class Repository
     @Inject
@@ -21,6 +62,12 @@ internal class Repository
         private val coroutineDispatcher: CoroutineDispatcher,
         private val sharedPreferences: SharedPreferences,
     ) {
+        // We are the only thing that can modify favorites so we shouldn't need to reload it after
+        // this initial load
+        private val _favorites =
+            MutableStateFlow(Favorites(HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())))
+        val favorites = _favorites.asStateFlow()
+
         fun getConfigSync(): Config {
             return Config(
                 sharedPreferences.getString(AUTH_BASE_URL_KEY, null)
@@ -63,9 +110,25 @@ internal class Repository
 
         fun getDeviceIdSync(): String? = sharedPreferences.getString(DEVICE_ID_KEY, null)
 
-        fun getFavoritesSync(): HashSet<String> = HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())
+        private fun saveFavoritesSync() {
+            sharedPreferences.edit().putStringSet(FAVORITE_RESOURCES_KEY, favorites.value.inner).apply()
+            _favorites.value = Favorites(favorites.value.inner)
+        }
 
-        fun saveFavoritesSync(value: HashSet<String>) = sharedPreferences.edit().putStringSet(FAVORITE_RESOURCES_KEY, value).apply()
+        fun addFavoriteResource(id: String) {
+            favorites.value.inner.add(id)
+            saveFavoritesSync()
+        }
+
+        fun removeFavoriteResource(id: String) {
+            favorites.value.inner.remove(id)
+            saveFavoritesSync()
+        }
+
+        fun resetFavorites() {
+            favorites.value.inner.clear()
+            saveFavoritesSync()
+        }
 
         fun getToken(): Flow<String?> =
             flow {
@@ -94,14 +157,14 @@ internal class Repository
                 .putString(DEVICE_ID_KEY, value)
                 .apply()
 
-        fun getDisabledResourcesSync(): Set<String> {
-            val jsonString = sharedPreferences.getString(DISABLED_RESOURCES_KEY, null) ?: return hashSetOf()
-            val type = object : TypeToken<HashSet<String>>() {}.type
+        fun getInternetResourceStateSync(): ResourceState {
+            val jsonString = sharedPreferences.getString(ENABLED_INTERNET_RESOURCE_KEY, null) ?: return ResourceState.UNSET
+            val type = object : TypeToken<ResourceState>() {}.type
             return Gson().fromJson(jsonString, type)
         }
 
-        fun saveDisabledResourcesSync(value: Set<String>): Unit =
-            sharedPreferences.edit().putString(DISABLED_RESOURCES_KEY, Gson().toJson(value))
+        fun saveInternetResourceStateSync(value: ResourceState): Unit =
+            sharedPreferences.edit().putString(ENABLED_INTERNET_RESOURCE_KEY, Gson().toJson(value))
                 .apply()
 
         fun saveNonce(value: String): Flow<Unit> =
@@ -183,6 +246,6 @@ internal class Repository
             private const val NONCE_KEY = "nonce"
             private const val STATE_KEY = "state"
             private const val DEVICE_ID_KEY = "deviceId"
-            private const val DISABLED_RESOURCES_KEY = "disabledResources"
+            private const val ENABLED_INTERNET_RESOURCE_KEY = "enabledInternetResource"
         }
     }

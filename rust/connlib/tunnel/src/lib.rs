@@ -17,6 +17,7 @@ use rand::rngs::OsRng;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
     task::{ready, Context, Poll},
@@ -64,6 +65,7 @@ pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::ClientState;
 pub use gateway::{GatewayState, IPV4_PEERS, IPV6_PEERS};
+use snownet::EncryptBuffer;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
@@ -81,8 +83,12 @@ pub struct Tunnel<TRoleState> {
     ip4_read_buf: Box<[u8; MAX_UDP_SIZE]>,
     ip6_read_buf: Box<[u8; MAX_UDP_SIZE]>,
 
-    /// Buffer for processing a single IP packet.
-    packet_buffer: Box<[u8; BUF_SIZE]>,
+    /// Buffer for reading a single IP packet.
+    device_read_buf: Box<[u8; BUF_SIZE]>,
+    /// Buffer for decryping a single packet.
+    decrypt_buf: Box<[u8; BUF_SIZE]>,
+    /// Buffer for encrypting a single packet.
+    encrypt_buf: EncryptBuffer,
 }
 
 impl ClientTunnel {
@@ -95,9 +101,11 @@ impl ClientTunnel {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: ClientState::new(private_key, known_hosts, rand::random()),
-            packet_buffer: Box::new([0u8; BUF_SIZE]),
+            device_read_buf: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            encrypt_buf: EncryptBuffer::new(BUF_SIZE),
+            decrypt_buf: Box::new([0u8; BUF_SIZE]),
         }
     }
 
@@ -132,18 +140,25 @@ impl ClientTunnel {
                 cx,
                 self.ip4_read_buf.as_mut(),
                 self.ip6_read_buf.as_mut(),
-                self.packet_buffer.as_mut(),
+                self.device_read_buf.as_mut(),
+                &self.encrypt_buf,
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout);
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
-                    let Some(transmit) = self.role_state.encapsulate(packet, Instant::now()) else {
+                    let now = Instant::now();
+                    let Some(enc_packet) =
+                        self.role_state
+                            .encapsulate(packet, now, &mut self.encrypt_buf)
+                    else {
+                        self.role_state.handle_timeout(now);
                         continue;
                     };
 
-                    self.io.send_network(transmit)?;
+                    self.io
+                        .send_encrypted_packet(enc_packet, &self.encrypt_buf)?;
 
                     continue;
                 }
@@ -153,8 +168,8 @@ impl ClientTunnel {
                             received.local,
                             received.from,
                             received.packet,
-                            std::time::Instant::now(),
-                            self.packet_buffer.as_mut(),
+                            Instant::now(),
+                            self.decrypt_buf.as_mut(),
                         ) else {
                             continue;
                         };
@@ -185,9 +200,11 @@ impl GatewayTunnel {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: GatewayState::new(private_key, rand::random()),
-            packet_buffer: Box::new([0u8; BUF_SIZE]),
+            device_read_buf: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            encrypt_buf: EncryptBuffer::new(BUF_SIZE),
+            decrypt_buf: Box::new([0u8; BUF_SIZE]),
         }
     }
 
@@ -217,21 +234,25 @@ impl GatewayTunnel {
                 cx,
                 self.ip4_read_buf.as_mut(),
                 self.ip6_read_buf.as_mut(),
-                self.packet_buffer.as_mut(),
+                self.device_read_buf.as_mut(),
+                &self.encrypt_buf,
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout, Utc::now());
                     continue;
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
-                    let Some(transmit) = self
-                        .role_state
-                        .encapsulate(packet, std::time::Instant::now())
+                    let now = Instant::now();
+                    let Some(enc_packet) =
+                        self.role_state
+                            .encapsulate(packet, now, &mut self.encrypt_buf)
                     else {
+                        self.role_state.handle_timeout(now, Utc::now());
                         continue;
                     };
 
-                    self.io.send_network(transmit)?;
+                    self.io
+                        .send_encrypted_packet(enc_packet, &self.encrypt_buf)?;
 
                     continue;
                 }
@@ -241,8 +262,8 @@ impl GatewayTunnel {
                             received.local,
                             received.from,
                             received.packet,
-                            std::time::Instant::now(),
-                            self.packet_buffer.as_mut(),
+                            Instant::now(),
+                            self.device_read_buf.as_mut(),
                         ) else {
                             continue;
                         };
@@ -301,15 +322,11 @@ pub enum ClientEvent {
     ResourcesChanged {
         resources: Vec<callbacks::ResourceDescription>,
     },
-    // TODO: Make this more fine-granular.
     TunInterfaceUpdated(TunConfig),
-    TunRoutesUpdated {
-        ip4: Vec<Ipv4Network>,
-        ip6: Vec<Ipv6Network>,
-    },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, derivative::Derivative, PartialEq, Eq)]
+#[derivative(Debug)]
 pub struct TunConfig {
     pub ip4: Ipv4Addr,
     pub ip6: Ipv6Addr,
@@ -320,6 +337,11 @@ pub struct TunConfig {
     ///   If upstream DNS servers are configured (in the portal), we will use those.
     ///   Otherwise, we will use the DNS servers configured on the system.
     pub dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+
+    #[derivative(Debug(format_with = "fmt_routes"))]
+    pub ipv4_routes: BTreeSet<Ipv4Network>,
+    #[derivative(Debug(format_with = "fmt_routes"))]
+    pub ipv6_routes: BTreeSet<Ipv6Network>,
 }
 
 #[derive(Debug, Clone)]
@@ -344,4 +366,17 @@ pub fn keypair() -> (StaticSecret, PublicKey) {
     let public_key = PublicKey::from(&private_key);
 
     (private_key, public_key)
+}
+
+fn fmt_routes<T>(routes: &BTreeSet<T>, f: &mut fmt::Formatter) -> fmt::Result
+where
+    T: fmt::Display,
+{
+    let mut list = f.debug_list();
+
+    for route in routes {
+        list.entry(&format_args!("{route}"));
+    }
+
+    list.finish()
 }

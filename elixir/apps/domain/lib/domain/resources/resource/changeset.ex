@@ -41,7 +41,7 @@ defmodule Domain.Resources.Resource.Changeset do
       with: &Connection.Changeset.changeset(account.id, &1, &2, subject),
       required: true
     )
-    |> put_created_by(subject)
+    |> put_subject_trail(:created_by, subject)
   end
 
   def create(%Accounts.Account{} = account, attrs) do
@@ -124,7 +124,7 @@ defmodule Domain.Resources.Resource.Changeset do
   defp validate_cidr_address(changeset, account) do
     internet_resource_message =
       if Accounts.internet_resource_enabled?(account) do
-        "please use the Internet Resource to route all traffic through Firezone instead"
+        "the Internet Resource is already created in your account. Define a Policy for it instead"
       else
         "routing all traffic through Firezone is available on paid plans using the Internet Resource"
       end
@@ -221,6 +221,7 @@ defmodule Domain.Resources.Resource.Changeset do
     |> cast_embed(:filters, with: &cast_filter/2)
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)
+    |> unique_constraint(:type, name: :unique_internet_resource_per_account)
   end
 
   def delete(%Resource{} = resource) do

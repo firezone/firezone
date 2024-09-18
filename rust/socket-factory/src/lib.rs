@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 use std::{
     borrow::Cow,
-    collections::VecDeque,
+    // collections::VecDeque,
     io::{self, IoSliceMut},
     net::{IpAddr, SocketAddr},
     slice,
     task::{ready, Context, Poll},
 };
 
-use socket2::SockAddr;
+use std::any::Any;
 use std::collections::hash_map::Entry;
+use std::pin::Pin;
 use tokio::io::Interest;
 
 pub trait SocketFactory<S>: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
@@ -24,11 +25,14 @@ pub fn tcp(addr: &SocketAddr) -> io::Result<TcpSocket> {
 
     socket.set_nodelay(true)?;
 
-    Ok(TcpSocket { inner: socket })
+    Ok(TcpSocket {
+        inner: socket,
+        backpack: None,
+    })
 }
 
-pub fn udp(addr: &SocketAddr) -> io::Result<UdpSocket> {
-    let addr: SockAddr = (*addr).into();
+pub fn udp(std_addr: &SocketAddr) -> io::Result<UdpSocket> {
+    let addr = socket2::SockAddr::from(*std_addr);
     let socket = socket2::Socket::new(addr.domain(), socket2::Type::DGRAM, None)?;
 
     // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
@@ -39,6 +43,11 @@ pub fn udp(addr: &SocketAddr) -> io::Result<UdpSocket> {
     socket.set_nonblocking(true)?;
     socket.bind(&addr)?;
 
+    let send_buf_size = socket.send_buffer_size()?;
+    let recv_buf_size = socket.recv_buffer_size()?;
+
+    tracing::info!(addr = %std_addr, %send_buf_size, %recv_buf_size, "Created new UDP socket");
+
     let socket = std::net::UdpSocket::from(socket);
     let socket = tokio::net::UdpSocket::try_from(socket)?;
     let socket = UdpSocket::new(socket)?;
@@ -48,15 +57,66 @@ pub fn udp(addr: &SocketAddr) -> io::Result<UdpSocket> {
 
 pub struct TcpSocket {
     inner: tokio::net::TcpSocket,
+    /// A location to store additional data with the [`TcpSocket`].
+    backpack: Option<Box<dyn Any + Send + Sync + Unpin + 'static>>,
 }
 
 impl TcpSocket {
-    pub async fn connect(self, addr: SocketAddr) -> io::Result<tokio::net::TcpStream> {
-        self.inner.connect(addr).await
+    pub async fn connect(self, addr: SocketAddr) -> io::Result<TcpStream> {
+        let tcp_stream = self.inner.connect(addr).await?;
+
+        Ok(TcpStream {
+            inner: tcp_stream,
+            _backpack: self.backpack,
+        })
     }
 
     pub fn bind(&self, addr: SocketAddr) -> io::Result<()> {
         self.inner.bind(addr)
+    }
+
+    /// Pack some custom data into the backpack of this [`TcpSocket`].
+    ///
+    /// The data will be carried around until the [`TcpSocket`] is dropped.
+    pub fn pack(&mut self, luggage: impl Any + Send + Sync + Unpin + 'static) {
+        self.backpack = Some(Box::new(luggage));
+    }
+}
+
+pub struct TcpStream {
+    inner: tokio::net::TcpStream,
+    /// A location to store additional data with the [`TcpStream`].
+    _backpack: Option<Box<dyn Any + Send + Sync + Unpin + 'static>>,
+}
+
+impl tokio::io::AsyncWrite for TcpStream {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        Pin::new(&mut self.as_mut().inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Pin::new(&mut self.as_mut().inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), io::Error>> {
+        Pin::new(&mut self.as_mut().inner).poll_shutdown(cx)
+    }
+}
+
+impl tokio::io::AsyncRead for TcpStream {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.as_mut().inner).poll_read(cx, buf)
     }
 }
 
@@ -84,8 +144,6 @@ pub struct UdpSocket {
     src_by_dst_cache: HashMap<IpAddr, IpAddr>,
 
     port: u16,
-
-    buffered_datagrams: VecDeque<DatagramOut<'static>>,
 }
 
 impl UdpSocket {
@@ -97,7 +155,6 @@ impl UdpSocket {
             port,
             inner,
             source_ip_resolver: Box::new(|_| Ok(None)),
-            buffered_datagrams: VecDeque::new(),
             src_by_dst_cache: Default::default(),
         })
     }
@@ -146,18 +203,7 @@ pub struct DatagramOut<'a> {
     pub packet: Cow<'a, [u8]>,
 }
 
-impl<'a> DatagramOut<'a> {
-    fn into_owned(self) -> DatagramOut<'static> {
-        DatagramOut {
-            src: self.src,
-            dst: self.dst,
-            packet: Cow::Owned(self.packet.into_owned()),
-        }
-    }
-}
-
 impl UdpSocket {
-    #[allow(clippy::type_complexity)]
     pub fn poll_recv_from<'b>(
         &self,
         buffer: &'b mut [u8],
@@ -205,51 +251,16 @@ impl UdpSocket {
         }
     }
 
-    pub fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        loop {
-            ready!(self.inner.poll_send_ready(cx))?; // Ensure we are ready to send.
-
-            let Some(transmit) = self.buffered_datagrams.pop_front() else {
-                break;
-            };
-
-            match self.try_send(&transmit) {
-                Ok(()) => continue, // Try to send another packet.
-                Err(e) => {
-                    self.buffered_datagrams.push_front(transmit); // Don't lose the packet if we fail.
-
-                    if e.kind() == io::ErrorKind::WouldBlock {
-                        continue; // False positive send-readiness: Loop to `poll_send_ready` and return `Pending`.
-                    }
-
-                    return Poll::Ready(Err(e));
-                }
-            }
-        }
-
-        assert!(self.buffered_datagrams.is_empty());
-
-        Poll::Ready(Ok(()))
+    pub fn poll_send_ready(&self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.inner.poll_send_ready(cx)
     }
 
     pub fn send(&mut self, datagram: DatagramOut) -> io::Result<()> {
         tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, num_bytes = %datagram.packet.len());
 
-        debug_assert!(
-            self.buffered_datagrams.len() < 10_000,
-            "We are not flushing the packets for some reason"
-        );
+        self.try_send(&datagram)?;
 
-        match self.try_send(&datagram) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                tracing::trace!("Buffering packet because socket is busy");
-
-                self.buffered_datagrams.push_back(datagram.into_owned());
-                Ok(())
-            }
-            Err(e) => Err(e),
-        }
+        Ok(())
     }
 
     pub fn try_send(&mut self, transmit: &DatagramOut) -> io::Result<()> {

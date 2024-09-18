@@ -9,12 +9,13 @@ use crate::{
 use anyhow::Result;
 use connlib_shared::messages::{
     ClientPayload, ConnectionAccepted, GatewayResponse, RelaysPresence, RequestConnection,
-    ResourceAccepted, ResourceId, ReuseConnection,
+    ResourceId, ReuseConnection,
 };
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{
     collections::{BTreeMap, BTreeSet},
+    io,
     net::IpAddr,
     task::{Context, Poll},
 };
@@ -89,6 +90,9 @@ where
             match self.tunnel.poll_next_event(cx) {
                 Poll::Ready(Ok(event)) => {
                     self.handle_tunnel_event(event);
+                    continue;
+                }
+                Poll::Ready(Err(e)) if e.kind() == io::ErrorKind::WouldBlock => {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
@@ -176,9 +180,10 @@ where
 
                 self.callbacks
                     .on_set_interface_config(config.ip4, config.ip6, dns_servers);
-            }
-            firezone_tunnel::ClientEvent::TunRoutesUpdated { ip4, ip6 } => {
-                self.callbacks.on_update_routes(ip4, ip6);
+                self.callbacks.on_update_routes(
+                    Vec::from_iter(config.ipv4_routes),
+                    Vec::from_iter(config.ipv6_routes),
+                );
             }
             firezone_tunnel::ClientEvent::RequestConnection {
                 gateway_id,
@@ -288,12 +293,6 @@ where
                 ) {
                     tracing::warn!("Failed to accept connection: {e}");
                 }
-            }
-            ReplyMessages::Connect(Connect {
-                gateway_payload: GatewayResponse::ResourceAccepted(ResourceAccepted { .. }),
-                ..
-            }) => {
-                tracing::trace!("Connection response received, ignored as it's deprecated")
             }
             ReplyMessages::ConnectionDetails(ConnectionDetails {
                 gateway_id,

@@ -69,6 +69,11 @@ defmodule API.Client.ChannelTest do
         connections: [%{gateway_group_id: gateway_group.id}]
       )
 
+    offline_resource =
+      Fixtures.Resources.create_resource(account: account)
+      |> Ecto.Changeset.change(connections: [])
+      |> Repo.update!()
+
     dns_resource_policy =
       Fixtures.Policies.create_policy(
         account: account,
@@ -107,6 +112,12 @@ defmodule API.Client.ChannelTest do
       resource: internet_resource
     )
 
+    Fixtures.Policies.create_policy(
+      account: account,
+      actor_group: actor_group,
+      resource: offline_resource
+    )
+
     expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
 
     subject = %{subject | expires_at: expires_at}
@@ -137,6 +148,7 @@ defmodule API.Client.ChannelTest do
       internet_resource: internet_resource,
       unauthorized_resource: unauthorized_resource,
       nonconforming_resource: nonconforming_resource,
+      offline_resource: offline_resource,
       dns_resource_policy: dns_resource_policy,
       socket: socket
     }
@@ -144,7 +156,8 @@ defmodule API.Client.ChannelTest do
 
   describe "join/3" do
     test "tracks presence after join", %{account: account, client: client} do
-      presence = Domain.Clients.Presence.list(Domain.Clients.account_presence_topic(account))
+      presence =
+        Domain.Clients.Presence.list(Domain.Clients.account_clients_presence_topic(account))
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, client.id)
       assert is_number(online_at)
@@ -247,7 +260,8 @@ defmodule API.Client.ChannelTest do
       cidr_resource: cidr_resource,
       ip_resource: ip_resource,
       nonconforming_resource: nonconforming_resource,
-      internet_resource: internet_resource
+      internet_resource: internet_resource,
+      offline_resource: offline_resource
     } do
       assert_push "init", %{
         resources: resources,
@@ -331,6 +345,7 @@ defmodule API.Client.ChannelTest do
              } in resources
 
       refute Enum.any?(resources, &(&1.id == nonconforming_resource.id))
+      refute Enum.any?(resources, &(&1.id == offline_resource.id))
 
       assert interface == %{
                ipv4: client.ipv4,
@@ -700,6 +715,18 @@ defmodule API.Client.ChannelTest do
                  %{protocol: :ip_port, address: "1.8.8.1:53"}
                ]
              }
+    end
+  end
+
+  describe "handle_info/2 :updated" do
+    test "sends init message", %{
+      socket: socket
+    } do
+      assert_push "init", %{}
+
+      send(socket.channel_pid, :updated)
+
+      assert_push "init", %{}
     end
   end
 
