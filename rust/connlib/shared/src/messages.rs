@@ -236,18 +236,11 @@ pub struct DomainResponse {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ConnectionAccepted {
     pub ice_parameters: Answer,
-    pub domain_response: Option<DomainResponse>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct ResourceAccepted {
-    pub domain_response: DomainResponse,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum GatewayResponse {
     ConnectionAccepted(ConnectionAccepted),
-    ResourceAccepted(ResourceAccepted),
 }
 
 #[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
