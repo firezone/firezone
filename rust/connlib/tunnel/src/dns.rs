@@ -12,6 +12,7 @@ use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::collections::{BTreeMap, HashMap};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::ops::ControlFlow;
 
 const DNS_TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
@@ -205,18 +206,18 @@ impl StubResolver {
     /// Parses an incoming packet as a DNS query and decides how to respond to it
     ///
     /// Returns:
-    /// - `Ok(Some)` if the packet was successfully parsed a DNS packet
-    /// - `Ok(None)` if the packet isn't a DNS packet
+    /// - `Ok(ControlFlow::Break)` if the packet was successfully parsed a DNS packet
+    /// - `Ok(ControlFlow::Continue)` if the packet isn't a DNS packet
     /// - `Err()` if the packet was directed at our DNS resolver but processing failed
     pub(crate) fn handle(
         &mut self,
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
         packet: &IpPacket,
-    ) -> Result<Option<ResolveStrategy>> {
+    ) -> Result<ControlFlow<ResolveStrategy, ()>> {
         let dst = packet.destination();
         let _guard = tracing::debug_span!("packet", %dst).entered();
         let Some(upstream) = dns_mapping.get_by_left(&dst).map(|s| s.address()) else {
-            return Ok(None);
+            return Ok(ControlFlow::Continue(()));
         };
 
         let datagram = packet.as_udp().context("Only DNS over UDP is supported")?;
@@ -259,7 +260,7 @@ impl StubResolver {
             )
             .expect("src and dst come from the same packet");
 
-            return Ok(Some(ResolveStrategy::LocalResponse(packet)));
+            return Ok(ControlFlow::Break(ResolveStrategy::LocalResponse(packet)));
         }
 
         // `match_resource` is `O(N)` which we deem fine for DNS queries.
@@ -267,7 +268,7 @@ impl StubResolver {
 
         let resource_records = match (qtype, maybe_resource) {
             (_, Some(resource)) if !self.knows_resource(&resource) => {
-                return Ok(Some(ResolveStrategy::ForwardQuery {
+                return Ok(ControlFlow::Break(ResolveStrategy::ForwardQuery {
                     upstream,
                     query_id: message.header().id(),
                     payload: message.into_octets().to_vec(),
@@ -280,7 +281,7 @@ impl StubResolver {
             }
             (Rtype::PTR, _) => {
                 let Some(fqdn) = self.resource_address_name_by_reservse_dns(&domain) else {
-                    return Ok(Some(ResolveStrategy::ForwardQuery {
+                    return Ok(ControlFlow::Break(ResolveStrategy::ForwardQuery {
                         upstream,
                         query_id: message.header().id(),
                         payload: message.into_octets().to_vec(),
@@ -291,7 +292,7 @@ impl StubResolver {
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
             }
             _ => {
-                return Ok(Some(ResolveStrategy::ForwardQuery {
+                return Ok(ControlFlow::Break(ResolveStrategy::ForwardQuery {
                     upstream,
                     query_id: message.header().id(),
                     payload: message.into_octets().to_vec(),
@@ -312,7 +313,7 @@ impl StubResolver {
         )
         .expect("src and dst come from the same packet");
 
-        Ok(Some(ResolveStrategy::LocalResponse(packet)))
+        Ok(ControlFlow::Break(ResolveStrategy::LocalResponse(packet)))
     }
 }
 
