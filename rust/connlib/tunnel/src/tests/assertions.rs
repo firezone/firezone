@@ -197,6 +197,26 @@ pub(crate) fn assert_dns_packets_properties(ref_client: &RefClient, sim_client: 
     }
 }
 
+pub(crate) fn assert_ip_packet_checksums(
+    sim_client: &SimClient,
+    sim_gateways: &HashMap<GatewayId, &SimGateway>,
+) {
+    for packet in sim_client
+        .received_icmp_replies
+        .values()
+        .chain(sim_client.received_dns_responses.values())
+        .chain(
+            sim_gateways
+                .values()
+                .flat_map(|g| g.received_icmp_requests.values()),
+        )
+    {
+        if !packet.are_checksums_valid() {
+            tracing::error!(target: "assertions", ?packet, "Invalid checksums on IP packet");
+        }
+    }
+}
+
 fn assert_correct_src_and_dst_ips(
     client_sent_request: &IpPacket<'_>,
     client_received_reply: &IpPacket<'_>,

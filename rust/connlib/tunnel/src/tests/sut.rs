@@ -343,6 +343,7 @@ impl TunnelTest {
             .collect();
 
         // Assert our properties: Check that our actual state is equivalent to our expectation (the reference state).
+        assert_ip_packet_checksums(sim_client, &sim_gateways);
         assert_icmp_packets_properties(
             ref_client,
             sim_client,
