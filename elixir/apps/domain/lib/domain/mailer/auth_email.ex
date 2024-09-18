@@ -1,7 +1,7 @@
-defmodule Web.Mailer.AuthEmail do
-  use Web, :html
+defmodule Domain.Mailer.AuthEmail do
   import Swoosh.Email
-  import Web.Mailer
+  import Domain.Mailer
+  import Phoenix.Template, only: [embed_templates: 2]
 
   embed_templates "auth_email/*.html", suffix: "_html"
   embed_templates "auth_email/*.text", suffix: "_text"
@@ -12,7 +12,7 @@ defmodule Web.Mailer.AuthEmail do
         user_agent,
         remote_ip
       ) do
-    sign_in_form_url = url(~p"/#{account}")
+    sign_in_form_url = url("/#{account.slug}")
 
     default_email()
     |> subject("Welcome to Firezone")
@@ -40,11 +40,12 @@ defmodule Web.Mailer.AuthEmail do
 
     sign_in_url =
       url(
-        ~p"/#{identity.account}/sign_in/providers/#{identity.provider_id}/verify_sign_in_token?#{params}"
+        "/#{identity.account.slug}/sign_in/providers/#{identity.provider_id}/verify_sign_in_token",
+        params
       )
 
     sign_in_token_created_at =
-      Cldr.DateTime.to_string!(identity.provider_state["token_created_at"], Web.CLDR,
+      Cldr.DateTime.to_string!(identity.provider_state["token_created_at"], Domain.CLDR,
         format: :short
       ) <> " UTC"
 
@@ -69,11 +70,27 @@ defmodule Web.Mailer.AuthEmail do
       ) do
     default_email()
     |> subject("Welcome to Firezone")
-    |> to(get_identity_email(identity))
+    |> to(Domain.Auth.get_identity_email(identity))
     |> render_body(__MODULE__, :new_user,
       account: account,
       identity: identity,
       subject: subject
     )
+  end
+
+  def url(path, params \\ %{}) do
+    Domain.Config.fetch_env!(:domain, :web_external_url)
+    |> URI.parse()
+    |> URI.append_path(path)
+    |> maybe_append_query(params)
+    |> URI.to_string()
+  end
+
+  def maybe_append_query(uri, params) do
+    if Enum.empty?(params) do
+      uri
+    else
+      URI.append_query(uri, URI.encode_query(params))
+    end
   end
 end

@@ -20,6 +20,7 @@ defmodule Domain.DataCase do
     quote do
       import Ecto
       import Ecto.Changeset
+      import Swoosh.TestAssertions
       import Domain.DataCase
 
       alias Domain.Repo

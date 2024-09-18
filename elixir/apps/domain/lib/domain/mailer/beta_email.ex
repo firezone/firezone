@@ -1,7 +1,7 @@
-defmodule Web.Mailer.BetaEmail do
-  use Web, :html
+defmodule Domain.Mailer.BetaEmail do
   import Swoosh.Email
-  import Web.Mailer
+  import Domain.Mailer
+  import Phoenix.Template, only: [embed_templates: 2]
 
   embed_templates "beta_email/*.text", suffix: "_text"
 

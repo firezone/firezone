@@ -28,6 +28,8 @@ config :domain, Domain.GoogleCloudPlatform, service_account_email: "foo@iam.exam
 
 config :domain, Domain.Telemetry.GoogleCloudMetricsReporter, project_id: "fz-test"
 
+config :domain, web_external_url: "http://localhost:13100"
+
 ###############################
 ##### Web #####################
 ###############################
@@ -57,7 +59,7 @@ config :api, API.Endpoint,
 ###############################
 ##### Third-party configs #####
 ###############################
-config :web, Web.Mailer, adapter: Web.Mailer.TestAdapter
+config :domain, Domain.Mailer, adapter: Domain.Mailer.TestAdapter
 
 config :logger, level: :warning
 

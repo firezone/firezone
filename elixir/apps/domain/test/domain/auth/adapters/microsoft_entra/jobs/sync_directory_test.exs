@@ -483,5 +483,32 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
 
       cancel_bypass_expectations_check(bypass)
     end
+
+    test "sends email on failed directory sync", %{account: account} do
+      bypass = Bypass.open()
+      MicrosoftEntraDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      _identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+
+      for path <- [
+            "v1.0/users",
+            "v1.0/groups"
+          ] do
+        Bypass.stub(bypass, "GET", path, fn conn ->
+          Plug.Conn.send_resp(conn, 500, "")
+        end)
+      end
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      assert_email_sent(fn email ->
+        assert email.subject == "Firezone Identity Provider Sync Error"
+        assert email.text_body =~ "failed to sync 1 times"
+      end)
+
+      cancel_bypass_expectations_check(bypass)
+    end
   end
 end

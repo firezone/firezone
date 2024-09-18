@@ -1,8 +1,8 @@
-defmodule Web.Mailer do
+defmodule Domain.Mailer do
   use Supervisor
   alias Swoosh.Mailer
   alias Swoosh.Email
-  alias Web.Mailer.RateLimiter
+  alias Domain.Mailer.RateLimiter
   require Logger
 
   def start_link(arg) do
@@ -42,7 +42,7 @@ defmodule Web.Mailer do
   custom adapter implementation that does nothing.
   """
   def deliver(email, config \\ []) do
-    opts = Mailer.parse_config(:web, __MODULE__, [], config)
+    opts = Mailer.parse_config(:domain, __MODULE__, [], config)
     metadata = %{email: email, config: config, mailer: __MODULE__}
 
     if opts[:adapter] do
@@ -80,14 +80,14 @@ defmodule Web.Mailer do
   end
 
   def active? do
-    mailer_config = Domain.Config.fetch_env!(:web, Web.Mailer)
+    mailer_config = Domain.Config.fetch_env!(:domain, Domain.Mailer)
     mailer_config[:from_email] && mailer_config[:adapter]
   end
 
   def default_email do
     # Fail hard if email not configured
     from_email =
-      Domain.Config.fetch_env!(:web, Web.Mailer)
+      Domain.Config.fetch_env!(:domain, Domain.Mailer)
       |> Keyword.fetch!(:from_email)
 
     Email.new()

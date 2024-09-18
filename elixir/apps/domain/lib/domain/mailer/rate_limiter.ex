@@ -1,4 +1,4 @@
-defmodule Web.Mailer.RateLimiter do
+defmodule Domain.Mailer.RateLimiter do
   use GenServer
 
   @default_ets_table_name __MODULE__.ETS
