@@ -1,5 +1,6 @@
 defmodule Web.Policies.Components do
   use Web, :component_library
+  alias Domain.Policies.Condition
   alias Domain.Policies
 
   @days_of_week [
@@ -11,6 +12,13 @@ defmodule Web.Policies.Components do
     {"S", "Saturday"},
     {"U", "Sunday"}
   ]
+
+  @resource_types %{
+    internet: %{index: 1, label: nil},
+    dns: %{index: 2, label: "DNS"},
+    ip: %{index: 3, label: "IP"},
+    cidr: %{index: 4, label: "CIDR"}
+  }
 
   attr(:policy, :map, required: true)
 
@@ -68,6 +76,10 @@ defmodule Web.Policies.Components do
 
   defp map_condition_values(condition_attrs) do
     condition_attrs
+  end
+
+  defp condition_values_empty?(%{data: %{values: values}}) when length(values) > 0 do
+    false
   end
 
   defp condition_values_empty?(%{
@@ -712,10 +724,16 @@ defmodule Web.Policies.Components do
   defp find_condition_form(form_field, property) do
     condition_form =
       form_field.value
-      |> Enum.find_value(fn condition ->
-        if Ecto.Changeset.get_field(condition, :property) == property do
-          to_form(condition)
-        end
+      |> Enum.find_value(fn
+        %Ecto.Changeset{} = condition ->
+          if Ecto.Changeset.get_field(condition, :property) == property do
+            to_form(condition)
+          end
+
+        condition ->
+          if Map.get(condition, :property) == property do
+            to_form(Condition.Changeset.changeset(condition, %{}, 0))
+          end
       end)
 
     condition_form || to_form(%{})
@@ -754,5 +772,49 @@ defmodule Web.Policies.Components do
   def options_form(assigns) do
     ~H"""
     """
+  end
+
+  def resource_options(resources, account) do
+    resources
+    |> Enum.group_by(& &1.type)
+    |> Enum.sort_by(fn {type, _} ->
+      Map.fetch!(@resource_types, type) |> Map.fetch!(:index)
+    end)
+    |> Enum.map(fn {type, resources} ->
+      options =
+        resources
+        |> Enum.sort_by(fn resource -> resource.name end)
+        |> Enum.map(&resource_option(&1, account))
+
+      label = Map.fetch!(@resource_types, type) |> Map.fetch!(:label)
+
+      {label, options}
+    end)
+  end
+
+  defp resource_option(%{type: :internet} = resource, account) do
+    gateway_group_names = resource.gateway_groups |> Enum.map(& &1.name)
+
+    if Domain.Accounts.internet_resource_enabled?(account) do
+      [
+        key: "Internet - #{Enum.join(gateway_group_names, ",")}",
+        value: resource.id
+      ]
+    else
+      [
+        key: "Internet - upgrade to unlock",
+        value: resource.id,
+        disabled: true
+      ]
+    end
+  end
+
+  defp resource_option(resource, _account) do
+    gateway_group_names = resource.gateway_groups |> Enum.map(& &1.name)
+
+    [
+      key: "#{resource.name} - #{Enum.join(gateway_group_names, ",")}",
+      value: resource.id
+    ]
   end
 end

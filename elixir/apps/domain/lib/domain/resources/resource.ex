@@ -2,6 +2,8 @@ defmodule Domain.Resources.Resource do
   use Domain, :schema
 
   schema "resources" do
+    field :persistent_id, Ecto.UUID
+
     field :address, :string
     field :address_description, :string
     field :name, :string
@@ -29,6 +31,9 @@ defmodule Domain.Resources.Resource do
     field :created_by, Ecto.Enum, values: ~w[identity actor system]a
     belongs_to :created_by_actor, Domain.Actors.Actor
     belongs_to :created_by_identity, Domain.Auth.Identity
+
+    belongs_to :replaced_by_resource, Domain.Resources.Resource
+    has_one :replaces_resource, Domain.Resources.Resource, foreign_key: :replaced_by_resource_id
 
     field :deleted_at, :utc_datetime_usec
     timestamps()
