@@ -293,6 +293,7 @@ impl Eventloop {
                 reference: req.reference,
                 gateway_payload: GatewayResponse::ConnectionAccepted(ConnectionAccepted {
                     ice_parameters: answer,
+                    domain_response: None,
                 }),
             }),
         );
