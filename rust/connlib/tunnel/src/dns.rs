@@ -277,7 +277,14 @@ impl StubResolver {
                 self.get_or_assign_aaaa_records(domain.clone(), resource)
             }
             (Rtype::PTR, _) => {
-                let fqdn = self.resource_address_name_by_reservse_dns(&domain)?;
+                let Some(fqdn) = self.resource_address_name_by_reservse_dns(&domain) else {
+                    return Some(ResolveStrategy::ForwardQuery {
+                        upstream,
+                        query_id: message.header().id(),
+                        payload: message.into_octets().to_vec(),
+                        original_src: SocketAddr::new(packet.source(), datagram.source_port()),
+                    });
+                };
 
                 tracing::trace!(%domain, %fqdn, "Resolved PTR query to domain");
 
