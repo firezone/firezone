@@ -4,7 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-iced = { version = "0.12.1", features = ["image", "multi-window"], default-features = false }
+iced = { version = "0.13.0", features = ["image", "multi-window"], default-features = false }
+tao = "0.30.0"
+tokio = { version = "1.40.0", features = ["sync"] }
+tray-icon = "0.17.0"
 
 [lints]
-workspace = true
+# Can't use workspace because the GTK dep for Tauri and `tray-icon` conflict
+# workspace = true

@@ -5,22 +5,86 @@ use iced::{
     window, Alignment, Background, Border, Color, Command, Event, Length, Renderer, Settings,
     Subscription,
 };
+use tao::{
+    event::Event as TaoEvent,
+    event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy},
+};
+use tokio::sync::{mpsc, oneshot};
+use tray_icon::TrayIconBuilder;
+
+#[cfg(target_os = "linux")]
+use tao::platform::unix::EventLoopBuilderExtUnix;
+
+#[cfg(target_os = "windows")]
+use tao::platform::windows::EventLoopBuilderExtWindows;
 
 type Element<'a> = iced::Element<'a, Message, FzTheme, Renderer>;
 
 pub fn main() -> iced::Result {
+    // TODO: Need more resolution for Ubuntu 20.04 default desktop
     let icon = window::icon::from_file_data(
         include_bytes!("../../gui-client/src-tauri/icons/32x32.png"),
         None,
     )
     .expect("Baked-in icon PNG should always be decodable");
 
-    let mut settings = Settings::with_flags(Flags { icon: icon.clone() });
+    let tray_icon = icon.clone();
+    let (proxy_tx, proxy_rx) = oneshot::channel();
+    let (iced_tx, iced_rx) = mpsc::channel();
+
+    let tray_thread = std::thread::spawn(|| {
+        let event_loop = EventLoopBuilder::with_user_event()
+            .with_any_thread(true)
+            .build();
+
+        let (rgba, sz) = tray_icon.into_raw();
+        let tray_icon = tray_icon::Icon::from_rgba(rgba, sz.width, sz.height).unwrap();
+
+        let tray_menu = tray_icon::menu::Menu::new();
+        tray_menu.append(&tray_icon::menu::MenuItem::new("Firezone", true, None)).unwrap();
+
+        let _tray_icon = TrayIconBuilder::new()
+            .with_menu(Box::new(tray_menu))
+            .with_tooltip("Firezone")
+            .with_icon(tray_icon)
+            .build()
+            .unwrap();
+
+        // This will let us get events from `iced` into `tao`
+        proxy_tx.send(event_loop.create_proxy()).unwrap();
+
+        // This never returns due to a limitation in `tao`
+        event_loop.run(|ev, _, control_flow| {
+            *control_flow = ControlFlow::Wait;
+            match ev {
+                TaoEvent::UserEvent(event) => dbg!(event),
+                _ => {}
+            }
+        });
+    });
+
+    // There is a race condition in setting up the tray icon.
+    // If we get `GLib-GIO-CRITICAL **: 14:46:46.633: g_dbus_proxy_new: assertion 'G_IS_DBUS_CONNECTION (connection)' failed` in the logs,
+    // the tray icon will never show up.
+    // Synchronizing with the tray icon thread here, before getting
+    // into the `iced` main loop, may help avoid this.
+    let tao_proxy = proxy_rx.blocking_recv().unwrap();
+
+    let iced_rx = tokio_stream:wrappers::ReceiverStream::new(iced_rx);
+    let iced_rx = iced::Task::stream(iced_rx);
+    Subscription::run(iced_rx);
+
+    let mut settings = Settings::with_flags(Flags {
+        icon: icon.clone(),
+        tao_proxy,
+    });
     settings.window.exit_on_close_request = false;
     settings.window.icon = Some(icon);
     settings.window.size = [640, 480].into();
 
-    FirezoneApp::run(settings)
+    let result = FirezoneApp::run(settings);
+    tray_thread.join().unwrap();
+    result
 }
 
 struct FirezoneApp {
@@ -35,6 +99,8 @@ struct FirezoneApp {
     auth_base_url: String,
     api_url: String,
     log_filter: String,
+
+    tao_proxy: EventLoopProxy<()>,
 }
 
 #[derive(Clone, Debug)]
@@ -73,6 +139,7 @@ enum FzWindow {
 
 struct Flags {
     icon: window::Icon,
+    tao_proxy: EventLoopProxy<()>,
 }
 
 impl Default for Flags {
@@ -89,11 +156,15 @@ impl Application for FirezoneApp {
 
     // I don't know why `iced` calls these params `flags`.
     fn new(flags: Self::Flags) -> (Self, Command<Message>) {
+        let Flags {
+            icon,
+            tao_proxy,
+        } = flags;
         let logo = image::Handle::from_memory(include_bytes!("../../gui-client/src/logo.png"));
 
         let settings = window::Settings {
             exit_on_close_request: false,
-            icon: Some(flags.icon),
+            icon: Some(icon),
             size: [640, 480].into(),
             ..Default::default()
         };
@@ -114,6 +185,8 @@ impl Application for FirezoneApp {
                 auth_base_url: String::new(),
                 api_url: String::new(),
                 log_filter: String::new(),
+
+                tao_proxy,
             },
             Command::batch([about_cmd, settings_cmd]),
         )

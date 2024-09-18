@@ -1,4 +1,7 @@
 [workspace]
+exclude = [
+    "iced-client",
+]
 members = [
   "bin-shared",
   "connlib/clients/android",
@@ -11,7 +14,7 @@ members = [
   "gui-client/src-common",
   "gui-client/src-tauri",
   "headless-client",
-  "iced-client",
+  # "iced-client",
   "ip-packet",
   "logging",
   "phoenix-channel",
