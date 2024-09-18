@@ -1612,6 +1612,369 @@ defmodule API.Client.ChannelTest do
     end
   end
 
+  describe "handle_in/3 create_flow" do
+    test "returns error when resource is not found", %{socket: socket} do
+      attrs = %{
+        "resource_id" => Ecto.UUID.generate(),
+        "connected_gateway_ids" => []
+      }
+
+      ref = push(socket, "create_flow", attrs)
+      assert_reply ref, :error, %{reason: :not_found}
+    end
+
+    test "returns error when gateway is not found", %{dns_resource: resource, socket: socket} do
+      attrs = %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      }
+
+      ref = push(socket, "create_flow", attrs)
+      assert_reply ref, :error, %{reason: :offline}
+    end
+
+    test "returns error when gateway is not connected to resource", %{
+      account: account,
+      dns_resource: resource,
+      socket: socket
+    } do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      attrs = %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      }
+
+      ref = push(socket, "create_flow", attrs)
+      assert_reply ref, :error, %{reason: :offline}
+    end
+
+    test "returns error when gateway is offline", %{
+      dns_resource: resource,
+      socket: socket
+    } do
+      attrs = %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      }
+
+      ref = push(socket, "create_flow", attrs)
+      assert_reply ref, :error, %{reason: :offline}
+    end
+
+    test "returns error when client has no policy allowing access to resource", %{
+      account: account,
+      socket: socket
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      attrs = %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      }
+
+      ref = push(socket, "create_flow", attrs)
+      assert_reply ref, :error, %{reason: :not_found}
+    end
+
+    test "returns error when flow is not authorized due to failing conditions", %{
+      account: account,
+      client: client,
+      actor_group: actor_group,
+      gateway_group: gateway_group,
+      gateway: gateway,
+      socket: socket
+    } do
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource,
+        conditions: [
+          %{
+            property: :remote_ip_location_region,
+            operator: :is_not_in,
+            values: [client.last_seen_remote_ip_location_region]
+          }
+        ]
+      )
+
+      attrs = %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      }
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      ref = push(socket, "create_flow", attrs)
+
+      assert_reply ref, :error, %{
+        reason: :forbidden,
+        violated_properties: [:remote_ip_location_region]
+      }
+    end
+
+    test "broadcasts create_flow to the gateways and then returns connect message", %{
+      dns_resource: resource,
+      gateway_group_token: gateway_group_token,
+      gateway: gateway,
+      client: client,
+      socket: socket
+    } do
+      gateway_id = gateway.id
+      gateway_public_key = gateway.public_key
+      resource_id = resource.id
+      client_id = client.id
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+      Domain.PubSub.subscribe(Domain.Tokens.socket_id(gateway_group_token))
+
+      attrs = %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      }
+
+      ref = push(socket, "create_flow", attrs)
+
+      assert_receive {:authorize_flow, {channel_pid, socket_ref}, payload, _opentelemetry_ctx}
+
+      assert %{
+               resource_id: ^resource_id,
+               client_id: ^client_id,
+               flow_id: flow_id,
+               authorization_expires_at: authorization_expires_at,
+               ice_credentials:
+                 %{
+                   client: %{username: client_ice_username, password: client_ice_password},
+                   gateway: %{username: gateway_ice_username, password: gateway_ice_password}
+                 } = ice_credentials,
+               preshared_key: preshared_key
+             } = payload
+
+      assert String.length(client_ice_username) == 4
+      assert String.length(client_ice_password) == 22
+
+      assert String.length(gateway_ice_username) == 4
+      assert String.length(gateway_ice_password) == 22
+
+      flow = Domain.Repo.get(Domain.Flows.Flow, flow_id)
+      assert authorization_expires_at == flow.expires_at
+
+      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
+
+      send(
+        channel_pid,
+        {:connect, socket_ref, resource_id, gateway_id, gateway.public_key, preshared_key,
+         ice_credentials, otel_ctx}
+      )
+
+      assert_reply ref, :ok, %{
+        resource_id: ^resource_id,
+        persistent_keepalive: 25,
+        preshared_key: ^preshared_key,
+        ice_credentials: ^ice_credentials,
+        gateway_id: ^gateway_id,
+        gateway_public_key: ^gateway_public_key
+      }
+    end
+
+    test "works with service accounts", %{
+      account: account,
+      dns_resource: resource,
+      gateway_group_token: gateway_group_token,
+      gateway: gateway,
+      actor_group: actor_group
+    } do
+      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
+
+      {:ok, _reply, socket} =
+        API.Client.Socket
+        |> socket("client:#{client.id}", %{
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+          client: client,
+          subject: subject
+        })
+        |> subscribe_and_join(API.Client.Channel, "client")
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+      Phoenix.PubSub.subscribe(Domain.PubSub, Domain.Tokens.socket_id(gateway_group_token))
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_receive {:authorize_flow, _refs, _payload, _opentelemetry_ctx}
+    end
+
+    test "selects compatible gateway versions", %{
+      account: account,
+      gateway_group: gateway_group,
+      dns_resource: resource,
+      subject: subject,
+      client: client
+    } do
+      client = %{client | last_seen_version: "1.1.55"}
+
+      gateway =
+        Fixtures.Gateways.create_gateway(
+          account: account,
+          group: gateway_group,
+          context:
+            Fixtures.Auth.build_context(
+              type: :gateway_group,
+              user_agent: "Linux/24.04 connlib/1.0.412"
+            )
+        )
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      {:ok, _reply, socket} =
+        API.Client.Socket
+        |> socket("client:#{client.id}", %{
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+          client: client,
+          subject: subject
+        })
+        |> subscribe_and_join(API.Client.Channel, "client")
+
+      ref =
+        push(socket, "create_flow", %{
+          "resource_id" => resource.id,
+          "connected_gateway_ids" => []
+        })
+
+      assert_reply ref, :error, %{reason: :not_found}
+
+      gateway =
+        Fixtures.Gateways.create_gateway(
+          account: account,
+          group: gateway_group,
+          context:
+            Fixtures.Auth.build_context(
+              type: :gateway_group,
+              user_agent: "Linux/24.04 connlib/1.1.11"
+            )
+        )
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_receive {:authorize_flow, _refs, _payload, _opentelemetry_ctx}
+    end
+
+    test "prefers connected gateways", %{
+      account: account,
+      gateway_group: gateway_group,
+      dns_resource: resource,
+      socket: socket
+    } do
+      gateway1 = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
+      :ok = Domain.Gateways.connect_gateway(gateway1)
+
+      gateway2 = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
+      :ok = Domain.Gateways.connect_gateway(gateway2)
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => [gateway1.id]
+      })
+
+      assert_receive {:authorize_flow, _refs, %{flow_id: flow_id}, _opentelemetry_ctx}
+      assert flow = Domain.Repo.get(Domain.Flows.Flow, flow_id)
+      assert flow.gateway_id == gateway1.id
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => [gateway2.id]
+      })
+
+      assert_receive {:authorize_flow, _refs, %{flow_id: flow_id}, _opentelemetry_ctx}
+      assert flow = Domain.Repo.get(Domain.Flows.Flow, flow_id)
+      assert flow.gateway_id == gateway2.id
+    end
+
+    test "ice credentials are deterministic by client-gateway public keys", %{
+      account: account,
+      gateway_group: gateway_group,
+      dns_resource: resource,
+      socket: socket
+    } do
+      gateway1 = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
+      :ok = Domain.Gateways.connect_gateway(gateway1)
+
+      gateway2 = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
+      :ok = Domain.Gateways.connect_gateway(gateway2)
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => [gateway1.id]
+      })
+
+      assert_receive {:authorize_flow, _refs, %{ice_credentials: ice_credentials1}, _}
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => [gateway1.id]
+      })
+
+      assert_receive {:authorize_flow, _refs, %{ice_credentials: ^ice_credentials1}, _}
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => [gateway2.id]
+      })
+
+      assert_receive {:authorize_flow, _refs, %{ice_credentials: ice_credentials2}, _}
+      assert ice_credentials2 != ice_credentials1
+    end
+
+    test "preshared key is distinct per flow", %{
+      account: account,
+      gateway_group: gateway_group,
+      dns_resource: resource,
+      socket: socket
+    } do
+      gateway = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => [gateway.id]
+      })
+
+      assert_receive {:authorize_flow, _refs, %{preshared_key: preshared_key1}, _}
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => [gateway.id]
+      })
+
+      assert_receive {:authorize_flow, _refs, %{preshared_key: preshared_key2}, _}
+      assert preshared_key2 != preshared_key1
+    end
+  end
+
   describe "handle_in/3 request_connection" do
     test "returns error when resource is not found", %{gateway: gateway, socket: socket} do
       attrs = %{
