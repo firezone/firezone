@@ -327,7 +327,7 @@ impl ReferenceStateMachine for ReferenceState {
                     if state
                         .client
                         .inner()
-                        .is_locally_answered_query(&query.domain)
+                        .is_locally_answered_query(&query.domain, query.r_type)
                     {
                         tracing::debug!("Expecting locally answered query");
 
@@ -581,7 +581,12 @@ impl ReferenceStateMachine for ReferenceState {
                     .client
                     .sending_socket_for(query.dns_server.ip())
                     .is_some();
+
+                let is_ptr_query = matches!(query.r_type, Rtype::PTR);
                 let is_known_domain = state.global_dns_records.contains_key(&query.domain);
+                // In case we sampled a PTR query, the domain doesn't have to exist.
+                let ptr_or_known_domain = is_ptr_query || is_known_domain;
+
                 let has_dns_server = state
                     .client
                     .inner()
@@ -600,7 +605,7 @@ impl ReferenceStateMachine for ReferenceState {
                     };
 
                 has_socket_for_server
-                    && is_known_domain
+                    && ptr_or_known_domain
                     && has_dns_server
                     && gateway_is_present_in_case_dns_server_is_cidr_resource
             }),

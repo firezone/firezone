@@ -277,7 +277,14 @@ impl StubResolver {
                 self.get_or_assign_aaaa_records(domain.clone(), resource)
             }
             (Rtype::PTR, _) => {
-                let fqdn = self.resource_address_name_by_reservse_dns(&domain)?;
+                let Some(fqdn) = self.resource_address_name_by_reservse_dns(&domain) else {
+                    return Some(ResolveStrategy::ForwardQuery {
+                        upstream,
+                        query_id: message.header().id(),
+                        payload: message.into_octets().to_vec(),
+                        original_src: SocketAddr::new(packet.source(), datagram.source_port()),
+                    });
+                };
 
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
             }
@@ -290,6 +297,8 @@ impl StubResolver {
                 })
             }
         };
+
+        tracing::trace!(%qtype, %domain, records = ?resource_records, "Forming DNS response");
 
         let response = build_dns_with_answer(message, domain, resource_records)?;
         let packet = ip_packet::make::udp_packet(
@@ -352,7 +361,7 @@ pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
     pattern.matches(&candidate)
 }
 
-fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
+pub(crate) fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
     let mut dns_parts = name.split('.').rev();
     if dns_parts.next()? != REVERSE_DNS_ADDRESS_END {
         return None;

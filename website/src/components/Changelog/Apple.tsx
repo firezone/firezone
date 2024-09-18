@@ -13,22 +13,17 @@ export default function Apple() {
       <Entry version="1.3.2" date={new Date(todo)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6632">
-          Fixes a bug where the addressDescription wasn't fully displayed in the macOS
-          menu bar if it exceeded a certain length.
+            Fixes a bug where the addressDescription wasn't fully displayed in the macOS
+            menu bar if it exceeded a certain length.
           </ChangeItem>
-        </ul>
-      </Entry>
-      <Entry version="1.3.2" date={new Date(todo)}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6722">
           Fixes a routing bug when one of several overlapping CIDR resources gets disabled / removed.
           </ChangeItem>
-        </ul>
-      </Entry>
-      <Entry version="1.3.2" date={new Date(todo)}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6679">
-          Displays a notification when a new version is available.
+            Displays a notification when a new version is available.
+          </ChangeItem>
+          <ChangeItem pull="6765">
+            Fixes a bug where DNS PTR queries by the system did not get answered.
           </ChangeItem>
         </ul>
       </Entry>

@@ -170,14 +170,14 @@ where
         let name = query.qname().to_name();
 
         let records = resolve(&name)
-            .filter(|ip| match query.qtype() {
-                Rtype::A => ip.is_ipv4(),
-                Rtype::AAAA => ip.is_ipv6(),
-                _ => todo!(),
-            })
-            .map(|ip| match ip {
-                IpAddr::V4(v4) => AllRecordData::<Vec<_>, Name<Vec<_>>>::A(v4.into()),
-                IpAddr::V6(v6) => AllRecordData::<Vec<_>, Name<Vec<_>>>::Aaaa(v6.into()),
+            .filter_map(|ip| match (query.qtype(), ip) {
+                (Rtype::A, IpAddr::V4(v4)) => {
+                    Some(AllRecordData::<Vec<_>, Name<Vec<_>>>::A(v4.into()))
+                }
+                (Rtype::AAAA, IpAddr::V6(v6)) => {
+                    Some(AllRecordData::<Vec<_>, Name<Vec<_>>>::Aaaa(v6.into()))
+                }
+                _ => None,
             })
             .map(|rdata| Record::new(name.clone(), Class::IN, Ttl::from_days(1), rdata));
 

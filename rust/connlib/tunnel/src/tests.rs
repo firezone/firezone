@@ -40,7 +40,8 @@ fn tunnel_test() {
     let _ = std::fs::remove_dir_all("testcases");
     let _ = std::fs::create_dir_all("testcases");
 
-    let result = TestRunner::new(config).run(
+    let test_runner = &mut TestRunner::new(config);
+    let result = test_runner.run(
         &ReferenceState::sequential_strategy(5..15),
         |(mut ref_state, transitions, mut seen_counter)| {
             let test_index = test_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -94,6 +95,8 @@ fn tunnel_test() {
             Ok(())
         },
     );
+
+    println!("TestRunner stats: \n\n{test_runner}");
 
     let Err(e) = result else {
         return;
