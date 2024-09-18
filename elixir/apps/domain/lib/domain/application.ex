@@ -7,7 +7,9 @@ defmodule Domain.Application do
 
     _ = OpentelemetryLoggerMetadata.setup()
     _ = OpentelemetryEcto.setup([:domain, :repo])
-    _ = OpentelemetryFinch.setup()
+
+    # Can be uncommented when this bug is fixed: https://github.com/open-telemetry/opentelemetry-erlang-contrib/issues/327
+    # _ = OpentelemetryFinch.setup()
 
     Supervisor.start_link(children(), strategy: :one_for_one, name: __MODULE__.Supervisor)
   end

@@ -4,7 +4,8 @@ defmodule Domain.Resources.Resource.Changeset do
   alias Domain.Resources.{Resource, Connection}
 
   @fields ~w[address address_description name type]a
-  @update_fields ~w[name address_description]a
+  @update_fields ~w[address address_description name type]a
+  @replace_fields ~w[type address filters]a
   @required_fields ~w[name type]a
 
   # This list is based on the list of TLDs from the IANA but only contains
@@ -34,6 +35,7 @@ defmodule Domain.Resources.Resource.Changeset do
     |> cast(attrs, @fields)
     |> changeset()
     |> validate_required(@required_fields)
+    |> put_change(:persistent_id, Ecto.UUID.generate())
     |> put_change(:account_id, account.id)
     |> update_change(:address, &String.trim/1)
     |> validate_address(account)
@@ -50,6 +52,7 @@ defmodule Domain.Resources.Resource.Changeset do
     |> changeset()
     |> validate_required(@required_fields)
     |> validate_address(account)
+    |> put_change(:persistent_id, Ecto.UUID.generate())
     |> put_change(:account_id, account.id)
     |> put_change(:created_by, :system)
     |> cast_assoc(:connections,
@@ -203,7 +206,7 @@ defmodule Domain.Resources.Resource.Changeset do
     end
   end
 
-  def update(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
+  def update_or_replace(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
     resource
     |> cast(attrs, @update_fields)
     |> validate_required(@required_fields)
@@ -212,6 +215,37 @@ defmodule Domain.Resources.Resource.Changeset do
       with: &Connection.Changeset.changeset(resource.account_id, &1, &2, subject),
       required: true
     )
+    |> maybe_replace(resource, subject)
+  end
+
+  defp maybe_replace(%{valid?: false} = changeset, _policy, _subject),
+    do: {changeset, nil}
+
+  defp maybe_replace(changeset, resource, subject) do
+    if any_field_changed?(changeset, @replace_fields) do
+      resource = Domain.Repo.preload(resource, :account)
+
+      new_attrs =
+        changeset
+        |> apply_changes()
+        |> Map.from_struct()
+        |> Map.update(:connections, [], fn connections ->
+          Enum.map(connections, &Map.from_struct/1)
+        end)
+        |> Map.update(:filters, [], fn filters ->
+          Enum.map(filters, &Map.from_struct/1)
+        end)
+
+      new_changeset =
+        create(resource.account, new_attrs, subject)
+        |> put_change(:persistent_id, resource.persistent_id)
+
+      changeset = delete(resource)
+
+      {changeset, new_changeset}
+    else
+      {changeset, nil}
+    end
   end
 
   defp changeset(changeset) do

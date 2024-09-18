@@ -100,6 +100,7 @@ defmodule Web.Live.Resources.EditTest do
     expected_inputs =
       (connection_inputs ++
          [
+           "resource[address]",
            "resource[address_description]",
            "resource[filters][icmp][enabled]",
            "resource[filters][icmp][protocol]",
@@ -109,7 +110,8 @@ defmodule Web.Live.Resources.EditTest do
            "resource[filters][udp][enabled]",
            "resource[filters][udp][ports]",
            "resource[filters][udp][protocol]",
-           "resource[name]"
+           "resource[name]",
+           "resource[type]"
          ])
       |> Enum.sort()
 
@@ -131,6 +133,7 @@ defmodule Web.Live.Resources.EditTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
+             "resource[address]",
              "resource[address_description]",
              "resource[filters][icmp][enabled]",
              "resource[filters][icmp][protocol]",
@@ -140,7 +143,8 @@ defmodule Web.Live.Resources.EditTest do
              "resource[filters][udp][enabled]",
              "resource[filters][udp][ports]",
              "resource[filters][udp][protocol]",
-             "resource[name]"
+             "resource[name]",
+             "resource[type]"
            ]
   end
 
@@ -205,7 +209,7 @@ defmodule Web.Live.Resources.EditTest do
            }
   end
 
-  test "updates a resource on valid attrs", %{
+  test "replaces a resource on valid attrs", %{
     account: account,
     identity: identity,
     resource: resource,
@@ -222,6 +226,8 @@ defmodule Web.Live.Resources.EditTest do
       }
     }
 
+    :ok = Domain.Resources.subscribe_to_events_for_account(account)
+
     {:ok, lv, _html} =
       conn
       |> live(~p"/#{account}/resources/#{resource}/edit")
@@ -232,9 +238,11 @@ defmodule Web.Live.Resources.EditTest do
       |> render_submit()
       |> follow_redirect(conn, ~p"/#{account}/resources")
 
-    assert saved_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
+    assert_receive {:create_resource, created_resource_id}
+
+    assert saved_resource = Repo.get_by(Domain.Resources.Resource, id: created_resource_id)
     assert saved_resource.name == attrs.name
-    assert html =~ "Resource #{saved_resource.name} updated successfully."
+    assert html =~ "New version of resource #{saved_resource.name} is created successfully."
 
     saved_filters =
       for filter <- saved_resource.filters, into: %{} do
@@ -274,7 +282,7 @@ defmodule Web.Live.Resources.EditTest do
       |> render_submit()
       |> follow_redirect(conn, ~p"/#{account}/sites/#{group}")
 
-    assert html =~ "Resource #{attrs.name} updated successfully."
+    assert html =~ "New version of resource #{attrs.name} is created successfully."
   end
 
   test "shows disabled traffic filter form when traffic filters disabled", %{
@@ -294,6 +302,7 @@ defmodule Web.Live.Resources.EditTest do
     form = form(lv, "form")
 
     assert find_inputs(form) == [
+             "resource[address]",
              "resource[address_description]",
              "resource[filters][icmp][enabled]",
              "resource[filters][icmp][protocol]",
@@ -303,7 +312,8 @@ defmodule Web.Live.Resources.EditTest do
              "resource[filters][udp][enabled]",
              "resource[filters][udp][ports]",
              "resource[filters][udp][protocol]",
-             "resource[name]"
+             "resource[name]",
+             "resource[type]"
            ]
 
     assert html =~ "UPGRADE TO UNLOCK"
@@ -317,6 +327,7 @@ defmodule Web.Live.Resources.EditTest do
     conn: conn
   } do
     Domain.Config.feature_flag_override(:traffic_filters, false)
+    resource = Ecto.Changeset.change(resource, filters: []) |> Repo.update!()
 
     conn = authorize_conn(conn, identity)
 

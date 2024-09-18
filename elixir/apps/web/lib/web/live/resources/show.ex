@@ -7,7 +7,13 @@ defmodule Web.Resources.Show do
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, resource} <-
            Resources.fetch_resource_by_id(id, socket.assigns.subject,
-             preload: [:gateway_groups, :created_by_actor, created_by_identity: [:actor]]
+             preload: [
+               :gateway_groups,
+               :created_by_actor,
+               created_by_identity: [:actor],
+               replaced_by_resource: [],
+               replaces_resource: []
+             ]
            ),
          {:ok, actor_groups_peek} <-
            Resources.peek_resource_actor_groups([resource], 3, socket.assigns.subject) do
@@ -95,7 +101,17 @@ defmodule Web.Resources.Show do
     <.section>
       <:title>
         Resource: <code><%= @resource.name %></code>
-        <span :if={not is_nil(@resource.deleted_at)} class="text-red-600">(deleted)</span>
+
+        <span
+          :if={not is_nil(@resource.deleted_at) and is_nil(@resource.replaced_by_resource_id)}
+          }
+          class="text-red-600"
+        >
+          (deleted)
+        </span>
+        <span :if={not is_nil(@resource.replaced_by_resource_id)} class={["text-red-500"]}>
+          (replaced)
+        </span>
       </:title>
       <:action :if={is_nil(@resource.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/resources/#{@resource.id}/edit?#{@params}"}>
@@ -104,6 +120,22 @@ defmodule Web.Resources.Show do
       </:action>
       <:content>
         <.vertical_table id="resource">
+          <.vertical_table_row>
+            <:label>
+              ID
+            </:label>
+            <:value>
+              <%= @resource.id %>
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row :if={not is_nil(@resource.deleted_at)}>
+            <:label>
+              Persistent ID
+            </:label>
+            <:value>
+              <%= @resource.persistent_id %>
+            </:value>
+          </.vertical_table_row>
           <.vertical_table_row>
             <:label>
               Name
@@ -177,6 +209,36 @@ defmodule Web.Resources.Show do
               <div :for={filter <- @resource.filters} :if={@resource.filters != []} %>
                 <.filter_description filter={filter} />
               </div>
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row :if={
+            not is_nil(@resource.deleted_at) and not is_nil(@resource.replaced_by_resource)
+          }>
+            <:label>
+              Replaced by Resource
+            </:label>
+            <:value>
+              <.link
+                navigate={~p"/#{@account}/resources/#{@resource.replaced_by_resource}"}
+                class={["text-accent-600"] ++ link_style()}
+              >
+                <%= @resource.replaced_by_resource.name %>
+              </.link>
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row :if={
+            not is_nil(@resource.deleted_at) and not is_nil(@resource.replaces_resource)
+          }>
+            <:label>
+              Replaced Resource
+            </:label>
+            <:value>
+              <.link
+                navigate={~p"/#{@account}/resources/#{@resource.replaces_resource}"}
+                class={["text-accent-600"] ++ link_style()}
+              >
+                <%= @resource.replaces_resource.name %>
+              </.link>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -347,7 +409,13 @@ defmodule Web.Resources.Show do
   def handle_info({_action, _resource_id}, socket) do
     {:ok, resource} =
       Resources.fetch_resource_by_id(socket.assigns.resource.id, socket.assigns.subject,
-        preload: [:gateway_groups, :policies, created_by_identity: [:actor]]
+        preload: [
+          :gateway_groups,
+          :policies,
+          created_by_identity: [:actor],
+          replaced_by_resource: [],
+          replaces_resource: []
+        ]
       )
 
     {:noreply, assign(socket, resource: resource)}

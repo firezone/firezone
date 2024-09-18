@@ -84,12 +84,12 @@ defmodule Domain.Repo do
 
   It must return `:ok`.
   """
-  @type after_commit :: (term() -> :ok) | (term(), Ecto.Changeset.t() -> :ok)
+  @type update_after_commit :: (term() -> :ok) | (term(), Ecto.Changeset.t() -> :ok)
 
   @typedoc """
   A callback which takes a schema and returns a changeset that is then used to update the schema.
   """
-  @type changeset_fun :: (term() -> Ecto.Changeset.t())
+  @type fetch_and_update_changeset_fun :: (term() -> Ecto.Changeset.t())
 
   @doc """
   Uses query to fetch a single result from the database, locks it for update and
@@ -102,10 +102,10 @@ defmodule Domain.Repo do
           query_module :: module(),
           opts ::
             [
-              {:with, changeset_fun()}
+              {:with, fetch_and_update_changeset_fun()}
               | {:preload, term()}
               | {:filter, Domain.Repo.Filter.filters()}
-              | {:after_callback, after_commit() | [after_commit()]}
+              | {:after_callback, update_after_commit() | [update_after_commit()]}
             ]
             | Keyword.t()
         ) ::
@@ -156,15 +156,135 @@ defmodule Domain.Repo do
     end
   end
 
-  defp execute_after_commit(schema, changeset, after_commit) do
+  @typedoc """
+  A callback which is executed after the transaction is committed that
+  has replaced a record in the database.
+
+  The callback is either a function that takes the schema as an argument or
+  a function that takes the schema and the changeset as arguments.
+
+  It must return `:ok`.
+  """
+  @type replace_after_commit :: ({replaced_schema :: term(), created_schema :: term()},
+                                 {update_changeset :: Ecto.Changeset.t(),
+                                  create_changeset :: Ecto.Changeset.t()} ->
+                                   :ok)
+
+  @typedoc """
+  A callback which takes a schema and returns a changeset that is then used to update the schema and either `nil` if update needs to be performed or
+  another changeset that is then used to create a new schema.
+  """
+  @type fetch_update_or_replace_changeset_fun :: (term() ->
+                                                    {update_changeset :: Ecto.Changeset.t(),
+                                                     create_replacement_changeset ::
+                                                       Ecto.Changeset.t() | nil})
+
+  @typedoc """
+  A callback which is executed after the transaction is committed that
+  has replaced a record in the database. It allows to set an additional
+  field on the updated schema (like reference to a replacement schema).
+
+  The function will be executed within the same transaction as the replace
+  operation and must return `{:ok, updated_schema}` or `{:error, reason}`.
+  """
+  @type on_replace :: (repo :: Ecto.Repo.t(),
+                       updated_schema :: Ecto.Schema.t(),
+                       replaced_schema :: Ecto.Schema.t() ->
+                         :ok)
+
+  @doc """
+  Uses query to fetch a single result from the database, locks it for update and
+  then either updates or replaces it using a changesets within a database transaction.
+  """
+  @spec fetch_and_update_or_replace(
+          queryable :: Ecto.Queryable.t(),
+          query_module :: module(),
+          opts ::
+            [
+              {:with, fetch_update_or_replace_changeset_fun()}
+              | {:preload, term()}
+              | {:filter, Domain.Repo.Filter.filters()}
+              | {:after_update_commit, update_after_commit() | [update_after_commit()]}
+              | {:after_replace_commit, replace_after_commit() | [replace_after_commit()]}
+              | {:on_replace, on_replace()}
+            ]
+            | Keyword.t()
+        ) ::
+          {:updated, Ecto.Schema.t()}
+          | {:replaced, Ecto.Schema.t(), Ecto.Schema.t()}
+          | {:error, :not_found}
+          | {:error, {:unknown_filter, metadata :: Keyword.t()}}
+          | {:error, {:invalid_type, metadata :: Keyword.t()}}
+          | {:error, {:invalid_value, metadata :: Keyword.t()}}
+          | {:error, Ecto.Changeset.t()}
+          | {:error, term()}
+  def fetch_and_update_or_replace(queryable, query_module, opts) do
+    {preload, opts} = Keyword.pop(opts, :preload, [])
+    {filter, opts} = Keyword.pop(opts, :filter, [])
+    {after_update_commit, opts} = Keyword.pop(opts, :after_update_commit, [])
+    {after_replace_commit, opts} = Keyword.pop(opts, :after_replace_commit, [])
+    {on_replace, opts} = Keyword.pop(opts, :on_replace, [])
+    {changeset_fun, transaction_opts} = Keyword.pop!(opts, :with)
+
+    with {:ok, queryable} <- Filter.filter(queryable, query_module, filter) do
+      Ecto.Multi.new()
+      |> Ecto.Multi.one(:fetch_and_lock, fn
+        _effects_so_far ->
+          Ecto.Query.lock(queryable, "FOR NO KEY UPDATE")
+      end)
+      |> Ecto.Multi.run(:changesets, fn
+        _repo, %{fetch_and_lock: schema} ->
+          {%Ecto.Changeset{} = update_changeset, replace_changeset_or_nil} =
+            changeset_fun.(schema)
+
+          {:ok, {update_changeset, replace_changeset_or_nil}}
+      end)
+      |> Ecto.Multi.update(:update, fn
+        %{changesets: {update_changeset, _replace_changeset_or_nil}} ->
+          update_changeset
+      end)
+      |> Ecto.Multi.run(:maybe_create, fn
+        _repo, %{changesets: {_update_changeset, nil}} ->
+          {:ok, nil}
+
+        repo, %{changesets: {_update_changeset, replace_changeset_or_nil}} ->
+          repo.insert(replace_changeset_or_nil)
+      end)
+      |> Ecto.Multi.run(:replace, fn
+        _repo, %{update: _updated, maybe_create: nil} ->
+          {:ok, nil}
+
+        repo, %{update: updated, maybe_create: created} ->
+          on_replace.(repo, updated, created)
+      end)
+      |> transaction(transaction_opts)
+      |> case do
+        {:ok, %{update: updated, maybe_create: nil, changesets: {update_changeset, nil}}} ->
+          :ok = execute_after_commit(updated, update_changeset, after_update_commit)
+          {:updated, execute_preloads(updated, query_module, preload)}
+
+        {:ok, %{replace: replaced, maybe_create: created, changesets: changesets}} ->
+          :ok = execute_after_commit({replaced, created}, changesets, after_replace_commit)
+          {:replaced, replaced, execute_preloads(created, query_module, preload)}
+
+        {:error, :fetch_and_lock, reason, _changes_so_far} ->
+          {:error, reason}
+
+        {:error, :update, changeset, _changes_so_far} ->
+          {:error, changeset}
+      end
+    end
+  end
+
+  defp execute_after_commit(schema_or_tuple, changeset_or_changesets, after_commit) do
     after_commit
     |> List.wrap()
     |> Enum.each(fn
       callback when is_function(callback, 1) ->
-        :ok = callback.(schema)
+        :ok = callback.(schema_or_tuple)
 
       callback when is_function(callback, 2) ->
-        :ok = callback.(schema, changeset)
+        :ok = callback.(schema_or_tuple, changeset_or_changesets)
     end)
   end
 

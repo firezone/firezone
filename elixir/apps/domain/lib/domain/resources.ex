@@ -182,26 +182,50 @@ defmodule Domain.Resources do
   end
 
   def change_resource(%Resource{} = resource, attrs \\ %{}, %Auth.Subject{} = subject) do
-    Resource.Changeset.update(resource, attrs, subject)
+    case Resource.Changeset.update_or_replace(resource, attrs, subject) do
+      {update_changeset, nil} -> update_changeset
+      {_update_changeset, create_changeset} -> create_changeset
+    end
   end
 
-  def update_resource(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
+  def update_or_replace_resource(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
       Resource.Query.not_deleted()
       |> Resource.Query.by_id(resource.id)
       |> Authorizer.for_subject(Resource, subject)
-      |> Repo.fetch_and_update(Resource.Query,
+      |> Repo.fetch_and_update_or_replace(Resource.Query,
         with: fn resource ->
           resource
           |> Repo.preload(:connections)
-          |> Resource.Changeset.update(attrs, subject)
+          |> Resource.Changeset.update_or_replace(attrs, subject)
         end,
-        after_commit: fn resource, changeset ->
+        on_replace: fn repo, updated_resource, created_resource ->
+          Ecto.Changeset.change(updated_resource, replaced_by_resource_id: created_resource.id)
+          |> repo.update()
+        end,
+        after_update_commit: fn resource, changeset ->
           if Map.has_key?(changeset.changes, :connections) do
             {:ok, _flows} = Flows.expire_flows_for(resource, subject)
           end
 
           broadcast_resource_events(:update, resource)
+        end,
+        after_replace_commit: fn {replaced_resource, created_resource}, _changesets ->
+          replaced_resource = Repo.preload(replaced_resource, :policies)
+
+          :ok =
+            Enum.each(replaced_resource.policies, fn policy ->
+              {:replaced, _replaced_policy, _created_policy} =
+                Policies.update_or_replace_policy(
+                  policy,
+                  %{resource_id: created_resource.id},
+                  subject
+                )
+            end)
+
+          {:ok, _flows} = Flows.expire_flows_for(replaced_resource, subject)
+          :ok = broadcast_resource_events(:delete, replaced_resource)
+          :ok = broadcast_resource_events(:create, created_resource)
         end
       )
     end

@@ -47,6 +47,11 @@ defmodule Domain.Repo.Changeset do
     end
   end
 
+  def any_field_changed?(%Ecto.Changeset{} = changeset, fields) do
+    changed_fields = Map.keys(changeset.changes)
+    Enum.any?(changed_fields, &(&1 in fields))
+  end
+
   @doc """
   Takes value from `value_field` and puts it's hash of a given type to `hash_field`.
   """
