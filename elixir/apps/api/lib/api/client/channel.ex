@@ -971,8 +971,9 @@ defmodule API.Client.Channel do
     end
   end
 
-  # Ice credentials must stay the same for all connections between client and gateway as long as they do not loose their state,
-  # so we can leverage public_key which is reset on each restart of the client or gateway.
+  # Ice credentials must stay the same for all connections between client and gateway as long as they
+  # do not loose their state, so we can leverage public_key which is reset on each restart of the client
+  # or gateway.
   defp generate_ice_credentials(client, gateway) do
     ice_credential_seed =
       [
