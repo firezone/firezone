@@ -947,25 +947,15 @@ fn ref_client(
 }
 
 fn default_routes_v4() -> Vec<Ipv4Network> {
-    vec![
-        Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11).unwrap(),
-        Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24).unwrap(),
-    ]
+    vec![Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11).unwrap()]
 }
 
 fn default_routes_v6() -> Vec<Ipv6Network> {
-    vec![
-        Ipv6Network::new(
-            Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0),
-            107,
-        )
-        .unwrap(),
-        Ipv6Network::new(
-            Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0),
-            120,
-        )
-        .unwrap(),
-    ]
+    vec![Ipv6Network::new(
+        Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0),
+        107,
+    )
+    .unwrap()]
 }
 
 fn known_hosts() -> impl Strategy<Value = BTreeMap<String, Vec<IpAddr>>> {
