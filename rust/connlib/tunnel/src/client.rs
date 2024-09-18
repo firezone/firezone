@@ -630,13 +630,13 @@ impl ClientState {
         now: Instant,
     ) -> Result<Option<IpPacket<'static>>, (IpPacket<'a>, IpAddr)> {
         match self.stub_resolver.handle(&self.dns_mapping, &packet) {
-            Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
-            Some(dns::ResolveStrategy::ForwardQuery {
+            Ok(Some(dns::ResolveStrategy::LocalResponse(query))) => Ok(Some(query)),
+            Ok(Some(dns::ResolveStrategy::ForwardQuery {
                 upstream: server,
                 query_id,
                 payload,
                 original_src,
-            }) => {
+            })) => {
                 let ip = server.ip();
 
                 if self.should_forward_dns_query_to_gateway(ip) {
@@ -655,9 +655,13 @@ impl ClientState {
 
                 Ok(None)
             }
-            None => {
+            Ok(None) => {
                 let dest = packet.destination();
                 Err((packet, dest))
+            }
+            Err(e) => {
+                tracing::debug!(?packet, "Failed to handle DNS query: {e:#}");
+                Ok(None)
             }
         }
     }
