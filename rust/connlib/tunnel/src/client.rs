@@ -413,7 +413,7 @@ impl ClientState {
         }
 
         let Some(resource) = self.get_resource_by_destination(dst) else {
-            tracing::trace!(%dst, "Unknown resource");
+            tracing::trace!(?packet, "Unknown resource");
             return None;
         };
 

@@ -82,10 +82,38 @@ pub enum IpPacket<'a> {
 
 impl<'a> std::fmt::Debug for IpPacket<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Ipv4(arg0) => arg0.ip_header().to_header().fmt(f),
-            Self::Ipv6(arg0) => arg0.header().to_header().fmt(f),
+        let mut dbg = f.debug_struct("Packet");
+
+        dbg.field("src", &self.source())
+            .field("dst", &self.destination())
+            .field(
+                "protocol",
+                &self.next_header().keyword_str().unwrap_or("unknown"),
+            );
+
+        if let Some(icmp) = self.as_icmpv4() {
+            dbg.field("icmp_type", &icmp.icmp_type());
         }
+
+        if let Some(icmp) = self.as_icmpv6() {
+            dbg.field("icmp_type", &icmp.icmp_type());
+        }
+
+        if let Some(tcp) = self.as_tcp() {
+            dbg.field("src_port", &tcp.source_port())
+                .field("dst_port", &tcp.destination_port());
+
+            if tcp.syn() {
+                dbg.field("syn", &true);
+            }
+        }
+
+        if let Some(udp) = self.as_udp() {
+            dbg.field("src_port", &udp.source_port())
+                .field("dst_port", &udp.destination_port());
+        }
+
+        dbg.finish()
     }
 }
 
