@@ -12,7 +12,7 @@ use common::system_tray::Event as TrayMenuEvent;
 use firezone_gui_client_common::{
     self as common, auth,
     controller::{Controller, ControllerRequest, CtlrTx, GuiIntegration},
-    crash_handling, deep_link,
+    deep_link,
     errors::{self, Error},
     ipc,
     settings::AdvancedSettings,
@@ -20,7 +20,8 @@ use firezone_gui_client_common::{
 };
 use firezone_headless_client::LogFilterReloader;
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{str::FromStr, time::Duration};
+use sentry::Breadcrumb;
+use std::{str::FromStr, sync::Arc, time::Duration};
 use tauri::{Manager, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
@@ -120,18 +121,8 @@ pub(crate) fn run(
     cli: client::Cli,
     advanced_settings: AdvancedSettings,
     reloader: LogFilterReloader,
+    sentry_guard: Arc<sentry::ClientInitGuard>,
 ) -> Result<(), Error> {
-    // Need to keep this alive so crashes will be handled. Dropping detaches it.
-    let _crash_handler = match crash_handling::attach_handler() {
-        Ok(x) => Some(x),
-        Err(error) => {
-            // TODO: None of these logs are actually written yet
-            // <https://github.com/firezone/firezone/issues/3211>
-            tracing::warn!(?error, "Did not set up crash handler");
-            None
-        }
-    };
-
     // Needed for the deep link server
     let rt = tokio::runtime::Runtime::new().context("Couldn't start Tokio runtime")?;
     let _guard = rt.enter();
@@ -226,6 +217,11 @@ pub(crate) fn run(
                         tracing::info!(
                             "Will crash / error / panic on purpose in {delay} seconds to test error handling."
                         );
+                        sentry::add_breadcrumb(Breadcrumb {
+                            ty: "fail_on_purpose".into(),
+                            message: Some("Will crash / error / panic on purpose to test error handling.".into()),
+                            ..Default::default()
+                        });
                         tokio::time::sleep(Duration::from_secs(delay)).await;
                         tracing::info!("Crashing / erroring / panicking on purpose");
                         ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
@@ -264,16 +260,22 @@ pub(crate) fn run(
 
                     let exit_code = match task.await {
                         Err(error) => {
+                            sentry::capture_error(&error);
                             tracing::error!(?error, "run_controller panicked");
                             1
                         }
                         Ok(Err(error)) => {
+                            sentry::capture_error(&error);
                             tracing::error!(?error, "run_controller returned an error");
                             errors::show_error_dialog(&error).unwrap();
                             1
                         }
                         Ok(Ok(_)) => 0,
                     };
+
+                    // Need to flush Sentry stuff before exiting, it can't
+                    // pre-empt `std::process::exit`.
+                    sentry_guard.flush(Some(Duration::from_secs(20)));
 
                     tracing::info!(?exit_code);
                     app_handle.exit(exit_code);

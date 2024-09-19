@@ -1,9 +1,10 @@
 use anyhow::{bail, Context as _, Result};
 use clap::{Args, Parser};
 use firezone_gui_client_common::{
-    self as common, controller::Failure, crash_handling, deep_link, settings::AdvancedSettings,
+    self as common, controller::Failure, deep_link, settings::AdvancedSettings,
 };
-use std::path::PathBuf;
+use sentry::Breadcrumb;
+use std::{collections::BTreeMap, sync::Arc};
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
 
@@ -23,8 +24,7 @@ pub(crate) enum Error {
 
 /// The program's entry point, equivalent to `main`
 #[instrument(skip_all)]
-pub(crate) fn run() -> Result<()> {
-    std::panic::set_hook(Box::new(tracing_panic::panic_hook));
+pub(crate) fn run(sentry_guard: Arc<sentry::ClientInitGuard>) -> Result<()> {
     let cli = Cli::parse();
 
     rustls::crypto::ring::default_provider()
@@ -34,11 +34,11 @@ pub(crate) fn run() -> Result<()> {
     match cli.command {
         None => {
             if cli.no_deep_links {
-                return run_gui(cli);
+                return run_gui(cli, sentry_guard);
             }
             match elevation::gui_check() {
                 // Our elevation is correct (not elevated), just run the GUI
-                Ok(true) => run_gui(cli),
+                Ok(true) => run_gui(cli, sentry_guard),
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
                 Err(error) => {
                     common::errors::show_error_dialog(&error)?;
@@ -46,10 +46,9 @@ pub(crate) fn run() -> Result<()> {
                 }
             }
         }
-        Some(Cmd::CrashHandlerServer { socket_path }) => crash_handling::server(socket_path),
         Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
-        Some(Cmd::Elevated) => run_gui(cli),
+        Some(Cmd::Elevated) => run_gui(cli, sentry_guard),
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
             if let Err(error) = rt.block_on(deep_link::open(&deep_link.url)) {
@@ -65,7 +64,7 @@ pub(crate) fn run() -> Result<()> {
                 logger: _logger,
                 reloader,
             } = start_logging(&settings.log_filter)?;
-            let result = gui::run(cli, settings, reloader);
+            let result = gui::run(cli, settings, reloader, sentry_guard);
             if let Err(error) = &result {
                 // In smoke-test mode, don't show the dialog, since it might be running
                 // unattended in CI and the dialog would hang forever
@@ -83,14 +82,15 @@ pub(crate) fn run() -> Result<()> {
 ///
 /// Automatically logs or shows error dialogs for important user-actionable errors
 // Can't `instrument` this because logging isn't running when we enter it.
-fn run_gui(cli: Cli) -> Result<()> {
+fn run_gui(cli: Cli, sentry_guard: Arc<sentry::ClientInitGuard>) -> Result<()> {
     let mut settings = common::settings::load_advanced_settings().unwrap_or_default();
     fix_log_filter(&mut settings)?;
     let common::logging::Handles {
         logger: _logger,
         reloader,
     } = start_logging(&settings.log_filter)?;
-    let result = gui::run(cli, settings, reloader);
+    // sentry_guard.flush(None);
+    let result = gui::run(cli, settings, reloader, sentry_guard);
 
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
@@ -123,14 +123,28 @@ fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
 /// Don't drop the log handle or logging will stop.
 fn start_logging(directives: &str) -> Result<common::logging::Handles> {
     let logging_handles = common::logging::setup(directives)?;
+    let git_version = firezone_bin_shared::git_version!("gui-client-*");
+    let system_uptime_seconds = firezone_headless_client::uptime::get().map(|dur| dur.as_secs());
     tracing::info!(
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
         ?directives,
-        git_version = firezone_bin_shared::git_version!("gui-client-*"),
-        system_uptime_seconds = firezone_headless_client::uptime::get().map(|dur| dur.as_secs()),
+        ?git_version,
+        ?system_uptime_seconds,
         "`gui-client` started logging"
     );
+    sentry::add_breadcrumb(Breadcrumb {
+        ty: "logging_start".into(),
+        category: None,
+        data: {
+            let mut map = BTreeMap::default();
+            map.insert("directives".into(), directives.into());
+            map.insert("git_version".into(), git_version.into());
+            map.insert("system_uptime_seconds".into(), system_uptime_seconds.into());
+            map
+        },
+        ..Default::default()
+    });
 
     Ok(logging_handles)
 }
@@ -185,9 +199,6 @@ impl Cli {
 
 #[derive(clap::Subcommand)]
 pub enum Cmd {
-    CrashHandlerServer {
-        socket_path: PathBuf,
-    },
     Debug {
         #[command(subcommand)]
         command: debug_commands::Cmd,
