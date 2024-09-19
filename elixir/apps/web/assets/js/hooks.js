@@ -1,8 +1,6 @@
-import { initTabs } from "flowbite";
+import { initTabs, Popover } from "flowbite";
 
 let Hooks = {};
-
-// Copy to clipboard
 
 Hooks.Tabs = {
   mounted() {
@@ -147,5 +145,20 @@ Hooks.ConfirmDialog = {
     });
   },
 };
+
+Hooks.Popover = {
+  mounted() {
+    const $triggerEl = this.el;
+    const $targetEl = document.getElementById($triggerEl.getAttribute('data-popover-target-id'));
+
+    const options = {
+      placement: 'top',
+      triggerType: 'hover',
+      offset: 5,
+    };
+
+    new Popover($targetEl, $triggerEl, options);
+  }
+}
 
 export default Hooks;
