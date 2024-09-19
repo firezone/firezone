@@ -190,6 +190,48 @@ defmodule API.Client.Channel do
     end
   end
 
+  # Resource is created
+  def handle_info({:create_resource, resource_id}, socket) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "client.resource_created",
+      attributes: %{resource_id: resource_id} do
+      with {:ok, resource} <-
+             Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject,
+               preload: [:gateway_groups]
+             ),
+           true <-
+             Policies.client_conforms_any_on_connect?(
+               socket.assigns.client,
+               resource.authorized_by_policies
+             ) do
+        case map_or_drop_compatible_resource(
+               resource,
+               socket.assigns.client.last_seen_version
+             ) do
+          {:cont, resource} ->
+            push(
+              socket,
+              "resource_created_or_updated",
+              Views.Resource.render(resource)
+            )
+
+          :drop ->
+            :ok
+        end
+      else
+        {:error, _reason} ->
+          :ok
+
+        false ->
+          :ok
+      end
+
+      {:noreply, socket}
+    end
+  end
+
   # Resource is updated, eg. renamed. We don't care about other changes
   # as the access is dictated by the policy events
   def handle_info({:update_resource, resource_id}, socket) do
