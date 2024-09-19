@@ -89,7 +89,33 @@ defmodule Web.Live.Policies.EditTest do
 
     form = form(lv, "form")
 
-    assert find_inputs(form) == ["policy[description]"]
+    assert find_inputs(form) == [
+             "policy[actor_group_id]",
+             "policy[conditions][client_verified][operator]",
+             "policy[conditions][client_verified][property]",
+             "policy[conditions][client_verified][values][]",
+             "policy[conditions][current_utc_datetime][operator]",
+             "policy[conditions][current_utc_datetime][property]",
+             "policy[conditions][current_utc_datetime][timezone]",
+             "policy[conditions][current_utc_datetime][values][F]",
+             "policy[conditions][current_utc_datetime][values][M]",
+             "policy[conditions][current_utc_datetime][values][R]",
+             "policy[conditions][current_utc_datetime][values][S]",
+             "policy[conditions][current_utc_datetime][values][T]",
+             "policy[conditions][current_utc_datetime][values][U]",
+             "policy[conditions][current_utc_datetime][values][W]",
+             "policy[conditions][provider_id][operator]",
+             "policy[conditions][provider_id][property]",
+             "policy[conditions][provider_id][values][]",
+             "policy[conditions][remote_ip][operator]",
+             "policy[conditions][remote_ip][property]",
+             "policy[conditions][remote_ip][values][]",
+             "policy[conditions][remote_ip_location_region][operator]",
+             "policy[conditions][remote_ip_location_region][property]",
+             "policy[conditions][remote_ip_location_region][values][]",
+             "policy[description]",
+             "policy[resource_id]"
+           ]
   end
 
   test "renders changeset errors on input change", %{
@@ -156,5 +182,34 @@ defmodule Web.Live.Policies.EditTest do
 
     assert policy = Repo.get_by(Domain.Policies.Policy, id: policy.id)
     assert policy.description == attrs.description
+  end
+
+  test "replaces a policy on valid attrs", %{
+    account: account,
+    identity: identity,
+    policy: policy,
+    conn: conn
+  } do
+    new_resource = Fixtures.Resources.create_resource(account: account)
+    attrs = %{resource_id: new_resource.id}
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/policies/#{policy}/edit")
+
+    lv
+    |> form("form", policy: attrs)
+    |> render_submit()
+
+    assert policy = Repo.get_by(Domain.Policies.Policy, id: policy.id)
+    assert policy.replaced_by_policy_id
+
+    assert_redirected(lv, ~p"/#{account}/policies/#{policy.replaced_by_policy_id}")
+
+    assert replacement_policy =
+             Repo.get_by(Domain.Policies.Policy, id: policy.replaced_by_policy_id)
+
+    assert replacement_policy.resource_id == new_resource.id
   end
 end

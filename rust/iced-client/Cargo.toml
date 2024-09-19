@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-iced = { version = "0.13.0", features = ["image", "multi-window"], default-features = false }
+# `tiny-skia` uses less RAM than the GPU backends. About 6.5 MiB on Ubuntu.
+iced = { version = "0.13", features = ["image", "tiny-skia", "multi-window"], default-features = false }
 tao = "0.30.0"
 tokio = { version = "1.40.0", features = ["sync"] }
+tokio-stream = "0.1.16"
 tray-icon = "0.17.0"
 
 [lints]

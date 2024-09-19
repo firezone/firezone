@@ -1,4 +1,6 @@
 [workspace]
+# The Iced Client can't be part of the workspace until Tauri is gone,
+# because they conflict over which version of GTK+ to use.
 exclude = [
     "iced-client",
 ]

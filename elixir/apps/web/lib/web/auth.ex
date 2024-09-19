@@ -699,13 +699,23 @@ defmodule Web.Auth do
     if remaining_time > 0 do
       :timer.sleep(remaining_time)
     else
+      log_constant_time_exceeded(constant_time, elapsed_time, remaining_time)
+    end
+
+    result
+  end
+
+  if Mix.env() in [:dev, :test] do
+    def log_constant_time_exceeded(_constant_time, _elapsed_time, _remaining_time) do
+      :ok
+    end
+  else
+    def log_constant_time_exceeded(constant_time, elapsed_time, remaining_time) do
       Logger.error("Execution took longer than the given constant time",
         constant_time: constant_time,
         elapsed_time: elapsed_time,
         remaining_time: remaining_time
       )
     end
-
-    result
   end
 end
