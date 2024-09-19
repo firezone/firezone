@@ -18,14 +18,14 @@
 # the relevant versions in order to push to a newly drafted release.
 
 # Tracks the current version to use for generating download links and changelogs
-current-apple-version = 1.3.1
+current-apple-version = 1.3.2
 current-android-version = 1.3.2
 current-gateway-version = 1.3.1
 current-gui-version = 1.3.3
 current-headless-version = 1.3.1
 
 # Tracks the next version to release for each platform
-next-apple-version = 1.3.2
+next-apple-version = 1.3.3
 next-android-version = 1.3.3
 next-gateway-version = 1.3.2
 next-gui-version = 1.3.4
