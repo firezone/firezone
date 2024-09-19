@@ -16,7 +16,7 @@ export default function GUI({ title }: { title: string }) {
       {/*
       <Entry version="1.3.5" date={new Date(TODO)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="TODO">
+          <ChangeItem pull="6782">
             Adds error reporting with sentry.io
           </ChangeItem>
         </ul>
