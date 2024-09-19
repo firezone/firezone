@@ -90,21 +90,6 @@ resource "google_dns_record_set" "github-verification" {
   ]
 }
 
-# Microsoft 365
-
-resource "google_dns_record_set" "microsoft-verification" {
-  project      = module.google-cloud-project.project.project_id
-  managed_zone = module.google-cloud-dns.zone_name
-
-  name = module.google-cloud-dns.dns_name
-  type = "TXT"
-  ttl  = 3600
-
-  rrdatas = [
-    "MS=ms19826180"
-  ]
-}
-
 # Google Workspace
 
 resource "google_dns_record_set" "google-mail" {
@@ -151,7 +136,9 @@ resource "google_dns_record_set" "root-verifications" {
     "google-site-verification=hbBLPfTlejIaxyFTPZN0RaIk6Y6qhQTG2yma7I06Emo",
     "google-site-verification=oAugt2Arr7OyWaqJ0bkytkmIE-VQ8D_IFa-rdNiqa8s",
     "google-site-verification=VDl82gbqVHJW6un8Mcki6qDhL_OGK6G8ByOB6qhaVbg",
-    "oneleet-domain-verification-72120df0-57da-4da7-b7bf-e26eaee9dd85"
+    "oneleet-domain-verification-72120df0-57da-4da7-b7bf-e26eaee9dd85",
+    # Microsoft 365
+    "MS=ms19826180"
   ]
 }
 
