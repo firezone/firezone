@@ -1035,7 +1035,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.3.3"
+version = "1.3.4"
 dependencies = [
  "anyhow",
  "backoff",
@@ -1886,7 +1886,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.3.4"
+version = "1.3.5"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -1926,7 +1926,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client-common"
-version = "1.3.4"
+version = "1.3.5"
 dependencies = [
  "anyhow",
  "arboard",
