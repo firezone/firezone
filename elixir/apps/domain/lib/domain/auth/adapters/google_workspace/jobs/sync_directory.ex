@@ -30,6 +30,17 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectory do
         {:error, :missing_service_account_key} ->
           provider.adapter_state["access_token"]
 
+        {:error, {401, _response} = reason} ->
+          Logger.warning("Failed to fetch service account token",
+            account_id: provider.account_id,
+            account_slug: provider.account.slug,
+            provider_id: provider.id,
+            provider_adapter: provider.adapter,
+            reason: inspect(reason)
+          )
+
+          provider.adapter_state["access_token"]
+
         {:error, reason} ->
           Logger.error("Failed to fetch service account token",
             reason: inspect(reason),
