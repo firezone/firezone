@@ -29,6 +29,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::NonZeroUsize;
+use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
 pub(crate) const IPV4_RESOURCES: Ipv4Network =
@@ -403,11 +404,8 @@ impl ClientState {
         buffer: &mut EncryptBuffer,
     ) -> Option<snownet::EncryptedPacket> {
         let (packet, dst) = match self.try_handle_dns_query(packet, now) {
-            Ok(response) => {
-                self.buffered_packets.push_back(response?);
-                return None;
-            }
-            Err(non_dns_packet) => non_dns_packet,
+            ControlFlow::Break(()) => return None,
+            ControlFlow::Continue(non_dns_packet) => non_dns_packet,
         };
 
         if is_definitely_not_a_resource(dst) {
@@ -621,26 +619,26 @@ impl ClientState {
     }
 
     /// Attempt to handle the given packet as a DNS query packet.
-    ///
-    /// Returns `Ok` if the packet is in fact a DNS query with an optional response to send back.
-    /// Returns `Err` if the packet is not a DNS query.
     fn try_handle_dns_query<'a>(
         &mut self,
         packet: IpPacket<'a>,
         now: Instant,
-    ) -> Result<Option<IpPacket<'static>>, (IpPacket<'a>, IpAddr)> {
+    ) -> ControlFlow<(), (IpPacket<'a>, IpAddr)> {
         match self.stub_resolver.handle(&self.dns_mapping, &packet) {
-            Some(dns::ResolveStrategy::LocalResponse(query)) => Ok(Some(query)),
-            Some(dns::ResolveStrategy::ForwardQuery {
+            Ok(ControlFlow::Break(dns::ResolveStrategy::LocalResponse(query))) => {
+                self.buffered_packets.push_back(query);
+                ControlFlow::Break(())
+            }
+            Ok(ControlFlow::Break(dns::ResolveStrategy::ForwardQuery {
                 upstream: server,
                 query_id,
                 payload,
                 original_src,
-            }) => {
+            })) => {
                 let ip = server.ip();
 
                 if self.should_forward_dns_query_to_gateway(ip) {
-                    return Err((packet, ip));
+                    return ControlFlow::Continue((packet, ip));
                 }
 
                 tracing::trace!(%server, %query_id, "Forwarding DNS query");
@@ -653,11 +651,15 @@ impl ClientState {
                     payload: Cow::Owned(payload),
                 });
 
-                Ok(None)
+                ControlFlow::Break(())
             }
-            None => {
+            Ok(ControlFlow::Continue(())) => {
                 let dest = packet.destination();
-                Err((packet, dest))
+                ControlFlow::Continue((packet, dest))
+            }
+            Err(e) => {
+                tracing::debug!(?packet, "Failed to handle DNS query: {e:#}");
+                ControlFlow::Break(())
             }
         }
     }
