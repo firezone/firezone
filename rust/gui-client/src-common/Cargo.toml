@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 anyhow = { version = "1.0" }
 arboard = { version = "3.4.0", default-features = false }
-atomicwrites = "0.4.3"
+atomicwrites = { workspace = true }
 connlib-shared = { workspace = true }
 crash-handler = "0.6.2"
 firezone-bin-shared = { workspace = true }
