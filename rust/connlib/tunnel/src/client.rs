@@ -658,7 +658,7 @@ impl ClientState {
                 ControlFlow::Continue((packet, dest))
             }
             Err(e) => {
-                tracing::debug!(?packet, "Failed to handle DNS query: {e:#}");
+                tracing::trace!(?packet, "Failed to handle DNS query: {e:#}");
                 ControlFlow::Break(())
             }
         }
