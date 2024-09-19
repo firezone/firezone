@@ -64,7 +64,7 @@ socket2 = { version = "0.5" }
 [workspace.dependencies.sentry]
 version = "0.34.0"
 default-features = false # Disable `native-tls` since the headless client needs this to work inside musl / Alpine
-features = ["panic", "rustls", "tracing"]
+features = ["panic", "reqwest", "rustls", "tracing"]
 
 [workspace.lints.clippy]
 dbg_macro = "warn"
