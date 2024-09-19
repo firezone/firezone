@@ -293,7 +293,7 @@ impl StubResolver {
             }
             (Rtype::HTTPS, Some(_)) => {
                 anyhow::bail!(
-                    "HTTPs record query for resource {domain} discarding as we can't mangle it"
+                    "Discarding HTTPS record query for resource {domain} because we can't mangle it"
                 );
             }
             _ => {
