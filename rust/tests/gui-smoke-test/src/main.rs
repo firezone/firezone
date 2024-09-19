@@ -76,12 +76,6 @@ impl App {
         Ok(Self { username })
     }
 
-    fn crash_dump_path(&self) -> PathBuf {
-        Path::new("/home")
-            .join(&self.username)
-            .join(".cache/dev.firezone.client/data/logs/last_crash.dmp")
-    }
-
     // `args` can't just be appended because of the `xvfb-run` wrapper
     fn gui_command(&self, args: &[&str]) -> Result<Exec> {
         let gui_path = gui_path().canonicalize()?;
@@ -118,13 +112,6 @@ impl App {
 impl App {
     fn new() -> Result<Self> {
         Ok(Self {})
-    }
-
-    fn crash_dump_path(&self) -> PathBuf {
-        let app_data = std::env::var("LOCALAPPDATA").expect("$LOCALAPPDATA should be set");
-        PathBuf::from(app_data)
-            .join("dev.firezone.client/data/logs")
-            .join("last_crash.dmp")
     }
 
     // Strange signature needed to match Linux
