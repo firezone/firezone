@@ -1451,30 +1451,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crash-context"
-version = "0.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "031ed29858d90cfdf27fe49fae28028a1f20466db97962fa2f4ea34809aeebf3"
-dependencies = [
- "cfg-if",
- "libc",
- "mach2",
-]
-
-[[package]]
-name = "crash-handler"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff62668cee357a18a67b5ce55bdef533d2c108d8eded362408f08face8731a71"
-dependencies = [
- "cfg-if",
- "crash-context",
- "libc",
- "mach2",
- "parking_lot 0.12.3",
-]
-
-[[package]]
 name = "crc"
 version = "3.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2318,7 +2294,6 @@ dependencies = [
  "arboard",
  "atomicwrites",
  "connlib-shared",
- "crash-handler",
  "dirs",
  "firezone-bin-shared",
  "firezone-headless-client",
@@ -4310,15 +4285,6 @@ dependencies = [
  "objc-foundation",
  "objc_id",
  "time",
-]
-
-[[package]]
-name = "mach2"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19b955cdeb2a02b9117f121ce63aa52d08ade45de53e48fe6a38b39c10f6f709"
-dependencies = [
- "libc",
 ]
 
 [[package]]
