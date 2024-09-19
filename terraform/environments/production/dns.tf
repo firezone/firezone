@@ -90,6 +90,21 @@ resource "google_dns_record_set" "github-verification" {
   ]
 }
 
+# Microsoft 365
+
+resource "google_dns_record_set" "microsoft-verification" {
+  project      = module.google-cloud-project.project.project_id
+  managed_zone = module.google-cloud-dns.zone_name
+
+  name = module.google-cloud-dns.dns_name
+  type = "TXT"
+  ttl  = 3600
+
+  rrdatas = [
+    "MS=ms19826180"
+  ]
+}
+
 # Google Workspace
 
 resource "google_dns_record_set" "google-mail" {
