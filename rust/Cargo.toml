@@ -11,6 +11,7 @@ members = [
   "gui-client/src-common",
   "gui-client/src-tauri",
   "headless-client",
+  "iced-client",
   "ip-packet",
   "logging",
   "phoenix-channel",
