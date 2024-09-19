@@ -139,5 +139,11 @@ Normal system DNS:
   disabled completely or uninstalled to prevent these issues. See
   [this thread on our forum](https://discourse.firez.one/t/firezone-app-on-macos/682)
   for more information.
+- **SentinelOne agent can block DNS queries**: The SentinelOne agent for macOS
+  may interfere with Firezone's ability to successfully forward and reply to DNS
+  queries made my applications on macOS. The symptom when this occurs is that
+  all DNS queries on the system will fail, not just those that match the DNS
+  Resources you have in your account. See this issue for more information:
+  [#6768](https://github.com/firezone/firezone/issues/6768).
 
 <SupportOptions />
