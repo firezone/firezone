@@ -9,17 +9,22 @@ export default function Apple() {
       href="https://apps.apple.com/us/app/firezone/id6443661826"
       title="macOS / iOS"
     >
-      {/*
-      <Entry version="1.3.3" date={new Date(todo)}>
+      <Entry version="1.3.3" date={new Date("2024-09-19")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6765">
-            Fixes a bug where DNS PTR queries by the system did not get answered.
+            Fixes a bug where DNS PTR queries by the system did not get
+            answered.
+          </ChangeItem>
           <ChangeItem pull="6722">
-          Fixes a routing bug when one of several overlapping CIDR resources gets disabled / removed.
+            Fixes a routing bug when one of several overlapping CIDR resources
+            gets disabled / removed.
+          </ChangeItem>
+          <ChangeItem>
+            Improves logging for DNS queries when{" "}
+            <code>firezone_tunnel=trace</code> log level is used.
           </ChangeItem>
         </ul>
       </Entry>
-      */}
       <Entry version="1.3.2" date={new Date("2024-09-18")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6632">
