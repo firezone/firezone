@@ -177,7 +177,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tool: dump_syms,minidump-stackwalk
+          tool: dump_syms
       - name: Run smoke test
         working-directory: ./rust
         run: cargo run -p gui-smoke-test

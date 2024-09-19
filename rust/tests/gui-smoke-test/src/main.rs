@@ -44,28 +44,12 @@ fn main() -> Result<()> {
     gui.wait()?;
     ipc_service.wait()?.fz_exit_ok().context("IPC service")?;
 
-    app.check_crash_dump()?;
-
     Ok(())
 }
 
 struct App {
     #[cfg(target_os = "linux")]
     username: String,
-}
-
-impl App {
-    fn check_crash_dump(&self) -> Result<()> {
-        Exec::cmd("minidump-stackwalk")
-            .args(&[
-                OsStr::new("--symbols-path"),
-                syms_path().as_os_str(),
-                self.crash_dump_path().as_os_str(),
-            ])
-            .join()?
-            .fz_exit_ok()?;
-        Ok(())
-    }
 }
 
 #[cfg(target_os = "linux")]
