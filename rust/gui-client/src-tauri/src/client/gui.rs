@@ -262,20 +262,25 @@ pub(crate) fn run(
                         Err(error) => {
                             sentry::capture_error(&error);
                             tracing::error!(?error, "run_controller panicked");
+                            sentry::end_session_with_status(sentry::types::protocol::v7::SessionStatus::Crashed);
                             1
                         }
                         Ok(Err(error)) => {
                             sentry::capture_error(&error);
                             tracing::error!(?error, "run_controller returned an error");
                             errors::show_error_dialog(&error).unwrap();
+                            sentry::end_session_with_status(sentry::types::protocol::v7::SessionStatus::Crashed);
                             1
                         }
-                        Ok(Ok(_)) => 0,
+                        Ok(Ok(_)) => {
+                            sentry::end_session();
+                            0
+                        }
                     };
 
-                    // Need to flush Sentry stuff before exiting, it can't
-                    // pre-empt `std::process::exit`.
-                    sentry_guard.flush(Some(Duration::from_secs(20)));
+                    // In a normal Rust application, Sentry's guard will flush on drop: https://docs.sentry.io/platforms/rust/configuration/draining/
+                    // But due to a limit in `tao` we cannot return from the event loop and must call `std::process::exit` (or Tauri's wrapper), so we explicitly flush here.
+                    sentry_guard.flush(Some(Duration::from_secs(5)));
 
                     tracing::info!(?exit_code);
                     app_handle.exit(exit_code);
