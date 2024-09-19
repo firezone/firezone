@@ -291,6 +291,11 @@ impl StubResolver {
 
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
             }
+            (Rtype::HTTPS, Some(_)) => {
+                anyhow::bail!(
+                    "HTTPs record query for resource {domain} discarding as we can't mangle it"
+                );
+            }
             _ => {
                 return Ok(ControlFlow::Break(ResolveStrategy::ForwardQuery {
                     upstream,
