@@ -9,7 +9,6 @@ anyhow = { version = "1.0" }
 arboard = { version = "3.4.0", default-features = false }
 atomicwrites = "0.4.3"
 connlib-shared = { workspace = true }
-crash-handler = "0.6.2"
 firezone-bin-shared = { workspace = true }
 firezone-headless-client = { path = "../../headless-client" }
 firezone-logging = { workspace = true }
