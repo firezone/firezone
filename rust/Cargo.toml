@@ -38,7 +38,6 @@ str0m = { version = "0.6.2", default-features = false }
 futures-bounded = "0.2.1"
 domain = { version = "0.10", features = ["serde"] }
 dns-lookup = "2.0"
-sentry = { version = "0.34.0", default-features = false, features = ["panic", "rustls", "tracing"] }
 tokio-tungstenite = "0.23.1"
 rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_socket"] }
 tokio = "1.39"
@@ -61,6 +60,11 @@ ip-packet = { path = "ip-packet" }
 socket-factory = { path = "socket-factory" }
 tun = { path = "tun" }
 socket2 = { version = "0.5" }
+
+[workspace.dependencies.sentry]
+version = "0.34.0"
+default-features = false # Disable `native-tls` since the headless client needs this to work inside musl / Alpine
+features = ["panic", "rustls", "tracing"]
 
 [workspace.lints.clippy]
 dbg_macro = "warn"

@@ -89,7 +89,6 @@ fn run_gui(cli: Cli, sentry_guard: Arc<sentry::ClientInitGuard>) -> Result<()> {
         logger: _logger,
         reloader,
     } = start_logging(&settings.log_filter)?;
-    // sentry_guard.flush(None);
     let result = gui::run(cli, settings, reloader, sentry_guard);
 
     // Make sure errors get logged, at least to stderr
