@@ -502,7 +502,6 @@ defmodule API.Client.Channel do
         {:ok,
          %{
            resource_id: resource_id,
-           persistent_keepalive: 25,
            preshared_key: preshared_key,
            ice_credentials: ice_credentials,
            gateway_id: gateway_id,
@@ -552,14 +551,10 @@ defmodule API.Client.Channel do
     end
   end
 
-  # This message is sent to the client to request a network flow with a gateway that can server given resource.
+  # This message is sent to the client to request a network flow with a gateway that can serve given resource.
   #
   # `connected_gateway_ids` is used to indicate that the client is already connected to some of the gateways,
   # so the gateway can be reused by multiplexing the connection.
-  #
-  # `client_payload` is an arbitrary data that the client wants to send to the gateway, typically it will be
-  # either empty, or contain dns hostname of a given resource to connect to (so that it can be resolved on the
-  # gateway).
   def handle_in(
         "create_flow",
         %{

@@ -1779,7 +1779,6 @@ defmodule API.Client.ChannelTest do
 
       assert_reply ref, :ok, %{
         resource_id: ^resource_id,
-        persistent_keepalive: 25,
         preshared_key: ^preshared_key,
         ice_credentials: ^ice_credentials,
         gateway_id: ^gateway_id,
