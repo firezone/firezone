@@ -12,10 +12,13 @@ export default function GUI({ title }: { title: string }) {
 
   return (
     <Entries href={href} arches={arches} title={title}>
-      {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This cannot be done when the issue's PR merges. */}
+      {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       {/*
       <Entry version="1.3.5" date={new Date(TODO)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem enable={title === "Linux GUI"} pull="6780">
+            Fixes a bug where the Linux Clients didn't work on ZFS filesystems
+          </ChangeItem>
           <ChangeItem pull="6782">
             Adds error reporting with sentry.io
           </ChangeItem>

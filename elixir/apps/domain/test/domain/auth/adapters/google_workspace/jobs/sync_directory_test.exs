@@ -48,7 +48,37 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
                       %{req_headers: [{"authorization", "Bearer GOOGLE_0AUTH_ACCESS_TOKEN"} | _]}}
     end
 
-    test "uses admin user token as a fallback", %{provider: provider} do
+    test "uses admin user token as a fallback when service account is not configured" do
+      bypass = Bypass.open()
+      GoogleWorkspaceDirectory.override_token_endpoint("http://localhost:#{bypass.port}/")
+
+      Bypass.stub(bypass, "POST", "/token", fn conn ->
+        Plug.Conn.send_resp(
+          conn,
+          401,
+          Jason.encode!(%{
+            "error" => "unauthorized_client",
+            "error_description" =>
+              "Client is unauthorized to retrieve access tokens using this method, or client not authorized for any of the scopes requested."
+          })
+        )
+      end)
+
+      GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+      GoogleWorkspaceDirectory.mock_groups_list_endpoint(bypass, [])
+      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(bypass, [])
+      GoogleWorkspaceDirectory.mock_users_list_endpoint(bypass, [])
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      assert_receive {:bypass_request,
+                      %{req_headers: [{"authorization", "Bearer OIDC_ACCESS_TOKEN"} | _]}}
+    end
+
+    test "uses admin user token as a fallback when service account token is not set", %{
+      provider: provider
+    } do
       bypass = Bypass.open()
 
       GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
