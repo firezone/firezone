@@ -14,8 +14,17 @@ export default function GUI({ title }: { title: string }) {
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       {/*
-      <Entry version="1.3.5" date={new Date(todo)}>
+      <Entry version="1.3.6" date={new Date(todo)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
+        </ul>
+      </Entry>
+      */}
+      <Entry version="1.3.5" date={new Date("2024-09-20")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6788">
+            Fixes an issue where some browsers may fail to route DNS Resources
+            correctly.
+          </ChangeItem>
           <ChangeItem enable={title === "Linux GUI"} pull="6780">
             Fixes a bug where the Linux Clients didn't work on ZFS filesystems
           </ChangeItem>
@@ -23,8 +32,7 @@ export default function GUI({ title }: { title: string }) {
             Fixes a bug where auto-sign-in with an expired token would cause a "Couldn't send Disconnect" error message.
           </ChangeItem>
         </ul>
-      </Entry
-      */}
+      </Entry>
       <Entry version="1.3.4" date={new Date("2024-09-19")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6765">
