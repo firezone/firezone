@@ -72,7 +72,7 @@ fn manual_tests(app: &App) -> Result<()> {
         .wait()?;
 
     let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
-    let mut gui = app.gui_command(&[])?.popen()?;
+    let mut gui = app.gui_command(&["--quit-after", "10"])?.popen()?;
 
     // Expect exit codes of 0
     gui.wait()?.fz_exit_ok().context("GUI process")?;
