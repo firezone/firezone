@@ -25,6 +25,7 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
+atomicwrites = "0.4.4"
 boringtun = { version = "0.6", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 swift-bridge = "0.1.57"
