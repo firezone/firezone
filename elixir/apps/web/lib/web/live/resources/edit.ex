@@ -191,15 +191,6 @@ defmodule Web.Resources.Edit do
               </div>
             </div>
 
-            <.input
-              :if={@resource.type != :internet}
-              field={@form[:name]}
-              type="text"
-              label="Name"
-              placeholder="Name this resource"
-              required
-            />
-
             <div :if={@resource.type != :internet}>
               <.input
                 field={@form[:address_description]}
@@ -211,6 +202,15 @@ defmodule Web.Resources.Edit do
                 Optional description or URL to show in Clients to help users access this Resource.
               </p>
             </div>
+
+            <.input
+              :if={@resource.type != :internet}
+              field={@form[:name]}
+              type="text"
+              label="Name"
+              placeholder="Name this resource"
+              required
+            />
 
             <.filters_form
               :if={@resource.type != :internet}
