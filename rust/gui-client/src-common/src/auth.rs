@@ -95,6 +95,14 @@ impl Auth {
             state: State::SignedOut,
         };
 
+        tracing::warn!(
+            "This is a debug build for issue #6791, pretending to be signed in with a bad token"
+        );
+        this.save_session(
+            "Jane Doe",
+            &SecretString::from("obviously invalid token for testing #6791".to_string()),
+        )?;
+
         match this.get_token_from_disk() {
             Err(error) => tracing::error!(
                 ?error,
@@ -169,17 +177,22 @@ impl Auth {
         );
         let token = SecretString::from(token);
 
+        self.save_session(&resp.actor_name, &token)?;
+        self.state = State::SignedIn(Session {
+            actor_name: resp.actor_name,
+        });
+        Ok(SecretString::from(token))
+    }
+
+    fn save_session(&self, actor_name: &str, token: &SecretString) -> Result<(), Error> {
         // This MUST be the only place the GUI can call `set_password`, since
         // the actor name is also saved here.
         self.token_store.set_password(token.expose_secret())?;
         let path = actor_name_path()?;
         std::fs::create_dir_all(path.parent().ok_or(Error::ActorNamePathWrong)?)
             .map_err(Error::CreateDirAll)?;
-        std::fs::write(path, resp.actor_name.as_bytes()).map_err(Error::WriteActorName)?;
-        self.state = State::SignedIn(Session {
-            actor_name: resp.actor_name,
-        });
-        Ok(SecretString::from(token))
+        std::fs::write(path, actor_name.as_bytes()).map_err(Error::WriteActorName)?;
+        Ok(())
     }
 
     /// Returns the token if we are signed in
