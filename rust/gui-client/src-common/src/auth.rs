@@ -95,14 +95,6 @@ impl Auth {
             state: State::SignedOut,
         };
 
-        tracing::warn!(
-            "This is a debug build for issue #6791, pretending to be signed in with a bad token"
-        );
-        this.save_session(
-            "Jane Doe",
-            &SecretString::from("obviously invalid token for testing #6791".to_string()),
-        )?;
-
         match this.get_token_from_disk() {
             Err(error) => tracing::error!(
                 ?error,
@@ -270,6 +262,16 @@ fn secure_equality(a: &SecretString, b: &SecretString) -> bool {
     let a = a.expose_secret().as_bytes();
     let b = b.expose_secret().as_bytes();
     a.ct_eq(b).into()
+}
+
+pub fn replicate_6791() -> Result<()> {
+    tracing::warn!("Debugging issue #6791, pretending to be signed in with a bad token");
+    let this = Auth::new()?;
+    this.save_session(
+        "Jane Doe",
+        &SecretString::from("obviously invalid token for testing #6791".to_string()),
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
