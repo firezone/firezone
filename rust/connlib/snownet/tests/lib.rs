@@ -76,12 +76,14 @@ fn only_generate_candidate_event_after_answer() {
     let mut alice = ClientNode::<u64, u64>::new(
         StaticSecret::random_from_rng(rand::thread_rng()),
         rand::random(),
+        Duration::from_secs(8 * 60 * 60),
     );
     alice.add_local_host_candidate(local_candidate).unwrap();
 
     let mut bob = ServerNode::<u64, u64>::new(
         StaticSecret::random_from_rng(rand::thread_rng()),
         rand::random(),
+        Duration::from_secs(8 * 60 * 60),
     );
 
     let offer = alice.new_connection(1, Instant::now(), Instant::now());
@@ -109,10 +111,12 @@ fn alice_and_bob() -> (ClientNode<u64, u64>, ServerNode<u64, u64>) {
     let alice = ClientNode::new(
         StaticSecret::random_from_rng(rand::thread_rng()),
         rand::random(),
+        Duration::from_secs(8 * 60 * 60),
     );
     let bob = ServerNode::new(
         StaticSecret::random_from_rng(rand::thread_rng()),
         rand::random(),
+        Duration::from_secs(8 * 60 * 60),
     );
 
     (alice, bob)

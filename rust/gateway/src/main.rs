@@ -14,10 +14,10 @@ use futures::channel::mpsc;
 use futures::{future, StreamExt, TryFutureExt};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
-use std::convert::Infallible;
 use std::path::Path;
 use std::pin::pin;
 use std::sync::Arc;
+use std::{convert::Infallible, time::Duration};
 use tokio::io::AsyncWriteExt;
 use tokio::signal::ctrl_c;
 use tracing_subscriber::layer;
@@ -110,6 +110,7 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
         private_key,
         Arc::new(tcp_socket_factory),
         Arc::new(udp_socket_factory),
+        Duration::from_secs(8 * 60 * 60),
     );
     let portal = PhoenixChannel::connect(
         Secret::new(login),

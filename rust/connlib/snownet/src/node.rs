@@ -96,6 +96,8 @@ pub struct Node<T, TId, RId> {
 
     marker: PhantomData<T>,
     rng: StdRng,
+
+    max_idle: Duration,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -121,7 +123,7 @@ where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
-    pub fn new(private_key: StaticSecret, seed: [u8; 32]) -> Self {
+    pub fn new(private_key: StaticSecret, seed: [u8; 32], max_idle: Duration) -> Self {
         let public_key = &(&private_key).into();
         Self {
             rng: StdRng::from_seed(seed), // TODO: Use this seed for private key too. Requires refactoring of how we generate the login-url because that one needs to know the public key.
@@ -138,6 +140,7 @@ where
             allocations: Default::default(),
             connections: Default::default(),
             stats: Default::default(),
+            max_idle,
         }
     }
 
@@ -580,6 +583,7 @@ where
             last_outgoing: now,
             last_incoming: now,
             span: info_span!("connection", %cid),
+            max_idle: self.max_idle,
         }
     }
 
@@ -1382,6 +1386,7 @@ struct Connection<RId> {
     last_incoming: Instant,
 
     span: tracing::Span,
+    max_idle: Duration,
 }
 
 enum ConnectionState<RId> {
@@ -1497,9 +1502,7 @@ where
     }
 
     fn idle_timeout(&self) -> Instant {
-        const MAX_IDLE: Duration = Duration::from_secs(8 * 60 * 60);
-
-        self.last_incoming.max(self.last_outgoing) + MAX_IDLE
+        self.last_incoming.max(self.last_outgoing) + self.max_idle
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]

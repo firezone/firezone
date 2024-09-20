@@ -33,7 +33,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 /// Simulation state for a particular client.
@@ -271,6 +271,7 @@ pub struct RefClient {
     pub(crate) known_hosts: BTreeMap<String, Vec<IpAddr>>,
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,
+    pub(crate) idle_timeout: Duration,
 
     /// The DNS resolvers configured on the client outside of connlib.
     #[derivative(Debug = "ignore")]
@@ -335,7 +336,8 @@ impl RefClient {
     ///
     /// This simulates receiving the `init` message from the portal.
     pub(crate) fn init(self) -> SimClient {
-        let mut client_state = ClientState::new(self.key, self.known_hosts, self.key.0); // Cheating a bit here by reusing the key as seed.
+        let mut client_state =
+            ClientState::new(self.key, self.known_hosts, self.key.0, self.idle_timeout); // Cheating a bit here by reusing the key as seed.
         client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,
@@ -903,6 +905,7 @@ fn ref_client(
         client_id(),
         private_key(),
         known_hosts(),
+        idle_timeout(),
     )
         .prop_map(
             move |(
@@ -913,6 +916,7 @@ fn ref_client(
                 id,
                 key,
                 known_hosts,
+                idle_timeout,
             )| {
                 RefClient {
                     id,
@@ -920,6 +924,7 @@ fn ref_client(
                     known_hosts,
                     tunnel_ip4,
                     tunnel_ip6,
+                    idle_timeout,
                     system_dns_resolvers,
                     upstream_dns_resolvers,
                     internet_resource: Default::default(),

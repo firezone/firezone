@@ -15,7 +15,7 @@ use snownet::{EncryptBuffer, Transmit};
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::IpAddr,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 /// Simulation state for a particular client.
@@ -144,8 +144,9 @@ impl RefGateway {
     /// Initialize the [`GatewayState`].
     ///
     /// This simulates receiving the `init` message from the portal.
-    pub(crate) fn init(self, id: GatewayId) -> SimGateway {
-        SimGateway::new(id, GatewayState::new(self.key, self.key.0)) // Cheating a bit here by reusing the key as seed.
+    pub(crate) fn init(self, id: GatewayId, idle_timeout: Duration) -> SimGateway {
+        SimGateway::new(id, GatewayState::new(self.key, self.key.0, idle_timeout))
+        // Cheating a bit here by reusing the key as seed.
     }
 }
 

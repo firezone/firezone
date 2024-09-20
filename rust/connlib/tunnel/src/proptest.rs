@@ -14,6 +14,7 @@ use proptest::{
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     ops::Range,
+    time::Duration,
 };
 
 pub fn resource(
@@ -126,6 +127,13 @@ pub fn resource_name() -> impl Strategy<Value = String> {
 
 pub fn domain_label() -> impl Strategy<Value = String> {
     any_with::<String>("[a-z]{3,6}".into())
+}
+
+pub fn idle_timeout() -> impl Strategy<Value = Duration> {
+    prop_oneof![
+        Just(Duration::from_secs(5 * 60)),
+        Just(Duration::from_secs(8 * 60 * 60)),
+    ]
 }
 
 pub fn domain_name(depth: Range<usize>) -> impl Strategy<Value = String> {

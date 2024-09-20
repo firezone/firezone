@@ -15,6 +15,7 @@ use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::IpAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::task::JoinHandle;
 use tun::Tun;
@@ -136,6 +137,7 @@ where
         tcp_socket_factory,
         udp_socket_factory,
         BTreeMap::from([(portal.server_host().to_owned(), portal.resolved_addresses())]),
+        Duration::from_secs(8 * 60 * 60),
     );
 
     let mut eventloop = Eventloop::new(tunnel, callbacks, portal, rx);

@@ -267,6 +267,7 @@ impl ClientState {
         private_key: impl Into<StaticSecret>,
         known_hosts: BTreeMap<String, Vec<IpAddr>>,
         seed: [u8; 32],
+        idle_timeout: Duration,
     ) -> Self {
         Self {
             awaiting_connection_details: Default::default(),
@@ -278,7 +279,7 @@ impl ClientState {
             buffered_events: Default::default(),
             tun_config: Default::default(),
             buffered_packets: Default::default(),
-            node: ClientNode::new(private_key.into(), seed),
+            node: ClientNode::new(private_key.into(), seed, idle_timeout),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
@@ -1549,6 +1550,7 @@ mod tests {
                 StaticSecret::random_from_rng(OsRng),
                 BTreeMap::new(),
                 rand::random(),
+                Duration::from_secs(8 * 60 * 60),
             )
         }
     }

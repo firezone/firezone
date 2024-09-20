@@ -2,7 +2,7 @@ use super::{
     composite_strategy::CompositeStrategy, sim_client::*, sim_dns::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
-use crate::dns::is_subdomain;
+use crate::{dns::is_subdomain, proptest::idle_timeout};
 use connlib_shared::{
     messages::{
         client::{self, ResourceDescription},
@@ -17,6 +17,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     fmt, iter,
     net::{IpAddr, SocketAddr},
+    time::Duration,
 };
 
 /// The reference state machine of the tunnel.
@@ -29,6 +30,7 @@ pub(crate) struct ReferenceState {
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
     pub(crate) dns_servers: BTreeMap<DnsServerId, Host<RefDns>>,
+    pub(crate) gateways_idle_timeout: Duration,
 
     pub(crate) portal: StubPortal,
 
@@ -59,8 +61,8 @@ impl ReferenceStateMachine for ReferenceState {
     type Transition = Transition;
 
     fn init_state() -> BoxedStrategy<Self::State> {
-        (stub_portal(), dns_servers())
-            .prop_flat_map(|(portal, dns_servers)| {
+        (stub_portal(), dns_servers(), idle_timeout())
+            .prop_flat_map(|(portal, dns_servers, gateways_idle_timeout)| {
                 let gateways = portal.gateways();
                 let dns_resource_records = portal.dns_resource_records();
                 let client = portal.client(
@@ -80,6 +82,7 @@ impl ReferenceStateMachine for ReferenceState {
                     global_dns_records,
                     drop_direct_client_traffic,
                     Just(dns_servers),
+                    Just(gateways_idle_timeout),
                 )
             })
             .prop_filter_map(
@@ -93,6 +96,7 @@ impl ReferenceStateMachine for ReferenceState {
                     mut global_dns,
                     drop_direct_client_traffic,
                     dns_servers,
+                    gateways_idle_timeout,
                 )| {
                     let mut routing_table = RoutingTable::default();
 
@@ -129,12 +133,13 @@ impl ReferenceStateMachine for ReferenceState {
                         global_dns,
                         drop_direct_client_traffic,
                         routing_table,
+                        gateways_idle_timeout,
                     ))
                 },
             )
             .prop_filter(
                 "private keys must be unique",
-                |(c, gateways, _, _, _, _, _, _)| {
+                |(c, gateways, _, _, _, _, _, _, _)| {
                     let different_keys = gateways
                         .iter()
                         .map(|(_, g)| g.inner().key)
@@ -154,6 +159,7 @@ impl ReferenceStateMachine for ReferenceState {
                     global_dns_records,
                     drop_direct_client_traffic,
                     network,
+                    gateways_idle_timeout,
                 )| {
                     Self {
                         client,
@@ -164,6 +170,7 @@ impl ReferenceStateMachine for ReferenceState {
                         global_dns_records,
                         network,
                         drop_direct_client_traffic,
+                        gateways_idle_timeout,
                     }
                 },
             )
@@ -198,7 +205,8 @@ impl ReferenceStateMachine for ReferenceState {
             .with(1, relays().prop_map(Transition::DeployNewRelays))
             .with(1, Just(Transition::PartitionRelaysFromPortal))
             .with(1, Just(Transition::ReconnectPortal))
-            .with(1, Just(Transition::Idle))
+            .with(1, Just(Transition::IdleGateway))
+            .with(1, Just(Transition::IdleClient))
             .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resources_id| {
                 sample::subsequence(resources_id.clone(), resources_id.len()).prop_map(
                     |resources_id| Transition::DisableResources(BTreeSet::from_iter(resources_id)),
@@ -471,7 +479,7 @@ impl ReferenceStateMachine for ReferenceState {
                     state.client.exec_mut(|client| client.reset_connections());
                 }
             }
-            Transition::Idle => {
+            Transition::IdleClient | Transition::IdleGateway => {
                 state.client.exec_mut(|client| client.reset_connections());
             }
             Transition::PartitionRelaysFromPortal => {
@@ -634,7 +642,7 @@ impl ReferenceStateMachine for ReferenceState {
 
                 !route_overlap
             }
-            Transition::Idle => true,
+            Transition::IdleClient | Transition::IdleGateway => true,
             Transition::PartitionRelaysFromPortal => true,
         }
     }

@@ -57,7 +57,7 @@ impl TunnelTest {
             .iter()
             .map(|(gid, gateway)| {
                 let gateway = gateway.map(
-                    |ref_gateway, _, _| ref_gateway.init(*gid),
+                    |ref_gateway, _, _| ref_gateway.init(*gid, ref_state.gateways_idle_timeout),
                     debug_span!("gateway", %gid),
                 );
 
@@ -295,9 +295,18 @@ impl TunnelTest {
                 }
                 state.relays = online; // Override all relays.
             }
-            Transition::Idle => {
-                const IDLE_DURATION: Duration = Duration::from_secs(8 * 60 * 60); // Ensure idling twice in a row puts us in the 10-15 minute window where TURN data channels are cooling down.
-                let cut_off = state.flux_capacitor.now::<Instant>() + IDLE_DURATION;
+            Transition::IdleClient => {
+                let cut_off =
+                    state.flux_capacitor.now::<Instant>() + ref_state.client.inner().idle_timeout;
+
+                while state.flux_capacitor.now::<Instant>() <= cut_off {
+                    state.flux_capacitor.tick(Duration::from_secs(5));
+                    state.advance(ref_state, &mut buffered_transmits);
+                }
+            }
+            Transition::IdleGateway => {
+                let cut_off =
+                    state.flux_capacitor.now::<Instant>() + ref_state.gateways_idle_timeout;
 
                 while state.flux_capacitor.now::<Instant>() <= cut_off {
                     state.flux_capacitor.tick(Duration::from_secs(5));
