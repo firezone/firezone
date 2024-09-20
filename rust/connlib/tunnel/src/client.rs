@@ -7,14 +7,14 @@ use connlib_shared::callbacks::Status;
 use connlib_shared::messages::client::{Site, SiteId};
 use connlib_shared::messages::ResolveRequest;
 use connlib_shared::messages::{
-    client::ResourceDescription, client::ResourceDescriptionCidr, Answer, DnsServer, GatewayId,
-    Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId, ResourceId,
+    client::ResourceDescription, Answer, DnsServer, GatewayId, Interface as InterfaceConfig,
+    IpDnsServer, Key, Offer, Relay, RelayId, ResourceId,
 };
 use connlib_shared::{callbacks, PublicKey, StaticSecret};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
 use itertools::Itertools;
+use routing_table::ResourceRoutingTable;
 
 use crate::peer::GatewayOnClient;
 use crate::utils::{earliest, turn};
@@ -207,12 +207,12 @@ pub struct ClientState {
     /// The online/offline status of a site.
     sites_status: HashMap<SiteId, Status>,
 
-    /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
-    active_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
     /// `Some` if the Internet resource is enabled.
     internet_resource: Option<ResourceId>,
     /// All resources indexed by their ID.
     resources_by_id: BTreeMap<ResourceId, ResourceDescription>,
+    /// Routing table for resources.
+    resource_routing_table: ResourceRoutingTable,
 
     /// The DNS resolvers configured on the system outside of connlib.
     system_resolvers: Vec<IpAddr>,
@@ -273,7 +273,7 @@ impl ClientState {
         Self {
             awaiting_connection_details: Default::default(),
             resources_gateways: Default::default(),
-            active_cidr_resources: IpNetworkTable::new(),
+            resource_routing_table: ResourceRoutingTable::default(),
             resources_by_id: Default::default(),
             peers: Default::default(),
             dns_mapping: Default::default(),
@@ -391,14 +391,6 @@ impl ClientState {
         )
     }
 
-    fn is_cidr_resource_connected(&self, resource: &ResourceId) -> bool {
-        let Some(gateway_id) = self.resources_gateways.get(resource) else {
-            return false;
-        };
-
-        self.peers.get(gateway_id).is_some()
-    }
-
     pub(crate) fn encapsulate(
         &mut self,
         packet: IpPacket<'_>,
@@ -414,10 +406,15 @@ impl ClientState {
             return None;
         }
 
-        let Some(resource) = self.get_resource_by_destination(dst) else {
+        let Some(resource) = self.get_resource_by_packet(&packet, dst) else {
+            dbg!("no resource?");
+            dbg!(self.resource_routing_table.routes().collect_vec());
             tracing::trace!(?packet, "Unknown resource");
             return None;
         };
+
+        dbg!(resource);
+        tracing::trace!(?packet, "routing packet through resource: {}", resource);
 
         // We read this here to prevent problems with the borrow checker
         let is_dns_resource = self.is_dns_resource(&resource);
@@ -615,9 +612,7 @@ impl ClientState {
             return true;
         }
 
-        self.active_cidr_resources
-            .longest_match(dns_server)
-            .is_some()
+        self.resource_routing_table.any_route_for_ip(dns_server)
     }
 
     /// Attempt to handle the given packet as a DNS query packet.
@@ -639,7 +634,7 @@ impl ClientState {
             })) => {
                 let ip = server.ip();
 
-                if self.should_forward_dns_query_to_gateway(ip) {
+                if dbg!(self.should_forward_dns_query_to_gateway(ip)) {
                     return ControlFlow::Continue((packet, ip));
                 }
 
@@ -812,9 +807,8 @@ impl ClientState {
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
-        self.active_cidr_resources
-            .iter()
-            .map(|(ip, _)| ip)
+        self.resource_routing_table
+            .routes()
             .chain(iter::once(IPV4_RESOURCES.into()))
             .chain(iter::once(IPV6_RESOURCES.into()))
             .chain(iter::once(DNS_SENTINELS_V4.into()))
@@ -833,22 +827,9 @@ impl ClientState {
         !self.disabled_resources.contains(resource) && self.resources_by_id.contains_key(resource)
     }
 
-    fn get_resource_by_destination(&self, destination: IpAddr) -> Option<ResourceId> {
-        // We need to filter disabled resources because we never remove resources from the stub_resolver
-        let maybe_dns_resource_id = self
-            .stub_resolver
-            .resolve_resource_by_ip(&destination)
-            .filter(|resource| self.is_resource_enabled(resource));
-
-        // We don't need to filter from here because resources are removed from the active_cidr_resources as soon as they are disabled.
-        let maybe_cidr_resource_id = self
-            .active_cidr_resources
-            .longest_match(destination)
-            .map(|(_, res)| res.id);
-
-        maybe_dns_resource_id
-            .or(maybe_cidr_resource_id)
-            .or(self.internet_resource)
+    fn get_resource_by_packet(&self, packet: &IpPacket, dst: IpAddr) -> Option<ResourceId> {
+        self.resource_routing_table
+            .resource_id_by_dest_and_port(packet, dst)
     }
 
     pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
@@ -912,7 +893,8 @@ impl ClientState {
     }
 
     fn maybe_update_tun_routes(&mut self) {
-        self.active_cidr_resources = self.recalculate_active_cidr_resources();
+        self.resource_routing_table =
+            ResourceRoutingTable::calculate_table(&self.resources_by_id, &self.disabled_resources);
 
         let Some(config) = self.tun_config.clone() else {
             return;
@@ -930,30 +912,6 @@ impl ClientState {
         };
 
         self.maybe_update_tun_config(new_tun_config);
-    }
-
-    fn recalculate_active_cidr_resources(&self) -> IpNetworkTable<ResourceDescriptionCidr> {
-        let mut active_cidr_resources = IpNetworkTable::<ResourceDescriptionCidr>::new();
-
-        for resource in self.resources_by_id.values() {
-            let ResourceDescription::Cidr(resource) = resource else {
-                continue;
-            };
-
-            if !self.is_resource_enabled(&resource.id) {
-                continue;
-            }
-
-            if let Some(active_resource) = active_cidr_resources.exact_match(resource.address) {
-                if self.is_cidr_resource_connected(&active_resource.id) {
-                    continue;
-                }
-            }
-
-            active_cidr_resources.insert(resource.address, resource.clone());
-        }
-
-        active_cidr_resources
     }
 
     fn maybe_update_tun_config(&mut self, new_tun_config: TunConfig) {
@@ -1113,13 +1071,15 @@ impl ClientState {
             ResourceDescription::Dns(dns) => {
                 self.stub_resolver.add_resource(dns.id, dns.address.clone())
             }
-            ResourceDescription::Cidr(cidr) => {
-                let existing = self.active_cidr_resources.exact_match(cidr.address);
+            ResourceDescription::Cidr(_cidr) => {
+                // TODO: it's not so simple to know if it existed now from the routing table, we might want to just use the resource id before inserting
+                // let existing = self.active_cidr_resources.exact_match(cidr.address);
 
-                match existing {
-                    Some(existing) => existing.id != cidr.id,
-                    None => true,
-                }
+                // match existing {
+                //     Some(existing) => existing.id != cidr.id,
+                //     None => true,
+                // }
+                true
             }
             ResourceDescription::Internet(resource) => {
                 self.internet_resource.replace(resource.id) != Some(resource.id)
@@ -1587,7 +1547,7 @@ mod tests {
 mod proptests {
     use super::*;
     use crate::proptest::*;
-    use connlib_shared::messages::client::ResourceDescriptionDns;
+    use connlib_shared::messages::client::{ResourceDescriptionCidr, ResourceDescriptionDns};
     use prop::collection;
     use proptest::prelude::*;
 

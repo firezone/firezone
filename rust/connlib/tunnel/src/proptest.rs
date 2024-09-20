@@ -49,6 +49,7 @@ pub fn dns_resource(
                 name,
                 sites,
                 address_description,
+                filters: vec![],
             }
         })
 }
@@ -71,6 +72,7 @@ pub fn cidr_resource(
                 name,
                 sites,
                 address_description,
+                filters: vec![],
             }
         })
 }
@@ -82,6 +84,7 @@ pub fn internet_resource(
         name: "Internet Resource".to_string(),
         id,
         sites,
+        filters: vec![],
     })
 }
 

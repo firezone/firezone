@@ -32,6 +32,19 @@ pub struct ResourceDescriptionDns {
     pub sites: Vec<Site>,
 }
 
+// TODO!
+impl Ord for ResourceDescriptionDns {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name.cmp(&other.name)
+    }
+}
+
+impl PartialOrd for ResourceDescriptionDns {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl ResourceDescriptionDns {
     pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionDns {
         crate::callbacks::ResourceDescriptionDns {
@@ -66,6 +79,19 @@ pub struct ResourceDescriptionCidr {
     pub sites: Vec<Site>,
 }
 
+// TODO!
+impl Ord for ResourceDescriptionCidr {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name.cmp(&other.name)
+    }
+}
+
+impl PartialOrd for ResourceDescriptionCidr {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl ResourceDescriptionCidr {
     pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionCidr {
         crate::callbacks::ResourceDescriptionCidr {
@@ -96,14 +122,9 @@ pub struct ResourceDescriptionInternet {
     /// Sites for the internet resource
     #[serde(rename = "gateway_groups")]
     pub sites: Vec<Site>,
-<<<<<<< HEAD
-=======
-    /// Whether or not resource can be disabled from UI
-    pub can_be_disabled: Option<bool>,
     /// Port filters
     #[serde(default)]
     pub filters: Filters,
->>>>>>> 18cebc883 (wip)
 }
 
 impl ResourceDescriptionInternet {
