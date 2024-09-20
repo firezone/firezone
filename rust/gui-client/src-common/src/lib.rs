@@ -7,5 +7,6 @@ pub mod ipc;
 pub mod logging;
 pub mod settings;
 pub mod system_tray;
+pub mod telemetry;
 pub mod updates;
 pub mod uptime;
