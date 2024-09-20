@@ -1497,7 +1497,7 @@ where
     }
 
     fn idle_timeout(&self) -> Instant {
-        const MAX_IDLE: Duration = Duration::from_secs(5 * 60);
+        const MAX_IDLE: Duration = Duration::from_secs(8 * 60 * 60);
 
         self.last_incoming.max(self.last_outgoing) + MAX_IDLE
     }
