@@ -105,6 +105,9 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
     headers = headers ++ [{"Authorization", "Bearer #{api_token}"}]
     request = Finch.build(:get, uri, headers)
 
+    # Crude request throttle, revisit for https://github.com/firezone/firezone/issues/6793
+    :timer.sleep(:timer.seconds(1))
+
     with {:ok, %Finch.Response{headers: headers, body: response, status: status}}
          when status in 200..299 <- Finch.request(request, @pool_name),
          {:ok, list} <- Jason.decode(response) do

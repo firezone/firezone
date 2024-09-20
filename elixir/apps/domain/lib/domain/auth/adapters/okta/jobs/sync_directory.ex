@@ -1,7 +1,7 @@
 defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectory do
   use Domain.Jobs.Job,
     otp_app: :domain,
-    every: :timer.minutes(5),
+    every: :timer.minutes(20),
     executor: Domain.Jobs.Executors.Concurrent
 
   alias Domain.Auth.Adapter.OpenIDConnect.DirectorySync
