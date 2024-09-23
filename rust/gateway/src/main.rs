@@ -123,7 +123,7 @@ async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
     )?;
 
     let (sender, receiver) = mpsc::channel::<Interface>(10);
-    let mut tun_device_manager = TunDeviceManager::new(ip_packet::MTU)?;
+    let mut tun_device_manager = TunDeviceManager::new(ip_packet::PACKET_SIZE)?;
     let tun = tun_device_manager.make_tun()?;
     tunnel.set_tun(Box::new(tun));
 

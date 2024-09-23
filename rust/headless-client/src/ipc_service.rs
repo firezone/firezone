@@ -277,7 +277,7 @@ impl<'a> Handler<'a> {
             .next_client_split()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
-        let tun_device = TunDeviceManager::new(ip_packet::MTU)?;
+        let tun_device = TunDeviceManager::new(ip_packet::PACKET_SIZE)?;
 
         Ok(Self {
             dns_controller,

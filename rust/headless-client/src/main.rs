@@ -213,7 +213,7 @@ fn main() -> Result<()> {
         // Deactivate Firezone DNS control in case the system or IPC service crashed
         // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
         dns_controller.deactivate()?;
-        let mut tun_device = TunDeviceManager::new(ip_packet::MTU)?;
+        let mut tun_device = TunDeviceManager::new(ip_packet::PACKET_SIZE)?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
         let tokio_handle = tokio::runtime::Handle::current();

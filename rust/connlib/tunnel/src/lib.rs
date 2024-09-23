@@ -13,7 +13,7 @@ use connlib_shared::{
 };
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
-use ip_packet::MAX_IP_SIZE;
+use ip_packet::MAX_DATAGRAM_PAYLOAD;
 use rand::rngs::OsRng;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -91,7 +91,7 @@ impl ClientTunnel {
             role_state: ClientState::new(private_key, known_hosts, rand::random()),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            encrypt_buf: EncryptBuffer::new(MAX_IP_SIZE),
+            encrypt_buf: EncryptBuffer::new(MAX_DATAGRAM_PAYLOAD),
         }
     }
 
@@ -186,7 +186,7 @@ impl GatewayTunnel {
             role_state: GatewayState::new(private_key, rand::random()),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            encrypt_buf: EncryptBuffer::new(MAX_IP_SIZE),
+            encrypt_buf: EncryptBuffer::new(MAX_DATAGRAM_PAYLOAD),
         }
     }
 

@@ -25,10 +25,11 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use tcp_header_slice_mut::TcpHeaderSliceMut;
 use udp_header_slice_mut::UdpHeaderSliceMut;
 
-pub const MAX_IP_SIZE: usize = MTU + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNEL_OVERHEAD;
-
-pub const MTU: usize = 1280;
-
+/// The maximum size of an IP packet we can handle.
+pub const PACKET_SIZE: usize = 1280;
+/// The maximum payload of a UDP packet that carries an encrypted IP packet.
+pub const MAX_DATAGRAM_PAYLOAD: usize =
+    PACKET_SIZE + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNEL_OVERHEAD;
 /// Wireguard has a 32-byte overhead (4b message type + 4b receiver idx + 8b packet counter + 16b AEAD tag)
 const WG_OVERHEAD: usize = 32;
 /// In order to do NAT46 without copying, we need 20 extra byte in the buffer (IPv6 packets are 20 byte bigger than IPv4).
@@ -84,13 +85,13 @@ impl Protocol {
 
 /// A buffer for reading a new [`IpPacket`] from the network.
 pub struct IpPacketBuf {
-    inner: [u8; MAX_IP_SIZE],
+    inner: [u8; MAX_DATAGRAM_PAYLOAD],
 }
 
 impl IpPacketBuf {
     pub fn new() -> Self {
         Self {
-            inner: [0u8; MAX_IP_SIZE],
+            inner: [0u8; MAX_DATAGRAM_PAYLOAD],
         }
     }
 
@@ -150,7 +151,7 @@ impl std::fmt::Debug for IpPacket {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ConvertibleIpv4Packet {
-    buf: [u8; MAX_IP_SIZE],
+    buf: [u8; MAX_DATAGRAM_PAYLOAD],
     start: usize,
     len: usize,
 }
@@ -228,7 +229,7 @@ impl ConvertibleIpv4Packet {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ConvertibleIpv6Packet {
-    buf: [u8; MAX_IP_SIZE],
+    buf: [u8; MAX_DATAGRAM_PAYLOAD],
     start: usize,
     len: usize,
 }

@@ -568,7 +568,7 @@ where
             ),
             next_timer_update: now,
             stats: Default::default(),
-            buffer: vec![0; ip_packet::MAX_IP_SIZE],
+            buffer: vec![0; ip_packet::MAX_DATAGRAM_PAYLOAD],
             intent_sent_at,
             signalling_completed_at: now,
             remote_pub_key: remote,
