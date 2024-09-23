@@ -582,12 +582,14 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
         end)
       end
 
-      {:ok, pid} = Task.Supervisor.start_link()
-      assert execute(%{task_supervisor: pid}) == :ok
+      for _n <- 1..10 do
+        {:ok, pid} = Task.Supervisor.start_link()
+        assert execute(%{task_supervisor: pid}) == :ok
+      end
 
       assert_email_sent(fn email ->
         assert email.subject == "Firezone Identity Provider Sync Error"
-        assert email.text_body =~ "failed to sync 1 times"
+        assert email.text_body =~ "failed to sync 10 times"
       end)
 
       cancel_bypass_expectations_check(bypass)
