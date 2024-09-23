@@ -35,7 +35,7 @@ mod platform;
 use platform::default_token_path;
 
 /// Command-line args for the headless Client
-#[derive(clap::Parser)]
+#[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
     // Needed to preserve CLI arg compatibility

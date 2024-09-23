@@ -5,6 +5,7 @@ use anyhow::Result;
 
 #[derive(clap::Subcommand)]
 pub(crate) enum Cmd {
+    Replicate6791,
     SetAutostart(SetAutostartArgs),
 }
 
@@ -26,6 +27,7 @@ pub(crate) struct StoreTokenArgs {
 
 pub fn run(cmd: Cmd) -> Result<()> {
     match cmd {
+        Cmd::Replicate6791 => firezone_gui_client_common::auth::replicate_6791(),
         Cmd::SetAutostart(SetAutostartArgs { enabled }) => set_autostart(enabled),
     }
 }

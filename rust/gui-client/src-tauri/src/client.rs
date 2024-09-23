@@ -158,6 +158,10 @@ struct Cli {
     #[arg(long, hide = true)]
     panic: bool,
 
+    /// Quit gracefully after a given number of seconds
+    #[arg(long, hide = true)]
+    quit_after: Option<u64>,
+
     /// If true, slow down I/O operations to test how the GUI handles slow I/O
     #[arg(long, hide = true)]
     inject_faults: bool,
