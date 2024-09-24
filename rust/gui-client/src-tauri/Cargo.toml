@@ -33,7 +33,7 @@ serde_json = "1.0"
 subtle = "2.5.0"
 # `notification` is not needed on Windows, but if we remove it, Tauri's bundler will just add it back. #6597
 tauri = { version = "1.7.1", features = [ "dialog", "icon-png", "notification", "shell-open-api", "system-tray" ] }
-tauri-runtime = "0.14.2"
+tauri-runtime = "0.14.5"
 tauri-utils = "1.6.0"
 thiserror = { version = "1.0", default-features = false }
 tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
