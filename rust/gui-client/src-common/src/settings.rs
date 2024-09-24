@@ -18,30 +18,36 @@ pub struct AdvancedSettings {
     #[serde(default)]
     pub internet_resource_enabled: Option<bool>,
     pub log_filter: String,
+    /// Whether sentry.io telemetry is enabled.
+    ///
+    /// `None` means we didn't ask for the user's consent yet, so we should
+    /// keep telemetry disabled and ask for consent.
+    pub telemetry_enabled: Option<bool>,
 }
 
 #[cfg(debug_assertions)]
-impl Default for AdvancedSettings {
-    fn default() -> Self {
-        Self {
-            auth_base_url: Url::parse("https://app.firez.one").unwrap(),
-            api_url: Url::parse("wss://api.firez.one").unwrap(),
-            favorite_resources: Default::default(),
-            internet_resource_enabled: Default::default(),
-            log_filter: "firezone_gui_client=debug,info".to_string(),
-        }
-    }
+mod defaults {
+    pub(crate) const AUTH_BASE_URL: &str = "https://app.firez.one";
+    pub(crate) const API_URL: &str = "wss://api.firez.one";
+    pub(crate) const LOG_FILTER: &str = "firezone_gui_client=debug,info";
 }
 
 #[cfg(not(debug_assertions))]
+mod defaults {
+    pub(crate) const AUTH_BASE_URL: &str = "https://app.firezone.dev";
+    pub(crate) const API_URL: &str = "wss://api.firezone.dev";
+    pub(crate) const LOG_FILTER: &str = "info";
+}
+
 impl Default for AdvancedSettings {
     fn default() -> Self {
         Self {
-            auth_base_url: Url::parse("https://app.firezone.dev").unwrap(),
-            api_url: Url::parse("wss://api.firezone.dev").unwrap(),
+            auth_base_url: Url::parse(defaults::AUTH_BASE_URL).unwrap(),
+            api_url: Url::parse(defaults::API_URL).unwrap(),
             favorite_resources: Default::default(),
             internet_resource_enabled: Default::default(),
-            log_filter: "info".to_string(),
+            log_filter: defaults::LOG_FILTER.to_string(),
+            telemetry_enabled: Default::default(),
         }
     }
 }
@@ -109,5 +115,6 @@ mod tests {
         assert_eq!(actual.auth_base_url.to_string(), "https://example.com/");
         assert_eq!(actual.api_url.to_string(), "wss://example.com/");
         assert_eq!(actual.log_filter, "info");
+        assert_eq!(actual.telemetry_enabled, None);
     }
 }
