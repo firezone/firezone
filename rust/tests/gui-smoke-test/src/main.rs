@@ -3,6 +3,7 @@
 // Starts up the IPC service and GUI app and lets them run for a bit
 
 use anyhow::{bail, Context as _, Result};
+use clap::Parser;
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
@@ -21,8 +22,19 @@ const EXE_EXTENSION: &str = "";
 #[cfg(target_os = "windows")]
 const EXE_EXTENSION: &str = "exe";
 
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// Run tests that can't run in CI, like tests that need access to the staging network.
+    #[arg(long)]
+    manual_tests: bool,
+}
+
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
+    tracing::info!("Started logging");
+    let cli = Cli::try_parse()?;
+
     let app = App::new()?;
 
     dump_syms()?;
@@ -42,6 +54,26 @@ fn main() -> Result<()> {
 
     // Ignore exit status here since we asked the GUI to crash on purpose
     gui.wait()?;
+    ipc_service.wait()?.fz_exit_ok().context("IPC service")?;
+
+    if cli.manual_tests {
+        manual_tests(&app)?;
+    }
+
+    Ok(())
+}
+
+fn manual_tests(app: &App) -> Result<()> {
+    // Replicate #6791
+    app.gui_command(&["debug", "replicate6791"])?
+        .popen()?
+        .wait()?;
+
+    let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
+    let mut gui = app.gui_command(&["--quit-after", "10"])?.popen()?;
+
+    // Expect exit codes of 0
+    gui.wait()?.fz_exit_ok().context("GUI process")?;
     ipc_service.wait()?.fz_exit_ok().context("IPC service")?;
 
     Ok(())

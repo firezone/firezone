@@ -19,6 +19,9 @@ export default function GUI({ title }: { title: string }) {
           <ChangeItem enable={title === "Linux GUI"} pull="6780">
             Fixes a bug where the Linux Clients didn't work on ZFS filesystems
           </ChangeItem>
+          <ChangeItem pull="6795">
+            Fixes a bug where auto-sign-in with an expired token would cause a "Couldn't send Disconnect" error message.
+          </ChangeItem>
           <ChangeItem pull="6782">
             Adds error reporting with sentry.io
           </ChangeItem>

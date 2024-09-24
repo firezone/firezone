@@ -214,7 +214,7 @@ pub(crate) fn run(
                     let ctlr_tx = ctlr_tx.clone();
                     tokio::spawn(async move {
                         let delay = 5;
-                        tracing::info!(
+                        tracing::warn!(
                             "Will crash / error / panic on purpose in {delay} seconds to test error handling."
                         );
                         sentry::add_breadcrumb(Breadcrumb {
@@ -223,8 +223,19 @@ pub(crate) fn run(
                             ..Default::default()
                         });
                         tokio::time::sleep(Duration::from_secs(delay)).await;
-                        tracing::info!("Crashing / erroring / panicking on purpose");
+                        tracing::warn!("Crashing / erroring / panicking on purpose");
                         ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
+                        Ok::<_, anyhow::Error>(())
+                    });
+                }
+
+                if let Some(delay) = cli.quit_after {
+                    let ctlr_tx = ctlr_tx.clone();
+                    tokio::spawn(async move {
+                        tracing::warn!("Will quit gracefully in {delay} seconds.");
+                        tokio::time::sleep(Duration::from_secs(delay)).await;
+                        tracing::warn!("Quitting gracefully due to `--quit-after`");
+                        ctlr_tx.send(ControllerRequest::SystemTrayMenu(firezone_gui_client_common::system_tray::Event::Quit)).await?;
                         Ok::<_, anyhow::Error>(())
                     });
                 }
