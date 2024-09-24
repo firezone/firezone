@@ -5,19 +5,19 @@ use std::{sync::Arc, time::Duration};
 const DSN: &str = "https://db4f1661daac806240fce8bcec36fa2a@o4507971108339712.ingest.us.sentry.io/4507980445908992";
 
 #[derive(Default)]
-struct Telemetry {
+pub(crate) struct Telemetry {
     inner: ArcSwapOption<sentry::ClientInitGuard>,
 }
 
 impl Telemetry {
     /// Flushes events to sentry.io and drops the guard.
     /// Any calls to other methods are invalid after this.
-    pub fn close(&self) {
+    pub(crate) fn close(&self) {
         self.stop_sentry()
     }
 
     /// Allows users to opt in or out arbitrarily at run time.
-    pub fn set_enabled(&self, enabled: bool) {
+    pub(crate) fn set_enabled(&self, enabled: bool) {
         if enabled {
             self.start_sentry()
         } else {
@@ -59,7 +59,7 @@ mod tests {
         {
             let tele = Telemetry::default();
 
-            // Expect no telemetry because we reset the choice file
+            // Expect no telemetry because the telemetry module needs to be enabled before it can do anything
             negative_error("X7X4CKH3");
 
             tele.set_enabled(true);

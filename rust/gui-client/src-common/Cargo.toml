@@ -20,6 +20,7 @@ output_vt100 = "0.1"
 png = "0.17.13" # `png` is mostly free since we already need it for Tauri
 rand = "0.8.5"
 reqwest = { version = "0.12.5", default-features = false, features = ["stream", "rustls-tls"] }
+rfd = "0.10.0" # Bump this version once we remove Tauri
 sadness-generator = "0.5.0"
 secrecy = { workspace = true }
 semver = { version = "1.0.22", features = ["serde"] }
