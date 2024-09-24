@@ -3214,6 +3214,7 @@ name = "gui-smoke-test"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
  "subprocess",
  "tracing",
  "tracing-subscriber",
