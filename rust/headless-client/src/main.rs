@@ -191,25 +191,29 @@ fn main() -> Result<()> {
         callbacks,
     };
     let _guard = rt.enter(); // Constructing `PhoenixChannel` requires a runtime context.
+    rt.block_on(async {
+        let ctx = sentry::TransactionContext::new("connect_to_firezone", "Connecting to Firezone");
+        let transaction = sentry::start_transaction(ctx);
 
-    // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
-    // resolve the portal host and fail. This is intentional behavior. The Headless Client should always be running under a manager like `systemd` or Windows' Service Controller,
-    // so when it fails it will be restarted with backoff. `systemd` can additionally make us wait
-    // for an Internet connection if it launches us at startup.
-    // When running interactively, it is useful for the user to see that we can't reach the portal.
-    let portal = PhoenixChannel::connect(
-        Secret::new(url),
-        get_user_agent(None, env!("CARGO_PKG_VERSION")),
-        "client",
-        (),
-        ExponentialBackoffBuilder::default()
-            .with_max_elapsed_time(max_partition_time)
-            .build(),
-        Arc::new(tcp_socket_factory),
-    )?;
-    let session = Session::connect(args, portal, rt.handle().clone());
+        // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
+        // resolve the portal host and fail. This is intentional behavior. The Headless Client should always be running under a manager like `systemd` or Windows' Service Controller,
+        // so when it fails it will be restarted with backoff. `systemd` can additionally make us wait
+        // for an Internet connection if it launches us at startup.
+        // When running interactively, it is useful for the user to see that we can't reach the portal.
+        let phoenix_span = transaction.start_child("phoenix", "Connect PhoenixChannel");
+        let portal = PhoenixChannel::connect(
+            Secret::new(url),
+            get_user_agent(None, env!("CARGO_PKG_VERSION")),
+            "client",
+            (),
+            ExponentialBackoffBuilder::default()
+                .with_max_elapsed_time(max_partition_time)
+                .build(),
+            Arc::new(tcp_socket_factory),
+        )?;
+        phoenix_span.finish();
+        let session = Session::connect(args, portal, rt.handle().clone());
 
-    let result = rt.block_on(async {
         let mut terminate = signals::Terminate::new()?;
         let mut hangup = signals::Hangup::new()?;
         let mut terminate = pin!(terminate.recv().fuse());
@@ -230,9 +234,13 @@ fn main() -> Result<()> {
             new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
         drop(tokio_handle);
 
+        let tun_span = transaction.start_child("tun", "Raise tunnel");
         let tun = tun_device.make_tun()?;
         session.set_tun(Box::new(tun));
+        tun_span.finish();
         session.set_dns(dns_controller.system_resolvers());
+
+        transaction.finish();
 
         let result = loop {
             let mut dns_changed = pin!(dns_notifier.notified().fuse());
@@ -296,16 +304,17 @@ fn main() -> Result<()> {
             }
         };
 
+        if let Err(error) = dns_notifier.close() {
+            tracing::error!(?error, "DNS listener");
+        }
         if let Err(error) = network_notifier.close() {
             tracing::error!(?error, "network listener");
         }
 
+        session.disconnect();
+
         result
-    });
-
-    session.disconnect();
-
-    result
+    })
 }
 
 /// Read the token from disk if it was not in the environment
