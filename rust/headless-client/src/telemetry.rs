@@ -60,6 +60,7 @@ impl Telemetry {
             dsn.0,
             sentry::ClientOptions {
                 release: sentry::release_name!(),
+                traces_sample_rate: 1.0,
                 ..Default::default()
             },
         ));

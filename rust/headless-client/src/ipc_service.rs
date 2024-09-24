@@ -497,6 +497,8 @@ impl<'a> Handler<'a> {
     ///
     /// Throws matchable errors for bad URLs, unable to reach the portal, or unable to create the tunnel device
     fn connect_to_firezone(&mut self, api_url: &str, token: SecretString) -> Result<(), Error> {
+        let ctx = sentry::TransactionContext::new("connect_to_firezone", "Connecting to Firezone");
+        let transaction = sentry::start_transaction(ctx);
         assert!(self.session.is_none());
         let device_id = device_id::get_or_create().map_err(|e| Error::DeviceId(e.to_string()))?;
         let (private_key, public_key) = keypair();
@@ -521,6 +523,7 @@ impl<'a> Handler<'a> {
         };
 
         // Synchronous DNS resolution here
+        let phoenix_span = transaction.start_child("phoenix", "Connect PhoenixChannel");
         let portal = PhoenixChannel::connect(
             Secret::new(url),
             get_user_agent(None, env!("CARGO_PKG_VERSION")),
@@ -532,6 +535,7 @@ impl<'a> Handler<'a> {
             Arc::new(tcp_socket_factory),
         )
         .map_err(|e| Error::PortalConnection(e.to_string()))?;
+        phoenix_span.finish();
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
@@ -543,15 +547,18 @@ impl<'a> Handler<'a> {
         // Call `set_dns` before `set_tun` so that the tunnel starts up with a valid list of resolvers.
         tracing::debug!(?dns, "Calling `set_dns`...");
         connlib.set_dns(dns);
+        let tun_span = transaction.start_child("tun", "Raise tunnel");
         let tun = self
             .tun_device
             .make_tun()
             .map_err(|e| Error::TunnelDevice(e.to_string()))?;
         connlib.set_tun(Box::new(tun));
+        tun_span.finish();
 
         let session = Session { cb_rx, connlib };
         self.session = Some(session);
 
+        transaction.finish();
         Ok(())
     }
 }
