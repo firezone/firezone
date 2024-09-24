@@ -17,10 +17,10 @@ use firezone_gui_client_common::{
     settings::AdvancedSettings,
     updates,
 };
-use firezone_headless_client::LogFilterReloader;
+use firezone_headless_client::{telemetry, LogFilterReloader};
 use secrecy::{ExposeSecret as _, SecretString};
 use sentry::Breadcrumb;
-use std::{str::FromStr, sync::Arc, time::Duration};
+use std::{str::FromStr, time::Duration};
 use tauri::{Manager, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
@@ -120,7 +120,7 @@ pub(crate) fn run(
     cli: client::Cli,
     advanced_settings: AdvancedSettings,
     reloader: LogFilterReloader,
-    sentry_guard: Arc<sentry::ClientInitGuard>,
+    telemetry: telemetry::Telemetry,
 ) -> Result<(), Error> {
     // Needed for the deep link server
     let rt = tokio::runtime::Runtime::new().context("Couldn't start Tokio runtime")?;
@@ -248,6 +248,7 @@ pub(crate) fn run(
                 let app_handle = app.handle();
                 let _ctlr_task = tokio::spawn(async move {
                     let app_handle_2 = app_handle.clone();
+                    let telemetry_2 = telemetry.clone();
                     // Spawn two nested Tasks so the outer can catch panics from the inner
                     let task = tokio::spawn(async move {
                         run_controller(
@@ -256,6 +257,7 @@ pub(crate) fn run(
                             ctlr_rx,
                             advanced_settings,
                             reloader,
+                            telemetry_2,
                             updates_rx,
                         )
                         .await
@@ -290,7 +292,7 @@ pub(crate) fn run(
 
                     // In a normal Rust application, Sentry's guard will flush on drop: https://docs.sentry.io/platforms/rust/configuration/draining/
                     // But due to a limit in `tao` we cannot return from the event loop and must call `std::process::exit` (or Tauri's wrapper), so we explicitly flush here.
-                    sentry_guard.flush(Some(Duration::from_secs(5)));
+                    telemetry.close();
 
                     tracing::info!(?exit_code);
                     app_handle.exit(exit_code);
@@ -449,6 +451,7 @@ async fn run_controller(
     rx: mpsc::Receiver<ControllerRequest>,
     advanced_settings: AdvancedSettings,
     log_filter_reloader: LogFilterReloader,
+    telemetry: firezone_headless_client::telemetry::Telemetry,
     updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 ) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");
@@ -459,6 +462,7 @@ async fn run_controller(
         integration: TauriIntegration { app, tray },
         log_filter_reloader,
         rx,
+        telemetry,
         updates_rx,
     }
     .build()

@@ -22,7 +22,7 @@ pub struct AdvancedSettings {
     ///
     /// `None` means we didn't ask for the user's consent yet, so we should
     /// keep telemetry disabled and ask for consent.
-    pub telemetry_enabled: Option<bool>,
+    pub enable_telemetry: Option<bool>,
 }
 
 #[cfg(debug_assertions)]
@@ -47,7 +47,7 @@ impl Default for AdvancedSettings {
             favorite_resources: Default::default(),
             internet_resource_enabled: Default::default(),
             log_filter: defaults::LOG_FILTER.to_string(),
-            telemetry_enabled: Default::default(),
+            enable_telemetry: Default::default(),
         }
     }
 }
@@ -115,6 +115,6 @@ mod tests {
         assert_eq!(actual.auth_base_url.to_string(), "https://example.com/");
         assert_eq!(actual.api_url.to_string(), "wss://example.com/");
         assert_eq!(actual.log_filter, "info");
-        assert_eq!(actual.telemetry_enabled, None);
+        assert_eq!(actual.enable_telemetry, None);
     }
 }

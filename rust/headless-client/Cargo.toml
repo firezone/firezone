@@ -8,6 +8,7 @@ authors = ["Firezone, Inc."]
 
 [dependencies]
 anyhow = { version = "1.0" }
+arc-swap = "1.7.1"
 atomicwrites = { workspace = true } # Needed to safely backup `/etc/resolv.conf` and write the device ID on behalf of `gui-client`
 backoff = "0.4.0"
 clap = { version = "4.5", features = ["derive",  "env", "string"] }

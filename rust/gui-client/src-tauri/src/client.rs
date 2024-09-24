@@ -4,7 +4,7 @@ use firezone_gui_client_common::{
     self as common, controller::Failure, deep_link, settings::AdvancedSettings,
 };
 use sentry::Breadcrumb;
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
 
@@ -24,7 +24,7 @@ pub(crate) enum Error {
 
 /// The program's entry point, equivalent to `main`
 #[instrument(skip_all)]
-pub(crate) fn run(sentry_guard: Arc<sentry::ClientInitGuard>) -> Result<()> {
+pub(crate) fn run() -> Result<()> {
     let cli = Cli::parse();
 
     rustls::crypto::ring::default_provider()
@@ -34,11 +34,11 @@ pub(crate) fn run(sentry_guard: Arc<sentry::ClientInitGuard>) -> Result<()> {
     match cli.command {
         None => {
             if cli.no_deep_links {
-                return run_gui(cli, sentry_guard);
+                return run_gui(cli);
             }
             match elevation::gui_check() {
                 // Our elevation is correct (not elevated), just run the GUI
-                Ok(true) => run_gui(cli, sentry_guard),
+                Ok(true) => run_gui(cli),
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
                 Err(error) => {
                     common::errors::show_error_dialog(&error)?;
@@ -48,7 +48,7 @@ pub(crate) fn run(sentry_guard: Arc<sentry::ClientInitGuard>) -> Result<()> {
         }
         Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
-        Some(Cmd::Elevated) => run_gui(cli, sentry_guard),
+        Some(Cmd::Elevated) => run_gui(cli),
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
             if let Err(error) = rt.block_on(deep_link::open(&deep_link.url)) {
@@ -59,12 +59,16 @@ pub(crate) fn run(sentry_guard: Arc<sentry::ClientInitGuard>) -> Result<()> {
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
             let settings = common::settings::load_advanced_settings().unwrap_or_default();
+            let telemetry = firezone_headless_client::telemetry::Telemetry::default();
+            if let Some(true) = settings.enable_telemetry {
+                telemetry.set_enabled(Some(firezone_headless_client::telemetry::GUI_DSN));
+            }
             // Don't fix the log filter for smoke tests
             let common::logging::Handles {
                 logger: _logger,
                 reloader,
             } = start_logging(&settings.log_filter)?;
-            let result = gui::run(cli, settings, reloader, sentry_guard);
+            let result = gui::run(cli, settings, reloader, telemetry);
             if let Err(error) = &result {
                 // In smoke-test mode, don't show the dialog, since it might be running
                 // unattended in CI and the dialog would hang forever
@@ -82,14 +86,19 @@ pub(crate) fn run(sentry_guard: Arc<sentry::ClientInitGuard>) -> Result<()> {
 ///
 /// Automatically logs or shows error dialogs for important user-actionable errors
 // Can't `instrument` this because logging isn't running when we enter it.
-fn run_gui(cli: Cli, sentry_guard: Arc<sentry::ClientInitGuard>) -> Result<()> {
+fn run_gui(cli: Cli) -> Result<()> {
     let mut settings = common::settings::load_advanced_settings().unwrap_or_default();
+    let telemetry = firezone_headless_client::telemetry::Telemetry::default();
+    // Can't start Sentry until we load the settings and get user consent, that's why this isn't just at the top of `main`
+    if let Some(true) = settings.enable_telemetry {
+        telemetry.set_enabled(Some(firezone_headless_client::telemetry::GUI_DSN));
+    }
     fix_log_filter(&mut settings)?;
     let common::logging::Handles {
         logger: _logger,
         reloader,
     } = start_logging(&settings.log_filter)?;
-    let result = gui::run(cli, settings, reloader, sentry_guard);
+    let result = gui::run(cli, settings, reloader, telemetry);
 
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {

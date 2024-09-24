@@ -10,6 +10,7 @@ use anyhow::{anyhow, Context, Result};
 use connlib_shared::callbacks::ResourceDescription;
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
 use firezone_headless_client::{
+    telemetry,
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
 };
@@ -39,7 +40,7 @@ pub struct Controller<I: GuiIntegration> {
     release: Option<updates::Release>,
     rx: mpsc::Receiver<ControllerRequest>,
     status: Status,
-    telemetry: crate::telemetry::Telemetry,
+    telemetry: telemetry::Telemetry,
     updates_rx: mpsc::Receiver<Option<updates::Notification>>,
     uptime: crate::uptime::Tracker,
 }
@@ -50,6 +51,7 @@ pub struct Builder<I: GuiIntegration> {
     pub integration: I,
     pub log_filter_reloader: LogFilterReloader,
     pub rx: mpsc::Receiver<ControllerRequest>,
+    pub telemetry: telemetry::Telemetry,
     pub updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 }
 
@@ -61,6 +63,7 @@ impl<I: GuiIntegration> Builder<I> {
             integration,
             log_filter_reloader,
             rx,
+            telemetry,
             updates_rx,
         } = self;
 
@@ -78,7 +81,7 @@ impl<I: GuiIntegration> Builder<I> {
             release: None,
             rx,
             status: Default::default(),
-            telemetry: Default::default(),
+            telemetry,
             updates_rx,
             uptime: Default::default(),
         })
@@ -186,8 +189,10 @@ impl Status {
 impl<I: GuiIntegration> Controller<I> {
     pub async fn main_loop(mut self) -> Result<(), Error> {
         // Ask for user consent for telemetry if we haven't asked before
-        if let Some(enable_telemetry) = self.advanced_settings.telemetry_enabled {
-            self.telemetry.set_enabled(enable_telemetry);
+        if let Some(enable_telemetry) = self.advanced_settings.enable_telemetry {
+            tracing::info!(?enable_telemetry, "Not showing telemetry consent dialog");
+            self.telemetry
+                .set_enabled(enable_telemetry.then_some(telemetry::GUI_DSN));
         } else {
             let enable_telemetry = rfd::AsyncMessageDialog::new()
                 .set_buttons(rfd::MessageButtons::YesNo)
@@ -199,9 +204,10 @@ impl<I: GuiIntegration> Controller<I> {
                 ?enable_telemetry,
                 "Showed first-run telemetry consent dialog"
             );
-            self.advanced_settings.telemetry_enabled = Some(enable_telemetry);
+            self.advanced_settings.enable_telemetry = Some(enable_telemetry);
             settings::save(&self.advanced_settings).await?;
-            self.telemetry.set_enabled(enable_telemetry);
+            self.telemetry
+                .set_enabled(enable_telemetry.then_some(telemetry::GUI_DSN));
         }
 
         if let Some(token) = self

@@ -116,10 +116,8 @@ pub enum Error {
 
 /// Only called from the GUI Client's build of the IPC service
 pub fn run_only_ipc_service() -> Result<()> {
-    let _guard = sentry::init(("https://db4f1661daac806240fce8bcec36fa2a@o4507971108339712.ingest.us.sentry.io/4507980445908992", sentry::ClientOptions {
-    release: sentry::release_name!(),
-    ..Default::default()
-    }));
+    let telemetry = crate::telemetry::Telemetry::default();
+    telemetry.set_enabled(Some(crate::telemetry::IPC_SERVICE_DSN));
 
     // Docs indicate that `remove_var` should actually be marked unsafe
     // SAFETY: We haven't spawned any other threads, this code should be the first
