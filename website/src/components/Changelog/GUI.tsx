@@ -23,7 +23,7 @@ export default function GUI({ title }: { title: string }) {
             Fixes a bug where auto-sign-in with an expired token would cause a "Couldn't send Disconnect" error message.
           </ChangeItem>
           <ChangeItem pull="6782">
-            Adds error reporting with sentry.io
+            Adds error reporting with sentry.io. Users will be asked to opt in after the upgrade.
           </ChangeItem>
         </ul>
       </Entry>

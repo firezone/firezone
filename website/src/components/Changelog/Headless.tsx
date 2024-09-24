@@ -22,6 +22,9 @@ export default function Headless() {
           <ChangeItem pull="6780">
             Fixes a bug where the Linux Clients didn't work on ZFS filesystems
           </ChangeItem>
+          <ChangeItem pull="6782">
+            Adds error reporting with sentry.io. Opt in using the environment variable `FIREZONE_ENABLE_TELEMETRY=1`
+          </ChangeItem>
         </ul>
       </Entry>
       */}
