@@ -9,6 +9,7 @@ pub struct Dsn(&'static str);
 // <https://docs.sentry.io/concepts/key-terms/dsn-explainer/#dsn-utilization>
 
 pub const GUI_DSN: Dsn = Dsn("https://2e17bf5ed24a78c0ac9e84a5de2bd6fc@o4507971108339712.ingest.us.sentry.io/4508008945549312");
+pub const HEADLESS_DSN: Dsn = Dsn("https://bc27dca8bb37be0142c48c4f89647c13@o4507971108339712.ingest.us.sentry.io/4508010028728320");
 pub const IPC_SERVICE_DSN: Dsn = Dsn("https://0590b89fd4479494a1e7ffa4dc705001@o4507971108339712.ingest.us.sentry.io/4508008896069632");
 
 #[derive(Default)]
@@ -93,15 +94,15 @@ mod tests {
             // Expect no telemetry because the telemetry module needs to be enabled before it can do anything
             negative_error("X7X4CKH3");
 
-            tele.set_enabled(true);
+            tele.set_enabled(Some(HEADLESS_DSN));
             // Expect telemetry because the user opted in.
             error("QELADAGH");
-            tele.set_enabled(false);
+            tele.set_enabled(None);
 
             // Expect no telemetry because the user opted back out.
             negative_error("2RSIYAPX");
 
-            tele.set_enabled(true);
+            tele.set_enabled(Some(HEADLESS_DSN));
             // Cycle one more time to be sure.
             error("S672IOBZ");
             tele.close();
@@ -115,12 +116,12 @@ mod tests {
             {
                 let tele = Telemetry::default();
                 negative_error("4H7HFTNX");
-                tele.set_enabled(true);
+                tele.set_enabled(Some(HEADLESS_DSN));
             }
             {
                 negative_error("GF46D6IL");
                 let tele = Telemetry::default();
-                tele.set_enabled(true);
+                tele.set_enabled(Some(HEADLESS_DSN));
                 error("OKOEUKSW");
             }
         }

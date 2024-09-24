@@ -11,7 +11,7 @@ use firezone_bin_shared::{
     TunDeviceManager, TOKEN_ENV_KEY,
 };
 use firezone_headless_client::{
-    device_id, signals, CallbackHandler, CliCommon, ConnlibMsg, DnsController,
+    device_id, signals, telemetry, CallbackHandler, CliCommon, ConnlibMsg, DnsController,
 };
 use futures::{FutureExt as _, StreamExt as _};
 use phoenix_channel::PhoenixChannel;
@@ -61,6 +61,10 @@ struct Cli {
     /// write a device ID to disk if one is not found.
     #[arg(long)]
     check: bool,
+
+    /// Enable opt-in telemetry using sentry.io
+    #[arg(long, env = "FIREZONE_ENABLE_TELEMETRY")]
+    enable_telemetry: bool,
 
     /// Connect to the Firezone network and initialize, then exit
     ///
@@ -114,6 +118,8 @@ fn main() -> Result<()> {
 
     let token_env_var = cli.token.take().map(SecretString::from);
     let cli = cli;
+    let telemetry = telemetry::Telemetry::default();
+    telemetry.set_enabled(cli.enable_telemetry.then_some(telemetry::HEADLESS_DSN));
 
     // Docs indicate that `remove_var` should actually be marked unsafe
     // SAFETY: We haven't spawned any other threads, this code should be the first
