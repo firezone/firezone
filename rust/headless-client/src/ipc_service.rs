@@ -375,14 +375,20 @@ impl<'a> Handler<'a> {
             ConnlibMsg::OnDisconnect {
                 error_msg,
                 is_authentication_error,
-            } => self
-                .ipc_tx
-                .send(&ServerMsg::OnDisconnect {
-                    error_msg,
-                    is_authentication_error,
-                })
-                .await
-                .context("Error while sending IPC message `OnDisconnect`")?,
+            } => {
+                if let Some(session) = self.session.take() {
+                    // Identical to dropping, but looks nicer
+                    session.connlib.disconnect();
+                }
+                self.dns_controller.deactivate()?;
+                self.ipc_tx
+                    .send(&ServerMsg::OnDisconnect {
+                        error_msg,
+                        is_authentication_error,
+                    })
+                    .await
+                    .context("Error while sending IPC message `OnDisconnect`")?
+            }
             ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
                 self.tun_device.set_ips(ipv4, ipv6).await?;
                 self.dns_controller.set_dns(dns).await?;
