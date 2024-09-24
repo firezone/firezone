@@ -96,7 +96,7 @@ mod tests {
 
             tele.set_enabled(Some(HEADLESS_DSN));
             // Expect telemetry because the user opted in.
-            sentry::add_breadcrumb(Breadcrumb {
+            sentry::add_breadcrumb(sentry::Breadcrumb {
                 ty: "test_crumb".into(),
                 message: Some("This breadcrumb may appear before error #QELADAGH".into()),
                 ..Default::default()
