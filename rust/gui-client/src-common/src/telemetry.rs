@@ -1,23 +1,28 @@
-use arc_swap::ArcSwapOption;
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 // TODO: Dynamic DSN
 const DSN: &str = "https://db4f1661daac806240fce8bcec36fa2a@o4507971108339712.ingest.us.sentry.io/4507980445908992";
 
 #[derive(Default)]
 pub(crate) struct Telemetry {
-    inner: ArcSwapOption<sentry::ClientInitGuard>,
+    inner: Option<sentry::ClientInitGuard>,
+}
+
+impl Drop for Telemetry {
+    fn drop(&mut self) {
+        self.close();
+    }
 }
 
 impl Telemetry {
     /// Flushes events to sentry.io and drops the guard.
     /// Any calls to other methods are invalid after this.
-    pub(crate) fn close(&self) {
+    pub(crate) fn close(&mut self) {
         self.stop_sentry()
     }
 
     /// Allows users to opt in or out arbitrarily at run time.
-    pub(crate) fn set_enabled(&self, enabled: bool) {
+    pub(crate) fn set_enabled(&mut self, enabled: bool) {
         if enabled {
             self.start_sentry()
         } else {
@@ -25,7 +30,10 @@ impl Telemetry {
         }
     }
 
-    fn start_sentry(&self) {
+    fn start_sentry(&mut self) {
+        if self.inner.is_some() {
+            return;
+        }
         let inner = sentry::init((
             DSN,
             sentry::ClientOptions {
@@ -33,17 +41,17 @@ impl Telemetry {
                 ..Default::default()
             },
         ));
-        self.inner.swap(Some(Arc::new(inner)));
+        self.inner = Some(inner);
         sentry::start_session();
     }
 
-    fn stop_sentry(&self) {
-        let inner = self.inner.swap(None);
-        if let Some(inner) = inner {
-            sentry::end_session();
-            if !inner.flush(Some(Duration::from_secs(5))) {
-                tracing::error!("Failed to flush telemetry events to sentry.io");
-            }
+    fn stop_sentry(&mut self) {
+        let Some(inner) = self.inner.take() else {
+            return;
+        };
+        sentry::end_session();
+        if !inner.flush(Some(Duration::from_secs(5))) {
+            tracing::error!("Failed to flush telemetry events to sentry.io");
         }
     }
 }
@@ -57,7 +65,7 @@ mod tests {
     fn sentry() {
         // Smoke-test Sentry itself by turning it on and off a couple times
         {
-            let tele = Telemetry::default();
+            let mut tele = Telemetry::default();
 
             // Expect no telemetry because the telemetry module needs to be enabled before it can do anything
             negative_error("X7X4CKH3");
@@ -82,13 +90,13 @@ mod tests {
         // Test starting up with the choice opted-in
         {
             {
-                let tele = Telemetry::default();
+                let mut tele = Telemetry::default();
                 negative_error("4H7HFTNX");
                 tele.set_enabled(true);
             }
             {
                 negative_error("GF46D6IL");
-                let tele = Telemetry::default();
+                let mut tele = Telemetry::default();
                 tele.set_enabled(true);
                 error("OKOEUKSW");
             }
