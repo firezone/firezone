@@ -605,6 +605,22 @@ mod tests {
 
         assert!(!matches);
     }
+
+    #[test]
+    fn prioritises_non_wildcard_over_wildcard_domain() {
+        let mut resolver = StubResolver::new(BTreeMap::default());
+        let wc = ResourceId::from_u128(0);
+        let non_wc = ResourceId::from_u128(1);
+
+        resolver.add_resource(wc, "**.example.com".to_owned());
+        resolver.add_resource(non_wc, "foo.example.com".to_owned());
+
+        let resource_id = resolver
+            .match_resource_linear(&"foo.example.com".parse().unwrap())
+            .unwrap();
+
+        assert_eq!(resource_id, non_wc);
+    }
 }
 
 #[cfg(feature = "divan")]
