@@ -209,6 +209,11 @@ impl<I: GuiIntegration> Controller<I> {
             self.telemetry
                 .set_enabled(enable_telemetry.then_some(telemetry::GUI_DSN));
         }
+        self.ipc_client
+            .send_msg(&IpcClientMsg::SetTelemetryEnabled(
+                self.advanced_settings.enable_telemetry.unwrap_or(false),
+            ))
+            .await?;
 
         if let Some(token) = self
             .auth

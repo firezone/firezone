@@ -1,6 +1,6 @@
 use crate::{
-    device_id, dns_control::DnsController, known_dirs, signals, CallbackHandler, CliCommon,
-    ConnlibMsg, LogFilterReloader,
+    device_id, dns_control::DnsController, known_dirs, signals, telemetry::Telemetry,
+    CallbackHandler, CliCommon, ConnlibMsg, LogFilterReloader,
 };
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
@@ -81,6 +81,7 @@ pub enum ClientMsg {
     Reset,
     SetDns(Vec<IpAddr>),
     SetDisabledResources(BTreeSet<ResourceId>),
+    SetTelemetryEnabled(bool),
 }
 
 /// Messages that end up in the GUI, either forwarded from connlib or from the IPC service.
@@ -116,9 +117,6 @@ pub enum Error {
 
 /// Only called from the GUI Client's build of the IPC service
 pub fn run_only_ipc_service() -> Result<()> {
-    let telemetry = crate::telemetry::Telemetry::default();
-    telemetry.set_enabled(Some(crate::telemetry::IPC_SERVICE_DSN));
-
     // Docs indicate that `remove_var` should actually be marked unsafe
     // SAFETY: We haven't spawned any other threads, this code should be the first
     // thing to run after entering `main` and parsing CLI args.
@@ -181,15 +179,21 @@ fn run_smoke_test() -> Result<()> {
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
     let mut signals = signals::Terminate::new()?;
+    let telemetry = Telemetry::default();
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
         device_id::get_or_create().context("Failed to read / create device ID")?;
         let mut server = IpcServer::new(ServiceId::Prod).await?;
-        let _ = Handler::new(&mut server, &mut dns_controller, &log_filter_reloader)
-            .await?
-            .run(&mut signals)
-            .await;
+        let _ = Handler::new(
+            &mut server,
+            &mut dns_controller,
+            &log_filter_reloader,
+            telemetry,
+        )
+        .await?
+        .run(&mut signals)
+        .await;
         Ok::<_, anyhow::Error>(())
     })
 }
@@ -208,11 +212,13 @@ async fn ipc_listen(
     device_id::get_or_create().context("Failed to read / create device ID")?;
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     let mut dns_controller = DnsController { dns_control_method };
+    let telemetry = Telemetry::default();
     loop {
         let mut handler_fut = pin!(Handler::new(
             &mut server,
             &mut dns_controller,
-            log_filter_reloader
+            log_filter_reloader,
+            telemetry.clone(),
         ));
         let Some(handler) = poll_fn(|cx| {
             if let Poll::Ready(()) = signals.poll_recv(cx) {
@@ -244,6 +250,7 @@ struct Handler<'a> {
     last_connlib_start_instant: Option<Instant>,
     log_filter_reloader: &'a LogFilterReloader,
     session: Option<Session>,
+    telemetry: Telemetry, // Handle to the sentry.io telemetry module
     tun_device: TunDeviceManager,
 }
 
@@ -274,6 +281,7 @@ impl<'a> Handler<'a> {
         server: &mut IpcServer,
         dns_controller: &'a mut DnsController,
         log_filter_reloader: &'a LogFilterReloader,
+        telemetry: Telemetry,
     ) -> Result<Self> {
         dns_controller.deactivate()?;
         let (ipc_rx, ipc_tx) = server
@@ -289,6 +297,7 @@ impl<'a> Handler<'a> {
             last_connlib_start_instant: None,
             log_filter_reloader,
             session: None,
+            telemetry,
             tun_device,
         })
     }
@@ -486,6 +495,11 @@ impl<'a> Handler<'a> {
                 };
 
                 session.connlib.set_disabled_resources(disabled_resources);
+            }
+            ClientMsg::SetTelemetryEnabled(enabled) => {
+                tracing::info!(?enabled, "SetTelemetryEnabled");
+                self.telemetry
+                    .set_enabled(enabled.then_some(crate::telemetry::IPC_SERVICE_DSN))
             }
         }
         Ok(())
