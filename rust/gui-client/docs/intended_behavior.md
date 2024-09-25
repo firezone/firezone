@@ -4,16 +4,14 @@ A less exhaustive version of [Manual Testing](manual_testing.md)
 
 ## Smoke test checklist (Ubuntu)
 
-Keep this synchronized with the Linux GUI docs in
-`/website/src/app/kb/client-apps/linux-gui-client`
+Keep this synchronized with the Linux GUI docs in `/website/src/app/kb/client-apps/linux-gui-client`
 
 Best performed on a clean VM
 
 1. Run `scripts/firezone-client-gui-install.sh`
 1. Expect "Reboot to finish..." message
 1. Run the Firezone GUI
-1. Expect an error saying that you are not a member of the group
-   `firezone-client`
+1. Expect an error saying that you are not a member of the group `firezone-client`
 1. Reboot
 1. Expect `groups` to include "firezone-client"
 1. Run the Firezone GUI
@@ -21,9 +19,9 @@ Best performed on a clean VM
 1. Open the Settings window and change to staging if needed
 1. Click "Sign in"
 1. Expect a browser to open
+1. Disable DoH in Firefox if needed (20.04 and 22.04 both have it, in different places) https://www.firezone.dev/kb/administer/troubleshooting#some-browsers-break-dns-routing
 1. Sign in
-1. Expect Firefox to show "Allow this site to open the link with Firezone?"
-   modal
+1. Expect Firefox to show "Allow this site to open the link with Firezone?" modal
 1. Check "Always..." and click "Open link"
 1. Expect a keyring dialog to pop up
 1. Enter 'password' for testing purposes
@@ -40,19 +38,15 @@ Best performed on a clean VM
 1. Expect "Firezone connected" notification
 1. Check the IP again, expect the gateway's IP
 1. Sign out of Firezone without quitting
-1. Check the IP again, expect your own IP (Checks for regressions in
-   https://github.com/firezone/firezone/pull/5828)
+1. Check the IP again, expect your own IP (Checks for regressions in https://github.com/firezone/firezone/pull/5828)
 1. Export the logs
 1. Expect the zip file to start with `firezone_logs_`
-1. Expect `zipinfo` to show a single directory in the root of the zip, to
-   prevent zip bombing
-1. Expect two subdirectories in the zip, "connlib", and "app", with 3 and 2
-   files respectively, totalling 5 files
+1. Expect `zipinfo` to show a single directory in the root of the zip, to prevent zip bombing
+1. Expect two subdirectories in the zip, "connlib", and "app", with 3 and 2 files respectively, totalling 5 files
 
 ## Smoke test checklist (Windows)
 
-Keep this synchronized with the Windows GUI docs in
-`/website/src/app/kb/client-apps/windows-client`
+Keep this synchronized with the Windows GUI docs in `/website/src/app/kb/client-apps/windows-client`
 
 x86_64 only, see issue #2992. Best performed on a clean VM.
 
@@ -78,14 +72,11 @@ x86_64 only, see issue #2992. Best performed on a clean VM.
 1. Expect "Firezone connected" notification
 1. Check the IP again, expect the gateway's IP
 1. Sign out of Firezone without quitting
-1. Check the IP again, expect your own IP (Checks for regressions in
-   https://github.com/firezone/firezone/pull/5828)
+1. Check the IP again, expect your own IP (Checks for regressions in https://github.com/firezone/firezone/pull/5828)
 1. Export the logs
 1. Expect the zip file to start with `firezone_logs_`
-1. Expect the zip to contain a single directory in the root of the zip, to
-   prevent zip bombing
-1. Expect two subdirectories in the zip, "connlib", and "app", with 2 files
-   each, totalling 4 files
+1. Expect the zip to contain a single directory in the root of the zip, to prevent zip bombing
+1. Expect two subdirectories in the zip, "connlib", and "app", with 2 files each, totalling 4 files
 
 ## Upgrade checklist (Linux)
 

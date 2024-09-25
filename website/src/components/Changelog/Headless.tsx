@@ -27,7 +27,7 @@ export default function Headless() {
             gets disabled / removed.
           </ChangeItem>
           <ChangeItem pull="6780">
-            Fixes a bug where the Linux Clients didn't work on ZFS filesystems
+            Fixes a bug where the Linux Clients didn't work on ZFS filesystems.
           </ChangeItem>
           <ChangeItem pull="6788">
             Fixes an issue where some browsers may fail to route DNS Resources

@@ -190,6 +190,12 @@ the tunnel, and a GUI which allows the user to control Firezone.
 
 ## Known issues
 
+- **DNS Resources**: Web browsers that enable "Secure DNS" or DNS-over-HTTPS by
+  default may interfere with DNS resolution because they force all DNS traffic
+  through the browser's configured resolvers. See
+  [Administer / Troubleshooting / Some browsers break DNS routing](/kb/administer/troubleshooting#some-browsers-break-dns-routing)
+  to disable DNS-over-HTTPS if you're experiencing issues connecting to DNS
+  Resources within your browser.
 - Firezone does not register itself with Windows as a VPN
   [#2875](https://github.com/firezone/firezone/issues/2875)
 
