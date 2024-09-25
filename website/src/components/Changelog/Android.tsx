@@ -9,21 +9,33 @@ export default function Android() {
       href="https://play.google.com/store/apps/details?id=dev.firezone.android"
       title="Android"
     >
+      {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       {/*
-      <Entry version="1.3.3" date={new Date("todo")}>
+      <Entry version="1.3.4" date={new Date(todo)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6707">
-            Resetting the settings now resets the list of favorited Resources, too.
-          </ChangeItem>
-        </ul>
-      <Entry version="1.3.3" date={new Date(todo)}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6722">
-          Fixes a routing bug when one of several overlapping CIDR resources gets disabled / removed.
-          </ChangeItem>
         </ul>
       </Entry>
       */}
+      <Entry version="1.3.3" date={new Date("2024-09-24")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6707">
+            Resetting the settings now resets the list of favorited Resources,
+            too.
+          </ChangeItem>
+          <ChangeItem pull="6765">
+            Fixes a bug where DNS PTR queries by the system did not get
+            answered.
+          </ChangeItem>
+          <ChangeItem pull="6722">
+            Fixes a routing bug when one of several overlapping CIDR resources
+            gets disabled / removed.
+          </ChangeItem>
+          <ChangeItem pull="6788">
+            Fixes an issue where some browsers may fail to route DNS Resources
+            correctly.
+          </ChangeItem>
+        </ul>
+      </Entry>
       <Entry version="1.3.2" date={new Date("2024-09-05")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6605">

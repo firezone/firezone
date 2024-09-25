@@ -1,4 +1,5 @@
 use crate::client::IpProvider;
+use anyhow::{Context, Result};
 use connlib_shared::messages::{DnsServer, ResourceId};
 use connlib_shared::DomainName;
 use domain::base::{
@@ -11,6 +12,7 @@ use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::collections::{BTreeMap, HashMap};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::ops::ControlFlow;
 
 const DNS_TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
@@ -204,43 +206,44 @@ impl StubResolver {
     /// Parses an incoming packet as a DNS query and decides how to respond to it
     ///
     /// Returns:
-    /// - `None` if the packet is not a valid DNS query destined for one of our sentinel resolvers
-    /// - Otherwise, a strategy for responding to the query
+    /// - `Ok(ControlFlow::Break)` if the packet was successfully parsed a DNS packet
+    /// - `Ok(ControlFlow::Continue)` if the packet isn't a DNS packet
+    /// - `Err()` if the packet was directed at our DNS resolver but processing failed
     pub(crate) fn handle(
         &mut self,
         dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
         packet: &IpPacket,
-    ) -> Option<ResolveStrategy> {
+    ) -> Result<ControlFlow<ResolveStrategy, ()>> {
         let dst = packet.destination();
         let _guard = tracing::debug_span!("packet", %dst).entered();
-        let upstream = dns_mapping.get_by_left(&dst)?.address();
-
-        let Some(datagram) = packet.as_udp() else {
-            let protocol = packet.next_header().keyword_str().unwrap_or("unassigned");
-
-            tracing::debug!(%protocol, "DNS is only supported over UDP");
-            return None;
+        let Some(upstream) = dns_mapping.get_by_left(&dst).map(|s| s.address()) else {
+            return Ok(ControlFlow::Continue(()));
         };
 
+        let datagram = packet.as_udp().context("Only DNS over UDP is supported")?;
         let port = datagram.destination_port();
 
-        if port != DNS_PORT {
-            tracing::debug!(%port, "DNS over UDP is only supported on port 53");
-            return None;
-        }
+        anyhow::ensure!(
+            port == DNS_PORT,
+            "DNS over UDP is only supported on port 53"
+        );
 
-        let message = Message::from_octets(datagram.payload()).ok()?;
+        let message = Message::from_octets(datagram.payload())
+            .context("Failed to parse payload as DNS message")?;
 
-        if message.header().qr() {
-            return None;
-        }
+        anyhow::ensure!(
+            !message.header().qr(),
+            "Can only handle DNS queries, not responses"
+        );
 
         // We don't need to support multiple questions/qname in a single query because
         // nobody does it and since this run with each packet we want to squeeze as much optimization
         // as we can therefore we won't do it.
         //
         // See: https://stackoverflow.com/a/55093896
-        let question = message.first_question()?;
+        let question = message
+            .sole_question()
+            .context("Expected a single 'question'")?;
         let domain = question.qname().to_vec();
         let qtype = question.qtype();
 
@@ -257,7 +260,7 @@ impl StubResolver {
             )
             .expect("src and dst come from the same packet");
 
-            return Some(ResolveStrategy::LocalResponse(packet));
+            return Ok(ControlFlow::Break(ResolveStrategy::LocalResponse(packet)));
         }
 
         // `match_resource` is `O(N)` which we deem fine for DNS queries.
@@ -265,31 +268,45 @@ impl StubResolver {
 
         let resource_records = match (qtype, maybe_resource) {
             (_, Some(resource)) if !self.knows_resource(&resource) => {
-                return Some(ResolveStrategy::ForwardQuery {
+                return Ok(ControlFlow::Break(ResolveStrategy::ForwardQuery {
                     upstream,
                     query_id: message.header().id(),
                     payload: message.into_octets().to_vec(),
                     original_src: SocketAddr::new(packet.source(), datagram.source_port()),
-                })
+                }))
             }
             (Rtype::A, Some(resource)) => self.get_or_assign_a_records(domain.clone(), resource),
             (Rtype::AAAA, Some(resource)) => {
                 self.get_or_assign_aaaa_records(domain.clone(), resource)
             }
             (Rtype::PTR, _) => {
-                let fqdn = self.resource_address_name_by_reservse_dns(&domain)?;
+                let Some(fqdn) = self.resource_address_name_by_reservse_dns(&domain) else {
+                    return Ok(ControlFlow::Break(ResolveStrategy::ForwardQuery {
+                        upstream,
+                        query_id: message.header().id(),
+                        payload: message.into_octets().to_vec(),
+                        original_src: SocketAddr::new(packet.source(), datagram.source_port()),
+                    }));
+                };
 
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
             }
+            (Rtype::HTTPS, Some(_)) => {
+                anyhow::bail!(
+                    "Discarding HTTPS record query for resource {domain} because we can't mangle it"
+                );
+            }
             _ => {
-                return Some(ResolveStrategy::ForwardQuery {
+                return Ok(ControlFlow::Break(ResolveStrategy::ForwardQuery {
                     upstream,
                     query_id: message.header().id(),
                     payload: message.into_octets().to_vec(),
                     original_src: SocketAddr::new(packet.source(), datagram.source_port()),
-                })
+                }))
             }
         };
+
+        tracing::trace!(%qtype, %domain, records = ?resource_records, "Forming DNS response");
 
         let response = build_dns_with_answer(message, domain, resource_records)?;
         let packet = ip_packet::make::udp_packet(
@@ -301,7 +318,7 @@ impl StubResolver {
         )
         .expect("src and dst come from the same packet");
 
-        Some(ResolveStrategy::LocalResponse(packet))
+        Ok(ControlFlow::Break(ResolveStrategy::LocalResponse(packet)))
     }
 }
 
@@ -323,19 +340,19 @@ fn build_dns_with_answer(
     message: Message<&[u8]>,
     qname: DomainName,
     records: Vec<AllRecordData<Vec<u8>, DomainName>>,
-) -> Option<Vec<u8>> {
+) -> Result<Vec<u8>> {
     let mut answer_builder = MessageBuilder::new_vec()
         .start_answer(&message, Rcode::NOERROR)
-        .ok()?;
+        .context("Failed to create answer from query")?;
     answer_builder.header_mut().set_ra(true);
 
     for record in records {
         answer_builder
             .push((&qname, Class::IN, DNS_TTL, record))
-            .ok()?;
+            .context("Failed to push record")?;
     }
 
-    Some(answer_builder.finish())
+    Ok(answer_builder.finish())
 }
 
 pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
@@ -352,7 +369,7 @@ pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
     pattern.matches(&candidate)
 }
 
-fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
+pub(crate) fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
     let mut dns_parts = name.split('.').rev();
     if dns_parts.next()? != REVERSE_DNS_ADDRESS_END {
         return None;

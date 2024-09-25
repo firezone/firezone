@@ -144,9 +144,7 @@ Install the language runtimes defined in the [.tool-versions](../.tool-versions)
 file by running `asdf install` from the project root.
 
 - Note: For a fresh install of `asdf` you will need to install some
-  [asdf-plugins](https://asdf-vm.com/manage/plugins.html). Running
-  `asdf install` will show which `asdf` plugins need to be installed prior to
-  installing the required language runtimes.
+  [asdf-plugins](https://asdf-vm.com/manage/plugins.html). e.g. `asdf plugin add nodejs && asdf install nodejs` to set up the NodeJS plugin and package.
 
 This is used to run static analysis checks during [pre-commit](#pre-commit) and
 for any local, non-Docker development or testing.
@@ -158,8 +156,11 @@ If you are using Nix, see [scripts/nix/README](../scripts/nix/README.md).
 ### Pre-commit
 
 We use [pre-commit](https://pre-commit.com) to catch any static analysis issues
-before code is committed. Install with Homebrew: `brew install pre-commit` or
-pip: `pip install pre-commit`.
+before code is committed.
+
+- Install pre-commit and other Python packages with `pip install -r .github/requirements.txt`
+- Install the repo-specific checks with `pre-commit install --config .github/pre-commit-config.yaml`
+  (As in `.github/workflows/_static-analysis.yml`)
 
 ### Elixir Development
 

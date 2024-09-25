@@ -815,7 +815,7 @@ defmodule Web.CoreComponents do
     assigns = assign(assigns, :target_id, target_id)
 
     ~H"""
-    <span data-popover-target={@target_id}>
+    <span phx-hook="Popover" id={@target_id <> "-trigger"} data-popover-target-id={@target_id}>
       <%= render_slot(@target) %>
     </span>
 
