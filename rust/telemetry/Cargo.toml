@@ -8,5 +8,8 @@ arc-swap = "1.7.1"
 sentry = { version = "0.34.0", default-features = false, features = ["panic", "reqwest", "rustls", "tracing"] }
 tracing = { workspace = true }
 
+[dev-dependencies]
+thiserror = "1.0.63"
+
 [lints]
 workspace = true

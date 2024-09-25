@@ -80,8 +80,12 @@ impl Telemetry {
             return;
         };
         sentry::end_session();
-        if !inner.flush(Some(Duration::from_secs(5))) {
+        // `flush`'s return value is flipped from the docs
+        // <https://github.com/getsentry/sentry-rust/issues/677>
+        if inner.flush(Some(Duration::from_secs(5))) {
             tracing::error!("Failed to flush telemetry events to sentry.io");
+        } else {
+            tracing::debug!("Flushed telemetry");
         }
     }
 }
@@ -105,7 +109,9 @@ mod tests {
             ));
             sentry::start_session();
             sentry::end_session();
-            assert!(telemetry.flush(Some(Duration::from_secs(5))));
+            // `flush`'s return value is flipped from the docs
+            // <https://github.com/getsentry/sentry-rust/issues/677>
+            assert!(!telemetry.flush(Some(Duration::from_secs(5))));
         }
 
         // Smoke-test Sentry itself by turning it on and off a couple times

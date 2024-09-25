@@ -296,7 +296,7 @@ impl<I: GuiIntegration> Controller<I> {
             tracing::error!(?error, "ipc_client");
         }
 
-        self.telemetry.close();
+        // Don't close telemetry here, `run` will close it.
 
         Ok(())
     }
