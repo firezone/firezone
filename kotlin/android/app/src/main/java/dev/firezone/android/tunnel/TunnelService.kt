@@ -52,7 +52,7 @@ class TunnelService : VpnService() {
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
     private var _tunnelResources: List<Resource> = emptyList()
     private var _tunnelState: State = State.DOWN
-    var resourceState: ResourceState = ResourceState.UNSET
+    private var resourceState: ResourceState = ResourceState.UNSET
 
     // For reacting to changes to the network
     private var networkCallback: NetworkMonitor? = null
@@ -259,7 +259,7 @@ class TunnelService : VpnService() {
         return resourceState
     }
 
-    fun internetResource(): Resource? {
+    private fun internetResource(): Resource? {
         return tunnelResources.firstOrNull { it.isInternetResource() }
     }
 
@@ -439,7 +439,6 @@ class TunnelService : VpnService() {
             DOWN,
         }
 
-        private const val TAG: String = "TunnelService"
         private const val SESSION_NAME: String = "Firezone Connection"
         private const val MTU: Int = 1280
 
