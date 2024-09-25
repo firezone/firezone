@@ -42,30 +42,17 @@ impl Clone for Telemetry {
 }
 
 impl Telemetry {
-    /// Flushes events to sentry.io and drops the guard.
-    pub fn close(&self) {
-        self.stop_sentry()
-    }
-
-    /// Allows users to opt in or out arbitrarily at run time.
-    pub fn set_enabled(&self, dsn: Option<Dsn>) {
-        tracing::info!(enabled = dsn.is_some());
-        if let Some(dsn) = dsn {
-            self.start_sentry(dsn)
-        } else {
-            self.stop_sentry()
-        }
-    }
-
-    fn start_sentry(&self, dsn: Dsn) {
+    pub fn start(&self, environment: String, dsn: Dsn) {
         // Since it's `arc_swap` and not `Option`, there is a TOCTOU here,
         // but in practice it should never trigger
         if self.inner.load().is_some() {
             return;
         }
+        tracing::info!("Starting telemetry");
         let inner = sentry::init((
             dsn.0,
             sentry::ClientOptions {
+                environment: Some(environment.into()),
                 release: sentry::release_name!(),
                 traces_sample_rate: 1.0,
                 ..Default::default()
@@ -75,10 +62,12 @@ impl Telemetry {
         sentry::start_session();
     }
 
-    fn stop_sentry(&self) {
+    /// Flushes events to sentry.io and drops the guard
+    pub fn stop(&self) {
         let Some(inner) = self.inner.swap(None) else {
             return;
         };
+        tracing::info!("Stopping telemetry");
         sentry::end_session();
         // `flush`'s return value is flipped from the docs
         // <https://github.com/getsentry/sentry-rust/issues/677>

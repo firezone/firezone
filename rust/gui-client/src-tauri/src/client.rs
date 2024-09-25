@@ -61,7 +61,7 @@ pub(crate) fn run() -> Result<()> {
             let settings = common::settings::load_advanced_settings().unwrap_or_default();
             let telemetry = telemetry::Telemetry::default();
             if let Some(true) = settings.enable_telemetry {
-                telemetry.set_enabled(Some(telemetry::GUI_DSN));
+                telemetry.start(settings.api_url.to_string(), telemetry::GUI_DSN);
             }
             // Don't fix the log filter for smoke tests
             let common::logging::Handles {
@@ -91,7 +91,7 @@ fn run_gui(cli: Cli) -> Result<()> {
     let telemetry = telemetry::Telemetry::default();
     // Can't start Sentry until we load the settings and get user consent, that's why this isn't just at the top of `main`
     if let Some(true) = settings.enable_telemetry {
-        telemetry.set_enabled(Some(telemetry::GUI_DSN));
+        telemetry.start(settings.api_url.to_string(), telemetry::GUI_DSN);
     }
     fix_log_filter(&mut settings)?;
     let common::logging::Handles {

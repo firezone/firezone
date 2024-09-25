@@ -189,13 +189,10 @@ impl Status {
 impl<I: GuiIntegration> Controller<I> {
     pub async fn main_loop(mut self) -> Result<(), Error> {
         // Ask for user consent for telemetry if we haven't asked before
-        if let Some(enable_telemetry) = self.advanced_settings.enable_telemetry {
-            self.telemetry
-                .set_enabled(enable_telemetry.then_some(firezone_telemetry::GUI_DSN));
-        } else {
+        if self.advanced_settings.enable_telemetry.is_none() {
             let enable_telemetry = rfd::AsyncMessageDialog::new()
                 .set_buttons(rfd::MessageButtons::YesNo)
-                .set_description("Enable sentry.io telemetry? This helps us debug Firezone faster.")
+                .set_description("Enable sentry.io telemetry? This helps us make Firezone better.")
                 .set_level(rfd::MessageLevel::Info)
                 .set_title("Enable telemetry? - Firezone")
                 .show()
@@ -203,14 +200,16 @@ impl<I: GuiIntegration> Controller<I> {
             tracing::info!("Showed first-run telemetry consent dialog");
             self.advanced_settings.enable_telemetry = Some(enable_telemetry);
             settings::save(&self.advanced_settings).await?;
-            self.telemetry
-                .set_enabled(enable_telemetry.then_some(firezone_telemetry::GUI_DSN));
         }
-        self.ipc_client
-            .send_msg(&IpcClientMsg::SetTelemetryEnabled(
-                self.advanced_settings.enable_telemetry.unwrap_or(false),
-            ))
-            .await?;
+        // Start telemetry if user allows it
+        if self.advanced_settings.enable_telemetry.unwrap_or(false) {
+            let environment = self.advanced_settings.api_url.to_string();
+            self.telemetry
+                .start(environment.clone(), firezone_telemetry::GUI_DSN);
+            self.ipc_client
+                .send_msg(&IpcClientMsg::StartTelemetry { environment })
+                .await?;
+        }
 
         if let Some(token) = self
             .auth

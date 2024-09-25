@@ -290,9 +290,9 @@ pub(crate) fn run(
                         }
                     };
 
-                    // In a normal Rust application, Sentry's guard will flush on drop: https://docs.sentry.io/platforms/rust/configuration/draining/
+                    // In a normal Rust application, Sentry's guard would flush on drop: https://docs.sentry.io/platforms/rust/configuration/draining/
                     // But due to a limit in `tao` we cannot return from the event loop and must call `std::process::exit` (or Tauri's wrapper), so we explicitly flush here.
-                    telemetry.close();
+                    telemetry.stop();
 
                     tracing::info!(?exit_code);
                     app_handle.exit(exit_code);

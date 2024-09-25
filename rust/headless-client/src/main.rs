@@ -120,10 +120,9 @@ fn main() -> Result<()> {
     let token_env_var = cli.token.take().map(SecretString::from);
     let cli = cli;
     let telemetry = Telemetry::default();
-    telemetry.set_enabled(
-        cli.enable_telemetry
-            .then_some(firezone_telemetry::HEADLESS_DSN),
-    );
+    if cli.enable_telemetry {
+        telemetry.start(cli.api_url.to_string(), firezone_telemetry::HEADLESS_DSN);
+    }
 
     // Docs indicate that `remove_var` should actually be marked unsafe
     // SAFETY: We haven't spawned any other threads, this code should be the first

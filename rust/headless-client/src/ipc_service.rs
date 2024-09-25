@@ -82,7 +82,8 @@ pub enum ClientMsg {
     Reset,
     SetDns(Vec<IpAddr>),
     SetDisabledResources(BTreeSet<ResourceId>),
-    SetTelemetryEnabled(bool),
+    StartTelemetry { environment: String },
+    StopTelemetry,
 }
 
 /// Messages that end up in the GUI, either forwarded from connlib or from the IPC service.
@@ -497,9 +498,10 @@ impl<'a> Handler<'a> {
 
                 session.connlib.set_disabled_resources(disabled_resources);
             }
-            ClientMsg::SetTelemetryEnabled(enabled) => self
+            ClientMsg::StartTelemetry { environment } => self
                 .telemetry
-                .set_enabled(enabled.then_some(firezone_telemetry::IPC_SERVICE_DSN)),
+                .start(environment, firezone_telemetry::IPC_SERVICE_DSN),
+            ClientMsg::StopTelemetry => self.telemetry.stop(),
         }
         Ok(())
     }
