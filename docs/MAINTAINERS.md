@@ -36,6 +36,7 @@ Given that `main` is tested:
     1. New version numbers
     1. Release notes
     1. Release date
+    1. Empty draft entry
 1. Update the known issues in `website/src/app/kb/client-apps/*`
 1. When the PR merges, the website will now redirect to the new version(s).
 
