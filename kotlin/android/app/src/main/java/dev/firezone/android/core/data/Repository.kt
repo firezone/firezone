@@ -64,6 +64,7 @@ internal class Repository
     ) {
         // We are the only thing that can modify favorites so we shouldn't need to reload it after
         // this initial load
+        // TODO: This should be immutable, we should just replace the hash set on every update
         private val _favorites =
             MutableStateFlow(Favorites(HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())))
         val favorites = _favorites.asStateFlow()
