@@ -190,7 +190,6 @@ impl<I: GuiIntegration> Controller<I> {
     pub async fn main_loop(mut self) -> Result<(), Error> {
         // Ask for user consent for telemetry if we haven't asked before
         if let Some(enable_telemetry) = self.advanced_settings.enable_telemetry {
-            tracing::info!(?enable_telemetry, "Not showing telemetry consent dialog");
             self.telemetry
                 .set_enabled(enable_telemetry.then_some(firezone_telemetry::GUI_DSN));
         } else {
@@ -201,10 +200,7 @@ impl<I: GuiIntegration> Controller<I> {
                 .set_title("Enable telemetry? - Firezone")
                 .show()
                 .await;
-            tracing::info!(
-                ?enable_telemetry,
-                "Showed first-run telemetry consent dialog"
-            );
+            tracing::info!("Showed first-run telemetry consent dialog");
             self.advanced_settings.enable_telemetry = Some(enable_telemetry);
             settings::save(&self.advanced_settings).await?;
             self.telemetry

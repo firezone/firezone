@@ -498,7 +498,6 @@ impl<'a> Handler<'a> {
                 session.connlib.set_disabled_resources(disabled_resources);
             }
             ClientMsg::SetTelemetryEnabled(enabled) => {
-                tracing::info!(?enabled, "SetTelemetryEnabled");
                 self.telemetry
                     .set_enabled(enabled.then_some(firezone_telemetry::IPC_SERVICE_DSN))
             }

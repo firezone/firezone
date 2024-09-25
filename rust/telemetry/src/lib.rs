@@ -49,6 +49,7 @@ impl Telemetry {
 
     /// Allows users to opt in or out arbitrarily at run time.
     pub fn set_enabled(&self, dsn: Option<Dsn>) {
+        tracing::info!(enabled = dsn.is_some());
         if let Some(dsn) = dsn {
             self.start_sentry(dsn)
         } else {
