@@ -46,6 +46,19 @@ From there, you can select the type of Resource you want to create:
   Resource.
 </Alert>
 
+#### Routing order for overlapping addresses
+
+When multiple Resources' addresses overlap, the Resource with the more specific
+address will be used. For CIDR Resources, this means the Resource with the
+longest prefix length will be used.
+
+For DNS Resources, the more specific match will be used according to the
+following rules:
+
+- Resources without wildcards are always prioritized over wildcard domains
+- Single-char wildcards (`?`) take priority over label wildcards (`*`)
+- Label wildcards (`*`) take priority over catch-all wildcards (`**`)
+
 ### Address description
 
 When creating a Resource, you'll be given the option to add an
