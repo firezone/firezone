@@ -11,20 +11,30 @@ export default function Headless() {
     <Entries href={href} arches={arches} title="Linux headless">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       {/*
-      <Entry version="1.3.2" date={new Date(todo)}>
+      <Entry version="1.3.3" date={new Date(todo)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6765">
-            Fixes a bug where DNS PTR queries by the system did not get answered.
-          </ChangeItem>
-          <ChangeItem pull="6722">
-            Fixes a routing bug when one of several overlapping CIDR resources gets disabled / removed.
-          </ChangeItem>
-          <ChangeItem pull="6780">
-            Fixes a bug where the Linux Clients didn't work on ZFS filesystems
-          </ChangeItem>
         </ul>
       </Entry>
       */}
+      <Entry version="1.3.2" date={new Date("2024-09-25")}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+          <ChangeItem pull="6765">
+            Fixes a bug where DNS PTR queries by the system did not get
+            answered.
+          </ChangeItem>
+          <ChangeItem pull="6722">
+            Fixes a routing bug when one of several overlapping CIDR resources
+            gets disabled / removed.
+          </ChangeItem>
+          <ChangeItem pull="6780">
+            Fixes a bug where the Linux Clients didn't work on ZFS filesystems.
+          </ChangeItem>
+          <ChangeItem pull="6788">
+            Fixes an issue where some browsers may fail to route DNS Resources
+            correctly.
+          </ChangeItem>
+        </ul>
+      </Entry>
       <Entry version="1.3.1" date={new Date("2024-09-05")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6563">
