@@ -454,7 +454,9 @@ async fn run_controller(
         log_filter_reloader,
         rx,
         updates_rx,
-    }.build().await?;
+    }
+    .build()
+    .await?;
 
     controller.main_loop().await?;
 
