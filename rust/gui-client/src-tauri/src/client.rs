@@ -144,13 +144,11 @@ fn start_logging(directives: &str) -> Result<common::logging::Handles> {
     sentry::add_breadcrumb(Breadcrumb {
         ty: "logging_start".into(),
         category: None,
-        data: {
-            let mut map = BTreeMap::default();
-            map.insert("directives".into(), directives.into());
-            map.insert("git_version".into(), git_version.into());
-            map.insert("system_uptime_seconds".into(), system_uptime_seconds.into());
-            map
-        },
+        data: BTreeMap::from([
+            ("directives".into(), directives.into()),
+            ("git_version".into(), git_version.into()),
+            ("system_uptime_seconds".into(), system_uptime_seconds.into()),
+        ]),
         ..Default::default()
     });
 
