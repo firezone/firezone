@@ -8,9 +8,17 @@
   "overrides": [
     {
       "files": ["website/**/*.md", "website/**/*.mdx"],
-      "excludedFiles": "website/src/app/blog/**/*",
       "options": {
         "proseWrap": "always"
+      }
+    },
+    {
+      "files": [
+        "website/src/app/blog/**/*.md",
+        "website/src/app/blog/**/*.mdx"
+      ],
+      "options": {
+        "proseWrap": "preserve"
       }
     }
   ]
