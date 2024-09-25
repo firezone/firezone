@@ -3,12 +3,12 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::gateway::{ResolvedResourceDescriptionDns, ResourceDescription};
+use connlib_shared::messages::gateway::ResourceDescription;
 use connlib_shared::messages::{
     gateway::Filter, gateway::Filters, ClientId, GatewayId, ResourceId,
 };
 use connlib_shared::DomainName;
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
 use itertools::Itertools;
@@ -17,7 +17,7 @@ use rangemap::RangeInclusiveSet;
 use crate::utils::network_contains_network;
 use crate::GatewayEvent;
 
-use anyhow::{bail, Context};
+use anyhow::{bail, Context, Result};
 use nat_table::NatTable;
 
 mod nat_table;
@@ -134,6 +134,18 @@ impl GatewayOnClient {
     }
 }
 
+/// The state of one client on a gateway.
+pub struct ClientOnGateway {
+    id: ClientId,
+    ipv4: Ipv4Addr,
+    ipv6: Ipv6Addr,
+    resources: HashMap<ResourceId, ResourceOnGateway>,
+    filters: IpNetworkTable<FilterEngine>,
+    permanent_translations: BTreeMap<IpAddr, TranslationState>,
+    nat_table: NatTable,
+    buffered_events: VecDeque<GatewayEvent>,
+}
+
 impl ClientOnGateway {
     pub(crate) fn new(id: ClientId, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> ClientOnGateway {
         ClientOnGateway {
@@ -161,9 +173,10 @@ impl ClientOnGateway {
         resource_id: ResourceId,
         resolved_ips: Vec<IpAddr>,
         now: Instant,
-    ) {
-        let Some(resource) = self.resources.get_mut(&resource_id) else {
-            return;
+    ) -> Result<()> {
+        let Some(ResourceOnGateway::Dns { domains, .. }) = self.resources.get_mut(&resource_id)
+        else {
+            bail!("Cannot refresh translation for unknown or non-DNS resource")
         };
 
         let old_ips: HashSet<&IpAddr> =
@@ -173,15 +186,13 @@ impl ClientOnGateway {
             }));
         let new_ips: HashSet<&IpAddr> = HashSet::from_iter(resolved_ips.iter());
         if old_ips == new_ips {
-            return;
+            return Ok(());
         }
 
-        for r in resource
-            .iter_mut()
-            .filter(|ResourceOnGateway { domain, .. }| *domain == Some(name.clone()))
-        {
-            r.ips = resolved_ips.iter().copied().map_into().collect_vec();
-        }
+        domains.insert(
+            name.clone(),
+            resolved_ips.iter().copied().map_into().collect_vec(),
+        );
 
         let proxy_ips = self
             .permanent_translations
@@ -191,19 +202,27 @@ impl ClientOnGateway {
             })
             .collect_vec();
 
-        self.assign_translations(name, resource_id, &resolved_ips, proxy_ips, now);
+        self.assign_translations(name, resource_id, &resolved_ips, proxy_ips, now)?;
         self.recalculate_filters();
+
+        Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(cid = %self.id))]
-    fn assign_translations(
+    pub(crate) fn assign_translations(
         &mut self,
         name: DomainName,
         resource_id: ResourceId,
         mapped_ips: &[IpAddr],
         proxy_ips: Vec<IpAddr>,
         now: Instant,
-    ) {
+    ) -> Result<()> {
+        let Some(ResourceOnGateway::Dns { address, .. }) = self.resources.get(&resource_id) else {
+            bail!("Cannot assign translation for non-DNS resource")
+        };
+
+        anyhow::ensure!(crate::dns::is_subdomain(&name, address));
+
         let mapped_ipv4 = mapped_ipv4(mapped_ips);
         let mapped_ipv6 = mapped_ipv6(mapped_ips);
 
@@ -227,28 +246,6 @@ impl ClientOnGateway {
                 TranslationState::new(resource_id, name.clone(), real_ip, now),
             );
         }
-    }
-
-    pub(crate) fn assign_proxies(
-        &mut self,
-        resource: &ResourceDescription<ResolvedResourceDescriptionDns>,
-        domain_ips: Option<(DomainName, Vec<IpAddr>)>,
-        now: Instant,
-    ) -> anyhow::Result<()> {
-        match (resource, domain_ips) {
-            (ResourceDescription::Dns(r), Some((name, resource_ips))) => {
-                if resource_ips.is_empty() {
-                    tracing::debug!("Client hasn't sent us any proxy IPs, skipping IP translation");
-                    return Ok(());
-                }
-
-                self.assign_translations(name, r.id, &r.addresses, resource_ips, now);
-            }
-            (ResourceDescription::Dns(_), None) => {
-                bail!("Cannot assign proxy IPs for DNS resource without domain");
-            }
-            (ResourceDescription::Cidr(_) | ResourceDescription::Internet(_), Some(_) | None) => {}
-        }
 
         Ok(())
     }
@@ -258,11 +255,7 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn expire_resources(&mut self, now: DateTime<Utc>) {
-        for resource in self.resources.values_mut() {
-            resource.retain(|r| !r.expires_at.is_some_and(|e| e <= now));
-        }
-
-        self.resources.retain(|_, r| !r.is_empty());
+        self.resources.retain(|_, r| r.is_allowed(&now));
         self.recalculate_filters();
     }
 
@@ -314,22 +307,27 @@ impl ClientOnGateway {
 
     pub(crate) fn add_resource(
         &mut self,
-        ips: Vec<IpNetwork>,
-        resource: ResourceId,
-        filters: Filters,
+        resource: connlib_shared::messages::gateway::ResourceDescription,
         expires_at: Option<DateTime<Utc>>,
-        domain: Option<DomainName>,
     ) {
-        self.resources
-            .entry(resource)
-            .or_default()
-            .push(ResourceOnGateway {
-                domain,
-                ips,
-                filters,
-                // Each resource subdomain can expire individually so it's worth keeping a list
-                expires_at,
-            });
+        self.resources.insert(
+            resource.id(),
+            match resource {
+                ResourceDescription::Dns(r) => ResourceOnGateway::Dns {
+                    domains: HashMap::default(),
+                    filters: r.filters,
+                    address: r.address,
+                    expires_at,
+                },
+                ResourceDescription::Cidr(r) => ResourceOnGateway::Cidr {
+                    network: r.address,
+                    filters: r.filters,
+                    expires_at,
+                },
+                ResourceDescription::Internet(_) => ResourceOnGateway::Internet { expires_at },
+            },
+        );
+
         self.recalculate_filters();
     }
 
@@ -339,8 +337,21 @@ impl ClientOnGateway {
         let Some(old_resource) = self.resources.get_mut(&resource.id()) else {
             return;
         };
-        for r in old_resource {
-            r.filters = resource.filters();
+
+        match (old_resource, resource) {
+            (ResourceOnGateway::Cidr { filters, .. }, ResourceDescription::Cidr(new)) => {
+                *filters = new.filters.clone();
+            }
+            (ResourceOnGateway::Dns { filters, .. }, ResourceDescription::Dns(new)) => {
+                *filters = new.filters.clone();
+            }
+            (ResourceOnGateway::Internet { .. }, ResourceDescription::Internet(_)) => {
+                // No-op.
+            }
+            (current, new) => {
+                tracing::error!(?current, ?new, "Resources cannot change type"); // TODO: This could be enforced at compile-time if we had typed resource IDs.
+                return;
+            }
         }
 
         self.recalculate_filters();
@@ -352,14 +363,14 @@ impl ClientOnGateway {
     // in case that 2 or more resources have overlapping rules.
     fn recalculate_filters(&mut self) {
         self.filters = IpNetworkTable::new();
-        for resource in self.resources.values().flatten() {
-            for ip in &resource.ips {
+        for resource in self.resources.values() {
+            for ip in &resource.ips() {
                 let mut filter_engine = FilterEngine::empty();
-                let filters = self.resources.values().flatten().filter_map(|r| {
-                    r.ips
+                let filters = self.resources.values().filter_map(|r| {
+                    r.ips()
                         .iter()
                         .any(|r_ip| network_contains_network(*r_ip, *ip))
-                        .then_some(&r.filters)
+                        .then_some(r.filters())
                 });
 
                 // Empty filters means permit all
@@ -487,11 +498,65 @@ pub(crate) struct SrcNotAllowed(IpAddr);
 pub(crate) struct DstNotAllowed(IpAddr);
 
 #[derive(Debug)]
-struct ResourceOnGateway {
-    ips: Vec<IpNetwork>,
-    filters: Filters,
-    expires_at: Option<DateTime<Utc>>,
-    domain: Option<DomainName>,
+enum ResourceOnGateway {
+    Cidr {
+        network: IpNetwork,
+        filters: Filters,
+        expires_at: Option<DateTime<Utc>>,
+    },
+    Dns {
+        address: String,
+        domains: HashMap<DomainName, Vec<IpAddr>>,
+        filters: Filters,
+        expires_at: Option<DateTime<Utc>>,
+    },
+    Internet {
+        expires_at: Option<DateTime<Utc>>,
+    },
+}
+
+impl ResourceOnGateway {
+    fn ips(&self) -> Vec<IpNetwork> {
+        match self {
+            ResourceOnGateway::Cidr { network, .. } => vec![*network],
+            ResourceOnGateway::Dns { domains, .. } => domains
+                .values()
+                .flatten()
+                .copied()
+                .map(IpNetwork::from)
+                .collect(),
+            ResourceOnGateway::Internet { .. } => vec![
+                Ipv4Network::DEFAULT_ROUTE.into(),
+                Ipv6Network::DEFAULT_ROUTE.into(),
+            ],
+        }
+    }
+
+    fn filters(&self) -> &Filters {
+        const EMPTY: &Filters = &Filters::new();
+
+        match self {
+            ResourceOnGateway::Cidr { filters, .. } => filters,
+            ResourceOnGateway::Dns { filters, .. } => filters,
+            ResourceOnGateway::Internet { .. } => EMPTY,
+        }
+    }
+
+    fn is_allowed(&self, now: &DateTime<Utc>) -> bool {
+        let Some(expires_at) = self.expires_at() else {
+            return true;
+        };
+
+        expires_at > now
+    }
+
+    fn expires_at(&self) -> Option<&DateTime<Utc>> {
+        match self {
+            ResourceOnGateway::Cidr { expires_at, .. } => expires_at.as_ref(),
+            ResourceOnGateway::Dns { expires_at, .. } => expires_at.as_ref(),
+            ResourceOnGateway::Internet { expires_at } => expires_at.as_ref(),
+        }
+    }
 }
 
 // Current state of a translation for a given proxy ip
@@ -584,18 +649,6 @@ impl TranslationState {
     }
 }
 
-/// The state of one client on a gateway.
-pub struct ClientOnGateway {
-    id: ClientId,
-    ipv4: Ipv4Addr,
-    ipv6: Ipv6Addr,
-    resources: HashMap<ResourceId, Vec<ResourceOnGateway>>,
-    filters: IpNetworkTable<FilterEngine>,
-    permanent_translations: BTreeMap<IpAddr, TranslationState>,
-    nat_table: NatTable,
-    buffered_events: VecDeque<GatewayEvent>,
-}
-
 fn ipv4_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
     ip.iter().filter(|ip| ip.is_ipv4()).copied().collect_vec()
 }
@@ -628,7 +681,7 @@ mod tests {
 
     use chrono::Utc;
     use connlib_shared::messages::{
-        gateway::{Filter, PortRange},
+        gateway::{Filter, PortRange, ResourceDescription, ResourceDescriptionCidr},
         ClientId, ResourceId,
     };
     use ip_network::Ipv4Network;
@@ -642,25 +695,28 @@ mod tests {
         let then = now + Duration::from_secs(10);
         let after_then = then + Duration::from_secs(10);
         peer.add_resource(
-            vec![cidr_v4_resource().into()],
-            resource_id(),
-            vec![Filter::Tcp(PortRange {
-                port_range_start: 20,
-                port_range_end: 100,
-            })],
+            ResourceDescription::Cidr(ResourceDescriptionCidr {
+                id: resource_id(),
+                address: cidr_v4_resource().into(),
+                name: "cidr1".to_owned(),
+                filters: vec![Filter::Tcp(PortRange {
+                    port_range_start: 20,
+                    port_range_end: 100,
+                })],
+            }),
             Some(then),
-            None,
         );
-
         peer.add_resource(
-            vec![cidr_v4_resource().into()],
-            resource2_id(),
-            vec![Filter::Udp(PortRange {
-                port_range_start: 20,
-                port_range_end: 100,
-            })],
+            ResourceDescription::Cidr(ResourceDescriptionCidr {
+                id: resource2_id(),
+                address: cidr_v4_resource().into(),
+                name: "cidr2".to_owned(),
+                filters: vec![Filter::Udp(PortRange {
+                    port_range_start: 20,
+                    port_range_end: 100,
+                })],
+            }),
             Some(after_then),
-            None,
         );
 
         let tcp_packet = ip_packet::make::tcp_packet(
@@ -993,7 +1049,9 @@ mod tests {
 mod proptests {
     use super::*;
     use crate::proptest::*;
-    use connlib_shared::messages::gateway::PortRange;
+    use connlib_shared::messages::gateway::{
+        PortRange, ResourceDescription, ResourceDescriptionCidr,
+    };
     use ip_packet::make::{icmp_request_packet, tcp_packet, udp_packet};
     use proptest::{
         arbitrary::any,
@@ -1001,147 +1059,39 @@ mod proptests {
         sample::select,
         strategy::{Just, Strategy},
     };
-    use std::ops::RangeInclusive;
+    use std::{collections::BTreeSet, ops::RangeInclusive};
     use test_strategy::Arbitrary;
 
     #[test_strategy::proptest()]
     fn gateway_accepts_allowed_packet(
         #[strategy(client_id())] client_id: ClientId,
-        #[strategy(vec![resource_id(); 5])] resources_id: Vec<ResourceId>,
+        #[strategy(cidr_resources(filters_with_allowed_protocol(), 5))] resources: Vec<(
+            ResourceDescription,
+            Protocol,
+            IpAddr,
+        )>,
         #[strategy(any::<Ipv4Addr>())] src_v4: Ipv4Addr,
         #[strategy(any::<Ipv6Addr>())] src_v6: Ipv6Addr,
-        #[strategy(cidr_with_host())] config: (IpNetwork, IpAddr),
-        #[strategy(collection::vec(filters_with_allowed_protocol(), 1..=5))] protocol_config: Vec<
-            (Filters, Protocol),
-        >,
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
-        let (resource_addr, dest) = config;
-        let src = if dest.is_ipv4() {
-            src_v4.into()
-        } else {
-            src_v6.into()
-        };
-        let mut filters = protocol_config.iter();
         // This test could be extended to test multiple src
         let mut peer = ClientOnGateway::new(client_id, src_v4, src_v6);
-        let mut resource_addr = Some(resource_addr);
-        let mut resources = 0;
-
-        loop {
-            let Some(addr) = resource_addr else {
-                break;
-            };
-            let Some((filter, _)) = filters.next() else {
-                break;
-            };
-            peer.add_resource(
-                vec![addr],
-                resources_id[resources],
-                filter.clone(),
-                None,
-                None,
-            );
-            resources += 1;
-            resource_addr = supernet(addr);
+        for (resource, _, _) in &resources {
+            peer.add_resource(resource.clone(), None);
         }
 
-        for (_, protocol) in &protocol_config[0..resources] {
-            let packet = match protocol {
-                Protocol::Tcp { dport } => tcp_packet(src, dest, sport, *dport, payload.clone()),
-                Protocol::Udp { dport } => udp_packet(src, dest, sport, *dport, payload.clone()),
-                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
-            }
-            .unwrap();
-            assert!(peer.ensure_allowed_dst(&packet).is_ok());
-        }
-    }
-
-    #[test_strategy::proptest()]
-    fn gateway_accepts_allowed_packet_multiple_ips_resource(
-        #[strategy(client_id())] client_id: ClientId,
-        #[strategy(resource_id())] resource_id: ResourceId,
-        #[strategy(any::<Ipv4Addr>())] src_v4: Ipv4Addr,
-        #[strategy(any::<Ipv6Addr>())] src_v6: Ipv6Addr,
-        #[strategy(collection::vec(cidr_with_host(), 1..=5))] config: Vec<(IpNetwork, IpAddr)>,
-        #[strategy(filters_with_allowed_protocol())] protocol_config: (Filters, Protocol),
-        #[strategy(any::<u16>())] sport: u16,
-        #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
-    ) {
-        let (resource_addr, dest): (Vec<_>, Vec<_>) = config.into_iter().unzip();
-        let (filters, protocol) = protocol_config;
-        let mut peer = ClientOnGateway::new(client_id, src_v4, src_v6);
-
-        peer.add_resource(resource_addr, resource_id, filters, None, None);
-
-        for dest in dest {
+        for (_, protocol, dest) in &resources {
             let src = if dest.is_ipv4() {
                 src_v4.into()
             } else {
                 src_v6.into()
             };
+
             let packet = match protocol {
-                Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
-                Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
-                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
-            }
-            .unwrap();
-            assert!(peer.ensure_allowed_dst(&packet).is_ok());
-        }
-    }
-
-    #[test_strategy::proptest()]
-    fn gateway_accepts_allowed_packet_multiple_ips_resource_multiple_adds(
-        #[strategy(client_id())] client_id: ClientId,
-        #[strategy(resource_id())] resource_id: ResourceId,
-        #[strategy(any::<Ipv4Addr>())] src_v4: Ipv4Addr,
-        #[strategy(any::<Ipv6Addr>())] src_v6: Ipv6Addr,
-        #[strategy(collection::vec(cidr_with_host(), 1..=5))] config_res_1: Vec<(
-            IpNetwork,
-            IpAddr,
-        )>,
-        #[strategy(collection::vec(cidr_with_host(), 1..=5))] config_res_2: Vec<(
-            IpNetwork,
-            IpAddr,
-        )>,
-        #[strategy(filters_with_allowed_protocol())] protocol_config: (Filters, Protocol),
-        #[strategy(any::<u16>())] sport: u16,
-        #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
-    ) {
-        let (resource_addr_1, dest_1): (Vec<_>, Vec<_>) = config_res_1.into_iter().unzip();
-        let (resource_addr_2, dest_2): (Vec<_>, Vec<_>) = config_res_2.into_iter().unzip();
-        let (filters, protocol) = protocol_config;
-        let mut peer = ClientOnGateway::new(client_id, src_v4, src_v6);
-
-        peer.add_resource(resource_addr_1, resource_id, filters.clone(), None, None);
-        peer.add_resource(resource_addr_2, resource_id, filters, None, None);
-
-        for dest in dest_1 {
-            let src = if dest.is_ipv4() {
-                src_v4.into()
-            } else {
-                src_v6.into()
-            };
-            let packet = match protocol {
-                Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
-                Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
-                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
-            }
-            .unwrap();
-            assert!(peer.ensure_allowed_dst(&packet).is_ok());
-        }
-
-        for dest in dest_2 {
-            let src = if dest.is_ipv4() {
-                src_v4.into()
-            } else {
-                src_v6.into()
-            };
-            let packet = match protocol {
-                Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
-                Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
-                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
+                Protocol::Tcp { dport } => tcp_packet(src, *dest, sport, *dport, payload.clone()),
+                Protocol::Udp { dport } => udp_packet(src, *dest, sport, *dport, payload.clone()),
+                Protocol::Icmp => icmp_request_packet(src, *dest, 1, 0, &[]),
             }
             .unwrap();
             assert!(peer.ensure_allowed_dst(&packet).is_ok());
@@ -1151,7 +1101,7 @@ mod proptests {
     #[test_strategy::proptest()]
     fn gateway_accepts_different_resources_with_same_ip_packet(
         #[strategy(client_id())] client_id: ClientId,
-        #[strategy(vec![resource_id(); 10])] resources_ids: Vec<ResourceId>,
+        #[strategy(collection::btree_set(resource_id(), 10))] resources_ids: BTreeSet<ResourceId>,
         #[strategy(any::<Ipv4Addr>())] src_v4: Ipv4Addr,
         #[strategy(any::<Ipv6Addr>())] src_v6: Ipv6Addr,
         #[strategy(cidr_with_host())] config: (IpNetwork, IpAddr),
@@ -1168,14 +1118,16 @@ mod proptests {
             src_v6.into()
         };
         let mut peer = ClientOnGateway::new(client_id, src_v4, src_v6);
-        let mut resources_ids = resources_ids.iter();
-        for (filters, _) in &protocol_config {
+
+        for ((filters, _), resource_id) in std::iter::zip(&protocol_config, resources_ids) {
             // This test could be extended to test multiple src
             peer.add_resource(
-                vec![resource_addr],
-                *resources_ids.next().unwrap(),
-                filters.clone(),
-                None,
+                ResourceDescription::Cidr(ResourceDescriptionCidr {
+                    id: resource_id,
+                    address: resource_addr,
+                    name: String::new(),
+                    filters: filters.clone(),
+                }),
                 None,
             );
         }
@@ -1219,7 +1171,15 @@ mod proptests {
         }
         .unwrap();
 
-        peer.add_resource(vec![resource_addr], resource_id, filters, None, None);
+        peer.add_resource(
+            ResourceDescription::Cidr(ResourceDescriptionCidr {
+                id: resource_id,
+                address: resource_addr,
+                name: String::new(),
+                filters,
+            }),
+            None,
+        );
 
         assert!(peer.ensure_allowed_dst(&packet).is_err());
     }
@@ -1265,24 +1225,54 @@ mod proptests {
         .unwrap();
 
         peer.add_resource(
-            vec![supernet(resource_addr).unwrap_or(resource_addr)],
-            resource_id_allowed,
-            filters_allowed,
-            None,
+            ResourceDescription::Cidr(ResourceDescriptionCidr {
+                id: resource_id_allowed,
+                address: supernet(resource_addr).unwrap_or(resource_addr),
+                name: String::new(),
+                filters: filters_allowed,
+            }),
             None,
         );
 
         peer.add_resource(
-            vec![resource_addr],
-            resource_id_removed,
-            filters_removed,
-            None,
+            ResourceDescription::Cidr(ResourceDescriptionCidr {
+                id: resource_id_removed,
+                address: resource_addr,
+                name: String::new(),
+                filters: filters_removed,
+            }),
             None,
         );
         peer.remove_resource(&resource_id_removed);
 
         assert!(peer.ensure_allowed_dst(&packet_allowed).is_ok());
         assert!(peer.ensure_allowed_dst(&packet_rejected).is_err());
+    }
+
+    fn cidr_resources(
+        filters: impl Strategy<Value = (Filters, Protocol)>,
+        num: usize,
+    ) -> impl Strategy<Value = Vec<(ResourceDescription, Protocol, IpAddr)>> {
+        let ids = collection::btree_set(resource_id(), num);
+        let networks = collection::vec(cidr_with_host(), num);
+        let filters = collection::vec(filters, num);
+
+        (ids, networks, filters).prop_map(|(ids, networks, filters)| {
+            itertools::izip!(ids, networks, filters)
+                .map(|(id, (address, host), (filters, protocol))| {
+                    (
+                        ResourceDescription::Cidr(ResourceDescriptionCidr {
+                            id,
+                            address,
+                            name: String::new(),
+                            filters,
+                        }),
+                        protocol,
+                        host,
+                    )
+                })
+                .collect()
+        })
     }
 
     fn cidr_with_host() -> impl Strategy<Value = (IpNetwork, IpAddr)> {

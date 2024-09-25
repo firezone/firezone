@@ -276,9 +276,12 @@ impl Eventloop {
             req.client.id,
             req.client.peer.ipv4,
             req.client.peer.ipv6,
-            req.client.payload.domain.as_ref().map(|r| r.as_tuple()),
+            req.client.payload.domain.as_ref().map(|r| {
+                let (domain, proxy_ips) = r.as_tuple();
+                (domain, proxy_ips, addresses)
+            }),
             req.expires_at,
-            req.resource.into_resolved(addresses),
+            req.resource,
         ) {
             let client = req.client.id;
 
@@ -308,9 +311,12 @@ impl Eventloop {
             req.client_id,
             req.client_ipv4,
             req.client_ipv6,
-            req.payload.as_ref().map(|r| r.as_tuple()),
+            req.payload.as_ref().map(|r| {
+                let (domain, proxy_ips) = r.as_tuple();
+                (domain, proxy_ips, addresses)
+            }),
             req.expires_at,
-            req.resource.into_resolved(addresses),
+            req.resource,
         ) {
             tracing::warn!(client = %req.client_id, "Allow access request failed: {e:#}");
         };

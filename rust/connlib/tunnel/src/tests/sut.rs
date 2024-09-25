@@ -666,22 +666,29 @@ impl TunnelTest {
                     .and_then(|r| global_dns_records.get(&r.name).cloned())
                     .unwrap_or_default();
 
-                let resource =
-                    portal.map_client_resource_to_gateway_resource(resolved_ips, resource_id);
+                let resource = portal.map_client_resource_to_gateway_resource(resource_id);
 
-                gateway
-                    .exec_mut(|g| {
-                        g.sut.allow_access(
-                            self.client.inner().id,
-                            self.client.inner().sut.tunnel_ip4().unwrap(),
-                            self.client.inner().sut.tunnel_ip6().unwrap(),
-                            maybe_domain.map(|r| (r.name, r.proxy_ips)),
-                            None,
-                            resource,
-                            now,
-                        )
-                    })
-                    .unwrap();
+                gateway.exec_mut(|g| {
+                    g.sut.allow_access(
+                        self.client.inner().id,
+                        self.client.inner().sut.tunnel_ip4().unwrap(),
+                        self.client.inner().sut.tunnel_ip6().unwrap(),
+                        None,
+                        resource.clone(),
+                    );
+                    if let Some(r) = maybe_domain {
+                        g.sut
+                            .setup_dns_resource_nat(
+                                self.client.inner().id,
+                                resource.id(),
+                                r.name,
+                                r.proxy_ips,
+                                Vec::from_iter(resolved_ips),
+                                now,
+                            )
+                            .unwrap()
+                    };
+                });
             }
             ClientEvent::ResourcesChanged { .. } => {
                 tracing::warn!("Unimplemented");
@@ -714,8 +721,7 @@ impl TunnelTest {
                     .and_then(|r| global_dns_records.get(&r.name).cloned())
                     .unwrap_or_default();
 
-                let resource =
-                    portal.map_client_resource_to_gateway_resource(resolved_ips, resource_id);
+                let resource = portal.map_client_resource_to_gateway_resource(resource_id);
 
                 let Some(gateway) = self.gateways.get_mut(&gateway_id) else {
                     tracing::error!("Unknown gateway");
@@ -739,16 +745,24 @@ impl TunnelTest {
                             now,
                         );
                         g.sut.allow_access(
-                            client_id,
+                            self.client.inner().id,
                             self.client.inner().sut.tunnel_ip4().unwrap(),
                             self.client.inner().sut.tunnel_ip6().unwrap(),
-                            maybe_domain
-                                .as_ref()
-                                .map(|r| (r.name.clone(), r.proxy_ips.clone())),
-                            None, // TODO: How to generate expiry?
-                            resource,
-                            now,
-                        )?;
+                            None,
+                            resource.clone(),
+                        );
+                        if let Some(r) = maybe_domain {
+                            g.sut
+                                .setup_dns_resource_nat(
+                                    self.client.inner().id,
+                                    resource.id(),
+                                    r.name,
+                                    r.proxy_ips,
+                                    Vec::from_iter(resolved_ips),
+                                    now,
+                                )
+                                .unwrap()
+                        };
 
                         anyhow::Ok(answer)
                     })
