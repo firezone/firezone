@@ -28,7 +28,7 @@ outputs:
     value: ${{
       (runner.os == 'Linux' && '--workspace') ||
       (runner.os == 'macOS' && '-p connlib-client-apple -p connlib-client-shared -p firezone-tunnel -p snownet') ||
-      (runner.os == 'Windows' && '-p connlib-client-shared -p firezone-headless-client -p firezone-gui-client -p firezone-gui-client-common -p firezone-iced-client -p firezone-tunnel -p gui-smoke-test -p snownet -p firezone-bin-shared') }}
+      (runner.os == 'Windows' && '-p connlib-client-shared -p firezone-bin-shared -p firezone-gui-client -p firezone-gui-client-common -p gui-smoke-test  -p firezone-headless-client -p firezone-iced-client -p firezone-logging -p firezone-telemetry -p firezone-tunnel -p snownet') }}
 
 runs:
   using: "composite"

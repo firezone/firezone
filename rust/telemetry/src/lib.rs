@@ -110,7 +110,7 @@ mod tests {
             // Expect no telemetry because the telemetry module needs to be enabled before it can do anything
             negative_error("X7X4CKH3");
 
-            tele.set_enabled(Some(HEADLESS_DSN));
+            tele.start("test".to_string(), HEADLESS_DSN);
             // Expect telemetry because the user opted in.
             sentry::add_breadcrumb(sentry::Breadcrumb {
                 ty: "test_crumb".into(),
@@ -118,15 +118,15 @@ mod tests {
                 ..Default::default()
             });
             error("QELADAGH");
-            tele.set_enabled(None);
+            tele.stop();
 
             // Expect no telemetry because the user opted back out.
             negative_error("2RSIYAPX");
 
-            tele.set_enabled(Some(HEADLESS_DSN));
+            tele.start("test".to_string(), HEADLESS_DSN);
             // Cycle one more time to be sure.
             error("S672IOBZ");
-            tele.close();
+            tele.stop();
 
             // Expect no telemetry after the module is closed.
             negative_error("W57GJKUO");
@@ -137,12 +137,12 @@ mod tests {
             {
                 let tele = Telemetry::default();
                 negative_error("4H7HFTNX");
-                tele.set_enabled(Some(HEADLESS_DSN));
+                tele.start("test".to_string(), HEADLESS_DSN);
             }
             {
                 negative_error("GF46D6IL");
                 let tele = Telemetry::default();
-                tele.set_enabled(Some(HEADLESS_DSN));
+                tele.start("test".to_string(), HEADLESS_DSN);
                 error("OKOEUKSW");
             }
         }
