@@ -14,7 +14,8 @@ export default function Android() {
       <Entry version="1.3.4" date={new Date(todo)}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6809">
-            Fixes a bug where non-wildcard DNS resources were not prioritised over wildcard ones (e.g. `app.example.com` vs `*.example.com`).
+            Fixes a bug where non-wildcard DNS resources were not prioritised
+            over wildcard ones (e.g. `app.example.com` vs `*.example.com`).
           </ChangeItem>
         </ul>
       </Entry>
