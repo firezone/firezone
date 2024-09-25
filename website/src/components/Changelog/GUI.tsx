@@ -35,6 +35,9 @@ export default function GUI({ title }: { title: string }) {
           <ChangeItem enable={title === "Windows"} pull="6810">
             Fixes a bug where roaming from Ethernet to WiFi would cause Firezone to fail to connect to the portal.
           </ChangeItem>
+          <ChangeItem pull="6809">
+            Fixes a bug where non-wildcard DNS resources were not prioritised over wildcard ones (e.g. `app.example.com` vs `*.example.com`).
+          </ChangeItem>
         </ul>
       </Entry>
       <Entry version="1.3.4" date={new Date("2024-09-19")}>
