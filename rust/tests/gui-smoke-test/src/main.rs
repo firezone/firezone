@@ -48,7 +48,7 @@ fn main() -> Result<()> {
     gui.wait()?.fz_exit_ok().context("GUI process")?;
     ipc_service.wait()?.fz_exit_ok().context("IPC service")?;
 
-    // Force the GUI to crash and then try to read the crash dump
+    // Force the GUI to crash
     let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
     let mut gui = app.gui_command(&["--crash"])?.popen()?;
 
