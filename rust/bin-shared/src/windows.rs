@@ -19,6 +19,7 @@ use windows::Win32::{
         CreateIpForwardEntry2, DeleteIpForwardEntry2, GetBestRoute2, GetIpForwardTable2,
         GET_ADAPTERS_ADDRESSES_FLAGS, IP_ADAPTER_ADDRESSES_LH, MIB_IPFORWARD_ROW2,
     },
+    NetworkManagement::Ndis::IfOperStatusUp,
     Networking::WinSock::{ADDRESS_FAMILY, AF_INET, AF_INET6, AF_UNSPEC, SOCKADDR_INET},
 };
 
@@ -216,6 +217,7 @@ impl Drop for RoutingTableEntry {
 fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<Route> {
     let route = list_adapters()?
         .filter(|adapter| !is_tun(adapter))
+        .filter(|adapter| is_up(adapter))
         .filter_map(|adapter| find_best_route_for_luid(&adapter.Luid, dst).ok())
         .min()
         .ok_or(io::Error::other("No route to host"))?;
@@ -297,6 +299,10 @@ fn is_tun(adapter: &IP_ADAPTER_ADDRESSES_LH) -> bool {
     };
 
     friendly_name == TUNNEL_NAME
+}
+
+fn is_up(adapter: &IP_ADAPTER_ADDRESSES_LH) -> bool {
+    adapter.OperStatus == IfOperStatusUp
 }
 
 struct Route {
