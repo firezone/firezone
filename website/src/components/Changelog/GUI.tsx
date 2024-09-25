@@ -32,6 +32,9 @@ export default function GUI({ title }: { title: string }) {
             Fixes a bug where auto-sign-in with an expired token would cause a
             "Couldn't send Disconnect" error message.
           </ChangeItem>
+          <ChangeItem enable={title === "Windows"} pull="6810">
+            Fixes a bug where roaming from Ethernet to WiFi would cause Firezone to fail to connect to the portal.
+          </ChangeItem>
         </ul>
       </Entry>
       <Entry version="1.3.4" date={new Date("2024-09-19")}>
