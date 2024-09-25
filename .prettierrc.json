@@ -4,8 +4,14 @@
   "tabWidth": 2,
   "semi": true,
   "singleQuote": false,
-  "proseWrap": "always",
+  "proseWrap": "preserve",
   "overrides": [
+    {
+      "files": ["website/**/*.md", "website/**/*.mdx"],
+      "options": {
+        "proseWrap": "always"
+      }
+    },
     {
       "files": [
         "website/src/app/blog/**/*.md",
