@@ -16,7 +16,7 @@ export default function Android() {
         </ul>
       </Entry>
       */}
-      <Entry version="1.3.3" date={new Date("2024-09-20")}>
+      <Entry version="1.3.3" date={new Date("2024-09-24")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6707">
             Resetting the settings now resets the list of favorited Resources,

@@ -16,7 +16,7 @@ export default function Apple() {
         </ul>
       </Entry>
       */}
-      <Entry version="1.3.4" date={new Date("2024-09-20")}>
+      <Entry version="1.3.4" date={new Date("2024-09-25")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6788">
             Fixes an issue where some browsers may fail to route DNS Resources
