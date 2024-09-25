@@ -481,6 +481,7 @@ mod pattern {
 
     impl Ord for Pattern {
         fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            // Iterate over characters in reverse order so that e.g. `*.example.com` and `subdomain.example.com` will compare the `example.com` suffix
             let mut self_rev = self.original.chars().rev();
             let mut other_rev = other.original.chars().rev();
 
