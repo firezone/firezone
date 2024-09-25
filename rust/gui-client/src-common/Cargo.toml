@@ -12,6 +12,7 @@ connlib-shared = { workspace = true }
 firezone-bin-shared = { workspace = true }
 firezone-headless-client = { path = "../../headless-client" }
 firezone-logging = { workspace = true }
+firezone-telemetry = { workspace = true }
 futures = { version = "0.3", default-features = false }
 hex = "0.4.3"
 native-dialog = "0.7.0"
@@ -23,7 +24,6 @@ rfd = "0.10.0" # Bump this version once we remove Tauri
 sadness-generator = "0.5.0"
 secrecy = { workspace = true }
 semver = { version = "1.0.22", features = ["serde"] }
-sentry = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 subtle = "2.5.0"

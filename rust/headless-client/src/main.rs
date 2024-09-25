@@ -11,8 +11,9 @@ use firezone_bin_shared::{
     TunDeviceManager, TOKEN_ENV_KEY,
 };
 use firezone_headless_client::{
-    device_id, signals, telemetry, CallbackHandler, CliCommon, ConnlibMsg, DnsController,
+    device_id, signals, CallbackHandler, CliCommon, ConnlibMsg, DnsController,
 };
+use firezone_telemetry::Telemetry;
 use futures::{FutureExt as _, StreamExt as _};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
@@ -118,8 +119,11 @@ fn main() -> Result<()> {
 
     let token_env_var = cli.token.take().map(SecretString::from);
     let cli = cli;
-    let telemetry = telemetry::Telemetry::default();
-    telemetry.set_enabled(cli.enable_telemetry.then_some(telemetry::HEADLESS_DSN));
+    let telemetry = Telemetry::default();
+    telemetry.set_enabled(
+        cli.enable_telemetry
+            .then_some(firezone_telemetry::HEADLESS_DSN),
+    );
 
     // Docs indicate that `remove_var` should actually be marked unsafe
     // SAFETY: We haven't spawned any other threads, this code should be the first
@@ -192,8 +196,11 @@ fn main() -> Result<()> {
     };
     let _guard = rt.enter(); // Constructing `PhoenixChannel` requires a runtime context.
     rt.block_on(async {
-        let ctx = sentry::TransactionContext::new("connect_to_firezone", "Connecting to Firezone");
-        let transaction = sentry::start_transaction(ctx);
+        let ctx = firezone_telemetry::TransactionContext::new(
+            "connect_to_firezone",
+            "Connecting to Firezone",
+        );
+        let transaction = firezone_telemetry::start_transaction(ctx);
 
         // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
         // resolve the portal host and fail. This is intentional behavior. The Headless Client should always be running under a manager like `systemd` or Windows' Service Controller,

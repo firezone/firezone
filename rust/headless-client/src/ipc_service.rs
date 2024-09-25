@@ -1,6 +1,6 @@
 use crate::{
-    device_id, dns_control::DnsController, known_dirs, signals, telemetry::Telemetry,
-    CallbackHandler, CliCommon, ConnlibMsg, LogFilterReloader,
+    device_id, dns_control::DnsController, known_dirs, signals, CallbackHandler, CliCommon,
+    ConnlibMsg, LogFilterReloader,
 };
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
@@ -10,6 +10,7 @@ use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
 };
+use firezone_telemetry::Telemetry;
 use futures::{
     future::poll_fn,
     task::{Context, Poll},
@@ -499,7 +500,7 @@ impl<'a> Handler<'a> {
             ClientMsg::SetTelemetryEnabled(enabled) => {
                 tracing::info!(?enabled, "SetTelemetryEnabled");
                 self.telemetry
-                    .set_enabled(enabled.then_some(crate::telemetry::IPC_SERVICE_DSN))
+                    .set_enabled(enabled.then_some(firezone_telemetry::IPC_SERVICE_DSN))
             }
         }
         Ok(())
@@ -511,8 +512,11 @@ impl<'a> Handler<'a> {
     ///
     /// Throws matchable errors for bad URLs, unable to reach the portal, or unable to create the tunnel device
     fn connect_to_firezone(&mut self, api_url: &str, token: SecretString) -> Result<(), Error> {
-        let ctx = sentry::TransactionContext::new("connect_to_firezone", "Connecting to Firezone");
-        let transaction = sentry::start_transaction(ctx);
+        let ctx = firezone_telemetry::TransactionContext::new(
+            "connect_to_firezone",
+            "Connecting to Firezone",
+        );
+        let transaction = firezone_telemetry::start_transaction(ctx);
         assert!(self.session.is_none());
         let device_id = device_id::get_or_create().map_err(|e| Error::DeviceId(e.to_string()))?;
         let (private_key, public_key) = keypair();

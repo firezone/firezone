@@ -10,10 +10,10 @@ use anyhow::{anyhow, Context, Result};
 use connlib_shared::callbacks::ResourceDescription;
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
 use firezone_headless_client::{
-    telemetry,
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
 };
+use firezone_telemetry::Telemetry;
 use secrecy::{ExposeSecret as _, SecretString};
 use std::{collections::BTreeSet, path::PathBuf, time::Instant};
 use tokio::sync::{mpsc, oneshot};
@@ -40,7 +40,7 @@ pub struct Controller<I: GuiIntegration> {
     release: Option<updates::Release>,
     rx: mpsc::Receiver<ControllerRequest>,
     status: Status,
-    telemetry: telemetry::Telemetry,
+    telemetry: Telemetry,
     updates_rx: mpsc::Receiver<Option<updates::Notification>>,
     uptime: crate::uptime::Tracker,
 }
@@ -51,7 +51,7 @@ pub struct Builder<I: GuiIntegration> {
     pub integration: I,
     pub log_filter_reloader: LogFilterReloader,
     pub rx: mpsc::Receiver<ControllerRequest>,
-    pub telemetry: telemetry::Telemetry,
+    pub telemetry: Telemetry,
     pub updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 }
 
@@ -192,14 +192,15 @@ impl<I: GuiIntegration> Controller<I> {
         if let Some(enable_telemetry) = self.advanced_settings.enable_telemetry {
             tracing::info!(?enable_telemetry, "Not showing telemetry consent dialog");
             self.telemetry
-                .set_enabled(enable_telemetry.then_some(telemetry::GUI_DSN));
+                .set_enabled(enable_telemetry.then_some(firezone_telemetry::GUI_DSN));
         } else {
             let enable_telemetry = rfd::AsyncMessageDialog::new()
                 .set_buttons(rfd::MessageButtons::YesNo)
-                .set_description("Enable sentry.io telemetry? This is completely optional, but it helps us debug Firezone faster.")
+                .set_description("Enable sentry.io telemetry? This helps us debug Firezone faster.")
                 .set_level(rfd::MessageLevel::Info)
                 .set_title("Enable telemetry? - Firezone")
-                .show().await;
+                .show()
+                .await;
             tracing::info!(
                 ?enable_telemetry,
                 "Showed first-run telemetry consent dialog"
@@ -207,7 +208,7 @@ impl<I: GuiIntegration> Controller<I> {
             self.advanced_settings.enable_telemetry = Some(enable_telemetry);
             settings::save(&self.advanced_settings).await?;
             self.telemetry
-                .set_enabled(enable_telemetry.then_some(telemetry::GUI_DSN));
+                .set_enabled(enable_telemetry.then_some(firezone_telemetry::GUI_DSN));
         }
         self.ipc_client
             .send_msg(&IpcClientMsg::SetTelemetryEnabled(

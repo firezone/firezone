@@ -1,0 +1,12 @@
+[package]
+name = "firezone-telemetry"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+arc-swap = "1.7.1"
+sentry = { version = "0.34.0", default-features = false, features = ["panic", "reqwest", "rustls", "tracing"] }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

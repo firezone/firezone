@@ -17,9 +17,9 @@ use firezone_gui_client_common::{
     settings::AdvancedSettings,
     updates,
 };
-use firezone_headless_client::{telemetry, LogFilterReloader};
+use firezone_headless_client::LogFilterReloader;
+use firezone_telemetry as telemetry;
 use secrecy::{ExposeSecret as _, SecretString};
-use sentry::Breadcrumb;
 use std::{str::FromStr, time::Duration};
 use tauri::{Manager, SystemTrayEvent};
 use tokio::sync::{mpsc, oneshot};
@@ -216,7 +216,7 @@ pub(crate) fn run(
                         tracing::warn!(
                             "Will crash / error / panic on purpose in {delay} seconds to test error handling."
                         );
-                        sentry::add_breadcrumb(Breadcrumb {
+                        telemetry::add_breadcrumb(telemetry::Breadcrumb {
                             ty: "fail_on_purpose".into(),
                             message: Some("Will crash / error / panic on purpose to test error handling.".into()),
                             ..Default::default()
@@ -272,20 +272,20 @@ pub(crate) fn run(
 
                     let exit_code = match task.await {
                         Err(error) => {
-                            sentry::capture_error(&error);
+                            telemetry::capture_error(&error);
                             tracing::error!(?error, "run_controller panicked");
-                            sentry::end_session_with_status(sentry::types::protocol::v7::SessionStatus::Crashed);
+                            telemetry::end_session_with_status(telemetry::SessionStatus::Crashed);
                             1
                         }
                         Ok(Err(error)) => {
-                            sentry::capture_error(&error);
+                            telemetry::capture_error(&error);
                             tracing::error!(?error, "run_controller returned an error");
                             errors::show_error_dialog(&error).unwrap();
-                            sentry::end_session_with_status(sentry::types::protocol::v7::SessionStatus::Crashed);
+                            telemetry::end_session_with_status(telemetry::SessionStatus::Crashed);
                             1
                         }
                         Ok(Ok(_)) => {
-                            sentry::end_session();
+                            telemetry::end_session();
                             0
                         }
                     };
@@ -451,7 +451,7 @@ async fn run_controller(
     rx: mpsc::Receiver<ControllerRequest>,
     advanced_settings: AdvancedSettings,
     log_filter_reloader: LogFilterReloader,
-    telemetry: firezone_headless_client::telemetry::Telemetry,
+    telemetry: telemetry::Telemetry,
     updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 ) -> Result<(), Error> {
     tracing::info!("Entered `run_controller`");

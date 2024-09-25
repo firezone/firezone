@@ -3,7 +3,7 @@ use clap::{Args, Parser};
 use firezone_gui_client_common::{
     self as common, controller::Failure, deep_link, settings::AdvancedSettings,
 };
-use sentry::Breadcrumb;
+use firezone_telemetry as telemetry;
 use std::collections::BTreeMap;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
@@ -59,9 +59,9 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
             let settings = common::settings::load_advanced_settings().unwrap_or_default();
-            let telemetry = firezone_headless_client::telemetry::Telemetry::default();
+            let telemetry = telemetry::Telemetry::default();
             if let Some(true) = settings.enable_telemetry {
-                telemetry.set_enabled(Some(firezone_headless_client::telemetry::GUI_DSN));
+                telemetry.set_enabled(Some(telemetry::GUI_DSN));
             }
             // Don't fix the log filter for smoke tests
             let common::logging::Handles {
@@ -88,10 +88,10 @@ pub(crate) fn run() -> Result<()> {
 // Can't `instrument` this because logging isn't running when we enter it.
 fn run_gui(cli: Cli) -> Result<()> {
     let mut settings = common::settings::load_advanced_settings().unwrap_or_default();
-    let telemetry = firezone_headless_client::telemetry::Telemetry::default();
+    let telemetry = telemetry::Telemetry::default();
     // Can't start Sentry until we load the settings and get user consent, that's why this isn't just at the top of `main`
     if let Some(true) = settings.enable_telemetry {
-        telemetry.set_enabled(Some(firezone_headless_client::telemetry::GUI_DSN));
+        telemetry.set_enabled(Some(telemetry::GUI_DSN));
     }
     fix_log_filter(&mut settings)?;
     let common::logging::Handles {
@@ -141,7 +141,7 @@ fn start_logging(directives: &str) -> Result<common::logging::Handles> {
         ?system_uptime_seconds,
         "`gui-client` started logging"
     );
-    sentry::add_breadcrumb(Breadcrumb {
+    telemetry::add_breadcrumb(telemetry::Breadcrumb {
         ty: "logging_start".into(),
         category: None,
         data: BTreeMap::from([
