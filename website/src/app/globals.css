@@ -96,3 +96,9 @@
     }
   }
 }
+
+@layer utilities {
+  .bg-hero {
+    background-image: url("/images/ribbon.svg");
+  }
+}
