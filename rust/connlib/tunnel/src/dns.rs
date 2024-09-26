@@ -25,6 +25,9 @@ const DNS_PORT: u16 = 53;
 ///
 /// Responding to queries for this domain with NXDOMAIN will disable DoH.
 /// See <https://support.mozilla.org/en-US/kb/canary-domain-use-application-dnsnet>.
+/// For Chrome and other Chrome-based browsers, this is not required as
+/// Chrome will automatically disable DoH if your server(s) don't support
+/// it. See https://www.chromium.org/developers/dns-over-https/#faq
 static DOH_CANARY_DOMAIN: LazyLock<DomainName> =
     LazyLock::new(|| DomainName::vec_from_str("use-application-dns.net").unwrap());
 
