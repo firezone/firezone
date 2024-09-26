@@ -1,6 +1,7 @@
-import React from "react";
+import React, { ReactElement, ReactNode } from "react";
 import Entry from "./Entry";
 import Link from "next/link";
+import Unreleased from "./Unreleased";
 
 function Latest({
   arches,
@@ -122,16 +123,12 @@ export default function Entries({
   title: string;
   children: React.ReactNode;
 }) {
-  const childrenArray = React.Children.toArray(children).filter(
-    (e) => e != null
-  );
+  const childrenArray = React.Children.toArray(children)
+    .filter((child) => React.isValidElement(child))
+    .filter((child) => child.type != Unreleased);
 
   const firstEntry = childrenArray[0];
   const previousEntries = childrenArray.slice(1);
-
-  if (!React.isValidElement(firstEntry)) {
-    throw new Error("First child is not a valid React element");
-  }
 
   const { version, date, children: firstEntryChildren } = firstEntry.props;
 
