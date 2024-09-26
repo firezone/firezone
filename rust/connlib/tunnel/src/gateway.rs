@@ -2,12 +2,12 @@ use crate::peer::ClientOnGateway;
 use crate::peer_store::PeerStore;
 use crate::utils::earliest;
 use crate::{GatewayEvent, GatewayTunnel};
-use anyhow::bail;
+use anyhow::Context;
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
+use connlib_shared::messages::ResolveRequest;
 use connlib_shared::messages::{
-    gateway::ResolvedResourceDescriptionDns, gateway::ResourceDescription, Answer, ClientId, Key,
-    Offer, RelayId, ResourceId,
+    gateway::ResourceDescription, Answer, ClientId, Key, Offer, RelayId, ResourceId,
 };
 use connlib_shared::{DomainName, StaticSecret};
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -67,19 +67,25 @@ impl GatewayTunnel {
         client: ClientId,
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
-        domain: Option<(DomainName, Vec<IpAddr>)>,
+        dns_resource_nat: Option<DnsResourceNatEntry>,
         expires_at: Option<DateTime<Utc>>,
-        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
+        resource: ResourceDescription,
     ) -> anyhow::Result<()> {
-        self.role_state.allow_access(
-            client,
-            ipv4,
-            ipv6,
-            domain,
-            expires_at,
-            resource,
-            Instant::now(),
-        )
+        let resource_id = resource.id();
+
+        self.role_state
+            .allow_access(client, ipv4, ipv6, expires_at, resource);
+
+        if let Some(entry) = dns_resource_nat {
+            self.role_state.create_dns_resource_nat_entry(
+                client,
+                resource_id,
+                entry,
+                Instant::now(),
+            )?;
+        }
+
+        Ok(())
     }
 
     pub fn refresh_translation(
@@ -138,6 +144,23 @@ pub struct GatewayState {
     next_expiry_resources_check: Option<Instant>,
 
     buffered_events: VecDeque<GatewayEvent>,
+}
+
+#[derive(Debug)]
+pub struct DnsResourceNatEntry {
+    domain: DomainName,
+    proxy_ips: Vec<IpAddr>,
+    resolved_ips: Vec<IpAddr>,
+}
+
+impl DnsResourceNatEntry {
+    pub fn new(request: ResolveRequest, resolved_ips: Vec<IpAddr>) -> Self {
+        Self {
+            domain: request.name,
+            proxy_ips: request.proxy_ips,
+            resolved_ips,
+        }
+    }
 }
 
 impl GatewayState {
@@ -254,52 +277,49 @@ impl GatewayState {
             return;
         };
 
-        peer.refresh_translation(name, resource_id, resolved_ips, now);
+        if let Err(e) = peer.refresh_translation(name.clone(), resource_id, resolved_ips, now) {
+            tracing::warn!(rid = %resource_id, %name, "Failed to refresh DNS resource IP translations: {e:#}");
+        };
     }
 
-    #[expect(clippy::too_many_arguments)]
     pub fn allow_access(
         &mut self,
         client: ClientId,
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
-        domain: Option<(DomainName, Vec<IpAddr>)>,
         expires_at: Option<DateTime<Utc>>,
-        resource: ResourceDescription<ResolvedResourceDescriptionDns>,
-        now: Instant,
-    ) -> anyhow::Result<()> {
-        match (&domain, &resource) {
-            (Some((domain, _)), ResourceDescription::Dns(r)) => {
-                if !crate::dns::is_subdomain(domain, &r.domain) {
-                    bail!(
-                        "Requested domain '{domain}' isn't a sub-domain of resource address '{}'",
-                        r.domain
-                    );
-                }
-            }
-            (None, ResourceDescription::Dns(_)) => {
-                bail!("Cannot setup connection for DNS resource without domain")
-            }
-            _ => {}
-        }
-
+        resource: ResourceDescription,
+    ) {
         let peer = self
             .peers
             .entry(client)
             .or_insert_with(|| ClientOnGateway::new(client, ipv4, ipv6));
 
-        peer.assign_proxies(&resource, domain.clone(), now)?;
-        peer.add_resource(
-            resource.addresses(),
-            resource.id(),
-            resource.filters(),
-            expires_at,
-            domain.map(|(n, _)| n),
-        );
+        peer.add_resource(resource.clone(), expires_at);
         self.peers.add_ip(&client, &ipv4.into());
         self.peers.add_ip(&client, &ipv6.into());
 
         tracing::info!(%client, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
+    }
+
+    pub fn create_dns_resource_nat_entry(
+        &mut self,
+        client: ClientId,
+        resource: ResourceId,
+        entry: DnsResourceNatEntry,
+        now: Instant,
+    ) -> anyhow::Result<()> {
+        self.peers
+            .get_mut(&client)
+            .context("Unknown peer")?
+            .assign_translations(
+                entry.domain,
+                resource,
+                &entry.resolved_ips,
+                entry.proxy_ips,
+                now,
+            )?;
+
         Ok(())
     }
 

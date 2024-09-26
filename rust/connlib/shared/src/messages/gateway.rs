@@ -1,9 +1,6 @@
 //! Gateway related messages that are needed within connlib
 
-use std::net::IpAddr;
-
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use itertools::Itertools;
+use ip_network::IpNetwork;
 use serde::Deserialize;
 
 use super::ResourceId;
@@ -40,22 +37,6 @@ pub struct ResourceDescriptionCidr {
     pub filters: Filters,
 }
 
-/// Description of a resource that maps to a DNS record which had its domain already resolved.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolvedResourceDescriptionDns {
-    pub id: ResourceId,
-    /// Internal resource's domain name.
-    pub domain: String,
-    /// Name of the resource.
-    ///
-    /// Used only for display.
-    pub name: String,
-
-    pub addresses: Vec<IpAddr>,
-
-    pub filters: Filters,
-}
-
 /// Description of an Internet resource.
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct ResourceDescriptionInternet {
@@ -64,8 +45,8 @@ pub struct ResourceDescriptionInternet {
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum ResourceDescription<TDNS = ResourceDescriptionDns> {
-    Dns(TDNS),
+pub enum ResourceDescription {
+    Dns(ResourceDescriptionDns),
     Cidr(ResourceDescriptionCidr),
     Internet(ResourceDescriptionInternet),
 }
@@ -98,32 +79,7 @@ fn max_port() -> u16 {
     u16::MAX
 }
 
-impl ResourceDescription<ResourceDescriptionDns> {
-    pub fn into_resolved(
-        self,
-        addresses: Vec<IpAddr>,
-    ) -> ResourceDescription<ResolvedResourceDescriptionDns> {
-        match self {
-            ResourceDescription::Dns(ResourceDescriptionDns {
-                id,
-                address,
-                name,
-                filters,
-            }) => ResourceDescription::Dns(ResolvedResourceDescriptionDns {
-                id,
-                domain: address,
-                name,
-                addresses,
-
-                filters,
-            }),
-            ResourceDescription::Cidr(c) => ResourceDescription::Cidr(c),
-            ResourceDescription::Internet(r) => ResourceDescription::Internet(r),
-        }
-    }
-}
-
-impl ResourceDescription<ResourceDescriptionDns> {
+impl ResourceDescription {
     pub fn id(&self) -> ResourceId {
         match self {
             ResourceDescription::Dns(r) => r.id,
@@ -137,35 +93,6 @@ impl ResourceDescription<ResourceDescriptionDns> {
             ResourceDescription::Dns(r) => r.filters.clone(),
             ResourceDescription::Cidr(r) => r.filters.clone(),
             ResourceDescription::Internet(_) => Vec::default(),
-        }
-    }
-}
-
-impl ResourceDescription<ResolvedResourceDescriptionDns> {
-    pub fn addresses(&self) -> Vec<IpNetwork> {
-        match self {
-            ResourceDescription::Dns(r) => r.addresses.iter().copied().map_into().collect_vec(),
-            ResourceDescription::Cidr(r) => vec![r.address],
-            ResourceDescription::Internet(_) => vec![
-                Ipv4Network::DEFAULT_ROUTE.into(),
-                Ipv6Network::DEFAULT_ROUTE.into(),
-            ],
-        }
-    }
-
-    pub fn id(&self) -> ResourceId {
-        match self {
-            ResourceDescription::Dns(r) => r.id,
-            ResourceDescription::Cidr(r) => r.id,
-            ResourceDescription::Internet(r) => r.id,
-        }
-    }
-
-    pub fn filters(&self) -> Vec<Filter> {
-        match self {
-            ResourceDescription::Dns(r) => r.filters.clone(),
-            ResourceDescription::Cidr(r) => r.filters.clone(),
-            ResourceDescription::Internet(_) => vec![],
         }
     }
 }

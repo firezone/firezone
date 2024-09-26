@@ -1,15 +1,12 @@
 use std::{
     collections::BTreeSet,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::{Ipv4Addr, Ipv6Addr},
 };
 
 use chrono::{serde::ts_seconds_option, DateTime, Utc};
-use connlib_shared::{
-    messages::{
-        gateway::ResourceDescription, ClientId, GatewayResponse, Interface, Offer, Peer, Relay,
-        RelaysPresence, ResourceId,
-    },
-    DomainName,
+use connlib_shared::messages::{
+    gateway::ResourceDescription, ClientId, GatewayResponse, Interface, Offer, Peer, Relay,
+    RelaysPresence, ResolveRequest, ResourceId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -54,18 +51,6 @@ pub struct RequestConnection {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct RemoveResource {
     pub id: ResourceId,
-}
-
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
-pub struct ResolveRequest {
-    pub name: DomainName,
-    pub proxy_ips: Vec<IpAddr>,
-}
-
-impl ResolveRequest {
-    pub fn as_tuple(&self) -> (DomainName, Vec<IpAddr>) {
-        (self.name.clone(), self.proxy_ips.clone())
-    }
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
