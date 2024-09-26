@@ -5,6 +5,7 @@ use crate::{GatewayEvent, GatewayTunnel, BUF_SIZE};
 use anyhow::Context;
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
+use connlib_shared::messages::ResolveRequest;
 use connlib_shared::messages::{
     gateway::ResourceDescription, Answer, ClientId, Key, Offer, RelayId, ResourceId,
 };
@@ -66,7 +67,7 @@ impl GatewayTunnel {
         client: ClientId,
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
-        domain: Option<(DomainName, Vec<IpAddr>, Vec<IpAddr>)>,
+        dns_resource_nat: Option<DnsResourceNatEntry>,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
     ) -> anyhow::Result<()> {
@@ -75,13 +76,11 @@ impl GatewayTunnel {
         self.role_state
             .allow_access(client, ipv4, ipv6, expires_at, resource);
 
-        if let Some((domain, proxy_ips, resolved_ips)) = domain {
-            self.role_state.setup_dns_resource_nat(
+        if let Some(entry) = dns_resource_nat {
+            self.role_state.create_dns_resource_nat_entry(
                 client,
                 resource_id,
-                domain,
-                proxy_ips,
-                resolved_ips,
+                entry,
                 Instant::now(),
             )?;
         }
@@ -145,6 +144,23 @@ pub struct GatewayState {
     next_expiry_resources_check: Option<Instant>,
 
     buffered_events: VecDeque<GatewayEvent>,
+}
+
+#[derive(Debug)]
+pub struct DnsResourceNatEntry {
+    domain: DomainName,
+    proxy_ips: Vec<IpAddr>,
+    resolved_ips: Vec<IpAddr>,
+}
+
+impl DnsResourceNatEntry {
+    pub fn new(request: ResolveRequest, resolved_ips: Vec<IpAddr>) -> Self {
+        Self {
+            domain: request.name,
+            proxy_ips: request.proxy_ips,
+            resolved_ips,
+        }
+    }
 }
 
 impl GatewayState {
@@ -288,19 +304,23 @@ impl GatewayState {
         tracing::info!(%client, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
     }
 
-    pub fn setup_dns_resource_nat(
+    pub fn create_dns_resource_nat_entry(
         &mut self,
         client: ClientId,
         resource: ResourceId,
-        domain: DomainName,
-        proxy_ips: Vec<IpAddr>,
-        resolved_ips: Vec<IpAddr>,
+        entry: DnsResourceNatEntry,
         now: Instant,
     ) -> anyhow::Result<()> {
         self.peers
             .get_mut(&client)
             .context("Unknown peer")?
-            .assign_translations(domain, resource, &resolved_ips, proxy_ips, now)?;
+            .assign_translations(
+                entry.domain,
+                resource,
+                &entry.resolved_ips,
+                entry.proxy_ips,
+                now,
+            )?;
 
         Ok(())
     }

@@ -10,7 +10,7 @@ use connlib_shared::messages::{
 use connlib_shared::{messages::GatewayResponse, DomainName};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
-use firezone_tunnel::GatewayTunnel;
+use firezone_tunnel::{DnsResourceNatEntry, GatewayTunnel};
 use futures::channel::mpsc;
 use futures_bounded::Timeout;
 use phoenix_channel::PhoenixChannel;
@@ -276,10 +276,10 @@ impl Eventloop {
             req.client.id,
             req.client.peer.ipv4,
             req.client.peer.ipv6,
-            req.client.payload.domain.as_ref().map(|r| {
-                let (domain, proxy_ips) = r.as_tuple();
-                (domain, proxy_ips, addresses)
-            }),
+            req.client
+                .payload
+                .domain
+                .map(|r| DnsResourceNatEntry::new(r, addresses)),
             req.expires_at,
             req.resource,
         ) {
@@ -311,10 +311,7 @@ impl Eventloop {
             req.client_id,
             req.client_ipv4,
             req.client_ipv6,
-            req.payload.as_ref().map(|r| {
-                let (domain, proxy_ips) = r.as_tuple();
-                (domain, proxy_ips, addresses)
-            }),
+            req.payload.map(|r| DnsResourceNatEntry::new(r, addresses)),
             req.expires_at,
             req.resource,
         ) {

@@ -8,6 +8,7 @@ use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
 use super::transition::DnsQuery;
 use crate::dns::is_subdomain;
+use crate::gateway::DnsResourceNatEntry;
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
@@ -660,11 +661,11 @@ impl TunnelTest {
                 maybe_domain,
             } => {
                 let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");
+                let maybe_entry = maybe_domain.and_then(|r| {
+                    let resolved_ips = Vec::from_iter(global_dns_records.get(&r.name).cloned()?);
 
-                let resolved_ips = maybe_domain
-                    .as_ref()
-                    .and_then(|r| global_dns_records.get(&r.name).cloned())
-                    .unwrap_or_default();
+                    Some(DnsResourceNatEntry::new(r, resolved_ips))
+                });
 
                 let resource = portal.map_client_resource_to_gateway_resource(resource_id);
 
@@ -676,14 +677,12 @@ impl TunnelTest {
                         None,
                         resource.clone(),
                     );
-                    if let Some(r) = maybe_domain {
+                    if let Some(entry) = maybe_entry {
                         g.sut
-                            .setup_dns_resource_nat(
+                            .create_dns_resource_nat_entry(
                                 self.client.inner().id,
                                 resource.id(),
-                                r.name,
-                                r.proxy_ips,
-                                Vec::from_iter(resolved_ips),
+                                entry,
                                 now,
                             )
                             .unwrap()
@@ -715,12 +714,11 @@ impl TunnelTest {
                 resource_id,
                 maybe_domain,
             } => {
-                // Resolve the domain name that we want to talk to to the IP that we generated as part of the Transition for sending a DNS query.
-                let resolved_ips = maybe_domain
-                    .as_ref()
-                    .and_then(|r| global_dns_records.get(&r.name).cloned())
-                    .unwrap_or_default();
+                let maybe_entry = maybe_domain.and_then(|r| {
+                    let resolved_ips = Vec::from_iter(global_dns_records.get(&r.name).cloned()?);
 
+                    Some(DnsResourceNatEntry::new(r, resolved_ips))
+                });
                 let resource = portal.map_client_resource_to_gateway_resource(resource_id);
 
                 let Some(gateway) = self.gateways.get_mut(&gateway_id) else {
@@ -751,14 +749,12 @@ impl TunnelTest {
                             None,
                             resource.clone(),
                         );
-                        if let Some(r) = maybe_domain {
+                        if let Some(entry) = maybe_entry {
                             g.sut
-                                .setup_dns_resource_nat(
+                                .create_dns_resource_nat_entry(
                                     self.client.inner().id,
                                     resource.id(),
-                                    r.name,
-                                    r.proxy_ips,
-                                    Vec::from_iter(resolved_ips),
+                                    entry,
                                     now,
                                 )
                                 .unwrap()
