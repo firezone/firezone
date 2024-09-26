@@ -7,7 +7,6 @@ defmodule Web.LiveTable do
   import Web.TableComponents
   import Web.CoreComponents
   import Web.FormComponents
-  alias Domain.Actors
 
   @doc """
   A drop-in replacement of `Web.TableComponents.table/1` component that adds sorting, filtering and pagination.
@@ -651,11 +650,6 @@ defmodule Web.LiveTable do
 
   defp put_table_state(socket, id, key, value) do
     Map.put(socket.assigns[key] || %{}, id, value)
-  end
-
-  defp preload_values(%{name: :actor_group_id} = filter, _query_module, subject) do
-    groups = Actors.all_groups!(subject, preload: :provider)
-    %{filter | values: Web.Groups.Components.select_options(groups)}
   end
 
   defp preload_values(%{values: fun} = filter, _query_module, subject) when is_function(fun, 1) do

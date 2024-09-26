@@ -151,7 +151,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
       <.label :if={@label} for={"#{@id}-input"}><%= @label %></.label>
 
       <div class="relative group">
-        <input type="text" name={@name} value="" class="hidden" />
+        <input type="text" name={@name} value={@value} class="hidden" />
 
         <input
           id={"#{@id}-input"}
