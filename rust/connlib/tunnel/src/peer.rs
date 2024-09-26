@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{hash_map, BTreeMap, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
@@ -203,7 +203,6 @@ impl ClientOnGateway {
             .collect_vec();
 
         self.assign_translations(name, resource_id, &resolved_ips, proxy_ips, now)?;
-        self.recalculate_filters();
 
         Ok(())
     }
@@ -251,6 +250,7 @@ impl ClientOnGateway {
         }
 
         domains.insert(name, mapped_ips.to_vec());
+        self.recalculate_filters();
 
         Ok(())
     }
@@ -260,8 +260,24 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn expire_resources(&mut self, now: DateTime<Utc>) {
-        self.resources.retain(|_, r| r.is_allowed(&now));
-        self.recalculate_filters();
+        let cid = self.id;
+        let mut any_expired = false;
+
+        self.resources.retain(|rid, r| {
+            let is_allowed = r.is_allowed(&now);
+
+            if !is_allowed {
+                tracing::info!(%cid, %rid, "Access to resource expired");
+            }
+
+            any_expired |= is_allowed;
+
+            is_allowed
+        });
+
+        if any_expired {
+            self.recalculate_filters();
+        }
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<GatewayEvent> {
@@ -315,49 +331,24 @@ impl ClientOnGateway {
         resource: connlib_shared::messages::gateway::ResourceDescription,
         expires_at: Option<DateTime<Utc>>,
     ) {
-        self.resources.insert(
-            resource.id(),
-            match resource {
-                ResourceDescription::Dns(r) => ResourceOnGateway::Dns {
-                    domains: HashMap::default(),
-                    filters: r.filters,
-                    address: r.address,
-                    expires_at,
-                },
-                ResourceDescription::Cidr(r) => ResourceOnGateway::Cidr {
-                    network: r.address,
-                    filters: r.filters,
-                    expires_at,
-                },
-                ResourceDescription::Internet(_) => ResourceOnGateway::Internet { expires_at },
-            },
-        );
+        match self.resources.entry(resource.id()) {
+            hash_map::Entry::Vacant(v) => {
+                v.insert(ResourceOnGateway::new(resource, expires_at));
+            }
+            hash_map::Entry::Occupied(mut o) => o.get_mut().update(&resource),
+        }
 
         self.recalculate_filters();
     }
 
     // Note: we only allow updating filters and names
     // but names updates have no effect on the gateway
-    pub(crate) fn update_resource(&mut self, resource: &ResourceDescription) {
-        let Some(old_resource) = self.resources.get_mut(&resource.id()) else {
+    pub(crate) fn update_resource(&mut self, new_description: &ResourceDescription) {
+        let Some(resource) = self.resources.get_mut(&new_description.id()) else {
             return;
         };
 
-        match (old_resource, resource) {
-            (ResourceOnGateway::Cidr { filters, .. }, ResourceDescription::Cidr(new)) => {
-                *filters = new.filters.clone();
-            }
-            (ResourceOnGateway::Dns { filters, .. }, ResourceDescription::Dns(new)) => {
-                *filters = new.filters.clone();
-            }
-            (ResourceOnGateway::Internet { .. }, ResourceDescription::Internet(_)) => {
-                // No-op.
-            }
-            (current, new) => {
-                tracing::error!(?current, ?new, "Resources cannot change type"); // TODO: This could be enforced at compile-time if we had typed resource IDs.
-                return;
-            }
-        }
+        resource.update(new_description);
 
         self.recalculate_filters();
     }
@@ -384,6 +375,9 @@ impl ClientOnGateway {
                 }
 
                 filter_engine.add_filters(filters.flatten());
+
+                tracing::trace!(%ip, filters = ?filter_engine, "Installing new filters");
+
                 self.filters.insert(*ip, filter_engine);
             }
         }
@@ -521,6 +515,41 @@ enum ResourceOnGateway {
 }
 
 impl ResourceOnGateway {
+    fn new(resource: ResourceDescription, expires_at: Option<DateTime<Utc>>) -> Self {
+        match resource {
+            ResourceDescription::Dns(r) => ResourceOnGateway::Dns {
+                domains: HashMap::default(),
+                filters: r.filters,
+                address: r.address,
+                expires_at,
+            },
+            ResourceDescription::Cidr(r) => ResourceOnGateway::Cidr {
+                network: r.address,
+                filters: r.filters,
+                expires_at,
+            },
+            ResourceDescription::Internet(_) => ResourceOnGateway::Internet { expires_at },
+        }
+    }
+
+    fn update(&mut self, resource: &ResourceDescription) {
+        match (self, resource) {
+            (ResourceOnGateway::Cidr { filters, .. }, ResourceDescription::Cidr(new)) => {
+                *filters = new.filters.clone();
+            }
+            (ResourceOnGateway::Dns { filters, .. }, ResourceDescription::Dns(new)) => {
+                *filters = new.filters.clone();
+            }
+            (ResourceOnGateway::Internet { .. }, ResourceDescription::Internet(_)) => {
+                // No-op.
+            }
+            (current, new) => {
+                tracing::error!(?current, ?new, "Resources cannot change type");
+                // TODO: This could be enforced at compile-time if we had typed resource IDs.
+            }
+        }
+    }
+
     fn ips(&self) -> Vec<IpNetwork> {
         match self {
             ResourceOnGateway::Cidr { network, .. } => vec![*network],
