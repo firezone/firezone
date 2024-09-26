@@ -14,7 +14,12 @@ export default function GUI({ title }: { title: string }) {
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       {/*
-      <Entry version="1.3.6" date={new Date(todo)}>
+      <Entry version="1.3.7" date={new Date(todo)}>
+        <ul className="list-disc space-y-2 pl-4 mb-4">
+        </ul>
+      </Entry>
+      */}
+      <Entry version="1.3.6" date={new Date("2024-09-25")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6809">
             Fixes a bug where non-wildcard DNS resources were not prioritised
@@ -22,7 +27,6 @@ export default function GUI({ title }: { title: string }) {
           </ChangeItem>
         </ul>
       </Entry>
-      */}
       <Entry version="1.3.5" date={new Date("2024-09-25")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6788">
