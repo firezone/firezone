@@ -251,8 +251,6 @@ where
                 self.tunnel.set_new_interface_config(interface);
                 self.tunnel.set_resources(resources);
                 self.tunnel.update_relays(BTreeSet::default(), relays);
-
-                tracing::info!("Firezone Started!");
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
                 self.tunnel.add_resource(resource);
