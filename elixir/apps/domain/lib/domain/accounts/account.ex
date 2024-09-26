@@ -11,7 +11,7 @@ defmodule Domain.Accounts.Account do
     embeds_one :features, Domain.Accounts.Features, on_replace: :delete
     embeds_one :limits, Domain.Accounts.Limits, on_replace: :delete
 
-    embeds_one :config, Domain.Accounts.Config, on_replace: :delete
+    embeds_one :config, Domain.Accounts.Config, on_replace: :update
 
     embeds_one :metadata, Metadata, primary_key: false, on_replace: :update do
       embeds_one :stripe, Stripe, primary_key: false, on_replace: :update do
