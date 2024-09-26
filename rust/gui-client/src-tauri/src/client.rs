@@ -27,6 +27,7 @@ pub(crate) fn run() -> Result<()> {
     std::panic::set_hook(Box::new(tracing_panic::panic_hook));
     let cli = Cli::parse();
 
+    // TODO: Why is this here?
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");

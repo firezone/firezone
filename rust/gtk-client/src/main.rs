@@ -1,24 +1,74 @@
-use anyhow::Result;
+use anyhow::{Context as _, Result};
+use clap::{Args, Parser};
 use firezone_gui_client_common::{
     self as common, auth,
+    compositor::{self, Image},
     controller::{Controller, ControllerRequest, CtlrTx, GuiIntegration},
+    deep_link,
     ipc,
-    system_tray::Entry,
+    system_tray::{AppState, ConnlibState, Entry, Icon, IconBase},
     updates,
 };
 use firezone_headless_client::LogFilterReloader;
 use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow};
+use secrecy::{ExposeSecret as _, SecretString};
+use std::str::FromStr;
 use tokio::sync::mpsc;
 use tray_icon::{menu::MenuEvent, TrayIconBuilder};
 
+// TODO: De-dupe icon compositing with the Tauri Client.
+
+// Figma is the source of truth for the tray icon layers
+// <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=nHBOzOnSY5Ol4asV-0>
+const LOGO_BASE: &[u8] = include_bytes!("../../gui-client/src-tauri/icons/tray/Logo.png");
+const LOGO_GREY_BASE: &[u8] = include_bytes!("../../gui-client/src-tauri/icons/tray/Logo grey.png");
+const BUSY_LAYER: &[u8] = include_bytes!("../../gui-client/src-tauri/icons/tray/Busy layer.png");
+const SIGNED_OUT_LAYER: &[u8] = include_bytes!("../../gui-client/src-tauri/icons/tray/Signed out layer.png");
+const UPDATE_READY_LAYER: &[u8] = include_bytes!("../../gui-client/src-tauri/icons/tray/Update ready layer.png");
+
+const TOOLTIP: &str = "Firezone";
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Cmd>,
+}
+
+#[derive(clap::Subcommand)]
+enum Cmd {
+    OpenDeepLink(DeepLink),
+}
+
+#[derive(Args)]
+struct DeepLink {
+    url: url::Url, // TODO: Should be `Secret`?
+}
+
 fn main() -> Result<()> {
+    let current_exe = std::env::current_exe()?;
+    let cli = Cli::parse();
+
+    match cli.command {
+        Some(Cmd::OpenDeepLink(deep_link)) => {
+            let rt = tokio::runtime::Runtime::new()?;
+            if let Err(error) = rt.block_on(deep_link::open(&deep_link.url)) {
+                tracing::error!(?error, "Error in `OpenDeepLink`");
+            }
+            return Ok(());
+        },
+        None => {}
+    }
+
     let common::logging::Handles {
         logger: _logger,
         reloader: log_filter_reloader,
     } = start_logging("debug")?; // TODO
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
+
+    let deep_link_server = rt.block_on(async { deep_link::Server::new().await })?;
 
     let app = Application::builder()
         .application_id("dev.firezone.client")
@@ -37,31 +87,26 @@ fn main() -> Result<()> {
         win.show_all();
     });
 
-    let mut icon_rgba = vec![];
-    for _ in 0..96 * 96 {
-        icon_rgba.push(255);
-        icon_rgba.push(0);
-        icon_rgba.push(255);
-        icon_rgba.push(255);
-    }
-    let icon = tray_icon::Icon::from_rgba(icon_rgba, 96, 96)?;
-
     gtk::init()?;
     let tray_icon = TrayIconBuilder::new()
-        .with_tooltip("system-tray - tray icon library!")
-        .with_icon(icon)
+        .with_tooltip(TOOLTIP)
+        .with_icon(icon_to_native_icon(&Icon::default()))
         .build()?;
 
     let (main_tx, main_rx) = mpsc::channel(100);
 
     let l = MainThreadLoop {
         app: app.clone(),
+        last_icon_set: Default::default(),
         main_rx,
         tray_icon,
     };
     glib::spawn_future_local(l.run());
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(100);
+
+    deep_link::register(current_exe)?;
+    tokio::spawn(accept_deep_links(deep_link_server, ctlr_tx.clone()));
 
     {
         let ctlr_tx = ctlr_tx.clone();
@@ -92,8 +137,34 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+// Worker task to accept deep links from a named pipe forever
+///
+/// * `server` An initial named pipe server to consume before making new servers. This lets us also use the named pipe to enforce single-instance
+async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Result<()> {
+    loop {
+        match server.accept().await {
+            Ok(bytes) => {
+                let url = SecretString::from_str(
+                    std::str::from_utf8(bytes.expose_secret())
+                        .context("Incoming deep link was not valid UTF-8")?,
+                )
+                .context("Impossible: can't wrap String into SecretString")?;
+                // Ignore errors from this, it would only happen if the app is shutting down, otherwise we would wait
+                ctlr_tx
+                    .send(ControllerRequest::SchemeRequest(url))
+                    .await
+                    .ok();
+            }
+            Err(error) => tracing::error!(?error, "error while accepting deep link"),
+        }
+        // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.
+        server = deep_link::Server::new().await?;
+    }
+}
+
 struct MainThreadLoop {
     app: gtk::Application,
+    last_icon_set: Icon,
     main_rx: mpsc::Receiver<MainThreadReq>,
     tray_icon: tray_icon::TrayIcon,
 }
@@ -103,17 +174,63 @@ impl MainThreadLoop {
         while let Some(req) = self.main_rx.recv().await {
             match req {
                 MainThreadReq::Quit => self.app.quit(),
-                MainThreadReq::SetTrayMenu(app_state) => self.set_tray_menu(app_state)?,
+                MainThreadReq::SetTrayMenu(app_state) => self.set_tray_menu(*app_state)?,
             }
         }
         Ok(())
     }
 
-    fn set_tray_menu(&mut self, app_state: common::system_tray::AppState) -> Result<()> {
-        let menu = build_menu("", &app_state.into_menu())?;
+    fn set_tray_menu(&mut self, state: AppState) -> Result<()> {
+        let base = match &state.connlib {
+            ConnlibState::Loading
+            | ConnlibState::RetryingConnection
+            | ConnlibState::WaitingForBrowser
+            | ConnlibState::WaitingForPortal
+            | ConnlibState::WaitingForTunnel => IconBase::Busy,
+            ConnlibState::SignedOut => IconBase::SignedOut,
+            ConnlibState::SignedIn { .. } => IconBase::SignedIn,
+        };
+        let new_icon = Icon {
+            base,
+            update_ready: state.release.is_some(),
+        };
+
+        let menu = build_menu("", &state.into_menu())?;
         self.tray_icon.set_menu(Some(Box::new(menu)));
+        // TODO: Set menu tooltip here too
+        self.set_icon(new_icon)?;
+
         Ok(())
     }
+
+    fn set_icon(&mut self, icon: Icon) -> Result<()> {
+        if icon == self.last_icon_set {
+            return Ok(());
+        }
+        // TODO: Does `tray-icon` have the same problem as `tao`,
+        // where it writes PNGs to `/run/user/$UID/` every time you set an icon?
+        self.tray_icon.set_icon(Some(icon_to_native_icon(&icon)))?;
+        self.last_icon_set = icon;
+        Ok(())
+    }
+}
+
+fn icon_to_native_icon(that: &Icon) -> tray_icon::Icon {
+    let layers = match that.base {
+        IconBase::Busy => &[LOGO_GREY_BASE, BUSY_LAYER][..],
+        IconBase::SignedIn => &[LOGO_BASE][..],
+        IconBase::SignedOut => &[LOGO_GREY_BASE, SIGNED_OUT_LAYER][..],
+    }
+    .iter()
+    .copied()
+    .chain(that.update_ready.then_some(UPDATE_READY_LAYER));
+    let composed =
+        compositor::compose(layers).expect("PNG decoding should always succeed for baked-in PNGs");
+    image_to_native_icon(composed)
+}
+
+fn image_to_native_icon(val: Image) -> tray_icon::Icon {
+    tray_icon::Icon::from_rgba(val.rgba, val.width, val.height).expect("Converting a tray icon to RGBA should always work")
 }
 
 fn build_menu(text: &str, that: &common::system_tray::Menu) -> Result<tray_icon::menu::Submenu> {
@@ -154,7 +271,7 @@ fn build_item(that: &common::system_tray::Item) -> tray_icon::menu::MenuItem {
 /// Something that needs to be done on the GTK+ main thread.
 enum MainThreadReq {
     Quit,
-    SetTrayMenu(common::system_tray::AppState),
+    SetTrayMenu(Box<common::system_tray::AppState>),
 }
 
 async fn run_controller(
@@ -201,8 +318,8 @@ impl GuiIntegration for GtkIntegration {
         Ok(())
     }
 
-    fn open_url<P: AsRef<str>>(&self, _url: P) -> Result<()> {
-        tracing::warn!("open_url not implemented");
+    fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
+        open::that(std::ffi::OsStr::new(url.as_ref()))?;
         Ok(())
     }
 
@@ -213,7 +330,7 @@ impl GuiIntegration for GtkIntegration {
 
     fn set_tray_menu(&mut self, app_state: common::system_tray::AppState) -> Result<()> {
         self.main_tx
-            .try_send(MainThreadReq::SetTrayMenu(app_state))?;
+            .try_send(MainThreadReq::SetTrayMenu(Box::new(app_state)))?;
         Ok(())
     }
 

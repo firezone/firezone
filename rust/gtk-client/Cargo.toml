@@ -5,12 +5,15 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.89"
+clap = { version = "4.5", features = ["derive",  "env"] }
 firezone-bin-shared = { path = "../bin-shared" }
 firezone-gui-client-common = { path = "../gui-client/src-common" }
 firezone-headless-client = { path = "../headless-client" }
 firezone-logging = { path = "../logging" }
 glib = "0.18.5"
 gtk = "0.18.1"
+open = "5.3.0"
+secrecy = "0.8"
 serde_json = "1.0.128"
 tokio = { version = "1.40.0", features = ["rt-multi-thread", "sync", "time"] }
 tracing = "0.1.40"
