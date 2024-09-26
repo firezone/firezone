@@ -7,7 +7,6 @@ defmodule Web.Settings.DNS do
            Accounts.fetch_account_by_id(socket.assigns.account.id, socket.assigns.subject) do
       form =
         Accounts.change_account(account, %{})
-        |> maybe_append_empty_embed()
         |> to_form()
 
       socket =
@@ -106,13 +105,8 @@ defmodule Web.Settings.DNS do
   end
 
   def handle_event("change", %{"account" => attrs}, socket) do
-    changeset =
-      Accounts.change_account(socket.assigns.account, attrs)
-      |> maybe_append_empty_embed()
-      |> filter_errors()
-      |> Map.put(:action, :validate)
-
-    {:noreply, assign(socket, form: to_form(changeset))}
+    changeset = Accounts.change_account(socket.assigns.account, attrs)
+    {:noreply, assign(socket, form: to_form(changeset, action: :validate))}
   end
 
   def handle_event("submit", %{"account" => attrs}, socket) do
@@ -120,73 +114,12 @@ defmodule Web.Settings.DNS do
 
     with {:ok, account} <-
            Accounts.update_account(socket.assigns.account, attrs, socket.assigns.subject) do
-      form =
-        Accounts.change_account(account, %{})
-        |> maybe_append_empty_embed()
-        |> to_form()
-
-      {:noreply, assign(socket, account: account, form: form)}
+      changeset = Accounts.change_account(account, %{})
+      {:noreply, assign(socket, account: account, form: to_form(changeset))}
     else
       {:error, changeset} ->
-        changeset =
-          changeset
-          |> maybe_append_empty_embed()
-          |> filter_errors()
-          |> Map.put(:action, :validate)
-
-        {:noreply, assign(socket, form: to_form(changeset))}
+        {:noreply, assign(socket, form: to_form(changeset, action: :validate))}
     end
-  end
-
-  defp filter_errors(changeset) do
-    update_clients_upstream_dns(changeset, fn
-      clients_upstream_dns_changesets ->
-        remove_errors(clients_upstream_dns_changesets, :address, "can't be blank")
-    end)
-  end
-
-  defp remove_errors(changesets, field, message) do
-    Enum.map(changesets, fn changeset ->
-      errors =
-        Enum.filter(changeset.errors, fn
-          {^field, {^message, _}} -> false
-          {_, _} -> true
-        end)
-
-      %{changeset | errors: errors}
-    end)
-  end
-
-  defp maybe_append_empty_embed(changeset) do
-    update_clients_upstream_dns(changeset, fn
-      clients_upstream_dns_changesets ->
-        last_client_upstream_dns_changeset = List.last(clients_upstream_dns_changesets)
-
-        with true <- last_client_upstream_dns_changeset != nil,
-             {_data_or_changes, last_address} <-
-               Ecto.Changeset.fetch_field(last_client_upstream_dns_changeset, :address),
-             true <- last_address in [nil, ""] do
-          clients_upstream_dns_changesets
-        else
-          _other -> clients_upstream_dns_changesets ++ [%Accounts.Config.ClientsUpstreamDNS{}]
-        end
-    end)
-  end
-
-  defp update_clients_upstream_dns(changeset, cb) do
-    config_changeset = Ecto.Changeset.get_embed(changeset, :config)
-
-    clients_upstream_dns_changeset =
-      Ecto.Changeset.get_embed(config_changeset, :clients_upstream_dns)
-
-    config_changeset =
-      Ecto.Changeset.put_embed(
-        config_changeset,
-        :clients_upstream_dns,
-        cb.(clients_upstream_dns_changeset)
-      )
-
-    Ecto.Changeset.put_embed(changeset, :config, config_changeset)
   end
 
   defp remove_empty_servers(attrs) do
