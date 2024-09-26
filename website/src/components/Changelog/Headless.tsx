@@ -2,6 +2,7 @@ import ChangeItem from "./ChangeItem";
 import Entry from "./Entry";
 import Entries from "./Entries";
 import Link from "next/link";
+import Unreleased from "./Unreleased";
 
 export default function Headless() {
   const href = "/dl/firezone-client-headless-linux/:version/:arch";
@@ -10,12 +11,7 @@ export default function Headless() {
   return (
     <Entries href={href} arches={arches} title="Linux headless">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      {/*
-      <Entry version="1.3.4" date={new Date(todo)}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-        </ul>
-      </Entry>
-      */}
+      <Unreleased></Unreleased>
       <Entry version="1.3.3" date={new Date("2024-09-25")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6809">

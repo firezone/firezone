@@ -2,6 +2,7 @@ import Entry from "./Entry";
 import Entries from "./Entries";
 import Link from "next/link";
 import ChangeItem from "./ChangeItem";
+import Unreleased from "./Unreleased";
 
 export default function Gateway() {
   const href = "/dl/firezone-gateway/:version/:arch";
@@ -9,6 +10,7 @@ export default function Gateway() {
 
   return (
     <Entries href={href} arches={arches} title="Gateway">
+      <Unreleased></Unreleased>
       <Entry version="1.3.1" date={new Date("2024-09-05")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6563">

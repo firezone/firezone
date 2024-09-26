@@ -2,6 +2,7 @@ import ChangeItem from "./ChangeItem";
 import Entries from "./Entries";
 import Entry from "./Entry";
 import Link from "next/link";
+import Unreleased from "./Unreleased";
 
 export default function Android() {
   return (
@@ -10,16 +11,14 @@ export default function Android() {
       title="Android"
     >
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      {/*
-      <Entry version="1.3.4" date={new Date(todo)}>
+      <Unreleased>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6809">
             Fixes a bug where non-wildcard DNS resources were not prioritised
             over wildcard ones (e.g. `app.example.com` vs `*.example.com`).
           </ChangeItem>
         </ul>
-      </Entry>
-      */}
+      </Unreleased>
       <Entry version="1.3.3" date={new Date("2024-09-24")}>
         <ul className="list-disc space-y-2 pl-4 mb-4">
           <ChangeItem pull="6707">
