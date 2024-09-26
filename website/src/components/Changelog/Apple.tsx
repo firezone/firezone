@@ -11,6 +11,7 @@ export default function Apple() {
       title="macOS / iOS"
     >
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
+      <Unreleased></Unreleased>
       <Entry version="1.3.5" date={new Date("2024-09-26")}>
         <ChangeItem pull="6809">
           Fixes a bug where non-wildcard DNS resources were not prioritised over
