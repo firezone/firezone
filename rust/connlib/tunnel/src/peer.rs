@@ -217,7 +217,10 @@ impl ClientOnGateway {
         proxy_ips: Vec<IpAddr>,
         now: Instant,
     ) -> Result<()> {
-        let Some(ResourceOnGateway::Dns { address, .. }) = self.resources.get(&resource_id) else {
+        let Some(ResourceOnGateway::Dns {
+            address, domains, ..
+        }) = self.resources.get_mut(&resource_id)
+        else {
             bail!("Cannot assign translation for non-DNS resource")
         };
 
@@ -246,6 +249,8 @@ impl ClientOnGateway {
                 TranslationState::new(resource_id, name.clone(), real_ip, now),
             );
         }
+
+        domains.insert(name, mapped_ips.to_vec());
 
         Ok(())
     }
