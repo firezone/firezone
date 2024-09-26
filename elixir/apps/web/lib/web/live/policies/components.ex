@@ -13,17 +13,18 @@ defmodule Web.Policies.Components do
     {"U", "Sunday"}
   ]
 
-  @resource_types %{
-    internet: %{index: 1, label: nil},
-    dns: %{index: 2, label: "DNS"},
-    ip: %{index: 3, label: "IP"},
-    cidr: %{index: 4, label: "CIDR"}
-  }
-
   attr(:policy, :map, required: true)
 
   def policy_name(assigns) do
     ~H"<%= @policy.actor_group.name %> → <%= @policy.resource.name %>"
+  end
+
+  def maybe_drop_unsupported_conditions(attrs, socket) do
+    if Domain.Accounts.policy_conditions_enabled?(socket.assigns.account) do
+      attrs
+    else
+      Map.delete(attrs, "conditions")
+    end
   end
 
   def map_condition_params(attrs, opts) do
@@ -774,47 +775,14 @@ defmodule Web.Policies.Components do
     """
   end
 
-  def resource_options(resources, account) do
-    resources
-    |> Enum.group_by(& &1.type)
-    |> Enum.sort_by(fn {type, _} ->
-      Map.fetch!(@resource_types, type) |> Map.fetch!(:index)
-    end)
-    |> Enum.map(fn {type, resources} ->
-      options =
-        resources
-        |> Enum.sort_by(fn resource -> resource.name end)
-        |> Enum.map(&resource_option(&1, account))
-
-      label = Map.fetch!(@resource_types, type) |> Map.fetch!(:label)
-
-      {label, options}
-    end)
-  end
-
-  defp resource_option(%{type: :internet} = resource, account) do
-    gateway_group_names = resource.gateway_groups |> Enum.map(& &1.name)
-
-    if Domain.Accounts.internet_resource_enabled?(account) do
-      [
-        key: "Internet - #{Enum.join(gateway_group_names, ",")}",
-        value: resource.id
-      ]
-    else
-      [
-        key: "Internet - upgrade to unlock",
-        value: resource.id,
-        disabled: true
-      ]
-    end
-  end
-
-  defp resource_option(resource, _account) do
-    gateway_group_names = resource.gateway_groups |> Enum.map(& &1.name)
-
-    [
-      key: "#{resource.name} - #{Enum.join(gateway_group_names, ",")}",
-      value: resource.id
-    ]
+  def resource_gateway_groups(assigns) do
+    ~H"""
+    <.intersperse :let={gateway_group} enum={@gateway_groups}>
+      <:separator>
+        <span class="mr-1">,</span>
+      </:separator>
+      <span><%= gateway_group.name %></span>
+    </.intersperse>
+    """
   end
 end

@@ -1,5 +1,56 @@
 defmodule Web.Resources.Components do
   use Web, :component_library
+  alias Domain.Resources
+
+  @resource_types %{
+    internet: %{index: 1, label: nil},
+    dns: %{index: 2, label: "DNS"},
+    ip: %{index: 3, label: "IP"},
+    cidr: %{index: 4, label: "CIDR"}
+  }
+
+  def fetch_resource_option(id, subject) do
+    {:ok, resource} = Resources.fetch_resource_by_id(id, subject)
+    {:ok, resource_option(resource)}
+  end
+
+  def list_resource_options(search_query_or_nil, subject) do
+    filter =
+      if search_query_or_nil != "" and search_query_or_nil != nil,
+        do: [name_or_address: search_query_or_nil],
+        else: []
+
+    {:ok, resources, metadata} =
+      Resources.list_resources(subject,
+        preload: [:gateway_groups],
+        limit: 25,
+        filter: filter
+      )
+
+    {:ok, grouped_resource_options(resources), metadata}
+  end
+
+  defp grouped_resource_options(resources) do
+    resources
+    |> Enum.group_by(& &1.type)
+    |> Enum.sort_by(fn {type, _} ->
+      Map.fetch!(@resource_types, type) |> Map.fetch!(:index)
+    end)
+    |> Enum.map(fn {type, resources} ->
+      options =
+        resources
+        |> Enum.sort_by(fn resource -> resource.name end)
+        |> Enum.map(&resource_option(&1))
+
+      label = Map.fetch!(@resource_types, type) |> Map.fetch!(:label)
+
+      {label, options}
+    end)
+  end
+
+  defp resource_option(resource) do
+    {resource.id, resource.name, resource}
+  end
 
   def map_filters_form_attrs(attrs, account) do
     attrs =

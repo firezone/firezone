@@ -1,30 +1,28 @@
 defmodule Web.Policies.New do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Resources, Actors, Policies, Auth}
+  alias Domain.{Policies, Auth}
 
   def mount(params, _session, socket) do
-    # TODO: unify this dropdown and the one we use for live table filters
-    resources = Resources.all_resources!(socket.assigns.subject, preload: [:gateway_groups])
-    # TODO: unify this dropdown and the one we use for live table filters
-    actor_groups = Actors.all_groups!(socket.assigns.subject, preload: :provider)
     providers = Auth.all_active_providers_for_account!(socket.assigns.account)
-    form = to_form(Policies.new_policy(%{}, socket.assigns.subject))
+
+    form =
+      Policies.new_policy(%{}, socket.assigns.subject)
+      |> to_form()
 
     socket =
       assign(socket,
-        resources: resources,
-        actor_groups: actor_groups,
-        providers: providers,
-        params: Map.take(params, ["site_id"]),
-        resource_id: params["resource_id"],
-        actor_group_id: params["actor_group_id"],
         page_title: "New Policy",
         timezone: Map.get(socket.private.connect_params, "timezone", "UTC"),
+        providers: providers,
+        params: Map.take(params, ["site_id"]),
+        selected_resource: nil,
+        enforced_resource_id: params["resource_id"],
+        enforced_actor_group_id: params["actor_group_id"],
         form: form
       )
 
-    {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+    {:ok, socket}
   end
 
   def render(assigns) do
@@ -38,66 +36,111 @@ defmodule Web.Policies.New do
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <h2 class="mb-4 text-xl text-neutral-900">Policy details</h2>
-          <div
-            :if={@actor_groups == []}
-            class={[
-              "p-4 text-sm flash-error",
-              "text-red-800 bg-red-50"
-            ]}
-            role="alert"
-          >
-            <p class="text-sm leading-6">
-              <.icon name="hero-exclamation-circle-mini" class="h-4 w-4" />
-              You have no groups to create policies for. You can create a group <.link
-                navigate={~p"/#{@account}/groups/new"}
-                class={link_style()}
-              >here</.link>.
-            </p>
-          </div>
 
-          <.form :if={@actor_groups != []} for={@form} phx-submit="submit" phx-change="validate">
+          <.form for={@form} phx-submit="submit" phx-change="validate">
             <.base_error form={@form} field={:base} />
+
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <fieldset class="flex flex-col gap-2">
-                <.input
-                  field={@form[:actor_group_id]}
+                <.live_component
+                  module={Web.Components.FormComponents.SelectWithGroups}
+                  id="policy_actor_group_id"
                   label="Group"
-                  type="group_select"
-                  options={Web.Groups.Components.select_options(@actor_groups)}
-                  value={@actor_group_id || @form[:actor_group_id].value}
-                  disabled={not is_nil(@actor_group_id)}
+                  placeholder="Select Actor Group"
+                  field={@form[:actor_group_id]}
+                  fetch_option_callback={&Web.Groups.Components.fetch_group_option(&1, @subject)}
+                  list_options_callback={&Web.Groups.Components.list_group_options(&1, @subject)}
+                  value={@enforced_actor_group_id || @form[:actor_group_id].value}
+                  disabled={not is_nil(@enforced_actor_group_id)}
                   required
-                />
-
-                <% resource_id =
-                  @resource_id ||
-                    @form[:resource_id].value ||
-                    (length(@resources) > 0 and Enum.at(@resources, 0).id) %>
-
-                <.input
-                  field={@form[:resource_id]}
-                  label="Resource"
-                  type="group_select"
-                  options={resource_options(@resources, @account)}
-                  value={resource_id}
-                  disabled={not is_nil(@resource_id)}
-                  required
-                />
-
-                <% resource = Enum.find(@resources, &(&1.id == resource_id)) %>
-
-                <p
-                  :if={not is_nil(resource) and length(resource.connections) == 0}
-                  class="flex items-center gap-2 text-sm leading-6 text-orange-600 mt-2 w-full"
-                  data-validation-error-for="policy[resource_id]"
                 >
-                  <.icon name="hero-exclamation-triangle-mini" class="h-4 w-4" />
-                  This Resource isn't linked to any Sites.
-                  <.link navigate={~p"/#{@account}/resources/#{resource}/edit"} class={link_style()}>
-                    Edit the Resource
-                  </.link>
-                  to link it to a Site before creating a Policy.
-                </p>
+                  <:options_group :let={options_group}>
+                    <%= options_group %>
+                  </:options_group>
+
+                  <:option :let={group}>
+                    <%= group.name %>
+                  </:option>
+
+                  <:no_options :let={name}>
+                    <.error data-validation-error-for={name}>
+                      <span>
+                        You have no groups to create policies for. You can create a group <.link
+                          navigate={~p"/#{@account}/groups/new"}
+                          class={[link_style()]}
+                        >here</.link>.
+                      </span>
+                    </.error>
+                  </:no_options>
+
+                  <:no_search_results>
+                    No groups found. Try a different search query or create a new one <.link
+                      navigate={~p"/#{@account}/groups/new"}
+                      class={link_style()}
+                    >here</.link>.
+                  </:no_search_results>
+                </.live_component>
+
+                <.live_component
+                  module={Web.Components.FormComponents.SelectWithGroups}
+                  id="policy_resource_id"
+                  label="Resource"
+                  placeholder="Select Resource"
+                  field={@form[:resource_id]}
+                  fetch_option_callback={
+                    &Web.Resources.Components.fetch_resource_option(&1, @subject)
+                  }
+                  list_options_callback={
+                    &Web.Resources.Components.list_resource_options(&1, @subject)
+                  }
+                  on_change={&on_resource_change/1}
+                  value={@enforced_resource_id || @form[:resource_id].value}
+                  disabled={not is_nil(@enforced_resource_id)}
+                  required
+                >
+                  <:options_group :let={group}>
+                    <%= group %>
+                  </:options_group>
+
+                  <:option :let={resource}>
+                    <%= if resource.type == :internet do %>
+                      Internet
+                      <span :if={not Domain.Accounts.internet_resource_enabled?(@account)}>
+                        - <span class="text-red-800">upgrade to unlock</span>
+                      </span>
+                    <% else %>
+                      <%= resource.name %>
+                    <% end %>
+
+                    <span :if={resource.gateway_groups == []} class="text-red-800">
+                      (not connected to any Sites)
+                    </span>
+                    <span
+                      :if={length(resource.gateway_groups) > 0}
+                      class="text-neutral-500 inline-flex"
+                    >
+                      (<.resource_gateway_groups gateway_groups={resource.gateway_groups} />)
+                    </span>
+                  </:option>
+
+                  <:no_options :let={name}>
+                    <.error data-validation-error-for={name}>
+                      <span>
+                        You have no resources to create policies for. You can create a resource <.link
+                          navigate={~p"/#{@account}/resources/new"}
+                          class={[link_style()]}
+                        >here</.link>.
+                      </span>
+                    </.error>
+                  </:no_options>
+
+                  <:no_search_results>
+                    No resources found. Try a different search query or create a new one <.link
+                      navigate={~p"/#{@account}/resources/new"}
+                      class={link_style()}
+                    >here</.link>.
+                  </:no_search_results>
+                </.live_component>
 
                 <.input
                   field={@form[:description]}
@@ -109,7 +152,7 @@ defmodule Web.Policies.New do
               </fieldset>
 
               <.conditions_form
-                :if={is_nil(resource) or resource.type != :internet}
+                :if={not is_nil(@selected_resource) and @selected_resource.type != :internet}
                 form={@form}
                 account={@account}
                 timezone={@timezone}
@@ -117,7 +160,7 @@ defmodule Web.Policies.New do
               />
 
               <.options_form
-                :if={not is_nil(resource) and resource.type == :internet}
+                :if={not is_nil(@selected_resource) and @selected_resource.type == :internet}
                 form={@form}
                 account={@account}
                 timezone={@timezone}
@@ -137,11 +180,21 @@ defmodule Web.Policies.New do
     """
   end
 
+  def on_resource_change({_id, _name, resource}) do
+    send(self(), {:change_resource, resource})
+  end
+
+  def handle_info({:change_resource, resource}, socket) do
+    {:noreply, assign(socket, selected_resource: resource)}
+  end
+
   def handle_event("validate", %{"policy" => params}, socket) do
     form =
       params
-      |> put_default_params(socket)
+      |> maybe_enforce_resource_id(socket)
+      |> maybe_enforce_actor_group_id(socket)
       |> map_condition_params(empty_values: :keep)
+      |> maybe_drop_unsupported_conditions(socket)
       |> Policies.new_policy(socket.assigns.subject)
       |> to_form(action: :validate)
 
@@ -151,15 +204,10 @@ defmodule Web.Policies.New do
   def handle_event("submit", %{"policy" => params}, socket) do
     params =
       params
-      |> put_default_params(socket)
+      |> maybe_enforce_resource_id(socket)
+      |> maybe_enforce_actor_group_id(socket)
       |> map_condition_params(empty_values: :drop)
-
-    params =
-      if Domain.Accounts.policy_conditions_enabled?(socket.assigns.account) do
-        params
-      else
-        Map.delete(params, "conditions")
-      end
+      |> maybe_drop_unsupported_conditions(socket)
 
     with {:ok, _policy} <- Policies.create_policy(params, socket.assigns.subject) do
       cond do
@@ -168,12 +216,12 @@ defmodule Web.Policies.New do
           {:noreply,
            push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{site_id}?#resources")}
 
-        resource_id = socket.assigns.resource_id ->
+        resource_id = socket.assigns.enforced_resource_id ->
           # Created from Add Resource from Resources
           {:noreply,
            push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources/#{resource_id}")}
 
-        actor_group_id = socket.assigns.actor_group_id ->
+        actor_group_id = socket.assigns.enforced_actor_group_id ->
           # Created from Add Policy from Actor Group
           {:noreply,
            push_navigate(socket, to: ~p"/#{socket.assigns.account}/groups/#{actor_group_id}")}
@@ -187,13 +235,22 @@ defmodule Web.Policies.New do
       end
     else
       {:error, %Ecto.Changeset{} = changeset} ->
+        dbg(changeset)
         {:noreply, assign(socket, form: to_form(changeset, action: :insert))}
     end
   end
 
-  defp put_default_params(attrs, socket) do
-    if resource_id = socket.assigns.resource_id do
+  defp maybe_enforce_resource_id(attrs, socket) do
+    if resource_id = socket.assigns.enforced_resource_id do
       Map.put(attrs, "resource_id", resource_id)
+    else
+      attrs
+    end
+  end
+
+  defp maybe_enforce_actor_group_id(attrs, socket) do
+    if actor_group_id = socket.assigns.enforced_actor_group_id do
+      Map.put(attrs, "actor_group_id", actor_group_id)
     else
       attrs
     end
