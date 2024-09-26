@@ -16,7 +16,8 @@ members = [
   "logging",
   "phoenix-channel",
   "relay",
-  "socket-factory", "telemetry",
+  "socket-factory",
+  "telemetry",
   "tests/gui-smoke-test",
   "tests/http-test-server",
   "tun"
