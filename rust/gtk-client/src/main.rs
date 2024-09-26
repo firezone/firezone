@@ -2,16 +2,16 @@ use anyhow::Result;
 use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow};
 use std::time::Duration;
+use tokio::sync::mpsc;
 use tray_icon::{TrayIconBuilder, menu::{Menu, MenuEvent, MenuItem}};
 
 fn main() -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
+    let _guard = rt.enter();
 
     let app = Application::builder()
         .application_id("dev.firezone.client")
         .build();
-
-    let (main_tx, main_rx) = glib::MainContext::channel(Default::default());
 
     app.connect_activate(|app| {
         // We create the main window.
@@ -19,7 +19,7 @@ fn main() -> Result<()> {
             .application(app)
             .default_width(640)
             .default_height(480)
-            .title("Hello, World!")
+            .title("Firezone GTK+ 3")
             .build();
 
         // Don't forget to make all widgets visible.
@@ -45,27 +45,32 @@ fn main() -> Result<()> {
         .with_icon(icon)
         .build()?;
 
-    main_rx.attach(None, move |count| {
-        let tray_menu = Menu::new();
-        tray_menu.append(&MenuItem::with_id("do-not-panic", "Don't you panic", true, None)).unwrap();
-        tray_menu.append(&MenuItem::with_id("timer", format!("Time is {count}"), true, None)).unwrap();
-        tray_icon.set_menu(Some(Box::new(tray_menu)));
-        glib::ControlFlow::Continue
+    let (main_tx, mut main_rx) = mpsc::channel(1);
+
+    glib::spawn_future_local(async move {
+        loop {
+            let count = main_rx.recv().await.unwrap();
+            let tray_menu = Menu::new();
+            tray_menu.append(&MenuItem::with_id("do-not-panic", "Don't you panic", true, None)).unwrap();
+            tray_menu.append(&MenuItem::with_id("timer", format!("Time is {count}"), true, None)).unwrap();
+            tray_icon.set_menu(Some(Box::new(tray_menu)));
+        }
     });
 
-    rt.spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(1));
-        let mut count = 0;
-        loop {
-            interval.tick().await;
-            main_tx.send(count)?;
-            count += 1;
-        }
-        Ok::<_, anyhow::Error>(())
-    });
+    rt.spawn(run_controller(main_tx));
 
     if app.run() != 0.into() {
         anyhow::bail!("GTK main loop returned non-zero exit code");
     }
     Ok(())
+}
+
+async fn run_controller(main_tx: mpsc::Sender<usize>) -> Result<()> {
+    let mut interval = tokio::time::interval(Duration::from_secs(1));
+    let mut count = 0;
+    loop {
+        interval.tick().await;
+        main_tx.send(count).await?;
+        count += 1;
+    }
 }

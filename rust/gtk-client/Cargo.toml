@@ -7,7 +7,7 @@ edition = "2021"
 anyhow = "1.0.89"
 glib = "0.18.5"
 gtk = "0.18.1"
-tokio = { version = "1.40.0", features = ["rt-multi-thread", "time"] }
+tokio = { version = "1.40.0", features = ["rt-multi-thread", "sync", "time"] }
 tray-icon = "0.19.0"
 
 [workspace]
