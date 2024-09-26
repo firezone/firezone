@@ -5,9 +5,30 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.89"
+firezone-bin-shared = { path = "../bin-shared" }
+firezone-gui-client-common = { path = "../gui-client/src-common" }
+firezone-headless-client = { path = "../headless-client" }
+firezone-logging = { path = "../logging" }
 glib = "0.18.5"
 gtk = "0.18.1"
+serde_json = "1.0.128"
 tokio = { version = "1.40.0", features = ["rt-multi-thread", "sync", "time"] }
+tracing = "0.1.40"
 tray-icon = "0.19.0"
+url = "2.5.2"
+
+[patch.crates-io]
+boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
+str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
+ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
+ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
+tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "deps/bump-otel-0.23" } # Waiting for release.
+
+[profile.release]
+codegen-units = 1
+debug = "full"
+lto = "fat"
+split-debuginfo = "packed"
+strip = "none"
 
 [workspace]

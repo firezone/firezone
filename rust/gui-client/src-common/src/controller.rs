@@ -611,12 +611,12 @@ impl<I: GuiIntegration> Controller<I> {
                 Status::RetryingConnection { .. } => system_tray::ConnlibState::RetryingConnection,
                 Status::TunnelReady { resources } => {
                     system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
-                        actor_name: &auth_session.actor_name,
-                        favorite_resources: &self.advanced_settings.favorite_resources,
-                        internet_resource_enabled: &self
+                        actor_name: auth_session.actor_name.clone(),
+                        favorite_resources: self.advanced_settings.favorite_resources.clone(),
+                        internet_resource_enabled: self
                             .advanced_settings
                             .internet_resource_enabled,
-                        resources,
+                        resources: resources.clone(),
                     })
                 }
                 Status::WaitingForPortal { .. } => system_tray::ConnlibState::WaitingForPortal,
