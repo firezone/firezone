@@ -641,6 +641,7 @@ mod pattern {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bimap::BiHashMap;
     use std::str::FromStr as _;
     use test_case::test_case;
 
@@ -757,6 +758,40 @@ mod tests {
     #[test]
     fn doh_canary_domain_parses_correctly() {
         assert_eq!(DOH_CANARY_DOMAIN.to_string(), "use-application-dns.net")
+    }
+
+    #[test]
+    fn query_for_doh_canary_domain_records_nx_domain() {
+        let mut resolver = StubResolver::new(BTreeMap::default());
+        let src = IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1));
+        let dns_server = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+
+        let query = ip_packet::make::dns_query(
+            "use-application-dns.net".parse().unwrap(),
+            Rtype::A,
+            SocketAddr::from((src, 1000)),
+            SocketAddr::from((dns_server, 53)),
+            0,
+        )
+        .unwrap();
+
+        let control_flow = resolver
+            .handle(
+                &BiHashMap::from_iter([(dns_server, DnsServer::from((dns_server, 53)))]),
+                &query,
+            )
+            .unwrap();
+
+        let ControlFlow::Break(ResolveStrategy::LocalResponse(response)) = control_flow else {
+            panic!("Unexpected result: {control_flow:?}")
+        };
+
+        let udp_slice = response.as_udp().unwrap();
+        let message = Message::from_slice(udp_slice.payload()).unwrap();
+        let answers = message.answer().unwrap();
+
+        assert_eq!(message.header().rcode(), Rcode::NXDOMAIN);
+        assert_eq!(answers.count(), 0);
     }
 }
 
