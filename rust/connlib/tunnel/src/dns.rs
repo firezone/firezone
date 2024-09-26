@@ -13,12 +13,20 @@ use pattern::{Candidate, Pattern};
 use std::collections::{BTreeMap, HashMap};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::ControlFlow;
+use std::sync::LazyLock;
 
 const DNS_TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
 const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
 const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
 const DNS_PORT: u16 = 53;
+
+/// The DNS over HTTPS canary domain used by Firefox to check whether DoH can be enabled by default.
+///
+/// Responding to queries for this domain with NXDOMAIN will disable DoH.
+/// See <https://support.mozilla.org/en-US/kb/canary-domain-use-application-dnsnet>.
+static DOH_CANARY_DOMAIN: LazyLock<DomainName> =
+    LazyLock::new(|| DomainName::vec_from_str("use-application-dns.net").unwrap());
 
 pub struct StubResolver {
     fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
@@ -252,6 +260,24 @@ impl StubResolver {
         let qtype = question.qtype();
 
         tracing::trace!("Parsed packet as DNS query: '{qtype} {domain}'");
+
+        if domain == *DOH_CANARY_DOMAIN {
+            let payload = MessageBuilder::new_vec()
+                .start_answer(&message, Rcode::NXDOMAIN)
+                .unwrap()
+                .finish();
+
+            let packet = ip_packet::make::udp_packet(
+                packet.destination(),
+                packet.source(),
+                datagram.destination_port(),
+                datagram.source_port(),
+                payload,
+            )
+            .expect("src and dst are retrieved from the same packet");
+
+            return Ok(ControlFlow::Break(ResolveStrategy::LocalResponse(packet)));
+        }
 
         if let Some(records) = self.known_hosts.get_records(qtype, &domain) {
             let response = build_dns_with_answer(message, domain, records)?;
@@ -726,6 +752,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(resource_id, non_wc);
+    }
+
+    #[test]
+    fn doh_canary_domain_parses_correctly() {
+        assert_eq!(DOH_CANARY_DOMAIN.to_string(), "use-application-dns.net")
     }
 }
 
