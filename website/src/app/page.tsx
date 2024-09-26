@@ -22,7 +22,6 @@ import {
   FadeIn,
 } from "@/components/Animations";
 import ElevatorPitch from "@/components/ElevatorPitch";
-import "@/styles/hero.css";
 import CustomerTestimonials from "@/components/CustomerTestimonials";
 import FeatureCards from "@/components/FeatureCards";
 import SingleFeature from "@/components/SingleFeature";
@@ -39,67 +38,69 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="bg-neutral-950 bg-hero pt-28 mb-16">
-        <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
-          <Banner href="/blog/sep-2024-update" active>
-            <Badge
-              text="New"
-              bgColor="accent-700"
-              textColor="accent-200"
-              size="sm"
-            />
-            <span className="ml-1 ">
-              Internet Resources, REST API, and more
-            </span>
-            <HiArrowLongRight className="inline-block mx-1 w-5 h-5 duration-50 transition transform group-hover:translate-x-1" />
-          </Banner>
-          <h1
-            className={
-              "font-manrope mb-8 text-5xl sm:text-6xl md:text-7xl text-center drop-shadow-[inset_0_2px_0_0_rgba(255,255,255,100)] font-medium tracking-tight leading-tight bg-gradient-to-b from-white from-70% to-slate-200 text-transparent bg-clip-text"
-            }
-          >
-            Upgrade your VPN to zero-trust access
-          </h1>
-          <p className={"text-xl text-center text-neutral-400"}>
-            Firezone is a fast, flexible VPN replacement built on WireGuard®
-            that protects your most valuable resources without tedious
-            configuration.
-          </p>
-          <div className="flex sm:flex-row flex-col-reverse items-center justify-center sm:gap-x-6 md:gap-x-12 mt-10 w-full">
-            <div className="flex items-center my-4 mr-4">
-              <ActionLink
-                size="lg"
-                href="https://app.firezone.dev/sign_up"
-                color="neutral-100"
-                transitionColor="primary-450"
-              >
-                Get started for free
-              </ActionLink>
-            </div>
-            <div className=" flex items-center w-full sm:w-fit">
-              <button
-                type="button"
-                className="tracking-tight group shadow-primary-700 text-lg sm:w-48 w-full inline-flex shadow-lg justify-center items-center md:py-3 py-2 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
-              >
-                <Link href="/contact/sales">Book a demo</Link>
-                <HiArrowLongRight className="group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-7 h-7" />
-              </button>
+      <section className="bg-neutral-950">
+        <div className="mx-auto max-w-screen-2xl bg-hero bg-no-repeat bg-center sm:bg-cover pt-28 mb-16">
+          <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
+            <Banner href="/blog/sep-2024-update" active>
+              <Badge
+                text="New"
+                bgColor="accent-700"
+                textColor="accent-200"
+                size="sm"
+              />
+              <span className="ml-1 ">
+                Internet Resources, REST API, and more
+              </span>
+              <HiArrowLongRight className="inline-block mx-1 w-5 h-5 duration-50 transition transform group-hover:translate-x-1" />
+            </Banner>
+            <h1
+              className={
+                "font-manrope mb-8 text-5xl sm:text-6xl md:text-7xl text-center drop-shadow-[inset_0_2px_0_0_rgba(255,255,255,100)] font-medium tracking-tight leading-tight bg-gradient-to-b from-white from-70% to-slate-200 text-transparent bg-clip-text"
+              }
+            >
+              Upgrade your VPN to zero-trust access
+            </h1>
+            <p className={"text-xl text-center text-neutral-400"}>
+              Firezone is a fast, flexible VPN replacement built on WireGuard®
+              that protects your most valuable resources without tedious
+              configuration.
+            </p>
+            <div className="flex sm:flex-row flex-col-reverse items-center justify-center sm:gap-x-6 md:gap-x-12 mt-10 w-full">
+              <div className="flex items-center my-4 mr-4">
+                <ActionLink
+                  size="lg"
+                  href="https://app.firezone.dev/sign_up"
+                  color="neutral-100"
+                  transitionColor="primary-450"
+                >
+                  Get started for free
+                </ActionLink>
+              </div>
+              <div className=" flex items-center w-full sm:w-fit">
+                <button
+                  type="button"
+                  className="tracking-tight group shadow-primary-700 text-lg sm:w-48 w-full inline-flex shadow-lg justify-center items-center md:py-3 py-2 px-5 font-semibold text-center text-white rounded bg-primary-450 hover:ring-1 hover:ring-primary-450 duration-50 transform transition"
+                >
+                  <Link href="/contact/sales">Book a demo</Link>
+                  <HiArrowLongRight className="group-hover:translate-x-1 transition duration-50 group-hover:scale-110 transform ml-2 -mr-1 w-7 h-7" />
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="pt-24 pb-4 max-w-[1020px] mx-auto">
-          <div className="text-center text-sm mb-6 font-base text-neutral-500">
-            Backed by{" "}
-            <Image
-              src="/images/yc-logo-gray.png"
-              alt="yc logo gray"
-              width={100}
-              height={40}
-              className="mx-1 md:mx-1.5 inline-flex pb-0.5"
-            />{" "}
-            and trusted by hundreds of organizations
+          <div className="pt-24 pb-4 max-w-[1020px] mx-auto">
+            <div className="text-center text-sm mb-6 font-base text-neutral-500">
+              Backed by{" "}
+              <Image
+                src="/images/yc-logo-gray.png"
+                alt="yc logo gray"
+                width={100}
+                height={40}
+                className="mx-1 md:mx-1.5 inline-flex pb-0.5"
+              />{" "}
+              and trusted by hundreds of organizations
+            </div>
+            <CustomerLogosGrayscale />
           </div>
-          <CustomerLogosGrayscale />
         </div>
       </section>
 
