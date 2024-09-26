@@ -8,7 +8,11 @@ defmodule Domain.Accounts.Config.Changeset do
   def changeset(config \\ %Config{}, attrs) do
     config
     |> cast(attrs, [])
-    |> cast_embed(:clients_upstream_dns, with: &client_upstream_dns_changeset/2)
+    |> cast_embed(:clients_upstream_dns,
+      with: &client_upstream_dns_changeset/2,
+      sort_param: :clients_upstream_dns_sort,
+      drop_param: :clients_upstream_dns_drop
+    )
     |> validate_unique_clients_upstream_dns()
   end
 

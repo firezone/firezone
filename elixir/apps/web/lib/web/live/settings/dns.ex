@@ -57,8 +57,14 @@ defmodule Web.Settings.DNS do
               <div>
                 <.inputs_for :let={config} field={@form[:config]}>
                   <.inputs_for :let={dns} field={config[:clients_upstream_dns]}>
+                    <input
+                      type="hidden"
+                      name={"#{config.name}[clients_upstream_dns_sort][]"}
+                      value={dns.index}
+                    />
+
                     <div class="flex gap-4 items-start mb-2">
-                      <div class="w-1/4">
+                      <div class="w-4/12">
                         <.input
                           type="select"
                           label="Protocol"
@@ -68,46 +74,37 @@ defmodule Web.Settings.DNS do
                           value={dns[:protocol].value}
                         />
                       </div>
-                      <div class="w-3/4">
+                      <div class="w-7/12">
                         <.input
                           label="Address"
                           field={dns[:address]}
                           placeholder="DNS Server Address"
                         />
                       </div>
+                      <div class="w-1/12">
+                        <div class="pt-7">
+                          <button
+                            type="button"
+                            name={"#{config.name}[clients_upstream_dns_drop][]"}
+                            value={dns.index}
+                            phx-click={JS.dispatch("change")}
+                          >
+                            <.icon name="hero-x-mark" class="w-6 h-6 relative top-2" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </.inputs_for>
+                  <input type="hidden" name={"#{config.name}[clients_upstream_dns_drop][]"} />
 
-                  <% last_index = Enum.count(config[:clients_upstream_dns].value) %>
-
-                  <input
-                    type="hidden"
-                    name={"account[config][clients_upstream_dns][#{last_index}][_persistent_id]"}
-                    value={last_index}
-                  />
-
-                  <div class="flex gap-4 items-start mb-2">
-                    <div class="w-1/4">
-                      <.input
-                        type="select"
-                        label="Protocol"
-                        id={"account_config_0_clients_upstream_dns_#{last_index}_protocol"}
-                        name={"account[config][clients_upstream_dns][#{last_index}][protocol]"}
-                        placeholder="Protocol"
-                        options={dns_options()}
-                        value="ip_port"
-                      />
-                    </div>
-                    <div class="w-3/4">
-                      <.input
-                        label="Address"
-                        id={"account_config_0_clients_upstream_dns_#{last_index}_address"}
-                        name={"account[config][clients_upstream_dns][#{last_index}][address]"}
-                        placeholder="DNS Server Address"
-                        value=""
-                      />
-                    </div>
-                  </div>
+                  <.button
+                    type="button"
+                    name={"#{config.name}[clients_upstream_dns_sort][]"}
+                    value="new"
+                    phx-click={JS.dispatch("change")}
+                  >
+                    add more
+                  </.button>
                 </.inputs_for>
               </div>
               <p class="text-sm text-neutral-500">
@@ -127,8 +124,7 @@ defmodule Web.Settings.DNS do
     """
   end
 
-  def handle_event("change", %{"account" => attrs}, socket) do
-    attrs = remove_empty_servers(attrs)
+  def handle_event("change", %{"account" => attrs} = x, socket) do
     changeset = Accounts.change_account(socket.assigns.account, attrs)
     {:noreply, assign(socket, form: to_form(changeset, action: :validate))}
   end
