@@ -11,13 +11,13 @@ export default function Apple() {
       title="macOS / iOS"
     >
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.3.5" date={new Date("2024-09-26")}>
         <ChangeItem pull="6809">
           Fixes a bug where non-wildcard DNS resources were not prioritised over
           wildcard ones (e.g. `app.example.com` vs `*.example.com`).
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.3.4" date={new Date("2024-09-25")}>
         <ChangeItem pull="6788">
           Fixes an issue where some browsers may fail to route DNS Resources
