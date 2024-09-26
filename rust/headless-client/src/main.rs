@@ -63,10 +63,6 @@ struct Cli {
     #[arg(long)]
     check: bool,
 
-    /// Enable opt-in telemetry using sentry.io
-    #[arg(long, env = "FIREZONE_ENABLE_TELEMETRY")]
-    enable_telemetry: bool,
-
     /// Connect to the Firezone network and initialize, then exit
     ///
     /// Use this to check how fast you can connect.
@@ -120,9 +116,7 @@ fn main() -> Result<()> {
     let token_env_var = cli.token.take().map(SecretString::from);
     let cli = cli;
     let telemetry = Telemetry::default();
-    if cli.enable_telemetry {
-        telemetry.start(cli.api_url.to_string(), firezone_telemetry::HEADLESS_DSN);
-    }
+    telemetry.start(cli.api_url.to_string(), firezone_telemetry::HEADLESS_DSN);
 
     // Docs indicate that `remove_var` should actually be marked unsafe
     // SAFETY: We haven't spawned any other threads, this code should be the first

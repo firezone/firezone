@@ -2302,7 +2302,6 @@ dependencies = [
  "png",
  "rand 0.8.5",
  "reqwest",
- "rfd",
  "sadness-generator",
  "secrecy",
  "semver",

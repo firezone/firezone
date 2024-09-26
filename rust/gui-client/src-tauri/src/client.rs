@@ -60,9 +60,7 @@ pub(crate) fn run() -> Result<()> {
             // Can't check elevation here because the Windows CI is always elevated
             let settings = common::settings::load_advanced_settings().unwrap_or_default();
             let telemetry = telemetry::Telemetry::default();
-            if let Some(true) = settings.enable_telemetry {
-                telemetry.start(settings.api_url.to_string(), telemetry::GUI_DSN);
-            }
+            telemetry.start(settings.api_url.to_string(), telemetry::GUI_DSN);
             // Don't fix the log filter for smoke tests
             let common::logging::Handles {
                 logger: _logger,
@@ -89,10 +87,8 @@ pub(crate) fn run() -> Result<()> {
 fn run_gui(cli: Cli) -> Result<()> {
     let mut settings = common::settings::load_advanced_settings().unwrap_or_default();
     let telemetry = telemetry::Telemetry::default();
-    // Can't start Sentry until we load the settings and get user consent, that's why this isn't just at the top of `main`
-    if let Some(true) = settings.enable_telemetry {
-        telemetry.start(settings.api_url.to_string(), telemetry::GUI_DSN);
-    }
+    // In the future telemetry will be opt-in per organization, that's why this isn't just at the top of `main`
+    telemetry.start(settings.api_url.to_string(), telemetry::GUI_DSN);
     fix_log_filter(&mut settings)?;
     let common::logging::Handles {
         logger: _logger,
