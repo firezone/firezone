@@ -1,7 +1,7 @@
 use crate::peer::ClientOnGateway;
 use crate::peer_store::PeerStore;
 use crate::utils::earliest;
-use crate::{GatewayEvent, GatewayTunnel, BUF_SIZE};
+use crate::{GatewayEvent, GatewayTunnel};
 use anyhow::bail;
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
@@ -33,7 +33,7 @@ const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 
 impl GatewayTunnel {
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
-        self.io.device_mut().set_tun(tun);
+        self.io.set_tun(tun);
     }
 
     /// Accept a connection request from a client.
@@ -144,7 +144,7 @@ impl GatewayState {
     pub(crate) fn new(private_key: impl Into<StaticSecret>, seed: [u8; 32]) -> Self {
         Self {
             peers: Default::default(),
-            node: ServerNode::new(private_key.into(), BUF_SIZE, seed),
+            node: ServerNode::new(private_key.into(), seed),
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
         }
@@ -157,7 +157,7 @@ impl GatewayState {
 
     pub(crate) fn encapsulate(
         &mut self,
-        packet: IpPacket<'_>,
+        packet: IpPacket,
         now: Instant,
         buffer: &mut EncryptBuffer,
     ) -> Option<snownet::EncryptedPacket> {
@@ -188,20 +188,18 @@ impl GatewayState {
         Some(transmit)
     }
 
-    pub(crate) fn decapsulate<'b>(
+    pub(crate) fn decapsulate(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-        buffer: &'b mut [u8],
-    ) -> Option<IpPacket<'b>> {
+    ) -> Option<IpPacket> {
         let (cid, packet) = self.node.decapsulate(
             local,
             from,
             packet,
             now,
-            buffer,
         )
         .inspect_err(|e| tracing::debug!(%from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;

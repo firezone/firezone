@@ -2,7 +2,7 @@ use crate::IpPacket;
 use proptest::{arbitrary::any, prop_oneof, strategy::Strategy};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-pub fn udp_packet() -> impl Strategy<Value = IpPacket<'static>> {
+pub fn udp_packet() -> impl Strategy<Value = IpPacket> {
     prop_oneof![
         (ip4_tuple(), any::<u16>(), any::<u16>()).prop_map(|((saddr, daddr), sport, dport)| {
             crate::make::udp_packet(saddr, daddr, sport, dport, Vec::new()).unwrap()
@@ -13,7 +13,7 @@ pub fn udp_packet() -> impl Strategy<Value = IpPacket<'static>> {
     ]
 }
 
-pub fn tcp_packet() -> impl Strategy<Value = IpPacket<'static>> {
+pub fn tcp_packet() -> impl Strategy<Value = IpPacket> {
     prop_oneof![
         (ip4_tuple(), any::<u16>(), any::<u16>()).prop_map(|((saddr, daddr), sport, dport)| {
             crate::make::tcp_packet(saddr, daddr, sport, dport, Vec::new()).unwrap()
@@ -24,7 +24,7 @@ pub fn tcp_packet() -> impl Strategy<Value = IpPacket<'static>> {
     ]
 }
 
-pub fn icmp_request_packet() -> impl Strategy<Value = IpPacket<'static>> {
+pub fn icmp_request_packet() -> impl Strategy<Value = IpPacket> {
     prop_oneof![
         (ip4_tuple(), any::<u16>(), any::<u16>()).prop_map(|((saddr, daddr), sport, dport)| {
             crate::make::icmp_request_packet(IpAddr::V4(saddr), daddr, sport, dport, &[]).unwrap()
@@ -35,7 +35,7 @@ pub fn icmp_request_packet() -> impl Strategy<Value = IpPacket<'static>> {
     ]
 }
 
-pub fn udp_or_tcp_or_icmp_packet() -> impl Strategy<Value = IpPacket<'static>> {
+pub fn udp_or_tcp_or_icmp_packet() -> impl Strategy<Value = IpPacket> {
     prop_oneof![udp_packet(), tcp_packet(), icmp_request_packet()]
 }
 

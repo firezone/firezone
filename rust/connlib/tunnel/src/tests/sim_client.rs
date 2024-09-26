@@ -53,13 +53,12 @@ pub(crate) struct SimClient {
     pub(crate) ipv4_routes: BTreeSet<Ipv4Network>,
     pub(crate) ipv6_routes: BTreeSet<Ipv6Network>,
 
-    pub(crate) sent_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket<'static>>,
-    pub(crate) received_dns_responses: BTreeMap<(SocketAddr, QueryId), IpPacket<'static>>,
+    pub(crate) sent_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket>,
+    pub(crate) received_dns_responses: BTreeMap<(SocketAddr, QueryId), IpPacket>,
 
-    pub(crate) sent_icmp_requests: HashMap<(u16, u16), IpPacket<'static>>,
-    pub(crate) received_icmp_replies: BTreeMap<(u16, u16), IpPacket<'static>>,
+    pub(crate) sent_icmp_requests: HashMap<(u16, u16), IpPacket>,
+    pub(crate) received_icmp_replies: BTreeMap<(u16, u16), IpPacket>,
 
-    buffer: Vec<u8>,
     enc_buffer: EncryptBuffer,
 }
 
@@ -74,7 +73,6 @@ impl SimClient {
             received_dns_responses: Default::default(),
             sent_icmp_requests: Default::default(),
             received_icmp_replies: Default::default(),
-            buffer: vec![0u8; (1 << 16) - 1],
             enc_buffer: EncryptBuffer::new((1 << 16) - 1),
             ipv4_routes: Default::default(),
             ipv6_routes: Default::default(),
@@ -120,7 +118,7 @@ impl SimClient {
 
     pub(crate) fn encapsulate(
         &mut self,
-        packet: IpPacket<'static>,
+        packet: IpPacket,
         now: Instant,
     ) -> Option<snownet::Transmit<'static>> {
         if let Some(icmp) = packet.as_icmpv4() {
@@ -164,22 +162,18 @@ impl SimClient {
     }
 
     pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) {
-        let Some(packet) = self.sut.decapsulate(
-            transmit.dst,
-            transmit.src.unwrap(),
-            &transmit.payload,
-            now,
-            &mut self.buffer,
-        ) else {
+        let Some(packet) =
+            self.sut
+                .decapsulate(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
+        else {
             return;
         };
-        let packet = packet.to_owned();
 
         self.on_received_packet(packet);
     }
 
     /// Process an IP packet received on the client.
-    pub(crate) fn on_received_packet(&mut self, packet: IpPacket<'static>) {
+    pub(crate) fn on_received_packet(&mut self, packet: IpPacket) {
         if let Some(icmp) = packet.as_icmpv4() {
             if let Icmpv4Type::EchoReply(echo) = icmp.icmp_type() {
                 self.received_icmp_replies

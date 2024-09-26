@@ -193,8 +193,8 @@ pub(crate) fn assert_dns_packets_properties(ref_client: &RefClient, sim_client: 
 }
 
 fn assert_correct_src_and_dst_ips(
-    client_sent_request: &IpPacket<'_>,
-    client_received_reply: &IpPacket<'_>,
+    client_sent_request: &IpPacket,
+    client_received_reply: &IpPacket,
 ) {
     let req_dst = client_sent_request.destination();
     let res_src = client_received_reply.source();
@@ -216,8 +216,8 @@ fn assert_correct_src_and_dst_ips(
 }
 
 fn assert_correct_src_and_dst_udp_ports(
-    client_sent_request: &IpPacket<'_>,
-    client_received_reply: &IpPacket<'_>,
+    client_sent_request: &IpPacket,
+    client_received_reply: &IpPacket,
 ) {
     let client_sent_request = client_sent_request.as_udp().unwrap();
     let client_received_reply = client_received_reply.as_udp().unwrap();
@@ -241,7 +241,7 @@ fn assert_correct_src_and_dst_udp_ports(
     }
 }
 
-fn assert_destination_is_cdir_resource(gateway_received_request: &IpPacket<'_>, expected: &IpAddr) {
+fn assert_destination_is_cdir_resource(gateway_received_request: &IpPacket, expected: &IpAddr) {
     let actual = gateway_received_request.destination();
 
     if actual != *expected {
@@ -252,7 +252,7 @@ fn assert_destination_is_cdir_resource(gateway_received_request: &IpPacket<'_>, 
 }
 
 fn assert_destination_is_dns_resource(
-    gateway_received_request: &IpPacket<'_>,
+    gateway_received_request: &IpPacket,
     global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
     domain: &DomainName,
 ) {
@@ -275,8 +275,8 @@ fn assert_destination_is_dns_resource(
 /// Yet, we care that it remains stable to ensure that any form of sticky sessions don't get broken (i.e. packets to one IP are always routed to the same IP on the gateway).
 /// To assert this, we build up a map as we iterate through all packets that have been sent.
 fn assert_proxy_ip_mapping_is_stable(
-    client_sent_request: &IpPacket<'_>,
-    gateway_received_request: &IpPacket<'_>,
+    client_sent_request: &IpPacket,
+    gateway_received_request: &IpPacket,
     mapping: &mut HashMap<IpAddr, IpAddr>,
 ) {
     let proxy_ip = client_sent_request.destination();

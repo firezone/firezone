@@ -32,9 +32,13 @@ pub struct StubResolver {
 
 /// Tells the Client how to reply to a single DNS query
 #[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "We purposely don't want to allocate each IP packet."
+)]
 pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
-    LocalResponse(IpPacket<'static>),
+    LocalResponse(IpPacket),
     /// The query is for a non-Resource, forward it to an upstream or system resolver.
     ForwardQuery {
         upstream: SocketAddr,

@@ -12,8 +12,6 @@ pub use phoenix_channel::{LoginUrl, LoginUrlError};
 
 pub type DomainName = domain::base::Name<Vec<u8>>;
 
-pub const DEFAULT_MTU: usize = 1280;
-
 const LIB_NAME: &str = "connlib";
 
 pub fn get_user_agent(os_version_override: Option<String>, app_version: &str) -> String {

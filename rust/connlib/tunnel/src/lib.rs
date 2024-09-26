@@ -9,10 +9,11 @@ use chrono::Utc;
 use connlib_shared::{
     callbacks,
     messages::{ClientId, GatewayId, Offer, Relay, RelayId, ResolveRequest, ResourceId, SecretKey},
-    DomainName, PublicKey, DEFAULT_MTU,
+    DomainName, PublicKey,
 };
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
+use ip_packet::MAX_DATAGRAM_PAYLOAD;
 use rand::rngs::OsRng;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -51,15 +52,6 @@ const REALM: &str = "firezone";
 /// Thus, it is chosen as a safe, upper boundary that is not meant to be hit (and thus doesn't affect performance), yet acts as a safe guard, just in case.
 const MAX_EVENTLOOP_ITERS: u32 = 5000;
 
-/// Wireguard has a 32-byte overhead (4b message type + 4b receiver idx + 8b packet counter + 16b AEAD tag)
-const WG_OVERHEAD: usize = 32;
-/// In order to do NAT46 without copying, we need 20 extra byte in the buffer (IPv6 packets are 20 byte bigger than IPv4).
-const NAT46_OVERHEAD: usize = 20;
-/// TURN's data channels have a 4 byte overhead.
-const DATA_CHANNEL_OVERHEAD: usize = 4;
-
-const BUF_SIZE: usize = DEFAULT_MTU + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNEL_OVERHEAD;
-
 pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
 
@@ -83,10 +75,6 @@ pub struct Tunnel<TRoleState> {
     ip4_read_buf: Box<[u8; MAX_UDP_SIZE]>,
     ip6_read_buf: Box<[u8; MAX_UDP_SIZE]>,
 
-    /// Buffer for reading a single IP packet.
-    device_read_buf: Box<[u8; BUF_SIZE]>,
-    /// Buffer for decryping a single packet.
-    decrypt_buf: Box<[u8; BUF_SIZE]>,
     /// Buffer for encrypting a single packet.
     encrypt_buf: EncryptBuffer,
 }
@@ -101,11 +89,9 @@ impl ClientTunnel {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: ClientState::new(private_key, known_hosts, rand::random()),
-            device_read_buf: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            encrypt_buf: EncryptBuffer::new(BUF_SIZE),
-            decrypt_buf: Box::new([0u8; BUF_SIZE]),
+            encrypt_buf: EncryptBuffer::new(MAX_DATAGRAM_PAYLOAD),
         }
     }
 
@@ -123,7 +109,7 @@ impl ClientTunnel {
             }
 
             if let Some(packet) = self.role_state.poll_packets() {
-                self.io.send_device(packet)?;
+                self.io.send_tun(packet)?;
                 continue;
             }
 
@@ -140,7 +126,6 @@ impl ClientTunnel {
                 cx,
                 self.ip4_read_buf.as_mut(),
                 self.ip6_read_buf.as_mut(),
-                self.device_read_buf.as_mut(),
                 &self.encrypt_buf,
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
@@ -169,12 +154,11 @@ impl ClientTunnel {
                             received.from,
                             received.packet,
                             Instant::now(),
-                            self.decrypt_buf.as_mut(),
                         ) else {
                             continue;
                         };
 
-                        self.io.device_mut().write(packet)?;
+                        self.io.send_tun(packet)?;
                     }
 
                     continue;
@@ -200,11 +184,9 @@ impl GatewayTunnel {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: GatewayState::new(private_key, rand::random()),
-            device_read_buf: Box::new([0u8; BUF_SIZE]),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            encrypt_buf: EncryptBuffer::new(BUF_SIZE),
-            decrypt_buf: Box::new([0u8; BUF_SIZE]),
+            encrypt_buf: EncryptBuffer::new(MAX_DATAGRAM_PAYLOAD),
         }
     }
 
@@ -234,7 +216,6 @@ impl GatewayTunnel {
                 cx,
                 self.ip4_read_buf.as_mut(),
                 self.ip6_read_buf.as_mut(),
-                self.device_read_buf.as_mut(),
                 &self.encrypt_buf,
             )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
@@ -263,12 +244,11 @@ impl GatewayTunnel {
                             received.from,
                             received.packet,
                             Instant::now(),
-                            self.device_read_buf.as_mut(),
                         ) else {
                             continue;
                         };
 
-                        self.io.device_mut().write(packet)?;
+                        self.io.send_tun(packet)?;
                     }
 
                     continue;

@@ -1,4 +1,4 @@
-use ip_packet::IpPacket;
+use ip_packet::{IpPacket, IpPacketBuf};
 use std::io;
 use std::task::{Context, Poll, Waker};
 use tun::Tun;
@@ -26,17 +26,14 @@ impl Device {
         }
     }
 
-    pub(crate) fn poll_read<'b>(
-        &mut self,
-        buf: &'b mut [u8],
-        cx: &mut Context<'_>,
-    ) -> Poll<io::Result<IpPacket<'b>>> {
+    pub(crate) fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<IpPacket>> {
         let Some(tun) = self.tun.as_mut() else {
             self.waker = Some(cx.waker().clone());
             return Poll::Pending;
         };
 
-        let n = std::task::ready!(tun.poll_read(&mut buf[20..], cx))?;
+        let mut ip_packet = IpPacketBuf::new();
+        let n = std::task::ready!(tun.poll_read(ip_packet.buf(), cx))?;
 
         if n == 0 {
             return Poll::Ready(Err(io::Error::new(
@@ -45,7 +42,7 @@ impl Device {
             )));
         }
 
-        let packet = IpPacket::new(&mut buf[..(n + 20)]).ok_or_else(|| {
+        let packet = IpPacket::new(ip_packet, n).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "received bytes are not an IP packet",
@@ -57,7 +54,7 @@ impl Device {
         Poll::Ready(Ok(packet))
     }
 
-    pub fn write(&self, packet: IpPacket<'_>) -> io::Result<usize> {
+    pub fn write(&self, packet: IpPacket) -> io::Result<usize> {
         tracing::trace!(target: "wire::dev::send", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         match packet {
