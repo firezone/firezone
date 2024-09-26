@@ -77,14 +77,37 @@ defmodule Web.Settings.DNS do
                       </div>
                     </div>
                   </.inputs_for>
-                  <% errors =
-                    translate_errors(
-                      @form.source.changes.config.errors,
-                      :clients_upstream_dns
-                    ) %>
-                  <.error :for={error <- errors} data-validation-error-for="clients_upstream_dns">
-                    <%= error %>
-                  </.error>
+
+                  <% last_index = Enum.count(config[:clients_upstream_dns].value) %>
+
+                  <input
+                    type="hidden"
+                    name={"account[config][clients_upstream_dns][#{last_index}][_persistent_id]"}
+                    value={last_index}
+                  />
+
+                  <div class="flex gap-4 items-start mb-2">
+                    <div class="w-1/4">
+                      <.input
+                        type="select"
+                        label="Protocol"
+                        id={"account_config_0_clients_upstream_dns_#{last_index}_protocol"}
+                        name={"account[config][clients_upstream_dns][#{last_index}][protocol]"}
+                        placeholder="Protocol"
+                        options={dns_options()}
+                        value="ip_port"
+                      />
+                    </div>
+                    <div class="w-3/4">
+                      <.input
+                        label="Address"
+                        id={"account_config_0_clients_upstream_dns_#{last_index}_address"}
+                        name={"account[config][clients_upstream_dns][#{last_index}][address]"}
+                        placeholder="DNS Server Address"
+                        value=""
+                      />
+                    </div>
+                  </div>
                 </.inputs_for>
               </div>
               <p class="text-sm text-neutral-500">
@@ -105,6 +128,7 @@ defmodule Web.Settings.DNS do
   end
 
   def handle_event("change", %{"account" => attrs}, socket) do
+    attrs = remove_empty_servers(attrs)
     changeset = Accounts.change_account(socket.assigns.account, attrs)
     {:noreply, assign(socket, form: to_form(changeset, action: :validate))}
   end
