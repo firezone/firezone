@@ -2,6 +2,7 @@ import Link from "next/link";
 import Entry from "./Entry";
 import Entries from "./Entries";
 import ChangeItem from "./ChangeItem";
+import Unreleased from "./Unreleased";
 
 export default function GUI({ title }: { title: string }) {
   const href =
@@ -13,276 +14,224 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      {/*
-      <Entry version="1.3.7" date={new Date(todo)}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-        </ul>
-      </Entry>
-      */}
+      <Unreleased></Unreleased>
       <Entry version="1.3.6" date={new Date("2024-09-25")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6809">
-            Fixes a bug where non-wildcard DNS resources were not prioritised
-            over wildcard ones (e.g. `app.example.com` vs `*.example.com`).
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="6809">
+          Fixes a bug where non-wildcard DNS resources were not prioritised over
+          wildcard ones (e.g. `app.example.com` vs `*.example.com`).
+        </ChangeItem>
       </Entry>
       <Entry version="1.3.5" date={new Date("2024-09-25")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6788">
-            Fixes an issue where some browsers may fail to route DNS Resources
-            correctly.
-          </ChangeItem>
-          <ChangeItem enable={title === "Linux GUI"} pull="6780">
-            Fixes a bug where the Linux Clients didn't work on ZFS filesystems.
-          </ChangeItem>
-          <ChangeItem pull="6795">
-            Fixes a bug where auto-sign-in with an expired token would cause a
-            "Couldn't send Disconnect" error message.
-          </ChangeItem>
-          <ChangeItem enable={title === "Windows"} pull="6810">
-            Fixes a bug where roaming from Ethernet to WiFi would cause Firezone
-            to fail to connect to the portal.
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="6788">
+          Fixes an issue where some browsers may fail to route DNS Resources
+          correctly.
+        </ChangeItem>
+        <ChangeItem enable={title === "Linux GUI"} pull="6780">
+          Fixes a bug where the Linux Clients didn't work on ZFS filesystems.
+        </ChangeItem>
+        <ChangeItem pull="6795">
+          Fixes a bug where auto-sign-in with an expired token would cause a
+          "Couldn't send Disconnect" error message.
+        </ChangeItem>
+        <ChangeItem enable={title === "Windows"} pull="6810">
+          Fixes a bug where roaming from Ethernet to WiFi would cause Firezone
+          to fail to connect to the portal.
+        </ChangeItem>
       </Entry>
       <Entry version="1.3.4" date={new Date("2024-09-19")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6765">
-            Fixes a bug where DNS PTR queries by the system did not get
-            answered.
-          </ChangeItem>
-          <ChangeItem pull="6722">
-            Fixes a routing bug when one of several overlapping CIDR resources
-            gets disabled / removed.
-          </ChangeItem>
-          <ChangeItem>
-            Improves logging for DNS queries when{" "}
-            <code>firezone_tunnel=trace</code> log level is used.
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="6765">
+          Fixes a bug where DNS PTR queries by the system did not get answered.
+        </ChangeItem>
+        <ChangeItem pull="6722">
+          Fixes a routing bug when one of several overlapping CIDR resources
+          gets disabled / removed.
+        </ChangeItem>
+        <ChangeItem>
+          Improves logging for DNS queries when{" "}
+          <code>firezone_tunnel=trace</code> log level is used.
+        </ChangeItem>
       </Entry>
       <Entry version="1.3.3" date={new Date("2024-09-13")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem enable={title === "Windows"} pull="6681">
-            Fixes a bug where sign-in fails if IPv6 is disabled.
-          </ChangeItem>
-        </ul>
+        <ChangeItem enable={title === "Windows"} pull="6681">
+          Fixes a bug where sign-in fails if IPv6 is disabled.
+        </ChangeItem>
       </Entry>
       <Entry version="1.3.2" date={new Date("2024-09-06")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6624">
-            Fixes a bug that took down the tunnel when internet resource was
-            missing.
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="6624">
+          Fixes a bug that took down the tunnel when internet resource was
+          missing.
+        </ChangeItem>
       </Entry>
       <Entry version="1.3.1" date={new Date("2024-09-05")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6518">
-            Minor improvements to the look of the internet resource and makes
-            the Internet resource off by default.
-          </ChangeItem>
-          <ChangeItem pull="6584">
-            Prevents routing loops for some Windows installation when the
-            Internet resource was on, taking down network connections.
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="6518">
+          Minor improvements to the look of the internet resource and makes the
+          Internet resource off by default.
+        </ChangeItem>
+        <ChangeItem pull="6584">
+          Prevents routing loops for some Windows installation when the Internet
+          resource was on, taking down network connections.
+        </ChangeItem>
       </Entry>
       <Entry version="1.3.0" date={new Date("2024-08-30")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6434">
-            Adds the Internet Resource feature.
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="6434">Adds the Internet Resource feature.</ChangeItem>
       </Entry>
       <Entry version="1.2.2" date={new Date("2024-08-29")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6432">
-            Shows an orange dot on the tray icon when an update is ready to
-            download.
-          </ChangeItem>
-          <ChangeItem pull="6449">Checks for updates once a day</ChangeItem>
-          <ChangeItem enable={title === "Windows"} pull="6472">
-            Fixes an issue where Split DNS didn't work for domain-joined Windows
-            machines
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="6432">
+          Shows an orange dot on the tray icon when an update is ready to
+          download.
+        </ChangeItem>
+        <ChangeItem pull="6449">Checks for updates once a day</ChangeItem>
+        <ChangeItem enable={title === "Windows"} pull="6472">
+          Fixes an issue where Split DNS didn't work for domain-joined Windows
+          machines
+        </ChangeItem>
       </Entry>
       <Entry version="1.2.1" date={new Date("2024-08-27")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6414">
-            Waits for Internet to connect to Firezone if there's no Internet at
-            startup and you're already signed in.
-          </ChangeItem>
-          <ChangeItem pull="6455">
-            Fixes a false positive warning log at startup about DNS interception
-            being disabled.
-          </ChangeItem>
-          <ChangeItem pull="6458">
-            Fixes a bug where we considered our own startup to be a network
-            change event, which may interfere with access to DNS Resources.
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="6414">
+          Waits for Internet to connect to Firezone if there's no Internet at
+          startup and you're already signed in.
+        </ChangeItem>
+        <ChangeItem pull="6455">
+          Fixes a false positive warning log at startup about DNS interception
+          being disabled.
+        </ChangeItem>
+        <ChangeItem pull="6458">
+          Fixes a bug where we considered our own startup to be a network change
+          event, which may interfere with access to DNS Resources.
+        </ChangeItem>
       </Entry>
       <Entry version="1.2.0" date={new Date("2024-08-21")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="5901">
-            Implements glob-like matching of domains for DNS resources.
-          </ChangeItem>
-          <ChangeItem enable={title === "Windows"} pull="6280">
-            Fixes a bug where the "Clear Logs" button did not clear the IPC
-            service logs.
-          </ChangeItem>
-          <ChangeItem enable={title === "Windows"} pull="6308">
-            Fixes a bug where the GUI could not run if the user is Administrator
-          </ChangeItem>
-          <ChangeItem pull="6351">
-            The log filter on the IPC service is now reloaded immediately when
-            you change the setting in the GUI.
-          </ChangeItem>
-          <ChangeItem pull="6361">
-            Connections to Gateways are now sticky for the duration of the
-            Client's session to fix issues with long-lived TCP connections.
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="5901">
+          Implements glob-like matching of domains for DNS resources.
+        </ChangeItem>
+        <ChangeItem enable={title === "Windows"} pull="6280">
+          Fixes a bug where the "Clear Logs" button did not clear the IPC
+          service logs.
+        </ChangeItem>
+        <ChangeItem enable={title === "Windows"} pull="6308">
+          Fixes a bug where the GUI could not run if the user is Administrator
+        </ChangeItem>
+        <ChangeItem pull="6351">
+          The log filter on the IPC service is now reloaded immediately when you
+          change the setting in the GUI.
+        </ChangeItem>
+        <ChangeItem pull="6361">
+          Connections to Gateways are now sticky for the duration of the
+          Client's session to fix issues with long-lived TCP connections.
+        </ChangeItem>
       </Entry>
       <Entry version="1.1.12" date={new Date("2024-08-13")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6226">
-            Fixes a bug where clearing the log files would delete the current
-            logfile, preventing logs from being written.
-          </ChangeItem>
-          <ChangeItem pull="6276">
-            Fixes a bug where relayed connections failed to establish after an
-            idle period.
-          </ChangeItem>
-          <ChangeItem pull="6277">
-            Fixes a bug where restrictive NATs caused connectivity problems.
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="6226">
+          Fixes a bug where clearing the log files would delete the current
+          logfile, preventing logs from being written.
+        </ChangeItem>
+        <ChangeItem pull="6276">
+          Fixes a bug where relayed connections failed to establish after an
+          idle period.
+        </ChangeItem>
+        <ChangeItem pull="6277">
+          Fixes a bug where restrictive NATs caused connectivity problems.
+        </ChangeItem>
       </Entry>
       <Entry version="1.1.11" date={new Date("2024-08-09")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6233">
-            Fixes an issue where the IPC service can panic during DNS
-            resolution.
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="6233">
+          Fixes an issue where the IPC service can panic during DNS resolution.
+        </ChangeItem>
       </Entry>
       <Entry version="1.1.10" date={new Date("2024-08-08")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="5923">
-            Adds the ability to mark Resources as favorites.
-          </ChangeItem>
-          <ChangeItem enable={title === "Linux GUI"} pull="6163">
-            Supports using `etc-resolv-conf` DNS control method, or disabling
-            DNS control
-          </ChangeItem>
-          <ChangeItem pull="6181">
-            Improves reliability of DNS resolution of non-resources.
-          </ChangeItem>
-          <ChangeItem enable={title === "Windows"} pull="6163">
-            Supports disabling DNS control
-          </ChangeItem>
-          <ChangeItem pull="6184">
-            Mitigates a bug where the IPC service can panic if an internal
-            channel fills up
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="5923">
+          Adds the ability to mark Resources as favorites.
+        </ChangeItem>
+        <ChangeItem enable={title === "Linux GUI"} pull="6163">
+          Supports using `etc-resolv-conf` DNS control method, or disabling DNS
+          control
+        </ChangeItem>
+        <ChangeItem pull="6181">
+          Improves reliability of DNS resolution of non-resources.
+        </ChangeItem>
+        <ChangeItem enable={title === "Windows"} pull="6163">
+          Supports disabling DNS control
+        </ChangeItem>
+        <ChangeItem pull="6184">
+          Mitigates a bug where the IPC service can panic if an internal channel
+          fills up
+        </ChangeItem>
       </Entry>
       <Entry version="1.1.9" date={new Date("2024-08-02")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6143">
-            Fixes an issue where DNS queries could time out on some networks.
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="6143">
+          Fixes an issue where DNS queries could time out on some networks.
+        </ChangeItem>
       </Entry>
       <Entry version="1.1.8" date={new Date("2024-08-01")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem enable={title === "Linux GUI"} pull="5978">
-            Adds network roaming support.
-          </ChangeItem>
-          <ChangeItem enable={title === "Windows"} pull="6051">
-            Fixes "Element not found" error when setting routes.
-          </ChangeItem>
-          <ChangeItem pull="6017">
-            Removes keyboard accelerators, which were not working.
-          </ChangeItem>
-          <ChangeItem pull="6071">
-            Puts angle brackets around hyperlinks in the menu.
-          </ChangeItem>
-        </ul>
+        <ChangeItem enable={title === "Linux GUI"} pull="5978">
+          Adds network roaming support.
+        </ChangeItem>
+        <ChangeItem enable={title === "Windows"} pull="6051">
+          Fixes "Element not found" error when setting routes.
+        </ChangeItem>
+        <ChangeItem pull="6017">
+          Removes keyboard accelerators, which were not working.
+        </ChangeItem>
+        <ChangeItem pull="6071">
+          Puts angle brackets around hyperlinks in the menu.
+        </ChangeItem>
       </Entry>
       <Entry version="1.1.7" date={new Date("2024-07-17")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem enable={title === "Linux GUI"} pull="5848">
-            Stops the GUI and prompts you to re-launch it if you update Firezone
-            while the GUI is running.
-          </ChangeItem>
-          <ChangeItem enable={title === "Windows"} pull="5375">
-            Improves sign-in speed and fixes a DNS leak
-          </ChangeItem>
-        </ul>
+        <ChangeItem enable={title === "Linux GUI"} pull="5848">
+          Stops the GUI and prompts you to re-launch it if you update Firezone
+          while the GUI is running.
+        </ChangeItem>
+        <ChangeItem enable={title === "Windows"} pull="5375">
+          Improves sign-in speed and fixes a DNS leak
+        </ChangeItem>
       </Entry>
       <Entry version="1.1.6" date={new Date("2024-07-12")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="5795">
-            Unexpected IPC service stops are now reported as "IPC connection
-            closed".
-          </ChangeItem>
-          <ChangeItem enable={title === "Windows"} pull="5827">
-            Fixes a bug where DNS could stop working when you sign out.
-          </ChangeItem>
-          <ChangeItem pull="5817">
-            Shows different tray icons when signed out, signing in, and signed
-            in.
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="5795">
+          Unexpected IPC service stops are now reported as "IPC connection
+          closed".
+        </ChangeItem>
+        <ChangeItem enable={title === "Windows"} pull="5827">
+          Fixes a bug where DNS could stop working when you sign out.
+        </ChangeItem>
+        <ChangeItem pull="5817">
+          Shows different tray icons when signed out, signing in, and signed in.
+        </ChangeItem>
       </Entry>
       <Entry version="1.1.5" date={new Date("2024-07-08")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem enable={title === "Linux GUI"} pull="5793">
-            The Linux GUI Client is now built for both x86-64 and ARM64.
-          </ChangeItem>
-          <ChangeItem enable={title === "Windows"}>
-            This is a maintenance release with no user-facing changes.
-          </ChangeItem>
-        </ul>
+        <ChangeItem enable={title === "Linux GUI"} pull="5793">
+          The Linux GUI Client is now built for both x86-64 and ARM64.
+        </ChangeItem>
+        <ChangeItem enable={title === "Windows"}>
+          This is a maintenance release with no user-facing changes.
+        </ChangeItem>
       </Entry>
       <Entry version="1.1.4" date={new Date("2024-07-05")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="5700">
-            Fixes an issue where a stale DNS cache could prevent traffic from
-            routing to DNS Resources if they were updated while the Client was
-            signed in.
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="5700">
+          Fixes an issue where a stale DNS cache could prevent traffic from
+          routing to DNS Resources if they were updated while the Client was
+          signed in.
+        </ChangeItem>
       </Entry>
       <Entry version="1.1.3" date={new Date("2024-07-03")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <li className="pl-2">
-            Prevents Firezone's stub resolver from intercepting DNS record types
-            besides A, AAAA, and PTR. These are now forwarded to your upstream
-            DNS resolver.
-          </li>
-        </ul>
+        <li className="pl-2">
+          Prevents Firezone's stub resolver from intercepting DNS record types
+          besides A, AAAA, and PTR. These are now forwarded to your upstream DNS
+          resolver.
+        </li>
       </Entry>
       <Entry version="1.1.2" date={new Date("2024-06-29")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
+        <li className="pl-2">
+          Fixes an issue that could cause Resources to be unreachable a few
+          hours after roaming networks.
+        </li>
+        <li className="pl-2">
+          Reduces noise in logs for the default log level.
+        </li>
+        {title === "Windows" && (
           <li className="pl-2">
-            Fixes an issue that could cause Resources to be unreachable a few
-            hours after roaming networks.
+            Substantially reduces memory usage for the IPC service.
           </li>
-          <li className="pl-2">
-            Reduces noise in logs for the default log level.
-          </li>
-          {title === "Windows" && (
-            <li className="pl-2">
-              Substantially reduces memory usage for the IPC service.
-            </li>
-          )}
-        </ul>
+        )}
       </Entry>
       <Entry version="1.1.1" date={new Date("2024-06-27")}>
         {title === "Windows" ? (
@@ -292,31 +241,29 @@ export default function GUI({ title }: { title: string }) {
         )}
       </Entry>
       <Entry version="1.1.0" date={new Date("2024-06-27")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
+        <li className="pl-2">
+          Introduces the new DNS routing system supported by 1.1.0 Gateways
+          which results in much more stable connections for DNS Resources,
+          especially when wildcards are used.
+        </li>
+        <li className="pl-2">
+          Improves reliability when roaming between networks.
+        </li>
+        <li className="pl-2">
+          Closes idle connections to Gateways that have not seen traffic for
+          more than 5 minutes which reduces power consumption when not accessing
+          Resources.
+        </li>
+        <li className="pl-2">
+          Updates log file endings to JSONL and adds syslog-style logs for
+          easier readability.
+        </li>
+        {title === "Windows" && (
           <li className="pl-2">
-            Introduces the new DNS routing system supported by 1.1.0 Gateways
-            which results in much more stable connections for DNS Resources,
-            especially when wildcards are used.
+            Fixes a hang that could occur when the Client is quit, preventing it
+            from opening again.
           </li>
-          <li className="pl-2">
-            Improves reliability when roaming between networks.
-          </li>
-          <li className="pl-2">
-            Closes idle connections to Gateways that have not seen traffic for
-            more than 5 minutes which reduces power consumption when not
-            accessing Resources.
-          </li>
-          <li className="pl-2">
-            Updates log file endings to JSONL and adds syslog-style logs for
-            easier readability.
-          </li>
-          {title === "Windows" && (
-            <li className="pl-2">
-              Fixes a hang that could occur when the Client is quit, preventing
-              it from opening again.
-            </li>
-          )}
-        </ul>
+        )}
         <p>
           <strong>Note:</strong> Client versions 1.1.x are incompatible with
           Gateways running 1.0.x.
