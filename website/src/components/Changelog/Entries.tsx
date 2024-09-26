@@ -122,7 +122,10 @@ export default function Entries({
   title: string;
   children: React.ReactNode;
 }) {
-  const childrenArray = React.Children.toArray(children);
+  const childrenArray = React.Children.toArray(children).filter(
+    (e) => e != null
+  );
+
   const firstEntry = childrenArray[0];
   const previousEntries = childrenArray.slice(1);
 
