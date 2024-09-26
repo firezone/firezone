@@ -51,15 +51,18 @@ From there, you can select the type of Resource you want to create:
 When multiple Resources' addresses overlap, the Resource with the more specific
 address will be used.
 
-For CIDR Resources, this means the Resource with the
-longest prefix length will be used.
+For CIDR Resources, this means the Resource with the longest prefix length will
+be used.
 
 For DNS Resources, the more specific match will be used according to the
 following rules:
 
-- Resources without wildcards are always prioritized over wildcard domains: For example, `app.example.com` is checked before `*.example.com`.
-- Single-char wildcards (`?`) take priority over label wildcards (`*`): For example, `???.example.com` is checked before `*.example.com`.
-- Label wildcards (`*`) take priority over catch-all wildcards (`**`): For example, `*.example.com` is checked before `**.example.com`.
+- Resources without wildcards are always prioritized over wildcard domains: For
+  example, `app.example.com` is checked before `*.example.com`.
+- Single-char wildcards (`?`) take priority over label wildcards (`*`): For
+  example, `???.example.com` is checked before `*.example.com`.
+- Label wildcards (`*`) take priority over catch-all wildcards (`**`): For
+  example, `*.example.com` is checked before `**.example.com`.
 
 ### Address description
 
