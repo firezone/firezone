@@ -110,7 +110,7 @@ mod tests {
 
     #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
     fn translates_back_and_forth_packet(
-        #[strategy(udp_or_tcp_or_icmp_packet())] packet: IpPacket<'static>,
+        #[strategy(udp_or_tcp_or_icmp_packet())] packet: IpPacket,
         #[strategy(any::<IpAddr>())] outside_dst: IpAddr,
         #[strategy(0..120u64)] response_delay: u64,
     ) {
@@ -152,9 +152,9 @@ mod tests {
 
     #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
     fn can_handle_multiple_packets(
-        #[strategy(udp_or_tcp_or_icmp_packet())] packet1: IpPacket<'static>,
+        #[strategy(udp_or_tcp_or_icmp_packet())] packet1: IpPacket,
         #[strategy(any::<IpAddr>())] outside_dst1: IpAddr,
-        #[strategy(udp_or_tcp_or_icmp_packet())] packet2: IpPacket<'static>,
+        #[strategy(udp_or_tcp_or_icmp_packet())] packet2: IpPacket,
         #[strategy(any::<IpAddr>())] outside_dst2: IpAddr,
     ) {
         proptest::prop_assume!(packet1.destination().is_ipv4() == outside_dst1.is_ipv4()); // Required for our test to simulate a response.

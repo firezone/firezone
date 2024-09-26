@@ -13,6 +13,7 @@ use pattern::{Candidate, Pattern};
 use std::collections::{BTreeMap, HashMap};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::ControlFlow;
+use std::sync::LazyLock;
 
 const DNS_TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
@@ -20,21 +21,35 @@ const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
 const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
 const DNS_PORT: u16 = 53;
 
+/// The DNS over HTTPS canary domain used by Firefox to check whether DoH can be enabled by default.
+///
+/// Responding to queries for this domain with NXDOMAIN will disable DoH.
+/// See <https://support.mozilla.org/en-US/kb/canary-domain-use-application-dnsnet>.
+/// For Chrome and other Chrome-based browsers, this is not required as
+/// Chrome will automatically disable DoH if your server(s) don't support
+/// it. See <https://www.chromium.org/developers/dns-over-https/#faq>.
+static DOH_CANARY_DOMAIN: LazyLock<DomainName> =
+    LazyLock::new(|| DomainName::vec_from_str("use-application-dns.net").unwrap());
+
 pub struct StubResolver {
     fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
     ips_to_fqdn: HashMap<IpAddr, (DomainName, ResourceId)>,
     ip_provider: IpProvider,
     /// All DNS resources we know about, indexed by the glob pattern they match against.
-    dns_resources: HashMap<Pattern, ResourceId>,
+    dns_resources: BTreeMap<Pattern, ResourceId>,
     /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
     known_hosts: KnownHosts,
 }
 
 /// Tells the Client how to reply to a single DNS query
 #[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "We purposely don't want to allocate each IP packet."
+)]
 pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
-    LocalResponse(IpPacket<'static>),
+    LocalResponse(IpPacket),
     /// The query is for a non-Resource, forward it to an upstream or system resolver.
     ForwardQuery {
         upstream: SocketAddr,
@@ -249,6 +264,24 @@ impl StubResolver {
 
         tracing::trace!("Parsed packet as DNS query: '{qtype} {domain}'");
 
+        if domain == *DOH_CANARY_DOMAIN {
+            let payload = MessageBuilder::new_vec()
+                .start_answer(&message, Rcode::NXDOMAIN)
+                .unwrap()
+                .finish();
+
+            let packet = ip_packet::make::udp_packet(
+                packet.destination(),
+                packet.source(),
+                datagram.destination_port(),
+                datagram.source_port(),
+                payload,
+            )
+            .expect("src and dst are retrieved from the same packet");
+
+            return Ok(ControlFlow::Break(ResolveStrategy::LocalResponse(packet)));
+        }
+
         if let Some(records) = self.known_hosts.get_records(qtype, &domain) {
             let response = build_dns_with_answer(message, domain, records)?;
             let packet = ip_packet::make::udp_packet(
@@ -443,15 +476,80 @@ mod pattern {
     use super::*;
     use std::{convert::Infallible, fmt, str::FromStr};
 
-    #[derive(Debug, PartialEq, Eq, Hash)]
+    #[derive(Eq)]
     pub struct Pattern {
         inner: glob::Pattern,
         original: String,
     }
 
+    impl std::hash::Hash for Pattern {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            self.original.hash(state)
+        }
+    }
+
+    impl fmt::Debug for Pattern {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_tuple("Pattern").field(&self.original).finish()
+        }
+    }
+
+    impl PartialEq for Pattern {
+        fn eq(&self, other: &Self) -> bool {
+            self.original == other.original
+        }
+    }
+
     impl fmt::Display for Pattern {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             self.original.fmt(f)
+        }
+    }
+
+    impl PartialOrd for Pattern {
+        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl Ord for Pattern {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            // Iterate over characters in reverse order so that e.g. `*.example.com` and `subdomain.example.com` will compare the `example.com` suffix
+            let mut self_rev = self.original.chars().rev();
+            let mut other_rev = other.original.chars().rev();
+
+            loop {
+                let self_next = self_rev.next();
+                let other_next = other_rev.next();
+
+                match (self_next, other_next) {
+                    (Some(self_char), Some(other_char)) if self_char == other_char => {
+                        continue;
+                    }
+                    // `*` > `?`
+                    (Some('*'), Some('?')) => break std::cmp::Ordering::Greater,
+                    (Some('?'), Some('*')) => break std::cmp::Ordering::Less,
+
+                    // Domains that only differ in wildcard come later
+                    (Some('*') | Some('?'), None | Some('.')) => break std::cmp::Ordering::Greater,
+                    (None | Some('.'), Some('*') | Some('?')) => break std::cmp::Ordering::Less,
+
+                    // `*` | `?` > non-wildcard
+                    (Some('*') | Some('?'), Some(_)) => break std::cmp::Ordering::Greater,
+                    (Some(_), Some('*') | Some('?')) => break std::cmp::Ordering::Less,
+
+                    // non-wildcard lexically
+                    (Some(self_char), Some(other_char)) => {
+                        break self_char.cmp(&other_char).reverse(); // Reverse because we compare from right to left.
+                    }
+
+                    // Shorter domains come first
+                    (Some(_), None) => break std::cmp::Ordering::Greater,
+                    (None, Some(_)) => break std::cmp::Ordering::Less,
+
+                    (None, None) => break std::cmp::Ordering::Equal,
+                }
+            }
         }
     }
 
@@ -504,11 +602,49 @@ mod pattern {
             Ok(Self(s.replace('.', "/")))
         }
     }
+
+    #[cfg(test)]
+    mod tests {
+        use std::collections::BTreeSet;
+
+        use super::*;
+
+        #[test]
+        fn pattern_ordering() {
+            let patterns = BTreeSet::from([
+                Pattern::new("**.example.com").unwrap(),
+                Pattern::new("bar.example.com").unwrap(),
+                Pattern::new("foo.example.com").unwrap(),
+                Pattern::new("example.com").unwrap(),
+                Pattern::new("*ample.com").unwrap(),
+                Pattern::new("*.bar.example.com").unwrap(),
+                Pattern::new("?.example.com").unwrap(),
+                Pattern::new("*.com").unwrap(),
+                Pattern::new("*.example.com").unwrap(),
+            ]);
+
+            assert_eq!(
+                Vec::from_iter(patterns),
+                vec![
+                    Pattern::new("example.com").unwrap(), // Shorter domains first.
+                    Pattern::new("bar.example.com").unwrap(), // Lexical-ordering by default.
+                    Pattern::new("*.bar.example.com").unwrap(), // Lexically takes priority over specific match.
+                    Pattern::new("foo.example.com").unwrap(),   // Most specific next.
+                    Pattern::new("?.example.com").unwrap(),     // Single-wildcard second.
+                    Pattern::new("*.example.com").unwrap(),     // Star-wildcard third.
+                    Pattern::new("**.example.com").unwrap(),    // Double-star wildcard last.
+                    Pattern::new("*ample.com").unwrap(), // Specific match takes priority over wildcard.
+                    Pattern::new("*.com").unwrap(),      // Wildcards after all non-wildcards.
+                ]
+            )
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bimap::BiHashMap;
     use std::str::FromStr as _;
     use test_case::test_case;
 
@@ -604,6 +740,61 @@ mod tests {
         let matches = pattern.matches(&candidate);
 
         assert!(!matches);
+    }
+
+    #[test]
+    fn prioritises_non_wildcard_over_wildcard_domain() {
+        let mut resolver = StubResolver::new(BTreeMap::default());
+        let wc = ResourceId::from_u128(0);
+        let non_wc = ResourceId::from_u128(1);
+
+        resolver.add_resource(wc, "**.example.com".to_owned());
+        resolver.add_resource(non_wc, "foo.example.com".to_owned());
+
+        let resource_id = resolver
+            .match_resource_linear(&"foo.example.com".parse().unwrap())
+            .unwrap();
+
+        assert_eq!(resource_id, non_wc);
+    }
+
+    #[test]
+    fn doh_canary_domain_parses_correctly() {
+        assert_eq!(DOH_CANARY_DOMAIN.to_string(), "use-application-dns.net")
+    }
+
+    #[test]
+    fn query_for_doh_canary_domain_records_nx_domain() {
+        let mut resolver = StubResolver::new(BTreeMap::default());
+        let src = IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1));
+        let dns_server = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+
+        let query = ip_packet::make::dns_query(
+            "use-application-dns.net".parse().unwrap(),
+            Rtype::A,
+            SocketAddr::from((src, 1000)),
+            SocketAddr::from((dns_server, 53)),
+            0,
+        )
+        .unwrap();
+
+        let control_flow = resolver
+            .handle(
+                &BiHashMap::from_iter([(dns_server, DnsServer::from((dns_server, 53)))]),
+                &query,
+            )
+            .unwrap();
+
+        let ControlFlow::Break(ResolveStrategy::LocalResponse(response)) = control_flow else {
+            panic!("Unexpected result: {control_flow:?}")
+        };
+
+        let udp_slice = response.as_udp().unwrap();
+        let message = Message::from_slice(udp_slice.payload()).unwrap();
+        let answers = message.answer().unwrap();
+
+        assert_eq!(message.header().rcode(), Rcode::NXDOMAIN);
+        assert_eq!(answers.count(), 0);
     }
 }
 

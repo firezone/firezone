@@ -1,7 +1,7 @@
 [package]
 name = "firezone-headless-client"
 # mark:next-headless-version
-version = "1.3.2"
+version = "1.3.4"
 edition = "2021"
 authors = ["Firezone, Inc."]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -10,13 +10,14 @@ authors = ["Firezone, Inc."]
 anyhow = { version = "1.0" }
 atomicwrites = { workspace = true } # Needed to safely backup `/etc/resolv.conf` and write the device ID on behalf of `gui-client`
 backoff = "0.4.0"
-clap = { version = "4.5", features = ["derive",  "env", "string"] }
+clap = { version = "4.5", features = ["derive", "env", "string"] }
 connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 firezone-bin-shared = { workspace = true }
 firezone-logging = { workspace = true }
 futures = "0.3.30"
 humantime = "2.1"
+ip-packet = { workspace = true }
 ip_network = { version = "0.4", default-features = false }
 phoenix-channel = { workspace = true }
 rustls = { workspace = true }

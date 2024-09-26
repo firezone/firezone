@@ -28,7 +28,7 @@ impl Drop for Client {
 
 impl Client {
     pub async fn new(ctlr_tx: tokio::sync::mpsc::Sender<Event>) -> Result<Self> {
-        tracing::info!(
+        tracing::debug!(
             client_pid = std::process::id(),
             "Connecting to IPC service..."
         );
