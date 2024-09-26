@@ -102,9 +102,9 @@ impl Auth {
             ),
             Ok(Some(SessionAndToken { session, token: _ })) => {
                 this.state = State::SignedIn(session);
-                tracing::info!("Reloaded token from disk, starting in signed-in state.");
+                tracing::debug!("Reloaded token from disk, starting in signed-in state.");
             }
-            Ok(None) => tracing::info!("No token on disk, starting in signed-out state."),
+            Ok(None) => tracing::debug!("No token on disk, starting in signed-out state."),
         }
 
         Ok(this)

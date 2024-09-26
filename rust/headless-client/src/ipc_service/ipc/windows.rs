@@ -39,7 +39,7 @@ pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Er
     unsafe { GetNamedPipeServerProcessId(handle, &mut server_pid) }
         .context("Couldn't get PID of named pipe server")
         .map_err(Error::Other)?;
-    tracing::info!(?server_pid, "Made IPC connection");
+    tracing::debug!(?server_pid, "Made IPC connection");
     Ok(stream)
 }
 
@@ -65,7 +65,7 @@ impl Server {
             .bind_to_pipe()
             .await
             .context("Couldn't bind to named pipe")?;
-        tracing::info!(
+        tracing::debug!(
             server_pid = std::process::id(),
             "Listening for GUI to connect over IPC..."
         );
@@ -80,7 +80,7 @@ impl Server {
         // from Tokio, so it should be valid.
         unsafe { GetNamedPipeClientProcessId(handle, &mut client_pid) }
             .context("Couldn't get PID of named pipe client")?;
-        tracing::info!(?client_pid, "Accepted IPC connection");
+        tracing::debug!(?client_pid, "Accepted IPC connection");
         Ok(server)
     }
 
