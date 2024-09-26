@@ -1,6 +1,6 @@
 use crate::dns::StubResolver;
 use crate::peer_store::PeerStore;
-use crate::{dns, TunConfig, BUF_SIZE};
+use crate::{dns, TunConfig};
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_shared::callbacks::Status;
@@ -87,7 +87,7 @@ impl ClientTunnel {
     }
 
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
-        self.io.device_mut().set_tun(tun);
+        self.io.set_tun(tun);
     }
 
     pub fn update_relays(&mut self, to_remove: BTreeSet<RelayId>, to_add: Vec<Relay>) {
@@ -252,7 +252,7 @@ pub struct ClientState {
     recently_connected_gateways: LruCache<GatewayId, ()>,
 
     buffered_events: VecDeque<ClientEvent>,
-    buffered_packets: VecDeque<IpPacket<'static>>,
+    buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit<'static>>,
 }
 
@@ -278,7 +278,7 @@ impl ClientState {
             buffered_events: Default::default(),
             tun_config: Default::default(),
             buffered_packets: Default::default(),
-            node: ClientNode::new(private_key.into(), BUF_SIZE, seed),
+            node: ClientNode::new(private_key.into(), seed),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
@@ -399,7 +399,7 @@ impl ClientState {
 
     pub(crate) fn encapsulate(
         &mut self,
-        packet: IpPacket<'_>,
+        packet: IpPacket,
         now: Instant,
         buffer: &mut EncryptBuffer,
     ) -> Option<snownet::EncryptedPacket> {
@@ -452,14 +452,13 @@ impl ClientState {
         Some(transmit)
     }
 
-    pub(crate) fn decapsulate<'b>(
+    pub(crate) fn decapsulate(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-        buffer: &'b mut [u8],
-    ) -> Option<IpPacket<'b>> {
+    ) -> Option<IpPacket> {
         if let Some(response) = self.try_handle_forwarded_dns_response(from, packet) {
             return Some(response);
         };
@@ -469,7 +468,6 @@ impl ClientState {
             from,
             packet.as_ref(),
             now,
-            buffer,
         )
         .inspect_err(|e| tracing::debug!(%local, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
         .ok()??;
@@ -619,11 +617,11 @@ impl ClientState {
     }
 
     /// Attempt to handle the given packet as a DNS query packet.
-    fn try_handle_dns_query<'a>(
+    fn try_handle_dns_query(
         &mut self,
-        packet: IpPacket<'a>,
+        packet: IpPacket,
         now: Instant,
-    ) -> ControlFlow<(), (IpPacket<'a>, IpAddr)> {
+    ) -> ControlFlow<(), (IpPacket, IpAddr)> {
         match self.stub_resolver.handle(&self.dns_mapping, &packet) {
             Ok(ControlFlow::Break(dns::ResolveStrategy::LocalResponse(query))) => {
                 self.buffered_packets.push_back(query);
@@ -664,11 +662,11 @@ impl ClientState {
         }
     }
 
-    fn try_handle_forwarded_dns_response<'a>(
+    fn try_handle_forwarded_dns_response(
         &mut self,
         from: SocketAddr,
         packet: &[u8],
-    ) -> Option<IpPacket<'a>> {
+    ) -> Option<IpPacket> {
         // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
         let saddr = *self.dns_mapping.get_by_right(&DnsServer::from(from))?;
         let sport = DNS_PORT;
@@ -888,7 +886,7 @@ impl ClientState {
         self.update_dns_mapping()
     }
 
-    pub fn poll_packets(&mut self) -> Option<IpPacket<'static>> {
+    pub fn poll_packets(&mut self) -> Option<IpPacket> {
         self.buffered_packets.pop_front()
     }
 
@@ -1366,12 +1364,12 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
 }
 
 /// In case the given packet is a DNS query, change its source IP to that of the actual DNS server.
-fn maybe_mangle_dns_query_to_cidr_resource<'p>(
-    mut packet: IpPacket<'p>,
+fn maybe_mangle_dns_query_to_cidr_resource(
+    mut packet: IpPacket,
     dns_mapping: &BiMap<IpAddr, DnsServer>,
     mangeled_dns_queries: &mut HashMap<u16, Instant>,
     now: Instant,
-) -> IpPacket<'p> {
+) -> IpPacket {
     let dst = packet.destination();
 
     let Some(srv) = dns_mapping.get_by_left(&dst) else {
@@ -1395,12 +1393,12 @@ fn maybe_mangle_dns_query_to_cidr_resource<'p>(
     packet
 }
 
-fn maybe_mangle_dns_response_from_cidr_resource<'p>(
-    mut packet: IpPacket<'p>,
+fn maybe_mangle_dns_response_from_cidr_resource(
+    mut packet: IpPacket,
     dns_mapping: &BiMap<IpAddr, DnsServer>,
     mangeled_dns_queries: &mut HashMap<u16, Instant>,
     now: Instant,
-) -> IpPacket<'p> {
+) -> IpPacket {
     let src_ip = packet.source();
 
     let Some(udp) = packet.as_udp() else {

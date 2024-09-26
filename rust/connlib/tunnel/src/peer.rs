@@ -373,11 +373,11 @@ impl ClientOnGateway {
         }
     }
 
-    fn transform_network_to_tun<'a>(
+    fn transform_network_to_tun(
         &mut self,
-        packet: IpPacket<'a>,
+        packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<IpPacket<'a>> {
+    ) -> anyhow::Result<IpPacket> {
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
             return Ok(packet);
         };
@@ -396,11 +396,7 @@ impl ClientOnGateway {
         Ok(packet)
     }
 
-    pub fn decapsulate<'a>(
-        &mut self,
-        packet: IpPacket<'a>,
-        now: Instant,
-    ) -> anyhow::Result<IpPacket<'a>> {
+    pub fn decapsulate(&mut self, packet: IpPacket, now: Instant) -> anyhow::Result<IpPacket> {
         self.ensure_allowed_src(&packet)?;
 
         let packet = self.transform_network_to_tun(packet, now)?;
@@ -410,11 +406,11 @@ impl ClientOnGateway {
         Ok(packet)
     }
 
-    pub fn encapsulate<'a>(
+    pub fn encapsulate(
         &mut self,
-        packet: IpPacket<'a>,
+        packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<Option<IpPacket<'a>>> {
+    ) -> anyhow::Result<Option<IpPacket>> {
         let Some((proto, ip)) = self.nat_table.translate_incoming(&packet, now)? else {
             return Ok(Some(packet));
         };
@@ -433,7 +429,7 @@ impl ClientOnGateway {
         Ok(Some(packet))
     }
 
-    fn ensure_allowed_src(&self, packet: &IpPacket<'_>) -> anyhow::Result<()> {
+    fn ensure_allowed_src(&self, packet: &IpPacket) -> anyhow::Result<()> {
         let src = packet.source();
 
         if !self.allowed_ips().contains(&src) {
@@ -444,7 +440,7 @@ impl ClientOnGateway {
     }
 
     /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
-    fn ensure_allowed_dst(&mut self, packet: &IpPacket<'_>) -> anyhow::Result<()> {
+    fn ensure_allowed_dst(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
         let dst = packet.destination();
         if !self
             .filters

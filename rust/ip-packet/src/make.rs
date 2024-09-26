@@ -16,13 +16,13 @@ use std::net::{IpAddr, SocketAddr};
 macro_rules! build {
     ($packet:expr, $payload:ident) => {{
         let size = $packet.size($payload.len());
-        let mut buf = vec![0u8; size + 20];
+        let mut ip = $crate::IpPacketBuf::new();
 
         $packet
-            .write(&mut std::io::Cursor::new(&mut buf[20..]), &$payload)
+            .write(&mut std::io::Cursor::new(ip.buf()), &$payload)
             .expect("Buffer should be big enough");
 
-        IpPacket::owned(buf).expect("Should be a valid IP packet")
+        IpPacket::new(ip, size).expect("Should be a valid IP packet")
     }};
 }
 
@@ -32,7 +32,7 @@ pub fn icmp_request_packet(
     seq: u16,
     identifier: u16,
     payload: &[u8],
-) -> Result<IpPacket<'static>, IpVersionMismatch> {
+) -> Result<IpPacket, IpVersionMismatch> {
     match (src, dst.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64)
@@ -56,7 +56,7 @@ pub fn icmp_reply_packet(
     seq: u16,
     identifier: u16,
     payload: &[u8],
-) -> Result<IpPacket<'static>, IpVersionMismatch> {
+) -> Result<IpPacket, IpVersionMismatch> {
     match (src, dst.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64)
@@ -80,7 +80,7 @@ pub fn tcp_packet<IP>(
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
-) -> Result<IpPacket<'static>, IpVersionMismatch>
+) -> Result<IpPacket, IpVersionMismatch>
 where
     IP: Into<IpAddr>,
 {
@@ -107,7 +107,7 @@ pub fn udp_packet<IP>(
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
-) -> Result<IpPacket<'static>, IpVersionMismatch>
+) -> Result<IpPacket, IpVersionMismatch>
 where
     IP: Into<IpAddr>,
 {
@@ -132,7 +132,7 @@ pub fn dns_query(
     src: SocketAddr,
     dst: SocketAddr,
     id: u16,
-) -> Result<IpPacket<'static>, IpVersionMismatch> {
+) -> Result<IpPacket, IpVersionMismatch> {
     // Create the DNS query message
     let mut msg_builder = MessageBuilder::new_vec();
 
@@ -152,10 +152,7 @@ pub fn dns_query(
 }
 
 /// Makes a DNS response to the given DNS query packet, using a resolver callback.
-pub fn dns_ok_response<I>(
-    packet: IpPacket<'static>,
-    resolve: impl Fn(&Name<Vec<u8>>) -> I,
-) -> IpPacket<'static>
+pub fn dns_ok_response<I>(packet: IpPacket, resolve: impl Fn(&Name<Vec<u8>>) -> I) -> IpPacket
 where
     I: Iterator<Item = IpAddr>,
 {
