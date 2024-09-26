@@ -267,10 +267,9 @@ impl ClientOnGateway {
             let is_allowed = r.is_allowed(&now);
 
             if !is_allowed {
+                any_expired = true;
                 tracing::info!(%cid, %rid, "Access to resource expired");
             }
-
-            any_expired |= is_allowed;
 
             is_allowed
         });
