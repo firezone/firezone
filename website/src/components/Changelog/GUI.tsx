@@ -23,6 +23,9 @@ export default function GUI({ title }: { title: string }) {
           Fixes connectivity issues on idle connections by entering an
           always-on, low-power mode instead of closing them.
         </ChangeItem>
+        <ChangeItem pull="6782">
+          Adds always-on error reporting using sentry.io.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.6" date={new Date("2024-09-25")}>
         <ChangeItem pull="6809">

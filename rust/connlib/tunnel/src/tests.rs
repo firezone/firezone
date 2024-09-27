@@ -1,6 +1,10 @@
 use crate::tests::{flux_capacitor::FluxCapacitor, sut::TunnelTest};
 use assertions::PanicOnErrorEvents;
-use proptest::test_runner::{Config, TestError, TestRunner};
+use core::fmt;
+use proptest::{
+    strategy::{Strategy, ValueTree as _},
+    test_runner::{Config, RngAlgorithm, TestError, TestRng, TestRunner},
+};
 use proptest_state_machine::ReferenceStateMachine;
 use reference::ReferenceState;
 use std::sync::atomic::{self, AtomicU32};
@@ -111,6 +115,44 @@ fn tunnel_test() {
             panic!("{msg}")
         }
     }
+}
+
+#[test]
+fn reference_state_is_deterministic() {
+    for n in 0..1000 {
+        let state1 = sample_from_strategy(n, ReferenceState::init_state());
+        let state2 = sample_from_strategy(n, ReferenceState::init_state());
+
+        assert_eq!(format!("{state1:?}"), format!("{state2:?}"));
+    }
+}
+
+#[test]
+fn transitions_are_deterministic() {
+    for n in 0..1000 {
+        let state = sample_from_strategy(n, ReferenceState::init_state());
+        let transitions1 = sample_from_strategy(n, ReferenceState::transitions(&state));
+        let transitions2 = sample_from_strategy(n, ReferenceState::transitions(&state));
+
+        assert_eq!(format!("{transitions1:?}"), format!("{transitions2:?}"));
+    }
+}
+
+fn sample_from_strategy<S, T>(seed: u64, strategy: S) -> T
+where
+    S: Strategy<Value = T> + fmt::Debug,
+    T: fmt::Debug,
+{
+    strategy
+        .new_tree(&mut TestRunner::new_with_rng(
+            Config::default(),
+            TestRng::from_seed(
+                RngAlgorithm::default(),
+                seed.to_be_bytes().repeat(4).as_slice(),
+            ),
+        ))
+        .unwrap()
+        .current()
 }
 
 /// Initialise logging for [`TunnelTest`].

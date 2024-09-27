@@ -13,6 +13,7 @@ use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
 };
+use firezone_telemetry::Telemetry;
 use secrecy::{ExposeSecret as _, SecretString};
 use std::{collections::BTreeSet, path::PathBuf, time::Instant};
 use tokio::sync::{mpsc, oneshot};
@@ -26,21 +27,65 @@ pub type CtlrTx = mpsc::Sender<ControllerRequest>;
 
 pub struct Controller<I: GuiIntegration> {
     /// Debugging-only settings like API URL, auth URL, log filter
-    pub advanced_settings: AdvancedSettings,
+    advanced_settings: AdvancedSettings,
     // Sign-in state with the portal / deep links
-    pub auth: auth::Auth,
-    pub clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
+    auth: auth::Auth,
+    clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
+    ctlr_tx: CtlrTx,
+    ipc_client: ipc::Client,
+    ipc_rx: mpsc::Receiver<ipc::Event>,
+    integration: I,
+    log_filter_reloader: LogFilterReloader,
+    /// A release that's ready to download
+    release: Option<updates::Release>,
+    rx: mpsc::Receiver<ControllerRequest>,
+    status: Status,
+    telemetry: Telemetry,
+    updates_rx: mpsc::Receiver<Option<updates::Notification>>,
+    uptime: crate::uptime::Tracker,
+}
+
+pub struct Builder<I: GuiIntegration> {
+    pub advanced_settings: AdvancedSettings,
     pub ctlr_tx: CtlrTx,
-    pub ipc_client: ipc::Client,
-    pub ipc_rx: mpsc::Receiver<ipc::Event>,
     pub integration: I,
     pub log_filter_reloader: LogFilterReloader,
-    /// A release that's ready to download
-    pub release: Option<updates::Release>,
     pub rx: mpsc::Receiver<ControllerRequest>,
-    pub status: Status,
+    pub telemetry: Telemetry,
     pub updates_rx: mpsc::Receiver<Option<updates::Notification>>,
-    pub uptime: crate::uptime::Tracker,
+}
+
+impl<I: GuiIntegration> Builder<I> {
+    pub async fn build(self) -> Result<Controller<I>> {
+        let Builder {
+            advanced_settings,
+            ctlr_tx,
+            integration,
+            log_filter_reloader,
+            rx,
+            telemetry,
+            updates_rx,
+        } = self;
+
+        let (ipc_tx, ipc_rx) = mpsc::channel(1);
+        let ipc_client = ipc::Client::new(ipc_tx).await?;
+        Ok(Controller {
+            advanced_settings,
+            auth: auth::Auth::new()?,
+            clear_logs_callback: None,
+            ctlr_tx,
+            ipc_client,
+            ipc_rx,
+            integration,
+            log_filter_reloader,
+            release: None,
+            rx,
+            status: Default::default(),
+            telemetry,
+            updates_rx,
+            uptime: Default::default(),
+        })
+    }
 }
 
 pub trait GuiIntegration {
@@ -143,6 +188,16 @@ impl Status {
 
 impl<I: GuiIntegration> Controller<I> {
     pub async fn main_loop(mut self) -> Result<(), Error> {
+        // Start telemetry
+        {
+            let environment = self.advanced_settings.api_url.to_string();
+            self.telemetry
+                .start(environment.clone(), firezone_telemetry::GUI_DSN);
+            self.ipc_client
+                .send_msg(&IpcClientMsg::StartTelemetry { environment })
+                .await?;
+        }
+
         if let Some(token) = self
             .auth
             .token()
@@ -226,6 +281,8 @@ impl<I: GuiIntegration> Controller<I> {
         if let Err(error) = self.ipc_client.disconnect_from_ipc().await {
             tracing::error!(?error, "ipc_client");
         }
+
+        // Don't close telemetry here, `run` will close it.
 
         Ok(())
     }

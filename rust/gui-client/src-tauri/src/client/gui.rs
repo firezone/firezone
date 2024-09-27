@@ -10,15 +10,15 @@ use crate::client::{
 use anyhow::{bail, Context, Result};
 use common::system_tray::Event as TrayMenuEvent;
 use firezone_gui_client_common::{
-    self as common, auth,
-    controller::{Controller, ControllerRequest, CtlrTx, GuiIntegration},
-    crash_handling, deep_link,
+    self as common,
+    controller::{ControllerRequest, CtlrTx, GuiIntegration},
+    deep_link,
     errors::{self, Error},
-    ipc,
     settings::AdvancedSettings,
     updates,
 };
 use firezone_headless_client::LogFilterReloader;
+use firezone_telemetry as telemetry;
 use secrecy::{ExposeSecret as _, SecretString};
 use std::{str::FromStr, time::Duration};
 use tauri::{Manager, SystemTrayEvent};
@@ -120,18 +120,8 @@ pub(crate) fn run(
     cli: client::Cli,
     advanced_settings: AdvancedSettings,
     reloader: LogFilterReloader,
+    telemetry: telemetry::Telemetry,
 ) -> Result<(), Error> {
-    // Need to keep this alive so crashes will be handled. Dropping detaches it.
-    let _crash_handler = match crash_handling::attach_handler() {
-        Ok(x) => Some(x),
-        Err(error) => {
-            // TODO: None of these logs are actually written yet
-            // <https://github.com/firezone/firezone/issues/3211>
-            tracing::warn!(?error, "Did not set up crash handler");
-            None
-        }
-    };
-
     // Needed for the deep link server
     let rt = tokio::runtime::Runtime::new().context("Couldn't start Tokio runtime")?;
     let _guard = rt.enter();
@@ -226,6 +216,11 @@ pub(crate) fn run(
                         tracing::warn!(
                             "Will crash / error / panic on purpose in {delay} seconds to test error handling."
                         );
+                        telemetry::add_breadcrumb(telemetry::Breadcrumb {
+                            ty: "fail_on_purpose".into(),
+                            message: Some("Will crash / error / panic on purpose to test error handling.".into()),
+                            ..Default::default()
+                        });
                         tokio::time::sleep(Duration::from_secs(delay)).await;
                         tracing::warn!("Crashing / erroring / panicking on purpose");
                         ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
@@ -252,19 +247,16 @@ pub(crate) fn run(
 
                 let app_handle = app.handle();
                 let _ctlr_task = tokio::spawn(async move {
-                    let app_handle_2 = app_handle.clone();
                     // Spawn two nested Tasks so the outer can catch panics from the inner
-                    let task = tokio::spawn(async move {
-                        run_controller(
-                            app_handle_2,
-                            ctlr_tx,
-                            ctlr_rx,
-                            advanced_settings,
-                            reloader,
-                            updates_rx,
-                        )
-                        .await
-                    });
+                    let task = tokio::spawn(run_controller(
+                        app_handle.clone(),
+                        ctlr_tx,
+                        ctlr_rx,
+                        advanced_settings,
+                        reloader,
+                        telemetry.clone(),
+                        updates_rx,
+                    ));
 
                     // See <https://github.com/tauri-apps/tauri/issues/8631>
                     // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
@@ -275,16 +267,27 @@ pub(crate) fn run(
 
                     let exit_code = match task.await {
                         Err(error) => {
+                            telemetry::capture_error(&error);
                             tracing::error!(?error, "run_controller panicked");
+                            telemetry::end_session_with_status(telemetry::SessionStatus::Crashed);
                             1
                         }
                         Ok(Err(error)) => {
+                            telemetry::capture_error(&error);
                             tracing::error!(?error, "run_controller returned an error");
                             errors::show_error_dialog(&error).unwrap();
+                            telemetry::end_session_with_status(telemetry::SessionStatus::Crashed);
                             1
                         }
-                        Ok(Ok(_)) => 0,
+                        Ok(Ok(_)) => {
+                            telemetry::end_session();
+                            0
+                        }
                     };
+
+                    // In a normal Rust application, Sentry's guard would flush on drop: https://docs.sentry.io/platforms/rust/configuration/draining/
+                    // But due to a limit in `tao` we cannot return from the event loop and must call `std::process::exit` (or Tauri's wrapper), so we explicitly flush here.
+                    telemetry.stop();
 
                     tracing::info!(?exit_code);
                     app_handle.exit(exit_code);
@@ -443,28 +446,22 @@ async fn run_controller(
     rx: mpsc::Receiver<ControllerRequest>,
     advanced_settings: AdvancedSettings,
     log_filter_reloader: LogFilterReloader,
+    telemetry: telemetry::Telemetry,
     updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 ) -> Result<(), Error> {
     tracing::debug!("Entered `run_controller`");
-    let (ipc_tx, ipc_rx) = mpsc::channel(1);
-    let ipc_client = ipc::Client::new(ipc_tx).await?;
     let tray = system_tray::Tray::new(app.tray_handle());
-    let integration = TauriIntegration { app, tray };
-    let controller = Controller {
+    let controller = firezone_gui_client_common::controller::Builder {
         advanced_settings,
-        auth: auth::Auth::new()?,
-        clear_logs_callback: None,
         ctlr_tx,
-        ipc_client,
-        ipc_rx,
-        integration,
+        integration: TauriIntegration { app, tray },
         log_filter_reloader,
-        release: None,
         rx,
-        status: Default::default(),
+        telemetry,
         updates_rx,
-        uptime: Default::default(),
-    };
+    }
+    .build()
+    .await?;
 
     controller.main_loop().await?;
 

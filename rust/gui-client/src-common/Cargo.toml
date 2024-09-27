@@ -9,13 +9,12 @@ anyhow = { version = "1.0" }
 arboard = { version = "3.4.0", default-features = false }
 atomicwrites = { workspace = true }
 connlib-shared = { workspace = true }
-crash-handler = "0.6.2"
 firezone-bin-shared = { workspace = true }
 firezone-headless-client = { path = "../../headless-client" }
 firezone-logging = { workspace = true }
+firezone-telemetry = { workspace = true }
 futures = { version = "0.3", default-features = false }
 hex = "0.4.3"
-minidumper = "0.8.3"
 native-dialog = "0.7.0"
 output_vt100 = "0.1"
 png = "0.17.13" # `png` is mostly free since we already need it for Tauri
