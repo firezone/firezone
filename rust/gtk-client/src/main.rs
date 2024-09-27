@@ -1,11 +1,10 @@
 use anyhow::{Context as _, Result};
 use clap::{Args, Parser};
 use firezone_gui_client_common::{
-    self as common, auth,
+    self as common,
     compositor::{self, Image},
-    controller::{Controller, ControllerRequest, CtlrTx, GuiIntegration},
+    controller::{Builder as ControllerBuilder, ControllerRequest, CtlrTx, GuiIntegration},
     deep_link,
-    ipc,
     system_tray::{AppState, ConnlibState, Entry, Icon, IconBase},
     updates,
 };
@@ -38,6 +37,7 @@ struct Cli {
 
 #[derive(clap::Subcommand)]
 enum Cmd {
+    Debug,
     OpenDeepLink(DeepLink),
 }
 
@@ -51,6 +51,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Some(Cmd::Debug) => return Ok(()), // I didn't want to use `if-let` here
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
             if let Err(error) = rt.block_on(deep_link::open(&deep_link.url)) {
@@ -285,23 +286,14 @@ async fn run_controller(
         main_tx: main_tx.clone(),
     };
 
-    let (ipc_tx, ipc_rx) = mpsc::channel(1);
-    let ipc_client = ipc::Client::new(ipc_tx).await?;
-    let controller = Controller {
+    let controller = ControllerBuilder {
         advanced_settings: Default::default(), // TODO
-        auth: auth::Auth::new()?,
-        clear_logs_callback: None,
         ctlr_tx,
-        ipc_client,
-        ipc_rx,
         integration,
         log_filter_reloader,
-        release: None,
         rx,
-        status: Default::default(),
         updates_rx,
-        uptime: Default::default(),
-    };
+    }.build().await?;
 
     controller.main_loop().await?;
     main_tx.send(MainThreadReq::Quit).await?;

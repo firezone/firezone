@@ -30,7 +30,7 @@ tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdr
 [profile.release]
 codegen-units = 1
 debug = "full"
-lto = "fat"
+lto = "thin" # Don't have enough RAM in my VM to do fat LTO
 split-debuginfo = "packed"
 strip = "none"
 
