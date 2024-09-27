@@ -1288,6 +1288,7 @@ dependencies = [
  "bimap",
  "chrono",
  "connlib-shared",
+ "firezone-telemetry",
  "firezone-tunnel",
  "ip_network",
  "phoenix-channel",
