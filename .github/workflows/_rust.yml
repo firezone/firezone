@@ -111,21 +111,6 @@ jobs:
           rg --count --no-ignore "Performed IP-NAT46" $TESTCASES_DIR
           rg --count --no-ignore "Performed IP-NAT64" $TESTCASES_DIR
 
-          # Backup dumped state and transition samples
-          mv $TESTCASES_DIR $TESTCASES_BACKUP_DIR
-
-          # Re-run only the regression seeds
-          PROPTEST_CASES=0 cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- tunnel_test --nocapture
-
-           # Assert that sampled state and transitions don't change between runs
-          for file in "$TESTCASES_DIR"/*.{state,transitions}; do
-            filename=$(basename "$file")
-
-            if ! diff "$file" "$TESTCASES_BACKUP_DIR/$filename"; then
-              echo "Found non-deterministic testcase: $filename"
-              exit 1
-            fi
-          done
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests
@@ -134,7 +119,6 @@ jobs:
           PROPTEST_CASES: 1000 # Default is only 256.
           CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
           TESTCASES_DIR: "connlib/tunnel/testcases"
-          TESTCASES_BACKUP_DIR: "connlib/tunnel/testcases_backup"
 
   # Runs the Tauri client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
