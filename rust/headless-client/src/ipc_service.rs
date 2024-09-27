@@ -541,7 +541,7 @@ impl<'a> Handler<'a> {
         };
 
         // Synchronous DNS resolution here
-        let phoenix_span = transaction.start_child("phoenix", "Connect PhoenixChannel");
+        let phoenix_span = transaction.start_child("phoenix", "Resolve DNS for PhoenixChannel");
         let portal = PhoenixChannel::connect(
             Secret::new(url),
             get_user_agent(None, env!("CARGO_PKG_VERSION")),
@@ -565,7 +565,7 @@ impl<'a> Handler<'a> {
         // Call `set_dns` before `set_tun` so that the tunnel starts up with a valid list of resolvers.
         tracing::debug!(?dns, "Calling `set_dns`...");
         connlib.set_dns(dns);
-        let tun_span = transaction.start_child("tun", "Raise tunnel");
+        let tun_span = transaction.start_child("tun", "Raise tunnel with `make_tun`");
         let tun = self
             .tun_device
             .make_tun()
