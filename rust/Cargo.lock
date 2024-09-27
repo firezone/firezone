@@ -6982,7 +6982,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.6.2"
-source = "git+https://github.com/thomaseizinger/str0m?branch=refactor/always-apply-latest-timing-config#c92b791b15c517fd37187f75a8d53df7ba4f63e2"
+source = "git+https://github.com/algesten/str0m?branch=main#353923f5c102497117bd816285d8f95a549a6c3a"
 dependencies = [
  "combine",
  "crc",
