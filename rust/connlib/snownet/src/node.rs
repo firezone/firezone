@@ -545,11 +545,6 @@ where
     ) -> Connection<RId> {
         agent.handle_timeout(now);
 
-        /// We set a Wireguard keep-alive to ensure the WG session doesn't timeout on an idle connection.
-        ///
-        /// Without such a timeout, using a tunnel after the REKEY_TIMEOUT requires handshaking a new session which delays the new application packet by 1 RTT.
-        const WG_KEEP_ALIVE: Option<u16> = Some(60);
-
         if self.allocations.is_empty() {
             tracing::warn!(
                 "No TURN servers connected; connection will very likely fail to establish"
@@ -562,7 +557,7 @@ where
                 self.private_key.clone(),
                 remote,
                 Some(key),
-                WG_KEEP_ALIVE,
+                Some(25), // 25 is the default for the kernel implementation.
                 self.index.next(),
                 Some(self.rate_limiter.clone()),
             ),
