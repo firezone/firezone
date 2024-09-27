@@ -17,6 +17,7 @@ members = [
   "phoenix-channel",
   "relay",
   "socket-factory",
+  "telemetry",
   "tests/gui-smoke-test",
   "tests/http-test-server",
   "tun"
@@ -47,8 +48,9 @@ rustls = { version = "0.23.10", default-features = false, features = ["ring"] }
 connlib-client-android = { path = "connlib/clients/android" }
 connlib-client-apple = { path = "connlib/clients/apple" }
 connlib-client-shared = { path = "connlib/clients/shared" }
-firezone-logging = { path = "logging" }
 firezone-bin-shared = { path = "bin-shared" }
+firezone-logging = { path = "logging" }
+firezone-telemetry = { path = "telemetry" }
 snownet = { path = "connlib/snownet" }
 firezone-relay = { path = "relay" }
 connlib-shared = { path = "connlib/shared" }

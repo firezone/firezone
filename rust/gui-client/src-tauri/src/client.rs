@@ -1,9 +1,10 @@
 use anyhow::{bail, Context as _, Result};
 use clap::{Args, Parser};
 use firezone_gui_client_common::{
-    self as common, controller::Failure, crash_handling, deep_link, settings::AdvancedSettings,
+    self as common, controller::Failure, deep_link, settings::AdvancedSettings,
 };
-use std::path::PathBuf;
+use firezone_telemetry as telemetry;
+use std::collections::BTreeMap;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
 
@@ -24,7 +25,6 @@ pub(crate) enum Error {
 /// The program's entry point, equivalent to `main`
 #[instrument(skip_all)]
 pub(crate) fn run() -> Result<()> {
-    std::panic::set_hook(Box::new(tracing_panic::panic_hook));
     let cli = Cli::parse();
 
     // TODO: Why is this here?
@@ -47,7 +47,6 @@ pub(crate) fn run() -> Result<()> {
                 }
             }
         }
-        Some(Cmd::CrashHandlerServer { socket_path }) => crash_handling::server(socket_path),
         Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
         Some(Cmd::Elevated) => run_gui(cli),
@@ -61,12 +60,14 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
             let settings = common::settings::load_advanced_settings().unwrap_or_default();
+            let telemetry = telemetry::Telemetry::default();
+            telemetry.start(settings.api_url.to_string(), telemetry::GUI_DSN);
             // Don't fix the log filter for smoke tests
             let common::logging::Handles {
                 logger: _logger,
                 reloader,
             } = start_logging(&settings.log_filter)?;
-            let result = gui::run(cli, settings, reloader);
+            let result = gui::run(cli, settings, reloader, telemetry);
             if let Err(error) = &result {
                 // In smoke-test mode, don't show the dialog, since it might be running
                 // unattended in CI and the dialog would hang forever
@@ -86,12 +87,15 @@ pub(crate) fn run() -> Result<()> {
 // Can't `instrument` this because logging isn't running when we enter it.
 fn run_gui(cli: Cli) -> Result<()> {
     let mut settings = common::settings::load_advanced_settings().unwrap_or_default();
+    let telemetry = telemetry::Telemetry::default();
+    // In the future telemetry will be opt-in per organization, that's why this isn't just at the top of `main`
+    telemetry.start(settings.api_url.to_string(), telemetry::GUI_DSN);
     fix_log_filter(&mut settings)?;
     let common::logging::Handles {
         logger: _logger,
         reloader,
     } = start_logging(&settings.log_filter)?;
-    let result = gui::run(cli, settings, reloader);
+    let result = gui::run(cli, settings, reloader, telemetry);
 
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
@@ -124,14 +128,26 @@ fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
 /// Don't drop the log handle or logging will stop.
 fn start_logging(directives: &str) -> Result<common::logging::Handles> {
     let logging_handles = common::logging::setup(directives)?;
+    let git_version = firezone_bin_shared::git_version!("gui-client-*");
+    let system_uptime_seconds = firezone_headless_client::uptime::get().map(|dur| dur.as_secs());
     tracing::info!(
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
         ?directives,
-        git_version = firezone_bin_shared::git_version!("gui-client-*"),
-        system_uptime_seconds = firezone_headless_client::uptime::get().map(|dur| dur.as_secs()),
+        ?git_version,
+        ?system_uptime_seconds,
         "`gui-client` started logging"
     );
+    telemetry::add_breadcrumb(telemetry::Breadcrumb {
+        ty: "logging_start".into(),
+        category: None,
+        data: BTreeMap::from([
+            ("directives".into(), directives.into()),
+            ("git_version".into(), git_version.into()),
+            ("system_uptime_seconds".into(), system_uptime_seconds.into()),
+        ]),
+        ..Default::default()
+    });
 
     Ok(logging_handles)
 }
@@ -190,9 +206,6 @@ impl Cli {
 
 #[derive(clap::Subcommand)]
 pub enum Cmd {
-    CrashHandlerServer {
-        socket_path: PathBuf,
-    },
     Debug {
         #[command(subcommand)]
         command: debug_commands::Cmd,
