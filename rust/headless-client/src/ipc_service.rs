@@ -500,7 +500,7 @@ impl<'a> Handler<'a> {
             }
             ClientMsg::StartTelemetry { environment } => self
                 .telemetry
-                .start(environment, firezone_telemetry::IPC_SERVICE_DSN),
+                .start(environment, firezone_bin_shared::git_version!("gui-client-*"), firezone_telemetry::IPC_SERVICE_DSN),
             ClientMsg::StopTelemetry => self.telemetry.stop(),
         }
         Ok(())

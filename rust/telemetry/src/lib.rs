@@ -42,7 +42,7 @@ impl Clone for Telemetry {
 }
 
 impl Telemetry {
-    pub fn start(&self, environment: String, dsn: Dsn) {
+    pub fn start(&self, environment: String, release: &'static str, dsn: Dsn) {
         // Since it's `arc_swap` and not `Option`, there is a TOCTOU here,
         // but in practice it should never trigger
         if self.inner.load().is_some() {
@@ -53,7 +53,7 @@ impl Telemetry {
             dsn.0,
             sentry::ClientOptions {
                 environment: Some(environment.into()),
-                release: sentry::release_name!(),
+                release: Some(release.into()),
                 traces_sample_rate: 1.0,
                 ..Default::default()
             },
