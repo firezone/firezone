@@ -179,6 +179,22 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
         />
 
         <div
+          class={[
+            "absolute top-1/2 end-2 -translate-y-1/2",
+            not @disabled && "cursor-pointer"
+          ]}
+          phx-click={
+            JS.toggle_class("hidden",
+              to: "#select-#{@id}-dropdown"
+            )
+            |> JS.toggle_attribute({"aria-expanded", "true", "false"}, to: "##{@id}-input")
+            |> JS.focus(to: "#select-" <> @id <> "-search-input")
+          }
+        >
+          <.icon name="hero-chevron-up-down" class="w-5 h-5" />
+        </div>
+
+        <div
           id={"select-#{@id}-dropdown"}
           class={[
             "hidden",
