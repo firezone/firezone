@@ -247,21 +247,16 @@ pub(crate) fn run(
 
                 let app_handle = app.handle();
                 let _ctlr_task = tokio::spawn(async move {
-                    let app_handle_2 = app_handle.clone();
-                    let telemetry_2 = telemetry.clone();
                     // Spawn two nested Tasks so the outer can catch panics from the inner
-                    let task = tokio::spawn(async move {
-                        run_controller(
-                            app_handle_2,
-                            ctlr_tx,
-                            ctlr_rx,
-                            advanced_settings,
-                            reloader,
-                            telemetry_2,
-                            updates_rx,
-                        )
-                        .await
-                    });
+                    let task = tokio::spawn(run_controller(
+                        app_handle.clone(),
+                        ctlr_tx,
+                        ctlr_rx,
+                        advanced_settings,
+                        reloader,
+                        telemetry.clone(),
+                        updates_rx,
+                    ));
 
                     // See <https://github.com/tauri-apps/tauri/issues/8631>
                     // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
