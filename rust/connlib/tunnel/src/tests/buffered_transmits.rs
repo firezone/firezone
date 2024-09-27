@@ -11,6 +11,8 @@ use std::{
 pub(crate) struct BufferedTransmits {
     // Transmits are stored in reverse ordering to emit the earliest first.
     inner: BinaryHeap<Reverse<ByTime<Transmit<'static>>>>,
+
+    packet_counter: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
@@ -72,6 +74,7 @@ impl BufferedTransmits {
             at: now + latency,
             value: transmit,
         }));
+        self.packet_counter += 1;
     }
 
     pub(crate) fn pop(&mut self, now: Instant) -> Option<Transmit<'static>> {
@@ -88,6 +91,10 @@ impl BufferedTransmits {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.inner.is_empty()
+    }
+
+    pub(crate) fn packet_counter(&self) -> u64 {
+        self.packet_counter
     }
 }
 

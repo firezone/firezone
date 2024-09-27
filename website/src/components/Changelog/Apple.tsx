@@ -16,6 +16,10 @@ export default function Apple() {
           Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is
           active.
         </ChangeItem>
+        <ChangeItem pull="6845">
+          Fixes connectivity issues on idle connections by entering an
+          always-on, low-power mode instead of closing them.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.5" date={new Date("2024-09-26")}>
         <ChangeItem pull="6809">
