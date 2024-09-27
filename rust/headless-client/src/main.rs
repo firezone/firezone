@@ -184,26 +184,25 @@ fn main() -> Result<()> {
         private_key,
         callbacks,
     };
-    let _guard = rt.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
-    // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
-    // resolve the portal host and fail. This is intentional behavior. The Headless Client should always be running under a manager like `systemd` or Windows' Service Controller,
-    // so when it fails it will be restarted with backoff. `systemd` can additionally make us wait
-    // for an Internet connection if it launches us at startup.
-    // When running interactively, it is useful for the user to see that we can't reach the portal.
-    let portal = PhoenixChannel::connect(
-        Secret::new(url),
-        get_user_agent(None, env!("CARGO_PKG_VERSION")),
-        "client",
-        (),
-        ExponentialBackoffBuilder::default()
-            .with_max_elapsed_time(max_partition_time)
-            .build(),
-        Arc::new(tcp_socket_factory),
-    )?;
-    let session = Session::connect(args, portal, rt.handle().clone());
+    rt.block_on(async {
+        // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
+        // resolve the portal host and fail. This is intentional behavior. The Headless Client should always be running under a manager like `systemd` or Windows' Service Controller,
+        // so when it fails it will be restarted with backoff. `systemd` can additionally make us wait
+        // for an Internet connection if it launches us at startup.
+        // When running interactively, it is useful for the user to see that we can't reach the portal.
+        let portal = PhoenixChannel::connect(
+            Secret::new(url),
+            get_user_agent(None, env!("CARGO_PKG_VERSION")),
+            "client",
+            (),
+            ExponentialBackoffBuilder::default()
+                .with_max_elapsed_time(max_partition_time)
+                .build(),
+            Arc::new(tcp_socket_factory),
+        )?;
+        let session = Session::connect(args, portal, rt.handle().clone());
 
-    let result = rt.block_on(async {
         let mut terminate = signals::Terminate::new()?;
         let mut hangup = signals::Hangup::new()?;
         let mut terminate = pin!(terminate.recv().fuse());
@@ -290,16 +289,17 @@ fn main() -> Result<()> {
             }
         };
 
+        if let Err(error) = dns_notifier.close() {
+            tracing::error!(?error, "DNS notifier")
+        }
         if let Err(error) = network_notifier.close() {
-            tracing::error!(?error, "network listener");
+            tracing::error!(?error, "network notifier");
         }
 
+        session.disconnect();
+
         result
-    });
-
-    session.disconnect();
-
-    result
+    })
 }
 
 /// Read the token from disk if it was not in the environment
