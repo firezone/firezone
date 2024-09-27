@@ -24,9 +24,8 @@ pub(crate) struct SimGateway {
     pub(crate) sut: GatewayState,
 
     /// The received ICMP packets, indexed by our custom ICMP payload.
-    pub(crate) received_icmp_requests: BTreeMap<u64, IpPacket<'static>>,
+    pub(crate) received_icmp_requests: BTreeMap<u64, IpPacket>,
 
-    buffer: Vec<u8>,
     enc_buffer: EncryptBuffer,
 }
 
@@ -36,7 +35,6 @@ impl SimGateway {
             id,
             sut,
             received_icmp_requests: Default::default(),
-            buffer: vec![0u8; (1 << 16) - 1],
             enc_buffer: EncryptBuffer::new((1 << 16) - 1),
         }
     }
@@ -47,16 +45,9 @@ impl SimGateway {
         transmit: Transmit,
         now: Instant,
     ) -> Option<Transmit<'static>> {
-        let packet = self
-            .sut
-            .decapsulate(
-                transmit.dst,
-                transmit.src.unwrap(),
-                &transmit.payload,
-                now,
-                &mut self.buffer,
-            )?
-            .to_owned();
+        let packet =
+            self.sut
+                .decapsulate(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)?;
 
         self.on_received_packet(global_dns_records, packet, now)
     }
@@ -65,7 +56,7 @@ impl SimGateway {
     fn on_received_packet(
         &mut self,
         global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
-        packet: IpPacket<'static>,
+        packet: IpPacket,
         now: Instant,
     ) -> Option<Transmit<'static>> {
         // TODO: Instead of handling these things inline, here, should we dispatch them via `RoutingTable`?
@@ -115,7 +106,7 @@ impl SimGateway {
 
     fn handle_icmp_request(
         &mut self,
-        packet: &IpPacket<'static>,
+        packet: &IpPacket,
         echo: IcmpEchoHeader,
         payload: &[u8],
         now: Instant,

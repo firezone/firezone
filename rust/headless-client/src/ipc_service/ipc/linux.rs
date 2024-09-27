@@ -36,7 +36,7 @@ pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Error> {
         .peer_cred()
         .context("Couldn't get PID of UDS server")
         .map_err(Error::Other)?;
-    tracing::info!(
+    tracing::debug!(
         uid = cred.uid(),
         gid = cred.gid(),
         pid = cred.pid(),

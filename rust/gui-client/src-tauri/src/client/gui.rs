@@ -444,7 +444,7 @@ async fn run_controller(
     log_filter_reloader: LogFilterReloader,
     updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 ) -> Result<(), Error> {
-    tracing::info!("Entered `run_controller`");
+    tracing::debug!("Entered `run_controller`");
     let tray = system_tray::Tray::new(app.tray_handle());
     let integration = TauriIntegration { app, tray };
     let controller = ControllerBuilder {

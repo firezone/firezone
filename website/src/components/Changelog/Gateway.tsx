@@ -2,6 +2,7 @@ import Entry from "./Entry";
 import Entries from "./Entries";
 import Link from "next/link";
 import ChangeItem from "./ChangeItem";
+import Unreleased from "./Unreleased";
 
 export default function Gateway() {
   const href = "/dl/firezone-gateway/:version/:arch";
@@ -9,73 +10,63 @@ export default function Gateway() {
 
   return (
     <Entries href={href} arches={arches} title="Gateway">
+      <Unreleased>
+        <ChangeItem pull="6733">
+          Reduces log level of the "Couldn't find connection by IP" message so
+          that it doesn't log each time a client disconnects.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.3.1" date={new Date("2024-09-05")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6563">
-            Removes unnecessary packet buffers for a minor performance increase.
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="6563">
+          Removes unnecessary packet buffers for a minor performance increase.
+        </ChangeItem>
       </Entry>
       <Entry version="1.3.0" date={new Date("2024-08-30")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6434">
-            Adds support for routing the Internet Resource for Clients.
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="6434">
+          Adds support for routing the Internet Resource for Clients.
+        </ChangeItem>
       </Entry>
       <Entry version="1.2.0" date={new Date("2024-08-21")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="5901">
-            Implements glob-like matching of domains for DNS resources.
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="5901">
+          Implements glob-like matching of domains for DNS resources.
+        </ChangeItem>
       </Entry>
       <Entry version="1.1.5" date={new Date("2024-08-13")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <ChangeItem pull="6276">
-            Fixes a bug where relayed connections failed to establish after an
-            idle period.
-          </ChangeItem>
-          <ChangeItem pull="6277">
-            Fixes a bug where restrictive NATs caused connectivity problems.
-          </ChangeItem>
-        </ul>
+        <ChangeItem pull="6276">
+          Fixes a bug where relayed connections failed to establish after an
+          idle period.
+        </ChangeItem>
+        <ChangeItem pull="6277">
+          Fixes a bug where restrictive NATs caused connectivity problems.
+        </ChangeItem>
       </Entry>
       <Entry version="1.1.4" date={new Date("2024-08-08")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <li className="pl-2">
-            Removes `FIREZONE_ENABLE_MASQUERADE` env variable. Masquerading is
-            now always enabled unconditionally.
-          </li>
-        </ul>
+        <li className="pl-2">
+          Removes `FIREZONE_ENABLE_MASQUERADE` env variable. Masquerading is now
+          always enabled unconditionally.
+        </li>
       </Entry>
       <Entry version="1.1.3" date={new Date("2024-08-02")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <li className="pl-2">
-            Fixes{" "}
-            <Link
-              className="text-accent-500 underline hover:no-underline"
-              href="https://github.com/firezone/firezone/pull/6117"
-            >
-              an issue
-            </Link>{" "}
-            where Gateways could become unresponsive after new versions of the
-            Firezone infrastructure was deployed.
-          </li>
-        </ul>
+        <li className="pl-2">
+          Fixes{" "}
+          <Link
+            className="text-accent-500 underline hover:no-underline"
+            href="https://github.com/firezone/firezone/pull/6117"
+          >
+            an issue
+          </Link>{" "}
+          where Gateways could become unresponsive after new versions of the
+          Firezone infrastructure was deployed.
+        </li>
       </Entry>
       <Entry version="1.1.2" date={new Date("2024-06-29")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <li className="pl-2">Reduces log noise for the default log level.</li>
-        </ul>
+        <li className="pl-2">Reduces log noise for the default log level.</li>
       </Entry>
       <Entry version="1.1.1" date={new Date("2024-06-27")}>
-        <ul className="list-disc space-y-2 pl-4 mb-4">
-          <li className="pl-2">
-            Fixes a minor connectivity issue that could occur for some DNS
-            Resources.
-          </li>
-        </ul>
+        <li className="pl-2">
+          Fixes a minor connectivity issue that could occur for some DNS
+          Resources.
+        </li>
       </Entry>
       <Entry version="1.1.0" date={new Date("2024-06-19")}>
         <p className="mb-2 md:mb-4">
