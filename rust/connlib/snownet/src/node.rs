@@ -1686,7 +1686,7 @@ where
 
                             Some(peer_socket)
                         }
-                        ConnectionState::Failed => continue, // Failed and idle connections are cleaned up, don't bother handling events.
+                        ConnectionState::Failed => continue, // Failed connections are cleaned up, don't bother handling events.
                     };
 
                     tracing::info!(?old, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
