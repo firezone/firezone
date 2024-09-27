@@ -13,6 +13,7 @@ use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
 };
+use firezone_telemetry::Telemetry;
 use secrecy::{ExposeSecret as _, SecretString};
 use std::{collections::BTreeSet, path::PathBuf, time::Instant};
 use tokio::sync::{mpsc, oneshot};
@@ -39,6 +40,7 @@ pub struct Controller<I: GuiIntegration> {
     release: Option<updates::Release>,
     rx: mpsc::Receiver<ControllerRequest>,
     status: Status,
+    telemetry: Telemetry,
     updates_rx: mpsc::Receiver<Option<updates::Notification>>,
     uptime: crate::uptime::Tracker,
 }
@@ -49,6 +51,7 @@ pub struct Builder<I: GuiIntegration> {
     pub integration: I,
     pub log_filter_reloader: LogFilterReloader,
     pub rx: mpsc::Receiver<ControllerRequest>,
+    pub telemetry: Telemetry,
     pub updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 }
 
@@ -60,6 +63,7 @@ impl<I: GuiIntegration> Builder<I> {
             integration,
             log_filter_reloader,
             rx,
+            telemetry,
             updates_rx,
         } = self;
 
@@ -77,6 +81,7 @@ impl<I: GuiIntegration> Builder<I> {
             release: None,
             rx,
             status: Default::default(),
+            telemetry,
             updates_rx,
             uptime: Default::default(),
         })
@@ -183,6 +188,16 @@ impl Status {
 
 impl<I: GuiIntegration> Controller<I> {
     pub async fn main_loop(mut self) -> Result<(), Error> {
+        // Start telemetry
+        {
+            let environment = self.advanced_settings.api_url.to_string();
+            self.telemetry
+                .start(environment.clone(), firezone_telemetry::GUI_DSN);
+            self.ipc_client
+                .send_msg(&IpcClientMsg::StartTelemetry { environment })
+                .await?;
+        }
+
         if let Some(token) = self
             .auth
             .token()
@@ -266,6 +281,8 @@ impl<I: GuiIntegration> Controller<I> {
         if let Err(error) = self.ipc_client.disconnect_from_ipc().await {
             tracing::error!(?error, "ipc_client");
         }
+
+        // Don't close telemetry here, `run` will close it.
 
         Ok(())
     }

@@ -13,6 +13,7 @@ use firezone_bin_shared::{
 use firezone_headless_client::{
     device_id, signals, CallbackHandler, CliCommon, ConnlibMsg, DnsController,
 };
+use firezone_telemetry::Telemetry;
 use futures::{FutureExt as _, StreamExt as _};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
@@ -114,6 +115,8 @@ fn main() -> Result<()> {
 
     let token_env_var = cli.token.take().map(SecretString::from);
     let cli = cli;
+    let telemetry = Telemetry::default();
+    telemetry.start(cli.api_url.to_string(), firezone_telemetry::HEADLESS_DSN);
 
     // Docs indicate that `remove_var` should actually be marked unsafe
     // SAFETY: We haven't spawned any other threads, this code should be the first
@@ -186,11 +189,18 @@ fn main() -> Result<()> {
     };
 
     rt.block_on(async {
+        let ctx = firezone_telemetry::TransactionContext::new(
+            "connect_to_firezone",
+            "Connecting to Firezone",
+        );
+        let transaction = firezone_telemetry::start_transaction(ctx);
+
         // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
         // resolve the portal host and fail. This is intentional behavior. The Headless Client should always be running under a manager like `systemd` or Windows' Service Controller,
         // so when it fails it will be restarted with backoff. `systemd` can additionally make us wait
         // for an Internet connection if it launches us at startup.
         // When running interactively, it is useful for the user to see that we can't reach the portal.
+        let phoenix_span = transaction.start_child("phoenix", "Connect PhoenixChannel");
         let portal = PhoenixChannel::connect(
             Secret::new(url),
             get_user_agent(None, env!("CARGO_PKG_VERSION")),
@@ -201,6 +211,7 @@ fn main() -> Result<()> {
                 .build(),
             Arc::new(tcp_socket_factory),
         )?;
+        phoenix_span.finish();
         let session = Session::connect(args, portal, rt.handle().clone());
 
         let mut terminate = signals::Terminate::new()?;
@@ -223,9 +234,13 @@ fn main() -> Result<()> {
             new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
         drop(tokio_handle);
 
+        let tun_span = transaction.start_child("tun", "Raise tunnel");
         let tun = tun_device.make_tun()?;
         session.set_tun(Box::new(tun));
+        tun_span.finish();
         session.set_dns(dns_controller.system_resolvers());
+
+        transaction.finish();
 
         let result = loop {
             let mut dns_changed = pin!(dns_notifier.notified().fuse());

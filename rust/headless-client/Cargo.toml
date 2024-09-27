@@ -15,6 +15,7 @@ connlib-client-shared = { workspace = true }
 connlib-shared = { workspace = true }
 firezone-bin-shared = { workspace = true }
 firezone-logging = { workspace = true }
+firezone-telemetry = { workspace = true }
 futures = "0.3.30"
 humantime = "2.1"
 ip-packet = { workspace = true }

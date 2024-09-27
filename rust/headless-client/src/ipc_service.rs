@@ -10,6 +10,7 @@ use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
 };
+use firezone_telemetry::Telemetry;
 use futures::{
     future::poll_fn,
     task::{Context, Poll},
@@ -81,6 +82,8 @@ pub enum ClientMsg {
     Reset,
     SetDns(Vec<IpAddr>),
     SetDisabledResources(BTreeSet<ResourceId>),
+    StartTelemetry { environment: String },
+    StopTelemetry,
 }
 
 /// Messages that end up in the GUI, either forwarded from connlib or from the IPC service.
@@ -178,15 +181,21 @@ fn run_smoke_test() -> Result<()> {
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
     let mut signals = signals::Terminate::new()?;
+    let telemetry = Telemetry::default();
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
         device_id::get_or_create().context("Failed to read / create device ID")?;
         let mut server = IpcServer::new(ServiceId::Prod).await?;
-        let _ = Handler::new(&mut server, &mut dns_controller, &log_filter_reloader)
-            .await?
-            .run(&mut signals)
-            .await;
+        let _ = Handler::new(
+            &mut server,
+            &mut dns_controller,
+            &log_filter_reloader,
+            telemetry,
+        )
+        .await?
+        .run(&mut signals)
+        .await;
         Ok::<_, anyhow::Error>(())
     })
 }
@@ -205,11 +214,13 @@ async fn ipc_listen(
     device_id::get_or_create().context("Failed to read / create device ID")?;
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     let mut dns_controller = DnsController { dns_control_method };
+    let telemetry = Telemetry::default();
     loop {
         let mut handler_fut = pin!(Handler::new(
             &mut server,
             &mut dns_controller,
-            log_filter_reloader
+            log_filter_reloader,
+            telemetry.clone(),
         ));
         let Some(handler) = poll_fn(|cx| {
             if let Poll::Ready(()) = signals.poll_recv(cx) {
@@ -241,6 +252,7 @@ struct Handler<'a> {
     last_connlib_start_instant: Option<Instant>,
     log_filter_reloader: &'a LogFilterReloader,
     session: Option<Session>,
+    telemetry: Telemetry, // Handle to the sentry.io telemetry module
     tun_device: TunDeviceManager,
 }
 
@@ -271,6 +283,7 @@ impl<'a> Handler<'a> {
         server: &mut IpcServer,
         dns_controller: &'a mut DnsController,
         log_filter_reloader: &'a LogFilterReloader,
+        telemetry: Telemetry,
     ) -> Result<Self> {
         dns_controller.deactivate()?;
         let (ipc_rx, ipc_tx) = server
@@ -286,6 +299,7 @@ impl<'a> Handler<'a> {
             last_connlib_start_instant: None,
             log_filter_reloader,
             session: None,
+            telemetry,
             tun_device,
         })
     }
@@ -484,6 +498,10 @@ impl<'a> Handler<'a> {
 
                 session.connlib.set_disabled_resources(disabled_resources);
             }
+            ClientMsg::StartTelemetry { environment } => self
+                .telemetry
+                .start(environment, firezone_telemetry::IPC_SERVICE_DSN),
+            ClientMsg::StopTelemetry => self.telemetry.stop(),
         }
         Ok(())
     }
@@ -494,6 +512,11 @@ impl<'a> Handler<'a> {
     ///
     /// Throws matchable errors for bad URLs, unable to reach the portal, or unable to create the tunnel device
     fn connect_to_firezone(&mut self, api_url: &str, token: SecretString) -> Result<(), Error> {
+        let ctx = firezone_telemetry::TransactionContext::new(
+            "connect_to_firezone",
+            "Connecting to Firezone",
+        );
+        let transaction = firezone_telemetry::start_transaction(ctx);
         assert!(self.session.is_none());
         let device_id = device_id::get_or_create().map_err(|e| Error::DeviceId(e.to_string()))?;
         let (private_key, public_key) = keypair();
@@ -518,6 +541,7 @@ impl<'a> Handler<'a> {
         };
 
         // Synchronous DNS resolution here
+        let phoenix_span = transaction.start_child("phoenix", "Resolve DNS for PhoenixChannel");
         let portal = PhoenixChannel::connect(
             Secret::new(url),
             get_user_agent(None, env!("CARGO_PKG_VERSION")),
@@ -529,6 +553,7 @@ impl<'a> Handler<'a> {
             Arc::new(tcp_socket_factory),
         )
         .map_err(|e| Error::PortalConnection(e.to_string()))?;
+        phoenix_span.finish();
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
@@ -540,15 +565,18 @@ impl<'a> Handler<'a> {
         // Call `set_dns` before `set_tun` so that the tunnel starts up with a valid list of resolvers.
         tracing::debug!(?dns, "Calling `set_dns`...");
         connlib.set_dns(dns);
+        let tun_span = transaction.start_child("tun", "Raise tunnel with `make_tun`");
         let tun = self
             .tun_device
             .make_tun()
             .map_err(|e| Error::TunnelDevice(e.to_string()))?;
         connlib.set_tun(Box::new(tun));
+        tun_span.finish();
 
         let session = Session { cb_rx, connlib };
         self.session = Some(session);
 
+        transaction.finish();
         Ok(())
     }
 }

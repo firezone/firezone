@@ -48,15 +48,13 @@ fn main() -> Result<()> {
     gui.wait()?.fz_exit_ok().context("GUI process")?;
     ipc_service.wait()?.fz_exit_ok().context("IPC service")?;
 
-    // Force the GUI to crash and then try to read the crash dump
+    // Force the GUI to crash
     let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
     let mut gui = app.gui_command(&["--crash"])?.popen()?;
 
     // Ignore exit status here since we asked the GUI to crash on purpose
     gui.wait()?;
     ipc_service.wait()?.fz_exit_ok().context("IPC service")?;
-
-    app.check_crash_dump()?;
 
     if cli.manual_tests {
         manual_tests(&app)?;
@@ -86,20 +84,6 @@ struct App {
     username: String,
 }
 
-impl App {
-    fn check_crash_dump(&self) -> Result<()> {
-        Exec::cmd("minidump-stackwalk")
-            .args(&[
-                OsStr::new("--symbols-path"),
-                syms_path().as_os_str(),
-                self.crash_dump_path().as_os_str(),
-            ])
-            .join()?
-            .fz_exit_ok()?;
-        Ok(())
-    }
-}
-
 #[cfg(target_os = "linux")]
 impl App {
     fn new() -> Result<Self> {
@@ -122,12 +106,6 @@ impl App {
             .fz_exit_ok()?;
 
         Ok(Self { username })
-    }
-
-    fn crash_dump_path(&self) -> PathBuf {
-        Path::new("/home")
-            .join(&self.username)
-            .join(".cache/dev.firezone.client/data/logs/last_crash.dmp")
     }
 
     // `args` can't just be appended because of the `xvfb-run` wrapper
@@ -166,13 +144,6 @@ impl App {
 impl App {
     fn new() -> Result<Self> {
         Ok(Self {})
-    }
-
-    fn crash_dump_path(&self) -> PathBuf {
-        let app_data = std::env::var("LOCALAPPDATA").expect("$LOCALAPPDATA should be set");
-        PathBuf::from(app_data)
-            .join("dev.firezone.client/data/logs")
-            .join("last_crash.dmp")
     }
 
     // Strange signature needed to match Linux

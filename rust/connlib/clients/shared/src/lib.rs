@@ -8,6 +8,7 @@ pub use firezone_tunnel::keypair;
 
 use connlib_shared::messages::ResourceId;
 use eventloop::Command;
+use firezone_telemetry as telemetry;
 use firezone_tunnel::ClientTunnel;
 use messages::{IngressMessages, ReplyMessages};
 use phoenix_channel::PhoenixChannel;
@@ -157,29 +158,33 @@ async fn connect_supervisor<CB>(
             tracing::info!("connlib exited gracefully");
         }
         Ok(Err(e)) => {
+            telemetry::capture_error(&e);
             tracing::error!("connlib failed: {e}");
             callbacks.on_disconnect(&e);
         }
-        Err(e) => match e.try_into_panic() {
-            Ok(panic) => {
-                if let Some(msg) = panic.downcast_ref::<&str>() {
-                    tracing::error!("connlib panicked: {msg}");
-                    callbacks.on_disconnect(&DisconnectError::Panic(msg.to_string()));
-                    return;
-                }
-                if let Some(msg) = panic.downcast_ref::<String>() {
-                    tracing::error!("connlib panicked: {msg}");
-                    callbacks.on_disconnect(&DisconnectError::Panic(msg.to_string()));
-                    return;
-                }
+        Err(e) => {
+            telemetry::capture_error(&e);
+            match e.try_into_panic() {
+                Ok(panic) => {
+                    if let Some(msg) = panic.downcast_ref::<&str>() {
+                        tracing::error!("connlib panicked: {msg}");
+                        callbacks.on_disconnect(&DisconnectError::Panic(msg.to_string()));
+                        return;
+                    }
+                    if let Some(msg) = panic.downcast_ref::<String>() {
+                        tracing::error!("connlib panicked: {msg}");
+                        callbacks.on_disconnect(&DisconnectError::Panic(msg.to_string()));
+                        return;
+                    }
 
-                tracing::error!("connlib panicked with a non-string payload");
-                callbacks.on_disconnect(&DisconnectError::PanicNonStringPayload);
+                    tracing::error!("connlib panicked with a non-string payload");
+                    callbacks.on_disconnect(&DisconnectError::PanicNonStringPayload);
+                }
+                Err(_) => {
+                    tracing::error!("connlib task was cancelled");
+                    callbacks.on_disconnect(&DisconnectError::Cancelled);
+                }
             }
-            Err(_) => {
-                tracing::error!("connlib task was cancelled");
-                callbacks.on_disconnect(&DisconnectError::Cancelled);
-            }
-        },
+        }
     }
 }
