@@ -1393,30 +1393,30 @@ enum ConnectionState<RId> {
 
         last_outgoing: Instant,
         last_incoming: Instant,
-
-        /// Whether the connetion is currently idle.
-        is_idle: bool,
+    },
+    /// We haven't seen application packets in a while.
+    Idle {
+        /// Our nominated socket.
+        peer_socket: PeerSocket<RId>,
     },
     /// The connection failed in an unrecoverable way and will be GC'd.
     Failed,
 }
 
-impl<RId> ConnectionState<RId> {
+impl<RId> ConnectionState<RId>
+where
+    RId: Copy,
+{
     fn poll_timeout(&self) -> Option<Instant> {
         match self {
             ConnectionState::Connected {
                 last_incoming,
                 last_outgoing,
-                is_idle,
                 ..
-            } => {
-                if *is_idle {
-                    return None;
-                }
-
-                Some(idle_at(*last_incoming, *last_outgoing))
-            }
-            ConnectionState::Connecting { .. } | ConnectionState::Failed => None,
+            } => Some(idle_at(*last_incoming, *last_outgoing)),
+            ConnectionState::Connecting { .. }
+            | ConnectionState::Idle { .. }
+            | ConnectionState::Failed => None,
         }
     }
 
@@ -1424,60 +1424,66 @@ impl<RId> ConnectionState<RId> {
         let Self::Connected {
             last_outgoing,
             last_incoming,
-            is_idle,
-            ..
+            peer_socket,
         } = self
         else {
             return;
         };
 
-        if idle_at(*last_incoming, *last_outgoing) > now || *is_idle {
+        if idle_at(*last_incoming, *last_outgoing) > now {
             return;
         }
 
-        tracing::debug!("Connection is idle");
-        *is_idle = true;
-        apply_idle_stun_timings(agent);
+        let peer_socket = *peer_socket;
+
+        self.transition_to_idle(peer_socket, agent);
     }
 
     fn on_outgoing(&mut self, agent: &mut IceAgent, now: Instant) {
-        let Self::Connected {
-            last_outgoing,
-            is_idle,
-            ..
-        } = self
-        else {
-            return;
+        let peer_socket = match self {
+            Self::Idle { peer_socket } => *peer_socket,
+            Self::Connected { last_outgoing, .. } => {
+                *last_outgoing = now;
+                return;
+            }
+            Self::Failed | Self::Connecting { .. } => return,
         };
 
-        *last_outgoing = now;
-
-        if *is_idle {
-            tracing::debug!("Connection is no longer idle");
-            apply_default_stun_timings(agent);
-        }
-
-        *is_idle = false;
+        self.transition_to_connected(peer_socket, agent, now);
     }
 
     fn on_incoming(&mut self, agent: &mut IceAgent, now: Instant) {
-        let Self::Connected {
-            last_incoming,
-            is_idle,
-            ..
-        } = self
-        else {
-            return;
+        let peer_socket = match self {
+            Self::Idle { peer_socket } => *peer_socket,
+            Self::Connected { last_incoming, .. } => {
+                *last_incoming = now;
+                return;
+            }
+            Self::Failed | Self::Connecting { .. } => return,
         };
 
-        *last_incoming = now;
+        self.transition_to_connected(peer_socket, agent, now);
+    }
 
-        if *is_idle {
-            tracing::debug!("Connection is no longer idle");
-            apply_default_stun_timings(agent);
-        }
+    fn transition_to_idle(&mut self, peer_socket: PeerSocket<RId>, agent: &mut IceAgent) {
+        tracing::debug!("Connection is idle");
+        *self = Self::Idle { peer_socket };
+        apply_idle_stun_timings(agent);
+    }
 
-        *is_idle = false;
+    fn transition_to_connected(
+        &mut self,
+        peer_socket: PeerSocket<RId>,
+        agent: &mut IceAgent,
+        now: Instant,
+    ) {
+        tracing::debug!("Connection is no longer idle");
+        *self = Self::Connected {
+            peer_socket,
+            last_outgoing: now,
+            last_incoming: now,
+        };
+        apply_default_stun_timings(agent);
     }
 }
 
@@ -1511,7 +1517,8 @@ where
     #[must_use]
     fn accepts(&self, addr: &SocketAddr) -> bool {
         let from_nominated = match &self.state {
-            ConnectionState::Connected { peer_socket, .. } => match peer_socket {
+            ConnectionState::Idle { peer_socket }
+            | ConnectionState::Connected { peer_socket, .. } => match peer_socket {
                 PeerSocket::Direct { dest, .. } => dest == addr,
                 PeerSocket::Relay { dest, .. } => dest == addr,
             },
@@ -1643,7 +1650,6 @@ where
                             }));
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
-                                is_idle: false,
                                 last_incoming: now,
                                 last_outgoing: now,
                             };
@@ -1652,13 +1658,11 @@ where
                         }
                         ConnectionState::Connected {
                             peer_socket,
-                            is_idle,
                             last_incoming,
                             last_outgoing,
                         } if peer_socket == remote_socket => {
                             self.state = ConnectionState::Connected {
                                 peer_socket,
-                                is_idle,
                                 last_incoming,
                                 last_outgoing,
                             };
@@ -1667,16 +1671,19 @@ where
                         }
                         ConnectionState::Connected {
                             peer_socket,
-                            is_idle,
                             last_incoming,
                             last_outgoing,
                         } => {
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
-                                is_idle,
                                 last_incoming,
                                 last_outgoing,
                             };
+
+                            Some(peer_socket)
+                        }
+                        ConnectionState::Idle { peer_socket } => {
+                            self.state = ConnectionState::Idle { peer_socket };
 
                             Some(peer_socket)
                         }
@@ -1803,7 +1810,8 @@ where
                             buffered.push(packet.to_owned());
                         }
                     }
-                    ConnectionState::Connected { peer_socket, .. } => {
+                    ConnectionState::Connected { peer_socket, .. }
+                    | ConnectionState::Idle { peer_socket } => {
                         transmits.extend(make_owned_transmit(
                             *peer_socket,
                             bytes,
@@ -1866,7 +1874,8 @@ where
 
     fn socket(&self) -> Option<PeerSocket<RId>> {
         match self.state {
-            ConnectionState::Connected { peer_socket, .. } => Some(peer_socket),
+            ConnectionState::Connected { peer_socket, .. }
+            | ConnectionState::Idle { peer_socket } => Some(peer_socket),
             ConnectionState::Connecting { .. } | ConnectionState::Failed => None,
         }
     }
