@@ -561,7 +561,7 @@ where
                 self.private_key.clone(),
                 remote,
                 Some(key),
-                Some(25), // 25 is the default for the kernel implementation.
+                Some(25), // 25 is the default of the kernel implementation.
                 self.index.next(),
                 Some(self.rate_limiter.clone()),
             ),
