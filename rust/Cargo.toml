@@ -109,4 +109,4 @@ strip = "none"
 [profile.release.package.firezone-gui-client]
 debug = "full"
 split-debuginfo = "packed"
-strip = "none"
+strip = true
