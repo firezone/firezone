@@ -471,9 +471,7 @@ impl ReferenceStateMachine for ReferenceState {
                     state.client.exec_mut(|client| client.reset_connections());
                 }
             }
-            Transition::Idle => {
-                state.client.exec_mut(|client| client.reset_connections());
-            }
+            Transition::Idle => {}
             Transition::PartitionRelaysFromPortal => {
                 if state.drop_direct_client_traffic {
                     state.client.exec_mut(|client| client.reset_connections());

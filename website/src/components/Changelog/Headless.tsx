@@ -16,6 +16,10 @@ export default function Headless() {
           Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is
           active.
         </ChangeItem>
+        <ChangeItem pull="6845">
+          Fixes connectivity issues on idle connections by entering an
+          always-on, low-power mode instead of closing them.
+        </ChangeItem>
         <ChangeItem pull="6782">
           Adds always-on error reporting using sentry.io.
         </ChangeItem>
