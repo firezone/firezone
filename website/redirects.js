@@ -10,7 +10,7 @@ module.exports = [
     source: "/dl/firezone-client-gui-windows/latest/x86_64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.3.2/firezone-client-gui-windows_1.3.2_x86_64.msi",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.3.6/firezone-client-gui-windows_1.3.6_x86_64.msi",
     permanent: false,
   },
   /*
@@ -22,35 +22,35 @@ module.exports = [
     source: "/dl/firezone-client-gui-linux/latest/x86_64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.3.2/firezone-client-gui-linux_1.3.2_x86_64.deb",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.3.6/firezone-client-gui-linux_1.3.6_x86_64.deb",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-gui-linux/latest/aarch64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.3.2/firezone-client-gui-linux_1.3.2_aarch64.deb",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.3.6/firezone-client-gui-linux_1.3.6_aarch64.deb",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-headless-linux/latest/x86_64",
     destination:
       // mark:current-headless-version
-      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.3.1/firezone-client-headless-linux_1.3.1_x86_64",
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.3.3/firezone-client-headless-linux_1.3.3_x86_64",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-headless-linux/latest/aarch64",
     destination:
       // mark:current-headless-version
-      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.3.1/firezone-client-headless-linux_1.3.1_aarch64",
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.3.3/firezone-client-headless-linux_1.3.3_aarch64",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-headless-linux/latest/armv7",
     destination:
       // mark:current-headless-version
-      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.3.1/firezone-client-headless-linux_1.3.1_armv7",
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.3.3/firezone-client-headless-linux_1.3.3_armv7",
     permanent: false,
   },
   /*

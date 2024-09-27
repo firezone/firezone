@@ -8,6 +8,7 @@ use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
 use super::transition::DnsQuery;
 use crate::dns::is_subdomain;
+use crate::gateway::DnsResourceNatEntry;
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
@@ -660,28 +661,33 @@ impl TunnelTest {
                 maybe_domain,
             } => {
                 let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");
+                let maybe_entry = maybe_domain.and_then(|r| {
+                    let resolved_ips = Vec::from_iter(global_dns_records.get(&r.name).cloned()?);
 
-                let resolved_ips = maybe_domain
-                    .as_ref()
-                    .and_then(|r| global_dns_records.get(&r.name).cloned())
-                    .unwrap_or_default();
+                    Some(DnsResourceNatEntry::new(r, resolved_ips))
+                });
 
-                let resource =
-                    portal.map_client_resource_to_gateway_resource(resolved_ips, resource_id);
+                let resource = portal.map_client_resource_to_gateway_resource(resource_id);
 
-                gateway
-                    .exec_mut(|g| {
-                        g.sut.allow_access(
-                            self.client.inner().id,
-                            self.client.inner().sut.tunnel_ip4().unwrap(),
-                            self.client.inner().sut.tunnel_ip6().unwrap(),
-                            maybe_domain.map(|r| (r.name, r.proxy_ips)),
-                            None,
-                            resource,
-                            now,
-                        )
-                    })
-                    .unwrap();
+                gateway.exec_mut(|g| {
+                    g.sut.allow_access(
+                        self.client.inner().id,
+                        self.client.inner().sut.tunnel_ip4().unwrap(),
+                        self.client.inner().sut.tunnel_ip6().unwrap(),
+                        None,
+                        resource.clone(),
+                    );
+                    if let Some(entry) = maybe_entry {
+                        g.sut
+                            .create_dns_resource_nat_entry(
+                                self.client.inner().id,
+                                resource.id(),
+                                entry,
+                                now,
+                            )
+                            .unwrap()
+                    };
+                });
             }
             ClientEvent::ResourcesChanged { .. } => {
                 tracing::warn!("Unimplemented");
@@ -708,14 +714,12 @@ impl TunnelTest {
                 resource_id,
                 maybe_domain,
             } => {
-                // Resolve the domain name that we want to talk to to the IP that we generated as part of the Transition for sending a DNS query.
-                let resolved_ips = maybe_domain
-                    .as_ref()
-                    .and_then(|r| global_dns_records.get(&r.name).cloned())
-                    .unwrap_or_default();
+                let maybe_entry = maybe_domain.and_then(|r| {
+                    let resolved_ips = Vec::from_iter(global_dns_records.get(&r.name).cloned()?);
 
-                let resource =
-                    portal.map_client_resource_to_gateway_resource(resolved_ips, resource_id);
+                    Some(DnsResourceNatEntry::new(r, resolved_ips))
+                });
+                let resource = portal.map_client_resource_to_gateway_resource(resource_id);
 
                 let Some(gateway) = self.gateways.get_mut(&gateway_id) else {
                     tracing::error!("Unknown gateway");
@@ -739,16 +743,22 @@ impl TunnelTest {
                             now,
                         );
                         g.sut.allow_access(
-                            client_id,
+                            self.client.inner().id,
                             self.client.inner().sut.tunnel_ip4().unwrap(),
                             self.client.inner().sut.tunnel_ip6().unwrap(),
-                            maybe_domain
-                                .as_ref()
-                                .map(|r| (r.name.clone(), r.proxy_ips.clone())),
-                            None, // TODO: How to generate expiry?
-                            resource,
-                            now,
-                        )?;
+                            None,
+                            resource.clone(),
+                        );
+                        if let Some(entry) = maybe_entry {
+                            g.sut
+                                .create_dns_resource_nat_entry(
+                                    self.client.inner().id,
+                                    resource.id(),
+                                    entry,
+                                    now,
+                                )
+                                .unwrap()
+                        };
 
                         anyhow::Ok(answer)
                     })
