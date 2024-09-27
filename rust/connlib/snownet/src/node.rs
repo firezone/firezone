@@ -573,9 +573,9 @@ where
             signalling_completed_at: now,
             remote_pub_key: remote,
             state: ConnectionState::Connecting {
-                possible_sockets: BTreeSet::default(),
                 buffered: RingBuffer::new(10),
             },
+            possible_sockets: BTreeSet::default(),
             relay,
             span: info_span!("connection", %cid),
         }
@@ -1360,6 +1360,9 @@ struct Connection<RId> {
 
     state: ConnectionState<RId>,
 
+    /// Socket addresses from which we might receive data (even before we are connected).
+    possible_sockets: BTreeSet<SocketAddr>,
+
     /// The relay we have selected for this connection.
     ///
     /// `None` if we didn't have any relays available.
@@ -1377,9 +1380,6 @@ struct Connection<RId> {
 enum ConnectionState<RId> {
     /// We are still running ICE to figure out, which socket to use to send data.
     Connecting {
-        /// Socket addresses from which we might receive data (even before we are connected).
-        possible_sockets: BTreeSet<SocketAddr>,
-
         /// Packets emitted by wireguard whilst are still running ICE.
         ///
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
@@ -1390,8 +1390,6 @@ enum ConnectionState<RId> {
     Connected {
         /// Our nominated socket.
         peer_socket: PeerSocket<RId>,
-        /// Other addresses that we might see traffic from (e.g. STUN messages during roaming).
-        possible_sockets: BTreeSet<SocketAddr>,
 
         last_outgoing: Instant,
         last_incoming: Instant,
@@ -1404,20 +1402,6 @@ enum ConnectionState<RId> {
 }
 
 impl<RId> ConnectionState<RId> {
-    fn add_possible_socket(&mut self, socket: SocketAddr) {
-        let possible_sockets = match self {
-            ConnectionState::Connecting {
-                possible_sockets, ..
-            } => possible_sockets,
-            ConnectionState::Connected {
-                possible_sockets, ..
-            } => possible_sockets,
-            ConnectionState::Failed => return,
-        };
-
-        possible_sockets.insert(socket);
-    }
-
     fn poll_timeout(&self) -> Option<Instant> {
         match self {
             ConnectionState::Connected {
@@ -1526,24 +1510,15 @@ where
     /// We already want to accept that traffic and not throw it away.
     #[must_use]
     fn accepts(&self, addr: &SocketAddr) -> bool {
-        match &self.state {
-            ConnectionState::Connecting {
-                possible_sockets, ..
-            } => possible_sockets.contains(addr),
-            ConnectionState::Connected {
-                peer_socket,
-                possible_sockets,
-                ..
-            } => {
-                let from_nominated = match peer_socket {
-                    PeerSocket::Direct { dest, .. } => dest == addr,
-                    PeerSocket::Relay { dest, .. } => dest == addr,
-                };
+        let from_nominated = match &self.state {
+            ConnectionState::Connected { peer_socket, .. } => match peer_socket {
+                PeerSocket::Direct { dest, .. } => dest == addr,
+                PeerSocket::Relay { dest, .. } => dest == addr,
+            },
+            ConnectionState::Failed | ConnectionState::Connecting { .. } => false,
+        };
 
-                from_nominated || possible_sockets.contains(addr)
-            }
-            ConnectionState::Failed => false,
-        }
+        from_nominated || self.possible_sockets.contains(addr)
     }
 
     fn wg_handshake_complete(&self) -> bool {
@@ -1636,7 +1611,7 @@ where
         while let Some(event) = self.agent.poll_event() {
             match event {
                 IceAgentEvent::DiscoveredRecv { source, .. } => {
-                    self.state.add_possible_socket(source);
+                    self.possible_sockets.insert(source);
                 }
                 IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
                     tracing::info!("Connection failed (ICE timeout)");
@@ -1662,17 +1637,12 @@ where
                         });
 
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
-                        ConnectionState::Connecting {
-                            possible_sockets,
-                            buffered,
-                            ..
-                        } => {
+                        ConnectionState::Connecting { buffered, .. } => {
                             transmits.extend(buffered.into_iter().flat_map(|packet| {
                                 make_owned_transmit(remote_socket, &packet, allocations, now)
                             }));
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
-                                possible_sockets,
                                 is_idle: false,
                                 last_incoming: now,
                                 last_outgoing: now,
@@ -1682,14 +1652,12 @@ where
                         }
                         ConnectionState::Connected {
                             peer_socket,
-                            possible_sockets,
                             is_idle,
                             last_incoming,
                             last_outgoing,
                         } if peer_socket == remote_socket => {
                             self.state = ConnectionState::Connected {
                                 peer_socket,
-                                possible_sockets,
                                 is_idle,
                                 last_incoming,
                                 last_outgoing,
@@ -1699,14 +1667,12 @@ where
                         }
                         ConnectionState::Connected {
                             peer_socket,
-                            possible_sockets,
                             is_idle,
                             last_incoming,
                             last_outgoing,
                         } => {
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
-                                possible_sockets,
                                 is_idle,
                                 last_incoming,
                                 last_outgoing,
