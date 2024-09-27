@@ -91,6 +91,7 @@ defmodule Web.Live.Policies.EditTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
+             "policy[actor_group_id]_name",
              "policy[conditions][client_verified][operator]",
              "policy[conditions][client_verified][property]",
              "policy[conditions][client_verified][values][]",
@@ -114,7 +115,10 @@ defmodule Web.Live.Policies.EditTest do
              "policy[conditions][remote_ip_location_region][property]",
              "policy[conditions][remote_ip_location_region][values][]",
              "policy[description]",
-             "policy[resource_id]"
+             "policy[resource_id]",
+             "policy[resource_id]_name",
+             "search_query-policy_actor_group_id",
+             "search_query-policy_resource_id"
            ]
   end
 
