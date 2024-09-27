@@ -3,11 +3,13 @@ package dev.firezone.android.tunnel
 
 import DisconnectMonitor
 import NetworkMonitor
+import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
@@ -16,7 +18,14 @@ import android.os.Binder
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.util.Log
+import androidx.annotation.RequiresApi
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.MutableLiveData
+import com.google.android.gms.tasks.Task
+import com.google.android.gms.tasks.Tasks
+import com.google.firebase.crashlytics.internal.common.FirebaseInstallationId
+import com.google.firebase.installations.FirebaseInstallations
 import com.google.gson.Gson
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
@@ -31,6 +40,7 @@ import dev.firezone.android.tunnel.model.isInternetResource
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.UUID
+import java.util.concurrent.Executors
 import java.util.concurrent.locks.ReentrantLock
 import javax.inject.Inject
 
@@ -317,20 +327,25 @@ class TunnelService : VpnService() {
             tunnelState = State.CONNECTING
             updateStatusNotification(TunnelStatusNotification.Connecting)
 
-            connlibSessionPtr =
-                ConnlibSession.connect(
-                    apiUrl = config.apiUrl,
-                    token = token,
-                    deviceId = deviceId(),
-                    deviceName = getDeviceName(),
-                    osVersion = Build.VERSION.RELEASE,
-                    logDir = getLogDir(),
-                    logFilter = config.logFilter,
-                    callback = callback,
-                )
+            val executor = Executors.newSingleThreadExecutor()
 
-            startNetworkMonitoring()
-            startDisconnectMonitoring()
+            executor.execute {
+                connlibSessionPtr =
+                    ConnlibSession.connect(
+                        apiUrl = config.apiUrl,
+                        token = token,
+                        deviceId = Tasks.await(FirebaseInstallations.getInstance().id),
+                        deviceName = getDeviceName(),
+                        osVersion = Build.VERSION.RELEASE,
+                        logDir = getLogDir(),
+                        logFilter = config.logFilter,
+                        callback = callback,
+                    )
+
+                startNetworkMonitoring()
+                startDisconnectMonitoring()
+            }
+
         }
     }
 
@@ -398,17 +413,6 @@ class TunnelService : VpnService() {
 
     private fun updateResourcesLiveData(resources: List<Resource>) {
         resourcesLiveData?.postValue(resources)
-    }
-
-    private fun deviceId(): String {
-        // Get the deviceId from the preferenceRepository, or save a new UUIDv4 and return that if it doesn't exist
-        val deviceId =
-            repo.getDeviceIdSync() ?: run {
-                val newDeviceId = UUID.randomUUID().toString()
-                repo.saveDeviceIdSync(newDeviceId)
-                newDeviceId
-            }
-        return deviceId
     }
 
     private fun getLogDir(): String {

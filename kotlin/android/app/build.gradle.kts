@@ -180,6 +180,8 @@ dependencies {
     // Hilt
     implementation("com.google.dagger:hilt-android:2.52")
     implementation("androidx.browser:browser:1.8.0")
+    implementation("com.google.firebase:firebase-installations-ktx:18.0.0")
+    implementation("com.google.android.gms:play-services-tasks:18.2.0")
     kapt("androidx.hilt:hilt-compiler:1.2.0")
     kapt("com.google.dagger:hilt-android-compiler:2.52")
     // Instrumented Tests
@@ -217,7 +219,7 @@ dependencies {
     androidTestImplementation("androidx.fragment:fragment-testing:1.8.2")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:33.2.0"))
+    implementation(platform("com.google.firebase:firebase-bom:33.3.0"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies
