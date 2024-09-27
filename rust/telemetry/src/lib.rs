@@ -86,6 +86,8 @@ impl Telemetry {
 mod tests {
     use super::*;
 
+    const ENV: &str = "unit test";
+
     // To avoid problems with global mutable state, we run unrelated tests in the same test case.
     #[test]
     fn sentry() {
@@ -113,7 +115,7 @@ mod tests {
             // Expect no telemetry because the telemetry module needs to be enabled before it can do anything
             negative_error("X7X4CKH3");
 
-            tele.start("test".to_string(), HEADLESS_DSN);
+            tele.start("test".to_string(), ENV, HEADLESS_DSN);
             // Expect telemetry because the user opted in.
             sentry::add_breadcrumb(sentry::Breadcrumb {
                 ty: "test_crumb".into(),
@@ -126,7 +128,7 @@ mod tests {
             // Expect no telemetry because the user opted back out.
             negative_error("2RSIYAPX");
 
-            tele.start("test".to_string(), HEADLESS_DSN);
+            tele.start("test".to_string(), ENV, HEADLESS_DSN);
             // Cycle one more time to be sure.
             error("S672IOBZ");
             tele.stop();
@@ -140,12 +142,12 @@ mod tests {
             {
                 let tele = Telemetry::default();
                 negative_error("4H7HFTNX");
-                tele.start("test".to_string(), HEADLESS_DSN);
+                tele.start("test".to_string(), ENV, HEADLESS_DSN);
             }
             {
                 negative_error("GF46D6IL");
                 let tele = Telemetry::default();
-                tele.start("test".to_string(), HEADLESS_DSN);
+                tele.start("test".to_string(), ENV, HEADLESS_DSN);
                 error("OKOEUKSW");
             }
         }
