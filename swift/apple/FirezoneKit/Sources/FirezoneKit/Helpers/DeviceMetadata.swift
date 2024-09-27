@@ -46,6 +46,10 @@ public class DeviceMetadata {
   // if that doesn't exist. The Firezone ID is a UUIDv4 that is used to dedup this device
   // for upsert and identification in the admin portal.
   public static func getOrCreateFirezoneId() -> String {
+    if let hardwareId = getDeviceUuid() {
+      return hardwareId
+    }
+
     let fileURL = SharedAccess.baseFolderURL.appendingPathComponent("firezone-id")
 
     do {
@@ -67,3 +71,26 @@ public class DeviceMetadata {
     }
   }
 }
+
+#if os(iOS)
+import UIKit
+
+func getDeviceUuid() -> String? {
+  return UIDevice.current.identifierForVendor?.uuidString
+}
+#else
+import IOKit
+
+func getDeviceUuid() -> String? {
+    let matchingDict = IOServiceMatching("IOPlatformExpertDevice")
+
+    let platformExpert = IOServiceGetMatchingService(kIOMainPortDefault, matchingDict)
+    defer { IOObjectRelease(platformExpert) }
+
+    if let uuid = IORegistryEntryCreateCFProperty(platformExpert, kIOPlatformUUIDKey as CFString, kCFAllocatorDefault, 0)?.takeUnretainedValue() as? String {
+        return uuid
+    }
+
+    return nil
+}
+#endif
