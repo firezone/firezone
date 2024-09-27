@@ -10,11 +10,10 @@ use crate::client::{
 use anyhow::{bail, Context, Result};
 use common::system_tray::Event as TrayMenuEvent;
 use firezone_gui_client_common::{
-    self as common, auth,
-    controller::{Controller, ControllerRequest, CtlrTx, GuiIntegration},
+    self as common,
+    controller::{Builder as ControllerBuilder, ControllerRequest, CtlrTx, GuiIntegration},
     crash_handling, deep_link,
     errors::{self, Error},
-    ipc,
     settings::AdvancedSettings,
     updates,
 };
@@ -446,25 +445,18 @@ async fn run_controller(
     updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 ) -> Result<(), Error> {
     tracing::debug!("Entered `run_controller`");
-    let (ipc_tx, ipc_rx) = mpsc::channel(1);
-    let ipc_client = ipc::Client::new(ipc_tx).await?;
     let tray = system_tray::Tray::new(app.tray_handle());
     let integration = TauriIntegration { app, tray };
-    let controller = Controller {
+    let controller = ControllerBuilder {
         advanced_settings,
-        auth: auth::Auth::new()?,
-        clear_logs_callback: None,
         ctlr_tx,
-        ipc_client,
-        ipc_rx,
         integration,
         log_filter_reloader,
-        release: None,
         rx,
-        status: Default::default(),
         updates_rx,
-        uptime: Default::default(),
-    };
+    }
+    .build()
+    .await?;
 
     controller.main_loop().await?;
 
