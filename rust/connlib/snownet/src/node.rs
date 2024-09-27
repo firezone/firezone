@@ -1476,7 +1476,7 @@ where
         agent: &mut IceAgent,
         now: Instant,
     ) {
-        tracing::debug!("Connection is no longer idle");
+        tracing::debug!("Connection resumed");
         *self = Self::Connected {
             peer_socket,
             last_outgoing: now,
