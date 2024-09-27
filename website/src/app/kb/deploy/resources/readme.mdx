@@ -51,10 +51,10 @@ From there, you can select the type of Resource you want to create:
 When multiple Resources' addresses overlap, the Resource with the more specific
 address will be used.
 
-For CIDR Resources, this means the Resource with the longest prefix length will
+For CIDR Resources, an address with a longer prefix is more specific than a shorter one. For example: `10.0.0.0/16` is more specific than `10.0.0.0/8`. IP Resources are essentially addresses with `/32` prefix and thus always more specific than any other CIDR.
 be used.
 
-For DNS Resources, the more specific match will be used according to the
+For DNS Resources, more specific loosly translates to less wildcards. In particular:
 following rules:
 
 - Resources without wildcards are always prioritized over wildcard domains: For
