@@ -20,8 +20,8 @@ export default function GUI({ title }: { title: string }) {
           active.
         </ChangeItem>
         <ChangeItem pull="6845">
-          Fixes connectivity issues on idle connections by entering an always-on
-          yet lower-power mode instead of closing them.
+          Fixes connectivity issues on idle connections by entering an
+          always-on, low-power mode instead of closing them.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.3.6" date={new Date("2024-09-25")}>
