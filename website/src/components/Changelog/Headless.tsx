@@ -16,6 +16,9 @@ export default function Headless() {
           Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is
           active.
         </ChangeItem>
+        <ChangeItem pull="6782">
+          Adds always-on error reporting using sentry.io.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.3" date={new Date("2024-09-25")}>
         <ChangeItem pull="6809">
