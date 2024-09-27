@@ -82,7 +82,7 @@ pub(crate) enum Transition {
     /// To avoid having to model that, we partition all of them but reconnect them within the same transition.
     PartitionRelaysFromPortal,
 
-    /// Idle connlib for a while, forcing connection to auto-close.
+    /// Idle connlib for a while.
     Idle,
 }
 

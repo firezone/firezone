@@ -175,6 +175,10 @@ where
         tracing::debug!(%num_connections, "Closed all connections as part of reconnecting");
     }
 
+    pub fn num_connections(&self) -> usize {
+        self.connections.len()
+    }
+
     pub fn public_key(&self) -> PublicKey {
         self.public_key
     }
