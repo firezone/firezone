@@ -42,7 +42,7 @@ impl Clone for Telemetry {
 }
 
 impl Telemetry {
-    pub fn start(&self, environment: String, release: &'static str, dsn: Dsn) {
+    pub fn start(&self, api_url: String, release: &'static str, dsn: Dsn) {
         // Since it's `arc_swap` and not `Option`, there is a TOCTOU here,
         // but in practice it should never trigger
         if self.inner.load().is_some() {
@@ -51,13 +51,16 @@ impl Telemetry {
         tracing::info!("Starting telemetry");
         let inner = sentry::init((
             dsn.0,
+            // Can't use URLs as `environment` here, because Sentry doesn't allow slashes in environments.
+            // <https://docs.sentry.io/platforms/rust/configuration/environments/>
             sentry::ClientOptions {
-                environment: Some(environment.into()),
+                // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
                 release: Some(release.into()),
                 traces_sample_rate: 1.0,
                 ..Default::default()
             },
         ));
+        sentry::configure_scope(|scope| scope.set_tag("api_url", api_url));
         self.inner.swap(Some(inner.into()));
         sentry::start_session();
     }

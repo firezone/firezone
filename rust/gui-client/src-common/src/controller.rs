@@ -191,8 +191,11 @@ impl<I: GuiIntegration> Controller<I> {
         // Start telemetry
         {
             let environment = self.advanced_settings.api_url.to_string();
-            self.telemetry
-                .start(environment.clone(), firezone_bin_shared::git_version!("gui-client-*"), firezone_telemetry::GUI_DSN);
+            self.telemetry.start(
+                environment.clone(),
+                firezone_bin_shared::git_version!("gui-client-*"),
+                firezone_telemetry::GUI_DSN,
+            );
             self.ipc_client
                 .send_msg(&IpcClientMsg::StartTelemetry { environment })
                 .await?;
