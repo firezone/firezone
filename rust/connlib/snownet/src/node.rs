@@ -548,7 +548,7 @@ where
         /// We set a Wireguard keep-alive to ensure the WG session doesn't timeout on an idle connection.
         ///
         /// Without such a timeout, using a tunnel after the REKEY_TIMEOUT requires handshaking a new session which delays the new application packet by 1 RTT.
-        const WG_KEEP_ALIVE: Option<u16> = Some(10);
+        const WG_KEEP_ALIVE: Option<u16> = Some(60);
 
         if self.allocations.is_empty() {
             tracing::warn!(
@@ -577,8 +577,6 @@ where
                 buffered: RingBuffer::new(10),
             },
             relay,
-            last_outgoing: now,
-            last_incoming: now,
             span: info_span!("connection", %cid),
         }
     }
@@ -1004,11 +1002,6 @@ where
                 return false;
             }
 
-            if conn.is_idle() {
-                events.push_back(Event::ConnectionClosed(*id));
-                return false;
-            }
-
             true
         });
     }
@@ -1378,9 +1371,6 @@ struct Connection<RId> {
 
     buffer: Vec<u8>,
 
-    last_outgoing: Instant,
-    last_incoming: Instant,
-
     span: tracing::Span,
 }
 
@@ -1402,11 +1392,15 @@ enum ConnectionState<RId> {
         peer_socket: PeerSocket<RId>,
         /// Other addresses that we might see traffic from (e.g. STUN messages during roaming).
         possible_sockets: BTreeSet<SocketAddr>,
+
+        last_outgoing: Instant,
+        last_incoming: Instant,
+
+        /// Whether the connetion is currently idle.
+        is_idle: bool,
     },
     /// The connection failed in an unrecoverable way and will be GC'd.
     Failed,
-    /// The connection is idle and will be GC'd.
-    Idle,
 }
 
 impl<RId> ConnectionState<RId> {
@@ -1418,11 +1412,95 @@ impl<RId> ConnectionState<RId> {
             ConnectionState::Connected {
                 possible_sockets, ..
             } => possible_sockets,
-            ConnectionState::Idle | ConnectionState::Failed => return,
+            ConnectionState::Failed => return,
         };
 
         possible_sockets.insert(socket);
     }
+
+    fn poll_timeout(&self) -> Option<Instant> {
+        match self {
+            ConnectionState::Connected {
+                last_incoming,
+                last_outgoing,
+                is_idle,
+                ..
+            } => {
+                if *is_idle {
+                    return None;
+                }
+
+                Some(idle_at(*last_incoming, *last_outgoing))
+            }
+            ConnectionState::Connecting { .. } | ConnectionState::Failed => None,
+        }
+    }
+
+    fn handle_timeout(&mut self, agent: &mut IceAgent, now: Instant) {
+        let Self::Connected {
+            last_outgoing,
+            last_incoming,
+            is_idle,
+            ..
+        } = self
+        else {
+            return;
+        };
+
+        if idle_at(*last_incoming, *last_outgoing) > now || *is_idle {
+            return;
+        }
+
+        tracing::debug!("Connection is idle");
+        *is_idle = true;
+        apply_idle_stun_timings(agent);
+    }
+
+    fn on_outgoing(&mut self, agent: &mut IceAgent, now: Instant) {
+        let Self::Connected {
+            last_outgoing,
+            is_idle,
+            ..
+        } = self
+        else {
+            return;
+        };
+
+        *last_outgoing = now;
+
+        if *is_idle {
+            tracing::debug!("Connection is no longer idle");
+            apply_default_stun_timings(agent);
+        }
+
+        *is_idle = false;
+    }
+
+    fn on_incoming(&mut self, agent: &mut IceAgent, now: Instant) {
+        let Self::Connected {
+            last_incoming,
+            is_idle,
+            ..
+        } = self
+        else {
+            return;
+        };
+
+        *last_incoming = now;
+
+        if *is_idle {
+            tracing::debug!("Connection is no longer idle");
+            apply_default_stun_timings(agent);
+        }
+
+        *is_idle = false;
+    }
+}
+
+fn idle_at(last_incoming: Instant, last_outgoing: Instant) -> Instant {
+    const MAX_IDLE: Duration = Duration::from_secs(10);
+
+    last_incoming.max(last_outgoing) + MAX_IDLE
 }
 
 /// The socket of the peer we are connected to.
@@ -1455,6 +1533,7 @@ where
             ConnectionState::Connected {
                 peer_socket,
                 possible_sockets,
+                ..
             } => {
                 let from_nominated = match peer_socket {
                     PeerSocket::Direct { dest, .. } => dest == addr,
@@ -1463,7 +1542,7 @@ where
 
                 from_nominated || possible_sockets.contains(addr)
             }
-            ConnectionState::Idle | ConnectionState::Failed => false,
+            ConnectionState::Failed => false,
         }
     }
 
@@ -1480,10 +1559,10 @@ where
         let agent_timeout = self.agent.poll_timeout();
         let next_wg_timer = Some(self.next_timer_update);
         let candidate_timeout = self.candidate_timeout();
-        let idle_timeout = self.idle_timeout();
+        let idle_timeout = self.state.poll_timeout();
 
         earliest(
-            Some(idle_timeout),
+            idle_timeout,
             earliest(agent_timeout, earliest(next_wg_timer, candidate_timeout)),
         )
     }
@@ -1494,12 +1573,6 @@ where
         }
 
         Some(self.signalling_completed_at + CANDIDATE_TIMEOUT)
-    }
-
-    fn idle_timeout(&self) -> Instant {
-        const MAX_IDLE: Duration = Duration::from_secs(5 * 60);
-
-        self.last_incoming.max(self.last_outgoing) + MAX_IDLE
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
@@ -1514,6 +1587,7 @@ where
         RId: Copy + Ord + fmt::Display,
     {
         self.agent.handle_timeout(now);
+        self.state.handle_timeout(&mut self.agent, now);
 
         if self
             .candidate_timeout()
@@ -1522,11 +1596,6 @@ where
             tracing::info!("Connection failed (no candidates received)");
             self.state = ConnectionState::Failed;
             return;
-        }
-
-        if now >= self.idle_timeout() {
-            tracing::info!("Connection is idle");
-            self.state = ConnectionState::Idle;
         }
 
         // TODO: `boringtun` is impure because it calls `Instant::now`.
@@ -1604,6 +1673,9 @@ where
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
                                 possible_sockets,
+                                is_idle: false,
+                                last_incoming: now,
+                                last_outgoing: now,
                             };
 
                             None
@@ -1611,10 +1683,16 @@ where
                         ConnectionState::Connected {
                             peer_socket,
                             possible_sockets,
+                            is_idle,
+                            last_incoming,
+                            last_outgoing,
                         } if peer_socket == remote_socket => {
                             self.state = ConnectionState::Connected {
                                 peer_socket,
                                 possible_sockets,
+                                is_idle,
+                                last_incoming,
+                                last_outgoing,
                             };
 
                             continue; // If we re-nominate the same socket, don't just continue. TODO: Should this be fixed upstream?
@@ -1622,15 +1700,21 @@ where
                         ConnectionState::Connected {
                             peer_socket,
                             possible_sockets,
+                            is_idle,
+                            last_incoming,
+                            last_outgoing,
                         } => {
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
                                 possible_sockets,
+                                is_idle,
+                                last_incoming,
+                                last_outgoing,
                             };
 
                             Some(peer_socket)
                         }
-                        ConnectionState::Idle | ConnectionState::Failed => continue, // Failed and idle connections are cleaned up, don't bother handling events.
+                        ConnectionState::Failed => continue, // Failed and idle connections are cleaned up, don't bother handling events.
                     };
 
                     tracing::info!(?old, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
@@ -1682,6 +1766,8 @@ where
         buffer: &'b mut [u8],
         now: Instant,
     ) -> Result<Option<&'b [u8]>, Error> {
+        let _guard = self.span.enter();
+
         let len = match self.tunnel.encapsulate(packet, buffer) {
             TunnResult::Done => return Ok(None),
             TunnResult::Err(e) => return Err(Error::Encapsulate(e)),
@@ -1691,7 +1777,7 @@ where
             }
         };
 
-        self.last_outgoing = now;
+        self.state.on_outgoing(&mut self.agent, now);
 
         Ok(Some(&buffer[..len]))
     }
@@ -1770,7 +1856,7 @@ where
                             ));
                         }
                     }
-                    ConnectionState::Idle | ConnectionState::Failed => {}
+                    ConnectionState::Failed => {}
                 }
 
                 ControlFlow::Break(Ok(()))
@@ -1778,7 +1864,7 @@ where
         };
 
         if control_flow.is_continue() {
-            self.last_incoming = now;
+            self.state.on_incoming(&mut self.agent, now);
         }
 
         control_flow
@@ -1815,18 +1901,12 @@ where
     fn socket(&self) -> Option<PeerSocket<RId>> {
         match self.state {
             ConnectionState::Connected { peer_socket, .. } => Some(peer_socket),
-            ConnectionState::Connecting { .. }
-            | ConnectionState::Idle
-            | ConnectionState::Failed => None,
+            ConnectionState::Connecting { .. } | ConnectionState::Failed => None,
         }
     }
 
     fn is_failed(&self) -> bool {
         matches!(self.state, ConnectionState::Failed)
-    }
-
-    fn is_idle(&self) -> bool {
-        matches!(self.state, ConnectionState::Idle)
     }
 }
 
@@ -1861,10 +1941,21 @@ fn new_agent() -> IceAgent {
     let mut agent = IceAgent::new();
     agent.set_max_candidate_pairs(300);
     agent.set_timing_advance(Duration::ZERO);
-    agent.set_max_stun_retransmits(8);
-    agent.set_max_stun_rto(Duration::from_millis(1500));
+    apply_default_stun_timings(&mut agent);
 
     agent
+}
+
+fn apply_default_stun_timings(agent: &mut IceAgent) {
+    agent.set_max_stun_retransmits(8);
+    agent.set_max_stun_rto(Duration::from_millis(1500));
+    agent.set_initial_stun_rto(Duration::from_millis(250))
+}
+
+fn apply_idle_stun_timings(agent: &mut IceAgent) {
+    agent.set_max_stun_retransmits(4);
+    agent.set_max_stun_rto(Duration::from_secs(10));
+    agent.set_initial_stun_rto(Duration::from_secs(10));
 }
 
 /// A session ID is constant for as long as a [`Node`] is operational.
