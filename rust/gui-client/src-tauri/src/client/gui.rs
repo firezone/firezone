@@ -454,7 +454,7 @@ async fn run_controller(
     telemetry: telemetry::Telemetry,
     updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 ) -> Result<(), Error> {
-    tracing::info!("Entered `run_controller`");
+    tracing::debug!("Entered `run_controller`");
     let tray = system_tray::Tray::new(app.tray_handle());
     let controller = firezone_gui_client_common::controller::Builder {
         advanced_settings,

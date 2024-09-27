@@ -15,6 +15,10 @@ export default function GUI({ title }: { title: string }) {
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="6831">
+          Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is
+          active.
+        </ChangeItem>
         <ChangeItem pull="6782">
           Adds always-on error reporting using sentry.io.
         </ChangeItem>

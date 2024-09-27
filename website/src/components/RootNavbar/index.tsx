@@ -316,7 +316,7 @@ export default function RootNavbar() {
           className="md:translate-y-0.5 block py-2 pl-3 pr-4 md:p-0 font-medium md:border-transparent hover:text-primary-450 md:border-b-2 hover:border-primary-450 duration-50 transition transform"
           href="https://app.firezone.dev"
         >
-          Sign in
+          Admin portal
         </Link>
         <Button type="cta" href="/contact/sales">
           Book a demo

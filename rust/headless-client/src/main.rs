@@ -187,7 +187,7 @@ fn main() -> Result<()> {
         private_key,
         callbacks,
     };
-    let _guard = rt.enter(); // Constructing `PhoenixChannel` requires a runtime context.
+
     rt.block_on(async {
         let ctx = firezone_telemetry::TransactionContext::new(
             "connect_to_firezone",
@@ -305,10 +305,10 @@ fn main() -> Result<()> {
         };
 
         if let Err(error) = dns_notifier.close() {
-            tracing::error!(?error, "DNS listener");
+            tracing::error!(?error, "DNS notifier")
         }
         if let Err(error) = network_notifier.close() {
-            tracing::error!(?error, "network listener");
+            tracing::error!(?error, "network notifier");
         }
 
         session.disconnect();
