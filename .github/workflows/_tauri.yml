@@ -20,6 +20,7 @@ defaults:
 env:
   RUSTFLAGS: "-Dwarnings"
   RUSTDOCFLAGS: "-D warnings"
+  SENTRY_ENVIRONMENT: "production"
 
 jobs:
   build-gui:

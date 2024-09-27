@@ -367,6 +367,7 @@ defmodule Web.CoreComponents do
   @doc """
   Generates a generic error message.
   """
+  attr :class, :string, default: nil
   attr :rest, :global
   slot :inner_block, required: true
   attr :inline, :boolean, default: false
@@ -377,7 +378,8 @@ defmodule Web.CoreComponents do
       class={[
         "flex items-center gap-2 text-sm leading-6",
         "text-rose-600",
-        (@inline && "ml-2") || "mt-2 w-full"
+        (@inline && "ml-2") || "mt-2 w-full",
+        @class
       ]}
       {@rest}
     >
@@ -1053,10 +1055,11 @@ defmodule Web.CoreComponents do
 
   attr :account, :any, required: true
   attr :group, :any, required: true
+  attr :class, :string, default: nil
 
   def group(assigns) do
     ~H"""
-    <span class="flex items-center" data-group-id={@group.id}>
+    <span class={["flex items-center", @class]} data-group-id={@group.id}>
       <.link
         :if={Actors.group_synced?(@group)}
         navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @group.provider)}
