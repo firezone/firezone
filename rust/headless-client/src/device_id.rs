@@ -30,6 +30,18 @@ pub(crate) fn path() -> Result<PathBuf> {
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
 pub fn get_or_create() -> Result<DeviceId> {
+    if let Ok(data) = smbioslib::table_load_from_device() {
+        if let Some(id) = data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| {
+            sys_info.serial_number().to_utf8_lossy()
+        }) {
+            // Some systems such as system76(https://github.com/system76/firmware-open/issues/432) might have the default serial nubmer
+            // set to smbios which is 123456789 due to limitations with coreboot.
+            if id != "123456789" {
+                return Ok(DeviceId { id });
+            }
+        }
+    }
+
     let path = path()?;
     let dir = path
         .parent()

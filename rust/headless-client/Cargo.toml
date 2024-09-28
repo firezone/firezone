@@ -36,6 +36,7 @@ tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 url = { version = "2.5.2", default-features = false }
 uuid = { version = "1.10", default-features = false, features = ["std", "v4", "serde"] }
+smbios-lib = "0.9.2"
 
 [dev-dependencies]
 tempfile = "3.12.0"
