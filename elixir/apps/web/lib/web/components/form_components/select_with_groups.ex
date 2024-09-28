@@ -202,7 +202,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
             "mt-2 pb-1 px-1 space-y-0.5 z-20",
             "w-full bg-white",
             input_border_class(),
-            "border border-gray-200 rounded-lg",
+            "border border-gray-200 rounded shadow",
             "overflow-hidden"
           ]}
           role="listbox"
@@ -213,7 +213,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
             "max-h-72",
             "overflow-y-auto overflow-x-hidden"
           ]}>
-            <div class="bg-white p-2 sticky top-0 z-40">
+            <div class="bg-white p-2 sticky top-2 z-40">
               <input
                 name={"search_query-#{@id}"}
                 id={"select-" <> @id <> "-search-input"}
@@ -232,7 +232,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
             <div>
               <div class={[
                 "hidden only:block",
-                "py-2 px-4",
+                "py-2 px-2",
                 "text-sm text-neutral-400"
               ]}>
                 <%= if @no_search_results == [] do %>

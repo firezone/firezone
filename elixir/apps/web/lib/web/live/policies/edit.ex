@@ -146,7 +146,7 @@ defmodule Web.Policies.Edit do
                   </:no_options>
 
                   <:no_search_results>
-                    No resources found. Try a different search query or create a new one <.link
+                    No Resources found. Try a different search query or create a new one <.link
                       navigate={~p"/#{@account}/resources/new"}
                       class={link_style()}
                     >here</.link>.
