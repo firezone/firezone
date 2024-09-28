@@ -213,7 +213,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
             "max-h-72",
             "overflow-y-auto overflow-x-hidden"
           ]}>
-            <div class="bg-white p-2 sticky top-2 z-40">
+            <div class="bg-white p-2 sticky top-1 z-40">
               <input
                 name={"search_query-#{@id}"}
                 id={"select-" <> @id <> "-search-input"}
