@@ -775,7 +775,11 @@ where
 
     /// Sample a relay to use for a new connection.
     fn sample_relay(&mut self) -> Option<RId> {
-        self.allocations.keys().copied().choose(&mut self.rng)
+        let rid = self.allocations.keys().copied().choose(&mut self.rng)?;
+
+        tracing::debug!(%rid, "Sampled relay");
+
+        Some(rid)
     }
 }
 
