@@ -32,6 +32,7 @@ chrono = { version = "0.4", default-features = false, features = ["std", "clock"
 swift-bridge = "0.1.57"
 backoff = { version = "0.4", features = ["tokio"] }
 tracing = { version = "0.1.40" }
+tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "v0.1.x" } # Contains `dbg!` but for `tracing`.
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
 secrecy = "0.8"
 str0m = { version = "0.6.2", default-features = false }
@@ -80,6 +81,10 @@ ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch
 proptest = { git = "https://github.com/proptest-rs/proptest", branch = "master" }
 proptest-state-machine = { git = "https://github.com/proptest-rs/proptest", branch = "master" }
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "deps/bump-otel-0.23" } # Waiting for release.
+
+# Enforce `tracing-macros` to have released `tracing` version.
+[patch.'https://github.com/tokio-rs/tracing']
+tracing = "0.1"
 
 [profile.release]
 strip = true
