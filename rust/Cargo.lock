@@ -6357,9 +6357,9 @@ checksum = "f3cb5ba0dc43242ce17de99c180e96db90b235b8a9fdc9543c96d2209116bd9f"
 
 [[package]]
 name = "sadness-generator"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cdaf5eed5d14ebb5d32d864b419e760c9ddf123bcde880a30a90063494592d7"
+checksum = "40d20a4f9571c8ea84f81041395e9e129b02f1a6789913004f12f528e71ea1ba"
 dependencies = [
  "libc",
 ]
