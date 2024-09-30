@@ -13,7 +13,7 @@ use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacket
 use itertools::Itertools as _;
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
-use rand::{random, SeedableRng};
+use rand::{random, Rng, SeedableRng};
 use secrecy::{ExposeSecret, Secret};
 use sha2::Digest;
 use std::borrow::Cow;
@@ -455,6 +455,8 @@ where
                 }
                 None => true,
             });
+        self.connections
+            .check_relays_available(&self.allocations, &mut self.rng);
         self.connections.gc(&mut self.pending_events);
     }
 
@@ -1058,6 +1060,48 @@ where
 
             true
         });
+    }
+
+    fn check_relays_available(
+        &mut self,
+        allocations: &BTreeMap<RId, Allocation>,
+        rng: &mut impl Rng,
+    ) {
+        // For initial connections, we can just update the relay to be used.
+        for (_, c) in self.iter_initial_mut() {
+            if c.relay.is_some_and(|r| allocations.contains_key(&r)) {
+                continue;
+            }
+
+            let _guard = c.span.enter();
+
+            let Some(new_rid) = allocations.keys().copied().choose(rng) else {
+                continue;
+            };
+
+            tracing::info!(old_rid = ?c.relay, %new_rid, "Updating relay");
+            c.relay = Some(new_rid);
+        }
+
+        // For established connections, we check if we are currently using the relay.
+        for (_, c) in self.iter_established_mut() {
+            if c.relay.is_some_and(|r| allocations.contains_key(&r)) {
+                continue;
+            }
+
+            let Some(PeerSocket::Relay { relay, .. }) = c.socket() else {
+                continue;
+            };
+
+            if allocations.contains_key(&relay) {
+                continue;
+            }
+
+            let _guard = c.span.enter();
+
+            tracing::info!("Connection failed (relay disconnected)");
+            c.state = ConnectionState::Failed;
+        }
     }
 
     fn stats(&self) -> impl Iterator<Item = (TId, ConnectionStats)> + '_ {
