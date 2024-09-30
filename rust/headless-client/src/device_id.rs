@@ -36,7 +36,7 @@ pub fn get_or_create() -> Result<DeviceId> {
         if let Some(id) = data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| {
             sys_info.serial_number().to_utf8_lossy()
         }) {
-            // Some systems such as system76(https://github.com/system76/firmware-open/issues/432) might have the default serial nubmer
+            // Some systems such as system76(https://github.com/system76/firmware-open/issues/432) might have the default serial number
             // set to smbios which is 123456789 due to limitations with coreboot.
             if id != DEFAULT_SERIAL {
                 return Ok(DeviceId { id });
