@@ -423,6 +423,10 @@ where
     ///
     /// As such, it ends up being cleaner to "drain" all lower-level components of their events, transmits etc within this function.
     pub fn handle_timeout(&mut self, now: Instant) {
+        for allocation in self.allocations.values_mut() {
+            allocation.handle_timeout(now);
+        }
+
         self.allocations_drain_events();
 
         for (id, connection) in self.connections.iter_established_mut() {
@@ -431,10 +435,6 @@ where
 
         for (id, connection) in self.connections.initial.iter_mut() {
             connection.handle_timeout(id, now);
-        }
-
-        for allocation in self.allocations.values_mut() {
-            allocation.handle_timeout(now);
         }
 
         let next_reset = *self.next_rate_limiter_reset.get_or_insert(now);
