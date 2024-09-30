@@ -173,6 +173,7 @@ jobs:
             image_name: http-test-server
     env:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}_${{ matrix.name.version }}_${{ matrix.arch.shortname }}
+      SENTRY_ENVIRONMENT: "production"
     outputs:
       client_image: ${{ steps.image-name.outputs.client_image }}
       relay_image: ${{ steps.image-name.outputs.relay_image }}

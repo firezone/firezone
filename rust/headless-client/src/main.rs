@@ -52,7 +52,7 @@ struct Cli {
         long,
         hide = true,
         env = "FIREZONE_API_URL",
-        default_value = "wss://api.firezone.dev"
+        default_value = "wss://api.firezone.dev/"
     )]
     api_url: url::Url,
 
@@ -116,7 +116,11 @@ fn main() -> Result<()> {
     let token_env_var = cli.token.take().map(SecretString::from);
     let cli = cli;
     let telemetry = Telemetry::default();
-    telemetry.start(cli.api_url.to_string(), firezone_telemetry::HEADLESS_DSN);
+    telemetry.start(
+        cli.api_url.as_ref(),
+        firezone_bin_shared::git_version!("headless-client-*"),
+        firezone_telemetry::HEADLESS_DSN,
+    );
 
     // Docs indicate that `remove_var` should actually be marked unsafe
     // SAFETY: We haven't spawned any other threads, this code should be the first
@@ -382,10 +386,10 @@ mod tests {
     fn cli() {
         let exe_name = "firezone-headless-client";
 
-        let actual = Cli::try_parse_from([exe_name, "--api-url", "wss://api.firez.one"]).unwrap();
+        let actual = Cli::try_parse_from([exe_name, "--api-url", "wss://api.firez.one/"]).unwrap();
         assert_eq!(
             actual.api_url,
-            Url::parse("wss://api.firez.one").expect("Hard-coded URL should always be parsable")
+            Url::parse("wss://api.firez.one/").expect("Hard-coded URL should always be parsable")
         );
         assert!(!actual.check);
 
