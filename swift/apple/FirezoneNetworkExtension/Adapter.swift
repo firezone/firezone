@@ -128,7 +128,6 @@ class Adapter {
     }
 
     Log.tunnel.log("Adapter.start: Starting connlib")
-
     do {
       // Grab a session pointer
       let session =
