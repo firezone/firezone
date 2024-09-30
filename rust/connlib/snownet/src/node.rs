@@ -423,7 +423,7 @@ where
     ///
     /// As such, it ends up being cleaner to "drain" all lower-level components of their events, transmits etc within this function.
     pub fn handle_timeout(&mut self, now: Instant) {
-        self.bindings_and_allocations_drain_events();
+        self.allocations_drain_events();
 
         for (id, connection) in self.connections.iter_established_mut() {
             connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
@@ -742,7 +742,7 @@ where
         }))
     }
 
-    fn bindings_and_allocations_drain_events(&mut self) {
+    fn allocations_drain_events(&mut self) {
         let allocation_events = self
             .allocations
             .iter_mut()
