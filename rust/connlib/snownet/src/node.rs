@@ -576,7 +576,7 @@ where
             },
             possible_sockets: BTreeSet::default(),
             relay,
-            span: info_span!("connection", %cid),
+            span: info_span!(parent: tracing::Span::none(), "connection", %cid),
         }
     }
 
