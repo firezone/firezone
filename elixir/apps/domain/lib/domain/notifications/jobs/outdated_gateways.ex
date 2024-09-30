@@ -12,8 +12,6 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
 
   @impl true
   def execute(_config) do
-    dbg("Running outdated gateway job...")
-
     Accounts.all_active_paid_accounts!()
     |> Enum.filter(fn account ->
       account_ready_for_outdated_notification?(account)

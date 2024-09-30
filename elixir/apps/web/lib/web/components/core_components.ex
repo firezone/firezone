@@ -1210,6 +1210,14 @@ defmodule Web.CoreComponents do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
   end
 
+  def translate_errors(errors, field) when is_map(errors) do
+    for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
+  end
+
+  def translate_errors(errors, _field) when is_nil(errors) do
+    []
+  end
+
   @doc """
   This component is meant to be used for step by step instructions
 

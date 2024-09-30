@@ -8,15 +8,6 @@ defmodule Domain.Accounts.Config do
       field :address, :string
     end
 
-    # TODO: BRIAN - remove this when everything is working
-    # embeds_many :notifications, Notification,
-    #  primary_key: false,
-    #  on_replace: :delete do
-    #  field :name, Ecto.Enum, values: [:outdated_gateway, :idp_sync_error]
-    #  field :state, Ecto.Enum, values: [:enabled, :disabled]
-    #  field :last_notified, :utc_datetime
-    # end
-
     embeds_one :notifications, Notifications,
       primary_key: false,
       on_replace: :update do

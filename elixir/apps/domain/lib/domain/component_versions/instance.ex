@@ -42,7 +42,7 @@ defmodule Domain.ComponentVersions.Instance do
 
   def component_version(component) do
     case :ets.lookup(@ets_table_name, component) do
-      [] -> nil
+      [] -> "0.0.0"
       [{_key, value}] -> value
     end
   end

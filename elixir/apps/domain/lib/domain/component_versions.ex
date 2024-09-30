@@ -23,10 +23,6 @@ defmodule Domain.ComponentVersions do
     ComponentVersions.Instance.component_version("gateway")
   end
 
-  def apple_version do
-    ComponentVersions.Instance.component_version("apple")
-  end
-
   def fetch_versions do
     config = fetch_config!()
     releases_url = Keyword.fetch!(config, :firezone_releases_url)

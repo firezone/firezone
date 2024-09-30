@@ -7,8 +7,6 @@ defmodule Domain.Mailer.Notifications do
   embed_templates "notifications/*.text", suffix: "_text"
 
   def outdated_gateway_email(account, gateways, email) do
-    dbg("Sending outdated email to: #{email}")
-
     default_email()
     |> subject("Firezone Gateway Outdated")
     |> to(email)
