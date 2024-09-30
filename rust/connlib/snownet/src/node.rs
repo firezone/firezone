@@ -743,10 +743,9 @@ where
     }
 
     fn allocations_drain_events(&mut self) {
-        let allocation_events = self
-            .allocations
-            .iter_mut()
-            .flat_map(|(rid, allocation)| Some((*rid, allocation.poll_event()?)));
+        let allocation_events = self.allocations.iter_mut().flat_map(|(rid, allocation)| {
+            std::iter::from_fn(|| allocation.poll_event()).map(|e| (*rid, e))
+        });
 
         for (rid, event) in allocation_events {
             match event {
