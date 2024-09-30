@@ -11,9 +11,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.READ_PRIVILEGED_PHONE_STATE" android:required="false"
-        tools:ignore="ProtectedPermissions" />
-    
+
     <queries>
         <intent>
             <action android:name="android.support.customtabs.action.CustomTabsService" />
