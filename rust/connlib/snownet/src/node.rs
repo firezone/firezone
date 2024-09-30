@@ -748,6 +748,8 @@ where
         });
 
         for (rid, event) in allocation_events {
+            tracing::trace!(%rid, ?event);
+
             match event {
                 CandidateEvent::New(candidate)
                     if candidate.kind() == CandidateKind::ServerReflexive =>
