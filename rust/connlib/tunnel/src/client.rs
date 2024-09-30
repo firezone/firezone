@@ -906,10 +906,10 @@ impl ClientState {
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
+        self.drain_node_events();
+
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
         self.forwarded_dns_queries.retain(|_, (_, exp)| now < *exp);
-
-        self.drain_node_events();
     }
 
     fn maybe_update_tun_routes(&mut self) {
@@ -1256,6 +1256,7 @@ impl ClientState {
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);
+        self.drain_node_events(); // Ensure all state changes are fully-propagated.
     }
 }
 

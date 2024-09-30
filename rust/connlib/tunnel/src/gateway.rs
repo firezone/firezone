@@ -330,6 +330,7 @@ impl GatewayState {
 
     pub fn handle_timeout(&mut self, now: Instant, utc_now: DateTime<Utc>) {
         self.node.handle_timeout(now);
+        self.drain_node_events();
 
         match self.next_expiry_resources_check {
             Some(next_expiry_resources_check) if now >= next_expiry_resources_check => {
@@ -344,7 +345,9 @@ impl GatewayState {
             None => self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL),
             Some(_) => {}
         }
+    }
 
+    fn drain_node_events(&mut self) {
         let mut added_ice_candidates = BTreeMap::<ClientId, BTreeSet<String>>::default();
         let mut removed_ice_candidates = BTreeMap::<ClientId, BTreeSet<String>>::default();
 
@@ -417,6 +420,7 @@ impl GatewayState {
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);
+        self.drain_node_events()
     }
 }
 
