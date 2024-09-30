@@ -499,7 +499,7 @@ impl<'a> Handler<'a> {
                 session.connlib.set_disabled_resources(disabled_resources);
             }
             ClientMsg::StartTelemetry { environment } => self.telemetry.start(
-                environment,
+                &environment,
                 firezone_bin_shared::git_version!("gui-client-*"),
                 firezone_telemetry::IPC_SERVICE_DSN,
             ),

@@ -42,18 +42,26 @@ impl Clone for Telemetry {
 }
 
 impl Telemetry {
-    pub fn start(&self, api_url: String, release: &'static str, dsn: Dsn) {
+    pub fn start(&self, api_url: &str, release: &'static str, dsn: Dsn) {
         // Since it's `arc_swap` and not `Option`, there is a TOCTOU here,
         // but in practice it should never trigger
         if self.inner.load().is_some() {
             return;
         }
+
+        // Can't use URLs as `environment` directly, because Sentry doesn't allow slashes in environments.
+        // <https://docs.sentry.io/platforms/rust/configuration/environments/>
+        let environment = match api_url {
+            "wss://api.firezone.dev/" => "production",
+            "wss://api.firez.one/" => "staging",
+            _ => "self-hosted",
+        };
+
         tracing::info!("Starting telemetry");
         let inner = sentry::init((
             dsn.0,
-            // Can't use URLs as `environment` here, because Sentry doesn't allow slashes in environments.
-            // <https://docs.sentry.io/platforms/rust/configuration/environments/>
             sentry::ClientOptions {
+                environment: Some(environment.into()),
                 // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
                 release: Some(release.into()),
                 traces_sample_rate: 1.0,
@@ -115,7 +123,7 @@ mod tests {
             // Expect no telemetry because the telemetry module needs to be enabled before it can do anything
             negative_error("X7X4CKH3");
 
-            tele.start("test".to_string(), ENV, HEADLESS_DSN);
+            tele.start("test", ENV, HEADLESS_DSN);
             // Expect telemetry because the user opted in.
             sentry::add_breadcrumb(sentry::Breadcrumb {
                 ty: "test_crumb".into(),
@@ -128,7 +136,7 @@ mod tests {
             // Expect no telemetry because the user opted back out.
             negative_error("2RSIYAPX");
 
-            tele.start("test".to_string(), ENV, HEADLESS_DSN);
+            tele.start("test", ENV, HEADLESS_DSN);
             // Cycle one more time to be sure.
             error("S672IOBZ");
             tele.stop();
@@ -142,12 +150,12 @@ mod tests {
             {
                 let tele = Telemetry::default();
                 negative_error("4H7HFTNX");
-                tele.start("test".to_string(), ENV, HEADLESS_DSN);
+                tele.start("test", ENV, HEADLESS_DSN);
             }
             {
                 negative_error("GF46D6IL");
                 let tele = Telemetry::default();
-                tele.start("test".to_string(), ENV, HEADLESS_DSN);
+                tele.start("test", ENV, HEADLESS_DSN);
                 error("OKOEUKSW");
             }
         }

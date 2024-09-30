@@ -61,7 +61,7 @@ pub(crate) fn run() -> Result<()> {
             let settings = common::settings::load_advanced_settings().unwrap_or_default();
             let telemetry = telemetry::Telemetry::default();
             telemetry.start(
-                settings.api_url.to_string(),
+                settings.api_url.as_ref(),
                 firezone_bin_shared::git_version!("gui-client-*"),
                 telemetry::GUI_DSN,
             );
@@ -93,7 +93,7 @@ fn run_gui(cli: Cli) -> Result<()> {
     let telemetry = telemetry::Telemetry::default();
     // In the future telemetry will be opt-in per organization, that's why this isn't just at the top of `main`
     telemetry.start(
-        settings.api_url.to_string(),
+        settings.api_url.as_ref(),
         firezone_bin_shared::git_version!("gui-client-*"),
         telemetry::GUI_DSN,
     );
