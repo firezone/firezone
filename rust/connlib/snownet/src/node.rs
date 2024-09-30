@@ -266,7 +266,7 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
-    pub fn remove_remote_candidate(&mut self, cid: TId, candidate: String) {
+    pub fn remove_remote_candidate(&mut self, cid: TId, candidate: String, now: Instant) {
         let candidate = match Candidate::from_sdp_string(&candidate) {
             Ok(c) => c,
             Err(e) => {
@@ -277,6 +277,7 @@ where
 
         if let Some(agent) = self.connections.agent_mut(cid) {
             agent.invalidate_candidate(&candidate);
+            agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
         }
     }
 

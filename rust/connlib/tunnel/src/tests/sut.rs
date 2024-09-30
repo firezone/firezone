@@ -656,7 +656,7 @@ impl TunnelTest {
 
                 gateway.exec_mut(|g| {
                     for candidate in candidates {
-                        g.sut.remove_ice_candidate(src, candidate)
+                        g.sut.remove_ice_candidate(src, candidate, now)
                     }
                 })
             }
@@ -815,7 +815,7 @@ fn on_gateway_event(
         }),
         GatewayEvent::RemovedIceCandidates { candidates, .. } => client.exec_mut(|c| {
             for candidate in candidates {
-                c.sut.remove_ice_candidate(src, candidate)
+                c.sut.remove_ice_candidate(src, candidate, now)
             }
         }),
         GatewayEvent::RefreshDns { .. } => todo!(),
