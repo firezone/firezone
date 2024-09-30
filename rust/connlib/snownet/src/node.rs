@@ -447,7 +447,7 @@ where
         self.allocations
             .retain(|rid, allocation| match allocation.can_be_freed() {
                 Some(e) => {
-                    tracing::error!(%rid, "Disconnecting from relay; {e}");
+                    tracing::warn!(%rid, "Disconnecting from relay; {e}");
 
                     false
                 }
