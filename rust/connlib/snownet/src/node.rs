@@ -1111,18 +1111,16 @@ fn add_local_candidate_to_all<TId, RId>(
     let initial_connections = connections
         .initial
         .iter_mut()
-        .flat_map(|(id, c)| Some((*id, &mut c.agent, c.relay?)));
+        .flat_map(|(cid, c)| Some((*cid, &mut c.agent, c.relay?, c.span.enter())));
     let established_connections = connections
         .established
         .iter_mut()
-        .flat_map(|(id, c)| Some((*id, &mut c.agent, c.relay?)));
+        .flat_map(|(cid, c)| Some((*cid, &mut c.agent, c.relay?, c.span.enter())));
 
-    for (cid, agent, _) in initial_connections
+    for (cid, agent, _, _guard) in initial_connections
         .chain(established_connections)
-        .filter(|(_, _, selected_relay)| *selected_relay == rid)
+        .filter(|(_, _, selected_relay, _)| *selected_relay == rid)
     {
-        let _span = info_span!("connection", %cid).entered();
-
         add_local_candidate(cid, agent, candidate.clone(), pending_events);
     }
 }
