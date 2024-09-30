@@ -334,6 +334,8 @@ impl TunnelTest {
                 // 2. Advance state to ensure this is reflected.
                 state.advance(ref_state, &mut buffered_transmits);
 
+                let now = state.flux_capacitor.now();
+
                 // 3. Reconnect all relays.
                 state
                     .client
