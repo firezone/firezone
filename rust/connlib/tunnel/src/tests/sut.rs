@@ -273,28 +273,10 @@ impl TunnelTest {
                 });
             }
             Transition::DeployNewRelays(new_relays) => {
-                for relay in state.relays.values() {
-                    state.network.remove_host(relay);
-                }
+                // If we are connected to the portal, we will learn, which ones went down, i.e. `relays_presence`.
+                let to_remove = state.relays.keys().copied().collect();
 
-                let online = new_relays
-                    .into_iter()
-                    .map(|(rid, relay)| (rid, relay.map(SimRelay::new, debug_span!("relay", %rid))))
-                    .collect::<BTreeMap<_, _>>();
-
-                for (rid, relay) in &online {
-                    debug_assert!(state.network.add_host(*rid, relay));
-                }
-
-                state.client.exec_mut(|c| {
-                    c.update_relays(state.relays.keys().copied(), online.iter(), now);
-                });
-                for gateway in state.gateways.values_mut() {
-                    gateway.exec_mut(|g| {
-                        g.update_relays(state.relays.keys().copied(), online.iter(), now)
-                    });
-                }
-                state.relays = online; // Override all relays.
+                state.deploy_new_relays(new_relays, now, to_remove);
             }
             Transition::Idle => {
                 const IDLE_DURATION: Duration = Duration::from_secs(6 * 60); // Ensure idling twice in a row puts us in the 10-15 minute window where TURN data channels are cooling down.
@@ -344,6 +326,12 @@ impl TunnelTest {
                     gateway.exec_mut(|g| g.update_relays(iter::empty(), state.relays.iter(), now));
                 }
             }
+            Transition::RebootRelaysWhilePartitioned(new_relays) => {
+                // If we are partitioned from the portal, we will only learn which relays to use, potentially replacing existing ones.
+                let to_remove = Vec::default();
+
+                state.deploy_new_relays(new_relays, now, to_remove);
+            }
         };
         state.advance(ref_state, &mut buffered_transmits);
 
@@ -392,6 +380,24 @@ impl TunnelTest {
             self.handle_timeout(&ref_state.global_dns_records, buffered_transmits);
             let now = self.flux_capacitor.now();
 
+            for (id, gateway) in self.gateways.iter_mut() {
+                let Some(event) = gateway.exec_mut(|g| g.sut.poll_event()) else {
+                    continue;
+                };
+
+                on_gateway_event(*id, event, &mut self.client, now);
+                continue 'outer;
+            }
+            if let Some(event) = self.client.exec_mut(|c| c.sut.poll_event()) {
+                self.on_client_event(
+                    self.client.inner().id,
+                    event,
+                    &ref_state.portal,
+                    &ref_state.global_dns_records,
+                );
+                continue;
+            }
+
             for (_, relay) in self.relays.iter_mut() {
                 let Some(message) = relay.exec_mut(|r| r.sut.next_command()) else {
                     continue;
@@ -437,26 +443,8 @@ impl TunnelTest {
                 continue 'outer;
             }
 
-            for (id, gateway) in self.gateways.iter_mut() {
-                let Some(event) = gateway.exec_mut(|g| g.sut.poll_event()) else {
-                    continue;
-                };
-
-                on_gateway_event(*id, event, &mut self.client, now);
-                continue 'outer;
-            }
-
             if let Some(transmit) = self.client.exec_mut(|sim| sim.sut.poll_transmit()) {
                 buffered_transmits.push_from(transmit, &self.client, now);
-                continue;
-            }
-            if let Some(event) = self.client.exec_mut(|c| c.sut.poll_event()) {
-                self.on_client_event(
-                    self.client.inner().id,
-                    event,
-                    &ref_state.portal,
-                    &ref_state.global_dns_records,
-                );
                 continue;
             }
             self.client.exec_mut(|sim| {
@@ -798,6 +786,34 @@ impl TunnelTest {
                     .unwrap();
             }
         }
+    }
+
+    fn deploy_new_relays(
+        &mut self,
+        new_relays: BTreeMap<RelayId, Host<u64>>,
+        now: Instant,
+        to_remove: Vec<RelayId>,
+    ) {
+        for relay in self.relays.values() {
+            self.network.remove_host(relay);
+        }
+
+        let online = new_relays
+            .into_iter()
+            .map(|(rid, relay)| (rid, relay.map(SimRelay::new, debug_span!("relay", %rid))))
+            .collect::<BTreeMap<_, _>>();
+
+        for (rid, relay) in &online {
+            debug_assert!(self.network.add_host(*rid, relay));
+        }
+
+        self.client.exec_mut(|c| {
+            c.update_relays(to_remove.iter().copied(), online.iter(), now);
+        });
+        for gateway in self.gateways.values_mut() {
+            gateway.exec_mut(|g| g.update_relays(to_remove.iter().copied(), online.iter(), now));
+        }
+        self.relays = online; // Override all relays.
     }
 }
 
