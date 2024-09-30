@@ -30,7 +30,7 @@ pub(crate) fn path() -> Result<PathBuf> {
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
 pub fn get_or_create() -> Result<DeviceId> {
-    const DEFAULT_SERIAL: String = "123456789";
+    const DEFAULT_SERIAL: String = "123456789".to_string();
 
     if let Ok(data) = smbioslib::table_load_from_device() {
         if let Some(id) = data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| {

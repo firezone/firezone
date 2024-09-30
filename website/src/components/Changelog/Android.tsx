@@ -20,6 +20,9 @@ export default function Android() {
           Fixes connectivity issues on idle connections by entering an
           always-on, low-power mode instead of closing them.
         </ChangeItem>
+        <ChangeItem pull="6857">
+          Use the Firebase Installation ID for device verification.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.4" date={new Date("2024-09-26")}>
         <ChangeItem pull="6809">
