@@ -65,7 +65,8 @@ To do so, login to [the Azure portal](https://portal.azure.com) using your `@fir
 
 Then,
 
-- Find and navigate to the `CodeSigning` app registration.
+- Go to the `Entra ID` service
+- Find and navigate to the `CodeSigning` app registration
 - Client on `client credentials`
 - Click `New client secret`
 - Note down the secret value. This should be entered into the GitHub repository's secrets as `AZURE_CLIENT_SECRET`.
