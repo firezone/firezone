@@ -307,19 +307,19 @@ mod tests {
             id: E,
             title: S,
         ) -> Self {
-            self.add_item(item(id, title).selected());
+            self.add_item(item(id, title).checked(true));
             self
         }
     }
 
-    fn signed_in<'a>(
-        resources: &'a [ResourceDescription],
-        favorite_resources: &'a HashSet<ResourceId>,
-        internet_resource_enabled: &'a Option<bool>,
-    ) -> AppState<'a> {
+    fn signed_in(
+        resources: Vec<ResourceDescription>,
+        favorite_resources: HashSet<ResourceId>,
+        internet_resource_enabled: Option<bool>,
+    ) -> AppState {
         AppState {
             connlib: ConnlibState::SignedIn(SignedIn {
-                actor_name: "Jane Doe",
+                actor_name: "Jane Doe".into(),
                 favorite_resources,
                 resources,
                 internet_resource_enabled,
@@ -366,7 +366,7 @@ mod tests {
         let resources = vec![];
         let favorites = Default::default();
         let disabled_resources = Default::default();
-        let input = signed_in(&resources, &favorites, &disabled_resources);
+        let input = signed_in(resources, favorites, disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -388,7 +388,7 @@ mod tests {
         let resources = vec![];
         let favorites = HashSet::from([ResourceId::from_u128(42)]);
         let disabled_resources = Default::default();
-        let input = signed_in(&resources, &favorites, &disabled_resources);
+        let input = signed_in(resources, favorites, disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -410,7 +410,7 @@ mod tests {
         let resources = resources();
         let favorites = Default::default();
         let disabled_resources = Default::default();
-        let input = signed_in(&resources, &favorites, &disabled_resources);
+        let input = signed_in(resources, favorites, disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -485,7 +485,7 @@ mod tests {
             "03000143-e25e-45c7-aafb-144990e57dcd",
         )?]);
         let disabled_resources = Default::default();
-        let input = signed_in(&resources, &favorites, &disabled_resources);
+        let input = signed_in(resources, favorites, disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -567,7 +567,7 @@ mod tests {
             "00000000-0000-0000-0000-000000000000",
         )?]);
         let disabled_resources = Default::default();
-        let input = signed_in(&resources, &favorites, &disabled_resources);
+        let input = signed_in(resources, favorites, disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")

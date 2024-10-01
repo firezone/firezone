@@ -38,5 +38,5 @@ jobs:
       - name: Test
         run: cargo test
       - name: Build
-        run: cargo build
+        run: cargo build --release
         # TODO: Upload exe and debug symbols
