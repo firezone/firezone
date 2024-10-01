@@ -749,6 +749,13 @@ where
 
         for (rid, event) in allocation_events {
             match event {
+                CandidateEvent::New(candidate)
+                    if candidate.kind() == CandidateKind::ServerReflexive =>
+                {
+                    for (cid, agent, _span) in self.connections.agents_mut() {
+                        add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
+                    }
+                }
                 CandidateEvent::New(candidate) => {
                     for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
                     {
