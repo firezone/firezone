@@ -113,7 +113,7 @@ defmodule Web.Policies.New do
                     <% end %>
 
                     <span :if={resource.gateway_groups == []} class="text-red-800">
-                      (not connected to any Sites)
+                      (not connected to any Site)
                     </span>
                     <span
                       :if={length(resource.gateway_groups) > 0}
@@ -135,7 +135,7 @@ defmodule Web.Policies.New do
                   </:no_options>
 
                   <:no_search_results>
-                    No resources found. Try a different search query or create a new one <.link
+                    No Resources found. Try a different search query or create a new one <.link
                       navigate={~p"/#{@account}/resources/new"}
                       class={link_style()}
                     >here</.link>.

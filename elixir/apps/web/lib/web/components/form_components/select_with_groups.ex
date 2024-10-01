@@ -165,7 +165,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
           autocomplete={false}
           class={[
             input_class(),
-            not @disabled && "cursor-pointer",
+            (@disabled && "cursor-not-allowed") || "cursor-pointer",
             @errors != [] && input_has_errors_class()
           ]}
           value={@value_name}
@@ -181,14 +181,16 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
         <div
           class={[
             "absolute top-1/2 end-2 -translate-y-1/2",
-            not @disabled && "cursor-pointer"
+            (@disabled && "cursor-not-allowed") || "cursor-pointer"
           ]}
           phx-click={
-            JS.toggle_class("hidden",
-              to: "#select-#{@id}-dropdown"
-            )
-            |> JS.toggle_attribute({"aria-expanded", "true", "false"}, to: "##{@id}-input")
-            |> JS.focus(to: "#select-" <> @id <> "-search-input")
+            unless @disabled do
+              JS.toggle_class("hidden",
+                to: "#select-#{@id}-dropdown"
+              )
+              |> JS.toggle_attribute({"aria-expanded", "true", "false"}, to: "##{@id}-input")
+              |> JS.focus(to: "#select-" <> @id <> "-search-input")
+            end
           }
         >
           <.icon name="hero-chevron-up-down" class="w-5 h-5" />
@@ -202,7 +204,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
             "mt-2 pb-1 px-1 space-y-0.5 z-20",
             "w-full bg-white",
             input_border_class(),
-            "border border-gray-200 rounded-lg",
+            "border border-gray-200 rounded shadow",
             "overflow-hidden"
           ]}
           role="listbox"
@@ -213,7 +215,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
             "max-h-72",
             "overflow-y-auto overflow-x-hidden"
           ]}>
-            <div class="bg-white p-2 sticky top-0 z-40">
+            <div class="bg-white p-2 sticky top-1 z-40">
               <input
                 name={"search_query-#{@id}"}
                 id={"select-" <> @id <> "-search-input"}
@@ -232,7 +234,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
             <div>
               <div class={[
                 "hidden only:block",
-                "py-2 px-4",
+                "py-2 px-2",
                 "text-sm text-neutral-400"
               ]}>
                 <%= if @no_search_results == [] do %>
@@ -261,7 +263,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
                       "block",
                       "w-full py-2 px-4",
                       "text-sm text-neutral-800",
-                      "rounded-lg",
+                      "rounded",
                       "hover:bg-neutral-100",
                       "focus:outline-none focus:bg-neutral-100",
                       value != @value && "cursor-pointer",
@@ -276,14 +278,21 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
                       checked={value == @value}
                       class="hidden"
                     />
-                    <div>
-                      <div class={["flex items center"]}>
-                        <div class={["text-gray-800"]}>
-                          <%= render_slot(@option, slot_assigns) %>
-                        </div>
-                        <div :if={value == @value} class="ml-auto">
-                          <.icon name="hero-check" class="w-4 h-4" />
-                        </div>
+                    <div
+                      phx-click={
+                        JS.toggle_class("hidden",
+                          to: "#select-#{@id}-dropdown"
+                        )
+                        |> JS.toggle_attribute({"aria-expanded", "true", "false"})
+                        |> JS.focus(to: "#select-" <> @id <> "-search-input")
+                      }
+                      class={["flex items-center"]}
+                    >
+                      <div class={["text-gray-800"]}>
+                        <%= render_slot(@option, slot_assigns) %>
+                      </div>
+                      <div :if={value == @value} class="ml-auto">
+                        <.icon name="hero-check" class="w-4 h-4" />
                       </div>
                     </div>
                   </label>
