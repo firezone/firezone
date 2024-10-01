@@ -13,6 +13,24 @@ defmodule Web.Policies.Components do
     {"U", "Sunday"}
   ]
 
+  @all_conditions [
+    :remote_ip_location_region,
+    :remote_ip,
+    :provider_id,
+    :client_verified,
+    :current_utc_datetime
+  ]
+
+  # current_utc_datetime is a condition evaluated at the time of the request,
+  # so we don't need to include it in the list of conditions that can be set
+  # for internet resources, otherwise it would be blocking all the requests.
+  @conditions_by_resource_type %{
+    internet: @all_conditions -- [:current_utc_datetime],
+    dns: @all_conditions,
+    ip: @all_conditions,
+    cidr: @all_conditions
+  }
+
   attr(:policy, :map, required: true)
 
   def policy_name(assigns) do
@@ -256,8 +274,12 @@ defmodule Web.Policies.Components do
 
   def conditions_form(assigns) do
     assigns =
-      assign_new(assigns, :policy_conditions_enabled?, fn ->
+      assigns
+      |> assign_new(:policy_conditions_enabled?, fn ->
         Domain.Accounts.policy_conditions_enabled?(assigns.account)
+      end)
+      |> assign_new(:enabled_conditions, fn ->
+        Map.fetch!(@conditions_by_resource_type, assigns.selected_resource.type)
       end)
 
     ~H"""
@@ -280,17 +302,28 @@ defmodule Web.Policies.Components do
 
       <div class={@policy_conditions_enabled? == false && "opacity-50"}>
         <.remote_ip_location_region_condition_form
+          :if={:remote_ip_location_region in @enabled_conditions}
           form={@form}
           disabled={@policy_conditions_enabled? == false}
         />
-        <.remote_ip_condition_form form={@form} disabled={@policy_conditions_enabled? == false} />
+        <.remote_ip_condition_form
+          :if={:remote_ip in @enabled_conditions}
+          form={@form}
+          disabled={@policy_conditions_enabled? == false}
+        />
         <.provider_id_condition_form
+          :if={:provider_id in @enabled_conditions}
           form={@form}
           providers={@providers}
           disabled={@policy_conditions_enabled? == false}
         />
-        <.client_verified_condition_form form={@form} disabled={@policy_conditions_enabled? == false} />
+        <.client_verified_condition_form
+          :if={:client_verified in @enabled_conditions}
+          form={@form}
+          disabled={@policy_conditions_enabled? == false}
+        />
         <.current_utc_datetime_condition_form
+          :if={:current_utc_datetime in @enabled_conditions}
           form={@form}
           timezone={@timezone}
           disabled={@policy_conditions_enabled? == false}

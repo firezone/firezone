@@ -158,6 +158,43 @@ defmodule Web.Live.Policies.NewTest do
     assert Floki.attribute(value_input, "value") == [resource.id]
   end
 
+  test "form changes depending on resource type", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    resource = Fixtures.Resources.create_resource(account: account, type: :internet)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/policies/new?resource_id=#{resource.id}")
+
+    form = form(lv, "form")
+
+    assert find_inputs(form) == [
+             "policy[actor_group_id]",
+             "policy[actor_group_id]_name",
+             "policy[conditions][client_verified][operator]",
+             "policy[conditions][client_verified][property]",
+             "policy[conditions][client_verified][values][]",
+             "policy[conditions][provider_id][operator]",
+             "policy[conditions][provider_id][property]",
+             "policy[conditions][provider_id][values][]",
+             "policy[conditions][remote_ip][operator]",
+             "policy[conditions][remote_ip][property]",
+             "policy[conditions][remote_ip][values][]",
+             "policy[conditions][remote_ip_location_region][operator]",
+             "policy[conditions][remote_ip_location_region][property]",
+             "policy[conditions][remote_ip_location_region][values][]",
+             "policy[description]",
+             "policy[resource_id]",
+             "policy[resource_id]_name",
+             "search_query-policy_actor_group_id",
+             "search_query-policy_resource_id"
+           ]
+  end
+
   test "renders changeset errors on input change", %{
     account: account,
     identity: identity,
