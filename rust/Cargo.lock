@@ -6898,6 +6898,7 @@ dependencies = [
  "hex",
  "hex-display",
  "ip-packet",
+ "itertools 0.13.0",
  "once_cell",
  "rand 0.8.5",
  "secrecy",

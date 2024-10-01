@@ -10,6 +10,7 @@ use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
 use hex_display::HexDisplayExt;
 use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf};
+use itertools::Itertools as _;
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, SeedableRng};
@@ -938,7 +939,7 @@ where
 impl<T, TId, RId> Node<T, TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
-    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
+    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
     fn seed_agent_with_local_candidates(
         &mut self,
@@ -950,23 +951,31 @@ where
             add_local_candidate(connection, agent, candidate, &mut self.pending_events);
         }
 
+        for candidate in self
+            .allocations
+            .values()
+            .flat_map(|a| a.current_candidates())
+            .filter(|c| c.kind() == CandidateKind::ServerReflexive)
+            .unique()
+        {
+            add_local_candidate(connection, agent, candidate, &mut self.pending_events);
+        }
+
         let Some(selected_relay) = selected_relay else {
             tracing::debug!("Skipping seeding of relay candidates: No relay selected");
             return;
         };
 
-        for candidate in self
-            .allocations
-            .iter()
-            .filter_map(|(rid, allocation)| (*rid == selected_relay).then_some(allocation))
-            .flat_map(|allocation| allocation.current_candidates())
+        let Some(allocation) = self.allocations.get(&selected_relay) else {
+            tracing::debug!(%selected_relay, "Cannot seed relay candidates: Unknown relay");
+            return;
+        };
+
+        for candidate in allocation
+            .current_candidates()
+            .filter(|c| c.kind() == CandidateKind::Relayed)
         {
-            add_local_candidate(
-                connection,
-                agent,
-                candidate.clone(),
-                &mut self.pending_events,
-            );
+            add_local_candidate(connection, agent, candidate, &mut self.pending_events);
         }
     }
 }
