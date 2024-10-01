@@ -1,0 +1,38 @@
+---
+name: GTK
+"on":
+  workflow_call:
+
+defaults:
+  run:
+    working-directory: ./rust/gtk-client
+
+permissions:
+  contents: 'read'
+  id-token: 'write' # Needed to publish artifacts to releases?
+
+# Never tolerate warnings. Source of truth is `_rust.yml`
+env:
+  RUSTFLAGS: "-Dwarnings"
+  RUSTDOCFLAGS: "-D warnings"
+
+jobs:
+  build-gtk:
+    name: build-gtk-${{ matrix.runs-on }}
+    runs: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: ubuntu-20.04
+          - runs-on: ubuntu-22.04-arm
+        steps:
+          - uses: actions/checkout@v4
+          - uses: ./.github/actions/setup-rust
+          - name: Clippy
+            run: cargo clippy --all-targets
+          - name: Test
+            run: cargo test
+          - name: Build
+            run: cargo build
+            # TODO: Upload exe and debug symbols
