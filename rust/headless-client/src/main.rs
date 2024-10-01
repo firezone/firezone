@@ -320,7 +320,6 @@ fn main() -> Result<()> {
         result
     });
 
-    tracing::warn!("Stopping telemetry...");
     telemetry.stop();
     result
 }

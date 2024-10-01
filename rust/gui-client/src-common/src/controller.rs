@@ -260,9 +260,12 @@ impl<I: GuiIntegration> Controller<I> {
                     }
                     self.try_retry_connection().await?
                 }
-                event = self.ipc_rx.recv() => if let ControlFlow::Break(()) = self.handle_ipc_event(event.context("IPC task stopped")?).await? {
-                    break;
-                },
+                event = self.ipc_rx.recv() => {
+                    let event = event.context("IPC task stopped")?;
+                    if let ControlFlow::Break(()) = self.handle_ipc_event(event).await? {
+                        break;
+                    }
+                }
                 req = self.rx.recv() => {
                     let Some(req) = req else {
                         tracing::warn!("Controller channel closed, breaking main loop.");
@@ -749,12 +752,12 @@ impl<I: GuiIntegration> Controller<I> {
     /// Deletes the auth token, stops connlib, and refreshes the tray menu
     async fn sign_out(&mut self) -> Result<()> {
         match self.status {
+            Status::Quitting => return Ok(()),
             Status::Disconnected
             | Status::RetryingConnection { .. }
             | Status::TunnelReady { .. }
             | Status::WaitingForPortal { .. }
             | Status::WaitingForTunnel { .. } => {}
-            Status::Quitting => return Ok(()),
         }
         self.auth.sign_out()?;
         self.status = Status::Disconnected;
