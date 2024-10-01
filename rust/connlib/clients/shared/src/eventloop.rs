@@ -7,7 +7,7 @@ use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyParam};
 use std::time::Instant;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     io,
     net::IpAddr,
     task::{Context, Poll},
@@ -20,8 +20,6 @@ pub struct Eventloop<C: Callbacks> {
 
     portal: PhoenixChannel<(), IngressMessages, ReplyMessages, PublicKeyParam>,
     rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
-
-    connection_intents: SentConnectionIntents,
 }
 
 /// Commands that can be sent to the [`Eventloop`].
@@ -45,7 +43,6 @@ impl<C: Callbacks> Eventloop<C> {
         Self {
             tunnel,
             portal,
-            connection_intents: SentConnectionIntents::default(),
             rx,
             callbacks,
         }
@@ -145,14 +142,13 @@ where
                 resource,
                 ..
             } => {
-                let id = self.portal.send(
+                self.portal.send(
                     PHOENIX_TOPIC,
                     EgressMessages::PrepareConnection {
                         resource_id: resource,
                         connected_gateway_ids,
                     },
                 );
-                self.connection_intents.register_new_intent(id, resource);
             }
             firezone_tunnel::ClientEvent::RequestAccess {
                 resource_id,
@@ -212,8 +208,8 @@ where
             phoenix_channel::Event::InboundMessage { msg, .. } => {
                 self.handle_portal_inbound_message(msg);
             }
-            phoenix_channel::Event::SuccessResponse { res, req_id, .. } => {
-                self.handle_portal_success_reply(res, req_id);
+            phoenix_channel::Event::SuccessResponse { res, .. } => {
+                self.handle_portal_success_reply(res);
             }
             phoenix_channel::Event::ErrorResponse { res, req_id, topic } => {
                 self.handle_portal_error_reply(res, topic, req_id);
@@ -286,7 +282,7 @@ where
         }
     }
 
-    fn handle_portal_success_reply(&mut self, res: ReplyMessages, req_id: OutboundRequestId) {
+    fn handle_portal_success_reply(&mut self, res: ReplyMessages) {
         match res {
             ReplyMessages::Connect(Connect {
                 gateway_payload:
@@ -316,15 +312,6 @@ where
                 site_id,
                 ..
             }) => {
-                let should_accept = self
-                    .connection_intents
-                    .handle_connection_details_received(req_id, resource_id);
-
-                if !should_accept {
-                    tracing::debug!(%resource_id, "Ignoring stale connection details");
-                    return;
-                }
-
                 match self.tunnel.state_mut().on_routing_details(
                     resource_id,
                     gateway_id,
@@ -360,15 +347,11 @@ where
     ) {
         match res {
             ErrorReply::Offline => {
-                let Some(offline_resource) = self.connection_intents.handle_error(req_id) else {
-                    return;
-                };
+                // tracing::debug!(resource_id = %offline_resource, "Resource is offline");
 
-                tracing::debug!(resource_id = %offline_resource, "Resource is offline");
-
-                self.tunnel
-                    .state_mut()
-                    .set_resource_offline(offline_resource);
+                // self.tunnel
+                //     .state_mut()
+                //     .set_resource_offline(offline_resource);
             }
 
             ErrorReply::Disabled => {
@@ -381,108 +364,5 @@ where
                 tracing::debug!(%req_id, %reason, "Request failed");
             }
         }
-    }
-}
-
-#[derive(Default)]
-struct SentConnectionIntents {
-    inner: BTreeMap<OutboundRequestId, ResourceId>,
-}
-
-impl SentConnectionIntents {
-    fn register_new_intent(&mut self, id: OutboundRequestId, resource: ResourceId) {
-        self.inner.insert(id, resource);
-    }
-
-    /// To be called when we receive the connection details for a particular resource.
-    ///
-    /// Returns whether we should accept them.
-    fn handle_connection_details_received(
-        &mut self,
-        reference: OutboundRequestId,
-        r: ResourceId,
-    ) -> bool {
-        let has_more_recent_intent = self
-            .inner
-            .iter()
-            .any(|(req, resource)| req > &reference && resource == &r);
-
-        if has_more_recent_intent {
-            return false;
-        }
-
-        let has_intent = self
-            .inner
-            .get(&reference)
-            .is_some_and(|resource| resource == &r);
-
-        if !has_intent {
-            return false;
-        }
-
-        self.inner.retain(|_, v| v != &r);
-
-        true
-    }
-
-    fn handle_error(&mut self, req: OutboundRequestId) -> Option<ResourceId> {
-        self.inner.remove(&req)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn discards_old_connection_intent() {
-        let mut intents = SentConnectionIntents::default();
-
-        let resource = ResourceId::random();
-
-        intents.register_new_intent(OutboundRequestId::for_test(1), resource);
-        intents.register_new_intent(OutboundRequestId::for_test(2), resource);
-
-        let should_accept =
-            intents.handle_connection_details_received(OutboundRequestId::for_test(1), resource);
-
-        assert!(!should_accept);
-    }
-
-    #[test]
-    fn allows_unrelated_intents() {
-        let mut intents = SentConnectionIntents::default();
-
-        let resource1 = ResourceId::random();
-        let resource2 = ResourceId::random();
-
-        intents.register_new_intent(OutboundRequestId::for_test(1), resource1);
-        intents.register_new_intent(OutboundRequestId::for_test(2), resource2);
-
-        let should_accept_1 =
-            intents.handle_connection_details_received(OutboundRequestId::for_test(1), resource1);
-        let should_accept_2 =
-            intents.handle_connection_details_received(OutboundRequestId::for_test(2), resource2);
-
-        assert!(should_accept_1);
-        assert!(should_accept_2);
-    }
-
-    #[test]
-    fn handles_out_of_order_responses() {
-        let mut intents = SentConnectionIntents::default();
-
-        let resource = ResourceId::random();
-
-        intents.register_new_intent(OutboundRequestId::for_test(1), resource);
-        intents.register_new_intent(OutboundRequestId::for_test(2), resource);
-
-        let should_accept_2 =
-            intents.handle_connection_details_received(OutboundRequestId::for_test(2), resource);
-        let should_accept_1 =
-            intents.handle_connection_details_received(OutboundRequestId::for_test(1), resource);
-
-        assert!(should_accept_2);
-        assert!(!should_accept_1);
     }
 }
