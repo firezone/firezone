@@ -19,7 +19,7 @@ env:
 jobs:
   build-gtk:
     name: build-gtk-${{ matrix.runs-on }}
-    runs: ${{ matrix.runs-on }}
+    runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
