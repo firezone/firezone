@@ -1085,19 +1085,37 @@ where
 
         // For established connections, we check if we are currently using the relay.
         for (_, c) in self.iter_established_mut() {
-            if c.relay.is_some_and(|r| allocations.contains_key(&r)) {
-                continue;
-            }
+            let _guard = c.span.enter();
 
-            let Some(PeerSocket::Relay { relay, .. }) = c.socket() else {
-                continue;
+            use ConnectionState::*;
+            let peer_socket = match &mut c.state {
+                Connected { peer_socket, .. } | Idle { peer_socket } => peer_socket,
+                Failed => continue,
+                Connecting {
+                    relay: maybe_relay, ..
+                } => {
+                    let Some(relay) = maybe_relay else {
+                        continue;
+                    };
+
+                    if allocations.contains_key(relay) {
+                        continue;
+                    }
+
+                    tracing::debug!("Selected relay disconnected during ICE; connection may fail");
+                    *maybe_relay = None;
+                    continue;
+                }
             };
 
-            if allocations.contains_key(&relay) {
-                continue;
-            }
+            let relay = match peer_socket {
+                PeerSocket::Direct { .. } => continue, // Don't care if relay of direct connection disappears, we weren't using it anyway.
+                PeerSocket::Relay { relay, .. } => relay,
+            };
 
-            let _guard = c.span.enter();
+            if allocations.contains_key(relay) {
+                continue; // Our relay is still there, no problems.
+            }
 
             tracing::info!("Connection failed (relay disconnected)");
             c.state = ConnectionState::Failed;
@@ -1123,7 +1141,6 @@ where
             | ConnectionState::Idle { .. }
             | ConnectionState::Connected { .. } => None,
         });
-
         maybe_initial_connection.or(maybe_pending_connection)
     }
 
