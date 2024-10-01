@@ -24,8 +24,10 @@ use tray_icon::{menu::MenuEvent, TrayIconBuilder};
 const LOGO_BASE: &[u8] = include_bytes!("../../gui-client/src-tauri/icons/tray/Logo.png");
 const LOGO_GREY_BASE: &[u8] = include_bytes!("../../gui-client/src-tauri/icons/tray/Logo grey.png");
 const BUSY_LAYER: &[u8] = include_bytes!("../../gui-client/src-tauri/icons/tray/Busy layer.png");
-const SIGNED_OUT_LAYER: &[u8] = include_bytes!("../../gui-client/src-tauri/icons/tray/Signed out layer.png");
-const UPDATE_READY_LAYER: &[u8] = include_bytes!("../../gui-client/src-tauri/icons/tray/Update ready layer.png");
+const SIGNED_OUT_LAYER: &[u8] =
+    include_bytes!("../../gui-client/src-tauri/icons/tray/Signed out layer.png");
+const UPDATE_READY_LAYER: &[u8] =
+    include_bytes!("../../gui-client/src-tauri/icons/tray/Update ready layer.png");
 
 const TOOLTIP: &str = "Firezone";
 
@@ -59,14 +61,18 @@ fn main() -> Result<()> {
                 tracing::error!(?error, "Error in `OpenDeepLink`");
             }
             return Ok(());
-        },
+        }
         None => {}
     }
 
     // We're not a deep link handler, so start telemetry
     let telemetry = telemetry::Telemetry::default();
     // TODO: Fix missing stuff for telemetry
-    telemetry.start("wss://api.firez.one", firezone_bin_shared::git_version!("gtk-client-*"), telemetry::GUI_DSN);
+    telemetry.start(
+        "wss://api.firez.one",
+        firezone_bin_shared::git_version!("gtk-client-*"),
+        telemetry::GUI_DSN,
+    );
 
     let common::logging::Handles {
         logger: _logger,
@@ -239,7 +245,8 @@ fn icon_to_native_icon(that: &Icon) -> tray_icon::Icon {
 }
 
 fn image_to_native_icon(val: Image) -> tray_icon::Icon {
-    tray_icon::Icon::from_rgba(val.rgba, val.width, val.height).expect("Converting a tray icon to RGBA should always work")
+    tray_icon::Icon::from_rgba(val.rgba, val.width, val.height)
+        .expect("Converting a tray icon to RGBA should always work")
 }
 
 fn build_menu(text: &str, that: &common::system_tray::Menu) -> Result<tray_icon::menu::Submenu> {
@@ -303,7 +310,9 @@ async fn run_controller(
         rx,
         telemetry,
         updates_rx,
-    }.build().await?;
+    }
+    .build()
+    .await?;
 
     controller.main_loop().await?;
     main_tx.send(MainThreadReq::Quit).await?;

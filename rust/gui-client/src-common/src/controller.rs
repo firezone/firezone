@@ -711,9 +711,7 @@ impl<I: GuiIntegration> Controller<I> {
                     system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
                         actor_name: auth_session.actor_name.clone(),
                         favorite_resources: self.advanced_settings.favorite_resources.clone(),
-                        internet_resource_enabled: self
-                            .advanced_settings
-                            .internet_resource_enabled,
+                        internet_resource_enabled: self.advanced_settings.internet_resource_enabled,
                         resources: resources.clone(),
                     })
                 }
