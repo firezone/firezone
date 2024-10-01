@@ -1,9 +1,10 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
-use secrecy::{CloneableSecret, ExposeSecret as _, SecretString, Zeroize};
+use secrecy::{CloneableSecret, ExposeSecret as _, SecretString};
 use sha2::Digest as _;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use url::Url;
 use uuid::Uuid;
+use zeroize::Zeroize;
 
 // From https://man7.org/linux/man-pages/man2/gethostname.2.html
 // SUSv2 guarantees that "Host names are limited to 255 bytes".

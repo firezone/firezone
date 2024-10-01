@@ -21,7 +21,7 @@ os_info = { version = "3", default-features = false }
 phoenix-channel = { workspace = true }
 rand = { version = "0.8", default-features = false, features = ["std"] }
 rand_core = { version = "0.6.4", default-features = false, features = ["std"] }
-secrecy = { workspace = true, features = ["serde", "bytes"] }
+secrecy = { workspace = true, features = ["serde"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0", default-features = false, features = ["std"] }
 thiserror = { version = "1.0", default-features = false }
@@ -29,6 +29,7 @@ tokio = { workspace = true, features = ["fs"] }
 tracing = { workspace = true }
 url = { version = "2.5.2", default-features = false }
 uuid = { version = "1.10", default-features = false, features = ["std", "v4", "serde"] }
+zeroize = "1.8.1"
 
 [dev-dependencies]
 tokio = { version = "1.39", features = ["macros", "rt"] }
