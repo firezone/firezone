@@ -572,10 +572,10 @@ where
             signalling_completed_at: now,
             remote_pub_key: remote,
             state: ConnectionState::Connecting {
+                relay,
                 buffered: RingBuffer::new(10),
             },
             possible_sockets: BTreeSet::default(),
-            relay,
             span: info_span!(parent: tracing::Span::none(), "connection", %cid),
         }
     }
@@ -1018,7 +1018,8 @@ where
 
     fn relay(&mut self, id: TId) -> Option<RId> {
         let maybe_initial_connection = self.initial.get_mut(&id).and_then(|i| i.relay);
-        let maybe_established_connection = self.established.get_mut(&id).and_then(|c| c.relay);
+        let maybe_established_connection =
+            self.established.get_mut(&id).and_then(|c| c.state.relay());
 
         maybe_initial_connection.or(maybe_established_connection)
     }
@@ -1115,7 +1116,7 @@ fn add_local_candidate_to_all<TId, RId>(
     let established_connections = connections
         .established
         .iter_mut()
-        .flat_map(|(cid, c)| Some((*cid, &mut c.agent, c.relay?, c.span.enter())));
+        .flat_map(|(cid, c)| Some((*cid, &mut c.agent, c.state.relay()?, c.span.enter())));
 
     for (cid, agent, _, _guard) in initial_connections
         .chain(established_connections)
@@ -1360,11 +1361,6 @@ struct Connection<RId> {
     /// Socket addresses from which we might receive data (even before we are connected).
     possible_sockets: BTreeSet<SocketAddr>,
 
-    /// The relay we have selected for this connection.
-    ///
-    /// `None` if we didn't have any relays available.
-    relay: Option<RId>,
-
     stats: ConnectionStats,
     intent_sent_at: Instant,
     signalling_completed_at: Instant,
@@ -1377,6 +1373,11 @@ struct Connection<RId> {
 enum ConnectionState<RId> {
     /// We are still running ICE to figure out, which socket to use to send data.
     Connecting {
+        /// The relay we have selected for this connection.
+        ///
+        /// `None` if we didn't have any relays available.
+        relay: Option<RId>,
+
         /// Packets emitted by wireguard whilst are still running ICE.
         ///
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
@@ -1481,6 +1482,19 @@ where
             last_incoming: now,
         };
         apply_default_stun_timings(agent);
+    }
+
+    fn relay(&self) -> Option<RId> {
+        let peer_socket = match self {
+            Self::Connecting { relay, .. } => return *relay,
+            Self::Failed => return None,
+            Self::Idle { peer_socket } | Self::Connected { peer_socket, .. } => peer_socket,
+        };
+
+        match peer_socket {
+            PeerSocket::Relay { relay, .. } => Some(*relay),
+            PeerSocket::Direct { .. } => None,
+        }
     }
 }
 
