@@ -113,7 +113,7 @@ defmodule Web.Policies.New do
                     <% end %>
 
                     <span :if={resource.gateway_groups == []} class="text-red-800">
-                      (not connected to any Sites)
+                      (not connected to any Site)
                     </span>
                     <span
                       :if={length(resource.gateway_groups) > 0}
