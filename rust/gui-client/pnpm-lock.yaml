@@ -15,8 +15,8 @@ importers:
         specifier: ^1.6
         version: 1.6.1
       flowbite:
-        specifier: ^2.5.1
-        version: 2.5.1
+        specifier: ^2.5.2
+        version: 2.5.2
     devDependencies:
       '@types/node':
         specifier: '22'
@@ -318,8 +318,8 @@ packages:
   flowbite-datepicker@1.3.0:
     resolution: {integrity: sha512-CLVqzuoE2vkUvWYK/lJ6GzT0be5dlTbH3uuhVwyB67+PjqJWABm2wv68xhBf5BqjpBxvTSQ3mrmLHpPJ2tvrSQ==}
 
-  flowbite@2.5.1:
-    resolution: {integrity: sha512-7jP1jy9c3QP7y+KU9lc8ueMkTyUdMDvRP+lteSWgY5TigSZjf9K1kqZxmqjhbx2gBnFQxMl1GAjVThCa8cEpKA==}
+  flowbite@2.5.2:
+    resolution: {integrity: sha512-kwFD3n8/YW4EG8GlY3Od9IoKND97kitO+/ejISHSqpn3vw2i5K/+ZI8Jm2V+KC4fGdnfi0XZ+TzYqQb4Q1LshA==}
 
   follow-redirects@1.15.6:
     resolution: {integrity: sha512-wWN62YITEaOpSK584EZXJafH1AGpO8RVgElfkuXbTOrPX4fIfOyEpW/CsiNd8JdYrAoOvafRTOEnvsO++qCqFA==}
@@ -988,11 +988,11 @@ snapshots:
   flowbite-datepicker@1.3.0:
     dependencies:
       '@rollup/plugin-node-resolve': 15.2.3
-      flowbite: 2.5.1
+      flowbite: 2.5.2
     transitivePeerDependencies:
       - rollup
 
-  flowbite@2.5.1:
+  flowbite@2.5.2:
     dependencies:
       '@popperjs/core': 2.11.8
       flowbite-datepicker: 1.3.0
