@@ -165,8 +165,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
           autocomplete={false}
           class={[
             input_class(),
-            not @disabled && "cursor-pointer",
-            @disabled && "cursor-not-allowed",
+            @disabled && "cursor-not-allowed" || "cursor-pointer",
             @errors != [] && input_has_errors_class()
           ]}
           value={@value_name}
