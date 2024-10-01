@@ -3069,6 +3069,29 @@ defmodule Domain.AuthTest do
       assert token.created_by_remote_ip.address == context.remote_ip
     end
 
+    test "provider identifier is not case sensitive", %{
+      account: account,
+      provider: provider,
+      user_agent: user_agent,
+      remote_ip: remote_ip
+    } do
+      nonce = "test_nonce_for_firezone"
+      context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
+
+      identity = Fixtures.Auth.create_identity(account: account, provider: provider)
+      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
+
+      assert {:ok, _token_identity, _fragment} =
+               sign_in(
+                 provider,
+                 String.upcase(identity.provider_identifier),
+                 nonce,
+                 secret,
+                 context
+               )
+    end
+
     test "allows using identity id", %{
       account: account,
       provider: provider,
