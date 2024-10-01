@@ -233,8 +233,8 @@ where
             }
         };
 
-        let Some(agent) = self.connections.agent_mut(cid) else {
-            tracing::debug!("Unknown connection");
+        let Some((agent, relay)) = self.connections.connecting_agent_mut(cid) else {
+            tracing::debug!("Unknown connection or socket has already been nominated");
             return;
         };
 
@@ -251,7 +251,7 @@ where
             | CandidateKind::PeerReflexive => {}
         }
 
-        let Some(rid) = self.connections.relay(cid) else {
+        let Some(rid) = relay else {
             tracing::debug!("No relay selected for connection");
             return;
         };
@@ -750,12 +750,10 @@ where
         for (rid, event) in allocation_events {
             match event {
                 CandidateEvent::New(candidate) => {
-                    add_local_candidate_to_all(
-                        rid,
-                        candidate,
-                        &mut self.connections,
-                        &mut self.pending_events,
-                    );
+                    for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
+                    {
+                        add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
+                    }
                 }
                 CandidateEvent::Invalid(candidate) => {
                     for (cid, agent, _span) in self.connections.agents_mut() {
@@ -1016,6 +1014,39 @@ where
         maybe_initial_connection.or(maybe_established_connection)
     }
 
+    fn connecting_agent_mut(&mut self, id: TId) -> Option<(&mut IceAgent, Option<RId>)> {
+        let maybe_initial_connection = self.initial.get_mut(&id).map(|i| (&mut i.agent, i.relay));
+        let maybe_pending_connection = self.established.get_mut(&id).and_then(|c| match c.state {
+            ConnectionState::Connecting { relay, .. } => Some((&mut c.agent, relay)),
+            ConnectionState::Failed
+            | ConnectionState::Idle { .. }
+            | ConnectionState::Connected { .. } => None,
+        });
+
+        maybe_initial_connection.or(maybe_pending_connection)
+    }
+
+    fn connecting_agents_by_relay_mut(
+        &mut self,
+        id: RId,
+    ) -> impl Iterator<Item = (TId, &mut IceAgent, tracing::span::Entered<'_>)> + '_ {
+        let initial_connections = self.initial.iter_mut().filter_map(move |(cid, i)| {
+            (i.relay? == id).then_some((*cid, &mut i.agent, i.span.enter()))
+        });
+        let pending_connections = self.established.iter_mut().filter_map(move |(cid, c)| {
+            use ConnectionState::*;
+
+            match c.state {
+                Connecting {
+                    relay: Some(relay), ..
+                } if relay == id => Some((*cid, &mut c.agent, c.span.enter())),
+                Failed | Idle { .. } | Connecting { .. } | Connected { .. } => None,
+            }
+        });
+
+        initial_connections.chain(pending_connections)
+    }
+
     fn relay(&mut self, id: TId) -> Option<RId> {
         let maybe_initial_connection = self.initial.get_mut(&id).and_then(|i| i.relay);
         let maybe_established_connection =
@@ -1098,32 +1129,6 @@ where
 enum EncodeError {
     NoAllocation,
     NoChannel,
-}
-
-fn add_local_candidate_to_all<TId, RId>(
-    rid: RId,
-    candidate: Candidate,
-    connections: &mut Connections<TId, RId>,
-    pending_events: &mut VecDeque<Event<TId>>,
-) where
-    TId: Copy + fmt::Display,
-    RId: Copy + PartialEq,
-{
-    let initial_connections = connections
-        .initial
-        .iter_mut()
-        .flat_map(|(cid, c)| Some((*cid, &mut c.agent, c.relay?, c.span.enter())));
-    let established_connections = connections
-        .established
-        .iter_mut()
-        .flat_map(|(cid, c)| Some((*cid, &mut c.agent, c.state.relay()?, c.span.enter())));
-
-    for (cid, agent, _, _guard) in initial_connections
-        .chain(established_connections)
-        .filter(|(_, _, selected_relay, _)| *selected_relay == rid)
-    {
-        add_local_candidate(cid, agent, candidate.clone(), pending_events);
-    }
 }
 
 fn add_local_candidate<TId>(
