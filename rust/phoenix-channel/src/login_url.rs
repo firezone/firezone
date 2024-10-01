@@ -1,7 +1,10 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use secrecy::{CloneableSecret, ExposeSecret as _, SecretString, Zeroize};
 use sha2::Digest as _;
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::{
+    collections::HashMap,
+    net::{Ipv4Addr, Ipv6Addr},
+};
 use url::Url;
 use uuid::Uuid;
 
@@ -44,6 +47,7 @@ impl LoginUrl {
         device_id: String,
         device_name: Option<String>,
         public_key: [u8; 32],
+        additional_query_params: &HashMap<String, String>,
     ) -> Result<Self, LoginUrlError<E>> {
         let device_name = device_name
             .or(get_host_name())
@@ -59,6 +63,7 @@ impl LoginUrl {
             None,
             None,
             None,
+            additional_query_params,
         )?;
 
         Ok(LoginUrl {
@@ -89,6 +94,7 @@ impl LoginUrl {
             None,
             None,
             None,
+            &HashMap::new(),
         )?;
 
         Ok(LoginUrl {
@@ -115,6 +121,7 @@ impl LoginUrl {
             Some(listen_port),
             ipv4_address,
             ipv6_address,
+            &HashMap::new(),
         )?;
 
         Ok(LoginUrl {
@@ -182,6 +189,7 @@ fn get_websocket_path<E>(
     port: Option<u16>,
     ipv4_address: Option<Ipv4Addr>,
     ipv6_address: Option<Ipv6Addr>,
+    additional_query_params: &HashMap<String, String>,
 ) -> Result<Url, LoginUrlError<E>> {
     set_ws_scheme(&mut api_url)?;
 
@@ -218,6 +226,8 @@ fn get_websocket_path<E>(
         if let Some(port) = port {
             query_pairs.append_pair("port", &port.to_string());
         }
+
+        query_pairs.extend_pairs(additional_query_params.iter());
     }
 
     Ok(api_url)

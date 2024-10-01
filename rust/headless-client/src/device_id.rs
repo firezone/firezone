@@ -1,6 +1,7 @@
 use anyhow::{Context as _, Result};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use std::{
+    collections::HashMap,
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -21,6 +22,31 @@ pub(crate) fn path() -> Result<PathBuf> {
     Ok(path)
 }
 
+fn device_serial() -> Option<String> {
+    const DEFAULT_SERIAL: &str = "123456789";
+    let data = smbioslib::table_load_from_device().ok()?;
+
+    let serial = data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| {
+        sys_info.serial_number().to_utf8_lossy()
+    })?;
+
+    if serial == DEFAULT_SERIAL {
+        return None;
+    }
+
+    Some(serial)
+}
+
+pub fn device_info() -> HashMap<String, String> {
+    let mut device_info = HashMap::new();
+
+    if let Some(serial) = device_serial() {
+        device_info.insert("hardware_serial".to_string(), serial);
+    }
+
+    device_info
+}
+
 /// Returns the device ID, generating it and saving it to disk if needed.
 ///
 /// Per <https://github.com/firezone/firezone/issues/2697> and <https://github.com/firezone/firezone/issues/2711>,
@@ -30,20 +56,6 @@ pub(crate) fn path() -> Result<PathBuf> {
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
 pub fn get_or_create() -> Result<DeviceId> {
-    const DEFAULT_SERIAL: &str = "123456789";
-
-    if let Ok(data) = smbioslib::table_load_from_device() {
-        if let Some(id) = data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| {
-            sys_info.serial_number().to_utf8_lossy()
-        }) {
-            // Some systems such as system76(https://github.com/system76/firmware-open/issues/432) might have the default serial number
-            // set to smbios which is 123456789 due to limitations with coreboot.
-            if id != DEFAULT_SERIAL {
-                return Ok(DeviceId { id });
-            }
-        }
-    }
-
     let path = path()?;
     let dir = path
         .parent()

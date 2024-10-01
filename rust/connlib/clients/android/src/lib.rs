@@ -20,7 +20,14 @@ use jni::{
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
-use std::{collections::BTreeSet, io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};
+use std::{
+    collections::{BTreeSet, HashMap},
+    io,
+    net::IpAddr,
+    os::fd::AsRawFd,
+    path::Path,
+    sync::Arc,
+};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
@@ -357,6 +364,7 @@ fn connect(
         device_id,
         Some(device_name),
         public_key.to_bytes(),
+        &HashMap::new(),
     )?;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()

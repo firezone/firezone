@@ -14,6 +14,7 @@ use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
 use std::{
+    collections::HashMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::PathBuf,
     sync::Arc,
@@ -200,6 +201,7 @@ impl WrappedSession {
             device_id,
             device_name_override,
             public_key.to_bytes(),
+            &HashMap::new(),
         )?;
 
         let runtime = tokio::runtime::Builder::new_multi_thread()

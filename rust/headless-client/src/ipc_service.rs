@@ -533,6 +533,7 @@ impl<'a> Handler<'a> {
             device_id.id,
             None,
             public_key.to_bytes(),
+            &device_id::device_info(),
         )
         .map_err(|e| Error::LoginUrl(e.to_string()))?;
 
