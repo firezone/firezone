@@ -92,6 +92,7 @@ pub enum ServerMsg {
     /// The IPC service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
     ConnectResult(Result<(), Error>),
+    DisconnectedGracefully,
     OnDisconnect {
         error_msg: String,
         is_authentication_error: bool,
@@ -455,14 +456,17 @@ impl<'a> Handler<'a> {
                     .context("Failed to send `ConnectResult`")?
             }
             ClientMsg::Disconnect => {
-                let Some(session) = self.session.take() else {
-                    tracing::error!("Error - Got Disconnect when we're already not connected");
-                    return Ok(());
-                };
-
-                // Identical to dropping it, but looks nicer.
-                session.connlib.disconnect();
-                self.dns_controller.deactivate()?;
+                if let Some(session) = self.session.take() {
+                    // Identical to dropping it, but looks nicer.
+                    session.connlib.disconnect();
+                    self.dns_controller.deactivate()?;
+                }
+                // Always send `DisconnectedGracefully` even if we weren't connected,
+                // so this will be idempotent.
+                self.ipc_tx
+                    .send(&ServerMsg::DisconnectedGracefully)
+                    .await
+                    .context("Failed to send `DisconnectedGracefully`")?;
             }
             ClientMsg::ReloadLogFilter => {
                 let filter = spawn_blocking(get_log_filter).await??;
