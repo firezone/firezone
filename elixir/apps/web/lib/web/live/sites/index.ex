@@ -7,18 +7,32 @@ defmodule Web.Sites.Index do
       :ok = Gateways.subscribe_to_gateways_presence_in_account(socket.assigns.account)
     end
 
-    socket =
-      socket
-      |> assign(page_title: "Sites")
-      |> assign_live_table("groups",
-        query_module: Gateways.Group.Query,
-        sortable_fields: [
-          {:groups, :name}
-        ],
-        callback: &handle_groups_update!/2
-      )
+    with {:ok, managed_groups, _metadata} <-
+           Gateways.list_groups(socket.assigns.subject,
+             preload: [
+               gateways: [:online?]
+             ],
+             filter: [managed_by: "system"]
+           ) do
+      socket =
+        socket
+        |> assign(page_title: "Sites")
+        |> assign(managed_groups: managed_groups)
+        |> assign_live_table("groups",
+          query_module: Gateways.Group.Query,
+          sortable_fields: [
+            {:groups, :name}
+          ],
+          enforce_filters: [
+            {:managed_by, "account"}
+          ],
+          callback: &handle_groups_update!/2
+        )
 
-    {:ok, socket}
+      {:ok, socket}
+    else
+      _other -> raise Web.LiveErrors.NotFoundError
+    end
   end
 
   def handle_params(params, uri, socket) do
@@ -164,6 +178,46 @@ defmodule Web.Sites.Index do
           </:empty>
         </.live_table>
       </:content>
+    </.section>
+
+    <% internet_gateway_group =
+      Enum.find(assigns.managed_groups, fn group -> group.name == "Internet" end) %>
+    <.section :if={internet_gateway_group}>
+      <:title>
+        <div class="flex items-center space-x-2.5">
+          <span>Internet</span>
+
+          <% online? = Enum.any?(internet_gateway_group.gateways, & &1.online?) %>
+
+          <.ping_icon
+            :if={Domain.Accounts.internet_resource_enabled?(@account)}
+            color={if online?, do: "success", else: "danger"}
+            title={if online?, do: "Online", else: "Offline"}
+          />
+
+          <.link
+            :if={not Domain.Accounts.internet_resource_enabled?(@account)}
+            navigate={~p"/#{@account}/settings/billing"}
+            class="text-sm text-primary-500"
+          >
+            <.badge type="primary" title="Feature available on a higher pricing plan">
+              <.icon name="hero-lock-closed" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
+            </.badge>
+          </.link>
+        </div>
+      </:title>
+
+      <:action :if={Domain.Accounts.internet_resource_enabled?(@account)}>
+        <.edit_button navigate={~p"/#{@account}/sites/#{internet_gateway_group}"}>
+          Manage Internet Tunneling
+        </.edit_button>
+      </:action>
+
+      <:help>
+        This is a specialized Site used to host Gateways that tunnel traffic that does not match any Resource.
+      </:help>
+
+      <:content></:content>
     </.section>
     """
   end

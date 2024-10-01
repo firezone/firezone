@@ -15,7 +15,7 @@ defmodule Web.PageComponents do
   def section(assigns) do
     ~H"""
     <div class={[
-      "mb-6 bg-white overflow-hidden shadow mx-5 rounded border px-6",
+      "mb-6 bg-white shadow mx-5 rounded border px-6",
       @content != [] && "pb-6"
     ]}>
       <.header>

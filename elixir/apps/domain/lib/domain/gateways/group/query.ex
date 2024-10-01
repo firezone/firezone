@@ -40,10 +40,19 @@ defmodule Domain.Gateways.Group.Query do
         name: :deleted?,
         type: :boolean,
         fun: &filter_deleted/1
+      },
+      %Domain.Repo.Filter{
+        name: :managed_by,
+        type: :string,
+        fun: &filter_managed_by/2
       }
     ]
 
   def filter_deleted(queryable) do
     {queryable, dynamic([groups: groups], not is_nil(groups.deleted_at))}
+  end
+
+  def filter_managed_by(queryable, managed_by) do
+    {queryable, dynamic([groups: groups], groups.managed_by == ^managed_by)}
   end
 end
