@@ -434,9 +434,6 @@ where
             .get_established_mut(&connection)
             .ok_or(Error::NotConnected)?;
 
-        // Must bail early if we don't have a socket yet to avoid running into WG timeouts.
-        let socket = conn.socket().ok_or(Error::NotConnected)?;
-
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
             .encapsulate(packet.packet(), &mut buffer.inner[4..], now)?
@@ -449,7 +446,17 @@ where
         let packet_start = 4;
         let packet_end = 4 + packet_len;
 
-        match socket {
+        let socket = match &mut conn.state {
+            ConnectionState::Connecting { buffered } => {
+                buffered.push(buffer.inner[packet_start..packet_end].to_vec());
+                return Ok(None);
+            }
+            ConnectionState::Connected { peer_socket, .. } => peer_socket,
+            ConnectionState::Idle { peer_socket } => peer_socket,
+            ConnectionState::Failed => return Err(Error::NotConnected),
+        };
+
+        match *socket {
             PeerSocket::Direct {
                 dest: remote,
                 source,
