@@ -212,7 +212,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
                 name = append_status(&name, internet_resource_enabled.unwrap_or_default());
             }
 
-            menu = menu.add_submenu(name, signed_in.resource_submenu(&res));
+            menu = menu.add_submenu(name, signed_in.resource_submenu(res));
         }
     }
 
