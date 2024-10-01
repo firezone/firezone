@@ -181,7 +181,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
         <div
           class={[
             "absolute top-1/2 end-2 -translate-y-1/2",
-            @disabled && "cursor-not-allowed" || "cursor-pointer",
+            @disabled && "cursor-not-allowed" || "cursor-pointer"
           ]}
           phx-click={
             unless @disabled do
