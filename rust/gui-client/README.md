@@ -65,7 +65,7 @@ To do so, login to [the Azure portal](https://portal.azure.com) using your `@fir
 
 Then,
 
-- Go to the `Entra ID` service
+- Go to the `Microsoft Entra ID` service
 - Find and navigate to the `CodeSigning` app registration
 - Client on `client credentials`
 - Click `New client secret`
