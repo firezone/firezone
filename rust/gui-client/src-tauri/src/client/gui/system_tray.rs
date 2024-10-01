@@ -71,6 +71,7 @@ impl Tray {
     pub(crate) fn update(&mut self, state: AppState) -> Result<()> {
         let base = match &state.connlib {
             ConnlibState::Loading
+            | ConnlibState::Quitting
             | ConnlibState::RetryingConnection
             | ConnlibState::WaitingForBrowser
             | ConnlibState::WaitingForPortal
