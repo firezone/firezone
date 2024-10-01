@@ -9,6 +9,7 @@ use firezone_gui_client_common::{
     updates,
 };
 use firezone_headless_client::LogFilterReloader;
+use firezone_telemetry as telemetry;
 use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow};
 use secrecy::{ExposeSecret as _, SecretString};
@@ -61,6 +62,11 @@ fn main() -> Result<()> {
         },
         None => {}
     }
+
+    // We're not a deep link handler, so start telemetry
+    let telemetry = telemetry::Telemetry::default();
+    // TODO: Fix missing stuff for telemetry
+    telemetry.start("wss://api.firez.one", firezone_bin_shared::git_version!("gtk-client-*"), telemetry::GUI_DSN);
 
     let common::logging::Handles {
         logger: _logger,
@@ -129,6 +135,7 @@ fn main() -> Result<()> {
         ctlr_tx,
         ctlr_rx,
         log_filter_reloader,
+        telemetry,
         updates_rx,
     ));
 
@@ -184,6 +191,7 @@ impl MainThreadLoop {
     fn set_tray_menu(&mut self, state: AppState) -> Result<()> {
         let base = match &state.connlib {
             ConnlibState::Loading
+            | ConnlibState::Quitting
             | ConnlibState::RetryingConnection
             | ConnlibState::WaitingForBrowser
             | ConnlibState::WaitingForPortal
@@ -280,6 +288,7 @@ async fn run_controller(
     ctlr_tx: CtlrTx,
     rx: mpsc::Receiver<ControllerRequest>,
     log_filter_reloader: LogFilterReloader,
+    telemetry: telemetry::Telemetry,
     updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 ) -> Result<()> {
     let integration = GtkIntegration {
@@ -292,6 +301,7 @@ async fn run_controller(
         integration,
         log_filter_reloader,
         rx,
+        telemetry,
         updates_rx,
     }.build().await?;
 
