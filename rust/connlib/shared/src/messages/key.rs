@@ -1,7 +1,8 @@
 use base64::{display::Base64Display, engine::general_purpose::STANDARD, Engine};
 use boringtun::x25519::PublicKey;
-use secrecy::{CloneableSecret, DebugSecret, Secret, SerializableSecret, Zeroize};
+use secrecy::{CloneableSecret, SecretBox, SerializableSecret};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use zeroize::Zeroize;
 
 use std::{fmt, str::FromStr};
 
@@ -16,8 +17,6 @@ const KEY_SIZE: usize = 32;
 /// into an encoded string.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Key(pub [u8; KEY_SIZE]);
-
-impl DebugSecret for Key {}
 
 impl FromStr for Key {
     type Err = base64::DecodeError;
@@ -83,7 +82,7 @@ impl Serialize for Key {
 impl CloneableSecret for Key {}
 impl SerializableSecret for Key {}
 
-pub type SecretKey = Secret<Key>;
+pub type SecretKey = SecretBox<Key>;
 
 #[cfg(test)]
 mod test {

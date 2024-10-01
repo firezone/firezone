@@ -19,6 +19,7 @@ str0m = { workspace = true }
 stun_codec = "0.3.4"
 thiserror = "1"
 tracing = { workspace = true }
+zeroize = "1.8.1"
 
 [dev-dependencies]
 firezone-logging = { workspace = true }

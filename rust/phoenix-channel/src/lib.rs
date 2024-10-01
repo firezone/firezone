@@ -15,7 +15,7 @@ use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use heartbeat::{Heartbeat, MissedLastHeartbeat};
 use rand_core::{OsRng, RngCore};
-use secrecy::{ExposeSecret, Secret};
+use secrecy::{ExposeSecret as _, SecretBox};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use socket_factory::{SocketFactory, TcpSocket, TcpStream};
 use std::task::{Context, Poll, Waker};
@@ -43,7 +43,7 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     pending_join_requests: HashSet<OutboundRequestId>,
 
     // Stored here to allow re-connecting.
-    url: Secret<LoginUrl>,
+    url: SecretBox<LoginUrl>,
     user_agent: String,
     reconnect_backoff: ExponentialBackoff,
 
@@ -64,7 +64,7 @@ enum State {
 
 impl State {
     fn connect(
-        url: Secret<LoginUrl>,
+        url: SecretBox<LoginUrl>,
         user_agent: String,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Self {
@@ -73,7 +73,7 @@ impl State {
 }
 
 async fn create_and_connect_websocket(
-    url: Secret<LoginUrl>,
+    url: SecretBox<LoginUrl>,
     user_agent: String,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
@@ -223,7 +223,7 @@ where
     /// The provided URL must contain a host.
     /// Additionally, you must already provide any query parameters required for authentication.
     pub fn connect(
-        url: Secret<LoginUrl>,
+        url: SecretBox<LoginUrl>,
         user_agent: String,
         login: &'static str,
         init_req: TInitReq,
@@ -734,9 +734,7 @@ impl<T, R> PhoenixMessage<T, R> {
 }
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
-fn make_request(url: Secret<LoginUrl>, user_agent: String) -> Request {
-    use secrecy::ExposeSecret as _;
-
+fn make_request(url: SecretBox<LoginUrl>, user_agent: String) -> Request {
     let mut r = [0u8; 16];
     OsRng.fill_bytes(&mut r);
     let key = base64::engine::general_purpose::STANDARD.encode(r);

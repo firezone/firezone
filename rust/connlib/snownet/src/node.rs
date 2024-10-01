@@ -13,7 +13,7 @@ use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacket
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, SeedableRng};
-use secrecy::{ExposeSecret, Secret};
+use secrecy::{ExposeSecret as _, SecretBox, SecretSlice};
 use sha2::Digest;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -772,6 +772,15 @@ where
     }
 }
 
+#[derive(Clone)]
+struct SessionKey([u8; 32]);
+impl secrecy::CloneableSecret for SessionKey {}
+impl zeroize::Zeroize for SessionKey {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
+    }
+}
+
 impl<TId, RId> Node<Client, TId, RId>
 where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
@@ -795,7 +804,7 @@ where
         let mut agent = new_agent();
         agent.set_controlling(true);
 
-        let session_key = Secret::new(random());
+        let session_key = SecretBox::new(Box::new(SessionKey(random())));
         let ice_creds = agent.local_credentials();
 
         let params = Offer {
@@ -1182,7 +1191,7 @@ fn remove_local_candidate<TId>(
 
 pub struct Offer {
     /// The Wireguard session key for a connection.
-    pub session_key: Secret<[u8; 32]>,
+    pub session_key: SecretBox<SessionKey>,
     pub credentials: Credentials,
 }
 
@@ -1305,7 +1314,7 @@ pub(crate) enum CandidateEvent {
 
 struct InitialConnection<RId> {
     agent: IceAgent,
-    session_key: Secret<[u8; 32]>,
+    session_key: SecretBox<[u8; 32]>,
 
     /// The fallback relay we sampled for this potential connection.
     ///
