@@ -36,6 +36,10 @@ impl<T: PartialEq> RingBuffer<T> {
         self.buffer.into_iter()
     }
 
+    pub fn len(&self) -> usize {
+        self.buffer.len()
+    }
+
     #[cfg(test)]
     fn inner(&self) -> (&[T], &[T]) {
         self.buffer.as_slices()
