@@ -265,7 +265,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
                       "block",
                       "w-full py-2 px-4",
                       "text-sm text-neutral-800",
-                      "rounded-lg",
+                      "rounded",
                       "hover:bg-neutral-100",
                       "focus:outline-none focus:bg-neutral-100",
                       value != @value && "cursor-pointer",
@@ -280,14 +280,21 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
                       checked={value == @value}
                       class="hidden"
                     />
-                    <div>
-                      <div class={["flex items center"]}>
-                        <div class={["text-gray-800"]}>
-                          <%= render_slot(@option, slot_assigns) %>
-                        </div>
-                        <div :if={value == @value} class="ml-auto">
-                          <.icon name="hero-check" class="w-4 h-4" />
-                        </div>
+                    <div
+                      phx-click={
+                        JS.toggle_class("hidden",
+                          to: "#select-#{@id}-dropdown"
+                        )
+                        |> JS.toggle_attribute({"aria-expanded", "true", "false"})
+                        |> JS.focus(to: "#select-" <> @id <> "-search-input")
+                      }
+                      class={["flex items-center"]}
+                    >
+                      <div class={["text-gray-800"]}>
+                        <%= render_slot(@option, slot_assigns) %>
+                      </div>
+                      <div :if={value == @value} class="ml-auto">
+                        <.icon name="hero-check" class="w-4 h-4" />
                       </div>
                     </div>
                   </label>
