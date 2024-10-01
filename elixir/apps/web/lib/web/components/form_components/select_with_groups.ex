@@ -166,6 +166,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
           class={[
             input_class(),
             not @disabled && "cursor-pointer",
+            @disabled && "cursor-not-allowed",
             @errors != [] && input_has_errors_class()
           ]}
           value={@value_name}
@@ -181,14 +182,17 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
         <div
           class={[
             "absolute top-1/2 end-2 -translate-y-1/2",
-            not @disabled && "cursor-pointer"
+            not @disabled && "cursor-pointer",
+            @disabled && "cursor-not-allowed"
           ]}
           phx-click={
-            JS.toggle_class("hidden",
-              to: "#select-#{@id}-dropdown"
-            )
-            |> JS.toggle_attribute({"aria-expanded", "true", "false"}, to: "##{@id}-input")
-            |> JS.focus(to: "#select-" <> @id <> "-search-input")
+            unless @disabled do
+              JS.toggle_class("hidden",
+                to: "#select-#{@id}-dropdown"
+              )
+              |> JS.toggle_attribute({"aria-expanded", "true", "false"}, to: "##{@id}-input")
+              |> JS.focus(to: "#select-" <> @id <> "-search-input")
+            end
           }
         >
           <.icon name="hero-chevron-up-down" class="w-5 h-5" />
