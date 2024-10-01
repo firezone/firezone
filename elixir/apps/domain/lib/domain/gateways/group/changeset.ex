@@ -8,6 +8,7 @@ defmodule Domain.Gateways.Group.Changeset do
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Gateways.Group{account: account}
     |> changeset(attrs)
+    |> put_default_value(:managed_by, :account)
     |> put_change(:account_id, account.id)
     |> put_subject_trail(:created_by, subject)
   end
@@ -15,6 +16,8 @@ defmodule Domain.Gateways.Group.Changeset do
   def create(%Accounts.Account{} = account, attrs) do
     %Gateways.Group{account: account}
     |> changeset(attrs)
+    |> cast(attrs, ~w[managed_by]a)
+    |> put_default_value(:managed_by, :account)
     |> put_change(:account_id, account.id)
     |> put_subject_trail(:created_by, :system)
   end

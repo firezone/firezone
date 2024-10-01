@@ -71,6 +71,17 @@ defmodule Domain.Gateways do
     |> Repo.insert()
   end
 
+  def create_internet_group(%Accounts.Account{} = account) do
+    attrs = %{
+      "name" => "Internet",
+      "managed_by" => "system"
+    }
+
+    account
+    |> Group.Changeset.create(attrs)
+    |> Repo.insert()
+  end
+
   def change_group(%Group{} = group, attrs \\ %{}) do
     group
     |> Repo.preload(:account)
