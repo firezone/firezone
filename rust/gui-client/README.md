@@ -61,7 +61,7 @@ Renewing / issuing a new code signing certificate and associated Azure entities 
 
 Instead, you'll most likely simply need to rotate the Azure `CodeSigning` Application's client secret.
 
-To do so, login to the Azure portal using your `@firezoneprod.onmicrosoft.com` account.
+To do so, login to [the Azure portal](https://portal.azure.com) using your `@firezoneprod.onmicrosoft.com` account.
 
 Then,
 
