@@ -1047,14 +1047,6 @@ where
         initial_connections.chain(pending_connections)
     }
 
-    fn relay(&mut self, id: TId) -> Option<RId> {
-        let maybe_initial_connection = self.initial.get_mut(&id).and_then(|i| i.relay);
-        let maybe_established_connection =
-            self.established.get_mut(&id).and_then(|c| c.state.relay());
-
-        maybe_initial_connection.or(maybe_established_connection)
-    }
-
     fn agents_mut(
         &mut self,
     ) -> impl Iterator<Item = (TId, &mut IceAgent, tracing::span::Entered<'_>)> {
@@ -1487,19 +1479,6 @@ where
             last_incoming: now,
         };
         apply_default_stun_timings(agent);
-    }
-
-    fn relay(&self) -> Option<RId> {
-        let peer_socket = match self {
-            Self::Connecting { relay, .. } => return *relay,
-            Self::Failed => return None,
-            Self::Idle { peer_socket } | Self::Connected { peer_socket, .. } => peer_socket,
-        };
-
-        match peer_socket {
-            PeerSocket::Relay { relay, .. } => Some(*relay),
-            PeerSocket::Direct { .. } => None,
-        }
     }
 }
 
