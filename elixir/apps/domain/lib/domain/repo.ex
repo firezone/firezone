@@ -267,6 +267,9 @@ defmodule Domain.Repo do
           :ok = execute_after_commit({replaced, created}, changesets, after_replace_commit)
           {:replaced, replaced, execute_preloads(created, query_module, preload)}
 
+        {:error, :maybe_create, changeset, _changes_so_far} ->
+          {:error, changeset}
+
         {:error, :fetch_and_lock, reason, _changes_so_far} ->
           {:error, reason}
 

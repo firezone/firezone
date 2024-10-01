@@ -19,8 +19,15 @@ export default function GUI({ title }: { title: string }) {
           Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is
           active.
         </ChangeItem>
+        <ChangeItem pull="6845">
+          Fixes connectivity issues on idle connections by entering an
+          always-on, low-power mode instead of closing them.
+        </ChangeItem>
         <ChangeItem pull="6782">
           Adds always-on error reporting using sentry.io.
+        </ChangeItem>
+        <ChangeItem enable={title === "Windows"} pull="6874">
+          Fixes a delay when closing the GUI.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.3.6" date={new Date("2024-09-25")}>

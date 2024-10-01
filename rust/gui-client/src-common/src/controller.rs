@@ -15,7 +15,7 @@ use firezone_headless_client::{
 };
 use firezone_telemetry::Telemetry;
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{collections::BTreeSet, path::PathBuf, time::Instant};
+use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, time::Instant};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 
@@ -142,8 +142,11 @@ pub enum Status {
         /// The token to log in to the Portal, for retrying the connection request.
         token: SecretString,
     },
+    Quitting, // The user asked to quit and we're waiting for the tunnel daemon to gracefully disconnect so we can flush telemetry.
     /// Firezone is ready to use.
-    TunnelReady { resources: Vec<ResourceDescription> },
+    TunnelReady {
+        resources: Vec<ResourceDescription>,
+    },
     /// Firezone is signing in to the Portal.
     WaitingForPortal {
         /// The instant when we sent our most recent connect request.
@@ -165,13 +168,25 @@ impl Default for Status {
 }
 
 impl Status {
-    /// Returns true if we want to hear about DNS and network changes.
+    /// True if we want to hear about DNS and network changes.
     fn needs_network_changes(&self) -> bool {
         match self {
             Status::Disconnected | Status::RetryingConnection { .. } => false,
+            Status::Quitting => false,
             Status::TunnelReady { .. }
             | Status::WaitingForPortal { .. }
             | Status::WaitingForTunnel { .. } => true,
+        }
+    }
+
+    /// True if we should react to `OnUpdateResources`
+    fn needs_resource_updates(&self) -> bool {
+        match self {
+            Status::Disconnected
+            | Status::RetryingConnection { .. }
+            | Status::Quitting
+            | Status::WaitingForPortal { .. } => false,
+            Status::TunnelReady { .. } | Status::WaitingForTunnel { .. } => true,
         }
     }
 
@@ -191,8 +206,11 @@ impl<I: GuiIntegration> Controller<I> {
         // Start telemetry
         {
             let environment = self.advanced_settings.api_url.to_string();
-            self.telemetry
-                .start(environment.clone(), firezone_telemetry::GUI_DSN);
+            self.telemetry.start(
+                &environment,
+                firezone_bin_shared::git_version!("gui-client-*"),
+                firezone_telemetry::GUI_DSN,
+            );
             self.ipc_client
                 .send_msg(&IpcClientMsg::StartTelemetry { environment })
                 .await?;
@@ -242,9 +260,15 @@ impl<I: GuiIntegration> Controller<I> {
                     }
                     self.try_retry_connection().await?
                 }
-                event = self.ipc_rx.recv() => self.handle_ipc_event(event.context("IPC task stopped")?).await?,
+                event = self.ipc_rx.recv() => {
+                    let event = event.context("IPC task stopped")?;
+                    if let ControlFlow::Break(()) = self.handle_ipc_event(event).await? {
+                        break;
+                    }
+                }
                 req = self.rx.recv() => {
                     let Some(req) = req else {
+                        tracing::warn!("Controller channel closed, breaking main loop.");
                         break;
                     };
 
@@ -259,7 +283,9 @@ impl<I: GuiIntegration> Controller<I> {
                         Req::Fail(Failure::Panic) => panic!("Test panic"),
                         Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
                             tracing::info!("User clicked Quit in the menu");
-                            break
+                            self.status = Status::Quitting;
+                            self.ipc_client.send_msg(&IpcClientMsg::Disconnect).await?;
+                            self.refresh_system_tray_menu()?;
                         }
                         // TODO: Should we really skip cleanup if a request fails?
                         req => self.handle_request(req).await?,
@@ -278,6 +304,7 @@ impl<I: GuiIntegration> Controller<I> {
         if let Err(error) = network_notifier.close() {
             tracing::error!(?error, "network_notifier");
         }
+
         if let Err(error) = self.ipc_client.disconnect_from_ipc().await {
             tracing::error!(?error, "ipc_client");
         }
@@ -290,6 +317,7 @@ impl<I: GuiIntegration> Controller<I> {
     async fn start_session(&mut self, token: SecretString) -> Result<(), Error> {
         match self.status {
             Status::Disconnected | Status::RetryingConnection { .. } => {}
+            Status::Quitting => Err(anyhow!("Can't connect to Firezone, we're quitting"))?,
             Status::TunnelReady { .. } => Err(anyhow!(
                 "Can't connect to Firezone, we're already connected."
             ))?,
@@ -400,6 +428,7 @@ impl<I: GuiIntegration> Controller<I> {
                         tracing::info!("Calling `sign_out` to cancel sign-in");
                         self.sign_out().await?;
                     }
+                    Status::Quitting => tracing::error!("Can't cancel sign-in while already quitting"),
                     Status::TunnelReady{..} => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
                     Status::WaitingForTunnel { .. } => {
                         tracing::warn!(
@@ -454,15 +483,15 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    async fn handle_ipc_event(&mut self, event: ipc::Event) -> Result<(), Error> {
+    async fn handle_ipc_event(&mut self, event: ipc::Event) -> Result<ControlFlow<()>, Error> {
         match event {
             ipc::Event::Message(msg) => match self.handle_ipc_msg(msg).await {
-                Ok(()) => Ok(()),
+                Ok(flow) => Ok(flow),
                 // Handles <https://github.com/firezone/firezone/issues/6547> more gracefully so we can still export logs even if we crashed right after sign-in
                 Err(Error::ConnectToFirezoneFailed(error)) => {
                     tracing::error!(?error, "Failed to connect to Firezone");
                     self.sign_out().await?;
-                    Ok(())
+                    Ok(ControlFlow::Continue(()))
                 }
                 Err(error) => Err(error)?,
             },
@@ -475,7 +504,7 @@ impl<I: GuiIntegration> Controller<I> {
         }
     }
 
-    async fn handle_ipc_msg(&mut self, msg: IpcServerMsg) -> Result<(), Error> {
+    async fn handle_ipc_msg(&mut self, msg: IpcServerMsg) -> Result<ControlFlow<()>, Error> {
         match msg {
             IpcServerMsg::ClearedLogs(result) => {
                 let Some(tx) = self.clear_logs_callback.take() else {
@@ -484,9 +513,18 @@ impl<I: GuiIntegration> Controller<I> {
                 tx.send(result).map_err(|_| {
                     Error::Other(anyhow!("Couldn't send `ClearLogs` result to Tauri task"))
                 })?;
-                Ok(())
             }
-            IpcServerMsg::ConnectResult(result) => self.handle_connect_result(result).await,
+            IpcServerMsg::ConnectResult(result) => {
+                return self
+                    .handle_connect_result(result)
+                    .await
+                    .map(|_| ControlFlow::Continue(()))
+            }
+            IpcServerMsg::DisconnectedGracefully => {
+                if let Status::Quitting = self.status {
+                    return Ok(ControlFlow::Break(()));
+                }
+            }
             IpcServerMsg::OnDisconnect {
                 error_msg,
                 is_authentication_error,
@@ -507,9 +545,11 @@ impl<I: GuiIntegration> Controller<I> {
                         .show_alert()
                         .context("Couldn't show Disconnected alert")?;
                 }
-                Ok(())
             }
             IpcServerMsg::OnUpdateResources(resources) => {
+                if !self.status.needs_resource_updates() {
+                    return Ok(ControlFlow::Continue(()));
+                }
                 tracing::debug!(len = resources.len(), "Got new Resources");
                 self.status = Status::TunnelReady { resources };
                 if let Err(error) = self.refresh_system_tray_menu() {
@@ -517,28 +557,25 @@ impl<I: GuiIntegration> Controller<I> {
                 }
 
                 self.update_disabled_resources().await?;
-
-                Ok(())
             }
             IpcServerMsg::TerminatingGracefully => {
                 tracing::info!("Caught TerminatingGracefully");
                 self.integration
                     .set_tray_icon(system_tray::icon_terminating())
                     .ok();
-                Err(Error::IpcServiceTerminating)
+                Err(Error::IpcServiceTerminating)?
             }
             IpcServerMsg::TunnelReady => {
                 if self.auth.session().is_none() {
                     // This could maybe happen if the user cancels the sign-in
                     // before it completes. This is because the state machine
                     // between the GUI, the IPC service, and connlib isn't  perfectly synced.
-                    tracing::error!("Got `UpdateResources` while signed out");
-                    return Ok(());
+                    tracing::error!("Got `TunnelReady` while signed out");
+                    return Ok(ControlFlow::Continue(()));
                 }
-                if let Status::WaitingForTunnel { start_instant } =
-                    std::mem::replace(&mut self.status, Status::TunnelReady { resources: vec![] })
-                {
+                if let Status::WaitingForTunnel { start_instant } = self.status {
                     tracing::info!(elapsed = ?start_instant.elapsed(), "Tunnel ready");
+                    self.status = Status::TunnelReady { resources: vec![] };
                     self.integration.show_notification(
                         "Firezone connected",
                         "You are now signed in and able to access resources.",
@@ -547,10 +584,9 @@ impl<I: GuiIntegration> Controller<I> {
                 if let Err(error) = self.refresh_system_tray_menu() {
                     tracing::error!(?error, "Failed to refresh menu");
                 }
-
-                Ok(())
             }
         }
+        Ok(ControlFlow::Continue(()))
     }
 
     async fn handle_connect_result(
@@ -563,6 +599,10 @@ impl<I: GuiIntegration> Controller<I> {
             | Status::TunnelReady { .. }
             | Status::WaitingForTunnel { .. } => {
                 tracing::error!("Impossible logic error, received `ConnectResult` when we weren't waiting on the Portal connection.");
+                return Ok(());
+            }
+            Status::Quitting => {
+                tracing::debug!("Ignoring `ConnectResult`, we are quitting");
                 return Ok(());
             }
             Status::WaitingForPortal {
@@ -665,6 +705,7 @@ impl<I: GuiIntegration> Controller<I> {
                     tracing::error!("We have an auth session but no connlib session");
                     system_tray::ConnlibState::SignedOut
                 }
+                Status::Quitting => system_tray::ConnlibState::Quitting,
                 Status::RetryingConnection { .. } => system_tray::ConnlibState::RetryingConnection,
                 Status::TunnelReady { resources } => {
                     system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
@@ -696,6 +737,7 @@ impl<I: GuiIntegration> Controller<I> {
     async fn try_retry_connection(&mut self) -> Result<()> {
         let token = match &self.status {
             Status::Disconnected
+            | Status::Quitting
             | Status::TunnelReady { .. }
             | Status::WaitingForPortal { .. }
             | Status::WaitingForTunnel { .. } => return Ok(()),
@@ -709,12 +751,20 @@ impl<I: GuiIntegration> Controller<I> {
 
     /// Deletes the auth token, stops connlib, and refreshes the tray menu
     async fn sign_out(&mut self) -> Result<()> {
+        match self.status {
+            Status::Quitting => return Ok(()),
+            Status::Disconnected
+            | Status::RetryingConnection { .. }
+            | Status::TunnelReady { .. }
+            | Status::WaitingForPortal { .. }
+            | Status::WaitingForTunnel { .. } => {}
+        }
         self.auth.sign_out()?;
         self.status = Status::Disconnected;
         tracing::debug!("disconnecting connlib");
         // This is redundant if the token is expired, in that case
         // connlib already disconnected itself.
-        self.ipc_client.disconnect_from_firezone().await?;
+        self.ipc_client.send_msg(&IpcClientMsg::Disconnect).await?;
         self.refresh_system_tray_menu()?;
         Ok(())
     }

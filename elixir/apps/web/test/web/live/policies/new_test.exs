@@ -60,30 +60,12 @@ defmodule Web.Live.Policies.NewTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
-             "policy[conditions][client_verified][operator]",
-             "policy[conditions][client_verified][property]",
-             "policy[conditions][client_verified][values][]",
-             "policy[conditions][current_utc_datetime][operator]",
-             "policy[conditions][current_utc_datetime][property]",
-             "policy[conditions][current_utc_datetime][timezone]",
-             "policy[conditions][current_utc_datetime][values][F]",
-             "policy[conditions][current_utc_datetime][values][M]",
-             "policy[conditions][current_utc_datetime][values][R]",
-             "policy[conditions][current_utc_datetime][values][S]",
-             "policy[conditions][current_utc_datetime][values][T]",
-             "policy[conditions][current_utc_datetime][values][U]",
-             "policy[conditions][current_utc_datetime][values][W]",
-             "policy[conditions][provider_id][operator]",
-             "policy[conditions][provider_id][property]",
-             "policy[conditions][provider_id][values][]",
-             "policy[conditions][remote_ip][operator]",
-             "policy[conditions][remote_ip][property]",
-             "policy[conditions][remote_ip][values][]",
-             "policy[conditions][remote_ip_location_region][operator]",
-             "policy[conditions][remote_ip_location_region][property]",
-             "policy[conditions][remote_ip_location_region][values][]",
+             "policy[actor_group_id]_name",
              "policy[description]",
-             "policy[resource_id]"
+             "policy[resource_id]",
+             "policy[resource_id]_name",
+             "search_query-policy_actor_group_id",
+             "search_query-policy_resource_id"
            ]
   end
 
@@ -102,41 +84,22 @@ defmodule Web.Live.Policies.NewTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
-             "policy[conditions][client_verified][operator]",
-             "policy[conditions][client_verified][property]",
-             "policy[conditions][client_verified][values][]",
-             "policy[conditions][current_utc_datetime][operator]",
-             "policy[conditions][current_utc_datetime][property]",
-             "policy[conditions][current_utc_datetime][timezone]",
-             "policy[conditions][current_utc_datetime][values][F]",
-             "policy[conditions][current_utc_datetime][values][M]",
-             "policy[conditions][current_utc_datetime][values][R]",
-             "policy[conditions][current_utc_datetime][values][S]",
-             "policy[conditions][current_utc_datetime][values][T]",
-             "policy[conditions][current_utc_datetime][values][U]",
-             "policy[conditions][current_utc_datetime][values][W]",
-             "policy[conditions][provider_id][operator]",
-             "policy[conditions][provider_id][property]",
-             "policy[conditions][provider_id][values][]",
-             "policy[conditions][remote_ip][operator]",
-             "policy[conditions][remote_ip][property]",
-             "policy[conditions][remote_ip][values][]",
-             "policy[conditions][remote_ip_location_region][operator]",
-             "policy[conditions][remote_ip_location_region][property]",
-             "policy[conditions][remote_ip_location_region][values][]",
+             "policy[actor_group_id]_name",
              "policy[description]",
-             "policy[resource_id]"
+             "policy[resource_id]",
+             "policy[resource_id]_name",
+             "search_query-policy_actor_group_id",
+             "search_query-policy_resource_id"
            ]
 
     html = render(form)
-    disabled_input = Floki.find(html, "select[name='policy[actor_group_id]']")
+
+    disabled_input = Floki.find(html, "input[name='policy[actor_group_id]_name']")
     assert Floki.attribute(disabled_input, "disabled") == ["disabled"]
+    assert Floki.attribute(disabled_input, "value") == [actor_group.name]
 
-    assert disabled_input
-           |> Floki.find("option[selected=selected]")
-           |> Floki.attribute("value") == [actor_group.id]
-
-    assert has_element?(lv, "input[name='policy[actor_group_id]'][value='#{actor_group.id}']")
+    value_input = Floki.find(html, "input[name='policy[actor_group_id]']")
+    assert Floki.attribute(value_input, "value") == [actor_group.id]
   end
 
   test "renders form with pre-set resource_id", %{
@@ -155,6 +118,7 @@ defmodule Web.Live.Policies.NewTest do
 
     assert find_inputs(form) == [
              "policy[actor_group_id]",
+             "policy[actor_group_id]_name",
              "policy[conditions][client_verified][operator]",
              "policy[conditions][client_verified][property]",
              "policy[conditions][client_verified][values][]",
@@ -178,18 +142,20 @@ defmodule Web.Live.Policies.NewTest do
              "policy[conditions][remote_ip_location_region][property]",
              "policy[conditions][remote_ip_location_region][values][]",
              "policy[description]",
-             "policy[resource_id]"
+             "policy[resource_id]",
+             "policy[resource_id]_name",
+             "search_query-policy_actor_group_id",
+             "search_query-policy_resource_id"
            ]
 
     html = render(form)
-    disabled_input = Floki.find(html, "select[name='policy[resource_id]']")
+
+    disabled_input = Floki.find(html, "input[name='policy[resource_id]_name']")
     assert Floki.attribute(disabled_input, "disabled") == ["disabled"]
+    assert Floki.attribute(disabled_input, "value") == [resource.name]
 
-    assert disabled_input
-           |> Floki.find("option[selected=selected]")
-           |> Floki.attribute("value") == [resource.id]
-
-    assert has_element?(lv, "input[name='policy[resource_id]'][value='#{resource.id}']")
+    value_input = Floki.find(html, "input[name='policy[resource_id]']")
+    assert Floki.attribute(value_input, "value") == [resource.id]
   end
 
   test "renders changeset errors on input change", %{
@@ -236,7 +202,9 @@ defmodule Web.Live.Policies.NewTest do
            |> form("form", policy: attrs)
            |> render_submit()
            |> form_validation_errors() == %{
-             "policy[description]" => ["should be at most 1024 character(s)"]
+             "policy[description]" => ["should be at most 1024 character(s)"],
+             "policy[actor_group_id]_name" => ["can't be blank"],
+             "policy[resource_id]_name" => ["can't be blank"]
            }
 
     attrs = %{
@@ -449,7 +417,7 @@ defmodule Web.Live.Policies.NewTest do
 
     Fixtures.Gateways.create_group(account: account)
 
-    attrs = %{actor_group_id: group.id}
+    attrs = %{resource_id: resource.id}
 
     {:ok, lv, _html} =
       conn
@@ -476,7 +444,7 @@ defmodule Web.Live.Policies.NewTest do
 
     gateway_group = Fixtures.Gateways.create_group(account: account)
 
-    attrs = %{actor_group_id: group.id}
+    attrs = %{actor_group_id: group.id, resource_id: resource.id}
 
     {:ok, lv, _html} =
       conn

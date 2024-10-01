@@ -1,7 +1,7 @@
 defmodule Web.Policies.Edit do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Resources, Actors, Policies, Auth}
+  alias Domain.{Policies, Auth}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
@@ -9,10 +9,6 @@ defmodule Web.Policies.Edit do
              preload: [:actor_group, :resource],
              filter: [deleted?: false]
            ) do
-      # TODO: unify this dropdown and the one we use for live table filters
-      resources = Resources.all_resources!(socket.assigns.subject, preload: [:gateway_groups])
-      # TODO: unify this dropdown and the one we use for live table filters
-      actor_groups = Actors.all_groups!(socket.assigns.subject, preload: :provider)
       providers = Auth.all_active_providers_for_account!(socket.assigns.account)
 
       form =
@@ -24,14 +20,13 @@ defmodule Web.Policies.Edit do
         assign(socket,
           page_title: "Edit Policy #{policy.id}",
           timezone: Map.get(socket.private.connect_params, "timezone", "UTC"),
+          providers: providers,
           policy: policy,
-          form: form,
-          resources: resources,
-          actor_groups: actor_groups,
-          providers: providers
+          selected_resource: policy.resource,
+          form: form
         )
 
-      {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
+      {:ok, socket}
     else
       _other -> raise Web.LiveErrors.NotFoundError
     end
@@ -53,42 +48,110 @@ defmodule Web.Policies.Edit do
       <:title><%= @page_title %></:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl text-neutral-900">Edit Policy details</h2>
-          <.form for={@form} class="space-y-4 lg:space-y-6" phx-submit="submit" phx-change="validate">
+          <h2 class="mb-4 text-xl text-neutral-900">Policy details</h2>
+
+          <.form for={@form} phx-submit="submit" phx-change="validate">
+            <.base_error form={@form} field={:base} />
+
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <fieldset class="flex flex-col gap-2">
-                <.input
-                  field={@form[:actor_group_id]}
+                <.live_component
+                  module={Web.Components.FormComponents.SelectWithGroups}
+                  id="policy_actor_group_id"
                   label="Group"
-                  type="group_select"
-                  options={Web.Groups.Components.select_options(@actor_groups)}
+                  placeholder="Select Actor Group"
+                  field={@form[:actor_group_id]}
+                  fetch_option_callback={&Web.Groups.Components.fetch_group_option(&1, @subject)}
+                  list_options_callback={&Web.Groups.Components.list_group_options(&1, @subject)}
                   value={@form[:actor_group_id].value}
                   required
-                />
-
-                <% resource_id =
-                  @form[:resource_id].value ||
-                    (length(@resources) > 0 and Enum.at(@resources, 0).id) %>
-
-                <.input
-                  field={@form[:resource_id]}
-                  label="Resource"
-                  type="group_select"
-                  options={resource_options(@resources, @account)}
-                  value={resource_id}
-                  required
-                />
-
-                <% resource = Enum.find(@resources, &(&1.id == resource_id)) %>
-
-                <p
-                  :if={not is_nil(resource) and length(resource.connections) == 0}
-                  class="flex items-center gap-2 text-sm leading-6 text-orange-600 mt-2 w-full"
-                  data-validation-error-for="policy[resource_id]"
                 >
-                  <.icon name="hero-exclamation-triangle-mini" class="h-4 w-4" />
-                  This Resource isn't linked to any Sites, so Clients won't be able to access it.
-                </p>
+                  <:options_group :let={options_group}>
+                    <%= options_group %>
+                  </:options_group>
+
+                  <:option :let={group}>
+                    <%= group.name %>
+                  </:option>
+
+                  <:no_options :let={name}>
+                    <.error data-validation-error-for={name}>
+                      <span>
+                        You have no groups to create policies for. You can create a group <.link
+                          navigate={~p"/#{@account}/groups/new"}
+                          class={[link_style()]}
+                        >here</.link>.
+                      </span>
+                    </.error>
+                  </:no_options>
+
+                  <:no_search_results>
+                    No groups found. Try a different search query or create a new one <.link
+                      navigate={~p"/#{@account}/groups/new"}
+                      class={link_style()}
+                    >here</.link>.
+                  </:no_search_results>
+                </.live_component>
+
+                <.live_component
+                  module={Web.Components.FormComponents.SelectWithGroups}
+                  id="policy_resource_id"
+                  label="Resource"
+                  placeholder="Select Resource"
+                  field={@form[:resource_id]}
+                  fetch_option_callback={
+                    &Web.Resources.Components.fetch_resource_option(&1, @subject)
+                  }
+                  list_options_callback={
+                    &Web.Resources.Components.list_resource_options(&1, @subject)
+                  }
+                  on_change={&on_resource_change/1}
+                  value={@form[:resource_id].value}
+                  required
+                >
+                  <:options_group :let={group}>
+                    <%= group %>
+                  </:options_group>
+
+                  <:option :let={resource}>
+                    <%= if resource.type == :internet do %>
+                      Internet
+                      <span :if={not Domain.Accounts.internet_resource_enabled?(@account)}>
+                        - <span class="text-red-800">upgrade to unlock</span>
+                      </span>
+                    <% else %>
+                      <%= resource.name %>
+                    <% end %>
+
+                    <span :if={resource.gateway_groups == []} class="text-red-800">
+                      (not connected to any Site)
+                    </span>
+                    <span
+                      :if={length(resource.gateway_groups) > 0}
+                      class="text-neutral-500 inline-flex"
+                    >
+                      (<.resource_gateway_groups gateway_groups={resource.gateway_groups} />)
+                    </span>
+                  </:option>
+
+                  <:no_options :let={name}>
+                    <.error data-validation-error-for={name}>
+                      <span>
+                        You have no resources to create policies for. You can create a resource <.link
+                          navigate={~p"/#{@account}/resources/new"}
+                          class={[link_style()]}
+                        >here</.link>.
+                      </span>
+                    </.error>
+                  </:no_options>
+
+                  <:no_search_results>
+                    No Resources found. Try a different search query or create a new one <.link
+                      navigate={~p"/#{@account}/resources/new"}
+                      class={link_style()}
+                    >here</.link>.
+                  </:no_search_results>
+                </.live_component>
 
                 <.input
                   field={@form[:description]}
@@ -100,7 +163,7 @@ defmodule Web.Policies.Edit do
               </fieldset>
 
               <.conditions_form
-                :if={is_nil(resource) or resource.type != :internet}
+                :if={@selected_resource.type != :internet}
                 form={@form}
                 account={@account}
                 timezone={@timezone}
@@ -108,7 +171,7 @@ defmodule Web.Policies.Edit do
               />
 
               <.options_form
-                :if={not is_nil(resource) and resource.type == :internet}
+                :if={@selected_resource.type == :internet}
                 form={@form}
                 account={@account}
                 timezone={@timezone}
@@ -116,9 +179,11 @@ defmodule Web.Policies.Edit do
               />
             </div>
 
-            <.submit_button phx-disable-with="Updating Policy...">
-              Save
-            </.submit_button>
+            <div class="flex justify-end">
+              <.submit_button phx-disable-with="Updating Policy...">
+                Save
+              </.submit_button>
+            </div>
           </.form>
         </div>
       </:content>
@@ -126,8 +191,19 @@ defmodule Web.Policies.Edit do
     """
   end
 
+  def on_resource_change({_id, _name, resource}) do
+    send(self(), {:change_resource, resource})
+  end
+
+  def handle_info({:change_resource, resource}, socket) do
+    {:noreply, assign(socket, selected_resource: resource)}
+  end
+
   def handle_event("validate", %{"policy" => params}, socket) do
-    params = map_condition_params(params, empty_values: :drop)
+    params =
+      params
+      |> map_condition_params(empty_values: :drop)
+      |> maybe_drop_unsupported_conditions(socket)
 
     changeset =
       Policies.change_policy(socket.assigns.policy, params, socket.assigns.subject)
@@ -137,14 +213,10 @@ defmodule Web.Policies.Edit do
   end
 
   def handle_event("submit", %{"policy" => params}, socket) do
-    params = map_condition_params(params, empty_values: :drop)
-
     params =
-      if Domain.Accounts.policy_conditions_enabled?(socket.assigns.account) do
-        params
-      else
-        Map.delete(params, "conditions")
-      end
+      params
+      |> map_condition_params(empty_values: :drop)
+      |> maybe_drop_unsupported_conditions(socket)
 
     case Policies.update_or_replace_policy(socket.assigns.policy, params, socket.assigns.subject) do
       {:updated, updated_policy} ->
