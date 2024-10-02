@@ -30,7 +30,7 @@ export default function GUI({ title }: { title: string }) {
           Fixes a delay when closing the GUI.
         </ChangeItem>
         <ChangeItem pull="6857">
-          Try to use motherboard's hardware ID for device verification.
+          Tries to send motherboard's hardware ID for device verification.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.3.6" date={new Date("2024-09-25")}>

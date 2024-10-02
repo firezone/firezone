@@ -24,7 +24,7 @@ export default function Headless() {
           Adds always-on error reporting using sentry.io.
         </ChangeItem>
         <ChangeItem pull="6857">
-          Try to use motherboard's hardware ID for device verification.
+          Sends the motherboard's hardware ID for device verification.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.3.3" date={new Date("2024-09-25")}>

@@ -21,7 +21,7 @@ export default function Android() {
           always-on, low-power mode instead of closing them.
         </ChangeItem>
         <ChangeItem pull="6857">
-          Use the Firebase Installation ID for device verification.
+          Sends the Firebase Installation ID for device verification.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.3.4" date={new Date("2024-09-26")}>
