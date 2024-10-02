@@ -1,7 +1,7 @@
 defmodule Domain.Auth.Adapters.GoogleWorkspace do
   use Supervisor
   alias Domain.Actors
-  alias Domain.Auth.{Provider, Adapter}
+  alias Domain.Auth.{Provider, Adapter, Identity}
   alias Domain.Auth.Adapters.OpenIDConnect
   alias Domain.Auth.Adapters.GoogleWorkspace
   alias Domain.Auth.Adapters.GoogleWorkspace.APIClient
@@ -117,5 +117,10 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace do
 
   def refresh_access_token(%Provider{} = provider) do
     OpenIDConnect.refresh_access_token(provider)
+  end
+
+  @impl true
+  def refresh_access_token(%Identity{} = identity) do
+    OpenIDConnect.refresh_access_token(identity)
   end
 end
