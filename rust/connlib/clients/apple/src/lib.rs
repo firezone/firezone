@@ -217,7 +217,6 @@ impl WrappedSession {
             callbacks: CallbackHandler {
                 inner: Arc::new(callback_handler),
             },
-            tcp_socket_factory: Arc::new(socket_factory::tcp),
             udp_socket_factory: Arc::new(socket_factory::udp),
         };
         let portal = PhoenixChannel::disconnected(

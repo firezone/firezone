@@ -6,7 +6,7 @@ use futures::{
 use futures_util::FutureExt as _;
 use ip_packet::{IpPacket, MAX_DATAGRAM_PAYLOAD};
 use snownet::{EncryptBuffer, EncryptedPacket};
-use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{DatagramIn, DatagramOut, SocketFactory, UdpSocket};
 use std::{
     io,
     pin::Pin,
@@ -23,7 +23,6 @@ pub struct Io {
     sockets: Sockets,
     unwritten_packet: Option<EncryptedPacket>,
 
-    _tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
@@ -48,10 +47,7 @@ impl Io {
     /// Creates a new I/O abstraction
     ///
     /// Must be called within a Tokio runtime context so we can bind the sockets.
-    pub fn new(
-        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    ) -> Self {
+    pub fn new(udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>) -> Self {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.as_ref()); // Bind sockets on startup. Must happen within a tokio runtime context.
 
@@ -73,7 +69,6 @@ impl Io {
             inbound_packet_rx,
             timeout: None,
             sockets,
-            _tcp_socket_factory: tcp_socket_factory,
             udp_socket_factory,
             unwritten_packet: None,
         }

@@ -187,7 +187,6 @@ fn main() -> Result<()> {
     let mut last_connlib_start_instant = Some(Instant::now());
     let args = ConnectArgs {
         udp_socket_factory: Arc::new(udp_socket_factory),
-        tcp_socket_factory: Arc::new(tcp_socket_factory),
         callbacks,
     };
 

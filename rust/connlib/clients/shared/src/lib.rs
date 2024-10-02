@@ -13,7 +13,7 @@ use eventloop::Command;
 use firezone_telemetry as telemetry;
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
-use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{SocketFactory, UdpSocket};
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -37,7 +37,6 @@ pub struct Session {
 
 /// Arguments for `connect`, since Clippy said 8 args is too many
 pub struct ConnectArgs<CB> {
-    pub tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     pub udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     pub callbacks: CB,
 }
@@ -127,11 +126,9 @@ where
     let ConnectArgs {
         callbacks,
         udp_socket_factory,
-        tcp_socket_factory,
     } = args;
 
     let tunnel = ClientTunnel::new(
-        tcp_socket_factory,
         udp_socket_factory,
         BTreeMap::from([(portal.server_host().to_owned(), portal.resolved_addresses())]),
     );

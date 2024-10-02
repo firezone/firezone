@@ -105,7 +105,7 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
 }
 
 async fn run(login: LoginUrl<PublicKeyParam>) -> Result<Infallible> {
-    let mut tunnel = GatewayTunnel::new(Arc::new(tcp_socket_factory), Arc::new(udp_socket_factory));
+    let mut tunnel = GatewayTunnel::new(Arc::new(udp_socket_factory));
     let portal = PhoenixChannel::disconnected(
         Secret::new(login),
         get_user_agent(None, env!("CARGO_PKG_VERSION")),

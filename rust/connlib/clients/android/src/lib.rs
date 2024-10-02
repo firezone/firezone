@@ -373,7 +373,6 @@ fn connect(
     let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(callbacks.clone()));
 
     let args = ConnectArgs {
-        tcp_socket_factory: tcp_socket_factory.clone(),
         udp_socket_factory: Arc::new(protected_udp_socket_factory(callbacks.clone())),
         callbacks,
     };

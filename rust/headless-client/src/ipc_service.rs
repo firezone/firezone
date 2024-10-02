@@ -540,7 +540,6 @@ impl<'a> Handler<'a> {
         let (cb_tx, cb_rx) = mpsc::channel(1_000);
         let callbacks = CallbackHandler { cb_tx };
         let args = ConnectArgs {
-            tcp_socket_factory: Arc::new(tcp_socket_factory),
             udp_socket_factory: Arc::new(udp_socket_factory),
             callbacks,
         };
