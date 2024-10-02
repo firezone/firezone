@@ -109,6 +109,17 @@ defmodule Domain.Auth.Adapters do
     end
   end
 
+  def refresh_access_token(%Provider{} = provider, %Identity{} = identity) do
+    adapter = fetch_provider_adapter!(provider)
+    capabilities = adapter.capabilities()
+
+    if Keyword.get(capabilities, :parent_adapter) == :openid_connect do
+      adapter.refresh_access_token(%{identity | provider: provider})
+    else
+      {:error, :not_supported}
+    end
+  end
+
   defp fetch_provider_adapter!(%Provider{} = provider) do
     Map.fetch!(@adapters, provider.adapter)
   end
