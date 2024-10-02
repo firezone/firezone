@@ -150,7 +150,8 @@ impl ClientTunnel {
     }
 
     pub fn remove_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.role_state.remove_ice_candidate(conn_id, ice_candidate);
+        self.role_state
+            .remove_ice_candidate(conn_id, ice_candidate, Instant::now());
     }
 
     pub fn on_routing_details(
@@ -501,8 +502,14 @@ impl ClientState {
         self.node.add_remote_candidate(conn_id, ice_candidate, now);
     }
 
-    pub fn remove_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.node.remove_remote_candidate(conn_id, ice_candidate);
+    pub fn remove_ice_candidate(
+        &mut self,
+        conn_id: GatewayId,
+        ice_candidate: String,
+        now: Instant,
+    ) {
+        self.node
+            .remove_remote_candidate(conn_id, ice_candidate, now);
     }
 
     #[tracing::instrument(level = "trace", skip_all, fields(%resource_id))]
@@ -906,10 +913,10 @@ impl ClientState {
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
+        self.drain_node_events();
+
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
         self.forwarded_dns_queries.retain(|_, (_, exp)| now < *exp);
-
-        self.drain_node_events();
     }
 
     fn maybe_update_tun_routes(&mut self) {
@@ -1256,6 +1263,7 @@ impl ClientState {
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);
+        self.drain_node_events(); // Ensure all state changes are fully-propagated.
     }
 }
 

@@ -125,7 +125,8 @@ impl GatewayTunnel {
     }
 
     pub fn remove_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
-        self.role_state.remove_ice_candidate(conn_id, ice_candidate);
+        self.role_state
+            .remove_ice_candidate(conn_id, ice_candidate, Instant::now());
     }
 }
 
@@ -245,8 +246,9 @@ impl GatewayState {
         self.node.add_remote_candidate(conn_id, ice_candidate, now);
     }
 
-    pub fn remove_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
-        self.node.remove_remote_candidate(conn_id, ice_candidate);
+    pub fn remove_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String, now: Instant) {
+        self.node
+            .remove_remote_candidate(conn_id, ice_candidate, now);
     }
 
     /// Accept a connection request from a client.
@@ -330,6 +332,7 @@ impl GatewayState {
 
     pub fn handle_timeout(&mut self, now: Instant, utc_now: DateTime<Utc>) {
         self.node.handle_timeout(now);
+        self.drain_node_events();
 
         match self.next_expiry_resources_check {
             Some(next_expiry_resources_check) if now >= next_expiry_resources_check => {
@@ -344,7 +347,9 @@ impl GatewayState {
             None => self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL),
             Some(_) => {}
         }
+    }
 
+    fn drain_node_events(&mut self) {
         let mut added_ice_candidates = BTreeMap::<ClientId, BTreeSet<String>>::default();
         let mut removed_ice_candidates = BTreeMap::<ClientId, BTreeSet<String>>::default();
 
@@ -417,6 +422,7 @@ impl GatewayState {
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);
+        self.drain_node_events()
     }
 }
 
