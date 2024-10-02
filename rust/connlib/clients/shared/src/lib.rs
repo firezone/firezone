@@ -35,25 +35,20 @@ pub struct Session {
     channel: tokio::sync::mpsc::UnboundedSender<Command>,
 }
 
-/// Arguments for `connect`, since Clippy said 8 args is too many
-pub struct ConnectArgs<CB> {
-    pub udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    pub callbacks: CB,
-}
-
 impl Session {
     /// Creates a new [`Session`].
     ///
     /// This connects to the portal using the given [`LoginUrl`](phoenix_channel::LoginUrl) and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
-        args: ConnectArgs<CB>,
+        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        callbacks: CB,
         portal: PhoenixChannel<(), IngressMessages, ReplyMessages, PublicKeyParam>,
         handle: tokio::runtime::Handle,
     ) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
-        let callbacks = args.callbacks.clone();
-        let connect_handle = handle.spawn(connect(args, portal, rx));
+        let connect_handle =
+            handle.spawn(connect(udp_socket_factory, callbacks.clone(), portal, rx));
         handle.spawn(connect_supervisor(connect_handle, callbacks));
 
         Self { channel: tx }
@@ -116,18 +111,14 @@ impl Session {
 ///
 /// When this function exits, the tunnel failed unrecoverably and you need to call it again.
 async fn connect<CB>(
-    args: ConnectArgs<CB>,
+    udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+    callbacks: CB,
     portal: PhoenixChannel<(), IngressMessages, ReplyMessages, PublicKeyParam>,
     rx: UnboundedReceiver<Command>,
 ) -> Result<(), DisconnectError>
 where
     CB: Callbacks + 'static,
 {
-    let ConnectArgs {
-        callbacks,
-        udp_socket_factory,
-    } = args;
-
     let tunnel = ClientTunnel::new(
         udp_socket_factory,
         BTreeMap::from([(portal.server_host().to_owned(), portal.resolved_addresses())]),

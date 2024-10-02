@@ -4,7 +4,6 @@ use crate::{
 };
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::ConnectArgs;
 use connlib_model::ResourceView;
 use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
@@ -539,10 +538,6 @@ impl<'a> Handler<'a> {
         self.last_connlib_start_instant = Some(Instant::now());
         let (cb_tx, cb_rx) = mpsc::channel(1_000);
         let callbacks = CallbackHandler { cb_tx };
-        let args = ConnectArgs {
-            udp_socket_factory: Arc::new(udp_socket_factory),
-            callbacks,
-        };
 
         // Synchronous DNS resolution here
         let phoenix_span = transaction.start_child("phoenix", "Resolve DNS for PhoenixChannel");
@@ -562,7 +557,8 @@ impl<'a> Handler<'a> {
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
         let connlib = connlib_client_shared::Session::connect(
-            args,
+            Arc::new(udp_socket_factory),
+            callbacks,
             portal,
             tokio::runtime::Handle::current(),
         );

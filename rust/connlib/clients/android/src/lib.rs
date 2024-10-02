@@ -5,9 +5,7 @@
 
 use crate::tun::Tun;
 use backoff::ExponentialBackoffBuilder;
-use connlib_client_shared::{
-    Callbacks, ConnectArgs, DisconnectError, Session, V4RouteList, V6RouteList,
-};
+use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
 use connlib_model::{ResourceId, ResourceView};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
@@ -372,10 +370,6 @@ fn connect(
 
     let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(callbacks.clone()));
 
-    let args = ConnectArgs {
-        udp_socket_factory: Arc::new(protected_udp_socket_factory(callbacks.clone())),
-        callbacks,
-    };
     let portal = PhoenixChannel::disconnected(
         Secret::new(url),
         get_user_agent(Some(os_version), env!("CARGO_PKG_VERSION")),
@@ -386,7 +380,12 @@ fn connect(
             .build(),
         tcp_socket_factory,
     )?;
-    let session = Session::connect(args, portal, runtime.handle().clone());
+    let session = Session::connect(
+        Arc::new(protected_udp_socket_factory(callbacks.clone())),
+        callbacks,
+        portal,
+        runtime.handle().clone(),
+    );
 
     Ok(SessionWrapper {
         inner: session,

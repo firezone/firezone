@@ -7,7 +7,11 @@ mod tun;
 use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
+<<<<<<< HEAD
     Callbacks, ConnectArgs, DisconnectError, Session, V4RouteList, V6RouteList,
+=======
+    Callbacks, DisconnectError, LoginUrl, Session, V4RouteList, V6RouteList,
+>>>>>>> fdfcf962e (Remove `ConnectArgs`)
 };
 use connlib_model::ResourceView;
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -213,12 +217,6 @@ impl WrappedSession {
             .build()?;
         let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
-        let args = ConnectArgs {
-            callbacks: CallbackHandler {
-                inner: Arc::new(callback_handler),
-            },
-            udp_socket_factory: Arc::new(socket_factory::udp),
-        };
         let portal = PhoenixChannel::disconnected(
             Secret::new(url),
             get_user_agent(os_version_override, env!("CARGO_PKG_VERSION")),
@@ -229,7 +227,14 @@ impl WrappedSession {
                 .build(),
             Arc::new(socket_factory::tcp),
         )?;
-        let session = Session::connect(args, portal, runtime.handle().clone());
+        let session = Session::connect(
+            Arc::new(socket_factory::udp),
+            CallbackHandler {
+                inner: Arc::new(callback_handler),
+            },
+            portal,
+            runtime.handle().clone(),
+        );
         session.set_tun(Box::new(Tun::new()?));
 
         Ok(Self {

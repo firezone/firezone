@@ -3,7 +3,7 @@
 use anyhow::{anyhow, Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_client_shared::{ConnectArgs, Session};
+use connlib_client_shared::Session;
 use firezone_bin_shared::{
     new_dns_notifier, new_network_notifier,
     platform::{tcp_socket_factory, udp_socket_factory},
@@ -185,10 +185,6 @@ fn main() -> Result<()> {
 
     // The name matches that in `ipc_service.rs`
     let mut last_connlib_start_instant = Some(Instant::now());
-    let args = ConnectArgs {
-        udp_socket_factory: Arc::new(udp_socket_factory),
-        callbacks,
-    };
 
     let result = rt.block_on(async {
         let ctx = firezone_telemetry::TransactionContext::new(
@@ -214,7 +210,12 @@ fn main() -> Result<()> {
             Arc::new(tcp_socket_factory),
         )?;
         phoenix_span.finish();
-        let session = Session::connect(args, portal, rt.handle().clone());
+        let session = Session::connect(
+            Arc::new(udp_socket_factory),
+            callbacks,
+            portal,
+            rt.handle().clone(),
+        );
 
         let mut terminate = signals::Terminate::new()?;
         let mut hangup = signals::Hangup::new()?;
