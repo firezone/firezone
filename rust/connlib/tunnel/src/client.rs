@@ -9,8 +9,8 @@ use connlib_shared::messages::{
     client::ResourceDescription, client::ResourceDescriptionCidr, Answer, DnsServer, GatewayId,
     Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId, ResourceId,
 };
-use connlib_shared::view::Status;
-use connlib_shared::{view, PublicKey, StaticSecret};
+use connlib_shared::{PublicKey, StaticSecret};
+use connlib_shared::{ResourceView, Status};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
@@ -317,7 +317,7 @@ impl ClientState {
         self.node.num_connections()
     }
 
-    pub(crate) fn resources(&self) -> Vec<view::ResourceView> {
+    pub(crate) fn resources(&self) -> Vec<ResourceView> {
         self.resources_by_id
             .values()
             .cloned()
@@ -1596,7 +1596,7 @@ mod tests {
 mod proptests {
     use super::*;
     use crate::proptest::*;
-    use connlib_shared::messages::client::ResourceDescriptionDns;
+    use connlib_shared::{messages::client::ResourceDescriptionDns, ResourceView};
     use prop::collection;
     use proptest::prelude::*;
 
@@ -1630,8 +1630,8 @@ mod proptests {
         assert_eq!(
             hashset(client_state.resources()),
             hashset([
-                view::ResourceView::Cidr(resource1.clone().with_status(Status::Unknown)),
-                view::ResourceView::Dns(resource2.clone().with_status(Status::Unknown))
+                ResourceView::Cidr(resource1.clone().with_status(Status::Unknown)),
+                ResourceView::Dns(resource2.clone().with_status(Status::Unknown))
             ])
         );
 
@@ -1640,9 +1640,9 @@ mod proptests {
         assert_eq!(
             hashset(client_state.resources()),
             hashset([
-                view::ResourceView::Cidr(resource1.with_status(Status::Unknown)),
-                view::ResourceView::Dns(resource2.with_status(Status::Unknown)),
-                view::ResourceView::Cidr(resource3.with_status(Status::Unknown)),
+                ResourceView::Cidr(resource1.with_status(Status::Unknown)),
+                ResourceView::Dns(resource2.with_status(Status::Unknown)),
+                ResourceView::Cidr(resource3.with_status(Status::Unknown)),
             ])
         );
     }
@@ -1664,7 +1664,7 @@ mod proptests {
 
         assert_eq!(
             hashset(client_state.resources()),
-            hashset([view::ResourceView::Cidr(
+            hashset([ResourceView::Cidr(
                 updated_resource.with_status(Status::Unknown)
             )])
         );
@@ -1694,7 +1694,7 @@ mod proptests {
 
         assert_eq!(
             hashset(client_state.resources()),
-            hashset([view::ResourceView::Cidr(
+            hashset([ResourceView::Cidr(
                 dns_as_cidr_resource.with_status(Status::Unknown)
             )])
         );
@@ -1717,7 +1717,7 @@ mod proptests {
 
         assert_eq!(
             hashset(client_state.resources()),
-            hashset([view::ResourceView::Cidr(
+            hashset([ResourceView::Cidr(
                 cidr_resource.clone().with_status(Status::Unknown)
             )])
         );
@@ -1751,8 +1751,8 @@ mod proptests {
         assert_eq!(
             hashset(client_state.resources()),
             hashset([
-                view::ResourceView::Dns(dns_resource2.with_status(Status::Unknown)),
-                view::ResourceView::Cidr(cidr_resource2.clone().with_status(Status::Unknown)),
+                ResourceView::Dns(dns_resource2.with_status(Status::Unknown)),
+                ResourceView::Cidr(cidr_resource2.clone().with_status(Status::Unknown)),
             ])
         );
         assert_eq!(

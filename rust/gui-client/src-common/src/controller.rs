@@ -7,7 +7,7 @@ use crate::{
     updates,
 };
 use anyhow::{anyhow, Context, Result};
-use connlib_shared::view::ResourceView;
+use connlib_shared::ResourceView;
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},

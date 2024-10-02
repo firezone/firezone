@@ -8,7 +8,7 @@ use boringtun::x25519::StaticSecret;
 use chrono::Utc;
 use connlib_shared::{
     messages::{ClientId, GatewayId, Offer, Relay, RelayId, ResolveRequest, ResourceId, SecretKey},
-    view, DomainName, PublicKey,
+    DomainName, PublicKey, ResourceView,
 };
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -299,7 +299,7 @@ pub enum ClientEvent {
     },
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {
-        resources: Vec<view::ResourceView>,
+        resources: Vec<ResourceView>,
     },
     TunInterfaceUpdated(TunConfig),
 }

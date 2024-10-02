@@ -4,11 +4,12 @@
 //! we are using the same version across our own crates.
 
 pub mod messages;
-pub mod view;
+mod view;
 
 pub use boringtun::x25519::PublicKey;
 pub use boringtun::x25519::StaticSecret;
 pub use phoenix_channel::{LoginUrl, LoginUrlError};
+pub use view::{CidrResourceView, DnsResourceView, InternetResourceView, ResourceView, Status};
 
 pub type DomainName = domain::base::Name<Vec<u8>>;
 

@@ -1,8 +1,5 @@
 use crate::updates::Release;
-use connlib_shared::{
-    messages::ResourceId,
-    view::{ResourceView, Status},
-};
+use connlib_shared::{messages::ResourceId, ResourceView, Status};
 use std::collections::HashSet;
 use url::Url;
 
