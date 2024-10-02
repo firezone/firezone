@@ -302,12 +302,13 @@ mod tests {
     use builder::INTERNET_RESOURCE_DESCRIPTION;
 
     impl Menu {
-        fn selected_item<E: Into<Option<Event>>, S: Into<String>>(
+        fn checkable<E: Into<Option<Event>>, S: Into<String>>(
             mut self,
             id: E,
             title: S,
+            checked: bool
         ) -> Self {
-            self.add_item(item(id, title).checked(true));
+            self.add_item(item(id, title).checked(checked));
             self
         }
     }
@@ -425,11 +426,12 @@ mod tests {
                     .disabled("Resource")
                     .copyable("172.172.0.0/16")
                     .copyable("172.172.0.0/16")
-                    .item(
+                    .checkable(
                         Event::AddFavorite(
                             ResourceId::from_str("73037362-715d-4a83-a749-f18eadd970e6").unwrap(),
                         ),
                         ADD_FAVORITE,
+                        false,
                     )
                     .separator()
                     .disabled("Site")
@@ -447,11 +449,12 @@ mod tests {
                     .disabled("Resource")
                     .copyable("MyCorp GitLab")
                     .copyable("gitlab.mycorp.com")
-                    .item(
+                    .checkable(
                         Event::AddFavorite(
                             ResourceId::from_str("03000143-e25e-45c7-aafb-144990e57dcd").unwrap(),
                         ),
                         ADD_FAVORITE,
+                        false,
                     )
                     .separator()
                     .disabled("Site")
@@ -503,11 +506,12 @@ mod tests {
                     .disabled("Resource")
                     .copyable("MyCorp GitLab")
                     .copyable("gitlab.mycorp.com")
-                    .selected_item(
+                    .checkable(
                         Event::RemoveFavorite(ResourceId::from_str(
                             "03000143-e25e-45c7-aafb-144990e57dcd",
                         )?),
                         REMOVE_FAVORITE,
+                        true,
                     )
                     .separator()
                     .disabled("Site")
@@ -536,11 +540,12 @@ mod tests {
                         .disabled("Resource")
                         .copyable("172.172.0.0/16")
                         .copyable("172.172.0.0/16")
-                        .item(
+                        .checkable(
                             Event::AddFavorite(ResourceId::from_str(
                                 "73037362-715d-4a83-a749-f18eadd970e6",
                             )?),
                             ADD_FAVORITE,
+                            false,
                         )
                         .separator()
                         .disabled("Site")
@@ -582,11 +587,12 @@ mod tests {
                     .disabled("Resource")
                     .copyable("172.172.0.0/16")
                     .copyable("172.172.0.0/16")
-                    .item(
+                    .checkable(
                         Event::AddFavorite(ResourceId::from_str(
                             "73037362-715d-4a83-a749-f18eadd970e6",
                         )?),
                         ADD_FAVORITE,
+                        false,
                     )
                     .separator()
                     .disabled("Site")
@@ -604,11 +610,12 @@ mod tests {
                     .disabled("Resource")
                     .copyable("MyCorp GitLab")
                     .copyable("gitlab.mycorp.com")
-                    .item(
+                    .checkable(
                         Event::AddFavorite(ResourceId::from_str(
                             "03000143-e25e-45c7-aafb-144990e57dcd",
                         )?),
                         ADD_FAVORITE,
+                        false,
                     )
                     .separator()
                     .disabled("Site")
