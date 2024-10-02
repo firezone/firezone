@@ -1,5 +1,5 @@
 use crate::updates::Release;
-use connlib_shared::{messages::ResourceId, ResourceView, Status};
+use connlib_shared::{messages::ResourceId, ResourceStatus, ResourceView};
 use std::collections::HashSet;
 use url::Url;
 
@@ -110,9 +110,9 @@ impl<'a> SignedIn<'a> {
         if let Some(site) = res.sites().first() {
             // Emojis may be causing an issue on some Ubuntu desktop environments.
             let status = match res.status() {
-                Status::Unknown => NO_ACTIVITY,
-                Status::Online => GATEWAY_CONNECTED,
-                Status::Offline => ALL_GATEWAYS_OFFLINE,
+                ResourceStatus::Unknown => NO_ACTIVITY,
+                ResourceStatus::Online => GATEWAY_CONNECTED,
+                ResourceStatus::Offline => ALL_GATEWAYS_OFFLINE,
             };
 
             submenu

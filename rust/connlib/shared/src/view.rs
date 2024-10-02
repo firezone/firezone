@@ -7,7 +7,7 @@ use crate::messages::client::Site;
 use crate::messages::ResourceId;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Status {
+pub enum ResourceStatus {
     Unknown,
     Online,
     Offline,
@@ -38,7 +38,7 @@ impl ResourceView {
         }
     }
 
-    pub fn status(&self) -> Status {
+    pub fn status(&self) -> ResourceStatus {
         match self {
             ResourceView::Dns(r) => r.status,
             ResourceView::Cidr(r) => r.status,
@@ -90,7 +90,7 @@ pub struct DnsResourceView {
     pub address_description: Option<String>,
     pub sites: Vec<Site>,
 
-    pub status: Status,
+    pub status: ResourceStatus,
 }
 
 /// Description of a resource that maps to a CIDR.
@@ -108,7 +108,7 @@ pub struct CidrResourceView {
     pub address_description: Option<String>,
     pub sites: Vec<Site>,
 
-    pub status: Status,
+    pub status: ResourceStatus,
 }
 
 /// Description of an Internet resource
@@ -120,7 +120,7 @@ pub struct InternetResourceView {
     pub id: ResourceId,
     pub sites: Vec<Site>,
 
-    pub status: Status,
+    pub status: ResourceStatus,
 }
 
 impl PartialOrd for ResourceView {
@@ -149,7 +149,9 @@ mod tests {
 
     use itertools::Itertools;
 
-    use super::{DnsResourceView, InternetResourceView, ResourceId, ResourceView, Site, Status};
+    use super::{
+        DnsResourceView, InternetResourceView, ResourceId, ResourceStatus, ResourceView, Site,
+    };
 
     fn fake_resource(name: &str, uuid: &str) -> ResourceView {
         ResourceView::Dns(DnsResourceView {
@@ -161,7 +163,7 @@ mod tests {
                 name: "test".to_string(),
                 id: "99ba0c1e-5189-4cfc-a4db-fd6cb1c937fd".parse().unwrap(),
             }],
-            status: Status::Online,
+            status: ResourceStatus::Online,
         })
     }
 
@@ -173,7 +175,7 @@ mod tests {
                 name: "test".to_string(),
                 id: "99ba0c1e-5189-4cfc-a4db-fd6cb1c937fd".parse().unwrap(),
             }],
-            status: Status::Offline,
+            status: ResourceStatus::Offline,
         })
     }
 

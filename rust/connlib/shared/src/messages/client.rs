@@ -6,7 +6,7 @@ use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::view::Status;
+use crate::view::ResourceStatus;
 
 use super::ResourceId;
 use itertools::Itertools;
@@ -29,7 +29,7 @@ pub struct ResourceDescriptionDns {
 }
 
 impl ResourceDescriptionDns {
-    pub fn with_status(self, status: Status) -> crate::view::DnsResourceView {
+    pub fn with_status(self, status: ResourceStatus) -> crate::view::DnsResourceView {
         crate::view::DnsResourceView {
             id: self.id,
             address: self.address,
@@ -59,7 +59,7 @@ pub struct ResourceDescriptionCidr {
 }
 
 impl ResourceDescriptionCidr {
-    pub fn with_status(self, status: Status) -> crate::view::CidrResourceView {
+    pub fn with_status(self, status: ResourceStatus) -> crate::view::CidrResourceView {
         crate::view::CidrResourceView {
             id: self.id,
             address: self.address,
@@ -91,7 +91,7 @@ pub struct ResourceDescriptionInternet {
 }
 
 impl ResourceDescriptionInternet {
-    pub fn with_status(self, status: Status) -> crate::view::InternetResourceView {
+    pub fn with_status(self, status: ResourceStatus) -> crate::view::InternetResourceView {
         crate::view::InternetResourceView {
             name: self.name,
             id: self.id,
@@ -207,7 +207,7 @@ impl ResourceDescription {
         }
     }
 
-    pub fn with_status(self, status: Status) -> crate::view::ResourceView {
+    pub fn with_status(self, status: ResourceStatus) -> crate::view::ResourceView {
         match self {
             ResourceDescription::Dns(r) => crate::view::ResourceView::Dns(r.with_status(status)),
             ResourceDescription::Cidr(r) => crate::view::ResourceView::Cidr(r.with_status(status)),
