@@ -22,6 +22,7 @@ tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
 tracing = { workspace = true }
 url = "2.5.2"
 uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
+os_info = { version = "3", default-features = false }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 hostname = "0.4.0"

@@ -26,9 +26,9 @@ use url::Url;
 
 pub mod ipc;
 use backoff::ExponentialBackoffBuilder;
-use connlib_model::{get_user_agent, ResourceId};
+use connlib_model::ResourceId;
 use ipc::{Server as IpcServer, ServiceId};
-use phoenix_channel::PhoenixChannel;
+use phoenix_channel::{get_user_agent, PhoenixChannel};
 use secrecy::Secret;
 
 #[cfg(target_os = "linux")]

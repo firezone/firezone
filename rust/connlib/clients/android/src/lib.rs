@@ -9,7 +9,7 @@ use connlib_client_shared::{
     keypair, Callbacks, ConnectArgs, DisconnectError, LoginUrl, LoginUrlError, Session,
     V4RouteList, V6RouteList,
 };
-use connlib_model::{get_user_agent, ResourceId, ResourceView};
+use connlib_model::{ResourceId, ResourceView};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
@@ -17,6 +17,7 @@ use jni::{
     sys::jlong,
     JNIEnv, JavaVM,
 };
+use phoenix_channel::get_user_agent;
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
