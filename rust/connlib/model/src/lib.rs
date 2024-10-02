@@ -19,8 +19,6 @@ use std::fmt;
 use std::str::FromStr;
 use uuid::Uuid;
 
-const LIB_NAME: &str = "connlib";
-
 #[derive(Hash, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GatewayId(Uuid);
 
@@ -189,6 +187,8 @@ impl fmt::Debug for SiteId {
 }
 
 pub fn get_user_agent(os_version_override: Option<String>, app_version: &str) -> String {
+    const LIB_NAME: &str = "connlib";
+
     // Note: we could switch to sys-info and get the hostname
     // but we lose the arch
     // and neither of the libraries provide the kernel version.
