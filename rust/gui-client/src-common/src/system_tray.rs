@@ -306,7 +306,7 @@ mod tests {
             mut self,
             id: E,
             title: S,
-            checked: bool
+            checked: bool,
         ) -> Self {
             self.add_item(item(id, title).checked(checked));
             self
