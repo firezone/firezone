@@ -26,7 +26,7 @@ lru = "0.12.4"
 proptest = { version = "1", optional = true }
 rand = "0.8.5"
 rangemap = "1.5.1"
-secrecy = { workspace = true }
+secrecy = { workspace = true, features = ["serde"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
