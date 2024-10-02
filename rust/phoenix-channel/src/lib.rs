@@ -239,9 +239,8 @@ where
         // We expose them to other components that deal with DNS stuff to ensure our domain always resolves to these IPs.
         let resolved_addresses = url
             .expose_secret()
-            .inner()
-            .socket_addrs(|| None)?
-            .iter()
+            .host()
+            .to_socket_addrs()?
             .map(|addr| addr.ip())
             .collect();
 
