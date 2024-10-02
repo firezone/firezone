@@ -10,12 +10,14 @@ use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
 use hex_display::HexDisplayExt;
 use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf};
+use itertools::Itertools as _;
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
-use rand::{random, SeedableRng};
+use rand::{random, Rng, SeedableRng};
 use secrecy::{ExposeSecret, Secret};
 use sha2::Digest;
 use std::borrow::Cow;
+use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -233,8 +235,8 @@ where
             }
         };
 
-        let Some(agent) = self.connections.agent_mut(cid) else {
-            tracing::debug!("Unknown connection");
+        let Some((agent, relay)) = self.connections.connecting_agent_mut(cid) else {
+            tracing::debug!("Unknown connection or socket has already been nominated");
             return;
         };
 
@@ -251,7 +253,7 @@ where
             | CandidateKind::PeerReflexive => {}
         }
 
-        let Some(rid) = self.connections.relay(cid) else {
+        let Some(rid) = relay else {
             tracing::debug!("No relay selected for connection");
             return;
         };
@@ -265,7 +267,7 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
-    pub fn remove_remote_candidate(&mut self, cid: TId, candidate: String) {
+    pub fn remove_remote_candidate(&mut self, cid: TId, candidate: String, now: Instant) {
         let candidate = match Candidate::from_sdp_string(&candidate) {
             Ok(c) => c,
             Err(e) => {
@@ -276,6 +278,7 @@ where
 
         if let Some(agent) = self.connections.agent_mut(cid) {
             agent.invalidate_candidate(&candidate);
+            agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
         }
     }
 
@@ -422,7 +425,11 @@ where
     ///
     /// As such, it ends up being cleaner to "drain" all lower-level components of their events, transmits etc within this function.
     pub fn handle_timeout(&mut self, now: Instant) {
-        self.bindings_and_allocations_drain_events();
+        for allocation in self.allocations.values_mut() {
+            allocation.handle_timeout(now);
+        }
+
+        self.allocations_drain_events();
 
         for (id, connection) in self.connections.iter_established_mut() {
             connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
@@ -430,10 +437,6 @@ where
 
         for (id, connection) in self.connections.initial.iter_mut() {
             connection.handle_timeout(id, now);
-        }
-
-        for allocation in self.allocations.values_mut() {
-            allocation.handle_timeout(now);
         }
 
         let next_reset = *self.next_rate_limiter_reset.get_or_insert(now);
@@ -446,12 +449,14 @@ where
         self.allocations
             .retain(|rid, allocation| match allocation.can_be_freed() {
                 Some(e) => {
-                    tracing::error!(%rid, "Disconnecting from relay; {e}");
+                    tracing::warn!(%rid, "Disconnecting from relay; {e}");
 
                     false
                 }
                 None => true,
             });
+        self.connections
+            .check_relays_available(&self.allocations, &mut self.rng);
         self.connections.gc(&mut self.pending_events);
     }
 
@@ -484,21 +489,18 @@ where
         now: Instant,
     ) {
         // First, invalidate all candidates from relays that we should stop using.
-        for rid in to_remove {
-            let Some(allocation) = self.allocations.remove(&rid) else {
+        for rid in &to_remove {
+            let Some(allocation) = self.allocations.remove(rid) else {
                 tracing::debug!(%rid, "Cannot delete unknown allocation");
 
                 continue;
             };
 
-            for (cid, agent, _guard) in self.connections.agents_mut() {
-                for candidate in allocation
-                    .current_candidates()
-                    .filter(|c| c.kind() == CandidateKind::Relayed)
-                {
-                    remove_local_candidate(cid, agent, &candidate, &mut self.pending_events);
-                }
-            }
+            invalidate_allocation_candidates(
+                &mut self.connections,
+                &allocation,
+                &mut self.pending_events,
+            );
 
             tracing::info!(%rid, address = ?allocation.server(), "Removed TURN server");
         }
@@ -514,24 +516,61 @@ where
                 continue;
             };
 
-            if self.allocations.contains_key(rid) {
-                tracing::info!(%rid, address = ?server, "Skipping known TURN server");
-                continue;
+            match self.allocations.entry(*rid) {
+                Entry::Vacant(v) => {
+                    v.insert(Allocation::new(
+                        *server,
+                        username,
+                        password.clone(),
+                        realm,
+                        now,
+                        self.session_id.clone(),
+                    ));
+
+                    tracing::info!(%rid, address = ?server, "Added new TURN server");
+                }
+                Entry::Occupied(mut o) => {
+                    let allocation = o.get();
+
+                    if allocation.matches_credentials(&username, password)
+                        && allocation.matches_socket(server)
+                    {
+                        tracing::info!(%rid, address = ?server, "Skipping known TURN server");
+                        continue;
+                    }
+
+                    invalidate_allocation_candidates(
+                        &mut self.connections,
+                        allocation,
+                        &mut self.pending_events,
+                    );
+
+                    o.insert(Allocation::new(
+                        *server,
+                        username,
+                        password.clone(),
+                        realm,
+                        now,
+                        self.session_id.clone(),
+                    ));
+
+                    tracing::info!(%rid, address = ?server, "Replaced TURN server");
+                }
             }
+        }
 
-            self.allocations.insert(
-                *rid,
-                Allocation::new(
-                    *server,
-                    username,
-                    password.clone(),
-                    realm,
-                    now,
-                    self.session_id.clone(),
-                ),
-            );
+        let newly_added_relays = to_add
+            .iter()
+            .map(|(id, _, _, _, _)| *id)
+            .collect::<BTreeSet<_>>();
 
-            tracing::info!(%rid, address = ?server, "Added new TURN server");
+        // Third, check if other relays are still present.
+        for (_, previous_allocation) in self
+            .allocations
+            .iter_mut()
+            .filter(|(id, _)| !newly_added_relays.contains(id))
+        {
+            previous_allocation.refresh(now);
         }
     }
 
@@ -572,10 +611,10 @@ where
             signalling_completed_at: now,
             remote_pub_key: remote,
             state: ConnectionState::Connecting {
+                relay,
                 buffered: RingBuffer::new(10),
             },
             possible_sockets: BTreeSet::default(),
-            relay,
             span: info_span!(parent: tracing::Span::none(), "connection", %cid),
         }
     }
@@ -741,21 +780,27 @@ where
         }))
     }
 
-    fn bindings_and_allocations_drain_events(&mut self) {
-        let allocation_events = self
-            .allocations
-            .iter_mut()
-            .flat_map(|(rid, allocation)| Some((*rid, allocation.poll_event()?)));
+    fn allocations_drain_events(&mut self) {
+        let allocation_events = self.allocations.iter_mut().flat_map(|(rid, allocation)| {
+            std::iter::from_fn(|| allocation.poll_event()).map(|e| (*rid, e))
+        });
 
         for (rid, event) in allocation_events {
+            tracing::trace!(%rid, ?event);
+
             match event {
+                CandidateEvent::New(candidate)
+                    if candidate.kind() == CandidateKind::ServerReflexive =>
+                {
+                    for (cid, agent, _span) in self.connections.agents_mut() {
+                        add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
+                    }
+                }
                 CandidateEvent::New(candidate) => {
-                    add_local_candidate_to_all(
-                        rid,
-                        candidate,
-                        &mut self.connections,
-                        &mut self.pending_events,
-                    );
+                    for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
+                    {
+                        add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
+                    }
                 }
                 CandidateEvent::Invalid(candidate) => {
                     for (cid, agent, _span) in self.connections.agents_mut() {
@@ -768,7 +813,11 @@ where
 
     /// Sample a relay to use for a new connection.
     fn sample_relay(&mut self) -> Option<RId> {
-        self.allocations.keys().copied().choose(&mut self.rng)
+        let rid = self.allocations.keys().copied().choose(&mut self.rng)?;
+
+        tracing::debug!(%rid, "Sampled relay");
+
+        Some(rid)
     }
 }
 
@@ -933,7 +982,7 @@ where
 impl<T, TId, RId> Node<T, TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
-    RId: Copy + Eq + Hash + PartialEq + fmt::Debug + fmt::Display,
+    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
     fn seed_agent_with_local_candidates(
         &mut self,
@@ -945,23 +994,31 @@ where
             add_local_candidate(connection, agent, candidate, &mut self.pending_events);
         }
 
+        for candidate in self
+            .allocations
+            .values()
+            .flat_map(|a| a.current_candidates())
+            .filter(|c| c.kind() == CandidateKind::ServerReflexive)
+            .unique()
+        {
+            add_local_candidate(connection, agent, candidate, &mut self.pending_events);
+        }
+
         let Some(selected_relay) = selected_relay else {
             tracing::debug!("Skipping seeding of relay candidates: No relay selected");
             return;
         };
 
-        for candidate in self
-            .allocations
-            .iter()
-            .filter_map(|(rid, allocation)| (*rid == selected_relay).then_some(allocation))
-            .flat_map(|allocation| allocation.current_candidates())
+        let Some(allocation) = self.allocations.get(&selected_relay) else {
+            tracing::debug!(%selected_relay, "Cannot seed relay candidates: Unknown relay");
+            return;
+        };
+
+        for candidate in allocation
+            .current_candidates()
+            .filter(|c| c.kind() == CandidateKind::Relayed)
         {
-            add_local_candidate(
-                connection,
-                agent,
-                candidate.clone(),
-                &mut self.pending_events,
-            );
+            add_local_candidate(connection, agent, candidate, &mut self.pending_events);
         }
     }
 }
@@ -1005,6 +1062,66 @@ where
         });
     }
 
+    fn check_relays_available(
+        &mut self,
+        allocations: &BTreeMap<RId, Allocation>,
+        rng: &mut impl Rng,
+    ) {
+        // For initial connections, we can just update the relay to be used.
+        for (_, c) in self.iter_initial_mut() {
+            if c.relay.is_some_and(|r| allocations.contains_key(&r)) {
+                continue;
+            }
+
+            let _guard = c.span.enter();
+
+            let Some(new_rid) = allocations.keys().copied().choose(rng) else {
+                continue;
+            };
+
+            tracing::info!(old_rid = ?c.relay, %new_rid, "Updating relay");
+            c.relay = Some(new_rid);
+        }
+
+        // For established connections, we check if we are currently using the relay.
+        for (_, c) in self.iter_established_mut() {
+            let _guard = c.span.enter();
+
+            use ConnectionState::*;
+            let peer_socket = match &mut c.state {
+                Connected { peer_socket, .. } | Idle { peer_socket } => peer_socket,
+                Failed => continue,
+                Connecting {
+                    relay: maybe_relay, ..
+                } => {
+                    let Some(relay) = maybe_relay else {
+                        continue;
+                    };
+
+                    if allocations.contains_key(relay) {
+                        continue;
+                    }
+
+                    tracing::debug!("Selected relay disconnected during ICE; connection may fail");
+                    *maybe_relay = None;
+                    continue;
+                }
+            };
+
+            let relay = match peer_socket {
+                PeerSocket::Direct { .. } => continue, // Don't care if relay of direct connection disappears, we weren't using it anyway.
+                PeerSocket::Relay { relay, .. } => relay,
+            };
+
+            if allocations.contains_key(relay) {
+                continue; // Our relay is still there, no problems.
+            }
+
+            tracing::info!("Connection failed (relay disconnected)");
+            c.state = ConnectionState::Failed;
+        }
+    }
+
     fn stats(&self) -> impl Iterator<Item = (TId, ConnectionStats)> + '_ {
         self.established.iter().map(move |(id, c)| (*id, c.stats))
     }
@@ -1016,11 +1133,37 @@ where
         maybe_initial_connection.or(maybe_established_connection)
     }
 
-    fn relay(&mut self, id: TId) -> Option<RId> {
-        let maybe_initial_connection = self.initial.get_mut(&id).and_then(|i| i.relay);
-        let maybe_established_connection = self.established.get_mut(&id).and_then(|c| c.relay);
+    fn connecting_agent_mut(&mut self, id: TId) -> Option<(&mut IceAgent, Option<RId>)> {
+        let maybe_initial_connection = self.initial.get_mut(&id).map(|i| (&mut i.agent, i.relay));
+        let maybe_pending_connection = self.established.get_mut(&id).and_then(|c| match c.state {
+            ConnectionState::Connecting { relay, .. } => Some((&mut c.agent, relay)),
+            ConnectionState::Failed
+            | ConnectionState::Idle { .. }
+            | ConnectionState::Connected { .. } => None,
+        });
 
-        maybe_initial_connection.or(maybe_established_connection)
+        maybe_initial_connection.or(maybe_pending_connection)
+    }
+
+    fn connecting_agents_by_relay_mut(
+        &mut self,
+        id: RId,
+    ) -> impl Iterator<Item = (TId, &mut IceAgent, tracing::span::Entered<'_>)> + '_ {
+        let initial_connections = self.initial.iter_mut().filter_map(move |(cid, i)| {
+            (i.relay? == id).then_some((*cid, &mut i.agent, i.span.enter()))
+        });
+        let pending_connections = self.established.iter_mut().filter_map(move |(cid, c)| {
+            use ConnectionState::*;
+
+            match c.state {
+                Connecting {
+                    relay: Some(relay), ..
+                } if relay == id => Some((*cid, &mut c.agent, c.span.enter())),
+                Failed | Idle { .. } | Connecting { .. } | Connected { .. } => None,
+            }
+        });
+
+        initial_connections.chain(pending_connections)
     }
 
     fn agents_mut(
@@ -1099,34 +1242,6 @@ enum EncodeError {
     NoChannel,
 }
 
-fn add_local_candidate_to_all<TId, RId>(
-    rid: RId,
-    candidate: Candidate,
-    connections: &mut Connections<TId, RId>,
-    pending_events: &mut VecDeque<Event<TId>>,
-) where
-    TId: Copy + fmt::Display,
-    RId: Copy + PartialEq,
-{
-    let initial_connections = connections
-        .initial
-        .iter_mut()
-        .flat_map(|(id, c)| Some((*id, &mut c.agent, c.relay?)));
-    let established_connections = connections
-        .established
-        .iter_mut()
-        .flat_map(|(id, c)| Some((*id, &mut c.agent, c.relay?)));
-
-    for (cid, agent, _) in initial_connections
-        .chain(established_connections)
-        .filter(|(_, _, selected_relay)| *selected_relay == rid)
-    {
-        let _span = info_span!("connection", %cid).entered();
-
-        add_local_candidate(cid, agent, candidate.clone(), pending_events);
-    }
-}
-
 fn add_local_candidate<TId>(
     id: TId,
     agent: &mut IceAgent,
@@ -1151,6 +1266,24 @@ fn add_local_candidate<TId>(
             connection: id,
             candidate: candidate.to_sdp_string(),
         })
+    }
+}
+
+fn invalidate_allocation_candidates<TId, RId>(
+    connections: &mut Connections<TId, RId>,
+    allocation: &Allocation,
+    pending_events: &mut VecDeque<Event<TId>>,
+) where
+    TId: Eq + Hash + Copy + Ord + fmt::Display,
+    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
+{
+    for (cid, agent, _guard) in connections.agents_mut() {
+        for candidate in allocation
+            .current_candidates()
+            .filter(|c| c.kind() == CandidateKind::Relayed)
+        {
+            remove_local_candidate(cid, agent, &candidate, pending_events);
+        }
     }
 }
 
@@ -1362,11 +1495,6 @@ struct Connection<RId> {
     /// Socket addresses from which we might receive data (even before we are connected).
     possible_sockets: BTreeSet<SocketAddr>,
 
-    /// The relay we have selected for this connection.
-    ///
-    /// `None` if we didn't have any relays available.
-    relay: Option<RId>,
-
     stats: ConnectionStats,
     intent_sent_at: Instant,
     signalling_completed_at: Instant,
@@ -1379,6 +1507,11 @@ struct Connection<RId> {
 enum ConnectionState<RId> {
     /// We are still running ICE to figure out, which socket to use to send data.
     Connecting {
+        /// The relay we have selected for this connection.
+        ///
+        /// `None` if we didn't have any relays available.
+        relay: Option<RId>,
+
         /// Packets emitted by wireguard whilst are still running ICE.
         ///
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
