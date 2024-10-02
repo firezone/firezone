@@ -86,16 +86,30 @@ defmodule Web.Live.Clients.ShowTest do
       |> render()
       |> vertical_table_to_map()
 
-    assert table["identifier"] == client.id
     assert table["name"] == client.name
     assert table["owner"] =~ actor.name
     assert table["status"] =~ "Offline"
     assert table["created"]
     assert table["last started"]
+    assert table["verification"] =~ "Not Verified"
+
+    table =
+      lv
+      |> element("#posture")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["id"] == client.id
+    assert table["installation id"] == client.external_id
+
     assert table["last seen remote ip"] =~ to_string(client.last_seen_remote_ip)
     assert table["client version"] =~ client.last_seen_version
     assert table["user agent"] =~ client.last_seen_user_agent
-    assert table["verification"] =~ "Not Verified"
+
+    assert table["motherboard's serial"] =~ to_string(client.device_serial)
+    assert table["motherboard's uuid"] =~ to_string(client.device_uuid)
+    assert table["firebase installation id"] =~ to_string(client.firebase_installation_id)
+    assert table["identifier for vendor"] =~ to_string(client.identifier_for_vendor)
   end
 
   test "shows client online status", %{
