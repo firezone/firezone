@@ -1,7 +1,6 @@
 use anyhow::{Context as _, Result};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use std::{
-    collections::HashMap,
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -37,14 +36,11 @@ fn device_serial() -> Option<String> {
     Some(serial)
 }
 
-pub fn device_info() -> HashMap<String, String> {
-    let mut device_info = HashMap::new();
-
-    if let Some(serial) = device_serial() {
-        device_info.insert("hardware_serial".to_string(), serial);
+pub fn device_info() -> phoenix_channel::DeviceInfo {
+    phoenix_channel::DeviceInfo {
+        device_serial: device_serial(),
+        ..Default::default()
     }
-
-    device_info
 }
 
 /// Returns the device ID, generating it and saving it to disk if needed.

@@ -20,14 +20,7 @@ use jni::{
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
-use std::{
-    collections::{BTreeSet, HashMap},
-    io,
-    net::IpAddr,
-    os::fd::AsRawFd,
-    path::Path,
-    sync::Arc,
-};
+use std::{collections::BTreeSet, io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,

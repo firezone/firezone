@@ -20,10 +20,10 @@ const HOST_NAME_MAX: usize = 256;
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct DeviceInfo {
-    device_uuid: Option<String>,
-    device_serial: Option<String>,
-    identifier_for_vendor: Option<String>,
-    firebase_installation_id: Option<String>,
+    pub device_uuid: Option<String>,
+    pub device_serial: Option<String>,
+    pub identifier_for_vendor: Option<String>,
+    pub firebase_installation_id: Option<String>,
 }
 
 #[derive(Clone)]
