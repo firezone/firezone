@@ -9,7 +9,7 @@ use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
     keypair, Callbacks, ConnectArgs, DisconnectError, LoginUrl, Session, V4RouteList, V6RouteList,
 };
-use connlib_shared::{get_user_agent, view::ResourceDescription};
+use connlib_shared::{get_user_agent, view::ResourceView};
 use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
@@ -139,7 +139,7 @@ impl Callbacks for CallbackHandler {
         );
     }
 
-    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
+    fn on_update_resources(&self, resource_list: Vec<ResourceView>) {
         self.inner.on_update_resources(
             serde_json::to_string(&resource_list)
                 .expect("developer error: failed to serialize resource list"),

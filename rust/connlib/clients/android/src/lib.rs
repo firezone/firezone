@@ -9,7 +9,7 @@ use connlib_client_shared::{
     keypair, Callbacks, ConnectArgs, DisconnectError, LoginUrl, LoginUrlError, Session,
     V4RouteList, V6RouteList,
 };
-use connlib_shared::{get_user_agent, messages::ResourceId, view::ResourceDescription};
+use connlib_shared::{get_user_agent, messages::ResourceId, view::ResourceView};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
@@ -225,7 +225,7 @@ impl Callbacks for CallbackHandler {
         .expect("onUpdateRoutes callback failed");
     }
 
-    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
+    fn on_update_resources(&self, resource_list: Vec<ResourceView>) {
         self.env(|mut env| {
             let resource_list = env
                 .new_string(serde_json::to_string(&resource_list)?)

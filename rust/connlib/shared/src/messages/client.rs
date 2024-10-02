@@ -29,8 +29,8 @@ pub struct ResourceDescriptionDns {
 }
 
 impl ResourceDescriptionDns {
-    pub fn with_status(self, status: Status) -> crate::view::ResourceDescriptionDns {
-        crate::view::ResourceDescriptionDns {
+    pub fn with_status(self, status: Status) -> crate::view::DnsResourceView {
+        crate::view::DnsResourceView {
             id: self.id,
             address: self.address,
             name: self.name,
@@ -59,8 +59,8 @@ pub struct ResourceDescriptionCidr {
 }
 
 impl ResourceDescriptionCidr {
-    pub fn with_status(self, status: Status) -> crate::view::ResourceDescriptionCidr {
-        crate::view::ResourceDescriptionCidr {
+    pub fn with_status(self, status: Status) -> crate::view::CidrResourceView {
+        crate::view::CidrResourceView {
             id: self.id,
             address: self.address,
             name: self.name,
@@ -91,8 +91,8 @@ pub struct ResourceDescriptionInternet {
 }
 
 impl ResourceDescriptionInternet {
-    pub fn with_status(self, status: Status) -> crate::view::ResourceDescriptionInternet {
-        crate::view::ResourceDescriptionInternet {
+    pub fn with_status(self, status: Status) -> crate::view::InternetResourceView {
+        crate::view::InternetResourceView {
             name: self.name,
             id: self.id,
             sites: self.sites,
@@ -207,16 +207,12 @@ impl ResourceDescription {
         }
     }
 
-    pub fn with_status(self, status: Status) -> crate::view::ResourceDescription {
+    pub fn with_status(self, status: Status) -> crate::view::ResourceView {
         match self {
-            ResourceDescription::Dns(r) => {
-                crate::view::ResourceDescription::Dns(r.with_status(status))
-            }
-            ResourceDescription::Cidr(r) => {
-                crate::view::ResourceDescription::Cidr(r.with_status(status))
-            }
+            ResourceDescription::Dns(r) => crate::view::ResourceView::Dns(r.with_status(status)),
+            ResourceDescription::Cidr(r) => crate::view::ResourceView::Cidr(r.with_status(status)),
             ResourceDescription::Internet(r) => {
-                crate::view::ResourceDescription::Internet(r.with_status(status))
+                crate::view::ResourceView::Internet(r.with_status(status))
             }
         }
     }

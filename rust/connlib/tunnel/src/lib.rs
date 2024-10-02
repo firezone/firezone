@@ -299,7 +299,7 @@ pub enum ClientEvent {
     },
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {
-        resources: Vec<view::ResourceDescription>,
+        resources: Vec<view::ResourceView>,
     },
     TunInterfaceUpdated(TunConfig),
 }

@@ -1,7 +1,7 @@
 use crate::updates::Release;
 use connlib_shared::{
     messages::ResourceId,
-    view::{ResourceDescription, Status},
+    view::{ResourceView, Status},
 };
 use std::collections::HashSet;
 use url::Url;
@@ -75,7 +75,7 @@ pub enum ConnlibState<'a> {
 pub struct SignedIn<'a> {
     pub actor_name: &'a str,
     pub favorite_resources: &'a HashSet<ResourceId>,
-    pub resources: &'a [ResourceDescription],
+    pub resources: &'a [ResourceView],
     pub internet_resource_enabled: &'a Option<bool>,
 }
 
@@ -94,7 +94,7 @@ impl<'a> SignedIn<'a> {
 
     /// Builds the submenu that has the resource address, name, desc,
     /// sites online, etc.
-    fn resource_submenu(&self, res: &ResourceDescription) -> Menu {
+    fn resource_submenu(&self, res: &ResourceView) -> Menu {
         let mut submenu = Menu::default().resource_description(res);
 
         if res.is_internet_resource() {
@@ -313,7 +313,7 @@ mod tests {
     }
 
     fn signed_in<'a>(
-        resources: &'a [ResourceDescription],
+        resources: &'a [ResourceView],
         favorite_resources: &'a HashSet<ResourceId>,
         internet_resource_enabled: &'a Option<bool>,
     ) -> AppState<'a> {
@@ -328,7 +328,7 @@ mod tests {
         }
     }
 
-    fn resources() -> Vec<ResourceDescription> {
+    fn resources() -> Vec<ResourceView> {
         let s = r#"[
             {
                 "id": "73037362-715d-4a83-a749-f18eadd970e6",

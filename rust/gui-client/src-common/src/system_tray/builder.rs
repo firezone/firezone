@@ -1,6 +1,6 @@
 //! An abstraction over Tauri's system tray menu structs, that implements `PartialEq` for unit testing
 
-use connlib_shared::{messages::ResourceId, view::ResourceDescription};
+use connlib_shared::{messages::ResourceId, view::ResourceView};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -79,7 +79,7 @@ pub enum Window {
     Settings,
 }
 
-fn resource_header(res: &ResourceDescription) -> Item {
+fn resource_header(res: &ResourceView) -> Item {
     let Some(address_description) = res.address_description() else {
         return copyable(&res.pastable());
     };
@@ -140,14 +140,14 @@ impl Menu {
         self.disabled(INTERNET_RESOURCE_DESCRIPTION)
     }
 
-    fn resource_body(self, resource: &ResourceDescription) -> Self {
+    fn resource_body(self, resource: &ResourceView) -> Self {
         self.separator()
             .disabled("Resource")
             .copyable(resource.name())
             .copyable(resource.pastable().as_ref())
     }
 
-    pub(crate) fn resource_description(mut self, resource: &ResourceDescription) -> Self {
+    pub(crate) fn resource_description(mut self, resource: &ResourceView) -> Self {
         if resource.is_internet_resource() {
             self.internet_resource()
         } else {

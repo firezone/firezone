@@ -1,4 +1,4 @@
-use connlib_shared::view::ResourceDescription;
+use connlib_shared::view::ResourceView;
 use ip_network::{Ipv4Network, Ipv6Network};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -19,7 +19,7 @@ pub trait Callbacks: Clone + Send + Sync {
     /// This may not be called if a Client has no Resources, which can
     /// happen to new accounts, or when removing and re-adding Resources,
     /// or if all Resources for a user are disabled by policy.
-    fn on_update_resources(&self, _: Vec<ResourceDescription>) {}
+    fn on_update_resources(&self, _: Vec<ResourceView>) {}
 
     /// Called when the tunnel is disconnected.
     ///

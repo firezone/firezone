@@ -317,7 +317,7 @@ impl ClientState {
         self.node.num_connections()
     }
 
-    pub(crate) fn resources(&self) -> Vec<view::ResourceDescription> {
+    pub(crate) fn resources(&self) -> Vec<view::ResourceView> {
         self.resources_by_id
             .values()
             .cloned()
@@ -1630,8 +1630,8 @@ mod proptests {
         assert_eq!(
             hashset(client_state.resources()),
             hashset([
-                view::ResourceDescription::Cidr(resource1.clone().with_status(Status::Unknown)),
-                view::ResourceDescription::Dns(resource2.clone().with_status(Status::Unknown))
+                view::ResourceView::Cidr(resource1.clone().with_status(Status::Unknown)),
+                view::ResourceView::Dns(resource2.clone().with_status(Status::Unknown))
             ])
         );
 
@@ -1640,9 +1640,9 @@ mod proptests {
         assert_eq!(
             hashset(client_state.resources()),
             hashset([
-                view::ResourceDescription::Cidr(resource1.with_status(Status::Unknown)),
-                view::ResourceDescription::Dns(resource2.with_status(Status::Unknown)),
-                view::ResourceDescription::Cidr(resource3.with_status(Status::Unknown)),
+                view::ResourceView::Cidr(resource1.with_status(Status::Unknown)),
+                view::ResourceView::Dns(resource2.with_status(Status::Unknown)),
+                view::ResourceView::Cidr(resource3.with_status(Status::Unknown)),
             ])
         );
     }
@@ -1664,7 +1664,7 @@ mod proptests {
 
         assert_eq!(
             hashset(client_state.resources()),
-            hashset([view::ResourceDescription::Cidr(
+            hashset([view::ResourceView::Cidr(
                 updated_resource.with_status(Status::Unknown)
             )])
         );
@@ -1694,7 +1694,7 @@ mod proptests {
 
         assert_eq!(
             hashset(client_state.resources()),
-            hashset([view::ResourceDescription::Cidr(
+            hashset([view::ResourceView::Cidr(
                 dns_as_cidr_resource.with_status(Status::Unknown)
             )])
         );
@@ -1717,7 +1717,7 @@ mod proptests {
 
         assert_eq!(
             hashset(client_state.resources()),
-            hashset([view::ResourceDescription::Cidr(
+            hashset([view::ResourceView::Cidr(
                 cidr_resource.clone().with_status(Status::Unknown)
             )])
         );
@@ -1751,10 +1751,8 @@ mod proptests {
         assert_eq!(
             hashset(client_state.resources()),
             hashset([
-                view::ResourceDescription::Dns(dns_resource2.with_status(Status::Unknown)),
-                view::ResourceDescription::Cidr(
-                    cidr_resource2.clone().with_status(Status::Unknown)
-                ),
+                view::ResourceView::Dns(dns_resource2.with_status(Status::Unknown)),
+                view::ResourceView::Cidr(cidr_resource2.clone().with_status(Status::Unknown)),
             ])
         );
         assert_eq!(

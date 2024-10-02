@@ -82,7 +82,7 @@ pub enum ConnlibMsg {
         ipv6: Ipv6Addr,
         dns: Vec<IpAddr>,
     },
-    OnUpdateResources(Vec<view::ResourceDescription>),
+    OnUpdateResources(Vec<view::ResourceView>),
     OnUpdateRoutes {
         ipv4: Vec<Ipv4Network>,
         ipv6: Vec<Ipv6Network>,
@@ -117,7 +117,7 @@ impl Callbacks for CallbackHandler {
             .expect("Should be able to send OnSetInterfaceConfig");
     }
 
-    fn on_update_resources(&self, resources: Vec<view::ResourceDescription>) {
+    fn on_update_resources(&self, resources: Vec<view::ResourceView>) {
         tracing::debug!(len = resources.len(), "New resource list");
         self.cb_tx
             .try_send(ConnlibMsg::OnUpdateResources(resources))
