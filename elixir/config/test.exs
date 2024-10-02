@@ -26,6 +26,8 @@ config :domain, platform_adapter: Domain.GoogleCloudPlatform
 
 config :domain, Domain.GoogleCloudPlatform, service_account_email: "foo@iam.example.com"
 
+config :domain, Domain.ComponentVersions, from_url: false
+
 config :domain, Domain.Telemetry.GoogleCloudMetricsReporter, project_id: "fz-test"
 
 config :domain, web_external_url: "http://localhost:13100"

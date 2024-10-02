@@ -40,6 +40,12 @@ defmodule Domain.ComponentVersions.Instance do
     {:noreply, state}
   end
 
+  @impl true
+  def handle_info(:force_refesh, state) do
+    refresh_versions()
+    {:noreply, state}
+  end
+
   def component_version(component) do
     case :ets.lookup(@ets_table_name, component) do
       [] -> "0.0.0"

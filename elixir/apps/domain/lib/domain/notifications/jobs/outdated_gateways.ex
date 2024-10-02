@@ -8,13 +8,25 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
   require OpenTelemetry.Tracer
 
   alias Domain.Actors
-  alias Domain.{Accounts, Gateways}
+  alias Domain.{Accounts, Gateways, Mailer}
 
   @impl true
   def execute(_config) do
+    case Mix.env() do
+      :prod ->
+        # This job should only run on Sundays for prod environments
+        day_of_week = Date.utc_today() |> Date.day_of_week()
+        if day_of_week == 7, do: run_check()
+
+      _ ->
+        run_check()
+    end
+  end
+
+  defp run_check do
     Accounts.all_active_paid_accounts!()
     |> Enum.filter(fn account ->
-      account_ready_for_outdated_notification?(account)
+      !notified_today?(account)
     end)
     |> Enum.each(fn account ->
       all_online_gateways_for_account(account)
@@ -50,11 +62,20 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
   end
 
   defp send_email(account, gateways, email) do
-    Domain.Mailer.Notifications.outdated_gateway_email(account, gateways, email)
-    |> Domain.Mailer.deliver_with_rate_limit()
+    Mailer.Notifications.outdated_gateway_email(account, gateways, email)
+    |> Mailer.deliver_with_rate_limit()
   end
 
-  defp account_ready_for_outdated_notification?(_account) do
-    true
+  def notified_today?(%Accounts.Account{} = account) do
+    last_notification = last_notified(account.config.notifications)
+
+    if is_nil(last_notification) do
+      false
+    else
+      DateTime.diff(DateTime.utc_now(), last_notification, :hour) < 24
+    end
   end
+
+  defp last_notified(%{outdated_gateway: %{last_notified: datetime}}), do: datetime
+  defp last_notified(_), do: nil
 end

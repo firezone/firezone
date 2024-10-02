@@ -26,7 +26,20 @@ defmodule Domain.ComponentVersions do
   def fetch_versions do
     config = fetch_config!()
     releases_url = Keyword.fetch!(config, :firezone_releases_url)
+    from_url? = Keyword.fetch!(config, :from_url)
 
+    if from_url? do
+      fetch_versions_from_url(releases_url)
+    else
+      {:ok, Keyword.fetch!(config, :versions)}
+    end
+  end
+
+  defp fetch_config! do
+    Domain.Config.fetch_env!(:domain, __MODULE__)
+  end
+
+  defp fetch_versions_from_url(releases_url) do
     request =
       Finch.build(:get, releases_url, [])
 
@@ -51,9 +64,5 @@ defmodule Domain.ComponentVersions do
         Logger.error("Can't fetch Firezone versions", reason: inspect(reason))
         {:error, reason}
     end
-  end
-
-  defp fetch_config! do
-    Domain.Config.fetch_env!(:domain, __MODULE__)
   end
 end

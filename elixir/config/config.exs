@@ -76,7 +76,15 @@ config :domain, Domain.GoogleCloudPlatform,
   cloud_storage_url: "https://storage.googleapis.com"
 
 config :domain, Domain.ComponentVersions,
-  firezone_releases_url: "https://www.firezone.dev/api/releases"
+  firezone_releases_url: "https://www.firezone.dev/api/releases",
+  from_url: true,
+  versions: %{
+    "apple" => "1.0.0",
+    "android" => "1.0.0",
+    "gateway" => "1.0.0",
+    "gui" => "1.0.0",
+    "headless" => "1.0.0"
+  }
 
 config :domain, Domain.Cluster,
   adapter: nil,
