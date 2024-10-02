@@ -84,6 +84,11 @@ pub(crate) enum Transition {
 
     /// Idle connlib for a while.
     Idle,
+
+    /// Simulate all relays rebooting while we are network partitioned from the portal.
+    ///
+    /// In this case, we won't receive a `relays_presence` but instead we will receive relays with the same ID yet different credentials.
+    RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
 }
 
 #[derive(Debug, Clone)]
