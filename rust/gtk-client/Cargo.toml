@@ -2,7 +2,8 @@
 authors = ["Firezone, Inc."]
 description = "Firezone"
 name = "firezone-gui-client"
-version = "0.1.0"
+# mark:next-gui-version
+version = "1.3.7"
 edition = "2021"
 
 [dependencies]
