@@ -173,6 +173,7 @@ fn main() -> Result<()> {
         firezone_id,
         cli.firezone_name,
         public_key.to_bytes(),
+        device_id::device_info(),
     )?;
 
     if cli.check {

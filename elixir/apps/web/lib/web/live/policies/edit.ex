@@ -163,19 +163,19 @@ defmodule Web.Policies.Edit do
               </fieldset>
 
               <.conditions_form
-                :if={@selected_resource.type != :internet}
+                :if={not is_nil(@selected_resource)}
                 form={@form}
                 account={@account}
                 timezone={@timezone}
                 providers={@providers}
+                selected_resource={@selected_resource}
               />
 
               <.options_form
-                :if={@selected_resource.type == :internet}
+                :if={not is_nil(@selected_resource)}
                 form={@form}
                 account={@account}
-                timezone={@timezone}
-                providers={@providers}
+                selected_resource={@selected_resource}
               />
             </div>
 
