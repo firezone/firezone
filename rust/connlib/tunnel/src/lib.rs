@@ -5,7 +5,6 @@
 
 use crate::messages::{Offer, Relay, ResolveRequest, SecretKey};
 use bimap::BiMap;
-use boringtun::x25519::StaticSecret;
 use chrono::Utc;
 use connlib_model::{
     ClientId, DomainName, GatewayId, PublicKey, RelayId, ResourceId, ResourceView,
@@ -13,7 +12,6 @@ use connlib_model::{
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::MAX_DATAGRAM_PAYLOAD;
-use rand::rngs::OsRng;
 use socket_factory::{SocketFactory, UdpSocket};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -341,13 +339,6 @@ pub enum GatewayEvent {
         conn_id: ClientId,
         resource_id: ResourceId,
     },
-}
-
-pub fn keypair() -> (StaticSecret, PublicKey) {
-    let private_key = StaticSecret::random_from_rng(OsRng);
-    let public_key = PublicKey::from(&private_key);
-
-    (private_key, public_key)
 }
 
 fn fmt_routes<T>(routes: &BTreeSet<T>, f: &mut fmt::Formatter) -> fmt::Result
