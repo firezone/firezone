@@ -112,4 +112,44 @@ defmodule Web.Live.Sites.IndexTest do
       assert row["online gateways"] =~ gateway.name
     end)
   end
+
+  test "renders internet site with an option to upgrade on free plans", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, group} = Domain.Gateways.create_internet_group(account)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/sites")
+
+    assert has_element?(lv, "#internet-site-banner")
+    assert lv |> element("#internet-site-banner") |> render() =~ "UPGRADE TO UNLOCK"
+    assert has_element?(lv, "#internet-site-banner a[href='/#{account.slug}/settings/billing']")
+
+    refute has_element?(lv, "#internet-site-banner a[href='/#{account.slug}/sites/#{group.id}']")
+  end
+
+  test "renders internet site with a status and manage button on paid plans", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    account = Fixtures.Accounts.update_account(account, features: %{internet_resource: true})
+
+    {:ok, group} = Domain.Gateways.create_internet_group(account)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/sites")
+
+    assert has_element?(lv, "#internet-site-banner")
+    assert lv |> element("#internet-site-banner") |> render() =~ "Offline"
+    refute has_element?(lv, "#internet-site-banner a[href='/#{account.slug}/settings/billing']")
+
+    assert has_element?(lv, "#internet-site-banner a[href='/#{account.slug}/sites/#{group.id}']")
+  end
 end

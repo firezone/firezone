@@ -182,7 +182,7 @@ defmodule Web.Sites.Index do
 
     <% internet_gateway_group =
       Enum.find(assigns.managed_groups, fn group -> group.name == "Internet" end) %>
-    <.section :if={internet_gateway_group}>
+    <.section :if={internet_gateway_group} id="internet-site-banner">
       <:title>
         <div class="flex items-center space-x-2.5">
           <span>Internet</span>
