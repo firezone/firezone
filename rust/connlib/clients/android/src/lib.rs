@@ -350,7 +350,7 @@ fn connect(
     let log_filter = string_from_jstring!(env, log_filter);
     let device_info = string_from_jstring!(env, device_info);
 
-    let device_info: HashMap<String, String> = serde_json::from_str(&device_info).unwrap();
+    let device_info = serde_json::from_str(&device_info).unwrap();
 
     let handle = init_logging(&PathBuf::from(log_dir), log_filter);
     install_rustls_crypto_provider();
@@ -368,7 +368,7 @@ fn connect(
         device_id,
         Some(device_name),
         public_key.to_bytes(),
-        &device_info,
+        device_info,
     )?;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
