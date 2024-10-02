@@ -147,7 +147,7 @@ fn parse_dns_response(packet: &IpPacket) -> Option<(Rtype, ParsedName<&[u8]>, St
 
             Some(data)
         })
-        .join(",");
+        .join(" | ");
     let id = message.header().id();
 
     Some((qtype, qname, records, rcode, id))
