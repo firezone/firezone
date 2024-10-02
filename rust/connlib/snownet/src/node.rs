@@ -177,6 +177,11 @@ where
         self.connections.clear();
         self.buffered_transmits.clear();
 
+        self.private_key = StaticSecret::random_from_rng(&mut self.rng);
+        self.public_key = (&self.private_key).into();
+        self.rate_limiter = Arc::new(RateLimiter::new(&self.public_key, HANDSHAKE_RATE_LIMIT));
+        self.session_id = SessionId::new(self.public_key);
+
         tracing::debug!(%num_connections, "Closed all connections as part of reconnecting");
     }
 
