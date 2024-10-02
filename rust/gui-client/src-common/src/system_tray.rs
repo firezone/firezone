@@ -1,7 +1,7 @@
 use crate::updates::Release;
 use connlib_shared::{
-    callbacks::{ResourceDescription, Status},
     messages::ResourceId,
+    view::{ResourceDescription, Status},
 };
 use std::collections::HashSet;
 use url::Url;

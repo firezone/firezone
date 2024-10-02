@@ -9,7 +9,7 @@ use connlib_client_shared::{
     keypair, Callbacks, ConnectArgs, DisconnectError, LoginUrl, LoginUrlError, Session,
     V4RouteList, V6RouteList,
 };
-use connlib_shared::{callbacks::ResourceDescription, get_user_agent, messages::ResourceId};
+use connlib_shared::{get_user_agent, messages::ResourceId, view::ResourceDescription};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},

@@ -3,14 +3,14 @@ use crate::peer_store::PeerStore;
 use crate::{dns, TunConfig};
 use anyhow::Context;
 use bimap::BiMap;
-use connlib_shared::callbacks::Status;
 use connlib_shared::messages::client::{Site, SiteId};
 use connlib_shared::messages::ResolveRequest;
 use connlib_shared::messages::{
     client::ResourceDescription, client::ResourceDescriptionCidr, Answer, DnsServer, GatewayId,
     Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId, ResourceId,
 };
-use connlib_shared::{callbacks, PublicKey, StaticSecret};
+use connlib_shared::view::Status;
+use connlib_shared::{view, PublicKey, StaticSecret};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
@@ -317,7 +317,7 @@ impl ClientState {
         self.node.num_connections()
     }
 
-    pub(crate) fn resources(&self) -> Vec<callbacks::ResourceDescription> {
+    pub(crate) fn resources(&self) -> Vec<view::ResourceDescription> {
         self.resources_by_id
             .values()
             .cloned()
@@ -1622,8 +1622,6 @@ mod proptests {
         #[strategy(dns_resource())] resource2: ResourceDescriptionDns,
         #[strategy(cidr_resource())] resource3: ResourceDescriptionCidr,
     ) {
-        use callbacks as cb;
-
         let mut client_state = ClientState::for_test();
 
         client_state.add_resource(ResourceDescription::Cidr(resource1.clone()));
@@ -1632,8 +1630,8 @@ mod proptests {
         assert_eq!(
             hashset(client_state.resources()),
             hashset([
-                cb::ResourceDescription::Cidr(resource1.clone().with_status(Status::Unknown)),
-                cb::ResourceDescription::Dns(resource2.clone().with_status(Status::Unknown))
+                view::ResourceDescription::Cidr(resource1.clone().with_status(Status::Unknown)),
+                view::ResourceDescription::Dns(resource2.clone().with_status(Status::Unknown))
             ])
         );
 
@@ -1642,9 +1640,9 @@ mod proptests {
         assert_eq!(
             hashset(client_state.resources()),
             hashset([
-                cb::ResourceDescription::Cidr(resource1.with_status(Status::Unknown)),
-                cb::ResourceDescription::Dns(resource2.with_status(Status::Unknown)),
-                cb::ResourceDescription::Cidr(resource3.with_status(Status::Unknown)),
+                view::ResourceDescription::Cidr(resource1.with_status(Status::Unknown)),
+                view::ResourceDescription::Dns(resource2.with_status(Status::Unknown)),
+                view::ResourceDescription::Cidr(resource3.with_status(Status::Unknown)),
             ])
         );
     }
@@ -1654,8 +1652,6 @@ mod proptests {
         #[strategy(cidr_resource())] resource: ResourceDescriptionCidr,
         #[strategy(any_ip_network(8))] new_address: IpNetwork,
     ) {
-        use callbacks as cb;
-
         let mut client_state = ClientState::for_test();
         client_state.add_resource(ResourceDescription::Cidr(resource.clone()));
 
@@ -1668,7 +1664,7 @@ mod proptests {
 
         assert_eq!(
             hashset(client_state.resources()),
-            hashset([cb::ResourceDescription::Cidr(
+            hashset([view::ResourceDescription::Cidr(
                 updated_resource.with_status(Status::Unknown)
             )])
         );
@@ -1683,8 +1679,6 @@ mod proptests {
         #[strategy(dns_resource())] resource: ResourceDescriptionDns,
         #[strategy(any_ip_network(8))] address: IpNetwork,
     ) {
-        use callbacks as cb;
-
         let mut client_state = ClientState::for_test();
         client_state.add_resource(ResourceDescription::Dns(resource.clone()));
 
@@ -1700,7 +1694,7 @@ mod proptests {
 
         assert_eq!(
             hashset(client_state.resources()),
-            hashset([cb::ResourceDescription::Cidr(
+            hashset([view::ResourceDescription::Cidr(
                 dns_as_cidr_resource.with_status(Status::Unknown)
             )])
         );
@@ -1715,8 +1709,6 @@ mod proptests {
         #[strategy(dns_resource())] dns_resource: ResourceDescriptionDns,
         #[strategy(cidr_resource())] cidr_resource: ResourceDescriptionCidr,
     ) {
-        use callbacks as cb;
-
         let mut client_state = ClientState::for_test();
         client_state.add_resource(ResourceDescription::Dns(dns_resource.clone()));
         client_state.add_resource(ResourceDescription::Cidr(cidr_resource.clone()));
@@ -1725,7 +1717,7 @@ mod proptests {
 
         assert_eq!(
             hashset(client_state.resources()),
-            hashset([cb::ResourceDescription::Cidr(
+            hashset([view::ResourceDescription::Cidr(
                 cidr_resource.clone().with_status(Status::Unknown)
             )])
         );
@@ -1747,8 +1739,6 @@ mod proptests {
         #[strategy(cidr_resource())] cidr_resource1: ResourceDescriptionCidr,
         #[strategy(cidr_resource())] cidr_resource2: ResourceDescriptionCidr,
     ) {
-        use callbacks as cb;
-
         let mut client_state = ClientState::for_test();
         client_state.add_resource(ResourceDescription::Dns(dns_resource1));
         client_state.add_resource(ResourceDescription::Cidr(cidr_resource1));
@@ -1761,8 +1751,10 @@ mod proptests {
         assert_eq!(
             hashset(client_state.resources()),
             hashset([
-                cb::ResourceDescription::Dns(dns_resource2.with_status(Status::Unknown)),
-                cb::ResourceDescription::Cidr(cidr_resource2.clone().with_status(Status::Unknown)),
+                view::ResourceDescription::Dns(dns_resource2.with_status(Status::Unknown)),
+                view::ResourceDescription::Cidr(
+                    cidr_resource2.clone().with_status(Status::Unknown)
+                ),
             ])
         );
         assert_eq!(

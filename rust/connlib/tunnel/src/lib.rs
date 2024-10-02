@@ -7,9 +7,8 @@ use bimap::BiMap;
 use boringtun::x25519::StaticSecret;
 use chrono::Utc;
 use connlib_shared::{
-    callbacks,
     messages::{ClientId, GatewayId, Offer, Relay, RelayId, ResolveRequest, ResourceId, SecretKey},
-    DomainName, PublicKey,
+    view, DomainName, PublicKey,
 };
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -300,7 +299,7 @@ pub enum ClientEvent {
     },
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {
-        resources: Vec<callbacks::ResourceDescription>,
+        resources: Vec<view::ResourceDescription>,
     },
     TunInterfaceUpdated(TunConfig),
 }

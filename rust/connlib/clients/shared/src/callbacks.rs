@@ -1,4 +1,4 @@
-use connlib_shared::callbacks::ResourceDescription;
+use connlib_shared::view::ResourceDescription;
 use ip_network::{Ipv4Network, Ipv6Network};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 

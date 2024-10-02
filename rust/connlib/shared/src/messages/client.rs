@@ -6,7 +6,7 @@ use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::callbacks::Status;
+use crate::view::Status;
 
 use super::ResourceId;
 use itertools::Itertools;
@@ -29,8 +29,8 @@ pub struct ResourceDescriptionDns {
 }
 
 impl ResourceDescriptionDns {
-    pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionDns {
-        crate::callbacks::ResourceDescriptionDns {
+    pub fn with_status(self, status: Status) -> crate::view::ResourceDescriptionDns {
+        crate::view::ResourceDescriptionDns {
             id: self.id,
             address: self.address,
             name: self.name,
@@ -59,8 +59,8 @@ pub struct ResourceDescriptionCidr {
 }
 
 impl ResourceDescriptionCidr {
-    pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionCidr {
-        crate::callbacks::ResourceDescriptionCidr {
+    pub fn with_status(self, status: Status) -> crate::view::ResourceDescriptionCidr {
+        crate::view::ResourceDescriptionCidr {
             id: self.id,
             address: self.address,
             name: self.name,
@@ -91,8 +91,8 @@ pub struct ResourceDescriptionInternet {
 }
 
 impl ResourceDescriptionInternet {
-    pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescriptionInternet {
-        crate::callbacks::ResourceDescriptionInternet {
+    pub fn with_status(self, status: Status) -> crate::view::ResourceDescriptionInternet {
+        crate::view::ResourceDescriptionInternet {
             name: self.name,
             id: self.id,
             sites: self.sites,
@@ -207,16 +207,16 @@ impl ResourceDescription {
         }
     }
 
-    pub fn with_status(self, status: Status) -> crate::callbacks::ResourceDescription {
+    pub fn with_status(self, status: Status) -> crate::view::ResourceDescription {
         match self {
             ResourceDescription::Dns(r) => {
-                crate::callbacks::ResourceDescription::Dns(r.with_status(status))
+                crate::view::ResourceDescription::Dns(r.with_status(status))
             }
             ResourceDescription::Cidr(r) => {
-                crate::callbacks::ResourceDescription::Cidr(r.with_status(status))
+                crate::view::ResourceDescription::Cidr(r.with_status(status))
             }
             ResourceDescription::Internet(r) => {
-                crate::callbacks::ResourceDescription::Internet(r.with_status(status))
+                crate::view::ResourceDescription::Internet(r.with_status(status))
             }
         }
     }

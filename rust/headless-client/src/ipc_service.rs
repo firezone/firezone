@@ -5,7 +5,7 @@ use crate::{
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{keypair, ConnectArgs, LoginUrl};
-use connlib_shared::callbacks::ResourceDescription;
+use connlib_shared::view::ResourceDescription;
 use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,

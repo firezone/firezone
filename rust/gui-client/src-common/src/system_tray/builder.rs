@@ -1,6 +1,6 @@
 //! An abstraction over Tauri's system tray menu structs, that implements `PartialEq` for unit testing
 
-use connlib_shared::{callbacks::ResourceDescription, messages::ResourceId};
+use connlib_shared::{messages::ResourceId, view::ResourceDescription};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
