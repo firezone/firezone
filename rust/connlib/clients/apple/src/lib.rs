@@ -220,7 +220,7 @@ impl WrappedSession {
             tcp_socket_factory: Arc::new(socket_factory::tcp),
             udp_socket_factory: Arc::new(socket_factory::udp),
         };
-        let portal = PhoenixChannel::connect(
+        let portal = PhoenixChannel::disconnected(
             Secret::new(url),
             get_user_agent(os_version_override, env!("CARGO_PKG_VERSION")),
             "client",

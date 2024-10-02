@@ -370,7 +370,6 @@ impl ClientState {
         }
     }
 
-    #[cfg(all(feature = "proptest", test))]
     pub(crate) fn public_key(&self) -> PublicKey {
         self.node.public_key()
     }

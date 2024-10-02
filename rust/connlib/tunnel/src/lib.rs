@@ -94,6 +94,10 @@ impl ClientTunnel {
         }
     }
 
+    pub fn public_key(&self) -> PublicKey {
+        self.role_state.public_key()
+    }
+
     pub fn reset(&mut self) {
         self.role_state.reset();
         self.io.rebind_sockets();
@@ -186,6 +190,10 @@ impl GatewayTunnel {
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             encrypt_buf: EncryptBuffer::new(MAX_DATAGRAM_PAYLOAD),
         }
+    }
+
+    pub fn public_key(&self) -> PublicKey {
+        self.role_state.public_key()
     }
 
     pub fn update_relays(&mut self, to_remove: BTreeSet<RelayId>, to_add: Vec<Relay>) {

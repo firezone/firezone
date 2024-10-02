@@ -12,7 +12,7 @@ use connlib_model::ResourceId;
 use eventloop::Command;
 use firezone_telemetry as telemetry;
 use firezone_tunnel::ClientTunnel;
-use phoenix_channel::PhoenixChannel;
+use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::IpAddr;
@@ -48,7 +48,7 @@ impl Session {
     /// This connects to the portal using the given [`LoginUrl`](phoenix_channel::LoginUrl) and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
         args: ConnectArgs<CB>,
-        portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+        portal: PhoenixChannel<(), IngressMessages, ReplyMessages, PublicKeyParam>,
         handle: tokio::runtime::Handle,
     ) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -118,7 +118,7 @@ impl Session {
 /// When this function exits, the tunnel failed unrecoverably and you need to call it again.
 async fn connect<CB>(
     args: ConnectArgs<CB>,
-    portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+    portal: PhoenixChannel<(), IngressMessages, ReplyMessages, PublicKeyParam>,
     rx: UnboundedReceiver<Command>,
 ) -> Result<(), DisconnectError>
 where

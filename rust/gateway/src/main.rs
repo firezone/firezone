@@ -14,7 +14,7 @@ use phoenix_channel::LoginUrl;
 
 use futures::channel::mpsc;
 use futures::{future, StreamExt, TryFutureExt};
-use phoenix_channel::PhoenixChannel;
+use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use secrecy::{Secret, SecretString};
 use std::convert::Infallible;
 use std::path::Path;
@@ -104,9 +104,9 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
     Ok(id)
 }
 
-async fn run(login: LoginUrl) -> Result<Infallible> {
+async fn run(login: LoginUrl<PublicKeyParam>) -> Result<Infallible> {
     let mut tunnel = GatewayTunnel::new(Arc::new(tcp_socket_factory), Arc::new(udp_socket_factory));
-    let portal = PhoenixChannel::connect(
+    let portal = PhoenixChannel::disconnected(
         Secret::new(login),
         get_user_agent(None, env!("CARGO_PKG_VERSION")),
         PHOENIX_TOPIC,

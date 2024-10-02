@@ -377,7 +377,7 @@ fn connect(
         udp_socket_factory: Arc::new(protected_udp_socket_factory(callbacks.clone())),
         callbacks,
     };
-    let portal = PhoenixChannel::connect(
+    let portal = PhoenixChannel::disconnected(
         Secret::new(url),
         get_user_agent(Some(os_version), env!("CARGO_PKG_VERSION")),
         "client",

@@ -204,7 +204,7 @@ fn main() -> Result<()> {
         // for an Internet connection if it launches us at startup.
         // When running interactively, it is useful for the user to see that we can't reach the portal.
         let phoenix_span = transaction.start_child("phoenix", "Connect PhoenixChannel");
-        let portal = PhoenixChannel::connect(
+        let portal = PhoenixChannel::disconnected(
             Secret::new(url),
             get_user_agent(None, env!("CARGO_PKG_VERSION")),
             "client",

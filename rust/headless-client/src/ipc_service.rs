@@ -547,7 +547,7 @@ impl<'a> Handler<'a> {
 
         // Synchronous DNS resolution here
         let phoenix_span = transaction.start_child("phoenix", "Resolve DNS for PhoenixChannel");
-        let portal = PhoenixChannel::connect(
+        let portal = PhoenixChannel::disconnected(
             Secret::new(url),
             get_user_agent(None, env!("CARGO_PKG_VERSION")),
             "client",
