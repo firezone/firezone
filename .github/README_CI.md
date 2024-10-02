@@ -1,5 +1,11 @@
 # CI Tips and Tricks
 
+## Rotating signing secrets
+
+- Apple: see [../swift/apple/README.md](../swift/apple/README.md)
+- Android: see [../kotlin/android/README.md](../kotlin/android/README.md)
+- Windows: see [../rust/gui-client/README.md](../rust/gui-client/README.md)
+
 ## Batch-deleting workflow runs
 
 Manually disable the workflows to be cleaned up, then run this:
