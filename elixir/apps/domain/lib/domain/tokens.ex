@@ -41,7 +41,7 @@ defmodule Domain.Tokens do
 
   def all_active_browser_session_tokens! do
     Token.Query.not_deleted()
-    |> Token.Query.not_expired()
+    |> Token.Query.expires_in(15, :minute)
     |> Token.Query.by_type(:browser)
     |> Repo.all()
   end

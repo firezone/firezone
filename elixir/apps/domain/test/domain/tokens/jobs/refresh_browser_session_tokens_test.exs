@@ -29,7 +29,8 @@ defmodule Domain.Tokens.Jobs.RefreshBrowserSessionTokensTest do
         Fixtures.Tokens.create_token(
           account: account,
           provider: provider,
-          identity: identity
+          identity: identity,
+          expires_at: DateTime.utc_now() |> DateTime.add(3, :minute)
         )
 
       {id_token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
@@ -84,7 +85,8 @@ defmodule Domain.Tokens.Jobs.RefreshBrowserSessionTokensTest do
         Fixtures.Tokens.create_token(
           account: account,
           provider: provider,
-          identity: identity
+          identity: identity,
+          expires_at: DateTime.utc_now() |> DateTime.add(3, :minute)
         )
 
       Mocks.OpenIDConnect.expect_refresh_token_failure(bypass)
@@ -108,7 +110,8 @@ defmodule Domain.Tokens.Jobs.RefreshBrowserSessionTokensTest do
         Fixtures.Tokens.create_token(
           account: account,
           provider: provider,
-          identity: identity
+          identity: identity,
+          expires_at: DateTime.utc_now() |> DateTime.add(3, :minute)
         )
 
       Bypass.down(bypass)
@@ -133,7 +136,8 @@ defmodule Domain.Tokens.Jobs.RefreshBrowserSessionTokensTest do
         Fixtures.Tokens.create_token(
           account: account,
           provider: provider,
-          identity: identity
+          identity: identity,
+          expires_at: DateTime.utc_now() |> DateTime.add(3, :minute)
         )
 
       assert execute(%{}) == :ok
