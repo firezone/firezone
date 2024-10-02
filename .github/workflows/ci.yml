@@ -19,8 +19,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
 jobs:
-  elixir:
-    uses: ./.github/workflows/_elixir.yml
   gtk:
     uses: ./.github/workflows/_gtk.yml
   kotlin:
@@ -29,6 +27,8 @@ jobs:
   swift:
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
+  elixir:
+    uses: ./.github/workflows/_elixir.yml
   rust:
     uses: ./.github/workflows/_rust.yml
     secrets: inherit
