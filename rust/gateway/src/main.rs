@@ -2,7 +2,7 @@ use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_model::{LoginUrl, StaticSecret};
+use connlib_model::StaticSecret;
 use firezone_bin_shared::{
     http_health_check,
     linux::{tcp_socket_factory, udp_socket_factory},
@@ -11,6 +11,7 @@ use firezone_bin_shared::{
 use firezone_tunnel::messages::Interface;
 use firezone_tunnel::{keypair, GatewayTunnel, IPV4_PEERS, IPV6_PEERS};
 use phoenix_channel::get_user_agent;
+use phoenix_channel::LoginUrl;
 
 use futures::channel::mpsc;
 use futures::{future, StreamExt, TryFutureExt};

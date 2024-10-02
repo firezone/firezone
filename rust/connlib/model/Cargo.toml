@@ -12,7 +12,6 @@ boringtun = { workspace = true }
 domain = { workspace = true }
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
 itertools = "0.13"
-phoenix-channel = { workspace = true }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 uuid = { version = "1.10", default-features = false, features = ["std", "v4", "serde"] }
 

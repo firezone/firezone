@@ -1312,7 +1312,6 @@ dependencies = [
  "domain",
  "ip_network",
  "itertools 0.13.0",
- "phoenix-channel",
  "serde",
  "uuid",
 ]

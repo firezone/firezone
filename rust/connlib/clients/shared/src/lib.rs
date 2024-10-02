@@ -1,7 +1,7 @@
 //! Main connlib library for clients.
 pub use crate::serde_routelist::{V4RouteList, V6RouteList};
 pub use callbacks::{Callbacks, DisconnectError};
-pub use connlib_model::{LoginUrl, LoginUrlError, StaticSecret};
+pub use connlib_model::StaticSecret;
 pub use eventloop::Eventloop;
 pub use firezone_tunnel::keypair;
 pub use firezone_tunnel::messages::client::ResourceDescription;
