@@ -150,12 +150,12 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
     }
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
-    let mut signals = signals::Terminate::new()?;
+    let signals = signals::Terminate::new()?;
 
     rt.block_on(ipc_listen(
         cli.common.dns_control,
         &log_filter_reloader,
-        &mut signals,
+        signals,
     ))
 }
 
@@ -201,6 +201,8 @@ fn run_smoke_test() -> Result<()> {
     })
 }
 
+// struct TunnelDaemon {}
+
 /// Run the IPC service and terminate gracefully if we catch a terminate signal
 ///
 /// If an IPC client is connected when we catch a terminate signal, we send the
@@ -208,7 +210,7 @@ fn run_smoke_test() -> Result<()> {
 async fn ipc_listen(
     dns_control_method: DnsControlMethod,
     log_filter_reloader: &LogFilterReloader,
-    signals: &mut signals::Terminate,
+    mut signals: signals::Terminate,
 ) -> Result<()> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
@@ -238,7 +240,7 @@ async fn ipc_listen(
             break;
         };
         let mut handler = handler?;
-        if let HandlerOk::ServiceTerminating = handler.run(signals).await {
+        if let HandlerOk::ServiceTerminating = handler.run(&mut signals).await {
             break;
         }
     }
