@@ -49,6 +49,32 @@ stat ../target/release/Firezone.exe
 stat ../target/release/bundle/msi/Firezone_0.0.0_x64_en-US.msi
 ```
 
+## Signing the Windows MSI in GitHub CI
+
+The MSI is signed in GitHub CI using the `firezone/firezone` repository's
+secrets. This was originally set up using these guides for inspiration:
+
+- https://melatonin.dev/blog/how-to-code-sign-windows-installers-with-an-ev-cert-on-github-actions/
+- https://support.globalsign.com/code-signing/code-signing-using-azure-key-vault
+
+Renewing / issuing a new code signing certificate and associated Azure entities is outside the scope of this section. Use the guides above if this needs to be done.
+
+Instead, you'll most likely simply need to rotate the Azure `CodeSigning` Application's client secret.
+
+To do so, login to [the Azure portal](https://portal.azure.com) using your `@firezoneprod.onmicrosoft.com` account.
+Try to access it via the following [deep-link](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Credentials/appId/51da0daa-39dd-4890-9018-e02609efc9c8).
+If that doesn't work:
+
+
+
+- Go to the `Microsoft Entra ID` service
+- Click on `App Registrations`
+- Make sure the tab `All applications` is selected
+- Find and navigate to the `CodeSigning` app registration
+- Client on `client credentials`
+- Click `New client secret`
+- Note down the secret value. This should be entered into the GitHub repository's secrets as `AZURE_CLIENT_SECRET`.
+
 ## Running
 
 From this dir:
