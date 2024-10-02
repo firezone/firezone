@@ -16,8 +16,6 @@ defmodule Domain.Clients.Client.Changeset do
     do: {:unsafe_fragment, ~s/(account_id, actor_id, external_id) WHERE deleted_at IS NULL/}
 
   def upsert_on_conflict do
-    # dynamic = dynamic([clients: client], )
-
     Clients.Client.Query.all()
     |> update([clients: clients],
       set: [
