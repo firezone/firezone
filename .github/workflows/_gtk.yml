@@ -34,9 +34,9 @@ jobs:
       - name: Install deps
         run: sudo apt-get update && sudo apt-get install libgtk-3-dev libxdo-dev
         # Unfortunately the Tauri deps got hauled in because the IPC service depends on the Tauri GUI
-      - uses: ./.github/actions/setup-tauri
+      #- uses: ./.github/actions/setup-tauri
         # Installing new packages can take time
-        timeout-minutes: 10
+      #  timeout-minutes: 10
       - name: Clippy
         run: cargo clippy --all-targets
       - name: Test
@@ -48,6 +48,7 @@ jobs:
         with:
           # mark:next-gui-version
           name: firezone-client-gui-linux_1.3.7_x86_64-pkg
-          path: target/debian/firezone-client-gui.deb
+          # This ignores the working dir or something
+          path: rust/gtk-client/target/debian/firezone-client-gui.deb
           if-no-files-found: error
         # TODO: Upload debug symbols
