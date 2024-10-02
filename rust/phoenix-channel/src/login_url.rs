@@ -55,6 +55,7 @@ impl LoginUrl {
         public_key: [u8; 32],
         device_info: DeviceInfo,
     ) -> Result<Self, LoginUrlError<E>> {
+        let external_id = hex::encode(sha2::Sha256::digest(device_id));
         let device_name = device_name
             .or(get_host_name())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
@@ -64,7 +65,7 @@ impl LoginUrl {
             firezone_token,
             "client",
             Some(public_key),
-            Some(device_id),
+            Some(external_id),
             Some(device_name),
             None,
             None,
