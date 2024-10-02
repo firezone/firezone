@@ -1354,6 +1354,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "firezone-gui-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "firezone-bin-shared",
+ "firezone-gui-client-common",
+ "firezone-headless-client",
+ "firezone-logging",
+ "firezone-telemetry",
+ "glib",
+ "gtk",
+ "open",
+ "secrecy",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tray-icon",
+ "url",
+]
+
+[[package]]
 name = "firezone-gui-client-common"
 version = "1.3.7"
 dependencies = [
@@ -1423,6 +1445,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_variant",
+ "smbios-lib",
  "thiserror",
  "tokio",
  "tokio-stream",
@@ -1734,6 +1757,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "getopts"
+version = "0.2.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14dbbfd5c71d70241ecf9e6f13737f7b5ce823821063188d7e46c41d371eebd5"
+dependencies = [
+ "unicode-width",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1885,28 +1917,6 @@ dependencies = [
  "libc",
  "pango",
  "pkg-config",
-]
-
-[[package]]
-name = "gtk-client"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "firezone-bin-shared",
- "firezone-gui-client-common",
- "firezone-headless-client",
- "firezone-logging",
- "firezone-telemetry",
- "glib",
- "gtk",
- "open",
- "secrecy",
- "serde_json",
- "tokio",
- "tracing",
- "tray-icon",
- "url",
 ]
 
 [[package]]
@@ -2196,6 +2206,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "io-kit-sys"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "617ee6cf8e3f66f3b4ea67a4058564628cde41901316e19f559e14c7c72c5e7b"
+dependencies = [
+ "core-foundation-sys",
+ "mach2",
+]
+
+[[package]]
 name = "ip-packet"
 version = "0.1.0"
 dependencies = [
@@ -2468,6 +2488,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37ee39891760e7d94734f6f63fedc29a2e4a152f836120753a72503f09fcf904"
 dependencies = [
  "hashbrown",
+]
+
+[[package]]
+name = "mach2"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19b955cdeb2a02b9117f121ce63aa52d08ade45de53e48fe6a38b39c10f6f709"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -3925,6 +3954,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
 
 [[package]]
+name = "smbios-lib"
+version = "0.9.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48c18320ad3d997a100cb948fc020111936c530eddfde947f467083730e39e72"
+dependencies = [
+ "core-foundation 0.10.0",
+ "core-foundation-sys",
+ "getopts",
+ "io-kit-sys",
+ "libc",
+ "mach2",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "snownet"
 version = "0.1.0"
 dependencies = [
@@ -3935,6 +3980,7 @@ dependencies = [
  "hex",
  "hex-display",
  "ip-packet",
+ "itertools 0.13.0",
  "once_cell",
  "rand",
  "secrecy",
@@ -4601,6 +4647,12 @@ name = "unicode-segmentation"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6ccf251212114b54433ec949fd6a7841275f9ada20dddd2f29e9ceea4501493"
+
+[[package]]
+name = "unicode-width"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
 
 [[package]]
 name = "universal-hash"

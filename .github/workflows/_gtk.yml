@@ -38,5 +38,12 @@ jobs:
       - name: Test
         run: cargo test
       - name: Build
-        run: cargo build --release
-        # TODO: Upload exe and debug symbols
+        run: ./build.sh
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          # mark:next-gui-version
+          name: firezone-client-gui-linux_1.3.7_x86_64-pkg
+          path: target/debian/firezone-client-gui.deb
+          if-no-files-found: error
+        # TODO: Upload debug symbols

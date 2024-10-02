@@ -1,5 +1,7 @@
 [package]
-name = "gtk-client"
+authors = ["Firezone, Inc."]
+description = "Firezone"
+name = "firezone-gui-client"
 version = "0.1.0"
 edition = "2021"
 
@@ -36,3 +38,12 @@ split-debuginfo = "packed"
 strip = "none"
 
 [workspace]
+
+[package.metadata.deb]
+assets = [
+    ["../gui-client/src-tauri/deb_files/sysusers.conf", "usr/lib/sysusers.d/firezone-client-ipc.conf", "644"],
+    ["../gui-client/src-tauri/deb_files/firezone-client-ipc.service", "usr/lib/systemd/system/", "644"],
+    ["../target/release/firezone-client-ipc", "usr/bin/", "755"],
+    ["target/release/firezone-gui-client", "usr/bin/firezone-client-gui", "755"],
+]
+maintainer-scripts = "../gui-client/src-tauri/deb_files"
