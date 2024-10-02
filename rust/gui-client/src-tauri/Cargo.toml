@@ -15,9 +15,9 @@ tauri-build = { version = "1.5", features = [] }
 anyhow = { version = "1.0" }
 atomicwrites = { workspace = true }
 chrono = { workspace = true }
-clap = { version = "4.5", features = ["derive",  "env"] }
+clap = { version = "4.5", features = ["derive", "env"] }
 connlib-client-shared = { workspace = true }
-connlib-shared = { workspace = true }
+connlib-model = { workspace = true }
 firezone-bin-shared = { workspace = true }
 firezone-gui-client-common = { path = "../src-common" }
 firezone-headless-client = { path = "../../headless-client" }
@@ -32,7 +32,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 subtle = "2.5.0"
 # `notification` is not needed on Windows, but if we remove it, Tauri's bundler will just add it back. #6597
-tauri = { version = "1.7.1", features = [ "dialog", "icon-png", "notification", "shell-open-api", "system-tray" ] }
+tauri = { version = "1.7.1", features = ["dialog", "icon-png", "notification", "shell-open-api", "system-tray"] }
 tauri-runtime = "0.14.5"
 tauri-utils = "1.6.0"
 thiserror = { version = "1.0", default-features = false }

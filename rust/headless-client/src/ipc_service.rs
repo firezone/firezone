@@ -5,7 +5,7 @@ use crate::{
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
 use connlib_client_shared::{keypair, ConnectArgs, LoginUrl};
-use connlib_shared::ResourceView;
+use connlib_model::ResourceView;
 use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
@@ -26,7 +26,7 @@ use url::Url;
 
 pub mod ipc;
 use backoff::ExponentialBackoffBuilder;
-use connlib_shared::{get_user_agent, ResourceId};
+use connlib_model::{get_user_agent, ResourceId};
 use ipc::{Server as IpcServer, ServiceId};
 use phoenix_channel::PhoenixChannel;
 use secrecy::Secret;

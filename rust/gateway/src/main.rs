@@ -2,7 +2,7 @@ use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_shared::{get_user_agent, LoginUrl, StaticSecret};
+use connlib_model::{get_user_agent, LoginUrl, StaticSecret};
 use firezone_bin_shared::{
     http_health_check,
     linux::{tcp_socket_factory, udp_socket_factory},

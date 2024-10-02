@@ -7,7 +7,7 @@ use crate::{GatewayEvent, GatewayTunnel};
 use anyhow::Context;
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
-use connlib_shared::{ClientId, DomainName, RelayId, ResourceId, StaticSecret};
+use connlib_model::{ClientId, DomainName, RelayId, ResourceId, StaticSecret};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::IpPacket;
 use secrecy::{ExposeSecret as _, Secret};

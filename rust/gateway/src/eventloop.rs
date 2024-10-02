@@ -4,8 +4,8 @@ use crate::messages::{
 };
 use anyhow::Result;
 use boringtun::x25519::PublicKey;
-use connlib_shared::DomainName;
-use connlib_shared::{ClientId, ResourceId};
+use connlib_model::DomainName;
+use connlib_model::{ClientId, ResourceId};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use firezone_tunnel::messages::GatewayResponse;

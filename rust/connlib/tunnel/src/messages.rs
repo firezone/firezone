@@ -2,7 +2,7 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
-use connlib_shared::{GatewayId, RelayId, ResourceId};
+use connlib_model::{GatewayId, RelayId, ResourceId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use std::fmt;

@@ -5,8 +5,8 @@ use std::collections::BTreeSet;
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 
-use connlib_shared::ResourceId;
-use connlib_shared::{
+use connlib_model::ResourceId;
+use connlib_model::{
     CidrResourceView, DnsResourceView, InternetResourceView, ResourceStatus, ResourceView, Site,
 };
 use itertools::Itertools;

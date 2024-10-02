@@ -1232,7 +1232,7 @@ dependencies = [
  "android_log-sys",
  "backoff",
  "connlib-client-shared",
- "connlib-shared",
+ "connlib-model",
  "firezone-logging",
  "ip_network",
  "jni 0.21.1",
@@ -1259,7 +1259,7 @@ dependencies = [
  "anyhow",
  "backoff",
  "connlib-client-shared",
- "connlib-shared",
+ "connlib-model",
  "firezone-logging",
  "ip_network",
  "libc",
@@ -1287,7 +1287,7 @@ dependencies = [
  "backoff",
  "bimap",
  "chrono",
- "connlib-shared",
+ "connlib-model",
  "firezone-telemetry",
  "firezone-tunnel",
  "ip_network",
@@ -1305,7 +1305,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "connlib-shared"
+name = "connlib-model"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
@@ -2235,7 +2235,7 @@ dependencies = [
  "boringtun",
  "chrono",
  "clap",
- "connlib-shared",
+ "connlib-model",
  "dns-lookup",
  "domain",
  "either",
@@ -2271,7 +2271,7 @@ dependencies = [
  "chrono",
  "clap",
  "connlib-client-shared",
- "connlib-shared",
+ "connlib-model",
  "dirs",
  "firezone-bin-shared",
  "firezone-gui-client-common",
@@ -2309,7 +2309,7 @@ dependencies = [
  "anyhow",
  "arboard",
  "atomicwrites",
- "connlib-shared",
+ "connlib-model",
  "dirs",
  "firezone-bin-shared",
  "firezone-headless-client",
@@ -2350,7 +2350,7 @@ dependencies = [
  "backoff",
  "clap",
  "connlib-client-shared",
- "connlib-shared",
+ "connlib-model",
  "dirs",
  "firezone-bin-shared",
  "firezone-logging",
@@ -2472,7 +2472,7 @@ dependencies = [
  "boringtun",
  "bytes",
  "chrono",
- "connlib-shared",
+ "connlib-model",
  "derivative",
  "divan",
  "domain",

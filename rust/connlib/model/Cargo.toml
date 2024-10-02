@@ -1,5 +1,5 @@
 [package]
-name = "connlib-shared"
+name = "connlib-model"
 version = "0.1.0"
 edition = "2021"
 
@@ -12,8 +12,8 @@ base64 = { version = "0.22", default-features = false, features = ["std"] }
 boringtun = { workspace = true }
 chrono = { workspace = true }
 domain = { workspace = true }
-futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
-futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
+futures = { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
+futures-util = { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
 itertools = "0.13"
 libc = "0.2"

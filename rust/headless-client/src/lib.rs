@@ -10,7 +10,7 @@
 
 use anyhow::{Context as _, Result};
 use connlib_client_shared::{Callbacks, DisconnectError};
-use connlib_shared::ResourceView;
+use connlib_model::ResourceView;
 use firezone_bin_shared::platform::DnsControlMethod;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},

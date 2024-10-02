@@ -15,7 +15,7 @@ use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
 use crate::utils::earliest;
 use crate::{messages::Interface, ClientEvent, GatewayEvent};
-use connlib_shared::{ClientId, DomainName, GatewayId, RelayId};
+use connlib_model::{ClientId, DomainName, GatewayId, RelayId};
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
 use std::collections::BTreeSet;

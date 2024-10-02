@@ -8,9 +8,9 @@ use crate::peer_store::PeerStore;
 use crate::{dns, TunConfig};
 use anyhow::Context;
 use bimap::BiMap;
-use connlib_shared::{GatewayId, RelayId, ResourceId, ResourceStatus, ResourceView};
-use connlib_shared::{PublicKey, StaticSecret};
-use connlib_shared::{Site, SiteId};
+use connlib_model::{GatewayId, RelayId, ResourceId, ResourceStatus, ResourceView};
+use connlib_model::{PublicKey, StaticSecret};
+use connlib_model::{Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
@@ -1597,7 +1597,7 @@ mod proptests {
     use super::*;
     use crate::messages::client::ResourceDescriptionDns;
     use crate::proptest::*;
-    use connlib_shared::ResourceView;
+    use connlib_model::ResourceView;
     use prop::collection;
     use proptest::prelude::*;
 

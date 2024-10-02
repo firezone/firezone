@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{gateway::Filter, gateway::Filters};
 use chrono::{DateTime, Utc};
-use connlib_shared::{ClientId, DomainName, GatewayId, ResourceId};
+use connlib_model::{ClientId, DomainName, GatewayId, ResourceId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
@@ -710,7 +710,7 @@ mod tests {
         Filter, PortRange, ResourceDescription, ResourceDescriptionCidr,
     };
     use chrono::Utc;
-    use connlib_shared::{ClientId, ResourceId};
+    use connlib_model::{ClientId, ResourceId};
     use ip_network::Ipv4Network;
 
     use super::{ClientOnGateway, TranslationState};

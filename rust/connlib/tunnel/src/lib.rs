@@ -7,7 +7,7 @@ use crate::messages::{Offer, Relay, ResolveRequest, SecretKey};
 use bimap::BiMap;
 use boringtun::x25519::StaticSecret;
 use chrono::Utc;
-use connlib_shared::{
+use connlib_model::{
     ClientId, DomainName, GatewayId, PublicKey, RelayId, ResourceId, ResourceView,
 };
 use io::Io;

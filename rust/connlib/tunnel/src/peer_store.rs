@@ -3,7 +3,7 @@ use std::hash::Hash;
 use std::net::IpAddr;
 
 use crate::peer::{ClientOnGateway, GatewayOnClient};
-use connlib_shared::{ClientId, GatewayId, ResourceId};
+use connlib_model::{ClientId, GatewayId, ResourceId};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 

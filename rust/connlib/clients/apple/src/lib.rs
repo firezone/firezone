@@ -9,7 +9,7 @@ use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
     keypair, Callbacks, ConnectArgs, DisconnectError, LoginUrl, Session, V4RouteList, V6RouteList,
 };
-use connlib_shared::{get_user_agent, ResourceView};
+use connlib_model::{get_user_agent, ResourceView};
 use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};

@@ -2,7 +2,7 @@ use crate::messages::client::{
     ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
     ResourceDescriptionInternet,
 };
-use connlib_shared::{ClientId, GatewayId, RelayId, ResourceId, Site, SiteId};
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use proptest::{
     arbitrary::{any, any_with},

@@ -10,7 +10,7 @@ bimap = "0.6"
 boringtun = { workspace = true }
 bytes = { version = "1.7", default-features = false, features = ["std"] }
 chrono = { workspace = true }
-connlib-shared = { workspace = true }
+connlib-model = { workspace = true }
 derivative = "2.2.0"
 divan = { version = "0.1.14", optional = true }
 domain = { workspace = true }

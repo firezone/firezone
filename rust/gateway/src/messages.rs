@@ -4,7 +4,7 @@ use std::{
 };
 
 use chrono::{serde::ts_seconds_option, DateTime, Utc};
-use connlib_shared::{ClientId, ResourceId};
+use connlib_model::{ClientId, ResourceId};
 use firezone_tunnel::messages::{
     gateway::ResourceDescription, GatewayResponse, Interface, Offer, Peer, Relay, RelaysPresence,
     ResolveRequest,

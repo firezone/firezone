@@ -7,7 +7,7 @@ use crate::{
     messages::client::{self, ResourceDescription},
     DomainName, StaticSecret,
 };
-use connlib_shared::{GatewayId, RelayId, ResourceId};
+use connlib_model::{GatewayId, RelayId, ResourceId};
 use domain::base::Rtype;
 use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;

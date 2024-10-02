@@ -13,7 +13,7 @@ use crate::{
     },
     DomainName,
 };
-use connlib_shared::{RelayId, Site};
+use connlib_model::{RelayId, Site};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;

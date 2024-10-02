@@ -1,6 +1,6 @@
 //! Gateway related messages that are needed within connlib
 
-use connlib_shared::ResourceId;
+use connlib_model::ResourceId;
 use ip_network::IpNetwork;
 use serde::Deserialize;
 

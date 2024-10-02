@@ -14,7 +14,7 @@ swift-bridge-build = "0.1.57"
 anyhow = "1.0.86"
 backoff = "0.4.0"
 connlib-client-shared = { workspace = true }
-connlib-shared = { workspace = true }
+connlib-model = { workspace = true }
 firezone-logging = { workspace = true }
 ip_network = "0.4"
 libc = "0.2"

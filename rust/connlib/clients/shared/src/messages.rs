@@ -1,4 +1,4 @@
-use connlib_shared::{GatewayId, ResourceId, SiteId};
+use connlib_model::{GatewayId, ResourceId, SiteId};
 use firezone_tunnel::messages::{
     client::ResourceDescription, GatewayResponse, Interface, Key, Relay, RelaysPresence,
     RequestConnection, ReuseConnection,
@@ -101,7 +101,7 @@ pub enum EgressMessages {
 mod test {
     use super::*;
     use chrono::DateTime;
-    use connlib_shared::Site;
+    use connlib_model::Site;
     use firezone_tunnel::messages::{
         client::{ResourceDescriptionCidr, ResourceDescriptionDns},
         DnsServer, IpDnsServer, Turn,

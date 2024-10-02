@@ -4,7 +4,7 @@ use anyhow::{anyhow, Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_client_shared::{keypair, ConnectArgs, LoginUrl, Session};
-use connlib_shared::get_user_agent;
+use connlib_model::get_user_agent;
 use firezone_bin_shared::{
     new_dns_notifier, new_network_notifier,
     platform::{tcp_socket_factory, udp_socket_factory},

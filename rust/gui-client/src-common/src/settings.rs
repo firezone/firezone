@@ -3,7 +3,7 @@
 
 use anyhow::{Context as _, Result};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
-use connlib_shared::ResourceId;
+use connlib_model::ResourceId;
 use firezone_headless_client::known_dirs;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, io::Write, path::PathBuf};

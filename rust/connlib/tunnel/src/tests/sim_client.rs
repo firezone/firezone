@@ -18,7 +18,7 @@ use crate::{
 };
 use crate::{proptest::*, ClientState};
 use bimap::BiMap;
-use connlib_shared::{ClientId, GatewayId, RelayId, ResourceId};
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
 use domain::{
     base::{Message, Rtype, ToName},
     rdata::AllRecordData,

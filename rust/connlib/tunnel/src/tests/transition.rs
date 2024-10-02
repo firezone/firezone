@@ -2,11 +2,11 @@ use crate::{
     client::{IPV4_RESOURCES, IPV6_RESOURCES},
     proptest::{host_v4, host_v6},
 };
-use connlib_shared::RelayId;
+use connlib_model::RelayId;
 
 use super::sim_net::{any_ip_stack, any_port, Host};
 use crate::messages::{client::ResourceDescription, DnsServer};
-use connlib_shared::{DomainName, ResourceId};
+use connlib_model::{DomainName, ResourceId};
 use domain::base::Rtype;
 use prop::collection;
 use proptest::{prelude::*, sample};

@@ -6,7 +6,7 @@ use super::{
 };
 use crate::DomainName;
 use crate::GatewayState;
-use connlib_shared::{GatewayId, RelayId};
+use connlib_model::{GatewayId, RelayId};
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
 use proptest::prelude::*;
 use snownet::{EncryptBuffer, Transmit};
