@@ -21,6 +21,28 @@ pub(crate) fn path() -> Result<PathBuf> {
     Ok(path)
 }
 
+fn device_serial() -> Option<String> {
+    const DEFAULT_SERIAL: &str = "123456789";
+    let data = smbioslib::table_load_from_device().ok()?;
+
+    let serial = data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| {
+        sys_info.serial_number().to_utf8_lossy()
+    })?;
+
+    if serial == DEFAULT_SERIAL {
+        return None;
+    }
+
+    Some(serial)
+}
+
+pub fn device_info() -> phoenix_channel::DeviceInfo {
+    phoenix_channel::DeviceInfo {
+        device_serial: device_serial(),
+        ..Default::default()
+    }
+}
+
 /// Returns the device ID, generating it and saving it to disk if needed.
 ///
 /// Per <https://github.com/firezone/firezone/issues/2697> and <https://github.com/firezone/firezone/issues/2711>,

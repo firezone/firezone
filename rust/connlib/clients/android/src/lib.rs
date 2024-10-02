@@ -332,6 +332,7 @@ fn connect(
     log_dir: JString,
     log_filter: JString,
     callback_handler: GlobalRef,
+    device_info: JString,
 ) -> Result<SessionWrapper, ConnectError> {
     let api_url = string_from_jstring!(env, api_url);
     let secret = SecretString::from(string_from_jstring!(env, token));
@@ -340,6 +341,9 @@ fn connect(
     let os_version = string_from_jstring!(env, os_version);
     let log_dir = string_from_jstring!(env, log_dir);
     let log_filter = string_from_jstring!(env, log_filter);
+    let device_info = string_from_jstring!(env, device_info);
+
+    let device_info = serde_json::from_str(&device_info).unwrap();
 
     let handle = init_logging(&PathBuf::from(log_dir), log_filter);
     install_rustls_crypto_provider();
@@ -357,6 +361,7 @@ fn connect(
         device_id,
         Some(device_name),
         public_key.to_bytes(),
+        device_info,
     )?;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -407,6 +412,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
     log_dir: JString,
     log_filter: JString,
     callback_handler: JObject,
+    device_info: JString,
 ) -> *const SessionWrapper {
     let Ok(callback_handler) = env.new_global_ref(callback_handler) else {
         return std::ptr::null();
@@ -423,6 +429,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
             log_dir,
             log_filter,
             callback_handler,
+            device_info,
         )
     });
 

@@ -129,6 +129,8 @@ class Adapter {
 
     Log.tunnel.log("Adapter.start: Starting connlib")
     do {
+      let jsonEncoder = JSONEncoder()
+      jsonEncoder.keyEncodingStrategy = .convertToSnakeCase
       // Grab a session pointer
       let session =
         try WrappedSession.connect(
@@ -139,7 +141,8 @@ class Adapter {
           DeviceMetadata.getOSVersion(),
           connlibLogFolderPath,
           logFilter,
-          callbackHandler
+          callbackHandler,
+          String(data: jsonEncoder.encode(DeviceMetadata.deviceInfo()), encoding: .utf8)!
         )
 
       // Start listening for network change events. The first few will be our

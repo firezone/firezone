@@ -29,6 +29,9 @@ export default function GUI({ title }: { title: string }) {
         <ChangeItem enable={title === "Windows"} pull="6874">
           Fixes a delay when closing the GUI.
         </ChangeItem>
+        <ChangeItem pull="6857">
+          Tries to send motherboard's hardware ID for device verification.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.6" date={new Date("2024-09-25")}>
         <ChangeItem pull="6809">
