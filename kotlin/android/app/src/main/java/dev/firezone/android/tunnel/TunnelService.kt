@@ -16,10 +16,13 @@ import android.os.Binder
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.util.Log
 import androidx.lifecycle.MutableLiveData
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.installations.FirebaseInstallations
+import com.google.gson.FieldNamingPolicy
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
@@ -35,6 +38,10 @@ import java.nio.file.Paths
 import java.util.concurrent.Executors
 import java.util.concurrent.locks.ReentrantLock
 import javax.inject.Inject
+
+data class DeviceInfo(
+    var firebaseInstallationId: String? = null
+)
 
 @AndroidEntryPoint
 @OptIn(ExperimentalStdlibApi::class)
@@ -322,16 +329,31 @@ class TunnelService : VpnService() {
             val executor = Executors.newSingleThreadExecutor()
 
             executor.execute {
+                val deviceInfo = DeviceInfo()
+
+                runCatching {
+                        Tasks.await(FirebaseInstallations.getInstance().id)
+                }.onSuccess { firebaseInstallationId ->
+                   deviceInfo.firebaseInstallationId = firebaseInstallationId
+                }.onFailure { exception ->
+                    Log.d(TAG, "Failed to obtain firebase installation id: $exception" )
+                }
+
+                val gson: Gson = GsonBuilder()
+                    .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
+                    .create()
+
                 connlibSessionPtr =
                     ConnlibSession.connect(
                         apiUrl = config.apiUrl,
                         token = token,
-                        deviceId = Tasks.await(FirebaseInstallations.getInstance().id),
+                        deviceId = deviceId(),
                         deviceName = getDeviceName(),
                         osVersion = Build.VERSION.RELEASE,
                         logDir = getLogDir(),
                         logFilter = config.logFilter,
                         callback = callback,
+                        deviceInfo = gson.toJson(deviceInfo)
                     )
 
                 startNetworkMonitoring()
@@ -406,6 +428,18 @@ class TunnelService : VpnService() {
         resourcesLiveData?.postValue(resources)
     }
 
+    private fun deviceId(): String {
+        // Get the deviceId from the preferenceRepository, or save a new UUIDv4 and return that if it doesn't exist
+        val deviceId =
+            repo.getDeviceIdSync() ?: run {
+                val newDeviceId = java.util.UUID.randomUUID().toString()
+                repo.saveDeviceIdSync(newDeviceId)
+                newDeviceId
+            }
+
+        return deviceId
+    }
+
     private fun getLogDir(): String {
         // Create log directory if it doesn't exist
         val logDir = cacheDir.absolutePath + "/logs"
@@ -436,6 +470,7 @@ class TunnelService : VpnService() {
 
         private const val SESSION_NAME: String = "Firezone Connection"
         private const val MTU: Int = 1280
+        private const val TAG: String = "TunnelService"
 
         private val MANAGED_CONFIGURATIONS = arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
 
