@@ -40,7 +40,7 @@ import java.util.concurrent.locks.ReentrantLock
 import javax.inject.Inject
 
 data class DeviceInfo(
-    var firebaseInstallationId: String? = null
+    var firebaseInstallationId: String? = null,
 )
 
 @AndroidEntryPoint
@@ -332,16 +332,17 @@ class TunnelService : VpnService() {
                 val deviceInfo = DeviceInfo()
 
                 runCatching {
-                        Tasks.await(FirebaseInstallations.getInstance().id)
+                    Tasks.await(FirebaseInstallations.getInstance().id)
                 }.onSuccess { firebaseInstallationId ->
-                   deviceInfo.firebaseInstallationId = firebaseInstallationId
+                    deviceInfo.firebaseInstallationId = firebaseInstallationId
                 }.onFailure { exception ->
-                    Log.d(TAG, "Failed to obtain firebase installation id: $exception" )
+                    Log.d(TAG, "Failed to obtain firebase installation id: $exception")
                 }
 
-                val gson: Gson = GsonBuilder()
-                    .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
-                    .create()
+                val gson: Gson =
+                    GsonBuilder()
+                        .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
+                        .create()
 
                 connlibSessionPtr =
                     ConnlibSession.connect(
@@ -353,7 +354,7 @@ class TunnelService : VpnService() {
                         logDir = getLogDir(),
                         logFilter = config.logFilter,
                         callback = callback,
-                        deviceInfo = gson.toJson(deviceInfo)
+                        deviceInfo = gson.toJson(deviceInfo),
                     )
 
                 startNetworkMonitoring()
