@@ -733,7 +733,7 @@ impl IpPacket {
         }
     }
 
-    fn is_udp(&self) -> bool {
+    pub fn is_udp(&self) -> bool {
         self.next_header() == IpNumber::UDP
     }
 
