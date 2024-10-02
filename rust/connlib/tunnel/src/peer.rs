@@ -2,12 +2,10 @@ use std::collections::{hash_map, BTreeMap, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
+use crate::messages::gateway::ResourceDescription;
+use crate::messages::{gateway::Filter, gateway::Filters};
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::gateway::ResourceDescription;
-use connlib_shared::messages::{
-    gateway::Filter, gateway::Filters, ClientId, GatewayId, ResourceId,
-};
-use connlib_shared::DomainName;
+use connlib_shared::{ClientId, DomainName, GatewayId, ResourceId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
@@ -327,7 +325,7 @@ impl ClientOnGateway {
 
     pub(crate) fn add_resource(
         &mut self,
-        resource: connlib_shared::messages::gateway::ResourceDescription,
+        resource: crate::messages::gateway::ResourceDescription,
         expires_at: Option<DateTime<Utc>>,
     ) {
         match self.resources.entry(resource.id()) {
@@ -708,11 +706,11 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use chrono::Utc;
-    use connlib_shared::messages::{
-        gateway::{Filter, PortRange, ResourceDescription, ResourceDescriptionCidr},
-        ClientId, ResourceId,
+    use crate::messages::gateway::{
+        Filter, PortRange, ResourceDescription, ResourceDescriptionCidr,
     };
+    use chrono::Utc;
+    use connlib_shared::{ClientId, ResourceId};
     use ip_network::Ipv4Network;
 
     use super::{ClientOnGateway, TranslationState};
@@ -1077,10 +1075,8 @@ mod tests {
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
     use super::*;
+    use crate::messages::gateway::{PortRange, ResourceDescription, ResourceDescriptionCidr};
     use crate::proptest::*;
-    use connlib_shared::messages::gateway::{
-        PortRange, ResourceDescription, ResourceDescriptionCidr,
-    };
     use ip_packet::make::{icmp_request_packet, tcp_packet, udp_packet};
     use proptest::{
         arbitrary::any,

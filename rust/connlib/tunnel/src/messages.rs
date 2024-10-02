@@ -2,10 +2,10 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
+use connlib_shared::{GatewayId, RelayId, ResourceId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
-use std::{fmt, str::FromStr};
-use uuid::Uuid;
+use std::fmt;
 
 pub mod client;
 pub mod gateway;
@@ -14,126 +14,6 @@ mod key;
 pub use key::{Key, SecretKey};
 
 use crate::DomainName;
-
-#[derive(Hash, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct GatewayId(Uuid);
-
-#[derive(Hash, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ResourceId(Uuid);
-
-#[derive(Hash, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct RelayId(Uuid);
-
-impl RelayId {
-    pub fn from_u128(v: u128) -> Self {
-        Self(Uuid::from_u128(v))
-    }
-}
-
-impl FromStr for RelayId {
-    type Err = uuid::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(RelayId(Uuid::parse_str(s)?))
-    }
-}
-
-impl ResourceId {
-    pub fn random() -> ResourceId {
-        ResourceId(Uuid::new_v4())
-    }
-
-    pub fn from_u128(v: u128) -> Self {
-        Self(Uuid::from_u128(v))
-    }
-}
-
-impl GatewayId {
-    pub fn from_u128(v: u128) -> Self {
-        Self(Uuid::from_u128(v))
-    }
-}
-
-#[derive(Hash, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ClientId(Uuid);
-
-impl FromStr for ClientId {
-    type Err = uuid::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(ClientId(Uuid::parse_str(s)?))
-    }
-}
-
-impl ClientId {
-    pub fn from_u128(v: u128) -> Self {
-        Self(Uuid::from_u128(v))
-    }
-}
-
-impl FromStr for ResourceId {
-    type Err = uuid::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(ResourceId(Uuid::parse_str(s)?))
-    }
-}
-
-impl FromStr for GatewayId {
-    type Err = uuid::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(GatewayId(Uuid::parse_str(s)?))
-    }
-}
-
-impl fmt::Display for ResourceId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl fmt::Display for ClientId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl fmt::Display for GatewayId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl fmt::Display for RelayId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl fmt::Debug for ResourceId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self, f)
-    }
-}
-
-impl fmt::Debug for ClientId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self, f)
-    }
-}
-
-impl fmt::Debug for GatewayId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self, f)
-    }
-}
-
-impl fmt::Debug for RelayId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self, f)
-    }
-}
 
 /// Represents a wireguard peer.
 #[derive(Debug, Deserialize, Serialize, Clone)]

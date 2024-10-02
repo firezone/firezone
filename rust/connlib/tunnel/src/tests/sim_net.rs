@@ -1,7 +1,7 @@
 use super::sim_dns::DnsServerId;
 use crate::tests::buffered_transmits::BufferedTransmits;
 use crate::tests::strategies::documentation_ip6s;
-use connlib_shared::messages::{ClientId, GatewayId, RelayId};
+use connlib_shared::{ClientId, GatewayId, RelayId};
 use firezone_relay::{AddressFamily, IpStack};
 use ip_network::{IpNetwork, Ipv4Network};
 use ip_network_table::IpNetworkTable;

@@ -5,10 +5,12 @@ use super::{
     strategies::{resolved_ips, subdomain_records},
 };
 use crate::proptest::*;
-use connlib_shared::{
-    messages::{client, gateway, DnsServer, GatewayId, ResourceId},
+use crate::{
+    messages::{client, gateway, DnsServer},
     DomainName,
 };
+use connlib_shared::GatewayId;
+use connlib_shared::{ResourceId, SiteId};
 use ip_network::{Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use proptest::{
@@ -25,10 +27,10 @@ use std::{
 #[derive(Clone, derivative::Derivative)]
 #[derivative(Debug)]
 pub(crate) struct StubPortal {
-    gateways_by_site: BTreeMap<client::SiteId, BTreeSet<GatewayId>>,
+    gateways_by_site: BTreeMap<SiteId, BTreeSet<GatewayId>>,
 
     #[derivative(Debug = "ignore")]
-    sites_by_resource: BTreeMap<ResourceId, client::SiteId>,
+    sites_by_resource: BTreeMap<ResourceId, SiteId>,
     cidr_resources: BTreeMap<ResourceId, client::ResourceDescriptionCidr>,
     dns_resources: BTreeMap<ResourceId, client::ResourceDescriptionDns>,
     internet_resource: client::ResourceDescriptionInternet,
@@ -39,7 +41,7 @@ pub(crate) struct StubPortal {
 
 impl StubPortal {
     pub(crate) fn new(
-        gateways_by_site: BTreeMap<client::SiteId, BTreeSet<GatewayId>>,
+        gateways_by_site: BTreeMap<SiteId, BTreeSet<GatewayId>>,
         gateway_selector: Selector,
         cidr_resources: BTreeSet<client::ResourceDescriptionCidr>,
         dns_resources: BTreeSet<client::ResourceDescriptionDns>,
@@ -118,7 +120,7 @@ impl StubPortal {
         &self,
         resource: ResourceId,
         _connected_gateway_ids: BTreeSet<GatewayId>,
-    ) -> (GatewayId, client::SiteId) {
+    ) -> (GatewayId, SiteId) {
         let site_id = self
             .sites_by_resource
             .get(&resource)

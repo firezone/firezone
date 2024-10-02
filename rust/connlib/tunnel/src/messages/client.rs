@@ -1,14 +1,14 @@
 //! Client related messages that are needed within connlib
 
-use std::{collections::BTreeSet, fmt, str::FromStr};
+use std::collections::BTreeSet;
 
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-use crate::view::ResourceStatus;
-
-use super::ResourceId;
+use connlib_shared::ResourceId;
+use connlib_shared::{
+    CidrResourceView, DnsResourceView, InternetResourceView, ResourceStatus, ResourceView, Site,
+};
 use itertools::Itertools;
 
 /// Description of a resource that maps to a DNS record.
@@ -29,8 +29,8 @@ pub struct ResourceDescriptionDns {
 }
 
 impl ResourceDescriptionDns {
-    pub fn with_status(self, status: ResourceStatus) -> crate::view::DnsResourceView {
-        crate::view::DnsResourceView {
+    pub fn with_status(self, status: ResourceStatus) -> DnsResourceView {
+        DnsResourceView {
             id: self.id,
             address: self.address,
             name: self.name,
@@ -59,8 +59,8 @@ pub struct ResourceDescriptionCidr {
 }
 
 impl ResourceDescriptionCidr {
-    pub fn with_status(self, status: ResourceStatus) -> crate::view::CidrResourceView {
-        crate::view::CidrResourceView {
+    pub fn with_status(self, status: ResourceStatus) -> CidrResourceView {
+        CidrResourceView {
             id: self.id,
             address: self.address,
             name: self.name,
@@ -91,60 +91,13 @@ pub struct ResourceDescriptionInternet {
 }
 
 impl ResourceDescriptionInternet {
-    pub fn with_status(self, status: ResourceStatus) -> crate::view::InternetResourceView {
-        crate::view::InternetResourceView {
+    pub fn with_status(self, status: ResourceStatus) -> InternetResourceView {
+        InternetResourceView {
             name: self.name,
             id: self.id,
             sites: self.sites,
             status,
         }
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialOrd, Ord)]
-pub struct Site {
-    pub id: SiteId,
-    pub name: String,
-}
-
-impl std::hash::Hash for Site {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
-    }
-}
-
-impl PartialEq for Site {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-
-#[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct SiteId(Uuid);
-
-impl FromStr for SiteId {
-    type Err = uuid::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(SiteId(Uuid::parse_str(s)?))
-    }
-}
-
-impl SiteId {
-    pub fn from_u128(v: u128) -> Self {
-        Self(Uuid::from_u128(v))
-    }
-}
-
-impl fmt::Display for SiteId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl fmt::Debug for SiteId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self, f)
     }
 }
 
@@ -207,13 +160,11 @@ impl ResourceDescription {
         }
     }
 
-    pub fn with_status(self, status: ResourceStatus) -> crate::view::ResourceView {
+    pub fn with_status(self, status: ResourceStatus) -> ResourceView {
         match self {
-            ResourceDescription::Dns(r) => crate::view::ResourceView::Dns(r.with_status(status)),
-            ResourceDescription::Cidr(r) => crate::view::ResourceView::Cidr(r.with_status(status)),
-            ResourceDescription::Internet(r) => {
-                crate::view::ResourceView::Internet(r.with_status(status))
-            }
+            ResourceDescription::Dns(r) => ResourceView::Dns(r.with_status(status)),
+            ResourceDescription::Cidr(r) => ResourceView::Cidr(r.with_status(status)),
+            ResourceDescription::Internet(r) => ResourceView::Internet(r.with_status(status)),
         }
     }
 }

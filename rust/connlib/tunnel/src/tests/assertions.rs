@@ -3,7 +3,7 @@ use super::{
     sim_gateway::SimGateway,
 };
 use crate::tests::reference::ResourceDst;
-use connlib_shared::{messages::GatewayId, DomainName};
+use connlib_shared::{DomainName, GatewayId};
 use ip_packet::IpPacket;
 use itertools::Itertools;
 use std::{

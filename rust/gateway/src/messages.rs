@@ -4,9 +4,10 @@ use std::{
 };
 
 use chrono::{serde::ts_seconds_option, DateTime, Utc};
-use connlib_shared::messages::{
-    gateway::ResourceDescription, ClientId, GatewayResponse, Interface, Offer, Peer, Relay,
-    RelaysPresence, ResolveRequest, ResourceId,
+use connlib_shared::{ClientId, ResourceId};
+use firezone_tunnel::messages::{
+    gateway::ResourceDescription, GatewayResponse, Interface, Offer, Peer, Relay, RelaysPresence,
+    ResolveRequest,
 };
 use serde::{Deserialize, Serialize};
 
@@ -127,10 +128,10 @@ pub struct ConnectionReady {
 #[cfg(test)]
 mod test {
     use super::*;
-    use connlib_shared::messages::gateway::Filter;
-    use connlib_shared::messages::gateway::PortRange;
-    use connlib_shared::messages::gateway::ResourceDescriptionDns;
-    use connlib_shared::messages::Turn;
+    use firezone_tunnel::messages::gateway::Filter;
+    use firezone_tunnel::messages::gateway::PortRange;
+    use firezone_tunnel::messages::gateway::ResourceDescriptionDns;
+    use firezone_tunnel::messages::Turn;
     use phoenix_channel::PhoenixMessage;
 
     #[test]

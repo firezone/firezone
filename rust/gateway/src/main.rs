@@ -2,12 +2,13 @@ use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_shared::{get_user_agent, messages::Interface, LoginUrl, StaticSecret};
+use connlib_shared::{get_user_agent, LoginUrl, StaticSecret};
 use firezone_bin_shared::{
     http_health_check,
     linux::{tcp_socket_factory, udp_socket_factory},
     TunDeviceManager,
 };
+use firezone_tunnel::messages::Interface;
 use firezone_tunnel::{keypair, GatewayTunnel, IPV4_PEERS, IPV6_PEERS};
 
 use futures::channel::mpsc;

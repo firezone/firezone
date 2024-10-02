@@ -1,9 +1,8 @@
 //! Gateway related messages that are needed within connlib
 
+use connlib_shared::ResourceId;
 use ip_network::IpNetwork;
 use serde::Deserialize;
-
-use super::ResourceId;
 
 pub type Filters = Vec<Filter>;
 

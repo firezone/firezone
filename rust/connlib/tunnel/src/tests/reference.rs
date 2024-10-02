@@ -3,13 +3,11 @@ use super::{
     strategies::*, stub_portal::StubPortal, transition::*,
 };
 use crate::{dns::is_subdomain, proptest::relay_id};
-use connlib_shared::{
-    messages::{
-        client::{self, ResourceDescription},
-        GatewayId, RelayId, ResourceId,
-    },
+use crate::{
+    messages::client::{self, ResourceDescription},
     DomainName, StaticSecret,
 };
+use connlib_shared::{GatewayId, RelayId, ResourceId};
 use domain::base::Rtype;
 use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;

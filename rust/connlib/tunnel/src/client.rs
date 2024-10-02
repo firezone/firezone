@@ -1,16 +1,16 @@
 use crate::dns::StubResolver;
+use crate::messages::ResolveRequest;
+use crate::messages::{
+    client::ResourceDescription, client::ResourceDescriptionCidr, Answer, DnsServer,
+    Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay,
+};
 use crate::peer_store::PeerStore;
 use crate::{dns, TunConfig};
 use anyhow::Context;
 use bimap::BiMap;
-use connlib_shared::messages::client::{Site, SiteId};
-use connlib_shared::messages::ResolveRequest;
-use connlib_shared::messages::{
-    client::ResourceDescription, client::ResourceDescriptionCidr, Answer, DnsServer, GatewayId,
-    Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId, ResourceId,
-};
+use connlib_shared::{GatewayId, RelayId, ResourceId, ResourceStatus, ResourceView};
 use connlib_shared::{PublicKey, StaticSecret};
-use connlib_shared::{ResourceStatus, ResourceView};
+use connlib_shared::{Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
@@ -1595,8 +1595,9 @@ mod tests {
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
     use super::*;
+    use crate::messages::client::ResourceDescriptionDns;
     use crate::proptest::*;
-    use connlib_shared::{messages::client::ResourceDescriptionDns, ResourceView};
+    use connlib_shared::ResourceView;
     use prop::collection;
     use proptest::prelude::*;
 

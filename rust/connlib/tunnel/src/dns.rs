@@ -1,7 +1,7 @@
 use crate::client::IpProvider;
+use crate::messages::DnsServer;
 use anyhow::{Context, Result};
-use connlib_shared::messages::{DnsServer, ResourceId};
-use connlib_shared::DomainName;
+use connlib_shared::{DomainName, ResourceId};
 use domain::base::{
     iana::{Class, Rcode, Rtype},
     Message, MessageBuilder, ToName,

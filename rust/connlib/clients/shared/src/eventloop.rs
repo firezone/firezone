@@ -7,9 +7,10 @@ use crate::{
     PHOENIX_TOPIC,
 };
 use anyhow::Result;
-use connlib_shared::messages::{
+use connlib_shared::ResourceId;
+use firezone_tunnel::messages::{
     ClientPayload, ConnectionAccepted, GatewayResponse, RelaysPresence, RequestConnection,
-    ResourceAccepted, ResourceId, ReuseConnection,
+    ResourceAccepted, ReuseConnection,
 };
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};

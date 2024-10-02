@@ -1,3 +1,5 @@
+use crate::messages::ResolveRequest;
+use crate::messages::{gateway::ResourceDescription, Answer, Key, Offer};
 use crate::peer::ClientOnGateway;
 use crate::peer_store::PeerStore;
 use crate::utils::earliest;
@@ -5,11 +7,7 @@ use crate::{GatewayEvent, GatewayTunnel};
 use anyhow::Context;
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::ResolveRequest;
-use connlib_shared::messages::{
-    gateway::ResourceDescription, Answer, ClientId, Key, Offer, RelayId, ResourceId,
-};
-use connlib_shared::{DomainName, StaticSecret};
+use connlib_shared::{ClientId, DomainName, RelayId, ResourceId, StaticSecret};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::IpPacket;
 use secrecy::{ExposeSecret as _, Secret};

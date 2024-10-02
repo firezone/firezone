@@ -26,7 +26,7 @@ use url::Url;
 
 pub mod ipc;
 use backoff::ExponentialBackoffBuilder;
-use connlib_shared::{get_user_agent, messages::ResourceId};
+use connlib_shared::{get_user_agent, ResourceId};
 use ipc::{Server as IpcServer, ServiceId};
 use phoenix_channel::PhoenixChannel;
 use secrecy::Secret;

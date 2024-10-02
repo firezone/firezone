@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::fmt::Debug;
 
-use crate::messages::client::Site;
-use crate::messages::ResourceId;
+use crate::ResourceId;
+use crate::Site;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ResourceStatus {

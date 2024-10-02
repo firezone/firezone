@@ -1,7 +1,7 @@
-use connlib_shared::messages::{
-    client::{ResourceDescription, SiteId},
-    GatewayId, GatewayResponse, Interface, Key, Relay, RelaysPresence, RequestConnection,
-    ResourceId, ReuseConnection,
+use connlib_shared::{GatewayId, ResourceId, SiteId};
+use firezone_tunnel::messages::{
+    client::ResourceDescription, GatewayResponse, Interface, Key, Relay, RelaysPresence,
+    RequestConnection, ReuseConnection,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, net::IpAddr};
@@ -101,8 +101,9 @@ pub enum EgressMessages {
 mod test {
     use super::*;
     use chrono::DateTime;
-    use connlib_shared::messages::{
-        client::{ResourceDescriptionCidr, ResourceDescriptionDns, Site},
+    use connlib_shared::Site;
+    use firezone_tunnel::messages::{
+        client::{ResourceDescriptionCidr, ResourceDescriptionDns},
         DnsServer, IpDnsServer, Turn,
     };
     use phoenix_channel::{OutboundRequestId, PhoenixMessage};
