@@ -1,6 +1,11 @@
+use domain::base::iana::Rcode;
+use domain::base::{Message, ParsedName, Rtype};
+use domain::rdata::AllRecordData;
 use ip_packet::{IpPacket, IpPacketBuf};
+use itertools::Itertools;
 use std::io;
 use std::task::{Context, Poll, Waker};
+use tracing::Level;
 use tun::Tun;
 
 pub struct Device {
@@ -49,12 +54,24 @@ impl Device {
             )
         })?;
 
+        if tracing::event_enabled!(target: "wire::dns::qry", Level::TRACE) {
+            if let Some((qtype, qname, qid)) = parse_dns_query(&packet) {
+                tracing::trace!(target: "wire::dns::qry", %qid, "{:5} {qname}", qtype.to_string());
+            }
+        }
+
         tracing::trace!(target: "wire::dev::recv", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         Poll::Ready(Ok(packet))
     }
 
     pub fn write(&self, packet: IpPacket) -> io::Result<usize> {
+        if tracing::event_enabled!(target: "wire::dns::res", Level::TRACE) {
+            if let Some((qtype, qname, records, rcode, qid)) = parse_dns_response(&packet) {
+                tracing::trace!(target: "wire::dns::res", %qid, %rcode, "{:5} {qname} => [{records}]", qtype.to_string());
+            }
+        }
+
         tracing::trace!(target: "wire::dev::send", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         match packet {
@@ -74,4 +91,64 @@ impl Device {
 
 fn io_error_not_initialized() -> io::Error {
     io::Error::new(io::ErrorKind::NotConnected, "device is not initialized yet")
+}
+
+fn parse_dns_query(packet: &IpPacket) -> Option<(Rtype, ParsedName<&[u8]>, u16)> {
+    let udp = packet.as_udp()?;
+    if udp.destination_port() != crate::dns::DNS_PORT {
+        return None;
+    }
+
+    let message = &Message::from_slice(udp.payload()).ok()?;
+
+    if message.header().qr() {
+        return None;
+    }
+
+    let question = message.sole_question().ok()?;
+
+    let qtype = question.qtype();
+    let qname = question.into_qname();
+    let id = message.header().id();
+
+    Some((qtype, qname, id))
+}
+
+#[expect(clippy::type_complexity)]
+fn parse_dns_response(packet: &IpPacket) -> Option<(Rtype, ParsedName<&[u8]>, String, Rcode, u16)> {
+    let udp = packet.as_udp()?;
+    if udp.source_port() != crate::dns::DNS_PORT {
+        return None;
+    }
+
+    let message = &Message::from_slice(udp.payload()).ok()?;
+
+    if !message.header().qr() {
+        return None;
+    }
+
+    let question = message.sole_question().ok()?;
+
+    let qtype = question.qtype();
+    let qname = question.into_qname();
+    let rcode = message.header().rcode();
+
+    let record_section = message.answer().ok()?;
+
+    let records = record_section
+        .into_iter()
+        .filter_map(|r| {
+            let data = r
+                .ok()?
+                .into_any_record::<AllRecordData<_, _>>()
+                .ok()?
+                .data()
+                .clone();
+
+            Some(data)
+        })
+        .join(" | ");
+    let id = message.header().id();
+
+    Some((qtype, qname, records, rcode, id))
 }
