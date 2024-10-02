@@ -1,10 +1,10 @@
-Outdated Gateways Detected!
+Gateway Update Available!
 
 The latest Firezone Gateway release is: <%= @latest_version %>
 
-The following is a list of outdated Gateways running in your Firezone Account:
+The following list of Gateways in your Firezone Account can be updated:
 <%= for gateway <- @gateways do %>
-"- #{gateway.name} -> #{gateway.last_seen_version}"
+<%= "- #{gateway.name} -> #{gateway.last_seen_version}" %>
 <% end %>
 
 We recommend updating the Gateways at your earliest convenience.
