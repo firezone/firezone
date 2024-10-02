@@ -48,6 +48,7 @@ mod ffi {
             log_dir: String,
             log_filter: String,
             callback_handler: CallbackHandler,
+            device_info: String,
         ) -> Result<WrappedSession, String>;
 
         fn reset(&mut self);
@@ -187,11 +188,13 @@ impl WrappedSession {
         log_dir: String,
         log_filter: String,
         callback_handler: ffi::CallbackHandler,
+        device_info: String,
     ) -> Result<Self> {
         let logger = init_logging(log_dir.into(), log_filter)?;
         install_rustls_crypto_provider();
 
         let secret = SecretString::from(token);
+        let device_info = serde_json::from_str(&device_info).unwrap();
 
         let (private_key, public_key) = keypair();
         let url = LoginUrl::client(
@@ -200,6 +203,7 @@ impl WrappedSession {
             device_id,
             device_name_override,
             public_key.to_bytes(),
+            device_info,
         )?;
 
         let runtime = tokio::runtime::Builder::new_multi_thread()
