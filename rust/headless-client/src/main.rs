@@ -173,6 +173,7 @@ fn main() -> Result<()> {
         firezone_id,
         cli.firezone_name,
         public_key.to_bytes(),
+        device_id::device_info(),
     )?;
 
     if cli.check {
@@ -192,7 +193,7 @@ fn main() -> Result<()> {
         callbacks,
     };
 
-    rt.block_on(async {
+    let result = rt.block_on(async {
         let ctx = firezone_telemetry::TransactionContext::new(
             "connect_to_firezone",
             "Connecting to Firezone",
@@ -318,7 +319,10 @@ fn main() -> Result<()> {
         session.disconnect();
 
         result
-    })
+    });
+
+    telemetry.stop();
+    result
 }
 
 /// Read the token from disk if it was not in the environment

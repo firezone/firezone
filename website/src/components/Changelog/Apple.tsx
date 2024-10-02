@@ -20,6 +20,12 @@ export default function Apple() {
           Fixes connectivity issues on idle connections by entering an
           always-on, low-power mode instead of closing them.
         </ChangeItem>
+        <ChangeItem pull="6857">
+          MacOS: sends hardware's UUID for device verification.
+        </ChangeItem>
+        <ChangeItem pull="6857">
+          iOS: sends Id for vendor for device verification.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.5" date={new Date("2024-09-26")}>
         <ChangeItem pull="6809">

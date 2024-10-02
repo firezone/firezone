@@ -1141,6 +1141,7 @@ where
             | ConnectionState::Idle { .. }
             | ConnectionState::Connected { .. } => None,
         });
+
         maybe_initial_connection.or(maybe_pending_connection)
     }
 
