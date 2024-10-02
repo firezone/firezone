@@ -2,14 +2,13 @@ use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_model::StaticSecret;
 use firezone_bin_shared::{
     http_health_check,
     linux::{tcp_socket_factory, udp_socket_factory},
     TunDeviceManager,
 };
 use firezone_tunnel::messages::Interface;
-use firezone_tunnel::{keypair, GatewayTunnel, IPV4_PEERS, IPV6_PEERS};
+use firezone_tunnel::{GatewayTunnel, IPV4_PEERS, IPV6_PEERS};
 use phoenix_channel::get_user_agent;
 use phoenix_channel::LoginUrl;
 
@@ -55,16 +54,14 @@ async fn try_main() -> Result<()> {
     let firezone_id = get_firezone_id(cli.firezone_id).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
 
-    let (private_key, public_key) = keypair();
     let login = LoginUrl::gateway(
         cli.api_url,
         &SecretString::new(cli.token),
         firezone_id,
         cli.firezone_name,
-        public_key.to_bytes(),
     )?;
 
-    let task = tokio::spawn(run(login, private_key)).err_into();
+    let task = tokio::spawn(run(login)).err_into();
 
     let ctrl_c = pin!(ctrl_c().map_err(anyhow::Error::new));
 
@@ -107,12 +104,8 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
     Ok(id)
 }
 
-async fn run(login: LoginUrl, private_key: StaticSecret) -> Result<Infallible> {
-    let mut tunnel = GatewayTunnel::new(
-        private_key,
-        Arc::new(tcp_socket_factory),
-        Arc::new(udp_socket_factory),
-    );
+async fn run(login: LoginUrl) -> Result<Infallible> {
+    let mut tunnel = GatewayTunnel::new(Arc::new(tcp_socket_factory), Arc::new(udp_socket_factory));
     let portal = PhoenixChannel::connect(
         Secret::new(login),
         get_user_agent(None, env!("CARGO_PKG_VERSION")),

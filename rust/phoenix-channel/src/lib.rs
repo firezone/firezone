@@ -3,7 +3,7 @@ mod heartbeat;
 mod login_url;
 
 use std::collections::{HashSet, VecDeque};
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::{fmt, future, marker::PhantomData};

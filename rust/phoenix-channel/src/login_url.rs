@@ -52,7 +52,6 @@ impl LoginUrl {
         firezone_token: &SecretString,
         device_id: String,
         device_name: Option<String>,
-        public_key: [u8; 32],
         device_info: DeviceInfo,
     ) -> Result<Self, LoginUrlError<E>> {
         let external_id = hex::encode(sha2::Sha256::digest(device_id));
@@ -64,7 +63,7 @@ impl LoginUrl {
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
             firezone_token,
             "client",
-            Some(public_key),
+            None,
             Some(external_id),
             Some(device_name),
             None,
@@ -84,7 +83,6 @@ impl LoginUrl {
         firezone_token: &SecretString,
         device_id: String,
         device_name: Option<String>,
-        public_key: [u8; 32],
     ) -> Result<Self, LoginUrlError<E>> {
         let external_id = hex::encode(sha2::Sha256::digest(device_id));
         let device_name = device_name
@@ -95,7 +93,7 @@ impl LoginUrl {
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
             firezone_token,
             "gateway",
-            Some(public_key),
+            None,
             Some(external_id),
             Some(device_name),
             None,

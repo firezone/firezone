@@ -7,7 +7,7 @@ mod tun;
 use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
-    keypair, Callbacks, ConnectArgs, DisconnectError, Session, V4RouteList, V6RouteList,
+    Callbacks, ConnectArgs, DisconnectError, Session, V4RouteList, V6RouteList,
 };
 use connlib_model::ResourceView;
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -198,13 +198,11 @@ impl WrappedSession {
         let secret = SecretString::from(token);
         let device_info = serde_json::from_str(&device_info).unwrap();
 
-        let (private_key, public_key) = keypair();
         let url = LoginUrl::client(
             api_url.as_str(),
             &secret,
             device_id,
             device_name_override,
-            public_key.to_bytes(),
             device_info,
         )?;
 
@@ -216,7 +214,6 @@ impl WrappedSession {
         let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
         let args = ConnectArgs {
-            private_key,
             callbacks: CallbackHandler {
                 inner: Arc::new(callback_handler),
             },

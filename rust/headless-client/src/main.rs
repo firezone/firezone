@@ -3,7 +3,7 @@
 use anyhow::{anyhow, Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_client_shared::{keypair, ConnectArgs, Session};
+use connlib_client_shared::{ConnectArgs, Session};
 use firezone_bin_shared::{
     new_dns_notifier, new_network_notifier,
     platform::{tcp_socket_factory, udp_socket_factory},
@@ -167,13 +167,11 @@ fn main() -> Result<()> {
         None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
-    let (private_key, public_key) = keypair();
     let url = LoginUrl::client(
         cli.api_url,
         &token,
         firezone_id,
         cli.firezone_name,
-        public_key.to_bytes(),
         device_id::device_info(),
     )?;
 
@@ -190,7 +188,6 @@ fn main() -> Result<()> {
     let args = ConnectArgs {
         udp_socket_factory: Arc::new(udp_socket_factory),
         tcp_socket_factory: Arc::new(tcp_socket_factory),
-        private_key,
         callbacks,
     };
 

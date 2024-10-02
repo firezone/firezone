@@ -39,7 +39,6 @@ pub struct Session {
 pub struct ConnectArgs<CB> {
     pub tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     pub udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    pub private_key: StaticSecret,
     pub callbacks: CB,
 }
 
@@ -126,14 +125,12 @@ where
     CB: Callbacks + 'static,
 {
     let ConnectArgs {
-        private_key,
         callbacks,
         udp_socket_factory,
         tcp_socket_factory,
     } = args;
 
     let tunnel = ClientTunnel::new(
-        private_key,
         tcp_socket_factory,
         udp_socket_factory,
         BTreeMap::from([(portal.server_host().to_owned(), portal.resolved_addresses())]),

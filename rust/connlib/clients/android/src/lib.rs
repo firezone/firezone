@@ -6,7 +6,7 @@
 use crate::tun::Tun;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
-    keypair, Callbacks, ConnectArgs, DisconnectError, Session, V4RouteList, V6RouteList,
+    Callbacks, ConnectArgs, DisconnectError, Session, V4RouteList, V6RouteList,
 };
 use connlib_model::{ResourceId, ResourceView};
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -355,13 +355,11 @@ fn connect(
         handle,
     };
 
-    let (private_key, public_key) = keypair();
     let url = LoginUrl::client(
         api_url.as_str(),
         &secret,
         device_id,
         Some(device_name),
-        public_key.to_bytes(),
         device_info,
     )?;
 
@@ -377,7 +375,6 @@ fn connect(
     let args = ConnectArgs {
         tcp_socket_factory: tcp_socket_factory.clone(),
         udp_socket_factory: Arc::new(protected_udp_socket_factory(callbacks.clone())),
-        private_key,
         callbacks,
     };
     let portal = PhoenixChannel::connect(

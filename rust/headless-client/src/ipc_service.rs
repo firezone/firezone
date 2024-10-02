@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{keypair, ConnectArgs};
+use connlib_client_shared::ConnectArgs;
 use connlib_model::ResourceView;
 use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
@@ -526,14 +526,12 @@ impl<'a> Handler<'a> {
         let transaction = firezone_telemetry::start_transaction(ctx);
         assert!(self.session.is_none());
         let device_id = device_id::get_or_create().map_err(|e| Error::DeviceId(e.to_string()))?;
-        let (private_key, public_key) = keypair();
 
         let url = LoginUrl::client(
             Url::parse(api_url).map_err(|e| Error::UrlParse(e.to_string()))?,
             &token,
             device_id.id,
             None,
-            public_key.to_bytes(),
             device_id::device_info(),
         )
         .map_err(|e| Error::LoginUrl(e.to_string()))?;
@@ -544,7 +542,6 @@ impl<'a> Handler<'a> {
         let args = ConnectArgs {
             tcp_socket_factory: Arc::new(tcp_socket_factory),
             udp_socket_factory: Arc::new(udp_socket_factory),
-            private_key,
             callbacks,
         };
 

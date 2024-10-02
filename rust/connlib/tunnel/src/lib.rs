@@ -81,14 +81,13 @@ pub struct Tunnel<TRoleState> {
 
 impl ClientTunnel {
     pub fn new(
-        private_key: StaticSecret,
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         known_hosts: BTreeMap<String, Vec<IpAddr>>,
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
-            role_state: ClientState::new(private_key, known_hosts, rand::random()),
+            role_state: ClientState::new(known_hosts, rand::random()),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             encrypt_buf: EncryptBuffer::new(MAX_DATAGRAM_PAYLOAD),
@@ -177,13 +176,12 @@ impl ClientTunnel {
 
 impl GatewayTunnel {
     pub fn new(
-        private_key: StaticSecret,
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
-            role_state: GatewayState::new(private_key, rand::random()),
+            role_state: GatewayState::new(rand::random()),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             encrypt_buf: EncryptBuffer::new(MAX_DATAGRAM_PAYLOAD),

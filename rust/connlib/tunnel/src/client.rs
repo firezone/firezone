@@ -14,8 +14,8 @@ use crate::peer_store::PeerStore;
 use crate::{dns, TunConfig};
 use anyhow::Context;
 use bimap::BiMap;
+use connlib_model::PublicKey;
 use connlib_model::{GatewayId, RelayId, ResourceId, ResourceStatus, ResourceView};
-use connlib_model::{PublicKey, StaticSecret};
 use connlib_model::{Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
@@ -279,11 +279,7 @@ struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
-    pub(crate) fn new(
-        private_key: impl Into<StaticSecret>,
-        known_hosts: BTreeMap<String, Vec<IpAddr>>,
-        seed: [u8; 32],
-    ) -> Self {
+    pub(crate) fn new(known_hosts: BTreeMap<String, Vec<IpAddr>>, seed: [u8; 32]) -> Self {
         Self {
             awaiting_connection_details: Default::default(),
             resources_gateways: Default::default(),
@@ -294,7 +290,7 @@ impl ClientState {
             buffered_events: Default::default(),
             tun_config: Default::default(),
             buffered_packets: Default::default(),
-            node: ClientNode::new(private_key.into(), seed),
+            node: ClientNode::new(seed),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
@@ -1523,7 +1519,6 @@ impl IpProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::rngs::OsRng;
 
     #[test]
     fn ignores_ip4_igmp_multicast() {
@@ -1568,11 +1563,7 @@ mod tests {
 
     impl ClientState {
         pub fn for_test() -> ClientState {
-            ClientState::new(
-                StaticSecret::random_from_rng(OsRng),
-                BTreeMap::new(),
-                rand::random(),
-            )
+            ClientState::new(BTreeMap::new(), rand::random())
         }
     }
 
