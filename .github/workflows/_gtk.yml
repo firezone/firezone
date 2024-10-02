@@ -47,7 +47,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           # mark:next-gui-version
-          name: firezone-client-gui-linux_1.3.7_x86_64-pkg
+          name: firezone-client-gui-gtk-linux_1.3.7_x86_64-pkg
           # This ignores the working dir or something
           path: rust/gtk-client/target/debian/firezone-client-gui.deb
           if-no-files-found: error
