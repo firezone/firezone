@@ -140,6 +140,9 @@ defmodule Web.Live.Sites.IndexTest do
     account = Fixtures.Accounts.update_account(account, features: %{internet_resource: true})
 
     {:ok, group} = Domain.Gateways.create_internet_group(account)
+    gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
+    Domain.Config.put_env_override(:test_pid, self())
+    :ok = Domain.Gateways.subscribe_to_gateways_presence_in_account(account)
 
     {:ok, lv, _html} =
       conn
@@ -151,5 +154,10 @@ defmodule Web.Live.Sites.IndexTest do
     refute has_element?(lv, "#internet-site-banner a[href='/#{account.slug}/settings/billing']")
 
     assert has_element?(lv, "#internet-site-banner a[href='/#{account.slug}/sites/#{group.id}']")
+
+    :ok = Domain.Gateways.connect_gateway(gateway)
+    assert_receive %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _}
+    assert_receive {:live_table_reloaded, "groups"}, 250
+    assert lv |> element("#internet-site-banner") |> render() =~ "Online"
   end
 end

@@ -226,7 +226,20 @@ defmodule Web.Sites.Index do
         %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _account_id},
         socket
       ) do
-    {:noreply, reload_live_table!(socket, "groups")}
+    {:ok, managed_groups, _metadata} =
+      Gateways.list_groups(socket.assigns.subject,
+        preload: [
+          gateways: [:online?]
+        ],
+        filter: [managed_by: "system"]
+      )
+
+    socket =
+      socket
+      |> assign(managed_groups: managed_groups)
+      |> reload_live_table!("groups")
+
+    {:noreply, socket}
   end
 
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
