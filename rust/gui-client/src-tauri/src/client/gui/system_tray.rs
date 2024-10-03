@@ -138,7 +138,7 @@ fn build_item(that: &Item) -> tauri::CustomMenuItem {
     if that.event.is_none() {
         item = item.disabled();
     }
-    if that.selected {
+    if let Some(true) = that.checked {
         item = item.selected();
     }
     item
