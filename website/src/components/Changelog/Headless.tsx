@@ -11,7 +11,8 @@ export default function Headless() {
   return (
     <Entries href={href} arches={arches} title="Linux headless">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.3.4" date={new Date("2024-10-02")}>
         <ChangeItem pull="6831">
           Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is
           active.
@@ -26,7 +27,7 @@ export default function Headless() {
         <ChangeItem pull="6857">
           Sends the motherboard's hardware ID for device verification.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.3.3" date={new Date("2024-09-25")}>
         <ChangeItem pull="6809">
           Fixes a bug where non-wildcard DNS resources were not prioritised over
