@@ -66,13 +66,14 @@ pub struct InternetResource {
 }
 
 impl Resource {
-    pub fn from_description(resource: ResourceDescription) -> Self {
+    pub fn from_description(resource: ResourceDescription) -> Option<Self> {
         match resource {
-            ResourceDescription::Dns(i) => Resource::Dns(DnsResource::from_description(i)),
-            ResourceDescription::Cidr(i) => Resource::Cidr(CidrResource::from_description(i)),
+            ResourceDescription::Dns(i) => Some(Resource::Dns(DnsResource::from_description(i))),
+            ResourceDescription::Cidr(i) => Some(Resource::Cidr(CidrResource::from_description(i))),
             ResourceDescription::Internet(i) => {
-                Resource::Internet(InternetResource::from_description(i))
+                Some(Resource::Internet(InternetResource::from_description(i)))
             }
+            ResourceDescription::Unknown => None,
         }
     }
 

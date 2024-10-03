@@ -81,7 +81,7 @@ impl ClientTunnel {
         self.role_state.set_resources(
             resources
                 .into_iter()
-                .map(Resource::from_description)
+                .filter_map(Resource::from_description)
                 .collect(),
         );
 
@@ -108,8 +108,11 @@ impl ClientTunnel {
 
     /// Adds a the given resource to the tunnel.
     pub fn add_resource(&mut self, resource: ResourceDescription) {
-        self.role_state
-            .add_resource(Resource::from_description(resource));
+        let Some(resource) = Resource::from_description(resource) else {
+            return;
+        };
+
+        self.role_state.add_resource(resource);
 
         self.role_state
             .buffered_events

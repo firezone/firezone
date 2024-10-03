@@ -67,6 +67,8 @@ pub enum ResourceDescription {
     Dns(ResourceDescriptionDns),
     Cidr(ResourceDescriptionCidr),
     Internet(ResourceDescriptionInternet),
+    #[serde(other)]
+    Unknown, // Important for forwards-compatibility with future resource types.
 }
 
 #[derive(Debug, Deserialize)]
@@ -192,6 +194,43 @@ mod tests {
                 "some_other": [
                     "field"
                 ]
+            }
+        ]"#;
+
+        serde_json::from_str::<Vec<ResourceDescription>>(resources).unwrap();
+    }
+
+    #[test]
+    fn can_deserialize_unknown_resource() {
+        let resources = r#"[
+            {
+                "id": "73037362-715d-4a83-a749-f18eadd970e6",
+                "type": "cidr",
+                "name": "172.172.0.0/16",
+                "address": "172.172.0.0/16",
+                "address_description": "cidr resource",
+                "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]
+            },
+            {
+                "id": "03000143-e25e-45c7-aafb-144990e57dcd",
+                "type": "dns",
+                "name": "gitlab.mycorp.com",
+                "address": "gitlab.mycorp.com",
+                "address_description": "dns resource",
+                "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]
+            },
+            {
+                "id": "1106047c-cd5d-4151-b679-96b93da7383b",
+                "type": "internet",
+                "name": "Internet Resource",
+                "gateway_groups": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
+                "not": "relevant",
+                "some_other": [
+                    "field"
+                ]
+            },
+            {
+                "type": "what_is_this",
             }
         ]"#;
 
