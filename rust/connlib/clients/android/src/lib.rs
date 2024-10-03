@@ -6,10 +6,9 @@
 use crate::tun::Tun;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
-    keypair, Callbacks, ConnectArgs, DisconnectError, LoginUrl, LoginUrlError, Session,
-    V4RouteList, V6RouteList,
+    keypair, Callbacks, ConnectArgs, DisconnectError, Session, V4RouteList, V6RouteList,
 };
-use connlib_shared::{callbacks::ResourceDescription, get_user_agent, messages::ResourceId};
+use connlib_model::{ResourceId, ResourceView};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
@@ -17,7 +16,9 @@ use jni::{
     sys::jlong,
     JNIEnv, JavaVM,
 };
+use phoenix_channel::get_user_agent;
 use phoenix_channel::PhoenixChannel;
+use phoenix_channel::{LoginUrl, LoginUrlError};
 use secrecy::{Secret, SecretString};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{collections::BTreeSet, io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};
@@ -225,7 +226,7 @@ impl Callbacks for CallbackHandler {
         .expect("onUpdateRoutes callback failed");
     }
 
-    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
+    fn on_update_resources(&self, resource_list: Vec<ResourceView>) {
         self.env(|mut env| {
             let resource_list = env
                 .new_string(serde_json::to_string(&resource_list)?)
