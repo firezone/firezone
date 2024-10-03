@@ -46,7 +46,7 @@ pub struct ConnectArgs<CB> {
 impl Session {
     /// Creates a new [`Session`].
     ///
-    /// This connects to the portal a specified using [`LoginUrl`] and creates a wireguard tunnel using the provided private key.
+    /// This connects to the portal a specified using [`LoginUrl`](phoenix_channel::LoginUrl) and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
         args: ConnectArgs<CB>,
         portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
