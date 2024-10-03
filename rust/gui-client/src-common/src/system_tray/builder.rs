@@ -35,8 +35,8 @@ pub struct Item {
     pub event: Option<Event>,
     /// The text displayed to the user
     pub title: String,
-    /// If true, show a checkmark next to the item
-    pub selected: bool,
+    /// `None` means not checkable, `Some` is the checked state
+    pub checked: Option<bool>,
 }
 
 /// Events that the menu can send to the app
@@ -163,8 +163,8 @@ impl Item {
         self
     }
 
-    pub(crate) fn selected(mut self) -> Self {
-        self.selected = true;
+    pub(crate) fn checked(mut self, b: bool) -> Self {
+        self.checked = Some(b);
         self
     }
 }
@@ -179,6 +179,6 @@ pub(crate) fn item<E: Into<Option<Event>>, S: Into<String>>(event: E, title: S) 
     Item {
         event: event.into(),
         title: title.into(),
-        selected: false,
+        checked: None,
     }
 }
