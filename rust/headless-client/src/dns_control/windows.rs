@@ -112,7 +112,6 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
     // Set our DNS servers on the interface itself too, so that `ipconfig` and WSL can pick them up (Fixes #6777)
-    /*
     let key = hklm.open_subkey_with_flags(
         Path::new(r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces")
             .join(format!("{{{TUNNEL_UUID}}}")),
@@ -136,9 +135,9 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
         .filter(|addr| addr.is_ipv6())
         .map(|ip| ip.to_string())
         .collect::<Vec<_>>()
-        .join(","); // ChatGPT thinks these are space-separated
-    // key.set_value("NameServer6", &dns_config_string)?;
-    */
+        .join(" "); // ChatGPT thinks these are space-separated
+    key.set_value("NameServer", &dns_config_string)?;
+
     let dns_config_string = dns_config
         .iter()
         .map(|ip| ip.to_string())
@@ -210,6 +209,17 @@ mod tests {
 
         let mut tun_dev_manager = firezone_bin_shared::TunDeviceManager::new(1280).unwrap();
         let _tun = tun_dev_manager.make_tun().unwrap();
+
+        rt.block_on(async {
+            tun_dev_manager
+                .set_ips(
+                    [100, 92, 193, 137].into(),
+                    [0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0xa, 0x9db5].into(),
+                )
+                .await
+        })
+        .unwrap();
+
         let mut dns_controller = DnsController {
             dns_control_method: DnsControlMethod::Nrpt,
         };
@@ -232,8 +242,6 @@ mod tests {
                 .await
                 .unwrap();
         });
-
-        std::thread::sleep(std::time::Duration::from_secs(86400));
 
         let adapter = ipconfig::get_adapters()
             .unwrap()
