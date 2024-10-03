@@ -36,9 +36,19 @@ fn device_serial() -> Option<String> {
     Some(serial)
 }
 
+fn device_uuid() -> Option<String> {
+    let data = smbioslib::table_load_from_device().ok()?;
+
+    let uuid = data
+        .find_map(|sys_info: smbioslib::SMBiosSystemInformation| sys_info.uuid().to_utf8_lossy())?;
+
+    Some(uuid)
+}
+
 pub fn device_info() -> phoenix_channel::DeviceInfo {
     phoenix_channel::DeviceInfo {
         device_serial: device_serial(),
+        device_uuid: device_uuid(),
         ..Default::default()
     }
 }
