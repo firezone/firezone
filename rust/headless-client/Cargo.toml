@@ -12,7 +12,7 @@ atomicwrites = { workspace = true } # Needed to safely backup `/etc/resolv.conf`
 backoff = "0.4.0"
 clap = { version = "4.5", features = ["derive", "env", "string"] }
 connlib-client-shared = { workspace = true }
-connlib-shared = { workspace = true }
+connlib-model = { workspace = true }
 firezone-bin-shared = { workspace = true }
 firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
@@ -30,7 +30,7 @@ smbios-lib = "0.9.2"
 thiserror = { version = "1.0", default-features = false }
 # This actually relies on many other features in Tokio, so this will probably
 # fail to build outside the workspace. <https://github.com/firezone/firezone/pull/4328#discussion_r1540342142>
-tokio = { workspace = true, features = ["macros", "signal", "process", "time", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "signal", "process", "time", "rt-multi-thread", "fs"] }
 tokio-stream = "0.1.16"
 tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }
@@ -66,17 +66,17 @@ winreg = "0.52.0"
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.58.0"
 features = [
-    # For DNS control and route control
-    "Win32_Foundation",
-    "Win32_NetworkManagement_IpHelper",
-    "Win32_NetworkManagement_Ndis",
-    "Win32_Networking_WinSock",
+  # For DNS control and route control
+  "Win32_Foundation",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_NetworkManagement_Ndis",
+  "Win32_Networking_WinSock",
 
-    "Win32_Security", # For named pipe IPC
-    "Win32_System_GroupPolicy", # For NRPT when GPO is used
-    "Win32_System_SystemInformation", # For uptime
-    "Win32_System_SystemServices",
-    "Win32_System_Pipes",
+  "Win32_Security", # For named pipe IPC
+  "Win32_System_GroupPolicy", # For NRPT when GPO is used
+  "Win32_System_SystemInformation", # For uptime
+  "Win32_System_SystemServices",
+  "Win32_System_Pipes",
 ]
 
 [lints]

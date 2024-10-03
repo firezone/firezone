@@ -1,8 +1,5 @@
 use crate::updates::Release;
-use connlib_shared::{
-    callbacks::{ResourceDescription, Status},
-    messages::ResourceId,
-};
+use connlib_model::{ResourceId, ResourceStatus, ResourceView};
 use std::collections::HashSet;
 use url::Url;
 
@@ -75,7 +72,7 @@ pub enum ConnlibState {
 pub struct SignedIn {
     pub actor_name: String,
     pub favorite_resources: HashSet<ResourceId>,
-    pub resources: Vec<ResourceDescription>,
+    pub resources: Vec<ResourceView>,
     pub internet_resource_enabled: Option<bool>,
 }
 
@@ -94,7 +91,7 @@ impl SignedIn {
 
     /// Builds the submenu that has the resource address, name, desc,
     /// sites online, etc.
-    fn resource_submenu(&self, res: &ResourceDescription) -> Menu {
+    fn resource_submenu(&self, res: &ResourceView) -> Menu {
         let mut submenu = Menu::default().resource_description(res);
 
         if res.is_internet_resource() {
@@ -113,9 +110,9 @@ impl SignedIn {
         if let Some(site) = res.sites().first() {
             // Emojis may be causing an issue on some Ubuntu desktop environments.
             let status = match res.status() {
-                Status::Unknown => NO_ACTIVITY,
-                Status::Online => GATEWAY_CONNECTED,
-                Status::Offline => ALL_GATEWAYS_OFFLINE,
+                ResourceStatus::Unknown => NO_ACTIVITY,
+                ResourceStatus::Online => GATEWAY_CONNECTED,
+                ResourceStatus::Offline => ALL_GATEWAYS_OFFLINE,
             };
 
             submenu
@@ -313,7 +310,7 @@ mod tests {
     }
 
     fn signed_in(
-        resources: Vec<ResourceDescription>,
+        resources: Vec<ResourceView>,
         favorite_resources: HashSet<ResourceId>,
         internet_resource_enabled: Option<bool>,
     ) -> AppState {
@@ -328,7 +325,7 @@ mod tests {
         }
     }
 
-    fn resources() -> Vec<ResourceDescription> {
+    fn resources() -> Vec<ResourceView> {
         let s = r#"[
             {
                 "id": "73037362-715d-4a83-a749-f18eadd970e6",

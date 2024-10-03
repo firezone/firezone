@@ -9,16 +9,13 @@ use super::stub_portal::StubPortal;
 use super::transition::DnsQuery;
 use crate::dns::is_subdomain;
 use crate::gateway::DnsResourceNatEntry;
+use crate::messages::client::ResourceDescription;
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
 use crate::utils::earliest;
-use crate::{ClientEvent, GatewayEvent};
-use connlib_shared::messages::client::ResourceDescription;
-use connlib_shared::{
-    messages::{ClientId, GatewayId, Interface, RelayId},
-    DomainName,
-};
+use crate::{messages::Interface, ClientEvent, GatewayEvent};
+use connlib_model::{ClientId, DomainName, GatewayId, RelayId};
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
 use std::collections::BTreeSet;

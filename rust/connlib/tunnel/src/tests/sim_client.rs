@@ -6,18 +6,19 @@ use super::{
     transition::DnsQuery,
     IcmpIdentifier, IcmpSeq, QueryId,
 };
-use crate::{proptest::*, ClientState};
-use bimap::BiMap;
-use connlib_shared::{
+use crate::{
     messages::{
         client::{
             ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
             ResourceDescriptionInternet,
         },
-        ClientId, DnsServer, GatewayId, Interface, RelayId, ResourceId,
+        DnsServer, Interface,
     },
     DomainName,
 };
+use crate::{proptest::*, ClientState};
+use bimap::BiMap;
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
 use domain::{
     base::{Message, Rtype, ToName},
     rdata::AllRecordData,

@@ -3,8 +3,7 @@
 use anyhow::{anyhow, Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_client_shared::{keypair, ConnectArgs, LoginUrl, Session};
-use connlib_shared::get_user_agent;
+use connlib_client_shared::{keypair, ConnectArgs, Session};
 use firezone_bin_shared::{
     new_dns_notifier, new_network_notifier,
     platform::{tcp_socket_factory, udp_socket_factory},
@@ -15,6 +14,8 @@ use firezone_headless_client::{
 };
 use firezone_telemetry::Telemetry;
 use futures::{FutureExt as _, StreamExt as _};
+use phoenix_channel::get_user_agent;
+use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
 use std::{
