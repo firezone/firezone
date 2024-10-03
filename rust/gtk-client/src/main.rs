@@ -85,6 +85,7 @@ fn main() -> Result<()> {
         .build()?;
     let _guard = rt.enter();
 
+    // This enforces single-instance
     let deep_link_server = rt.block_on(deep_link::Server::new())?;
 
     let app = Application::builder()
@@ -110,16 +111,6 @@ fn main() -> Result<()> {
         .with_icon(icon_to_native_icon(&Icon::default()))
         .build()?;
 
-    let (main_tx, main_rx) = mpsc::channel(100);
-
-    let l = MainThreadLoop {
-        app: app.clone(),
-        last_icon_set: Default::default(),
-        main_rx,
-        tray_icon,
-    };
-    glib::spawn_future_local(l.run());
-
     let (ctlr_tx, ctlr_rx) = mpsc::channel(100);
 
     deep_link::register(current_exe)?;
@@ -140,6 +131,7 @@ fn main() -> Result<()> {
 
     let (_updates_tx, updates_rx) = mpsc::channel(1);
 
+    let (main_tx, main_rx) = mpsc::channel(100);
     rt.spawn(run_controller(
         main_tx,
         ctlr_tx,
@@ -148,6 +140,14 @@ fn main() -> Result<()> {
         telemetry,
         updates_rx,
     ));
+
+    let l = MainThreadLoop {
+        app: app.clone(),
+        last_icon_set: Default::default(),
+        main_rx,
+        tray_icon,
+    };
+    glib::spawn_future_local(l.run());
 
     if app.run() != 0.into() {
         anyhow::bail!("GTK main loop returned non-zero exit code");
