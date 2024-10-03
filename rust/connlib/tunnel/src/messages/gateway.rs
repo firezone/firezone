@@ -15,7 +15,7 @@ use std::{
 pub type Filters = Vec<Filter>;
 
 /// Description of a resource that maps to a DNS record.
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ResourceDescriptionDns {
     /// Resource's id.
     pub id: ResourceId,
@@ -30,7 +30,7 @@ pub struct ResourceDescriptionDns {
 }
 
 /// Description of a resource that maps to a CIDR.
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ResourceDescriptionCidr {
     /// Resource's id.
     pub id: ResourceId,
@@ -45,12 +45,12 @@ pub struct ResourceDescriptionCidr {
 }
 
 /// Description of an Internet resource.
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ResourceDescriptionInternet {
     pub id: ResourceId,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourceDescription {
     Dns(ResourceDescriptionDns),
@@ -104,14 +104,14 @@ impl ResourceDescription {
     }
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ClientPayload {
     pub ice_parameters: Offer,
     pub domain: Option<ResolveRequest>,
 }
 
 // TODO: Should this have a resource?
-#[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct InitGateway {
     pub interface: Interface,
     pub config: Config,
@@ -125,14 +125,14 @@ pub struct Config {
     pub ipv6_masquerade_enabled: bool,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Client {
     pub id: ClientId,
     pub payload: ClientPayload,
     pub peer: Peer,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct RequestConnection {
     pub resource: ResourceDescription,
     pub client: Client,
@@ -142,12 +142,12 @@ pub struct RequestConnection {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RemoveResource {
     pub id: ResourceId,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct AllowAccess {
     pub client_id: ClientId,
     pub resource: ResourceDescription,
@@ -162,7 +162,7 @@ pub struct AllowAccess {
     pub client_ipv6: Ipv6Addr,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct RejectAccess {
     pub client_id: ClientId,
     pub resource_id: ResourceId,
@@ -170,7 +170,7 @@ pub struct RejectAccess {
 
 // These messages are the messages that can be received
 // either by a client or a gateway by the client.
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum IngressMessages {
     RequestConnection(RequestConnection),
@@ -184,7 +184,7 @@ pub enum IngressMessages {
 }
 
 /// A client's ice candidate message.
-#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Clone)]
 pub struct ClientsIceCandidates {
     /// Client's id the ice candidates are meant for
     pub client_ids: Vec<ClientId>,
@@ -193,7 +193,7 @@ pub struct ClientsIceCandidates {
 }
 
 /// A client's ice candidate message.
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ClientIceCandidates {
     /// Client's id the ice candidates came from
     pub client_id: ClientId,
