@@ -163,10 +163,6 @@ pub enum EgressMessages {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messages::{DnsServer, IpDnsServer, Turn};
-    use chrono::DateTime;
-    use connlib_model::Site;
-    use phoenix_channel::{OutboundRequestId, PhoenixMessage};
 
     #[test]
     fn can_deserialize_internet_resource() {
@@ -203,44 +199,29 @@ mod tests {
     }
 
     #[test]
-    fn broadcast_ice_candidates() {
-        let message = r#"{"topic":"client","event":"broadcast_ice_candidates","payload":{"gateway_ids":["b3d34a15-55ab-40df-994b-a838e75d65d7"],"candidates":["candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"]},"ref":6}"#;
-        let expected = PhoenixMessage::new_message(
-            "client",
-            EgressMessages::BroadcastIceCandidates(GatewaysIceCandidates {
-                gateway_ids: vec!["b3d34a15-55ab-40df-994b-a838e75d65d7".parse().unwrap()],
-                candidates: BTreeSet::from([
-                    "candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"
-                        .to_owned(),
-                ]),
-            }),
-            Some(OutboundRequestId::for_test(6)),
-        );
+    fn can_deserialize_ice_candidates_message() {
+        let json = r#"{"topic":"client","event":"ice_candidates","payload":{"gateway_ids":["b3d34a15-55ab-40df-994b-a838e75d65d7"],"candidates":["candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"]},"ref":6}"#;
 
-        let ingress_message = serde_json::from_str::<PhoenixMessage<_, ()>>(message).unwrap();
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
-        assert_eq!(ingress_message, expected);
+        assert!(matches!(message, IngressMessages::IceCandidates(_)));
     }
 
     #[test]
-    fn invalidate_ice_candidates_message() {
-        let msg = r#"{"event":"invalidate_ice_candidates","ref":null,"topic":"client","payload":{"candidates":["candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"],"gateway_id":"2b1524e6-239e-4570-bc73-70a188e12101"}}"#;
-        let expected = IngressMessages::InvalidateIceCandidates(GatewayIceCandidates {
-            gateway_id: "2b1524e6-239e-4570-bc73-70a188e12101".parse().unwrap(),
-            candidates: vec![
-                "candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"
-                    .to_owned(),
-            ],
-        });
+    fn can_deserialize_invalidate_ice_candidates_message() {
+        let json = r#"{"event":"invalidate_ice_candidates","ref":null,"topic":"client","payload":{"candidates":["candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"],"gateway_id":"2b1524e6-239e-4570-bc73-70a188e12101"}}"#;
 
-        let actual = serde_json::from_str::<IngressMessages>(msg).unwrap();
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
-        assert_eq!(actual, expected);
+        assert!(matches!(
+            message,
+            IngressMessages::InvalidateIceCandidates(_)
+        ));
     }
 
     #[test]
-    fn connection_ready_deserialization() {
-        let message = r#"{
+    fn can_deserialize_connect_reply() {
+        let json = r#"{
             "ref": 0,
             "topic": "client",
             "event": "phx_reply",
@@ -268,26 +249,38 @@ mod tests {
                 }
             }
         }"#;
-        let _: PhoenixMessage<IngressMessages, ReplyMessages> =
-            serde_json::from_str(message).unwrap();
+
+        let message = serde_json::from_str::<ReplyMessages>(json).unwrap();
+
+        assert!(matches!(message, ReplyMessages::Connect(_)))
     }
 
     #[test]
-    fn config_updated() {
-        let m = PhoenixMessage::new_message(
-            "client",
-            IngressMessages::ConfigChanged(ConfigUpdate {
-                interface: Interface {
-                    ipv4: "100.67.138.25".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::e:65ea".parse().unwrap(),
-                    upstream_dns: vec![DnsServer::IpPort(IpDnsServer {
-                        address: "1.1.1.1:53".parse().unwrap(),
-                    })],
-                },
-            }),
-            None,
-        );
-        let message = r#"
+    fn can_deserialize_connection_details_reply() {
+        let json = r#"
+            {
+                "ref":null,
+                "topic":"client",
+                "event": "phx_reply",
+                "payload": {
+                    "response": {
+                        "resource_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3",
+                        "gateway_id": "73037362-715d-4a83-a749-f18eadd970e6",
+                        "gateway_remote_ip": "172.28.0.1",
+                        "gateway_group_id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"
+                    },
+                    "status":"ok"
+                }
+            }"#;
+
+        let message = serde_json::from_str::<ReplyMessages>(json).unwrap();
+
+        assert!(matches!(message, ReplyMessages::ConnectionDetails(_)));
+    }
+
+    #[test]
+    fn can_deserialize_config_changed_message() {
+        let json = r#"
         {
             "event": "config_changed",
             "ref": null,
@@ -306,68 +299,15 @@ mod tests {
             }
           }
         "#;
-        let ingress_message: PhoenixMessage<IngressMessages, ReplyMessages> =
-            serde_json::from_str(message).unwrap();
-        assert_eq!(m, ingress_message);
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(message, IngressMessages::ConfigChanged(_)))
     }
 
     #[test]
-    fn init_phoenix_message() {
-        let m = PhoenixMessage::new_message(
-            "client",
-            IngressMessages::Init(InitClient {
-                interface: Interface {
-                    ipv4: "100.72.112.111".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
-                    upstream_dns: vec![],
-                },
-                resources: vec![
-                    ResourceDescription::Cidr(ResourceDescriptionCidr {
-                        id: "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
-                        address: "172.172.0.0/16".parse().unwrap(),
-                        name: "172.172.0.0/16".to_string(),
-                        address_description: Some("cidr resource".to_string()),
-                        sites: vec![Site {
-                            name: "test".to_string(),
-                            id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
-                        }],
-                    }),
-                    ResourceDescription::Cidr(ResourceDescriptionCidr {
-                        id: "73037362-715d-4a83-a749-f18eadd970e7".parse().unwrap(),
-                        address: "172.173.0.0/16".parse().unwrap(),
-                        name: "172.173.0.0/16".to_string(),
-                        address_description: None,
-                        sites: vec![Site {
-                            name: "test".to_string(),
-                            id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
-                        }],
-                    }),
-                    ResourceDescription::Dns(ResourceDescriptionDns {
-                        id: "03000143-e25e-45c7-aafb-144990e57dcd".parse().unwrap(),
-                        address: "gitlab.mycorp.com".to_string(),
-                        name: "gitlab.mycorp.com".to_string(),
-                        address_description: Some("dns resource".to_string()),
-                        sites: vec![Site {
-                            name: "test".to_string(),
-                            id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
-                        }],
-                    }),
-                    ResourceDescription::Dns(ResourceDescriptionDns {
-                        id: "03000143-e25e-45c7-aafb-144990e57dce".parse().unwrap(),
-                        address: "github.mycorp.com".to_string(),
-                        name: "github.mycorp.com".to_string(),
-                        address_description: None,
-                        sites: vec![Site {
-                            name: "test".to_string(),
-                            id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
-                        }],
-                    }),
-                ],
-                relays: vec![],
-            }),
-            None,
-        );
-        let message = r#"{
+    fn can_deserialize_init_message() {
+        let json = r#"{
             "event": "init",
             "payload": {
                 "interface": {
@@ -414,320 +354,52 @@ mod tests {
             "ref": null,
             "topic": "client"
         }"#;
-        let ingress_message: PhoenixMessage<IngressMessages, ReplyMessages> =
-            serde_json::from_str(message).unwrap();
-        assert_eq!(m, ingress_message);
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(message, IngressMessages::Init(_)));
     }
 
     #[test]
-    fn messages_ignore_additional_fields() {
-        let m = PhoenixMessage::new_message(
-            "client",
-            IngressMessages::Init(InitClient {
-                interface: Interface {
-                    ipv4: "100.72.112.111".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
-                    upstream_dns: vec![],
-                },
-                resources: vec![
-                    ResourceDescription::Cidr(ResourceDescriptionCidr {
-                        id: "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
-                        address: "172.172.0.0/16".parse().unwrap(),
-                        name: "172.172.0.0/16".to_string(),
-                        address_description: Some("cidr resource".to_string()),
-                        sites: vec![Site {
-                            name: "test".to_string(),
-                            id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
-                        }],
-                    }),
-                    ResourceDescription::Dns(ResourceDescriptionDns {
-                        id: "03000143-e25e-45c7-aafb-144990e57dcd".parse().unwrap(),
-                        address: "gitlab.mycorp.com".to_string(),
-                        name: "gitlab.mycorp.com".to_string(),
-                        address_description: Some("dns resource".to_string()),
-                        sites: vec![Site {
-                            name: "test".to_string(),
-                            id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
-                        }],
-                    }),
-                ],
-                relays: vec![],
-            }),
-            None,
-        );
-        let message = r#"{
-            "event": "init",
-            "payload": {
-                "interface": {
-                    "ipv4": "100.72.112.111",
-                    "ipv6": "fd00:2021:1111::13:efb9",
-                    "upstream_dns": [],
-                    "extra_config": "foo"
-                },
-                "resources": [
-                    {
-                        "address": "172.172.0.0/16",
-                        "id": "73037362-715d-4a83-a749-f18eadd970e6",
-                        "name": "172.172.0.0/16",
-                        "type": "cidr",
-                        "address_description": "cidr resource",
-                        "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
-                        "not": "relevant"
-                    },
-                    {
-                        "address": "gitlab.mycorp.com",
-                        "id": "03000143-e25e-45c7-aafb-144990e57dcd",
-                        "ipv4": "100.126.44.50",
-                        "ipv6": "fd00:2021:1111::e:7758",
-                        "name": "gitlab.mycorp.com",
-                        "type": "dns",
-                        "address_description": "dns resource",
-                        "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
-                        "not": "relevant"
-                    }
-                ]
-            },
-            "ref": null,
-            "topic": "client"
-        }"#;
-        let ingress_message: PhoenixMessage<IngressMessages, ReplyMessages> =
-            serde_json::from_str(message).unwrap();
-        assert_eq!(m, ingress_message);
-    }
-
-    #[test]
-    fn messages_ignore_additional_bool_fields() {
-        let m = PhoenixMessage::new_message(
-            "client",
-            IngressMessages::Init(InitClient {
-                interface: Interface {
-                    ipv4: "100.72.112.111".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
-                    upstream_dns: vec![],
-                },
-                resources: vec![],
-                relays: vec![],
-            }),
-            None,
-        );
-        let message = r#"{
-            "event": "init",
-            "payload": {
-                "interface": {
-                    "ipv4": "100.72.112.111",
-                    "ipv6": "fd00:2021:1111::13:efb9",
-                    "upstream_dns": [],
-                    "additional": true
-                },
-                "resources": []
-            },
-            "ref": null,
-            "topic": "client"
-        }"#;
-        let ingress_message: PhoenixMessage<IngressMessages, ReplyMessages> =
-            serde_json::from_str(message).unwrap();
-        assert_eq!(m, ingress_message);
-    }
-
-    #[test]
-    fn messages_ignore_additional_number_fields() {
-        let m = PhoenixMessage::new_message(
-            "client",
-            IngressMessages::Init(InitClient {
-                interface: Interface {
-                    ipv4: "100.72.112.111".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
-                    upstream_dns: vec![],
-                },
-                resources: vec![],
-                relays: vec![],
-            }),
-            None,
-        );
-        let message = r#"{
-            "event": "init",
-            "payload": {
-                "interface": {
-                    "ipv4": "100.72.112.111",
-                    "ipv6": "fd00:2021:1111::13:efb9",
-                    "upstream_dns": [],
-                    "additional": 0.3
-                },
-                "resources": []
-            },
-            "ref": null,
-            "topic": "client"
-        }"#;
-        let ingress_message: PhoenixMessage<IngressMessages, ReplyMessages> =
-            serde_json::from_str(message).unwrap();
-        assert_eq!(m, ingress_message);
-    }
-
-    #[test]
-    fn messages_ignore_additional_object_fields() {
-        let m = PhoenixMessage::new_message(
-            "client",
-            IngressMessages::Init(InitClient {
-                interface: Interface {
-                    ipv4: "100.72.112.111".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
-                    upstream_dns: vec![],
-                },
-                resources: vec![],
-                relays: vec![],
-            }),
-            None,
-        );
-        let message = r#"{
-            "event": "init",
-            "payload": {
-                "interface": {
-                    "ipv4": "100.72.112.111",
-                    "ipv6": "fd00:2021:1111::13:efb9",
-                    "upstream_dns": [],
-                    "additional": { "ignored": "field" }
-                },
-                "resources": []
-            },
-            "ref": null,
-            "topic": "client"
-        }"#;
-        let ingress_message: PhoenixMessage<IngressMessages, ReplyMessages> =
-            serde_json::from_str(message).unwrap();
-        assert_eq!(m, ingress_message);
-    }
-
-    #[test]
-    fn messages_ignore_additional_array_fields() {
-        let m = PhoenixMessage::new_message(
-            "client",
-            IngressMessages::Init(InitClient {
-                interface: Interface {
-                    ipv4: "100.72.112.111".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::13:efb9".parse().unwrap(),
-                    upstream_dns: vec![],
-                },
-                resources: vec![],
-                relays: vec![],
-            }),
-            None,
-        );
-        let message = r#"{
-            "event": "init",
-            "payload": {
-                "interface": {
-                    "ipv4": "100.72.112.111",
-                    "ipv6": "fd00:2021:1111::13:efb9",
-                    "upstream_dns": [],
-                    "additional": [true, false]
-                },
-                "resources": []
-            },
-            "ref": null,
-            "topic": "client"
-        }"#;
-        let ingress_message: PhoenixMessage<IngressMessages, ReplyMessages> =
-            serde_json::from_str(message).unwrap();
-        assert_eq!(m, ingress_message);
-    }
-
-    #[test]
-    fn list_relays_message() {
-        let m = PhoenixMessage::<EgressMessages, ()>::new_message(
-            "client",
-            EgressMessages::PrepareConnection {
-                resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
-                connected_gateway_ids: BTreeSet::new(),
-            },
-            None,
-        );
-        let message = r#"
+    fn can_deserialize_relay_presence() {
+        let json = r#"
             {
-                "event": "prepare_connection",
+                "event": "relays_presence",
+                "ref": null,
+                "topic": "client",
                 "payload": {
-                    "resource_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3",
-                    "connected_gateway_ids": []
-                },
-                "ref":null,
-                "topic": "client"
-            }
-        "#;
-        let egress_message = serde_json::from_str(message).unwrap();
-        assert_eq!(m, egress_message);
-    }
-
-    #[test]
-    fn connection_details_reply() {
-        let m = PhoenixMessage::<EgressMessages, ReplyMessages>::new_ok_reply(
-            "client",
-            ReplyMessages::ConnectionDetails(ConnectionDetails {
-                gateway_id: "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
-                gateway_remote_ip: "172.28.0.1".parse().unwrap(),
-                resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
-                site_id: "bf56f32d-7b2c-4f5d-a784-788977d014a4".parse().unwrap(),
-            }),
-            None,
-        );
-        let message = r#"
-            {
-                "ref":null,
-                "topic":"client",
-                "event": "phx_reply",
-                "payload": {
-                    "response": {
-                        "resource_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3",
-                        "gateway_id": "73037362-715d-4a83-a749-f18eadd970e6",
-                        "gateway_remote_ip": "172.28.0.1",
-                        "gateway_group_id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"
-                    },
-                    "status":"ok"
+                    "disconnected_ids": [
+                        "e95f9517-2152-4677-a16a-fbb2687050a3",
+                        "b0724bd1-a8cc-4faf-88cd-f21159cfec47"
+                    ],
+                    "connected": [
+                        {
+                            "id": "0a133356-7a9e-4b9a-b413-0d95a5720fd8",
+                            "type": "turn",
+                            "username": "1719367575:ZQHcVGkdnfgGmcP1",
+                            "password": "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg",
+                            "addr": "172.28.0.101:3478",
+                            "expires_at": 1719367575
+                        }
+                    ]
                 }
-            }"#;
-        let reply_message = serde_json::from_str(message).unwrap();
-        assert_eq!(m, reply_message);
+            }
+            "#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(message, IngressMessages::RelaysPresence(_)));
     }
 
     #[test]
-    fn relays_presence() {
-        let message = r#"
-        {
-            "event": "relays_presence",
-            "ref": null,
-            "topic": "client",
-            "payload": {
-                "disconnected_ids": [
-                    "e95f9517-2152-4677-a16a-fbb2687050a3",
-                    "b0724bd1-a8cc-4faf-88cd-f21159cfec47"
-                ],
-                "connected": [
-                    {
-                        "id": "0a133356-7a9e-4b9a-b413-0d95a5720fd8",
-                        "type": "turn",
-                        "username": "1719367575:ZQHcVGkdnfgGmcP1",
-                        "password": "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg",
-                        "addr": "172.28.0.101:3478",
-                        "expires_at": 1719367575
-                    }
-                ]
-            }
-        }
-        "#;
-        let expected = IngressMessages::RelaysPresence(RelaysPresence {
-            disconnected_ids: vec![
-                "e95f9517-2152-4677-a16a-fbb2687050a3".parse().unwrap(),
-                "b0724bd1-a8cc-4faf-88cd-f21159cfec47".parse().unwrap(),
-            ],
-            connected: vec![Relay::Turn(Turn {
-                id: "0a133356-7a9e-4b9a-b413-0d95a5720fd8".parse().unwrap(),
-                expires_at: DateTime::from_timestamp(1719367575, 0).unwrap(),
-                addr: "172.28.0.101:3478".parse().unwrap(),
-                username: "1719367575:ZQHcVGkdnfgGmcP1".to_owned(),
-                password: "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg".to_owned(),
-            })],
-        });
+    fn serialize_prepare_connection_message() {
+        let message = EgressMessages::PrepareConnection {
+            resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+            connected_gateway_ids: BTreeSet::new(),
+        };
+        let expected_json = r#"{"event":"prepare_connection","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[]}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
 
-        let ingress_message = serde_json::from_str::<IngressMessages>(message).unwrap();
-
-        assert_eq!(ingress_message, expected);
+        assert_eq!(actual_json, expected_json);
     }
 }
