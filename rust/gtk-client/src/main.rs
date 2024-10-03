@@ -176,6 +176,7 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
     }
 }
 
+#[must_use]
 struct MainThreadLoop {
     app: gtk::Application,
     last_icon_set: Icon,
