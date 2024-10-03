@@ -6,15 +6,14 @@ use super::{
 };
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::proptest::*;
-use connlib_shared::{
+use crate::{
     messages::{
-        client::{
-            ResourceDescriptionCidr, ResourceDescriptionDns, ResourceDescriptionInternet, Site,
-        },
-        DnsServer, RelayId,
+        client::{ResourceDescriptionCidr, ResourceDescriptionDns, ResourceDescriptionInternet},
+        DnsServer,
     },
     DomainName,
 };
+use connlib_model::{RelayId, Site};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;

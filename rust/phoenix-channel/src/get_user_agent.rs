@@ -1,20 +1,6 @@
-//! This crates contains shared types and behavior between all the other libraries.
-//!
-//! This includes types provided by external crates, i.e. [boringtun] to make sure that
-//! we are using the same version across our own crates.
-
-pub mod callbacks;
-pub mod messages;
-
-pub use boringtun::x25519::PublicKey;
-pub use boringtun::x25519::StaticSecret;
-pub use phoenix_channel::{LoginUrl, LoginUrlError};
-
-pub type DomainName = domain::base::Name<Vec<u8>>;
-
-const LIB_NAME: &str = "connlib";
-
 pub fn get_user_agent(os_version_override: Option<String>, app_version: &str) -> String {
+    const LIB_NAME: &str = "connlib";
+
     // Note: we could switch to sys-info and get the hostname
     // but we lose the arch
     // and neither of the libraries provide the kernel version.

@@ -88,7 +88,7 @@ pub type SecretKey = Secret<Key>;
 #[cfg(test)]
 mod test {
     use boringtun::x25519::{PublicKey, StaticSecret};
-    use rand_core::OsRng;
+    use rand::rngs::OsRng;
 
     use super::Key;
 
