@@ -4,13 +4,14 @@ pub use callbacks::{Callbacks, DisconnectError};
 pub use connlib_model::StaticSecret;
 pub use eventloop::Eventloop;
 pub use firezone_tunnel::keypair;
-pub use firezone_tunnel::messages::client::ResourceDescription;
+pub use firezone_tunnel::messages::client::{
+    ResourceDescription, {IngressMessages, ReplyMessages},
+};
 
 use connlib_model::ResourceId;
 use eventloop::Command;
 use firezone_telemetry as telemetry;
 use firezone_tunnel::ClientTunnel;
-use messages::{IngressMessages, ReplyMessages};
 use phoenix_channel::PhoenixChannel;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::{BTreeMap, BTreeSet};
@@ -22,7 +23,6 @@ use tun::Tun;
 
 mod callbacks;
 mod eventloop;
-mod messages;
 mod serde_routelist;
 
 const PHOENIX_TOPIC: &str = "client";
