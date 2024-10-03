@@ -41,11 +41,7 @@ fn device_uuid() -> Option<String> {
 
     let uuid = data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| sys_info.uuid());
 
-    if let Some(uuid) = uuid {
-        return Some(uuid.to_string());
-    } else {
-        return None;
-    }
+    uuid?.to_string().into()
 }
 
 pub fn device_info() -> phoenix_channel::DeviceInfo {
