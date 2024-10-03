@@ -1,15 +1,16 @@
-use crate::messages::{
-    AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
-    IngressMessages, RejectAccess, RequestConnection,
-};
 use anyhow::Result;
 use boringtun::x25519::PublicKey;
 use connlib_model::DomainName;
 use connlib_model::{ClientId, ResourceId};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
-use firezone_tunnel::messages::GatewayResponse;
-use firezone_tunnel::messages::{ConnectionAccepted, Interface, RelaysPresence};
+use firezone_tunnel::messages::{
+    gateway::{
+        AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
+        IngressMessages, RejectAccess, RequestConnection,
+    },
+    ConnectionAccepted, GatewayResponse, Interface, RelaysPresence,
+};
 use firezone_tunnel::{DnsResourceNatEntry, GatewayTunnel};
 use futures::channel::mpsc;
 use futures_bounded::Timeout;

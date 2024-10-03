@@ -28,7 +28,6 @@ use url::Url;
 use uuid::Uuid;
 
 mod eventloop;
-mod messages;
 
 const ID_PATH: &str = "/var/lib/firezone/gateway_id";
 
