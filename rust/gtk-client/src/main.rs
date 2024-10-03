@@ -119,7 +119,7 @@ fn main() -> Result<()> {
     let (ctlr_tx, ctlr_rx) = mpsc::channel(100);
 
     deep_link::register(current_exe)?;
-    tokio::spawn(accept_deep_links(deep_link_server, ctlr_tx.clone()));
+    rt.spawn(accept_deep_links(deep_link_server, ctlr_tx.clone()));
 
     {
         let ctlr_tx = ctlr_tx.clone();
