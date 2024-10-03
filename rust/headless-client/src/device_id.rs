@@ -39,10 +39,13 @@ fn device_serial() -> Option<String> {
 fn device_uuid() -> Option<String> {
     let data = smbioslib::table_load_from_device().ok()?;
 
-    let uuid = data
-        .find_map(|sys_info: smbioslib::SMBiosSystemInformation| sys_info.uuid().to_utf8_lossy())?;
+    let uuid = data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| sys_info.uuid());
 
-    Some(uuid)
+    if let Some(uuid) = uuid {
+        return Some(uuid.to_string());
+    } else {
+        return None;
+    }
 }
 
 pub fn device_info() -> phoenix_channel::DeviceInfo {
