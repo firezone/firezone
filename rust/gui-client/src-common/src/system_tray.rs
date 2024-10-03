@@ -1,8 +1,5 @@
 use crate::updates::Release;
-use connlib_shared::{
-    callbacks::{ResourceDescription, Status},
-    messages::ResourceId,
-};
+use connlib_model::{ResourceId, ResourceStatus, ResourceView};
 use std::collections::HashSet;
 use url::Url;
 
@@ -30,12 +27,12 @@ const ENABLE: &str = "Enable this resource";
 
 mod builder;
 
-pub struct AppState<'a> {
-    pub connlib: ConnlibState<'a>,
+pub struct AppState {
+    pub connlib: ConnlibState,
     pub release: Option<Release>,
 }
 
-impl<'a> AppState<'a> {
+impl AppState {
     pub fn into_menu(self) -> Menu {
         let quit_text = match &self.connlib {
             ConnlibState::Loading
@@ -61,25 +58,25 @@ impl<'a> AppState<'a> {
     }
 }
 
-pub enum ConnlibState<'a> {
+pub enum ConnlibState {
     Loading,
     Quitting,
     RetryingConnection,
-    SignedIn(SignedIn<'a>),
+    SignedIn(SignedIn),
     SignedOut,
     WaitingForBrowser,
     WaitingForPortal,
     WaitingForTunnel,
 }
 
-pub struct SignedIn<'a> {
-    pub actor_name: &'a str,
-    pub favorite_resources: &'a HashSet<ResourceId>,
-    pub resources: &'a [ResourceDescription],
-    pub internet_resource_enabled: &'a Option<bool>,
+pub struct SignedIn {
+    pub actor_name: String,
+    pub favorite_resources: HashSet<ResourceId>,
+    pub resources: Vec<ResourceView>,
+    pub internet_resource_enabled: Option<bool>,
 }
 
-impl<'a> SignedIn<'a> {
+impl SignedIn {
     fn is_favorite(&self, resource: &ResourceId) -> bool {
         self.favorite_resources.contains(resource)
     }
@@ -94,7 +91,7 @@ impl<'a> SignedIn<'a> {
 
     /// Builds the submenu that has the resource address, name, desc,
     /// sites online, etc.
-    fn resource_submenu(&self, res: &ResourceDescription) -> Menu {
+    fn resource_submenu(&self, res: &ResourceView) -> Menu {
         let mut submenu = Menu::default().resource_description(res);
 
         if res.is_internet_resource() {
@@ -113,9 +110,9 @@ impl<'a> SignedIn<'a> {
         if let Some(site) = res.sites().first() {
             // Emojis may be causing an issue on some Ubuntu desktop environments.
             let status = match res.status() {
-                Status::Unknown => NO_ACTIVITY,
-                Status::Online => GATEWAY_CONNECTED,
-                Status::Offline => ALL_GATEWAYS_OFFLINE,
+                ResourceStatus::Unknown => NO_ACTIVITY,
+                ResourceStatus::Online => GATEWAY_CONNECTED,
+                ResourceStatus::Offline => ALL_GATEWAYS_OFFLINE,
             };
 
             submenu
@@ -206,7 +203,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         // the favoriting feature was created
         // Always show Resources in the original order
         menu = menu.disabled(RESOURCES);
-        for res in *resources {
+        for res in resources {
             let mut name = res.name().to_string();
             if res.is_internet_resource() {
                 name = append_status(&name, internet_resource_enabled.unwrap_or_default());
@@ -312,14 +309,14 @@ mod tests {
         }
     }
 
-    fn signed_in<'a>(
-        resources: &'a [ResourceDescription],
-        favorite_resources: &'a HashSet<ResourceId>,
-        internet_resource_enabled: &'a Option<bool>,
-    ) -> AppState<'a> {
+    fn signed_in(
+        resources: Vec<ResourceView>,
+        favorite_resources: HashSet<ResourceId>,
+        internet_resource_enabled: Option<bool>,
+    ) -> AppState {
         AppState {
             connlib: ConnlibState::SignedIn(SignedIn {
-                actor_name: "Jane Doe",
+                actor_name: "Jane Doe".to_string(),
                 favorite_resources,
                 resources,
                 internet_resource_enabled,
@@ -328,7 +325,7 @@ mod tests {
         }
     }
 
-    fn resources() -> Vec<ResourceDescription> {
+    fn resources() -> Vec<ResourceView> {
         let s = r#"[
             {
                 "id": "73037362-715d-4a83-a749-f18eadd970e6",
@@ -366,7 +363,7 @@ mod tests {
         let resources = vec![];
         let favorites = Default::default();
         let disabled_resources = Default::default();
-        let input = signed_in(&resources, &favorites, &disabled_resources);
+        let input = signed_in(resources, favorites, disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -388,7 +385,7 @@ mod tests {
         let resources = vec![];
         let favorites = HashSet::from([ResourceId::from_u128(42)]);
         let disabled_resources = Default::default();
-        let input = signed_in(&resources, &favorites, &disabled_resources);
+        let input = signed_in(resources, favorites, disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -410,7 +407,7 @@ mod tests {
         let resources = resources();
         let favorites = Default::default();
         let disabled_resources = Default::default();
-        let input = signed_in(&resources, &favorites, &disabled_resources);
+        let input = signed_in(resources, favorites, disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -485,7 +482,7 @@ mod tests {
             "03000143-e25e-45c7-aafb-144990e57dcd",
         )?]);
         let disabled_resources = Default::default();
-        let input = signed_in(&resources, &favorites, &disabled_resources);
+        let input = signed_in(resources, favorites, disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -567,7 +564,7 @@ mod tests {
             "00000000-0000-0000-0000-000000000000",
         )?]);
         let disabled_resources = Default::default();
-        let input = signed_in(&resources, &favorites, &disabled_resources);
+        let input = signed_in(resources, favorites, disabled_resources);
         let actual = input.into_menu();
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")

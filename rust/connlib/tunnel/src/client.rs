@@ -1,16 +1,16 @@
 use crate::dns::StubResolver;
+use crate::messages::ResolveRequest;
+use crate::messages::{
+    client::ResourceDescription, client::ResourceDescriptionCidr, Answer, DnsServer,
+    Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay,
+};
 use crate::peer_store::PeerStore;
 use crate::{dns, TunConfig};
 use anyhow::Context;
 use bimap::BiMap;
-use connlib_shared::callbacks::Status;
-use connlib_shared::messages::client::{Site, SiteId};
-use connlib_shared::messages::ResolveRequest;
-use connlib_shared::messages::{
-    client::ResourceDescription, client::ResourceDescriptionCidr, Answer, DnsServer, GatewayId,
-    Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId, ResourceId,
-};
-use connlib_shared::{callbacks, PublicKey, StaticSecret};
+use connlib_model::{GatewayId, RelayId, ResourceId, ResourceStatus, ResourceView};
+use connlib_model::{PublicKey, StaticSecret};
+use connlib_model::{Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
@@ -150,7 +150,8 @@ impl ClientTunnel {
     }
 
     pub fn remove_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.role_state.remove_ice_candidate(conn_id, ice_candidate);
+        self.role_state
+            .remove_ice_candidate(conn_id, ice_candidate, Instant::now());
     }
 
     pub fn on_routing_details(
@@ -203,7 +204,7 @@ pub struct ClientState {
     /// The site a gateway belongs to.
     gateways_site: HashMap<GatewayId, SiteId>,
     /// The online/offline status of a site.
-    sites_status: HashMap<SiteId, Status>,
+    sites_status: HashMap<SiteId, ResourceStatus>,
 
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
     active_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
@@ -316,7 +317,7 @@ impl ClientState {
         self.node.num_connections()
     }
 
-    pub(crate) fn resources(&self) -> Vec<callbacks::ResourceDescription> {
+    pub(crate) fn resources(&self) -> Vec<ResourceView> {
         self.resources_by_id
             .values()
             .cloned()
@@ -328,24 +329,24 @@ impl ClientState {
             .collect_vec()
     }
 
-    fn resource_status(&self, resource: &ResourceDescription) -> Status {
+    fn resource_status(&self, resource: &ResourceDescription) -> ResourceStatus {
         if resource.sites().iter().any(|s| {
             self.sites_status
                 .get(&s.id)
-                .is_some_and(|s| *s == Status::Online)
+                .is_some_and(|s| *s == ResourceStatus::Online)
         }) {
-            return Status::Online;
+            return ResourceStatus::Online;
         }
 
         if resource.sites().iter().all(|s| {
             self.sites_status
                 .get(&s.id)
-                .is_some_and(|s| *s == Status::Offline)
+                .is_some_and(|s| *s == ResourceStatus::Offline)
         }) {
-            return Status::Offline;
+            return ResourceStatus::Offline;
         }
 
-        Status::Unknown
+        ResourceStatus::Unknown
     }
 
     fn set_resource_offline(&mut self, id: ResourceId) {
@@ -354,7 +355,7 @@ impl ClientState {
         };
 
         for Site { id, .. } in resource.sites() {
-            self.sites_status.insert(*id, Status::Offline);
+            self.sites_status.insert(*id, ResourceStatus::Offline);
         }
     }
 
@@ -501,8 +502,14 @@ impl ClientState {
         self.node.add_remote_candidate(conn_id, ice_candidate, now);
     }
 
-    pub fn remove_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.node.remove_remote_candidate(conn_id, ice_candidate);
+    pub fn remove_ice_candidate(
+        &mut self,
+        conn_id: GatewayId,
+        ice_candidate: String,
+        now: Instant,
+    ) {
+        self.node
+            .remove_remote_candidate(conn_id, ice_candidate, now);
     }
 
     #[tracing::instrument(level = "trace", skip_all, fields(%resource_id))]
@@ -807,7 +814,7 @@ impl ClientState {
 
     #[tracing::instrument(level = "debug", skip_all, fields(gateway = %gateway_id))]
     pub fn cleanup_connected_gateway(&mut self, gateway_id: &GatewayId) {
-        self.update_site_status_by_gateway(gateway_id, Status::Unknown);
+        self.update_site_status_by_gateway(gateway_id, ResourceStatus::Unknown);
         self.peers.remove(gateway_id);
         self.resources_gateways.retain(|_, g| g != gateway_id);
     }
@@ -906,10 +913,10 @@ impl ClientState {
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
+        self.drain_node_events();
+
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
         self.forwarded_dns_queries.retain(|_, (_, exp)| now < *exp);
-
-        self.drain_node_events();
     }
 
     fn maybe_update_tun_routes(&mut self) {
@@ -1005,7 +1012,7 @@ impl ClientState {
                         .insert(candidate);
                 }
                 snownet::Event::ConnectionEstablished(id) => {
-                    self.update_site_status_by_gateway(&id, Status::Online);
+                    self.update_site_status_by_gateway(&id, ResourceStatus::Online);
                     resources_changed = true;
                 }
             }
@@ -1035,7 +1042,7 @@ impl ClientState {
         }
     }
 
-    fn update_site_status_by_gateway(&mut self, gateway_id: &GatewayId, status: Status) {
+    fn update_site_status_by_gateway(&mut self, gateway_id: &GatewayId, status: ResourceStatus) {
         // Note: we can do this because in theory we shouldn't have multiple gateways for the same site
         // connected at the same time.
         self.sites_status.insert(
@@ -1194,7 +1201,7 @@ impl ClientState {
         // If there's no allowed ip left we remove the whole peer because there's no point on keeping it around
         if peer.allowed_ips.is_empty() {
             self.peers.remove(&gateway_id);
-            self.update_site_status_by_gateway(&gateway_id, Status::Unknown);
+            self.update_site_status_by_gateway(&gateway_id, ResourceStatus::Unknown);
             // TODO: should we have a Node::remove_connection?
         }
 
@@ -1256,6 +1263,7 @@ impl ClientState {
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);
+        self.drain_node_events(); // Ensure all state changes are fully-propagated.
     }
 }
 
@@ -1587,8 +1595,9 @@ mod tests {
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
     use super::*;
+    use crate::messages::client::ResourceDescriptionDns;
     use crate::proptest::*;
-    use connlib_shared::messages::client::ResourceDescriptionDns;
+    use connlib_model::ResourceView;
     use prop::collection;
     use proptest::prelude::*;
 
@@ -1614,8 +1623,6 @@ mod proptests {
         #[strategy(dns_resource())] resource2: ResourceDescriptionDns,
         #[strategy(cidr_resource())] resource3: ResourceDescriptionCidr,
     ) {
-        use callbacks as cb;
-
         let mut client_state = ClientState::for_test();
 
         client_state.add_resource(ResourceDescription::Cidr(resource1.clone()));
@@ -1624,8 +1631,8 @@ mod proptests {
         assert_eq!(
             hashset(client_state.resources()),
             hashset([
-                cb::ResourceDescription::Cidr(resource1.clone().with_status(Status::Unknown)),
-                cb::ResourceDescription::Dns(resource2.clone().with_status(Status::Unknown))
+                ResourceView::Cidr(resource1.clone().with_status(ResourceStatus::Unknown)),
+                ResourceView::Dns(resource2.clone().with_status(ResourceStatus::Unknown))
             ])
         );
 
@@ -1634,9 +1641,9 @@ mod proptests {
         assert_eq!(
             hashset(client_state.resources()),
             hashset([
-                cb::ResourceDescription::Cidr(resource1.with_status(Status::Unknown)),
-                cb::ResourceDescription::Dns(resource2.with_status(Status::Unknown)),
-                cb::ResourceDescription::Cidr(resource3.with_status(Status::Unknown)),
+                ResourceView::Cidr(resource1.with_status(ResourceStatus::Unknown)),
+                ResourceView::Dns(resource2.with_status(ResourceStatus::Unknown)),
+                ResourceView::Cidr(resource3.with_status(ResourceStatus::Unknown)),
             ])
         );
     }
@@ -1646,8 +1653,6 @@ mod proptests {
         #[strategy(cidr_resource())] resource: ResourceDescriptionCidr,
         #[strategy(any_ip_network(8))] new_address: IpNetwork,
     ) {
-        use callbacks as cb;
-
         let mut client_state = ClientState::for_test();
         client_state.add_resource(ResourceDescription::Cidr(resource.clone()));
 
@@ -1660,8 +1665,8 @@ mod proptests {
 
         assert_eq!(
             hashset(client_state.resources()),
-            hashset([cb::ResourceDescription::Cidr(
-                updated_resource.with_status(Status::Unknown)
+            hashset([ResourceView::Cidr(
+                updated_resource.with_status(ResourceStatus::Unknown)
             )])
         );
         assert_eq!(
@@ -1675,8 +1680,6 @@ mod proptests {
         #[strategy(dns_resource())] resource: ResourceDescriptionDns,
         #[strategy(any_ip_network(8))] address: IpNetwork,
     ) {
-        use callbacks as cb;
-
         let mut client_state = ClientState::for_test();
         client_state.add_resource(ResourceDescription::Dns(resource.clone()));
 
@@ -1692,8 +1695,8 @@ mod proptests {
 
         assert_eq!(
             hashset(client_state.resources()),
-            hashset([cb::ResourceDescription::Cidr(
-                dns_as_cidr_resource.with_status(Status::Unknown)
+            hashset([ResourceView::Cidr(
+                dns_as_cidr_resource.with_status(ResourceStatus::Unknown)
             )])
         );
         assert_eq!(
@@ -1707,8 +1710,6 @@ mod proptests {
         #[strategy(dns_resource())] dns_resource: ResourceDescriptionDns,
         #[strategy(cidr_resource())] cidr_resource: ResourceDescriptionCidr,
     ) {
-        use callbacks as cb;
-
         let mut client_state = ClientState::for_test();
         client_state.add_resource(ResourceDescription::Dns(dns_resource.clone()));
         client_state.add_resource(ResourceDescription::Cidr(cidr_resource.clone()));
@@ -1717,8 +1718,8 @@ mod proptests {
 
         assert_eq!(
             hashset(client_state.resources()),
-            hashset([cb::ResourceDescription::Cidr(
-                cidr_resource.clone().with_status(Status::Unknown)
+            hashset([ResourceView::Cidr(
+                cidr_resource.clone().with_status(ResourceStatus::Unknown)
             )])
         );
         assert_eq!(
@@ -1739,8 +1740,6 @@ mod proptests {
         #[strategy(cidr_resource())] cidr_resource1: ResourceDescriptionCidr,
         #[strategy(cidr_resource())] cidr_resource2: ResourceDescriptionCidr,
     ) {
-        use callbacks as cb;
-
         let mut client_state = ClientState::for_test();
         client_state.add_resource(ResourceDescription::Dns(dns_resource1));
         client_state.add_resource(ResourceDescription::Cidr(cidr_resource1));
@@ -1753,8 +1752,8 @@ mod proptests {
         assert_eq!(
             hashset(client_state.resources()),
             hashset([
-                cb::ResourceDescription::Dns(dns_resource2.with_status(Status::Unknown)),
-                cb::ResourceDescription::Cidr(cidr_resource2.clone().with_status(Status::Unknown)),
+                ResourceView::Dns(dns_resource2.with_status(ResourceStatus::Unknown)),
+                ResourceView::Cidr(cidr_resource2.clone().with_status(ResourceStatus::Unknown)),
             ])
         );
         assert_eq!(
@@ -1783,14 +1782,20 @@ mod proptests {
             .gateways_site
             .insert(gateway, first_resource.sites().iter().next().unwrap().id);
 
-        client_state.update_site_status_by_gateway(&gateway, Status::Online);
+        client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Online);
 
         for resource in resources_online {
-            assert_eq!(client_state.resource_status(&resource), Status::Online);
+            assert_eq!(
+                client_state.resource_status(&resource),
+                ResourceStatus::Online
+            );
         }
 
         for resource in resources_unknown {
-            assert_eq!(client_state.resource_status(&resource), Status::Unknown);
+            assert_eq!(
+                client_state.resource_status(&resource),
+                ResourceStatus::Unknown
+            );
         }
     }
 
@@ -1811,11 +1816,14 @@ mod proptests {
             .gateways_site
             .insert(gateway, first_resources.sites().iter().next().unwrap().id);
 
-        client_state.update_site_status_by_gateway(&gateway, Status::Online);
-        client_state.update_site_status_by_gateway(&gateway, Status::Unknown);
+        client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Online);
+        client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Unknown);
 
         for resource in resources {
-            assert_eq!(client_state.resource_status(&resource), Status::Unknown);
+            assert_eq!(
+                client_state.resource_status(&resource),
+                ResourceStatus::Unknown
+            );
         }
     }
 
@@ -1834,10 +1842,13 @@ mod proptests {
 
         assert_eq!(
             client_state.resource_status(&single_site_resource),
-            Status::Offline
+            ResourceStatus::Offline
         );
         for resource in multi_site_resources {
-            assert_eq!(client_state.resource_status(&resource), Status::Unknown);
+            assert_eq!(
+                client_state.resource_status(&resource),
+                ResourceStatus::Unknown
+            );
         }
     }
 

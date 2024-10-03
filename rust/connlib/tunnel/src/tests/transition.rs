@@ -2,12 +2,11 @@ use crate::{
     client::{IPV4_RESOURCES, IPV6_RESOURCES},
     proptest::{host_v4, host_v6},
 };
+use connlib_model::RelayId;
 
 use super::sim_net::{any_ip_stack, any_port, Host};
-use connlib_shared::{
-    messages::{client::ResourceDescription, DnsServer, RelayId, ResourceId},
-    DomainName,
-};
+use crate::messages::{client::ResourceDescription, DnsServer};
+use connlib_model::{DomainName, ResourceId};
 use domain::base::Rtype;
 use prop::collection;
 use proptest::{prelude::*, sample};
@@ -84,6 +83,11 @@ pub(crate) enum Transition {
 
     /// Idle connlib for a while.
     Idle,
+
+    /// Simulate all relays rebooting while we are network partitioned from the portal.
+    ///
+    /// In this case, we won't receive a `relays_presence` but instead we will receive relays with the same ID yet different credentials.
+    RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
 }
 
 #[derive(Debug, Clone)]

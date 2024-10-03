@@ -1,5 +1,6 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use secrecy::{CloneableSecret, ExposeSecret as _, SecretString, Zeroize};
+use serde::Deserialize;
 use sha2::Digest as _;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use url::Url;
@@ -16,6 +17,14 @@ use uuid::Uuid;
 // We are counting the nul-byte
 #[cfg(not(target_os = "windows"))]
 const HOST_NAME_MAX: usize = 256;
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct DeviceInfo {
+    pub device_uuid: Option<String>,
+    pub device_serial: Option<String>,
+    pub identifier_for_vendor: Option<String>,
+    pub firebase_installation_id: Option<String>,
+}
 
 #[derive(Clone)]
 pub struct LoginUrl {
@@ -44,6 +53,7 @@ impl LoginUrl {
         device_id: String,
         device_name: Option<String>,
         public_key: [u8; 32],
+        device_info: DeviceInfo,
     ) -> Result<Self, LoginUrlError<E>> {
         let external_id = hex::encode(sha2::Sha256::digest(device_id));
         let device_name = device_name
@@ -60,6 +70,7 @@ impl LoginUrl {
             None,
             None,
             None,
+            device_info,
         )?;
 
         Ok(LoginUrl {
@@ -90,6 +101,7 @@ impl LoginUrl {
             None,
             None,
             None,
+            Default::default(),
         )?;
 
         Ok(LoginUrl {
@@ -116,6 +128,7 @@ impl LoginUrl {
             Some(listen_port),
             ipv4_address,
             ipv6_address,
+            Default::default(),
         )?;
 
         Ok(LoginUrl {
@@ -183,6 +196,7 @@ fn get_websocket_path<E>(
     port: Option<u16>,
     ipv4_address: Option<Ipv4Addr>,
     ipv6_address: Option<Ipv6Addr>,
+    device_info: DeviceInfo,
 ) -> Result<Url, LoginUrlError<E>> {
     set_ws_scheme(&mut api_url)?;
 
@@ -218,6 +232,18 @@ fn get_websocket_path<E>(
         }
         if let Some(port) = port {
             query_pairs.append_pair("port", &port.to_string());
+        }
+        if let Some(device_serial) = device_info.device_serial {
+            query_pairs.append_pair("device_serial", &device_serial);
+        }
+        if let Some(device_uuid) = device_info.device_uuid {
+            query_pairs.append_pair("device_uuid", &device_uuid);
+        }
+        if let Some(identifier_for_vendor) = device_info.identifier_for_vendor {
+            query_pairs.append_pair("identifier_for_vendor", &identifier_for_vendor);
+        }
+        if let Some(firebase_installation_id) = device_info.firebase_installation_id {
+            query_pairs.append_pair("firebase_installation_id", &firebase_installation_id);
         }
     }
 

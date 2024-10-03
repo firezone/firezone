@@ -5,16 +5,17 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
+base64 = { version = "0.22", default-features = false, features = ["std"] }
 bimap = "0.6"
 boringtun = { workspace = true }
 bytes = { version = "1.7", default-features = false, features = ["std"] }
 chrono = { workspace = true }
-connlib-shared = { workspace = true }
+connlib-model = { workspace = true }
 derivative = "2.2.0"
 divan = { version = "0.1.14", optional = true }
 domain = { workspace = true }
-futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
-futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
+futures = { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
+futures-util = { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
 glob = "0.3.1"
 hex = "0.4.3"
 ip-packet = { workspace = true }
@@ -25,7 +26,7 @@ lru = "0.12.4"
 proptest = { version = "1", optional = true }
 rand = "0.8.5"
 rangemap = "1.5.1"
-secrecy = { workspace = true }
+secrecy = { workspace = true, features = ["serde"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
@@ -40,6 +41,7 @@ uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
 derivative = "2.2.0"
 firezone-relay = { workspace = true, features = ["proptest"] }
 ip-packet = { workspace = true, features = ["proptest"] }
+phoenix-channel = { workspace = true }
 proptest-state-machine = "0.3"
 rand = "0.8"
 serde_json = "1.0"

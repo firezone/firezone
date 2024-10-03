@@ -6,15 +6,14 @@ use super::{
 };
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::proptest::*;
-use connlib_shared::{
+use crate::{
     messages::{
-        client::{
-            ResourceDescriptionCidr, ResourceDescriptionDns, ResourceDescriptionInternet, Site,
-        },
-        DnsServer, RelayId,
+        client::{ResourceDescriptionCidr, ResourceDescriptionDns, ResourceDescriptionInternet},
+        DnsServer,
     },
     DomainName,
 };
+use connlib_model::{RelayId, Site};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;
@@ -109,8 +108,10 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
         )
 }
 
-pub(crate) fn relays() -> impl Strategy<Value = BTreeMap<RelayId, Host<u64>>> {
-    collection::btree_map(relay_id(), ref_relay_host(), 1..=2)
+pub(crate) fn relays(
+    id: impl Strategy<Value = RelayId>,
+) -> impl Strategy<Value = BTreeMap<RelayId, Host<u64>>> {
+    collection::btree_map(id, ref_relay_host(), 1..=2)
 }
 
 /// Sample a list of DNS servers.
