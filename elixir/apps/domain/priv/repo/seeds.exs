@@ -361,8 +361,8 @@ IO.puts("")
       external_id: Ecto.UUID.generate(),
       public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
       last_seen_user_agent: "Mac OS/14.5 (MacBook) connlib/0.7.412",
-      device_serial: "AAPL-SERIAL-#{Ecto.UUID.generate()}",
-      device_uuid: "AAPL-UUID-#{Ecto.UUID.generate()}"
+      device_serial: "FVFHF246Q72Z",
+      device_uuid: "#{Ecto.UUID.generate()}"
     },
     admin_subject
   )

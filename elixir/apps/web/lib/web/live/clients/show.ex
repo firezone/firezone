@@ -159,7 +159,7 @@ defmodule Web.Clients.Show do
         </.vertical_table>
 
         <h2 class="mt-6 mb-4 text-xl leading-none tracking-tight text-neutral-900">
-          Posture
+          Device Attributes
         </h2>
 
         <.vertical_table id="posture">
@@ -167,10 +167,10 @@ defmodule Web.Clients.Show do
             <:label>
               <.popover>
                 <:target>
-                  ID <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
+                  Database ID <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
                 </:target>
                 <:content>
-                  Unique UUID assigned to this Client that can be used in the API to manage this Client.
+                 Database ID assigned to this Client that can be used to manage this Client via the REST API.
                 </:content>
               </.popover>
             </:label>
@@ -180,11 +180,11 @@ defmodule Web.Clients.Show do
             <:label>
               <.popover>
                 <:target>
-                  Installation ID
+                  File ID
                   <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
                 </:target>
                 <:content>
-                  Unique UUID generated and stored on the Client to identify it.
+                  Firezone-specific UUID generated and persisted to the device upon app installation.
                 </:content>
               </.popover>
             </:label>
@@ -320,31 +320,31 @@ defmodule Web.Clients.Show do
   end
 
   defp hardware_id_title(%{last_seen_user_agent: "Mac OS/" <> _}, :device_serial),
-    do: {"Hardware's Serial", nil}
+    do: {"Device Serial", nil}
 
   defp hardware_id_title(%{last_seen_user_agent: "Mac OS/" <> _}, :device_uuid),
-    do: {"Hardware's UUID", nil}
+    do: {"Device UUID", nil}
 
   defp hardware_id_title(%{last_seen_user_agent: "iOS/" <> _}, :identifier_for_vendor),
     do:
-      {"Identifier for vendor", "This value is reset if the Firezone application is reinstalled."}
+      {"App installation ID", "This value is reset if the Firezone application is reinstalled."}
 
   defp hardware_id_title(%{last_seen_user_agent: "Android/" <> _}, :firebase_installation_id),
     do:
-      {"Firebase installation ID",
+      {"App installation ID",
        "This value is reset if the Firezone application is reinstalled."}
 
   defp hardware_id_title(_client, :device_serial),
-    do: {"Motherboard's Serial", nil}
+    do: {"Device Serial", nil}
 
   defp hardware_id_title(_client, :device_uuid),
-    do: {"Motherboard's UUID", nil}
+    do: {"Device UUID", nil}
 
   defp hardware_id_title(_client, :identifier_for_vendor),
-    do: {"Identifier for vendor", nil}
+    do: {"App installation ID", nil}
 
   defp hardware_id_title(_client, :firebase_installation_id),
-    do: {"Firebase installation ID", nil}
+    do: {"App installation ID", nil}
 
   def handle_info(
         %Phoenix.Socket.Broadcast{
