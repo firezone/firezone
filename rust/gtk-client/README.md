@@ -6,6 +6,7 @@ This crate houses a GTK+ 3 Client for Ubuntu 20.04, 22.04, and 24.04.
 
 1. [Install rustup](https://rustup.rs/)
 1. `sudo apt-get install libgtk-3-dev libxdo-dev`
+1. `cargo install cargo-deb@2.7.0`
 
 ## Debugging
 
