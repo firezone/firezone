@@ -230,7 +230,7 @@ mod tests {
                 ]
             },
             {
-                "type": "what_is_this",
+                "type": "what_is_this"
             }
         ]"#;
 
@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn can_deserialize_ice_candidates_message() {
-        let json = r#"{"topic":"client","event":"ice_candidates","payload":{"gateway_ids":["b3d34a15-55ab-40df-994b-a838e75d65d7"],"candidates":["candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"]},"ref":6}"#;
+        let json = r#"{"topic":"client","event":"ice_candidates","payload":{"gateway_id":"b3d34a15-55ab-40df-994b-a838e75d65d7","candidates":["candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"]},"ref":6}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
@@ -261,32 +261,24 @@ mod tests {
     #[test]
     fn can_deserialize_connect_reply() {
         let json = r#"{
-            "ref": 0,
-            "topic": "client",
-            "event": "phx_reply",
-            "payload": {
-                "status": "ok",
-                "response": {
-                    "resource_id": "ea6570d1-47c7-49d2-9dc3-efff1c0c9e0b",
-                    "gateway_public_key": "dvy0IwyxAi+txSbAdT7WKgf7K4TekhKzrnYwt5WfbSM=",
-                    "gateway_payload": {
-                       "ConnectionAccepted":{
-                          "domain_response":{
-                             "address":[
-                                "2607:f8b0:4008:804::200e",
-                                "142.250.64.206"
-                             ],
-                             "domain":"google.com"
-                          },
-                          "ice_parameters":{
-                             "username":"tGeqOjtGuPzPpuOx",
-                             "password":"pMAxxTgHHSdpqHRzHGNvuNsZinLrMxwe"
-                          }
-                       }
-                    },
-                    "persistent_keepalive": 25
-                }
-            }
+            "resource_id": "ea6570d1-47c7-49d2-9dc3-efff1c0c9e0b",
+            "gateway_public_key": "dvy0IwyxAi+txSbAdT7WKgf7K4TekhKzrnYwt5WfbSM=",
+            "gateway_payload": {
+               "ConnectionAccepted":{
+                  "domain_response":{
+                     "address":[
+                        "2607:f8b0:4008:804::200e",
+                        "142.250.64.206"
+                     ],
+                     "domain":"google.com"
+                  },
+                  "ice_parameters":{
+                     "username":"tGeqOjtGuPzPpuOx",
+                     "password":"pMAxxTgHHSdpqHRzHGNvuNsZinLrMxwe"
+                  }
+               }
+            },
+            "persistent_keepalive": 25
         }"#;
 
         let message = serde_json::from_str::<ReplyMessages>(json).unwrap();
@@ -298,18 +290,10 @@ mod tests {
     fn can_deserialize_connection_details_reply() {
         let json = r#"
             {
-                "ref":null,
-                "topic":"client",
-                "event": "phx_reply",
-                "payload": {
-                    "response": {
-                        "resource_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3",
-                        "gateway_id": "73037362-715d-4a83-a749-f18eadd970e6",
-                        "gateway_remote_ip": "172.28.0.1",
-                        "gateway_group_id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"
-                    },
-                    "status":"ok"
-                }
+                "resource_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3",
+                "gateway_id": "73037362-715d-4a83-a749-f18eadd970e6",
+                "gateway_remote_ip": "172.28.0.1",
+                "gateway_group_id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"
             }"#;
 
         let message = serde_json::from_str::<ReplyMessages>(json).unwrap();
