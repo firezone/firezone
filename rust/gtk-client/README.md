@@ -6,6 +6,18 @@ This crate houses a GTK+ 3 Client for Ubuntu 20.04, 22.04, and 24.04.
 
 1. [Install rustup](https://rustup.rs/)
 
+## Debugging
+
+```bash
+cargo build
+
+# In one terminal
+sudo -u root -g firezone-client target/debug/firezone-client-ipc run-debug
+
+# Concurrently, in a 2nd terminal
+target/debug/firezone-gui-client
+```
+
 ## Building
 
 `./build.sh`

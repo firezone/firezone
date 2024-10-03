@@ -78,7 +78,11 @@ fn main() -> Result<()> {
         logger: _logger,
         reloader: log_filter_reloader,
     } = start_logging("debug")?; // TODO
-    let rt = tokio::runtime::Runtime::new()?;
+                                 // The runtime must be multi-thread so that the main thread is free for GTK to consume
+                                 // As long as Tokio has at least 1 worker thread (i.e. there is at least 1 CPU core in the system) this will work.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
     let _guard = rt.enter();
 
     let deep_link_server = rt.block_on(deep_link::Server::new())?;

@@ -1,5 +1,6 @@
 [package]
 authors = ["Firezone, Inc."]
+default-run = "firezone-gui-client"
 description = "Firezone"
 name = "firezone-gui-client"
 # mark:next-gui-version
