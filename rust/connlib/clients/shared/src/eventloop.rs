@@ -1,16 +1,7 @@
-use crate::{
-    callbacks::Callbacks,
-    messages::{
-        Connect, ConnectionDetails, EgressMessages, GatewayIceCandidates, GatewaysIceCandidates,
-        IngressMessages, InitClient, ReplyMessages,
-    },
-    PHOENIX_TOPIC,
-};
+use crate::{callbacks::Callbacks, PHOENIX_TOPIC};
 use anyhow::Result;
-use connlib_shared::messages::{
-    ClientPayload, ConnectionAccepted, GatewayResponse, RelaysPresence, RequestConnection,
-    ResourceAccepted, ResourceId, ReuseConnection,
-};
+use connlib_model::ResourceId;
+use firezone_tunnel::messages::{client::*, *};
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
 use std::{

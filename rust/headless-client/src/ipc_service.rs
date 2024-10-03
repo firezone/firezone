@@ -4,8 +4,8 @@ use crate::{
 };
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{keypair, ConnectArgs, LoginUrl};
-use connlib_shared::callbacks::ResourceDescription;
+use connlib_client_shared::{keypair, ConnectArgs};
+use connlib_model::ResourceView;
 use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
@@ -16,6 +16,7 @@ use futures::{
     task::{Context, Poll},
     Future as _, SinkExt as _, Stream as _,
 };
+use phoenix_channel::LoginUrl;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
@@ -26,9 +27,9 @@ use url::Url;
 
 pub mod ipc;
 use backoff::ExponentialBackoffBuilder;
-use connlib_shared::{get_user_agent, messages::ResourceId};
+use connlib_model::ResourceId;
 use ipc::{Server as IpcServer, ServiceId};
-use phoenix_channel::PhoenixChannel;
+use phoenix_channel::{get_user_agent, PhoenixChannel};
 use secrecy::Secret;
 
 #[cfg(target_os = "linux")]
@@ -97,7 +98,7 @@ pub enum ServerMsg {
         error_msg: String,
         is_authentication_error: bool,
     },
-    OnUpdateResources(Vec<ResourceDescription>),
+    OnUpdateResources(Vec<ResourceView>),
     /// The IPC service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,

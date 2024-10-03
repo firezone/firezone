@@ -10,7 +10,7 @@
 
 use anyhow::{Context as _, Result};
 use connlib_client_shared::{Callbacks, DisconnectError};
-use connlib_shared::callbacks;
+use connlib_model::ResourceView;
 use firezone_bin_shared::platform::DnsControlMethod;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -82,7 +82,7 @@ pub enum ConnlibMsg {
         ipv6: Ipv6Addr,
         dns: Vec<IpAddr>,
     },
-    OnUpdateResources(Vec<callbacks::ResourceDescription>),
+    OnUpdateResources(Vec<ResourceView>),
     OnUpdateRoutes {
         ipv4: Vec<Ipv4Network>,
         ipv6: Vec<Ipv6Network>,
@@ -117,7 +117,7 @@ impl Callbacks for CallbackHandler {
             .expect("Should be able to send OnSetInterfaceConfig");
     }
 
-    fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
+    fn on_update_resources(&self, resources: Vec<ResourceView>) {
         tracing::debug!(len = resources.len(), "New resource list");
         self.cb_tx
             .try_send(ConnlibMsg::OnUpdateResources(resources))

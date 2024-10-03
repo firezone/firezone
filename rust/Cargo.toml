@@ -4,7 +4,7 @@ members = [
   "connlib/clients/android",
   "connlib/clients/apple",
   "connlib/clients/shared",
-  "connlib/shared",
+  "connlib/model",
   "connlib/snownet",
   "connlib/tunnel",
   "gateway",
@@ -20,7 +20,7 @@ members = [
   "telemetry",
   "tests/gui-smoke-test",
   "tests/http-test-server",
-  "tun"
+  "tun",
 ]
 
 resolver = "2"
@@ -52,7 +52,7 @@ firezone-logging = { path = "logging" }
 firezone-telemetry = { path = "telemetry" }
 snownet = { path = "connlib/snownet" }
 firezone-relay = { path = "relay" }
-connlib-shared = { path = "connlib/shared" }
+connlib-model = { path = "connlib/model" }
 firezone-tunnel = { path = "connlib/tunnel" }
 phoenix-channel = { path = "phoenix-channel" }
 ip-packet = { path = "ip-packet" }

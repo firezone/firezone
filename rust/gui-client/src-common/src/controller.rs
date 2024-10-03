@@ -7,7 +7,7 @@ use crate::{
     updates,
 };
 use anyhow::{anyhow, Context, Result};
-use connlib_shared::callbacks::ResourceDescription;
+use connlib_model::ResourceView;
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
@@ -145,7 +145,7 @@ pub enum Status {
     Quitting, // The user asked to quit and we're waiting for the tunnel daemon to gracefully disconnect so we can flush telemetry.
     /// Firezone is ready to use.
     TunnelReady {
-        resources: Vec<ResourceDescription>,
+        resources: Vec<ResourceView>,
     },
     /// Firezone is signing in to the Portal.
     WaitingForPortal {
@@ -190,7 +190,7 @@ impl Status {
         }
     }
 
-    fn internet_resource(&self) -> Option<ResourceDescription> {
+    fn internet_resource(&self) -> Option<ResourceView> {
         #[expect(clippy::wildcard_enum_match_arm)]
         match self {
             Status::TunnelReady { resources } => {

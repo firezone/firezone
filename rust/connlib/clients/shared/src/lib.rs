@@ -1,16 +1,17 @@
 //! Main connlib library for clients.
 pub use crate::serde_routelist::{V4RouteList, V6RouteList};
 pub use callbacks::{Callbacks, DisconnectError};
-pub use connlib_shared::messages::client::ResourceDescription;
-pub use connlib_shared::{LoginUrl, LoginUrlError, StaticSecret};
+pub use connlib_model::StaticSecret;
 pub use eventloop::Eventloop;
 pub use firezone_tunnel::keypair;
+pub use firezone_tunnel::messages::client::{
+    ResourceDescription, {IngressMessages, ReplyMessages},
+};
 
-use connlib_shared::messages::ResourceId;
+use connlib_model::ResourceId;
 use eventloop::Command;
 use firezone_telemetry as telemetry;
 use firezone_tunnel::ClientTunnel;
-use messages::{IngressMessages, ReplyMessages};
 use phoenix_channel::PhoenixChannel;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::{BTreeMap, BTreeSet};
@@ -22,7 +23,6 @@ use tun::Tun;
 
 mod callbacks;
 mod eventloop;
-mod messages;
 mod serde_routelist;
 
 const PHOENIX_TOPIC: &str = "client";
@@ -46,7 +46,7 @@ pub struct ConnectArgs<CB> {
 impl Session {
     /// Creates a new [`Session`].
     ///
-    /// This connects to the portal a specified using [`LoginUrl`] and creates a wireguard tunnel using the provided private key.
+    /// This connects to the portal using the given [`LoginUrl`](phoenix_channel::LoginUrl) and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
         args: ConnectArgs<CB>,
         portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,

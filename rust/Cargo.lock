@@ -1232,7 +1232,7 @@ dependencies = [
  "android_log-sys",
  "backoff",
  "connlib-client-shared",
- "connlib-shared",
+ "connlib-model",
  "firezone-logging",
  "ip_network",
  "jni 0.21.1",
@@ -1259,7 +1259,7 @@ dependencies = [
  "anyhow",
  "backoff",
  "connlib-client-shared",
- "connlib-shared",
+ "connlib-model",
  "firezone-logging",
  "ip_network",
  "libc",
@@ -1287,7 +1287,7 @@ dependencies = [
  "backoff",
  "bimap",
  "chrono",
- "connlib-shared",
+ "connlib-model",
  "firezone-telemetry",
  "firezone-tunnel",
  "ip_network",
@@ -1305,30 +1305,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "connlib-shared"
+name = "connlib-model"
 version = "0.1.0"
 dependencies = [
- "base64 0.22.1",
  "boringtun",
- "chrono",
  "domain",
- "futures",
- "futures-util",
  "ip_network",
  "itertools 0.13.0",
- "libc",
- "os_info",
- "phoenix-channel",
- "rand 0.8.5",
- "rand_core 0.6.4",
- "secrecy",
  "serde",
- "serde_json",
- "swift-bridge",
- "thiserror",
- "tokio",
- "tracing",
- "url",
  "uuid",
 ]
 
@@ -2235,7 +2219,7 @@ dependencies = [
  "boringtun",
  "chrono",
  "clap",
- "connlib-shared",
+ "connlib-model",
  "dns-lookup",
  "domain",
  "either",
@@ -2271,7 +2255,7 @@ dependencies = [
  "chrono",
  "clap",
  "connlib-client-shared",
- "connlib-shared",
+ "connlib-model",
  "dirs",
  "firezone-bin-shared",
  "firezone-gui-client-common",
@@ -2309,7 +2293,7 @@ dependencies = [
  "anyhow",
  "arboard",
  "atomicwrites",
- "connlib-shared",
+ "connlib-model",
  "dirs",
  "firezone-bin-shared",
  "firezone-headless-client",
@@ -2350,7 +2334,7 @@ dependencies = [
  "backoff",
  "clap",
  "connlib-client-shared",
- "connlib-shared",
+ "connlib-model",
  "dirs",
  "firezone-bin-shared",
  "firezone-logging",
@@ -2467,11 +2451,12 @@ name = "firezone-tunnel"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "bimap",
  "boringtun",
  "bytes",
  "chrono",
- "connlib-shared",
+ "connlib-model",
  "derivative",
  "divan",
  "domain",
@@ -2485,6 +2470,7 @@ dependencies = [
  "ip_network_table",
  "itertools 0.13.0",
  "lru",
+ "phoenix-channel",
  "proptest",
  "proptest-state-machine",
  "rand 0.8.5",
@@ -5557,6 +5543,7 @@ dependencies = [
  "hex",
  "hostname",
  "libc",
+ "os_info",
  "rand_core 0.6.4",
  "secrecy",
  "serde",
@@ -6474,7 +6461,6 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9bd1c54ea06cfd2f6b63219704de0b9b4f72dcc2b8fdef820be6cd799780e91e"
 dependencies = [
- "bytes",
  "serde",
  "zeroize",
 ]

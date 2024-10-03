@@ -4,11 +4,9 @@ use super::{
     sim_relay::{map_explode, SimRelay},
     strategies::latency,
 };
+use crate::DomainName;
 use crate::GatewayState;
-use connlib_shared::{
-    messages::{GatewayId, RelayId},
-    DomainName,
-};
+use connlib_model::{GatewayId, RelayId};
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
 use proptest::prelude::*;
 use snownet::{EncryptBuffer, Transmit};

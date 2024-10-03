@@ -3,11 +3,11 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::fmt::Debug;
 
-use crate::messages::client::Site;
-use crate::messages::ResourceId;
+use crate::ResourceId;
+use crate::Site;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Status {
+pub enum ResourceStatus {
     Unknown,
     Online,
     Offline,
@@ -15,69 +15,69 @@ pub enum Status {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum ResourceDescription {
-    Dns(ResourceDescriptionDns),
-    Cidr(ResourceDescriptionCidr),
-    Internet(ResourceDescriptionInternet),
+pub enum ResourceView {
+    Dns(DnsResourceView),
+    Cidr(CidrResourceView),
+    Internet(InternetResourceView),
 }
 
-impl ResourceDescription {
+impl ResourceView {
     pub fn address_description(&self) -> Option<&str> {
         match self {
-            ResourceDescription::Dns(r) => r.address_description.as_deref(),
-            ResourceDescription::Cidr(r) => r.address_description.as_deref(),
-            ResourceDescription::Internet(_) => None,
+            ResourceView::Dns(r) => r.address_description.as_deref(),
+            ResourceView::Cidr(r) => r.address_description.as_deref(),
+            ResourceView::Internet(_) => None,
         }
     }
 
     pub fn name(&self) -> &str {
         match self {
-            ResourceDescription::Dns(r) => &r.name,
-            ResourceDescription::Cidr(r) => &r.name,
-            ResourceDescription::Internet(r) => &r.name,
+            ResourceView::Dns(r) => &r.name,
+            ResourceView::Cidr(r) => &r.name,
+            ResourceView::Internet(r) => &r.name,
         }
     }
 
-    pub fn status(&self) -> Status {
+    pub fn status(&self) -> ResourceStatus {
         match self {
-            ResourceDescription::Dns(r) => r.status,
-            ResourceDescription::Cidr(r) => r.status,
-            ResourceDescription::Internet(r) => r.status,
+            ResourceView::Dns(r) => r.status,
+            ResourceView::Cidr(r) => r.status,
+            ResourceView::Internet(r) => r.status,
         }
     }
 
     pub fn id(&self) -> ResourceId {
         match self {
-            ResourceDescription::Dns(r) => r.id,
-            ResourceDescription::Cidr(r) => r.id,
-            ResourceDescription::Internet(r) => r.id,
+            ResourceView::Dns(r) => r.id,
+            ResourceView::Cidr(r) => r.id,
+            ResourceView::Internet(r) => r.id,
         }
     }
 
     /// What the GUI clients should paste to the clipboard, e.g. `https://github.com/firezone`
     pub fn pastable(&self) -> Cow<'_, str> {
         match self {
-            ResourceDescription::Dns(r) => Cow::from(&r.address),
-            ResourceDescription::Cidr(r) => Cow::from(r.address.to_string()),
-            ResourceDescription::Internet(_) => Cow::default(),
+            ResourceView::Dns(r) => Cow::from(&r.address),
+            ResourceView::Cidr(r) => Cow::from(r.address.to_string()),
+            ResourceView::Internet(_) => Cow::default(),
         }
     }
 
     pub fn sites(&self) -> &[Site] {
         match self {
-            ResourceDescription::Dns(r) => &r.sites,
-            ResourceDescription::Cidr(r) => &r.sites,
-            ResourceDescription::Internet(r) => &r.sites,
+            ResourceView::Dns(r) => &r.sites,
+            ResourceView::Cidr(r) => &r.sites,
+            ResourceView::Internet(r) => &r.sites,
         }
     }
 
     pub fn is_internet_resource(&self) -> bool {
-        matches!(self, ResourceDescription::Internet(_))
+        matches!(self, ResourceView::Internet(_))
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-pub struct ResourceDescriptionDns {
+pub struct DnsResourceView {
     /// Resource's id.
     pub id: ResourceId,
     /// Internal resource's domain name.
@@ -90,12 +90,12 @@ pub struct ResourceDescriptionDns {
     pub address_description: Option<String>,
     pub sites: Vec<Site>,
 
-    pub status: Status,
+    pub status: ResourceStatus,
 }
 
 /// Description of a resource that maps to a CIDR.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ResourceDescriptionCidr {
+pub struct CidrResourceView {
     /// Resource's id.
     pub id: ResourceId,
     /// CIDR that this resource points to.
@@ -108,28 +108,28 @@ pub struct ResourceDescriptionCidr {
     pub address_description: Option<String>,
     pub sites: Vec<Site>,
 
-    pub status: Status,
+    pub status: ResourceStatus,
 }
 
 /// Description of an Internet resource
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ResourceDescriptionInternet {
+pub struct InternetResourceView {
     /// Name for display always set to "Internet Resource"
     pub name: String,
 
     pub id: ResourceId,
     pub sites: Vec<Site>,
 
-    pub status: Status,
+    pub status: ResourceStatus,
 }
 
-impl PartialOrd for ResourceDescription {
+impl PartialOrd for ResourceView {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for ResourceDescription {
+impl Ord for ResourceView {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         if self.is_internet_resource() {
             return std::cmp::Ordering::Less;
@@ -150,12 +150,11 @@ mod tests {
     use itertools::Itertools;
 
     use super::{
-        ResourceDescription, ResourceDescriptionDns, ResourceDescriptionInternet, ResourceId, Site,
-        Status,
+        DnsResourceView, InternetResourceView, ResourceId, ResourceStatus, ResourceView, Site,
     };
 
-    fn fake_resource(name: &str, uuid: &str) -> ResourceDescription {
-        ResourceDescription::Dns(ResourceDescriptionDns {
+    fn fake_resource(name: &str, uuid: &str) -> ResourceView {
+        ResourceView::Dns(DnsResourceView {
             id: ResourceId::from_str(uuid).unwrap(),
             name: name.to_string(),
             address: "unused.example.com".to_string(),
@@ -164,19 +163,19 @@ mod tests {
                 name: "test".to_string(),
                 id: "99ba0c1e-5189-4cfc-a4db-fd6cb1c937fd".parse().unwrap(),
             }],
-            status: Status::Online,
+            status: ResourceStatus::Online,
         })
     }
 
-    fn internet_resource(uuid: &str) -> ResourceDescription {
-        ResourceDescription::Internet(ResourceDescriptionInternet {
+    fn internet_resource(uuid: &str) -> ResourceView {
+        ResourceView::Internet(InternetResourceView {
             name: "Internet Resource".to_string(),
             id: ResourceId::from_str(uuid).unwrap(),
             sites: vec![Site {
                 name: "test".to_string(),
                 id: "99ba0c1e-5189-4cfc-a4db-fd6cb1c937fd".parse().unwrap(),
             }],
-            status: Status::Offline,
+            status: ResourceStatus::Offline,
         })
     }
 

@@ -3,13 +3,12 @@
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
 
+use crate::messages::{Offer, Relay, ResolveRequest, SecretKey};
 use bimap::BiMap;
 use boringtun::x25519::StaticSecret;
 use chrono::Utc;
-use connlib_shared::{
-    callbacks,
-    messages::{ClientId, GatewayId, Offer, Relay, RelayId, ResolveRequest, ResourceId, SecretKey},
-    DomainName, PublicKey,
+use connlib_model::{
+    ClientId, DomainName, GatewayId, PublicKey, RelayId, ResourceId, ResourceView,
 };
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -32,6 +31,7 @@ mod device_channel;
 mod dns;
 mod gateway;
 mod io;
+pub mod messages;
 mod peer;
 mod peer_store;
 #[cfg(all(test, feature = "proptest"))]
@@ -300,7 +300,7 @@ pub enum ClientEvent {
     },
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {
-        resources: Vec<callbacks::ResourceDescription>,
+        resources: Vec<ResourceView>,
     },
     TunInterfaceUpdated(TunConfig),
 }

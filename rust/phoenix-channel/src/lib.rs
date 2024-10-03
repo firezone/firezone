@@ -1,3 +1,4 @@
+mod get_user_agent;
 mod heartbeat;
 mod login_url;
 
@@ -27,6 +28,7 @@ use tokio_tungstenite::{
 };
 use url::{Host, Url};
 
+pub use get_user_agent::get_user_agent;
 pub use login_url::{DeviceInfo, LoginUrl, LoginUrlError};
 
 pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {

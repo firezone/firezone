@@ -7,10 +7,12 @@ mod tun;
 use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{
-    keypair, Callbacks, ConnectArgs, DisconnectError, LoginUrl, Session, V4RouteList, V6RouteList,
+    keypair, Callbacks, ConnectArgs, DisconnectError, Session, V4RouteList, V6RouteList,
 };
-use connlib_shared::{callbacks::ResourceDescription, get_user_agent};
+use connlib_model::ResourceView;
 use ip_network::{Ipv4Network, Ipv6Network};
+use phoenix_channel::get_user_agent;
+use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
 use std::{
@@ -139,7 +141,7 @@ impl Callbacks for CallbackHandler {
         );
     }
 
-    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
+    fn on_update_resources(&self, resource_list: Vec<ResourceView>) {
         self.inner.on_update_resources(
             serde_json::to_string(&resource_list)
                 .expect("developer error: failed to serialize resource list"),

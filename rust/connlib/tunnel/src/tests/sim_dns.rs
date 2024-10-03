@@ -2,7 +2,7 @@ use super::{
     sim_net::{host, Host},
     strategies::latency,
 };
-use connlib_shared::DomainName;
+use connlib_model::DomainName;
 use domain::{
     base::{
         iana::{Class, Rcode},
