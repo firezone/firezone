@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, net::IpAddr};
 
 /// Description of a resource that maps to a DNS record.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Deserialize)]
 pub struct ResourceDescriptionDns {
     /// Resource's id.
     pub id: ResourceId,
@@ -26,7 +26,7 @@ pub struct ResourceDescriptionDns {
 }
 
 /// Description of a resource that maps to a CIDR.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Deserialize)]
 pub struct ResourceDescriptionCidr {
     /// Resource's id.
     pub id: ResourceId,
@@ -47,7 +47,7 @@ fn internet_resource_name() -> String {
 }
 
 /// Description of an internet resource.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Deserialize)]
 pub struct ResourceDescriptionInternet {
     /// Name of the resource.
     ///
@@ -61,7 +61,7 @@ pub struct ResourceDescriptionInternet {
     pub sites: Vec<Site>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourceDescription {
     Dns(ResourceDescriptionDns),
@@ -69,7 +69,7 @@ pub enum ResourceDescription {
     Internet(ResourceDescriptionInternet),
 }
 
-#[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
+#[derive(Debug, Deserialize)]
 pub struct InitClient {
     pub interface: Interface,
     #[serde(default)]
@@ -78,12 +78,12 @@ pub struct InitClient {
     pub relays: Vec<Relay>,
 }
 
-#[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
+#[derive(Debug, Deserialize)]
 pub struct ConfigUpdate {
     pub interface: Interface,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize)]
 pub struct ConnectionDetails {
     pub resource_id: ResourceId,
     pub gateway_id: GatewayId,
@@ -92,7 +92,7 @@ pub struct ConnectionDetails {
     pub site_id: SiteId,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize)]
 pub struct Connect {
     pub gateway_payload: GatewayResponse,
     pub resource_id: ResourceId,
@@ -102,7 +102,7 @@ pub struct Connect {
 
 // These messages are the messages that can be received
 // by a client.
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum IngressMessages {
     Init(InitClient),
@@ -119,7 +119,7 @@ pub enum IngressMessages {
     RelaysPresence(RelaysPresence),
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[derive(Debug, Serialize)]
 pub struct GatewaysIceCandidates {
     /// The list of gateway IDs these candidates will be broadcast to.
     pub gateway_ids: Vec<GatewayId>,
@@ -127,7 +127,7 @@ pub struct GatewaysIceCandidates {
     pub candidates: BTreeSet<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize)]
 pub struct GatewayIceCandidates {
     /// Gateway's id the ice candidates are from
     pub gateway_id: GatewayId,
@@ -136,7 +136,7 @@ pub struct GatewayIceCandidates {
 }
 
 /// The replies that can arrive from the channel by a client
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum ReplyMessages {
     ConnectionDetails(ConnectionDetails),
@@ -144,7 +144,7 @@ pub enum ReplyMessages {
 }
 
 // These messages can be sent from a client to a control pane
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 // enum_variant_names: These are the names in the portal!
 pub enum EgressMessages {
