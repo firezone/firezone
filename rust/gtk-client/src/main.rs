@@ -192,7 +192,7 @@ struct MainThreadLoop {
 impl MainThreadLoop {
     /// Handle messages that must be handled on the main thread where GTK is
     ///
-    /// This function never returns, GLib just stops polling it when the GTK app quits
+    /// This function typically never returns, GLib just stops polling it when the GTK app quits
     async fn run(mut self) {
         while let Some(req) = self.main_rx.recv().await {
             if let Err(error) = self.handle_req(req) {
