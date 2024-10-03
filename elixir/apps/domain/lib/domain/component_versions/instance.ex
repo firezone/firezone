@@ -3,7 +3,6 @@ defmodule Domain.ComponentVersions.Instance do
   require Logger
   alias Domain.ComponentVersions
 
-  @ets_table_name __MODULE__.ETS
   @default_refresh_interval :timer.minutes(1)
 
   def start_link(opts) do
@@ -14,16 +13,7 @@ defmodule Domain.ComponentVersions.Instance do
   def init(opts) do
     refresh_interval = Keyword.get(opts, :refresh_interval, @default_refresh_interval)
 
-    table =
-      :ets.new(@ets_table_name, [
-        :named_table,
-        :set,
-        :public,
-        read_concurrency: true,
-        write_concurrency: false
-      ])
-
-    {:ok, %{table: table, refresh_interval: refresh_interval}, {:continue, :load}}
+    {:ok, %{refresh_interval: refresh_interval}, {:continue, :load}}
   end
 
   @impl true
@@ -47,16 +37,19 @@ defmodule Domain.ComponentVersions.Instance do
   end
 
   def component_version(component) do
-    case :ets.lookup(@ets_table_name, component) do
-      [] -> "0.0.0"
-      [{_key, value}] -> value
-    end
+    Domain.Config.get_env(:domain, ComponentVersions, [])
+    |> Keyword.get(:versions, [])
+    |> Keyword.get(component, "0.0.0")
   end
 
   defp refresh_versions do
     case ComponentVersions.fetch_versions() do
       {:ok, versions} ->
-        Enum.each(versions, fn kv -> :ets.insert(@ets_table_name, kv) end)
+        new_config =
+          Domain.Config.get_env(:domain, ComponentVersions)
+          |> Keyword.merge(versions: versions)
+
+        Application.put_env(:domain, ComponentVersions, new_config)
 
       {:error, reason} ->
         Logger.debug("Error fetching component versions: #{inspect(reason)}")

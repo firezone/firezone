@@ -11,23 +11,21 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
   alias Domain.{Accounts, Gateways, Mailer}
 
   @impl true
-  def execute(_config) do
-    case Mix.env() do
-      :prod ->
-        # This job should only run on Sundays for prod environments
-        day_of_week = Date.utc_today() |> Date.day_of_week()
-        if day_of_week == 7, do: run_check()
-
-      _ ->
-        run_check()
+  if Mix.env() == :prod do
+    def execute(_config) do
+      # Should only run on Sundays
+      day_of_week = Date.utc_today() |> Date.day_of_week()
+      if day_of_week == 7, do: run_check()
+    end
+  else
+    def execute(_config) do
+      run_check()
     end
   end
 
   defp run_check do
     Accounts.all_active_paid_accounts!()
-    |> Enum.filter(fn account ->
-      !notified_today?(account)
-    end)
+    |> Enum.filter(&(!notified_today?(&1)))
     |> Enum.each(fn account ->
       all_online_gateways_for_account(account)
       |> Enum.filter(&Gateways.gateway_outdated?/1)
@@ -53,6 +51,16 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
     Domain.Actors.all_admins_for_account!(account, preload: :identities)
     |> Enum.flat_map(&list_emails_for_actor/1)
     |> Enum.each(&send_email(account, gateways, &1))
+
+    Domain.Accounts.update_account(account, %{
+      config: %{
+        notifications: %{
+          outdated_gateway: %{
+            last_notified: DateTime.utc_now()
+          }
+        }
+      }
+    })
   end
 
   defp list_emails_for_actor(%Actors.Actor{} = actor) do

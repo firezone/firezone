@@ -1,4 +1,5 @@
 defmodule Domain.Accounts do
+  alias Web.Settings.Account
   alias Domain.{Repo, Config, PubSub}
   alias Domain.{Auth, Billing}
   alias Domain.Accounts.{Account, Features, Authorizer}
@@ -147,6 +148,14 @@ defmodule Domain.Accounts do
     else
       slug_candidate
     end
+  end
+
+  def type(%Account{metadata: %{stripe: %{product_name: type}}}) do
+    type || "Starter"
+  end
+
+  def type(%Account{}) do
+    "Starter"
   end
 
   ### PubSub

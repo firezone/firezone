@@ -26,7 +26,15 @@ config :domain, platform_adapter: Domain.GoogleCloudPlatform
 
 config :domain, Domain.GoogleCloudPlatform, service_account_email: "foo@iam.example.com"
 
-config :domain, Domain.ComponentVersions, from_url: false
+config :domain, Domain.ComponentVersions,
+  from_url: false,
+  versions: [
+    apple: "1.0.0",
+    android: "1.0.0",
+    gateway: "1.0.0",
+    gui: "1.0.0",
+    headless: "1.0.0"
+  ]
 
 config :domain, Domain.Telemetry.GoogleCloudMetricsReporter, project_id: "fz-test"
 

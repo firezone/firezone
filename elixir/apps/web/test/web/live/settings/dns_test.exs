@@ -40,7 +40,7 @@ defmodule Web.Live.Settings.DNSTest do
     assert breadcrumbs =~ "DNS Settings"
   end
 
-  test "renders form", %{
+  test "renders form with no input fields", %{
     account: account,
     identity: identity,
     conn: conn
@@ -57,6 +57,44 @@ defmodule Web.Live.Settings.DNSTest do
     assert find_inputs(form) == [
              "account[config][_persistent_id]",
              "account[config][clients_upstream_dns_drop][]"
+           ]
+  end
+
+  test "renders input field on button click", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    Fixtures.Accounts.update_account(account, %{config: %{clients_upstream_dns: []}})
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/dns")
+
+    attrs = %{
+      "_target" => ["account", "config", "clients_upstream_dns_sort"],
+      "account" => %{
+        "config" => %{
+          "_persistent_id" => "0",
+          "clients_upstream_dns_drop" => [""],
+          "clients_upstream_dns_sort" => ["new"]
+        }
+      }
+    }
+
+    lv
+    |> render_click(:change, attrs)
+
+    form = lv |> form("form")
+
+    assert find_inputs(form) == [
+             "account[config][_persistent_id]",
+             "account[config][clients_upstream_dns][0][_persistent_id]",
+             "account[config][clients_upstream_dns][0][address]",
+             "account[config][clients_upstream_dns][0][protocol]",
+             "account[config][clients_upstream_dns_drop][]",
+             "account[config][clients_upstream_dns_sort][]"
            ]
   end
 
@@ -200,7 +238,7 @@ defmodule Web.Live.Settings.DNSTest do
            |> render_change() =~ "all addresses must be unique"
   end
 
-  test "does not display 'cannot be empty' error message", %{
+  test "displays 'cannot be empty' error message", %{
     account: account,
     identity: identity,
     conn: conn

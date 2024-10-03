@@ -33,44 +33,48 @@ defmodule Web.Settings.Account.Notifications.Edit do
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <.inputs_for :let={config} field={@form[:config]}>
                 <.inputs_for :let={notifications} field={config[:notifications]}>
-                  <.inputs_for :let={outdated_gateway} field={notifications[:outdated_gateway]}>
-                    <div>
-                      <p>Outdated Gateway Notification</p>
-                      <.input
-                        type="radio"
-                        label="Enable"
-                        field={outdated_gateway[:enabled]}
-                        value="true"
-                        checked={outdated_gateway[:enabled].value == true}
-                      />
-                      <.input
-                        type="radio"
-                        label="Disable"
-                        field={outdated_gateway[:enabled]}
-                        value="false"
-                        checked={outdated_gateway[:enabled].value != true}
-                      />
-                    </div>
-                  </.inputs_for>
-                  <.inputs_for :let={idp_sync_error} field={notifications[:idp_sync_error]}>
-                    <div>
-                      <p>Identity Provider Sync Error Notification</p>
-                      <.input
-                        type="radio"
-                        label="Enable"
-                        field={idp_sync_error[:enabled]}
-                        value="true"
-                        checked={idp_sync_error[:enabled].value == true}
-                      />
-                      <.input
-                        type="radio"
-                        label="Disable"
-                        field={idp_sync_error[:enabled]}
-                        value="false"
-                        checked={idp_sync_error[:enabled].value != true}
-                      />
-                    </div>
-                  </.inputs_for>
+                  <table class="w-full text-sm text-left text-neutral-500">
+                    <thead class="text-xs text-neutral-700 uppercase bg-neutral-50">
+                      <tr>
+                        <th scope="col" class="px-6 py-3 font-medium">
+                          Notification
+                        </th>
+                        <th scope="col" class="px-6 py-3 font-medium text-center">
+                          Enable
+                        </th>
+                        <th scope="col" class="px-6 py-3 font-medium text-center">
+                          Disable
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr class="bg-white border-b">
+                        <.inputs_for :let={outdated_gateway} field={notifications[:outdated_gateway]}>
+                          <td scope="row" class="px-6 py-4 whitespace-nowrap">
+                            Outdated Gateways
+                          </td>
+                          <td class="px-6 py-4 text-center">
+                            <.input
+                              class="mx-auto"
+                              type="radio"
+                              field={outdated_gateway[:enabled]}
+                              value="true"
+                              checked={outdated_gateway[:enabled].value == true}
+                            />
+                          </td>
+                          <td class="px-6 py-4 text-center">
+                            <.input
+                              class="mx-auto"
+                              type="radio"
+                              field={outdated_gateway[:enabled]}
+                              value="false"
+                              checked={outdated_gateway[:enabled].value != true}
+                            />
+                          </td>
+                        </.inputs_for>
+                      </tr>
+                    </tbody>
+                  </table>
                 </.inputs_for>
               </.inputs_for>
             </div>

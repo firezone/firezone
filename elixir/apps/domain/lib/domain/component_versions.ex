@@ -20,7 +20,7 @@ defmodule Domain.ComponentVersions do
   end
 
   def gateway_version do
-    ComponentVersions.Instance.component_version("gateway")
+    ComponentVersions.Instance.component_version(:gateway)
   end
 
   def fetch_versions do
@@ -47,14 +47,14 @@ defmodule Domain.ComponentVersions do
       {:ok, %Finch.Response{status: 200, body: response}} ->
         versions =
           %{
-            "apple" => _apple_version,
-            "android" => _android_version,
-            "gateway" => _gateway_version,
-            "gui" => _gui_version,
-            "headless" => _headless_version
-          } = Jason.decode!(response)
+            apple: _apple_version,
+            android: _android_version,
+            gateway: _gateway_version,
+            gui: _gui_version,
+            headless: _headless_version
+          } = Jason.decode!(response, keys: :atoms)
 
-        {:ok, versions}
+        {:ok, Enum.into(versions, [])}
 
       {:ok, response} ->
         Logger.error("Can't fetch Firezone versions", reason: inspect(response))
