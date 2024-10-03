@@ -15,7 +15,7 @@
 
 use super::DnsController;
 use anyhow::{Context as _, Result};
-use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW};
+use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW, TUNNEL_UUID};
 use std::{
     io::ErrorKind, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command,
 };
@@ -119,6 +119,14 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
         .map(|ip| ip.to_string())
         .collect::<Vec<_>>()
         .join(";");
+
+    // Set our DNS servers on the interface itself too, so that `ipconfig` and WSL can pick them up (Fixes #6777)
+    // `Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c}`
+    let key = hklm.open_subkey(
+        Path::new(r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces")
+            .join(format!("{{{TUNNEL_UUID}}}")),
+    )?;
+    key.set_value("NameServer", &dns_config_string)?;
 
     // It's safe to always set the local rule.
     let (key, _) = hklm.create_subkey(local_nrpt_path().join(NRPT_REG_KEY))?;
