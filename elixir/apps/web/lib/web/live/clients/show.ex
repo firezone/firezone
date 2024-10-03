@@ -123,6 +123,19 @@ defmodule Web.Clients.Show do
       <:content>
         <.vertical_table id="client">
           <.vertical_table_row>
+            <:label>
+              <.popover>
+                <:target>
+                  ID <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
+                </:target>
+                <:content>
+                  Database ID assigned to this Client that can be used to manage this Client via the REST API.
+                </:content>
+              </.popover>
+            </:label>
+            <:value><%= @client.id %></:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
             <:label>Name</:label>
             <:value><%= @client.name %></:value>
           </.vertical_table_row>
@@ -142,81 +155,6 @@ defmodule Web.Clients.Show do
               <.link navigate={~p"/#{@account}/actors/#{@client.actor.id}"} class={[link_style()]}>
                 <%= @client.actor.name %>
               </.link>
-            </:value>
-          </.vertical_table_row>
-          <.vertical_table_row>
-            <:label>Created</:label>
-            <:value>
-              <.relative_datetime datetime={@client.inserted_at} />
-            </:value>
-          </.vertical_table_row>
-          <.vertical_table_row>
-            <:label>Last started</:label>
-            <:value>
-              <.relative_datetime datetime={@client.last_seen_at} />
-            </:value>
-          </.vertical_table_row>
-        </.vertical_table>
-
-        <h2 class="mt-6 mb-4 text-xl leading-none tracking-tight text-neutral-900">
-          Device Attributes
-        </h2>
-
-        <.vertical_table id="posture">
-          <.vertical_table_row>
-            <:label>
-              <.popover>
-                <:target>
-                  Database ID <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
-                </:target>
-                <:content>
-                 Database ID assigned to this Client that can be used to manage this Client via the REST API.
-                </:content>
-              </.popover>
-            </:label>
-            <:value><%= @client.id %></:value>
-          </.vertical_table_row>
-          <.vertical_table_row>
-            <:label>
-              <.popover>
-                <:target>
-                  File ID
-                  <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
-                </:target>
-                <:content>
-                  Firezone-specific UUID generated and persisted to the device upon app installation.
-                </:content>
-              </.popover>
-            </:label>
-            <:value><%= @client.external_id %></:value>
-          </.vertical_table_row>
-          <.vertical_table_row :for={{{title, helptext}, value} <- hardware_ids(@client)}>
-            <:label>
-              <.popover :if={not is_nil(helptext)}>
-                <:target>
-                  <%= title %>
-                  <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
-                </:target>
-                <:content>
-                  <%= helptext %>
-                </:content>
-              </.popover>
-              <span :if={is_nil(helptext)}><%= title %></span>
-            </:label>
-            <:value><%= value %></:value>
-          </.vertical_table_row>
-          <.vertical_table_row>
-            <:label>Client version</:label>
-            <:value><%= @client.last_seen_version %></:value>
-          </.vertical_table_row>
-          <.vertical_table_row>
-            <:label>User agent</:label>
-            <:value><%= @client.last_seen_user_agent %></:value>
-          </.vertical_table_row>
-          <.vertical_table_row>
-            <:label>Last seen remote IP</:label>
-            <:value>
-              <.last_seen schema={@client} />
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -247,6 +185,69 @@ defmodule Web.Clients.Show do
                   (deleted)
                 </span>
               </div>
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>Client version</:label>
+            <:value><%= @client.last_seen_version %></:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>User agent</:label>
+            <:value><%= @client.last_seen_user_agent %></:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>Created</:label>
+            <:value>
+              <.relative_datetime datetime={@client.inserted_at} />
+            </:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>Last started</:label>
+            <:value>
+              <.relative_datetime datetime={@client.last_seen_at} />
+            </:value>
+          </.vertical_table_row>
+        </.vertical_table>
+
+        <h2 class="mt-6 mb-4 text-xl leading-none tracking-tight text-neutral-900">
+          Device Attributes
+        </h2>
+
+        <.vertical_table id="posture">
+          <.vertical_table_row>
+            <:label>
+              <.popover>
+                <:target>
+                  File ID
+                  <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
+                </:target>
+                <:content>
+                  Firezone-specific UUID generated and persisted to the device upon app installation.
+                </:content>
+              </.popover>
+            </:label>
+            <:value><%= @client.external_id %></:value>
+          </.vertical_table_row>
+          <.vertical_table_row :for={{{title, helptext}, value} <- hardware_ids(@client)}>
+            <:label>
+              <.popover :if={not is_nil(helptext)}>
+                <:target>
+                  <%= title %>
+                  <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
+                </:target>
+                <:content>
+                  <%= helptext %>
+                </:content>
+              </.popover>
+              <span :if={is_nil(helptext)}><%= title %></span>
+            </:label>
+            <:value><%= value %></:value>
+          </.vertical_table_row>
+
+          <.vertical_table_row>
+            <:label>Last seen remote IP</:label>
+            <:value>
+              <.last_seen schema={@client} />
             </:value>
           </.vertical_table_row>
         </.vertical_table>
@@ -326,13 +327,10 @@ defmodule Web.Clients.Show do
     do: {"Device UUID", nil}
 
   defp hardware_id_title(%{last_seen_user_agent: "iOS/" <> _}, :identifier_for_vendor),
-    do:
-      {"App installation ID", "This value is reset if the Firezone application is reinstalled."}
+    do: {"App installation ID", "This value is reset if the Firezone application is reinstalled."}
 
   defp hardware_id_title(%{last_seen_user_agent: "Android/" <> _}, :firebase_installation_id),
-    do:
-      {"App installation ID",
-       "This value is reset if the Firezone application is reinstalled."}
+    do: {"App installation ID", "This value is reset if the Firezone application is reinstalled."}
 
   defp hardware_id_title(_client, :device_serial),
     do: {"Device Serial", nil}
