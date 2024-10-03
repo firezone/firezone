@@ -16,9 +16,10 @@ defmodule Web.Resources.Index do
           {:resources, :name},
           {:resources, :address}
         ],
-        enforce_filters: [
-          {:type, {:not_in, ["internet"]}}
-        ],
+        # TODO: uncomment when internet sites migration is executed
+        # enforce_filters: [
+        #   {:type, {:not_in, ["internet"]}}
+        # ],
         callback: &handle_resources_update!/2
       )
 
