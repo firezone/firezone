@@ -1,7 +1,3 @@
-use crate::messages::client::{
-    ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
-    ResourceDescriptionInternet,
-};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use proptest::{
@@ -14,25 +10,23 @@ use std::{
     ops::Range,
 };
 
+use crate::client::{CidrResource, DnsResource, InternetResource, Resource};
+
 pub fn resource(
     sites: impl Strategy<Value = Vec<Site>> + Clone + 'static,
-) -> impl Strategy<Value = ResourceDescription> {
+) -> impl Strategy<Value = Resource> {
     any::<bool>().prop_flat_map(move |is_dns| {
         if is_dns {
-            dns_resource(sites.clone())
-                .prop_map(ResourceDescription::Dns)
-                .boxed()
+            dns_resource(sites.clone()).prop_map(Resource::Dns).boxed()
         } else {
             cidr_resource(any_ip_network(8), sites.clone())
-                .prop_map(ResourceDescription::Cidr)
+                .prop_map(Resource::Cidr)
                 .boxed()
         }
     })
 }
 
-pub fn dns_resource(
-    sites: impl Strategy<Value = Vec<Site>>,
-) -> impl Strategy<Value = ResourceDescriptionDns> {
+pub fn dns_resource(sites: impl Strategy<Value = Vec<Site>>) -> impl Strategy<Value = DnsResource> {
     (
         resource_id(),
         resource_name(),
@@ -40,21 +34,21 @@ pub fn dns_resource(
         address_description(),
         sites,
     )
-        .prop_map(move |(id, name, address, address_description, sites)| {
-            ResourceDescriptionDns {
+        .prop_map(
+            move |(id, name, address, address_description, sites)| DnsResource {
                 id,
                 address,
                 name,
                 sites,
                 address_description,
-            }
-        })
+            },
+        )
 }
 
 pub fn cidr_resource(
     ip_network: impl Strategy<Value = IpNetwork>,
     sites: impl Strategy<Value = Vec<Site>>,
-) -> impl Strategy<Value = ResourceDescriptionCidr> {
+) -> impl Strategy<Value = CidrResource> {
     (
         resource_id(),
         resource_name(),
@@ -62,21 +56,21 @@ pub fn cidr_resource(
         address_description(),
         sites,
     )
-        .prop_map(move |(id, name, address, address_description, sites)| {
-            ResourceDescriptionCidr {
+        .prop_map(
+            move |(id, name, address, address_description, sites)| CidrResource {
                 id,
                 address,
                 name,
                 sites,
                 address_description,
-            }
-        })
+            },
+        )
 }
 
 pub fn internet_resource(
     sites: impl Strategy<Value = Vec<Site>>,
-) -> impl Strategy<Value = ResourceDescriptionInternet> {
-    (resource_id(), sites).prop_map(move |(id, sites)| ResourceDescriptionInternet {
+) -> impl Strategy<Value = InternetResource> {
+    (resource_id(), sites).prop_map(move |(id, sites)| InternetResource {
         name: "Internet Resource".to_string(),
         id,
         sites,

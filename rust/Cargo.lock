@@ -2470,7 +2470,6 @@ dependencies = [
  "ip_network_table",
  "itertools 0.13.0",
  "lru",
- "phoenix-channel",
  "proptest",
  "proptest-state-machine",
  "rand 0.8.5",

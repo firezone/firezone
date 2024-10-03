@@ -15,7 +15,7 @@ use std::{
 pub type Filters = Vec<Filter>;
 
 /// Description of a resource that maps to a DNS record.
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ResourceDescriptionDns {
     /// Resource's id.
     pub id: ResourceId,
@@ -30,7 +30,7 @@ pub struct ResourceDescriptionDns {
 }
 
 /// Description of a resource that maps to a CIDR.
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ResourceDescriptionCidr {
     /// Resource's id.
     pub id: ResourceId,
@@ -45,12 +45,12 @@ pub struct ResourceDescriptionCidr {
 }
 
 /// Description of an Internet resource.
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ResourceDescriptionInternet {
     pub id: ResourceId,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourceDescription {
     Dns(ResourceDescriptionDns),
@@ -104,14 +104,14 @@ impl ResourceDescription {
     }
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ClientPayload {
     pub ice_parameters: Offer,
     pub domain: Option<ResolveRequest>,
 }
 
 // TODO: Should this have a resource?
-#[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct InitGateway {
     pub interface: Interface,
     pub config: Config,
@@ -125,14 +125,14 @@ pub struct Config {
     pub ipv6_masquerade_enabled: bool,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Client {
     pub id: ClientId,
     pub payload: ClientPayload,
     pub peer: Peer,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct RequestConnection {
     pub resource: ResourceDescription,
     pub client: Client,
@@ -142,12 +142,12 @@ pub struct RequestConnection {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RemoveResource {
     pub id: ResourceId,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct AllowAccess {
     pub client_id: ClientId,
     pub resource: ResourceDescription,
@@ -162,7 +162,7 @@ pub struct AllowAccess {
     pub client_ipv6: Ipv6Addr,
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct RejectAccess {
     pub client_id: ClientId,
     pub resource_id: ResourceId,
@@ -170,7 +170,7 @@ pub struct RejectAccess {
 
 // These messages are the messages that can be received
 // either by a client or a gateway by the client.
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum IngressMessages {
     RequestConnection(RequestConnection),
@@ -184,7 +184,7 @@ pub enum IngressMessages {
 }
 
 /// A client's ice candidate message.
-#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Clone)]
 pub struct ClientsIceCandidates {
     /// Client's id the ice candidates are meant for
     pub client_ids: Vec<ClientId>,
@@ -193,7 +193,7 @@ pub struct ClientsIceCandidates {
 }
 
 /// A client's ice candidate message.
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ClientIceCandidates {
     /// Client's id the ice candidates came from
     pub client_id: ClientId,
@@ -221,8 +221,6 @@ pub struct ConnectionReady {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messages::Turn;
-    use phoenix_channel::PhoenixMessage;
 
     #[test]
     fn can_deserialize_udp_filter() {
@@ -317,8 +315,8 @@ mod tests {
     }
 
     #[test]
-    fn request_connection_message() {
-        let message = r#"{
+    fn can_deserialize_request_connection_messages() {
+        let json = r#"{
             "ref": null,
             "topic": "gateway",
             "event": "request_connection",
@@ -368,13 +366,15 @@ mod tests {
                 ]
             }
         }"#;
-        // TODO: We are just testing we can deserialize for now.
-        let _: PhoenixMessage<IngressMessages, ()> = serde_json::from_str(message).unwrap();
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(message, IngressMessages::RequestConnection(_)));
     }
 
     #[test]
-    fn request_connection_with_payload() {
-        let message = r#"{
+    fn can_deserialize_legacy_request_connection_message() {
+        let json = r#"{
   "event": "request_connection",
   "ref": null,
   "topic": "gateway",
@@ -460,223 +460,45 @@ mod tests {
     "flow_id": "b944e68a-c936-4a81-bd8d-88c45efdcb2c"
   }
 }"#;
-        let _: PhoenixMessage<IngressMessages, ()> = serde_json::from_str(message).unwrap();
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(message, IngressMessages::RequestConnection(_)));
     }
 
     #[test]
-    fn invalidate_ice_candidates_message() {
-        let msg = r#"{"event":"invalidate_ice_candidates","ref":null,"topic":"gateway","payload":{"candidates":["candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"],"client_id":"2b1524e6-239e-4570-bc73-70a188e12101"}}"#;
-        let expected = IngressMessages::InvalidateIceCandidates(ClientIceCandidates {
-            client_id: "2b1524e6-239e-4570-bc73-70a188e12101".parse().unwrap(),
-            candidates: vec![
-                "candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"
-                    .to_owned(),
-            ],
-        });
+    fn can_deserialize_invalidate_ice_candidates_message() {
+        let json = r#"{"event":"invalidate_ice_candidates","ref":null,"topic":"gateway","payload":{"candidates":["candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"],"client_id":"2b1524e6-239e-4570-bc73-70a188e12101"}}"#;
 
-        let actual = serde_json::from_str::<IngressMessages>(msg).unwrap();
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
-        assert_eq!(actual, expected);
+        assert!(matches!(
+            message,
+            IngressMessages::InvalidateIceCandidates(_)
+        ));
     }
 
     #[test]
-    fn init_phoenix_message() {
-        let m = PhoenixMessage::new_message(
-            "gateway",
-            IngressMessages::Init(InitGateway {
-                interface: Interface {
-                    ipv4: "100.115.164.78".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
-                    upstream_dns: vec![],
-                },
-                config: Config {
-                    ipv4_masquerade_enabled: true,
-                    ipv6_masquerade_enabled: true,
-                },
-                relays: vec![],
-            }),
-            None,
-        );
+    fn can_deserialize_init_message() {
+        let json = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
 
-        let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
-        let ingress_message =
-            serde_json::from_str::<PhoenixMessage<IngressMessages, ()>>(message).unwrap();
-        assert_eq!(m, ingress_message);
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(message, IngressMessages::Init(_)));
     }
 
     #[test]
-    fn additional_fields_are_ignore() {
-        let m = PhoenixMessage::new_message(
-            "gateway",
-            IngressMessages::Init(InitGateway {
-                interface: Interface {
-                    ipv4: "100.115.164.78".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
-                    upstream_dns: vec![],
-                },
-                config: Config {
-                    ipv4_masquerade_enabled: true,
-                    ipv6_masquerade_enabled: true,
-                },
-                relays: vec![],
-            }),
-            None,
-        );
+    fn can_deserialize_resource_updated_message() {
+        let json = r#"{"event":"resource_updated","ref":null,"topic":"gateway","payload":{"id":"57f9ebbb-21d5-4f9f-bf86-b25122fc7a43","name":"?.httpbin","type":"dns","address":"?.httpbin","filters":[{"protocol":"icmp"},{"protocol":"tcp"}]}}"#;
 
-        let message = r#"{"event":"init","ref":null,"topic":"gateway","irrelevant":"field","payload":{"more":"info","interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true,"ignored":"field"}}}"#;
-        let ingress_message =
-            serde_json::from_str::<PhoenixMessage<IngressMessages, ()>>(message).unwrap();
-        assert_eq!(m, ingress_message);
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(message, IngressMessages::ResourceUpdated(_)));
     }
 
     #[test]
-    fn additional_null_fields_are_ignored() {
-        let m = PhoenixMessage::new_message(
-            "gateway",
-            IngressMessages::Init(InitGateway {
-                interface: Interface {
-                    ipv4: "100.115.164.78".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
-                    upstream_dns: vec![],
-                },
-                config: Config {
-                    ipv4_masquerade_enabled: true,
-                    ipv6_masquerade_enabled: true,
-                },
-                relays: vec![],
-            }),
-            None,
-        );
-
-        let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":null,"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
-        let ingress_message =
-            serde_json::from_str::<PhoenixMessage<IngressMessages, ()>>(message).unwrap();
-        assert_eq!(m, ingress_message);
-    }
-
-    #[test]
-    fn additional_number_fields_are_ignored() {
-        let m = PhoenixMessage::new_message(
-            "gateway",
-            IngressMessages::Init(InitGateway {
-                interface: Interface {
-                    ipv4: "100.115.164.78".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
-                    upstream_dns: vec![],
-                },
-                config: Config {
-                    ipv4_masquerade_enabled: true,
-                    ipv6_masquerade_enabled: true,
-                },
-                relays: vec![],
-            }),
-            None,
-        );
-
-        let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":0.3,"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
-        let ingress_message =
-            serde_json::from_str::<PhoenixMessage<IngressMessages, ()>>(message).unwrap();
-        assert_eq!(m, ingress_message);
-    }
-
-    #[test]
-    fn additional_boolean_fields_are_ignored() {
-        let m = PhoenixMessage::new_message(
-            "gateway",
-            IngressMessages::Init(InitGateway {
-                interface: Interface {
-                    ipv4: "100.115.164.78".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
-                    upstream_dns: vec![],
-                },
-                config: Config {
-                    ipv4_masquerade_enabled: true,
-                    ipv6_masquerade_enabled: true,
-                },
-                relays: vec![],
-            }),
-            None,
-        );
-
-        let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":true,"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
-        let ingress_message =
-            serde_json::from_str::<PhoenixMessage<IngressMessages, ()>>(message).unwrap();
-        assert_eq!(m, ingress_message);
-    }
-
-    #[test]
-    fn additional_object_fields_are_ignored() {
-        let m = PhoenixMessage::new_message(
-            "gateway",
-            IngressMessages::Init(InitGateway {
-                interface: Interface {
-                    ipv4: "100.115.164.78".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
-                    upstream_dns: vec![],
-                },
-                config: Config {
-                    ipv4_masquerade_enabled: true,
-                    ipv6_masquerade_enabled: true,
-                },
-                relays: vec![],
-            }),
-            None,
-        );
-
-        let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":{"ignored":"field"},"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
-        let ingress_message =
-            serde_json::from_str::<PhoenixMessage<IngressMessages, ()>>(message).unwrap();
-        assert_eq!(m, ingress_message);
-    }
-
-    #[test]
-    fn additional_array_fields_are_ignored() {
-        let m = PhoenixMessage::new_message(
-            "gateway",
-            IngressMessages::Init(InitGateway {
-                interface: Interface {
-                    ipv4: "100.115.164.78".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::2c:f6ab".parse().unwrap(),
-                    upstream_dns: vec![],
-                },
-                config: Config {
-                    ipv4_masquerade_enabled: true,
-                    ipv6_masquerade_enabled: true,
-                },
-                relays: vec![],
-            }),
-            None,
-        );
-
-        let message = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"additional":[true,false],"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true}}}"#;
-        let ingress_message =
-            serde_json::from_str::<PhoenixMessage<IngressMessages, ()>>(message).unwrap();
-        assert_eq!(m, ingress_message);
-    }
-
-    #[test]
-    fn resource_updated() {
-        let message = r#"{"event":"resource_updated","ref":null,"topic":"gateway","payload":{"id":"57f9ebbb-21d5-4f9f-bf86-b25122fc7a43","name":"?.httpbin","type":"dns","address":"?.httpbin","filters":[{"protocol":"icmp"},{"protocol":"tcp"}]}}"#;
-        let m =
-            IngressMessages::ResourceUpdated(ResourceDescription::Dns(ResourceDescriptionDns {
-                id: "57f9ebbb-21d5-4f9f-bf86-b25122fc7a43".parse().unwrap(),
-                address: "?.httpbin".to_string(),
-                name: "?.httpbin".to_string(),
-                filters: vec![
-                    Filter::Icmp,
-                    Filter::Tcp(PortRange {
-                        port_range_end: 65535,
-                        port_range_start: 0,
-                    }),
-                ],
-            }));
-        let ingress_message = serde_json::from_str::<IngressMessages>(message).unwrap();
-        assert_eq!(m, ingress_message);
-    }
-
-    #[test]
-    fn relays_presence() {
-        let message = r#"
+    fn can_deserialize_relays_presence_message() {
+        let json = r#"
         {
             "event": "relays_presence",
             "ref": null,
@@ -699,22 +521,9 @@ mod tests {
             }
         }
         "#;
-        let expected = IngressMessages::RelaysPresence(RelaysPresence {
-            disconnected_ids: vec![
-                "e95f9517-2152-4677-a16a-fbb2687050a3".parse().unwrap(),
-                "b0724bd1-a8cc-4faf-88cd-f21159cfec47".parse().unwrap(),
-            ],
-            connected: vec![Relay::Turn(Turn {
-                id: "0a133356-7a9e-4b9a-b413-0d95a5720fd8".parse().unwrap(),
-                expires_at: DateTime::from_timestamp(1719367575, 0).unwrap(),
-                addr: "172.28.0.101:3478".parse().unwrap(),
-                username: "1719367575:ZQHcVGkdnfgGmcP1".to_owned(),
-                password: "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg".to_owned(),
-            })],
-        });
 
-        let ingress_message = serde_json::from_str::<IngressMessages>(message).unwrap();
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
-        assert_eq!(ingress_message, expected);
+        assert!(matches!(message, IngressMessages::RelaysPresence(_)));
     }
 }

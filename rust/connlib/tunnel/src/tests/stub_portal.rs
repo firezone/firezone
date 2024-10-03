@@ -4,9 +4,9 @@ use super::{
     sim_net::Host,
     strategies::{resolved_ips, subdomain_records},
 };
-use crate::proptest::*;
+use crate::{client, proptest::*};
 use crate::{
-    messages::{client, gateway, DnsServer},
+    messages::{gateway, DnsServer},
     DomainName,
 };
 use connlib_model::GatewayId;
@@ -31,9 +31,11 @@ pub(crate) struct StubPortal {
 
     #[derivative(Debug = "ignore")]
     sites_by_resource: BTreeMap<ResourceId, SiteId>,
-    cidr_resources: BTreeMap<ResourceId, client::ResourceDescriptionCidr>,
-    dns_resources: BTreeMap<ResourceId, client::ResourceDescriptionDns>,
-    internet_resource: client::ResourceDescriptionInternet,
+
+    // TODO: Maybe these should use the `messages` types to cover the conversions and to model that that is what we receive from the portal?
+    cidr_resources: BTreeMap<ResourceId, client::CidrResource>,
+    dns_resources: BTreeMap<ResourceId, client::DnsResource>,
+    internet_resource: client::InternetResource,
 
     #[derivative(Debug = "ignore")]
     gateway_selector: Selector,
@@ -43,9 +45,9 @@ impl StubPortal {
     pub(crate) fn new(
         gateways_by_site: BTreeMap<SiteId, BTreeSet<GatewayId>>,
         gateway_selector: Selector,
-        cidr_resources: BTreeSet<client::ResourceDescriptionCidr>,
-        dns_resources: BTreeSet<client::ResourceDescriptionDns>,
-        internet_resource: client::ResourceDescriptionInternet,
+        cidr_resources: BTreeSet<client::CidrResource>,
+        dns_resources: BTreeSet<client::DnsResource>,
+        internet_resource: client::InternetResource,
     ) -> Self {
         let cidr_resources = cidr_resources
             .into_iter()
@@ -98,18 +100,18 @@ impl StubPortal {
         }
     }
 
-    pub(crate) fn all_resources(&self) -> Vec<client::ResourceDescription> {
+    pub(crate) fn all_resources(&self) -> Vec<client::Resource> {
         self.cidr_resources
             .values()
             .cloned()
-            .map(client::ResourceDescription::Cidr)
+            .map(client::Resource::Cidr)
             .chain(
                 self.dns_resources
                     .values()
                     .cloned()
-                    .map(client::ResourceDescription::Dns),
+                    .map(client::Resource::Dns),
             )
-            .chain(iter::once(client::ResourceDescription::Internet(
+            .chain(iter::once(client::Resource::Internet(
                 self.internet_resource.clone(),
             )))
             .collect()
