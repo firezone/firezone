@@ -2,11 +2,8 @@ use super::{
     composite_strategy::CompositeStrategy, sim_client::*, sim_dns::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
+use crate::{client, DomainName, StaticSecret};
 use crate::{dns::is_subdomain, proptest::relay_id};
-use crate::{
-    messages::client::{self, ResourceDescription},
-    DomainName, StaticSecret,
-};
 use connlib_model::{GatewayId, RelayId, ResourceId};
 use domain::base::Rtype;
 use proptest::{prelude::*, sample};
@@ -293,7 +290,7 @@ impl ReferenceStateMachine for ReferenceState {
         match transition {
             Transition::ActivateResource(resource) => {
                 state.client.exec_mut(|client| match resource {
-                    client::ResourceDescription::Dns(r) => {
+                    client::Resource::Dns(r) => {
                         client.add_dns_resource(r.clone());
 
                         // TODO: PRODUCTION CODE CANNOT DO THIS.
@@ -306,10 +303,8 @@ impl ReferenceStateMachine for ReferenceState {
                             true
                         });
                     }
-                    client::ResourceDescription::Cidr(r) => client.add_cidr_resource(r.clone()),
-                    client::ResourceDescription::Internet(r) => {
-                        client.add_internet_resource(r.clone())
-                    }
+                    client::Resource::Cidr(r) => client.add_cidr_resource(r.clone()),
+                    client::Resource::Internet(r) => client.add_internet_resource(r.clone()),
                 });
             }
             Transition::DeactivateResource(id) => {
@@ -659,7 +654,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn all_resources_not_known_to_client(&self) -> Vec<ResourceDescription> {
+    fn all_resources_not_known_to_client(&self) -> Vec<client::Resource> {
         let mut all_resources = self.portal.all_resources();
         all_resources.retain(|r| !self.client.inner().has_resource(r.id()));
 

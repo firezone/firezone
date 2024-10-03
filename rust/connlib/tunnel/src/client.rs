@@ -1,8 +1,14 @@
+mod resource;
+
+pub(crate) use resource::{CidrResource, Resource};
+#[cfg(all(feature = "proptest", test))]
+pub(crate) use resource::{DnsResource, InternetResource};
+
 use crate::dns::StubResolver;
+use crate::messages::client::ResourceDescription;
 use crate::messages::ResolveRequest;
 use crate::messages::{
-    client::ResourceDescription, client::ResourceDescriptionCidr, Answer, DnsServer,
-    Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay,
+    Answer, DnsServer, Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay,
 };
 use crate::peer_store::PeerStore;
 use crate::{dns, TunConfig};
@@ -72,7 +78,12 @@ const MAX_REMEMBERED_GATEWAYS: NonZeroUsize = unsafe { NonZeroUsize::new_uncheck
 
 impl ClientTunnel {
     pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
-        self.role_state.set_resources(resources);
+        self.role_state.set_resources(
+            resources
+                .into_iter()
+                .map(Resource::from_description)
+                .collect(),
+        );
 
         self.role_state
             .buffered_events
@@ -97,7 +108,8 @@ impl ClientTunnel {
 
     /// Adds a the given resource to the tunnel.
     pub fn add_resource(&mut self, resource: ResourceDescription) {
-        self.role_state.add_resource(resource);
+        self.role_state
+            .add_resource(Resource::from_description(resource));
 
         self.role_state
             .buffered_events
@@ -207,11 +219,11 @@ pub struct ClientState {
     sites_status: HashMap<SiteId, ResourceStatus>,
 
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
-    active_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    active_cidr_resources: IpNetworkTable<CidrResource>,
     /// `Some` if the Internet resource is enabled.
     internet_resource: Option<ResourceId>,
     /// All resources indexed by their ID.
-    resources_by_id: BTreeMap<ResourceId, ResourceDescription>,
+    resources_by_id: BTreeMap<ResourceId, Resource>,
 
     /// The DNS resolvers configured on the system outside of connlib.
     system_resolvers: Vec<IpAddr>,
@@ -329,7 +341,7 @@ impl ClientState {
             .collect_vec()
     }
 
-    fn resource_status(&self, resource: &ResourceDescription) -> ResourceStatus {
+    fn resource_status(&self, resource: &Resource) -> ResourceStatus {
         if resource.sites().iter().any(|s| {
             self.sites_status
                 .get(&s.id)
@@ -389,10 +401,7 @@ impl ClientState {
     }
 
     fn is_dns_resource(&self, resource: &ResourceId) -> bool {
-        matches!(
-            self.resources_by_id.get(resource),
-            Some(ResourceDescription::Dns(_))
-        )
+        matches!(self.resources_by_id.get(resource), Some(Resource::Dns(_)))
     }
 
     fn is_cidr_resource_connected(&self, resource: &ResourceId) -> bool {
@@ -940,11 +949,11 @@ impl ClientState {
         self.maybe_update_tun_config(new_tun_config);
     }
 
-    fn recalculate_active_cidr_resources(&self) -> IpNetworkTable<ResourceDescriptionCidr> {
-        let mut active_cidr_resources = IpNetworkTable::<ResourceDescriptionCidr>::new();
+    fn recalculate_active_cidr_resources(&self) -> IpNetworkTable<CidrResource> {
+        let mut active_cidr_resources = IpNetworkTable::<CidrResource>::new();
 
         for resource in self.resources_by_id.values() {
-            let ResourceDescription::Cidr(resource) = resource else {
+            let Resource::Cidr(resource) = resource else {
                 continue;
             };
 
@@ -1080,7 +1089,7 @@ impl ClientState {
     ///
     /// TODO: Add a test that asserts the above.
     ///       That is tricky because we need to assert on state deleted by [`ClientState::remove_resource`] and check that it did in fact not get deleted.
-    pub(crate) fn set_resources(&mut self, new_resources: Vec<ResourceDescription>) {
+    pub(crate) fn set_resources(&mut self, new_resources: Vec<Resource>) {
         let current_resource_ids = self
             .resources_by_id
             .keys()
@@ -1103,7 +1112,7 @@ impl ClientState {
         self.maybe_update_tun_routes();
     }
 
-    pub(crate) fn add_resource(&mut self, new_resource: ResourceDescription) {
+    pub(crate) fn add_resource(&mut self, new_resource: Resource) {
         if let Some(resource) = self.resources_by_id.get(&new_resource.id()) {
             if resource.has_different_address(&new_resource) {
                 self.remove_resource(resource.id());
@@ -1118,10 +1127,8 @@ impl ClientState {
         }
 
         let added = match &new_resource {
-            ResourceDescription::Dns(dns) => {
-                self.stub_resolver.add_resource(dns.id, dns.address.clone())
-            }
-            ResourceDescription::Cidr(cidr) => {
+            Resource::Dns(dns) => self.stub_resolver.add_resource(dns.id, dns.address.clone()),
+            Resource::Cidr(cidr) => {
                 let existing = self.active_cidr_resources.exact_match(cidr.address);
 
                 match existing {
@@ -1129,7 +1136,7 @@ impl ClientState {
                     None => true,
                 }
             }
-            ResourceDescription::Internet(resource) => {
+            Resource::Internet(resource) => {
                 self.internet_resource.replace(resource.id) != Some(resource.id)
             }
         };
@@ -1160,9 +1167,9 @@ impl ClientState {
         };
 
         match resource {
-            ResourceDescription::Dns(_) => self.stub_resolver.remove_resource(id),
-            ResourceDescription::Cidr(_) => {}
-            ResourceDescription::Internet(_) => {
+            Resource::Dns(_) => self.stub_resolver.remove_resource(id),
+            Resource::Cidr(_) => {}
+            Resource::Internet(_) => {
                 if self.internet_resource.is_some_and(|r_id| r_id == id) {
                     self.internet_resource = None;
                 }
@@ -1279,11 +1286,11 @@ fn peer_by_resource_mut<'p>(
 }
 
 fn get_addresses_for_awaiting_resource(
-    desc: &ResourceDescription,
+    desc: &Resource,
     awaiting_connection_details: &AwaitingConnectionDetails,
 ) -> Vec<IpNetwork> {
     match desc {
-        ResourceDescription::Dns(_) => awaiting_connection_details
+        Resource::Dns(_) => awaiting_connection_details
             .domain
             .as_ref()
             .expect("for dns resources the awaiting connection should have an ip")
@@ -1292,8 +1299,8 @@ fn get_addresses_for_awaiting_resource(
             .copied()
             .map_into()
             .collect_vec(),
-        ResourceDescription::Cidr(r) => vec![r.address],
-        ResourceDescription::Internet(_) => vec![
+        Resource::Cidr(r) => vec![r.address],
+        Resource::Internet(_) => vec![
             Ipv4Network::DEFAULT_ROUTE.into(),
             Ipv6Network::DEFAULT_ROUTE.into(),
         ],
@@ -1595,21 +1602,21 @@ mod tests {
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
     use super::*;
-    use crate::messages::client::ResourceDescriptionDns;
     use crate::proptest::*;
     use connlib_model::ResourceView;
     use prop::collection;
     use proptest::prelude::*;
+    use resource::DnsResource;
 
     #[test_strategy::proptest]
     fn cidr_resources_are_turned_into_routes(
-        #[strategy(cidr_resource())] resource1: ResourceDescriptionCidr,
-        #[strategy(cidr_resource())] resource2: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] resource1: CidrResource,
+        #[strategy(cidr_resource())] resource2: CidrResource,
     ) {
         let mut client_state = ClientState::for_test();
 
-        client_state.add_resource(ResourceDescription::Cidr(resource1.clone()));
-        client_state.add_resource(ResourceDescription::Cidr(resource2.clone()));
+        client_state.add_resource(Resource::Cidr(resource1.clone()));
+        client_state.add_resource(Resource::Cidr(resource2.clone()));
 
         assert_eq!(
             hashset(client_state.routes()),
@@ -1619,14 +1626,14 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn added_resources_show_up_as_resoucres(
-        #[strategy(cidr_resource())] resource1: ResourceDescriptionCidr,
-        #[strategy(dns_resource())] resource2: ResourceDescriptionDns,
-        #[strategy(cidr_resource())] resource3: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] resource1: CidrResource,
+        #[strategy(dns_resource())] resource2: DnsResource,
+        #[strategy(cidr_resource())] resource3: CidrResource,
     ) {
         let mut client_state = ClientState::for_test();
 
-        client_state.add_resource(ResourceDescription::Cidr(resource1.clone()));
-        client_state.add_resource(ResourceDescription::Dns(resource2.clone()));
+        client_state.add_resource(Resource::Cidr(resource1.clone()));
+        client_state.add_resource(Resource::Dns(resource2.clone()));
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -1636,7 +1643,7 @@ mod proptests {
             ])
         );
 
-        client_state.add_resource(ResourceDescription::Cidr(resource3.clone()));
+        client_state.add_resource(Resource::Cidr(resource3.clone()));
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -1650,18 +1657,18 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn adding_same_resource_with_different_address_updates_the_address(
-        #[strategy(cidr_resource())] resource: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] resource: CidrResource,
         #[strategy(any_ip_network(8))] new_address: IpNetwork,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(ResourceDescription::Cidr(resource.clone()));
+        client_state.add_resource(Resource::Cidr(resource.clone()));
 
-        let updated_resource = ResourceDescriptionCidr {
+        let updated_resource = CidrResource {
             address: new_address,
             ..resource
         };
 
-        client_state.add_resource(ResourceDescription::Cidr(updated_resource.clone()));
+        client_state.add_resource(Resource::Cidr(updated_resource.clone()));
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -1677,13 +1684,13 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn adding_cidr_resource_with_same_id_as_dns_resource_replaces_dns_resource(
-        #[strategy(dns_resource())] resource: ResourceDescriptionDns,
+        #[strategy(dns_resource())] resource: DnsResource,
         #[strategy(any_ip_network(8))] address: IpNetwork,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(ResourceDescription::Dns(resource.clone()));
+        client_state.add_resource(Resource::Dns(resource.clone()));
 
-        let dns_as_cidr_resource = ResourceDescriptionCidr {
+        let dns_as_cidr_resource = CidrResource {
             address,
             id: resource.id,
             name: resource.name,
@@ -1691,7 +1698,7 @@ mod proptests {
             sites: resource.sites,
         };
 
-        client_state.add_resource(ResourceDescription::Cidr(dns_as_cidr_resource.clone()));
+        client_state.add_resource(Resource::Cidr(dns_as_cidr_resource.clone()));
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -1707,12 +1714,12 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn resources_can_be_removed(
-        #[strategy(dns_resource())] dns_resource: ResourceDescriptionDns,
-        #[strategy(cidr_resource())] cidr_resource: ResourceDescriptionCidr,
+        #[strategy(dns_resource())] dns_resource: DnsResource,
+        #[strategy(cidr_resource())] cidr_resource: CidrResource,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(ResourceDescription::Dns(dns_resource.clone()));
-        client_state.add_resource(ResourceDescription::Cidr(cidr_resource.clone()));
+        client_state.add_resource(Resource::Dns(dns_resource.clone()));
+        client_state.add_resource(Resource::Cidr(cidr_resource.clone()));
 
         client_state.remove_resource(dns_resource.id);
 
@@ -1735,18 +1742,18 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn resources_can_be_replaced(
-        #[strategy(dns_resource())] dns_resource1: ResourceDescriptionDns,
-        #[strategy(dns_resource())] dns_resource2: ResourceDescriptionDns,
-        #[strategy(cidr_resource())] cidr_resource1: ResourceDescriptionCidr,
-        #[strategy(cidr_resource())] cidr_resource2: ResourceDescriptionCidr,
+        #[strategy(dns_resource())] dns_resource1: DnsResource,
+        #[strategy(dns_resource())] dns_resource2: DnsResource,
+        #[strategy(cidr_resource())] cidr_resource1: CidrResource,
+        #[strategy(cidr_resource())] cidr_resource2: CidrResource,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(ResourceDescription::Dns(dns_resource1));
-        client_state.add_resource(ResourceDescription::Cidr(cidr_resource1));
+        client_state.add_resource(Resource::Dns(dns_resource1));
+        client_state.add_resource(Resource::Cidr(cidr_resource1));
 
         client_state.set_resources(vec![
-            ResourceDescription::Dns(dns_resource2.clone()),
-            ResourceDescription::Cidr(cidr_resource2.clone()),
+            Resource::Dns(dns_resource2.clone()),
+            Resource::Cidr(cidr_resource2.clone()),
         ]);
 
         assert_eq!(
@@ -1764,8 +1771,8 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn setting_gateway_online_sets_all_related_resources_online(
-        #[strategy(resources_sharing_n_sites(1))] resources_online: Vec<ResourceDescription>,
-        #[strategy(resources_sharing_n_sites(1))] resources_unknown: Vec<ResourceDescription>,
+        #[strategy(resources_sharing_n_sites(1))] resources_online: Vec<Resource>,
+        #[strategy(resources_sharing_n_sites(1))] resources_unknown: Vec<Resource>,
         #[strategy(gateway_id())] gateway: GatewayId,
     ) {
         let mut client_state = ClientState::for_test();
@@ -1801,7 +1808,7 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn disconnecting_gateway_sets_related_resources_unknown(
-        #[strategy(resources_sharing_n_sites(1))] resources: Vec<ResourceDescription>,
+        #[strategy(resources_sharing_n_sites(1))] resources: Vec<Resource>,
         #[strategy(gateway_id())] gateway: GatewayId,
     ) {
         let mut client_state = ClientState::for_test();
@@ -1829,8 +1836,8 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn setting_resource_offline_doesnt_set_all_related_resources_offline(
-        #[strategy(resources_sharing_n_sites(2))] multi_site_resources: Vec<ResourceDescription>,
-        #[strategy(resource())] single_site_resource: ResourceDescription,
+        #[strategy(resources_sharing_n_sites(2))] multi_site_resources: Vec<Resource>,
+        #[strategy(resource())] single_site_resource: Resource,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resource(single_site_resource.clone());
@@ -1870,22 +1877,20 @@ mod proptests {
         HashSet::from_iter(val.into_iter().map(|b| b.to_owned()))
     }
 
-    fn resource() -> impl Strategy<Value = ResourceDescription> {
+    fn resource() -> impl Strategy<Value = Resource> {
         crate::proptest::resource(site().prop_map(|s| vec![s]))
     }
 
-    fn cidr_resource() -> impl Strategy<Value = ResourceDescriptionCidr> {
+    fn cidr_resource() -> impl Strategy<Value = CidrResource> {
         crate::proptest::cidr_resource(any_ip_network(8), site().prop_map(|s| vec![s]))
     }
 
-    fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {
+    fn dns_resource() -> impl Strategy<Value = DnsResource> {
         crate::proptest::dns_resource(site().prop_map(|s| vec![s]))
     }
 
     // Generate resources sharing 1 site
-    fn resources_sharing_n_sites(
-        num_sites: usize,
-    ) -> impl Strategy<Value = Vec<ResourceDescription>> {
+    fn resources_sharing_n_sites(num_sites: usize) -> impl Strategy<Value = Vec<Resource>> {
         collection::vec(site(), num_sites)
             .prop_flat_map(|sites| collection::vec(crate::proptest::resource(Just(sites)), 1..=100))
     }

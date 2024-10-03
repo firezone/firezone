@@ -1,11 +1,11 @@
 use crate::{
-    client::{IPV4_RESOURCES, IPV6_RESOURCES},
+    client::{Resource, IPV4_RESOURCES, IPV6_RESOURCES},
     proptest::{host_v4, host_v6},
 };
 use connlib_model::RelayId;
 
 use super::sim_net::{any_ip_stack, any_port, Host};
-use crate::messages::{client::ResourceDescription, DnsServer};
+use crate::messages::DnsServer;
 use connlib_model::{DomainName, ResourceId};
 use domain::base::Rtype;
 use prop::collection;
@@ -21,7 +21,7 @@ use std::{
 #[expect(clippy::large_enum_variant)]
 pub(crate) enum Transition {
     /// Activate a resource on the client.
-    ActivateResource(ResourceDescription),
+    ActivateResource(Resource),
     /// Deactivate a resource on the client.
     DeactivateResource(ResourceId),
     /// Client-side disable resource
