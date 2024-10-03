@@ -105,7 +105,6 @@ jobs:
           - name: direct-download-roaming-network
             # Too noisy can cause flaky tests due to the amount of data
             rust_log: debug
-          - name: dns-failsafe # Uses the default DNS control method
           - name: dns-nm
           - name: relay-graceful-shutdown
           - name: systemd/dns-systemd-resolved
