@@ -180,6 +180,7 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
     }
 }
 
+/// Handles messages from other tasks / thread to our GTK main thread, such as quitting the app and changing the tray menu.
 #[must_use]
 struct MainThreadLoop {
     app: gtk::Application,
@@ -189,12 +190,21 @@ struct MainThreadLoop {
 }
 
 impl MainThreadLoop {
-    async fn run(mut self) -> Result<()> {
+    /// Handle messages that must be handled on the main thread where GTK is
+    ///
+    /// This function never returns, GLib just stops polling it when the GTK app quits
+    async fn run(mut self) {
         while let Some(req) = self.main_rx.recv().await {
-            match req {
-                MainThreadReq::Quit => self.app.quit(),
-                MainThreadReq::SetTrayMenu(app_state) => self.set_tray_menu(*app_state)?,
+            if let Err(error) = self.handle_req(req) {
+                tracing::error!(?error, "`MainThreadLoop::handle_req` failed");
             }
+        }
+    }
+
+    fn handle_req(&mut self, req: MainThreadReq) -> Result<()> {
+        match req {
+            MainThreadReq::Quit => self.app.quit(),
+            MainThreadReq::SetTrayMenu(app_state) => self.set_tray_menu(*app_state)?,
         }
         Ok(())
     }
@@ -291,6 +301,7 @@ fn build_item(that: &common::system_tray::Item) -> tray_icon::menu::MenuItem {
 
 /// Something that needs to be done on the GTK+ main thread.
 enum MainThreadReq {
+    /// The controller exited, quit the GTK app and exit the loop
     Quit,
     SetTrayMenu(Box<common::system_tray::AppState>),
 }
@@ -319,9 +330,12 @@ async fn run_controller(
     .build()
     .await?;
 
-    controller.main_loop().await?;
+    let result = controller.main_loop().await;
+    if let Err(error) = &result {
+        tracing::error!(?error, "`Controller` failed");
+    }
     main_tx.send(MainThreadReq::Quit).await?;
-    Ok(())
+    Ok(result?)
 }
 
 struct GtkIntegration {
