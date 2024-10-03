@@ -81,7 +81,7 @@ fn main() -> Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
 
-    let deep_link_server = rt.block_on(async { deep_link::Server::new().await })?;
+    let deep_link_server = rt.block_on(deep_link::Server::new())?;
 
     let app = Application::builder()
         .application_id("dev.firezone.client")
