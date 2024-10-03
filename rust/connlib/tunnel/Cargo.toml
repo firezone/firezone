@@ -41,7 +41,6 @@ uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
 derivative = "2.2.0"
 firezone-relay = { workspace = true, features = ["proptest"] }
 ip-packet = { workspace = true, features = ["proptest"] }
-phoenix-channel = { workspace = true }
 proptest-state-machine = "0.3"
 rand = "0.8"
 serde_json = "1.0"
