@@ -1,5 +1,6 @@
 //! Firezone's P2P control protocol between clients and gateways.
 
+#[cfg_attr(not(test), expect(dead_code, reason = "Will be used soon."))]
 pub mod setup_dns_resource_nat {
     use anyhow::{Context, Result};
     use connlib_model::{DomainName, ResourceId};
@@ -32,11 +33,21 @@ pub mod setup_dns_resource_nat {
     }
 
     pub fn decode_request(packet: FzP2pControlSlice) -> Result<Request> {
+        anyhow::ensure!(
+            packet.message_type() == REQ_CODE,
+            "Control protocol packet is not a setup-dns-resource-nat request"
+        );
+
         serde_json::from_slice::<Request>(packet.payload())
             .context("Failed to deserialize `setup_dns_resource_nat::Request`")
     }
 
     pub fn decode_response(packet: FzP2pControlSlice) -> Result<Response> {
+        anyhow::ensure!(
+            packet.message_type() == RES_CODE,
+            "Control protocol packet is not a setup-dns-resource-nat request"
+        );
+
         serde_json::from_slice::<Response>(packet.payload())
             .context("Failed to deserialize `setup_dns_resource_nat::Response`")
     }
@@ -53,5 +64,44 @@ pub mod setup_dns_resource_nat {
         pub resource: ResourceId,
         pub domain: DomainName,
         pub code: u16, // Loosely follows the semantics of HTTP.
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::net::Ipv4Addr;
+
+        use super::*;
+
+        #[test]
+        fn request_serde_roundtrip() {
+            let packet = request(
+                ResourceId::from_u128(101),
+                domain("example.com"),
+                vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
+            );
+
+            let slice = packet.as_fz_p2p_control().unwrap();
+            let request = decode_request(slice).unwrap();
+
+            assert_eq!(request.resource, ResourceId::from_u128(101));
+            assert_eq!(request.domain, domain("example.com"));
+            assert_eq!(request.proxy_ips, vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])
+        }
+
+        #[test]
+        fn response_serde_roundtrip() {
+            let packet = response(ResourceId::from_u128(101), domain("example.com"), 200);
+
+            let slice = packet.as_fz_p2p_control().unwrap();
+            let request = decode_response(slice).unwrap();
+
+            assert_eq!(request.resource, ResourceId::from_u128(101));
+            assert_eq!(request.domain, domain("example.com"));
+            assert_eq!(request.code, 200)
+        }
+
+        fn domain(d: &str) -> DomainName {
+            d.parse().unwrap()
+        }
     }
 }
