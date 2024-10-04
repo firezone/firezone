@@ -1,17 +1,21 @@
-use crate::messages::ResolveRequest;
-use crate::messages::{gateway::ResourceDescription, Answer, Key, Offer};
-use crate::peer::ClientOnGateway;
-use crate::peer_store::PeerStore;
 use crate::utils::earliest;
-use crate::{GatewayEvent, GatewayTunnel};
+use crate::{
+    messages::{gateway::ResourceDescription, Answer, Key, Offer},
+    peer_store::PeerStore,
+};
+use crate::{
+    messages::{IceCredentials, ResolveRequest, SecretKey},
+    peer::ClientOnGateway,
+};
+use crate::{p2p_control, GatewayEvent, GatewayTunnel};
 use anyhow::Context;
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, DomainName, RelayId, ResourceId};
 use ip_network::{Ipv4Network, Ipv6Network};
-use ip_packet::IpPacket;
+use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::{EncryptBuffer, RelaySocket, ServerNode};
+use snownet::{Credentials, EncryptBuffer, RelaySocket, ServerNode, Transmit};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
@@ -32,6 +36,33 @@ const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 impl GatewayTunnel {
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
         self.io.set_tun(tun);
+    }
+
+    #[expect(clippy::too_many_arguments)]
+    pub fn authorize_flow(
+        &mut self,
+        client_id: ClientId,
+        client_key: PublicKey,
+        preshared_key: SecretKey,
+        client_ice: IceCredentials,
+        gateway_ice: IceCredentials,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
+        expires_at: Option<DateTime<Utc>>,
+        resource: ResourceDescription,
+    ) {
+        self.role_state.authorize_flow(
+            client_id,
+            client_key,
+            preshared_key,
+            client_ice,
+            gateway_ice,
+            ipv4,
+            ipv6,
+            expires_at,
+            resource,
+            Instant::now(),
+        )
     }
 
     /// Accept a connection request from a client.
@@ -97,6 +128,15 @@ impl GatewayTunnel {
             .refresh_translation(client, resource_id, name, resolved_ips, Instant::now())
     }
 
+    pub fn setup_dns_resource_nat(
+        &mut self,
+        request: PendingSetupNatRequest,
+        resolved_ips: Vec<IpAddr>,
+    ) {
+        self.role_state
+            .setup_dns_resource_nat(request, resolved_ips, Instant::now())
+    }
+
     pub fn update_resource(&mut self, resource: ResourceDescription) {
         for peer in self.role_state.peers.iter_mut() {
             peer.update_resource(&resource);
@@ -143,6 +183,7 @@ pub struct GatewayState {
     next_expiry_resources_check: Option<Instant>,
 
     buffered_events: VecDeque<GatewayEvent>,
+    buffered_transmits: VecDeque<Transmit<'static>>,
 }
 
 #[derive(Debug)]
@@ -169,6 +210,7 @@ impl GatewayState {
             node: ServerNode::new(seed),
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
+            buffered_transmits: VecDeque::default(),
         }
     }
 
@@ -231,6 +273,11 @@ impl GatewayState {
             return None;
         };
 
+        if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
+            handle_p2p_control_packet(peer, fz_p2p_control, &mut self.buffered_events);
+            return None;
+        }
+
         let packet = peer
             .decapsulate(packet, now)
             .inspect_err(|e| tracing::debug!(%cid, "Invalid packet: {e:#}"))
@@ -264,6 +311,39 @@ impl GatewayState {
         }
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(%client_id))]
+    #[expect(clippy::too_many_arguments)] // TODO: Silence this one across the codebase.
+    pub fn authorize_flow(
+        &mut self,
+        client_id: ClientId,
+        client_key: PublicKey,
+        preshared_key: SecretKey,
+        client_ice: IceCredentials,
+        gateway_ice: IceCredentials,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
+        expires_at: Option<DateTime<Utc>>,
+        resource: ResourceDescription,
+        now: Instant,
+    ) {
+        self.node.upsert_connection(
+            client_id,
+            client_key,
+            Secret::new(preshared_key.expose_secret().0),
+            Credentials {
+                username: gateway_ice.username,
+                password: gateway_ice.password,
+            },
+            Credentials {
+                username: client_ice.username,
+                password: client_ice.password,
+            },
+            now,
+        );
+
+        self.allow_access(client_id, ipv4, ipv6, expires_at, resource);
+    }
+
     pub fn refresh_translation(
         &mut self,
         client: ClientId,
@@ -279,6 +359,58 @@ impl GatewayState {
         if let Err(e) = peer.refresh_translation(name.clone(), resource_id, resolved_ips, now) {
             tracing::warn!(rid = %resource_id, %name, "Failed to refresh DNS resource IP translations: {e:#}");
         };
+    }
+
+    pub fn setup_dns_resource_nat(
+        &mut self,
+        request: PendingSetupNatRequest,
+        resolved_ips: Vec<IpAddr>,
+        now: Instant,
+    ) {
+        let mut buffer = EncryptBuffer::new(1500);
+
+        let PendingSetupNatRequest {
+            domain,
+            client: cid,
+            resource,
+            proxy_ips,
+        } = request;
+
+        let Some(peer) = self.peers.get_mut(&cid) else {
+            tracing::debug!(%cid, "Unknown peer");
+            return;
+        };
+        let result =
+            peer.assign_translations(domain.clone(), resource, &resolved_ips, proxy_ips, now);
+
+        let response = match &result {
+            Ok(()) => {
+                tracing::debug!(%domain, rid = %resource, "Successfully setup DNS resource NAT");
+
+                p2p_control::setup_dns_resource_nat::response(resource, domain, 200)
+            }
+            Err(e) => {
+                tracing::debug!(%domain, rid = %resource, "Failed to setup DNS resource NAT: {e:#}");
+
+                p2p_control::setup_dns_resource_nat::response(resource, domain, 500)
+            }
+        };
+
+        let transmit = match self.node.encapsulate(peer.id(), response, now, &mut buffer) {
+            Ok(Some(packet)) => packet.to_transmit(&buffer).into_owned(),
+            Ok(None) => {
+                tracing::debug!(
+                    "Encapsulating p2p control protocol packet did not yield a transmit"
+                );
+                return;
+            }
+            Err(e) => {
+                tracing::debug!("Failed to encapsulate: {e}");
+                return;
+            }
+        };
+
+        self.buffered_transmits.push_back(transmit);
     }
 
     pub fn allow_access(
@@ -395,6 +527,10 @@ impl GatewayState {
     }
 
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {
+        if let Some(transmit) = self.buffered_transmits.pop_front() {
+            return Some(transmit);
+        }
+
         self.node.poll_transmit()
     }
 
@@ -420,6 +556,55 @@ impl GatewayState {
     ) {
         self.node.update_relays(to_remove, &to_add, now);
         self.drain_node_events()
+    }
+}
+
+fn handle_p2p_control_packet(
+    peer: &ClientOnGateway,
+    fz_p2p_control: FzP2pControlSlice,
+    buffered_events: &mut VecDeque<GatewayEvent>,
+) {
+    use p2p_control::setup_dns_resource_nat;
+
+    match fz_p2p_control.message_type() {
+        setup_dns_resource_nat::REQ_CODE => {
+            let Ok(req) = setup_dns_resource_nat::decode_request(fz_p2p_control)
+                .inspect_err(|e| tracing::debug!("{e:#}"))
+            else {
+                return;
+            };
+
+            if !peer.is_allowed(req.resource) {
+                tracing::debug!(cid = %peer.id(), resource = %req.resource, "Rejecting DNS resource NAT setup request; resource not allowed");
+
+                // TODO: Send back 403 response.
+                return;
+            }
+
+            buffered_events.push_back(GatewayEvent::ResolveDns(PendingSetupNatRequest {
+                domain: req.domain,
+                client: peer.id(),
+                resource: req.resource,
+                proxy_ips: req.proxy_ips,
+            }));
+        }
+        code => {
+            tracing::debug!(%code, "Unknown control protocol");
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingSetupNatRequest {
+    domain: DomainName,
+    client: ClientId,
+    resource: ResourceId,
+    proxy_ips: Vec<IpAddr>,
+}
+
+impl PendingSetupNatRequest {
+    pub fn domain(&self) -> &DomainName {
+        &self.domain
     }
 }
 
