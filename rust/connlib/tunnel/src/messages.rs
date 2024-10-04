@@ -128,6 +128,10 @@ pub struct ResourceAccepted {
 pub enum GatewayResponse {
     ConnectionAccepted(ConnectionAccepted),
     ResourceAccepted(ResourceAccepted),
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+pub struct IceCredentials {
+    pub username: String,
+    pub password: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
