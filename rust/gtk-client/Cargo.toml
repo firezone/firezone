@@ -17,6 +17,7 @@ firezone-logging = { path = "../logging" }
 firezone-telemetry = { path = "../telemetry" }
 glib = "0.18.5"
 gtk = "0.18.1"
+notify-rust = "4.11.3"
 open = "5.3.0"
 rustls = { version = "0.23.10", default-features = false, features = ["ring"] }
 secrecy = "0.8"
@@ -46,6 +47,7 @@ strip = "none"
 assets = [
     ["../gui-client/src-tauri/deb_files/sysusers.conf", "usr/lib/sysusers.d/firezone-client-ipc.conf", "644"],
     ["../gui-client/src-tauri/deb_files/firezone-client-ipc.service", "usr/lib/systemd/system/", "644"],
+    ["../gui-client/src-tauri/icons/128x128.png", "/usr/share/icons/hicolor/128x128/apps/firezone-client-gui.png", "644"],
     # TODO: Once Tauri is removed on Linux, we can move this under `/usr/lib` so it's out of $PATH. We don't want users accidentally running it. For now Tauri and GTK share the systemd service unit,
     ["target/release/firezone-client-ipc", "usr/bin/", "755"],
     ["target/release/firezone-gui-client", "usr/bin/firezone-client-gui", "755"],
