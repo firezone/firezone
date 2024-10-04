@@ -222,7 +222,6 @@ where
     ///
     /// If we already have a connection with the same ICE credentials, this does nothing.
     /// Otherwise, the existing connection is discarded and a new one will be created.
-    #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn upsert_connection(
         &mut self,
         cid: TId,
@@ -447,7 +446,7 @@ where
         let packet_end = 4 + packet_len;
 
         let socket = match &mut conn.state {
-            ConnectionState::Connecting { buffered } => {
+            ConnectionState::Connecting { buffered, .. } => {
                 buffered.push(buffer.inner[packet_start..packet_end].to_vec());
                 return Ok(None);
             }
@@ -975,11 +974,6 @@ where
         tracing::info!(?duration_since_intent, "Establishing new connection");
 
         params
-    }
-
-    /// Whether we have sent an [`Offer`] for this connection and are currently expecting an [`Answer`].
-    pub fn is_expecting_answer(&self, id: TId) -> bool {
-        self.connections.initial.contains_key(&id)
     }
 
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].

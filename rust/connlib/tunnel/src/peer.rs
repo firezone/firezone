@@ -118,17 +118,11 @@ impl GatewayOnClient {
 }
 
 impl GatewayOnClient {
-    pub(crate) fn new(
-        id: GatewayId,
-        ips: &[IpNetwork],
-        resource: HashSet<ResourceId>,
-    ) -> GatewayOnClient {
-        let mut allowed_ips = IpNetworkTable::new();
-        for ip in ips {
-            allowed_ips.insert(*ip, resource.clone());
+    pub(crate) fn new(id: GatewayId) -> GatewayOnClient {
+        GatewayOnClient {
+            id,
+            allowed_ips: IpNetworkTable::new(),
         }
-
-        GatewayOnClient { id, allowed_ips }
     }
 }
 
@@ -462,6 +456,10 @@ impl ClientOnGateway {
 
     pub fn id(&self) -> ClientId {
         self.id
+    }
+
+    pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {
+        self.resources.contains_key(&resource)
     }
 }
 
