@@ -1,24 +1,13 @@
 defmodule Domain.Clients.Client.Changeset do
   use Domain, :changeset
+  import Ecto.Query
   alias Domain.{Version, Auth, Actors}
   alias Domain.Clients
 
-  @upsert_fields ~w[external_id last_used_token_id name public_key]a
-  @conflict_replace_fields ~w[name
-                              public_key
-                              last_used_token_id
-                              last_seen_user_agent
-                              last_seen_remote_ip
-                              last_seen_remote_ip_location_region
-                              last_seen_remote_ip_location_city
-                              last_seen_remote_ip_location_lat
-                              last_seen_remote_ip_location_lon
-                              last_seen_version
-                              last_seen_at
-                              identity_id
-                              updated_at]a
+  @required_fields ~w[external_id last_used_token_id name public_key]a
+  @hardware_identifiers ~w[device_serial device_uuid identifier_for_vendor firebase_installation_id]a
+  @upsert_fields @required_fields ++ @hardware_identifiers
   @update_fields ~w[name]a
-  @required_fields @upsert_fields
 
   # WireGuard base64-encoded string length
   @key_length 44
@@ -26,7 +15,115 @@ defmodule Domain.Clients.Client.Changeset do
   def upsert_conflict_target,
     do: {:unsafe_fragment, ~s/(account_id, actor_id, external_id) WHERE deleted_at IS NULL/}
 
-  def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
+  def upsert_on_conflict do
+    Clients.Client.Query.all()
+    |> update([clients: clients],
+      set: [
+        name: fragment("EXCLUDED.name"),
+        public_key: fragment("EXCLUDED.public_key"),
+        last_used_token_id: fragment("EXCLUDED.last_used_token_id"),
+        last_seen_user_agent: fragment("EXCLUDED.last_seen_user_agent"),
+        last_seen_remote_ip: fragment("EXCLUDED.last_seen_remote_ip"),
+        last_seen_remote_ip_location_region:
+          fragment("EXCLUDED.last_seen_remote_ip_location_region"),
+        last_seen_remote_ip_location_city: fragment("EXCLUDED.last_seen_remote_ip_location_city"),
+        last_seen_remote_ip_location_lat: fragment("EXCLUDED.last_seen_remote_ip_location_lat"),
+        last_seen_remote_ip_location_lon: fragment("EXCLUDED.last_seen_remote_ip_location_lon"),
+        last_seen_version: fragment("EXCLUDED.last_seen_version"),
+        last_seen_at: fragment("EXCLUDED.last_seen_at"),
+        identity_id: fragment("EXCLUDED.identity_id"),
+        device_serial: fragment("EXCLUDED.device_serial"),
+        device_uuid: fragment("EXCLUDED.device_uuid"),
+        identifier_for_vendor: fragment("EXCLUDED.identifier_for_vendor"),
+        firebase_installation_id: fragment("EXCLUDED.firebase_installation_id"),
+        updated_at: fragment("NOW()"),
+        verified_at:
+          fragment(
+            """
+            CASE WHEN (EXCLUDED.device_serial = ?.device_serial OR ?.device_serial IS NULL)
+                  AND (EXCLUDED.device_uuid = ?.device_uuid OR ?.device_uuid IS NULL)
+                  AND (EXCLUDED.identifier_for_vendor = ?.identifier_for_vendor OR ?.identifier_for_vendor IS NULL)
+                  AND (EXCLUDED.firebase_installation_id = ?.firebase_installation_id OR ?.firebase_installation_id IS NULL)
+                 THEN ?
+                 ELSE NULL
+            END
+            """,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients.verified_at
+          ),
+        verified_by:
+          fragment(
+            """
+            CASE WHEN (EXCLUDED.device_serial = ?.device_serial OR ?.device_serial IS NULL)
+                  AND (EXCLUDED.device_uuid = ?.device_uuid OR ?.device_uuid IS NULL)
+                  AND (EXCLUDED.identifier_for_vendor = ?.identifier_for_vendor OR ?.identifier_for_vendor IS NULL)
+                  AND (EXCLUDED.firebase_installation_id = ?.firebase_installation_id OR ?.firebase_installation_id IS NULL)
+                 THEN ?
+                 ELSE NULL
+            END
+            """,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients.verified_by
+          ),
+        verified_by_actor_id:
+          fragment(
+            """
+            CASE WHEN (EXCLUDED.device_serial = ?.device_serial OR ?.device_serial IS NULL)
+                  AND (EXCLUDED.device_uuid = ?.device_uuid OR ?.device_uuid IS NULL)
+                  AND (EXCLUDED.identifier_for_vendor = ?.identifier_for_vendor OR ?.identifier_for_vendor IS NULL)
+                  AND (EXCLUDED.firebase_installation_id = ?.firebase_installation_id OR ?.firebase_installation_id IS NULL)
+                 THEN ?
+                 ELSE NULL
+            END
+            """,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients.verified_by_actor_id
+          ),
+        verified_by_identity_id:
+          fragment(
+            """
+            CASE WHEN (EXCLUDED.device_serial = ?.device_serial OR ?.device_serial IS NULL)
+                  AND (EXCLUDED.device_uuid = ?.device_uuid OR ?.device_uuid IS NULL)
+                  AND (EXCLUDED.identifier_for_vendor = ?.identifier_for_vendor OR ?.identifier_for_vendor IS NULL)
+                  AND (EXCLUDED.firebase_installation_id = ?.firebase_installation_id OR ?.firebase_installation_id IS NULL)
+                 THEN ?
+                 ELSE NULL
+            END
+            """,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients,
+            clients.verified_by_identity_id
+          )
+      ]
+    )
+  end
 
   def upsert(actor_or_identity, %Auth.Subject{} = subject, attrs) do
     %Clients.Client{}

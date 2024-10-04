@@ -469,7 +469,16 @@ defmodule Domain.ClientsTest do
         Fixtures.Auth.create_subject(account: account, identity: previous_identity)
 
       client = Fixtures.Clients.create_client(subject: previous_subject)
-      attrs = Fixtures.Clients.client_attrs(external_id: client.external_id)
+      client = Fixtures.Clients.verify_client(client)
+
+      attrs =
+        Fixtures.Clients.client_attrs(
+          external_id: client.external_id,
+          device_serial: client.device_serial,
+          device_uuid: client.device_uuid,
+          identifier_for_vendor: client.identifier_for_vendor,
+          firebase_installation_id: client.firebase_installation_id
+        )
 
       subject = %{
         subject
@@ -516,6 +525,245 @@ defmodule Domain.ClientsTest do
 
       assert updated_client.last_seen_remote_ip_location_lon ==
                subject.context.remote_ip_location_lon
+
+      assert updated_client.verified_at == client.verified_at
+      assert updated_client.verified_by == client.verified_by
+      assert updated_client.verified_by_actor_id == client.verified_by_actor_id
+      assert updated_client.verified_by_identity_id == client.verified_by_identity_id
+
+      assert updated_client.device_serial == client.device_serial
+      assert updated_client.device_uuid == client.device_uuid
+      assert updated_client.identifier_for_vendor == client.identifier_for_vendor
+      assert updated_client.firebase_installation_id == client.firebase_installation_id
+    end
+
+    test "creates a new client when external_id is changed", %{
+      account: account,
+      admin_actor: actor,
+      admin_subject: subject
+    } do
+      previous_identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+
+      previous_subject =
+        Fixtures.Auth.create_subject(account: account, identity: previous_identity)
+
+      client = Fixtures.Clients.create_client(subject: previous_subject)
+
+      attrs =
+        Fixtures.Clients.client_attrs(
+          external_id: Ecto.UUID.generate(),
+          device_serial: client.device_serial,
+          device_uuid: client.device_uuid,
+          identifier_for_vendor: client.identifier_for_vendor,
+          firebase_installation_id: client.firebase_installation_id
+        )
+
+      subject = %{
+        subject
+        | context: %Domain.Auth.Context{
+            subject.context
+            | remote_ip: {100, 64, 100, 101},
+              remote_ip_location_region: "Mexico",
+              remote_ip_location_city: "Merida",
+              remote_ip_location_lat: 7.7758,
+              remote_ip_location_lon: -2.4128,
+              user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
+          }
+      }
+
+      assert {:ok, created_client} = upsert_client(attrs, subject)
+      assert created_client.id != client.id
+
+      assert Repo.aggregate(Clients.Client, :count, :id) == 2
+
+      assert created_client.name == attrs.name
+      assert created_client.last_seen_remote_ip.address == subject.context.remote_ip
+      assert created_client.last_seen_user_agent == subject.context.user_agent
+      assert created_client.last_seen_version == "0.7.411"
+      assert created_client.public_key == attrs.public_key
+
+      assert created_client.actor_id == client.actor_id
+      assert created_client.identity_id == subject.identity.id
+      assert created_client.ipv4 != client.ipv4
+      assert created_client.ipv6 != client.ipv6
+      assert created_client.last_seen_at
+
+      assert created_client.last_seen_remote_ip_location_region ==
+               subject.context.remote_ip_location_region
+
+      assert created_client.last_seen_remote_ip_location_city ==
+               subject.context.remote_ip_location_city
+
+      assert created_client.last_seen_remote_ip_location_lat ==
+               subject.context.remote_ip_location_lat
+
+      assert created_client.last_seen_remote_ip_location_lon ==
+               subject.context.remote_ip_location_lon
+
+      refute created_client.verified_at
+      refute created_client.verified_by
+      refute created_client.verified_by_actor_id
+      refute created_client.verified_by_identity_id
+
+      assert created_client.device_serial == attrs.device_serial
+      assert created_client.device_uuid == attrs.device_uuid
+      assert created_client.identifier_for_vendor == attrs.identifier_for_vendor
+      assert created_client.firebase_installation_id == attrs.firebase_installation_id
+    end
+
+    test "resets the verification when any of the hardware ids is changed", %{
+      account: account,
+      admin_actor: actor,
+      admin_subject: subject
+    } do
+      previous_identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+
+      previous_subject =
+        Fixtures.Auth.create_subject(account: account, identity: previous_identity)
+
+      subject = %{
+        subject
+        | context: %Domain.Auth.Context{
+            subject.context
+            | remote_ip: {100, 64, 100, 101},
+              remote_ip_location_region: "Mexico",
+              remote_ip_location_city: "Merida",
+              remote_ip_location_lat: 7.7758,
+              remote_ip_location_lon: -2.4128,
+              user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
+          }
+      }
+
+      for field <- [
+            :device_serial,
+            :device_uuid,
+            :identifier_for_vendor,
+            :firebase_installation_id
+          ] do
+        client = Fixtures.Clients.create_client(subject: previous_subject)
+        client = Fixtures.Clients.verify_client(client)
+
+        attrs =
+          Fixtures.Clients.client_attrs(
+            external_id: client.external_id,
+            device_serial: client.device_serial,
+            device_uuid: client.device_uuid,
+            identifier_for_vendor: client.identifier_for_vendor,
+            firebase_installation_id: client.firebase_installation_id
+          )
+
+        attrs = Map.put(attrs, field, Ecto.UUID.generate())
+        assert {:ok, updated_client} = upsert_client(attrs, subject)
+        assert updated_client.id == client.id
+        assert Map.get(updated_client, field) == Map.get(attrs, field)
+
+        assert is_nil(updated_client.verified_at)
+        assert is_nil(updated_client.verified_by)
+        assert is_nil(updated_client.verified_by_actor_id)
+        assert is_nil(updated_client.verified_by_identity_id)
+      end
+    end
+
+    test "resets the verification when any of the hardware ids is nilified", %{
+      account: account,
+      admin_actor: actor,
+      admin_subject: subject
+    } do
+      previous_identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+
+      previous_subject =
+        Fixtures.Auth.create_subject(account: account, identity: previous_identity)
+
+      subject = %{
+        subject
+        | context: %Domain.Auth.Context{
+            subject.context
+            | remote_ip: {100, 64, 100, 101},
+              remote_ip_location_region: "Mexico",
+              remote_ip_location_city: "Merida",
+              remote_ip_location_lat: 7.7758,
+              remote_ip_location_lon: -2.4128,
+              user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
+          }
+      }
+
+      for field <- [
+            :device_serial,
+            :device_uuid,
+            :identifier_for_vendor,
+            :firebase_installation_id
+          ] do
+        client = Fixtures.Clients.create_client(subject: previous_subject)
+        client = Fixtures.Clients.verify_client(client)
+
+        attrs =
+          Fixtures.Clients.client_attrs(
+            external_id: client.external_id,
+            device_serial: client.device_serial,
+            device_uuid: client.device_uuid,
+            identifier_for_vendor: client.identifier_for_vendor,
+            firebase_installation_id: client.firebase_installation_id
+          )
+
+        attrs = Map.put(attrs, field, nil)
+        assert {:ok, updated_client} = upsert_client(attrs, subject)
+        assert updated_client.id == client.id
+        refute Map.get(updated_client, field)
+
+        assert is_nil(updated_client.verified_at)
+        assert is_nil(updated_client.verified_by)
+        assert is_nil(updated_client.verified_by_actor_id)
+        assert is_nil(updated_client.verified_by_identity_id)
+      end
+    end
+
+    test "does not reset the verification when a new hardware id is added", %{
+      account: account,
+      admin_actor: actor,
+      admin_subject: subject
+    } do
+      previous_identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+
+      previous_subject =
+        Fixtures.Auth.create_subject(account: account, identity: previous_identity)
+
+      subject = %{
+        subject
+        | context: %Domain.Auth.Context{
+            subject.context
+            | remote_ip: {100, 64, 100, 101},
+              remote_ip_location_region: "Mexico",
+              remote_ip_location_city: "Merida",
+              remote_ip_location_lat: 7.7758,
+              remote_ip_location_lon: -2.4128,
+              user_agent: "iOS/12.5 (iPhone) connlib/0.7.411"
+          }
+      }
+
+      client =
+        Fixtures.Clients.create_client(
+          subject: previous_subject,
+          device_serial: nil,
+          device_uuid: nil,
+          identifier_for_vendor: nil,
+          firebase_installation_id: nil
+        )
+
+      client = Fixtures.Clients.verify_client(client)
+      attrs = Fixtures.Clients.client_attrs(external_id: client.external_id)
+
+      assert {:ok, updated_client} = upsert_client(attrs, subject)
+      assert updated_client.id == client.id
+
+      assert updated_client.device_serial == attrs.device_serial
+      assert updated_client.device_uuid == attrs.device_uuid
+      assert updated_client.identifier_for_vendor == attrs.identifier_for_vendor
+      assert updated_client.firebase_installation_id == attrs.firebase_installation_id
+
+      refute is_nil(updated_client.verified_at)
+      refute is_nil(updated_client.verified_by)
+      refute is_nil(updated_client.verified_by_actor_id)
+      refute is_nil(updated_client.verified_by_identity_id)
     end
 
     test "does not reserve additional addresses on update", %{
@@ -526,6 +774,10 @@ defmodule Domain.ClientsTest do
       attrs =
         Fixtures.Clients.client_attrs(
           external_id: client.external_id,
+          device_serial: client.device_serial,
+          device_uuid: client.device_uuid,
+          identifier_for_vendor: client.identifier_for_vendor,
+          firebase_installation_id: client.firebase_installation_id,
           last_seen_user_agent: "iOS/12.5 (iPhone) connlib/0.7.411",
           last_seen_remote_ip: %Postgrex.INET{address: {100, 64, 100, 100}}
         )

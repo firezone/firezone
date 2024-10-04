@@ -12,7 +12,11 @@ defmodule Domain.Fixtures.Clients do
       last_seen_remote_ip_location_region: "US",
       last_seen_remote_ip_location_city: "San Francisco",
       last_seen_remote_ip_location_lat: 37.7758,
-      last_seen_remote_ip_location_lon: -122.4128
+      last_seen_remote_ip_location_lon: -122.4128,
+      device_serial: Ecto.UUID.generate(),
+      device_uuid: Ecto.UUID.generate(),
+      identifier_for_vendor: Ecto.UUID.generate(),
+      firebase_installation_id: Ecto.UUID.generate()
     })
   end
 
@@ -67,6 +71,19 @@ defmodule Domain.Fixtures.Clients do
       )
 
     {:ok, client} = Clients.delete_client(client, subject)
+    client
+  end
+
+  def verify_client(client) do
+    client = Repo.preload(client, :account)
+
+    subject =
+      Fixtures.Auth.create_subject(
+        account: client.account,
+        actor: [type: :account_admin_user]
+      )
+
+    {:ok, client} = Clients.verify_client(client, subject)
     client
   end
 end
