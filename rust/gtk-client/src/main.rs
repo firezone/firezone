@@ -101,6 +101,31 @@ fn main() -> Result<()> {
             .title("Firezone GTK+ 3")
             .build();
 
+        let vbox = gtk::Box::new(gtk::Orientation::Vertical, 5);
+        let text = gtk::Entry::new();
+        vbox.pack_start(&text, true, true, 0);
+        let btn = gtk::Button::with_label("Apply");
+        vbox.pack_start(&btn, true, true, 0);
+
+        let text = text.clone();
+        btn.connect_clicked(move |_| {
+            tracing::info!("Button clicked, text is {}", text.text());
+        });
+
+        let logs_tab = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+        let clear_btn = gtk::Button::with_label("Clear logs");
+        let export_btn = gtk::Button::with_label("Export logs");
+
+        logs_tab.pack_start(&clear_btn, true, true, 0);
+        logs_tab.pack_start(&export_btn, true, true, 0);
+
+        // "Notebook" is what GTK calls tabs
+        let notebook = gtk::Notebook::new();
+        notebook.append_page(&vbox, Some(&gtk::Label::new(Some("Settings"))));
+        notebook.append_page(&logs_tab, Some(&gtk::Label::new(Some("Diagnostic Logs"))));
+
+        win.add(&notebook);
+
         // Don't forget to make all widgets visible.
         win.show_all();
     });
