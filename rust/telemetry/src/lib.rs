@@ -68,7 +68,7 @@ impl Telemetry {
                 ..Default::default()
             },
         ));
-        sentry::configure_scope(|scope| scope.set_tag("api_url", api_url));
+        sentry::Hub::main().configure_scope(|scope| scope.set_tag("api_url", api_url));
         self.inner.swap(Some(inner.into()));
         sentry::start_session();
     }
