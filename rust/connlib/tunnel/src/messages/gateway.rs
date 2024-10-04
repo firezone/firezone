@@ -1,8 +1,10 @@
 //! Gateway related messages that are needed within connlib
 
 use crate::messages::{
-    GatewayResponse, Interface, Offer, Peer, Relay, RelaysPresence, ResolveRequest,
+    GatewayResponse, IceCredentials, Interface, Key, Offer, Peer, Relay, RelaysPresence,
+    ResolveRequest, SecretKey,
 };
+
 use chrono::{serde::ts_seconds_option, DateTime, Utc};
 use connlib_model::{ClientId, ResourceId};
 use ip_network::IpNetwork;
@@ -126,7 +128,7 @@ pub struct Config {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct Client {
+pub struct LegacyClient {
     pub id: ClientId,
     pub payload: ClientPayload,
     pub peer: Peer,
@@ -135,7 +137,7 @@ pub struct Client {
 #[derive(Debug, Deserialize, Clone)]
 pub struct RequestConnection {
     pub resource: ResourceDescription,
-    pub client: Client,
+    pub client: LegacyClient,
     #[serde(rename = "ref")]
     pub reference: String,
     #[serde(with = "ts_seconds_option")]
@@ -173,14 +175,35 @@ pub struct RejectAccess {
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum IngressMessages {
-    RequestConnection(RequestConnection),
-    AllowAccess(AllowAccess),
+    RequestConnection(RequestConnection), // Deprecated.
+    AllowAccess(AllowAccess),             // Deprecated.
     RejectAccess(RejectAccess),
     IceCandidates(ClientIceCandidates),
     InvalidateIceCandidates(ClientIceCandidates),
     Init(InitGateway),
     RelaysPresence(RelaysPresence),
     ResourceUpdated(ResourceDescription),
+    AuthorizeFlow {
+        #[serde(rename = "ref")]
+        reference: String,
+
+        resource: ResourceDescription,
+        gateway_ice_credentials: IceCredentials,
+        client: Client,
+        client_ice_credentials: IceCredentials,
+
+        #[serde(with = "ts_seconds_option")]
+        expires_at: Option<DateTime<Utc>>,
+    },
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Client {
+    pub id: ClientId,
+    pub public_key: Key,
+    pub preshared_key: SecretKey,
+    pub ipv4: Ipv4Addr,
+    pub ipv6: Ipv6Addr,
 }
 
 /// A client's ice candidate message.
@@ -206,9 +229,13 @@ pub struct ClientIceCandidates {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum EgressMessages {
-    ConnectionReady(ConnectionReady),
+    ConnectionReady(ConnectionReady), // Deprecated.
     BroadcastIceCandidates(ClientsIceCandidates),
     BroadcastInvalidatedIceCandidates(ClientsIceCandidates),
+    FlowAuthorized {
+        #[serde(rename = "ref")]
+        reference: String,
+    },
 }
 
 #[derive(Debug, Serialize, Clone)]
