@@ -35,6 +35,7 @@ impl GatewayTunnel {
     }
 
     /// Accept a connection request from a client.
+    #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
     pub fn accept(
         &mut self,
         client_id: ClientId,
@@ -249,6 +250,7 @@ impl GatewayState {
     }
 
     /// Accept a connection request from a client.
+    #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
     pub fn accept(
         &mut self,
         client_id: ClientId,

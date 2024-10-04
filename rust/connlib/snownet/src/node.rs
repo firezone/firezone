@@ -941,6 +941,8 @@ where
     /// The returned [`Offer`] must be passed to the remote via a signalling channel.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     #[must_use]
+    #[deprecated]
+    #[expect(deprecated)]
     pub fn new_connection(&mut self, cid: TId, intent_sent_at: Instant, now: Instant) -> Offer {
         if self.connections.initial.remove(&cid).is_some() {
             tracing::info!("Replacing existing initial connection");
@@ -990,6 +992,8 @@ where
 
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
+    #[deprecated]
+    #[expect(deprecated)]
     pub fn accept_answer(&mut self, cid: TId, remote: PublicKey, answer: Answer, now: Instant) {
         let Some(initial) = self.connections.initial.remove(&cid) else {
             tracing::debug!("No initial connection state, ignoring answer"); // This can happen if the connection setup timed out.
@@ -1036,6 +1040,8 @@ where
     /// The returned [`Answer`] must be passed to the remote via a signalling channel.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     #[must_use]
+    #[deprecated]
+    #[expect(deprecated)]
     pub fn accept_connection(
         &mut self,
         cid: TId,
@@ -1422,12 +1428,14 @@ fn remove_local_candidate<TId>(
     }
 }
 
+#[deprecated]
 pub struct Offer {
     /// The Wireguard session key for a connection.
     pub session_key: Secret<[u8; 32]>,
     pub credentials: Credentials,
 }
 
+#[deprecated]
 pub struct Answer {
     pub credentials: Credentials,
 }

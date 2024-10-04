@@ -179,6 +179,7 @@ impl ClientTunnel {
             .on_routing_details(resource_id, gateway_id, site_id, Instant::now())
     }
 
+    #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
     pub fn received_offer_response(
         &mut self,
         resource_id: ResourceId,
@@ -517,6 +518,7 @@ impl ClientState {
     }
 
     #[tracing::instrument(level = "trace", skip_all, fields(%resource_id))]
+    #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
     pub fn accept_answer(
         &mut self,
         answer: snownet::Answer,
@@ -539,6 +541,10 @@ impl ClientState {
     ///
     /// In a nutshell, this tells us which gateway in which site to use for the given resource.
     #[tracing::instrument(level = "debug", skip_all, fields(%resource_id, %gateway_id))]
+    #[expect(
+        deprecated,
+        reason = "Will be refactored when deprecated control protocol is shipped"
+    )]
     pub fn on_routing_details(
         &mut self,
         resource_id: ResourceId,
