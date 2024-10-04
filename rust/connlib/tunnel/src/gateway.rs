@@ -1,6 +1,5 @@
-use crate::messages::{
-    gateway::ResourceDescription, Answer, IceCredentials, ResolveRequest, SecretKey,
-};
+use crate::messages::gateway::ResourceDescription;
+use crate::messages::{Answer, IceCredentials, ResolveRequest, SecretKey};
 use crate::utils::earliest;
 use crate::{p2p_control, GatewayEvent};
 use crate::{peer::ClientOnGateway, peer_store::PeerStore};

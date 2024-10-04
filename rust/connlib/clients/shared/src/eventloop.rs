@@ -1,8 +1,12 @@
 use crate::{callbacks::Callbacks, PHOENIX_TOPIC};
 use anyhow::Result;
-use connlib_model::ResourceId;
+use connlib_model::{PublicKey, ResourceId};
 use firezone_logging::{anyhow_dyn_err, err_with_src, telemetry_event};
-use firezone_tunnel::messages::{client::*, *};
+use firezone_tunnel::messages::client::{
+    EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
+    GatewaysIceCandidates, IngressMessages, InitClient,
+};
+use firezone_tunnel::messages::RelaysPresence;
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyParam};
 use std::time::Instant;
@@ -18,7 +22,7 @@ pub struct Eventloop<C: Callbacks> {
     tunnel: ClientTunnel,
     callbacks: C,
 
-    portal: PhoenixChannel<(), IngressMessages, ReplyMessages, PublicKeyParam>,
+    portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
     rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
 }
 
@@ -35,7 +39,7 @@ impl<C: Callbacks> Eventloop<C> {
     pub(crate) fn new(
         tunnel: ClientTunnel,
         callbacks: C,
-        mut portal: PhoenixChannel<(), IngressMessages, ReplyMessages, PublicKeyParam>,
+        mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
     ) -> Self {
         portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
@@ -140,28 +144,13 @@ where
             firezone_tunnel::ClientEvent::ConnectionIntent {
                 connected_gateway_ids,
                 resource,
-                ..
             } => {
                 self.portal.send(
                     PHOENIX_TOPIC,
-                    EgressMessages::PrepareConnection {
+                    EgressMessages::CreateFlow {
                         resource_id: resource,
                         connected_gateway_ids,
                     },
-                );
-            }
-            firezone_tunnel::ClientEvent::RequestAccess {
-                resource_id,
-                gateway_id,
-                maybe_domain,
-            } => {
-                self.portal.send(
-                    PHOENIX_TOPIC,
-                    EgressMessages::ReuseConnection(ReuseConnection {
-                        resource_id,
-                        gateway_id,
-                        payload: maybe_domain,
-                    }),
                 );
             }
             firezone_tunnel::ClientEvent::ResourcesChanged { resources } => {
@@ -177,40 +166,15 @@ where
                     Vec::from_iter(config.ipv6_routes),
                 );
             }
-            firezone_tunnel::ClientEvent::RequestConnection {
-                gateway_id,
-                offer,
-                preshared_key,
-                resource_id,
-                maybe_domain,
-            } => {
-                self.portal.send(
-                    PHOENIX_TOPIC,
-                    EgressMessages::RequestConnection(RequestConnection {
-                        gateway_id,
-                        resource_id,
-                        client_preshared_key: preshared_key,
-                        client_payload: ClientPayload {
-                            ice_parameters: offer,
-                            domain: maybe_domain,
-                        },
-                    }),
-                );
-            }
         }
     }
 
-    fn handle_portal_event(
-        &mut self,
-        event: phoenix_channel::Event<IngressMessages, ReplyMessages>,
-    ) {
+    fn handle_portal_event(&mut self, event: phoenix_channel::Event<IngressMessages, ()>) {
         match event {
             phoenix_channel::Event::InboundMessage { msg, .. } => {
                 self.handle_portal_inbound_message(msg);
             }
-            phoenix_channel::Event::SuccessResponse { res, .. } => {
-                self.handle_portal_success_reply(res);
-            }
+            phoenix_channel::Event::SuccessResponse { res: (), .. } => {}
             phoenix_channel::Event::ErrorResponse { res, req_id, topic } => {
                 self.handle_portal_error_reply(res, topic, req_id);
             }
@@ -279,43 +243,23 @@ where
                     )
                 }
             }
-        }
-    }
-
-    fn handle_portal_success_reply(&mut self, res: ReplyMessages) {
-        match res {
-            ReplyMessages::Connect(Connect {
-                gateway_payload:
-                    GatewayResponse::ConnectionAccepted(ConnectionAccepted { ice_parameters, .. }),
-                gateway_public_key,
+            IngressMessages::FlowCreated(FlowCreated {
                 resource_id,
-                ..
-            }) => {
-                if let Err(e) = self.tunnel.state_mut().accept_answer(
-                    ice_parameters,
-                    resource_id,
-                    gateway_public_key.0.into(),
-                    Instant::now(),
-                ) {
-                    tracing::warn!(error = anyhow_dyn_err(&e), "Failed to accept connection");
-                }
-            }
-            ReplyMessages::Connect(Connect {
-                gateway_payload: GatewayResponse::ResourceAccepted(ResourceAccepted { .. }),
-                ..
-            }) => {
-                tracing::trace!("Connection response received, ignored as it's deprecated")
-            }
-            ReplyMessages::ConnectionDetails(ConnectionDetails {
                 gateway_id,
-                resource_id,
                 site_id,
-                ..
+                gateway_public_key,
+                preshared_key,
+                client_ice_credentials,
+                gateway_ice_credentials,
             }) => {
-                match self.tunnel.state_mut().on_routing_details(
+                match self.tunnel.state_mut().handle_flow_created(
                     resource_id,
                     gateway_id,
+                    PublicKey::from(gateway_public_key.0),
                     site_id,
+                    preshared_key,
+                    client_ice_credentials,
+                    gateway_ice_credentials,
                     Instant::now(),
                 ) {
                     Ok(Ok(())) => {}
@@ -335,6 +279,16 @@ where
                         );
                     }
                 };
+            }
+            IngressMessages::FlowCreationFailed(FlowCreationFailed {
+                resource_id,
+                reason: FailReason::Offline,
+                ..
+            }) => {
+                self.tunnel.state_mut().set_resource_offline(resource_id);
+            }
+            IngressMessages::FlowCreationFailed(FlowCreationFailed { reason, .. }) => {
+                tracing::warn!("Failed to create flow: {reason:?}")
             }
         }
     }

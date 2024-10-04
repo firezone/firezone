@@ -15,8 +15,6 @@ use ip_packet::FzP2pEventType;
 pub const ASSIGNED_IPS_EVENT: FzP2pEventType = FzP2pEventType::new(0);
 pub const DOMAIN_STATUS_EVENT: FzP2pEventType = FzP2pEventType::new(1);
 
-/// The namespace for the DNS resource NAT protocol.
-#[cfg_attr(not(test), expect(dead_code, reason = "Will be used soon."))]
 pub mod dns_resource_nat {
     use super::*;
     use anyhow::{Context as _, Result};

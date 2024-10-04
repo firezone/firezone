@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{client, DomainName};
 use crate::{dns::is_subdomain, proptest::relay_id};
-use connlib_model::{GatewayId, RelayId, ResourceId, StaticSecret};
+use connlib_model::{GatewayId, RelayId, StaticSecret};
 use domain::base::Rtype;
 use ip_network::{Ipv4Network, Ipv6Network};
 use prop::sample::select;
@@ -361,10 +361,7 @@ impl ReferenceState {
                 }
             }),
             Transition::SendDnsQueries(queries) => {
-                let mut new_connections_via_gateways_udp_triggered =
-                    BTreeMap::<_, BTreeSet<ResourceId>>::new();
-                let mut new_connections_via_gateways_tcp_triggered =
-                    BTreeMap::<_, BTreeSet<ResourceId>>::new();
+                let mut new_connections = BTreeSet::new();
 
                 for query in queries {
                     // Some queries get answered locally.
@@ -400,29 +397,7 @@ impl ReferenceState {
                     {
                         tracing::debug!(%resource, %gateway, "Not connected yet, dropping packet");
 
-                        let connected_resources = match query.transport {
-                            DnsTransport::Udp => &mut new_connections_via_gateways_udp_triggered,
-                            DnsTransport::Tcp => &mut new_connections_via_gateways_tcp_triggered,
-                        }
-                        .entry(gateway)
-                        .or_default();
-
-                        if state.client.inner().is_connected_gateway(gateway) {
-                            connected_resources.insert(resource);
-                        } else {
-                            match query.transport {
-                                DnsTransport::Udp => {
-                                    // As part of batch-processing DNS queries, only the first resource per gateway will be connected / authorized.
-                                    if connected_resources.is_empty() {
-                                        connected_resources.insert(resource);
-                                    }
-                                }
-                                DnsTransport::Tcp => {
-                                    // TCP has retries, so those will always connect.
-                                    connected_resources.insert(resource);
-                                }
-                            }
-                        }
+                        new_connections.insert((resource, gateway));
 
                         continue;
                     }
@@ -430,15 +405,10 @@ impl ReferenceState {
                     state.client.exec_mut(|client| client.on_dns_query(query));
                 }
 
-                for (gateway, resources) in new_connections_via_gateways_udp_triggered
-                    .into_iter()
-                    .chain(new_connections_via_gateways_tcp_triggered)
-                {
-                    for resource in resources {
-                        state.client.exec_mut(|client| {
-                            client.connect_to_internet_or_cidr_resource(resource, gateway)
-                        });
-                    }
+                for (resource, gateway) in new_connections.into_iter() {
+                    state.client.exec_mut(|client| {
+                        client.connect_to_internet_or_cidr_resource(resource, gateway)
+                    });
                 }
             }
             Transition::SendIcmpPacket {

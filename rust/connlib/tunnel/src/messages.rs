@@ -2,9 +2,9 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
-use connlib_model::{GatewayId, RelayId, ResourceId};
+use connlib_model::RelayId;
 use ip_network::IpNetwork;
-use secrecy::{ExposeSecret, Secret};
+use secrecy::{ExposeSecret as _, Secret};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -46,55 +46,11 @@ impl PartialEq for Peer {
     }
 }
 
-/// Represent a connection request from a client to a given resource.
-///
-/// While this is a client-only message it's hosted in common since the tunnel
-/// makes use of this message type.
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct RequestConnection {
-    /// Gateway id for the connection
-    pub gateway_id: GatewayId,
-    /// Resource id the request is for.
-    pub resource_id: ResourceId,
-    /// The preshared key the client generated for the connection that it is trying to establish.
-    pub client_preshared_key: SecretKey,
-    pub client_payload: ClientPayload,
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ResolveRequest {
     pub name: DomainName,
     pub proxy_ips: Vec<IpAddr>,
 }
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct ClientPayload {
-    pub ice_parameters: Offer,
-    pub domain: Option<ResolveRequest>,
-}
-
-/// Represent a request to reuse an existing gateway connection from a client to a given resource.
-///
-/// While this is a client-only message it's hosted in common since the tunnel
-/// make use of this message type.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct ReuseConnection {
-    /// Resource id the request is for.
-    pub resource_id: ResourceId,
-    /// Id of the gateway we want to reuse
-    pub gateway_id: GatewayId,
-    /// Payload that the gateway will receive
-    pub payload: Option<ResolveRequest>,
-}
-
-// Custom implementation of partial eq to ignore client_rtc_sdp
-impl PartialEq for RequestConnection {
-    fn eq(&self, other: &Self) -> bool {
-        self.resource_id == other.resource_id
-    }
-}
-
-impl Eq for RequestConnection {}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Answer {
@@ -146,14 +102,8 @@ pub struct ConnectionAccepted {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct ResourceAccepted {
-    pub domain_response: DomainResponse,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub enum GatewayResponse {
     ConnectionAccepted(ConnectionAccepted),
-    ResourceAccepted(ResourceAccepted),
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
