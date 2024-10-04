@@ -72,9 +72,43 @@ pub mod setup_dns_resource_nat {
 
     #[cfg(test)]
     mod tests {
-        use std::net::Ipv4Addr;
+        use domain::base::Name;
 
         use super::*;
+        use std::net::{Ipv4Addr, Ipv6Addr};
+
+        #[test]
+        fn max_payload_length_request() {
+            let request = Request {
+                resource: ResourceId::from_u128(100),
+                domain: longest_domain_possible(),
+                proxy_ips: vec![
+                    IpAddr::V4(Ipv4Addr::LOCALHOST),
+                    IpAddr::V4(Ipv4Addr::LOCALHOST),
+                    IpAddr::V4(Ipv4Addr::LOCALHOST),
+                    IpAddr::V4(Ipv4Addr::LOCALHOST),
+                    IpAddr::V6(Ipv6Addr::LOCALHOST),
+                    IpAddr::V6(Ipv6Addr::LOCALHOST),
+                    IpAddr::V6(Ipv6Addr::LOCALHOST),
+                    IpAddr::V6(Ipv6Addr::LOCALHOST),
+                ],
+            };
+
+            let serialized = serde_json::to_vec(&request).unwrap();
+
+            assert_eq!(serialized.len(), 402);
+            assert!(serialized.len() <= ip_packet::PACKET_SIZE);
+        }
+
+        fn longest_domain_possible() -> DomainName {
+            let label = "a".repeat(49);
+            let domain =
+                DomainName::vec_from_str(&format!("{label}.{label}.{label}.{label}.{label}.com"))
+                    .unwrap();
+            assert_eq!(domain.len(), Name::MAX_LEN);
+
+            domain
+        }
 
         #[test]
         fn request_serde_roundtrip() {
