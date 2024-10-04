@@ -82,16 +82,7 @@ pub mod setup_dns_resource_nat {
             let request = Request {
                 resource: ResourceId::from_u128(100),
                 domain: longest_domain_possible(),
-                proxy_ips: vec![
-                    IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    IpAddr::V6(Ipv6Addr::LOCALHOST),
-                    IpAddr::V6(Ipv6Addr::LOCALHOST),
-                    IpAddr::V6(Ipv6Addr::LOCALHOST),
-                    IpAddr::V6(Ipv6Addr::LOCALHOST),
-                ],
+                proxy_ips: eight_proxy_ips(),
             };
 
             let serialized = serde_json::to_vec(&request).unwrap();
@@ -100,22 +91,12 @@ pub mod setup_dns_resource_nat {
             assert!(serialized.len() <= ip_packet::PACKET_SIZE);
         }
 
-        fn longest_domain_possible() -> DomainName {
-            let label = "a".repeat(49);
-            let domain =
-                DomainName::vec_from_str(&format!("{label}.{label}.{label}.{label}.{label}.com"))
-                    .unwrap();
-            assert_eq!(domain.len(), Name::MAX_LEN);
-
-            domain
-        }
-
         #[test]
         fn request_serde_roundtrip() {
             let packet = request(
                 ResourceId::from_u128(101),
                 domain("example.com"),
-                vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
+                eight_proxy_ips(),
             );
 
             let slice = packet.as_fz_p2p_control().unwrap();
@@ -123,7 +104,7 @@ pub mod setup_dns_resource_nat {
 
             assert_eq!(request.resource, ResourceId::from_u128(101));
             assert_eq!(request.domain, domain("example.com"));
-            assert_eq!(request.proxy_ips, vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])
+            assert_eq!(request.proxy_ips, eight_proxy_ips())
         }
 
         #[test]
@@ -140,6 +121,29 @@ pub mod setup_dns_resource_nat {
 
         fn domain(d: &str) -> DomainName {
             d.parse().unwrap()
+        }
+
+        fn longest_domain_possible() -> DomainName {
+            let label = "a".repeat(49);
+            let domain =
+                DomainName::vec_from_str(&format!("{label}.{label}.{label}.{label}.{label}.com"))
+                    .unwrap();
+            assert_eq!(domain.len(), Name::MAX_LEN);
+
+            domain
+        }
+
+        fn eight_proxy_ips() -> Vec<IpAddr> {
+            vec![
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                IpAddr::V6(Ipv6Addr::LOCALHOST),
+                IpAddr::V6(Ipv6Addr::LOCALHOST),
+                IpAddr::V6(Ipv6Addr::LOCALHOST),
+                IpAddr::V6(Ipv6Addr::LOCALHOST),
+            ]
         }
     }
 }
