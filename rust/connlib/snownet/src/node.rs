@@ -1824,7 +1824,9 @@ where
 
                     tracing::info!(?old, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
 
-                    self.force_handshake(allocations, transmits, now);
+                    if self.agent.controlling() {
+                        self.force_handshake(allocations, transmits, now);
+                    }
                 }
                 IceAgentEvent::IceRestart(_) | IceAgentEvent::IceConnectionStateChange(_) => {}
             }
