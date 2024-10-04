@@ -175,6 +175,7 @@ fn main() -> Result<()> {
         Some(id) => id,
         None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
+    firezone_telemetry::configure_scope(|scope| scope.set_tag("firezone_id", &firezone_id));
 
     let (private_key, public_key) = keypair();
     let url = LoginUrl::client(

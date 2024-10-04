@@ -69,6 +69,15 @@ impl<I: GuiIntegration> Builder<I> {
 
         let (ipc_tx, ipc_rx) = mpsc::channel(1);
         let ipc_client = ipc::Client::new(ipc_tx).await?;
+        // Get the device ID after connecting to the IPC service, this creates a happens-before relationship where we know the IPC service has written a device ID to disk.
+        let firezone_id = firezone_headless_client::device_id::get_or_create()
+            .context("Failed to read / create device ID")?
+            .id;
+        tracing::warn!(?firezone_id);
+        firezone_telemetry::configure_scope(|scope| {
+            scope.set_tag("firezone_id", &firezone_id);
+            tracing::warn!(?firezone_id, "Setting ID as tag");
+        });
         Ok(Controller {
             advanced_settings,
             auth: auth::Auth::new()?,
