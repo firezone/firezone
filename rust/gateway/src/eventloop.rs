@@ -4,14 +4,12 @@ use connlib_model::DomainName;
 use connlib_model::{ClientId, ResourceId};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
-use firezone_tunnel::messages::{
-    gateway::{
-        AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
-        IngressMessages, RejectAccess, RequestConnection,
-    },
-    ConnectionAccepted, GatewayResponse, Interface, RelaysPresence,
+use firezone_tunnel::messages::gateway::{
+    AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
+    IngressMessages, RejectAccess, RequestConnection,
 };
-use firezone_tunnel::{DnsResourceNatEntry, GatewayTunnel};
+use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, Interface, RelaysPresence};
+use firezone_tunnel::{DnsResourceNatEntry, GatewayTunnel, PendingSetupNatRequest};
 use futures::channel::mpsc;
 use futures_bounded::Timeout;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
@@ -35,9 +33,10 @@ static_assertions::const_assert!(
 
 #[derive(Debug, Clone)]
 enum ResolveTrigger {
-    RequestConnection(RequestConnection),
-    AllowAccess(AllowAccess),
+    RequestConnection(RequestConnection), // Deprecated
+    AllowAccess(AllowAccess),             // Deprecated
     Refresh(DomainName, ClientId, ResourceId),
+    SetupNat(PendingSetupNatRequest),
 }
 
 pub struct Eventloop {
@@ -59,7 +58,7 @@ impl Eventloop {
         Self {
             tunnel,
             portal,
-            resolve_tasks: futures_bounded::FuturesTupleSet::new(DNS_RESOLUTION_TIMEOUT, 100),
+            resolve_tasks: futures_bounded::FuturesTupleSet::new(DNS_RESOLUTION_TIMEOUT, 1000),
             tun_device_channel,
         }
     }
@@ -94,6 +93,29 @@ impl Eventloop {
                 }
                 Poll::Ready((result, ResolveTrigger::Refresh(name, conn_id, resource_id))) => {
                     self.refresh_translation(result, conn_id, resource_id, name);
+                    continue;
+                }
+                Poll::Ready((result, ResolveTrigger::SetupNat(request))) => {
+                    let addresses = result
+                        .inspect_err(|e| {
+                            tracing::debug!(
+                                "DNS resolution timed out as part of setup NAT request: {e}"
+                            )
+                        })
+                        .unwrap_or_default();
+
+                    if let Err(e) = self
+                        .tunnel
+                        .state_mut()
+                        .handle_pending_setup_nat_request_completed(
+                            request,
+                            addresses,
+                            Instant::now(),
+                        )
+                    {
+                        tracing::warn!("Failed to set DNS resource NAT: {e:#}");
+                    };
+
                     continue;
                 }
                 Poll::Pending => {}
@@ -153,11 +175,47 @@ impl Eventloop {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
                 };
             }
+            firezone_tunnel::GatewayEvent::ResolveDns(setup_nat) => {
+                if self
+                    .resolve_tasks
+                    .try_push(
+                        resolve(Some(setup_nat.domain().clone())),
+                        ResolveTrigger::SetupNat(setup_nat),
+                    )
+                    .is_err()
+                {
+                    tracing::warn!("Too many dns resolution requests, dropping existing one");
+                };
+            }
         }
     }
 
     fn handle_portal_event(&mut self, event: phoenix_channel::Event<IngressMessages, ()>) {
         match event {
+            phoenix_channel::Event::InboundMessage {
+                msg: IngressMessages::AuthorizeFlow(msg),
+                ..
+            } => {
+                self.tunnel.state_mut().authorize_flow(
+                    msg.client.id,
+                    PublicKey::from(msg.client.public_key.0),
+                    msg.client.preshared_key,
+                    msg.client_ice_credentials,
+                    msg.gateway_ice_credentials,
+                    msg.client.ipv4,
+                    msg.client.ipv6,
+                    msg.expires_at,
+                    msg.resource,
+                    Instant::now(),
+                );
+
+                self.portal.send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::FlowAuthorized {
+                        reference: msg.reference,
+                    },
+                );
+            }
             phoenix_channel::Event::InboundMessage {
                 msg: IngressMessages::RequestConnection(req),
                 ..
@@ -323,7 +381,6 @@ impl Eventloop {
                 reference: req.reference,
                 gateway_payload: GatewayResponse::ConnectionAccepted(ConnectionAccepted {
                     ice_parameters: answer,
-                    domain_response: None,
                 }),
             }),
         );

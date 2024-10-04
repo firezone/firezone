@@ -1,7 +1,8 @@
 //! Gateway related messages that are needed within connlib
 
 use crate::messages::{
-    GatewayResponse, Interface, Offer, Peer, Relay, RelaysPresence, ResolveRequest,
+    GatewayResponse, IceCredentials, Interface, Key, Offer, Peer, Relay, RelaysPresence,
+    ResolveRequest, SecretKey,
 };
 use chrono::{serde::ts_seconds_option, DateTime, Utc};
 use connlib_model::{ClientId, ResourceId};
@@ -126,7 +127,7 @@ pub struct Config {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct Client {
+pub struct LegacyClient {
     pub id: ClientId,
     pub payload: ClientPayload,
     pub peer: Peer,
@@ -135,7 +136,7 @@ pub struct Client {
 #[derive(Debug, Deserialize, Clone)]
 pub struct RequestConnection {
     pub resource: ResourceDescription,
-    pub client: Client,
+    pub client: LegacyClient,
     #[serde(rename = "ref")]
     pub reference: String,
     #[serde(with = "ts_seconds_option")]
@@ -173,14 +174,38 @@ pub struct RejectAccess {
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum IngressMessages {
-    RequestConnection(RequestConnection),
-    AllowAccess(AllowAccess),
+    RequestConnection(RequestConnection), // Deprecated.
+    AllowAccess(AllowAccess),             // Deprecated.
     RejectAccess(RejectAccess),
     IceCandidates(ClientIceCandidates),
     InvalidateIceCandidates(ClientIceCandidates),
     Init(InitGateway),
     RelaysPresence(RelaysPresence),
     ResourceUpdated(ResourceDescription),
+    AuthorizeFlow(AuthorizeFlow),
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Client {
+    pub id: ClientId,
+    pub public_key: Key,
+    pub preshared_key: SecretKey,
+    pub ipv4: Ipv4Addr,
+    pub ipv6: Ipv6Addr,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AuthorizeFlow {
+    #[serde(rename = "ref")]
+    pub reference: String,
+
+    pub resource: ResourceDescription,
+    pub gateway_ice_credentials: IceCredentials,
+    pub client: Client,
+    pub client_ice_credentials: IceCredentials,
+
+    #[serde(with = "ts_seconds_option")]
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 /// A client's ice candidate message.
@@ -206,9 +231,13 @@ pub struct ClientIceCandidates {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum EgressMessages {
-    ConnectionReady(ConnectionReady),
+    ConnectionReady(ConnectionReady), // Deprecated.
     BroadcastIceCandidates(ClientsIceCandidates),
     BroadcastInvalidatedIceCandidates(ClientsIceCandidates),
+    FlowAuthorized {
+        #[serde(rename = "ref")]
+        reference: String,
+    },
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -525,5 +554,14 @@ mod tests {
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
         assert!(matches!(message, IngressMessages::RelaysPresence(_)));
+    }
+
+    #[test]
+    fn can_deserialize_authorize_flow() {
+        let json = r#"{"event":"authorize_flow","ref":null,"topic":"gateway","payload":{"client":{"id":"3abd725a-733b-4801-ac16-72f26cd98a24","ipv6":"fd00:2021:1111::f:853b","public_key":"fiAjSBWDgQfD1CFJkTwOf4zg+1QhH0eTT+oLaVIMpH8=","ipv4":"100.93.74.51","preshared_key":"BzPiNE9qszKczZcZzGsyieLYeJ2EQfkfdibls/l3beM="},"resource":{"id":"c7793628-8579-465b-83e3-1a5d4af4db3b","name":"MyCorp Network","type":"cidr","address":"172.20.0.0/16","filters":[]},"actor":{"id":"24eb631e-c529-4182-a746-d99ee66f7426"},"ref":"SFMyNTY.g2gDbQAAAkxnMmdHV0hjVllYQnBRR0Z3YVM1amJIVnpkR1Z5TG14dlkyRnNBQUFEWlFBQUFBQm5FYU9DYUFWWWR4VmhjR2xBWVhCcExtTnNkWE4wWlhJdWJHOWpZV3dBQUFOakFBQUFBR2NSbzRKM0owVnNhWGhwY2k1UWFHOWxibWw0TGxOdlkydGxkQzVXTVM1S1UwOU9VMlZ5YVdGc2FYcGxjbTBBQUFBR1kyeHBaVzUwWVFGaEFHMEFBQUFrWXpjM09UTTJNamd0T0RVM09TMDBOalZpTFRnelpUTXRNV0UxWkRSaFpqUmtZak5pYlFBQUFDQnRTWFZ3TldWUVYwUkRVa1Z3WTNNM2QwaE5VMWREZGxwYWNqQlpTalZCZEhRQUFBQUNkd1pqYkdsbGJuUjBBQUFBQW5jSWRYTmxjbTVoYldWdEFBQUFCR2huZDJoM0NIQmhjM04zYjNKa2JRQUFBQlpxTW1aeGRXWmhkRzQzZUd4eWNuWjJObVp6ZG1WaGR3ZG5ZWFJsZDJGNWRBQUFBQUozQ0hWelpYSnVZVzFsYlFBQUFBUmxhbkYwZHdod1lYTnpkMjl5WkcwQUFBQVdlbVpxY25KcVpHdGlZMmswTW5ReVlYaDVaRFExWVd3QUFBQUJhQUp0QUFBQUMzUnlZV05sY0dGeVpXNTBiUUFBQURjd01DMDFNRGRoTUdSbE9HWm1NekpsWmpVMU9EaGlZV1psWkRZMk1XWXpaVFZrTlMxa1ptTTVZMkl3Wm1NeE5tRTBNbUU1TFRBeGFnPT1uBgCeY-eckgFiAAFRgA.5-aLUjF4RiPoYASwWYfSmWuTEc4cT0u8J9cyBUiP9BY","expires_at":1729813989,"flow_id":"eeb66205-5f53-4f64-acbc-deed47293f04","client_ice_credentials":{"username":"hgwh","password":"j2fqufatn7xlrrvv6fsvea"},"gateway_ice_credentials":{"username":"ejqt","password":"zfjrrjdkbci42t2axyd45a"}}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(message, IngressMessages::AuthorizeFlow(_)));
     }
 }
