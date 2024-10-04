@@ -6,13 +6,7 @@ mod tun;
 
 use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
-use connlib_client_shared::{
-<<<<<<< HEAD
-    Callbacks, ConnectArgs, DisconnectError, Session, V4RouteList, V6RouteList,
-=======
-    Callbacks, DisconnectError, LoginUrl, Session, V4RouteList, V6RouteList,
->>>>>>> fdfcf962e (Remove `ConnectArgs`)
-};
+use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
 use connlib_model::ResourceView;
 use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::get_user_agent;
