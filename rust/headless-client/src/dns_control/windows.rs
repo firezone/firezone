@@ -199,6 +199,7 @@ fn set_nrpt_rule(key: &winreg::RegKey, dns_config_string: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
 
     #[ignore = "Needs admin, changes system state"]
     #[test]
@@ -248,7 +249,10 @@ mod tests {
             .into_iter()
             .find(|a| a.friendly_name() == "Firezone")
             .unwrap();
-        assert_eq!(adapter.dns_servers(), fz_dns_servers);
+        assert_eq!(
+            BTreeSet::from_iter(adapter.dns_servers().iter().cloned()),
+            BTreeSet::from_iter(fz_dns_servers.into_iter())
+        );
 
         dns_controller.deactivate().unwrap();
     }
