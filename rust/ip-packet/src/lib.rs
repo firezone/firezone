@@ -813,3 +813,25 @@ pub enum UnsupportedProtocol {
     #[error("Unsupported ICMPv6 type: {0:?}")]
     UnsupportedIcmpv6Type(Icmpv6Type),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn udp_packet_payload() {
+        let udp_packet = crate::make::udp_packet(
+            Ipv4Addr::LOCALHOST,
+            Ipv4Addr::LOCALHOST,
+            0,
+            0,
+            b"foobar".to_vec(),
+        )
+        .unwrap();
+
+        let ip_payload = udp_packet.payload();
+        let udp_payload = &ip_payload[etherparse::UdpHeader::LEN..];
+
+        assert_eq!(udp_payload, b"foobar");
+    }
+}
