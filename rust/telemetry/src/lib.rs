@@ -68,6 +68,7 @@ impl Telemetry {
                 ..Default::default()
             },
         ));
+        // Configure scope on the main hub so that all threads will get the tags
         sentry::Hub::main().configure_scope(|scope| scope.set_tag("api_url", api_url));
         self.inner.swap(Some(inner.into()));
         sentry::start_session();
