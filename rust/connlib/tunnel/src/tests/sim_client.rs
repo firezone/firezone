@@ -308,7 +308,7 @@ pub struct RefClient {
 
     /// The DNS resources the client is connected to.
     #[derivative(Debug = "ignore")]
-    pub(crate) connected_dns_resources: HashSet<(ResourceId, DomainName)>,
+    pub(crate) connected_dns_resources: HashSet<ResourceId>,
 
     #[derivative(Debug = "ignore")]
     pub(crate) connected_gateways: BTreeSet<GatewayId>,
@@ -347,7 +347,7 @@ impl RefClient {
         self.ipv6_routes.remove(resource);
 
         self.connected_cidr_resources.remove(resource);
-        self.connected_dns_resources.retain(|(r, _)| r != resource);
+        self.connected_dns_resources.remove(resource);
 
         if self.internet_resource.is_some_and(|r| &r == resource) {
             self.connected_internet_resource = false;
@@ -562,11 +562,7 @@ impl RefClient {
             return;
         };
 
-        if self
-            .connected_dns_resources
-            .contains(&(resource, dst.clone()))
-            && self.is_tunnel_ip(src)
-        {
+        if self.connected_dns_resources.contains(&resource) && self.is_tunnel_ip(src) {
             tracing::debug!("Connected to DNS resource, expecting packet to be routed");
             self.expected_icmp_handshakes
                 .entry(gateway)
@@ -582,17 +578,13 @@ impl RefClient {
 
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
         if !self.disabled_resources.contains(&resource) {
-            self.connected_dns_resources.insert((resource, dst));
+            self.connected_dns_resources.insert(resource);
             self.connected_gateways.insert(gateway);
         }
     }
 
     pub(crate) fn is_connected_to_internet_or_cidr(&self, resource: ResourceId) -> bool {
         self.is_connected_to_cidr(resource) || self.is_connected_to_internet(resource)
-    }
-
-    pub(crate) fn is_connected_gateway(&self, gateway: GatewayId) -> bool {
-        self.connected_gateways.contains(&gateway)
     }
 
     pub(crate) fn connect_to_internet_or_cidr_resource(
