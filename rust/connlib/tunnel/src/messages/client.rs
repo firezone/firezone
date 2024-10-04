@@ -1,12 +1,10 @@
 //! Client related messages that are needed within connlib
 
-use crate::messages::{
-    GatewayResponse, Interface, Key, Relay, RelaysPresence, RequestConnection, ReuseConnection,
-};
+use crate::messages::{IceCredentials, Interface, Key, Relay, RelaysPresence, SecretKey};
 use connlib_model::{GatewayId, ResourceId, Site, SiteId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeSet, net::IpAddr};
+use std::collections::BTreeSet;
 
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize)]
@@ -85,21 +83,46 @@ pub struct ConfigUpdate {
     pub interface: Interface,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ConnectionDetails {
+#[derive(Debug, Deserialize, Clone)]
+pub struct FlowCreated {
     pub resource_id: ResourceId,
     pub gateway_id: GatewayId,
-    pub gateway_remote_ip: IpAddr,
+    pub gateway_public_key: Key,
     #[serde(rename = "gateway_group_id")]
     pub site_id: SiteId,
+    pub preshared_key: SecretKey,
+    pub client_ice_credentials: IceCredentials,
+    pub gateway_ice_credentials: IceCredentials,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Connect {
-    pub gateway_payload: GatewayResponse,
+#[derive(Debug, Deserialize, Clone)]
+pub struct FlowCreationFailed {
     pub resource_id: ResourceId,
-    pub gateway_public_key: Key,
-    pub persistent_keepalive: u64,
+    pub reason: FailReason,
+    #[serde(default)]
+    pub violated_properties: Vec<ViolatedProperty>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum FailReason {
+    NotFound,
+    Offline,
+    Forbidden,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum ViolatedProperty {
+    RemoteIpLocationRegion,
+    RemoteIp,
+    ProviderId,
+    CurrentUtcDatetime,
+    ClientVerified,
+    #[serde(other)]
+    Unknown,
 }
 
 // These messages are the messages that can be received
@@ -119,6 +142,9 @@ pub enum IngressMessages {
     ConfigChanged(ConfigUpdate),
 
     RelaysPresence(RelaysPresence),
+
+    FlowCreated(FlowCreated),
+    FlowCreationFailed(FlowCreationFailed),
 }
 
 #[derive(Debug, Serialize)]
@@ -137,25 +163,15 @@ pub struct GatewayIceCandidates {
     pub candidates: Vec<String>,
 }
 
-/// The replies that can arrive from the channel by a client
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub enum ReplyMessages {
-    ConnectionDetails(ConnectionDetails),
-    Connect(Connect),
-}
-
 // These messages can be sent from a client to a control pane
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 // enum_variant_names: These are the names in the portal!
 pub enum EgressMessages {
-    PrepareConnection {
+    CreateFlow {
         resource_id: ResourceId,
         connected_gateway_ids: BTreeSet<GatewayId>,
     },
-    RequestConnection(RequestConnection),
-    ReuseConnection(ReuseConnection),
     /// Candidates that can be used by the addressed gateways.
     BroadcastIceCandidates(GatewaysIceCandidates),
     /// Candidates that should no longer be used by the addressed gateways.
@@ -259,46 +275,12 @@ mod tests {
     }
 
     #[test]
-    fn can_deserialize_connect_reply() {
-        let json = r#"{
-            "resource_id": "ea6570d1-47c7-49d2-9dc3-efff1c0c9e0b",
-            "gateway_public_key": "dvy0IwyxAi+txSbAdT7WKgf7K4TekhKzrnYwt5WfbSM=",
-            "gateway_payload": {
-               "ConnectionAccepted":{
-                  "domain_response":{
-                     "address":[
-                        "2607:f8b0:4008:804::200e",
-                        "142.250.64.206"
-                     ],
-                     "domain":"google.com"
-                  },
-                  "ice_parameters":{
-                     "username":"tGeqOjtGuPzPpuOx",
-                     "password":"pMAxxTgHHSdpqHRzHGNvuNsZinLrMxwe"
-                  }
-               }
-            },
-            "persistent_keepalive": 25
-        }"#;
+    fn can_deserialize_flow_created() {
+        let json = r#"{"event":"flow_created","ref":null,"topic":"client","payload":{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"},"gateway_ice_credentials":{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY="}}"#;
 
-        let message = serde_json::from_str::<ReplyMessages>(json).unwrap();
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
-        assert!(matches!(message, ReplyMessages::Connect(_)))
-    }
-
-    #[test]
-    fn can_deserialize_connection_details_reply() {
-        let json = r#"
-            {
-                "resource_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3",
-                "gateway_id": "73037362-715d-4a83-a749-f18eadd970e6",
-                "gateway_remote_ip": "172.28.0.1",
-                "gateway_group_id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"
-            }"#;
-
-        let message = serde_json::from_str::<ReplyMessages>(json).unwrap();
-
-        assert!(matches!(message, ReplyMessages::ConnectionDetails(_)));
+        assert!(matches!(message, IngressMessages::FlowCreated(_)));
     }
 
     #[test]
@@ -415,12 +397,42 @@ mod tests {
     }
 
     #[test]
-    fn serialize_prepare_connection_message() {
-        let message = EgressMessages::PrepareConnection {
+    fn can_deserialize_unknown_flow_creation_failed_err() {
+        let json = r#"{"event":"flow_creation_failed","ref":null,"topic":"client","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","reason":"foobar"}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(
+            message,
+            IngressMessages::FlowCreationFailed(FlowCreationFailed {
+                reason: FailReason::Unknown,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn can_deserialize_known_flow_creation_failed_err() {
+        let json = r#"{"event":"flow_creation_failed","ref":null,"topic":"client","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","reason":"offline"}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(
+            message,
+            IngressMessages::FlowCreationFailed(FlowCreationFailed {
+                reason: FailReason::Offline,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn serialize_create_flow_message() {
+        let message = EgressMessages::CreateFlow {
             resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
             connected_gateway_ids: BTreeSet::new(),
         };
-        let expected_json = r#"{"event":"prepare_connection","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[]}}"#;
+        let expected_json = r#"{"event":"create_flow","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[]}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);
