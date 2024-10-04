@@ -3,7 +3,7 @@ use std::time::Duration;
 
 pub use sentry::{
     add_breadcrumb, capture_error, configure_scope, end_session, end_session_with_status,
-    start_transaction, types::protocol::v7::SessionStatus, Breadcrumb, TransactionContext,
+    start_transaction, types::protocol::v7::SessionStatus, Breadcrumb, Hub, TransactionContext,
 };
 
 pub struct Dsn(&'static str);
