@@ -1,6 +1,7 @@
 //! Factory module for making all kinds of packets.
 
 use crate::{IpPacket, IpPacketBuf};
+use anyhow::{Context, Result};
 use domain::{
     base::{
         iana::{Class, Opcode, Rcode},
@@ -26,8 +27,10 @@ macro_rules! build {
     }};
 }
 
-pub fn fz_p2p_control(header: [u8; 8], control_payload: &[u8]) -> IpPacket {
+pub fn fz_p2p_control(header: [u8; 8], control_payload: &[u8]) -> Result<IpPacket> {
     let ip_payload_size = header.len() + control_payload.len();
+
+    anyhow::ensure!(ip_payload_size <= crate::PACKET_SIZE);
 
     let builder = etherparse::PacketBuilder::ipv6(
         crate::fz_p2p_control::ADDR.octets(),
@@ -49,7 +52,9 @@ pub fn fz_p2p_control(header: [u8; 8], control_payload: &[u8]) -> IpPacket {
             &payload_buf,
         )
         .expect("Buffer should be big enough");
-    IpPacket::new(packet_buf, packet_size).expect("Should be a valid IP packet")
+    let ip_packet = IpPacket::new(packet_buf, packet_size).context("Unable to create IP packet")?;
+
+    Ok(ip_packet)
 }
 
 pub fn icmp_request_packet(

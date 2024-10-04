@@ -11,6 +11,8 @@ pub mod setup_dns_resource_nat {
     pub const RES_CODE: u8 = 1;
 
     pub fn request(resource: ResourceId, domain: DomainName, proxy_ips: Vec<IpAddr>) -> IpPacket {
+        debug_assert_eq!(proxy_ips.len(), 8);
+
         let payload = serde_json::to_vec(&Request {
             resource,
             domain,
@@ -19,6 +21,7 @@ pub mod setup_dns_resource_nat {
         .unwrap();
 
         ip_packet::make::fz_p2p_control([REQ_CODE, 0, 0, 0, 0, 0, 0, 0], &payload)
+            .expect("with only 8 proxy IPs, payload should be less than max packet size")
     }
 
     pub fn response(resource: ResourceId, domain: DomainName, code: u16) -> IpPacket {
@@ -30,6 +33,7 @@ pub mod setup_dns_resource_nat {
         .unwrap();
 
         ip_packet::make::fz_p2p_control([RES_CODE, 0, 0, 0, 0, 0, 0, 0], &payload)
+            .expect("payload is less than max packet size")
     }
 
     pub fn decode_request(packet: FzP2pControlSlice) -> Result<Request> {
