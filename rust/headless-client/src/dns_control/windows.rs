@@ -111,38 +111,9 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
 
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
-    // Set our DNS servers on the interface itself too, so that `ipconfig` and WSL can pick them up (Fixes #6777)
-    let key = hklm.open_subkey_with_flags(
-        Path::new(r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces")
-            .join(format!("{{{TUNNEL_UUID}}}")),
-        winreg::enums::KEY_WRITE,
-    )?;
-    let dns_config_string = dns_config
-        .iter()
-        .filter(|addr| addr.is_ipv4())
-        .map(|ip| ip.to_string())
-        .collect::<Vec<_>>()
-        .join(" "); // ChatGPT thinks these are space-separated
-    key.set_value("NameServer", &dns_config_string)?;
+    set_nameservers_on_interface(dns_config)?;
 
-    let key = hklm.open_subkey_with_flags(
-        Path::new(r"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces")
-            .join(format!("{{{TUNNEL_UUID}}}")),
-        winreg::enums::KEY_WRITE,
-    )?;
-    let dns_config_string = dns_config
-        .iter()
-        .filter(|addr| addr.is_ipv6())
-        .map(|ip| ip.to_string())
-        .collect::<Vec<_>>()
-        .join(" "); // ChatGPT thinks these are space-separated
-    key.set_value("NameServer", &dns_config_string)?;
-
-    let dns_config_string = dns_config
-        .iter()
-        .map(|ip| ip.to_string())
-        .collect::<Vec<_>>()
-        .join(";"); // NRPT seems to be semicolon-separated
+    let dns_config_string = concat_ips(dns_config);
 
     // It's safe to always set the local rule.
     let (key, _) = hklm.create_subkey(local_nrpt_path().join(NRPT_REG_KEY))?;
@@ -162,6 +133,45 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
     tracing::info!("DNS control active.");
 
     Ok(())
+}
+
+/// Sets our DNS servers in the registry so `ipconfig` and WSL will notice them
+/// Fixes #6777
+fn set_nameservers_on_interface(dns_config: &[IpAddr]) -> Result<()> {
+    let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
+
+    let services_path = Path::new(r"SYSTEM\CurrentControlSet\Services");
+    let interface_path = Path::new(r"Parameters\Interfaces").join(format!("{{{TUNNEL_UUID}}}"));
+
+    let key = hklm.open_subkey_with_flags(
+        services_path
+            .join(Path::new("Tcpip"))
+            .join(interface_path.clone()),
+        winreg::enums::KEY_WRITE,
+    )?;
+    key.set_value(
+        "NameServer",
+        &concat_ips(dns_config.iter().filter(|addr| addr.is_ipv4())),
+    )?;
+
+    let key = hklm.open_subkey_with_flags(
+        services_path.join(Path::new("Tcpip6")).join(interface_path),
+        winreg::enums::KEY_WRITE,
+    )?;
+    key.set_value(
+        "NameServer",
+        &concat_ips(dns_config.iter().filter(|addr| addr.is_ipv6())),
+    )?;
+
+    Ok(())
+}
+
+// e.g. [100.100.111.1, 100.100.111.2] -> "100.100.111.1;100.100.111.2"
+fn concat_ips<'a, I: IntoIterator<Item = &'a IpAddr>>(iter: I) -> String {
+    iter.into_iter()
+        .map(|ip| ip.to_string())
+        .collect::<Vec<_>>()
+        .join(";")
 }
 
 /// Returns the registry path we can use to set NRPT rules when Group Policy is not in effect.
@@ -201,6 +211,7 @@ mod tests {
     use super::*;
     use std::collections::BTreeSet;
 
+    // Passes in CI but not locally. Maybe ReactorScram's dev system has IPv6 misconfigured. There it fails to pick up the IPv6 DNS servers.
     #[ignore = "Needs admin, changes system state"]
     #[test]
     fn dns_control() {
