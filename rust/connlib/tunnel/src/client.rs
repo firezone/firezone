@@ -1029,6 +1029,8 @@ impl ClientState {
 
     pub fn handle_tcp_sockets_changed(&mut self) {
         for (handle, smoltcp::socket::Socket::Tcp(socket)) in self.tcp_sockets.iter_mut() {
+            // smoltcp's sockets can only ever handle a single remote, i.e. there is no listening socket.
+            // to be able to handle a new connection, reset the socket back to `listen` once the connection is closed / closing.
             {
                 use smoltcp::socket::tcp::State::*;
 
@@ -1044,7 +1046,7 @@ impl ClientState {
             }
 
             let Some(local) = socket.local_endpoint() else {
-                continue;
+                continue; // Unless we are connected with someone, there is nothing to do.
             };
 
             // Ensure we can recv, send and have space to send.
@@ -1061,13 +1063,15 @@ impl ClientState {
                 continue;
             };
 
+            // Read a DNS message from the socket.
             let result = socket.recv(|r| {
+                // DNS over TCP has a 2-byte length prefix at the start.
                 let Some((header, message)) = r.split_first_chunk::<2>() else {
                     return (0, None);
                 };
                 let dns_message_length = u16::from_be_bytes(*header) as usize;
                 if message.len() < dns_message_length {
-                    return (0, None);
+                    return (0, None); // Don't consume any bytes unless we can read the full message at once.
                 }
 
                 (2 + dns_message_length, Some(Message::from_octets(message)))
