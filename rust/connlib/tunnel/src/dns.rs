@@ -70,11 +70,20 @@ impl RecursiveQuery {
             transport: Transport::Udp,
         }
     }
+
+    pub(crate) fn via_tcp(server: SocketAddr, message: Message<&[u8]>) -> Self {
+        Self {
+            server,
+            message: message.octets_into(),
+            transport: Transport::Tcp,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Transport {
     Udp,
+    Tcp,
 }
 
 /// Tells the Client how to reply to a single DNS query

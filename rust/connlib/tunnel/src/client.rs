@@ -3,6 +3,7 @@ mod resource;
 pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{DnsResource, InternetResource};
+use smoltcp::iface::{SocketHandle, SocketSet};
 
 use crate::dns::StubResolver;
 use crate::messages::client::ResourceDescription;
@@ -19,7 +20,7 @@ use connlib_model::{GatewayId, RelayId, ResourceId, ResourceStatus, ResourceView
 use connlib_model::{Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::IpPacket;
+use ip_packet::{IpPacket, UdpSlice};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
@@ -29,7 +30,6 @@ use domain::base::Message;
 use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, EncryptBuffer, RelaySocket, Transmit};
-use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
@@ -254,6 +254,8 @@ pub struct ClientState {
     /// DNS query IDs don't appear to be unique across servers they are being sent to on some operating systems (looking at you, Windows).
     /// Hence, we need to index by ID + socket of the DNS server.
     forwarded_dns_queries: HashMap<(u16, SocketAddr), (SocketAddr, Instant)>,
+
+    forwarded_tcp_dns_queries: HashMap<(u16, SocketAddr), (SocketHandle, Instant)>,
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
 
@@ -268,9 +270,13 @@ pub struct ClientState {
     /// We use this as a hint to the portal to re-connect us to the same gateway for a resource.
     recently_connected_gateways: LruCache<GatewayId, ()>,
 
+    tcp_sockets: SocketSet<'static>,
+    tcp_socket_listen_endpoints: HashMap<SocketHandle, SocketAddr>,
+
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit<'static>>,
+    buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -297,13 +303,16 @@ impl ClientState {
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
             forwarded_dns_queries: Default::default(),
+            forwarded_tcp_dns_queries: Default::default(),
             stub_resolver: StubResolver::new(known_hosts),
             disabled_resources: Default::default(),
             buffered_transmits: Default::default(),
             internet_resource: None,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
             upstream_dns: Default::default(),
+            tcp_sockets: SocketSet::new(vec![]),
             buffered_dns_queries: Default::default(),
+            tcp_socket_listen_endpoints: Default::default(),
         }
     }
 
@@ -508,8 +517,44 @@ impl ClientState {
                     self.try_handle_forwarded_dns_response(response.server, &message);
                 self.buffered_packets.extend(maybe_response);
             }
+            (dns::Transport::Tcp, Ok(message)) => {
+                let Some((handle, _)) = self
+                    .forwarded_tcp_dns_queries
+                    .remove(&(response.query_id, response.server))
+                else {
+                    return;
+                };
+
+                let socket = self
+                    .tcp_sockets
+                    .get_mut::<smoltcp::socket::tcp::Socket>(handle);
+
+                let response = message.as_octets();
+                let dns_message_length = (response.len() as u16).to_be_bytes();
+
+                match socket.send_slice(&dns_message_length) {
+                    Ok(2) => {}
+                    Ok(_) => {
+                        tracing::debug!(%handle, "No space in send buffer for DNS message header");
+                        return;
+                    }
+                    Err(e) => {
+                        tracing::debug!(%handle, "Failed to send DNS length header: {e}");
+                        return;
+                    }
+                }
+
+                match socket.send_slice(response) {
+                    Ok(n) if n == response.len() => {}
+                    Ok(_) => tracing::debug!(%handle, "No space in send buffer for DNS message"),
+                    Err(e) => tracing::debug!(%handle, "Failed to send DNS length header: {e}"),
+                }
+            }
             (dns::Transport::Udp, Err(e)) => {
                 tracing::debug!("UDP DNS query failed: {e}")
+            }
+            (dns::Transport::Tcp, Err(e)) => {
+                tracing::debug!("TCP DNS query failed: {e}")
             }
         }
     }
@@ -819,6 +864,31 @@ impl ClientState {
     fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, DnsServer>) {
         self.dns_mapping = new_mapping;
         self.mangled_dns_queries.clear();
+        self.tcp_sockets = SocketSet::new(vec![]);
+        self.tcp_socket_listen_endpoints.clear();
+
+        for (sentinel_dns, _) in self.dns_mapping() {
+            let listen_endpoint = SocketAddr::from((sentinel_dns, 53));
+
+            // Create a bunch of sockets per address so we can serve multiple clients at once.
+            self.create_tcp_socket(listen_endpoint);
+            self.create_tcp_socket(listen_endpoint);
+            self.create_tcp_socket(listen_endpoint);
+            self.create_tcp_socket(listen_endpoint);
+            self.create_tcp_socket(listen_endpoint);
+        }
+    }
+
+    fn create_tcp_socket(&mut self, listen_endpoint: SocketAddr) {
+        let mut socket = smoltcp::socket::tcp::Socket::new(
+            smoltcp::storage::RingBuffer::new(vec![0u8; 10_000]),
+            smoltcp::storage::RingBuffer::new(vec![0u8; 10_000]),
+        );
+        socket.listen(listen_endpoint).unwrap();
+
+        let handle = self.tcp_sockets.add(socket);
+        self.tcp_socket_listen_endpoints
+            .insert(handle, listen_endpoint);
     }
 
     pub fn set_disabled_resource(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
@@ -951,6 +1021,91 @@ impl ClientState {
 
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
         self.forwarded_dns_queries.retain(|_, (_, exp)| now < *exp);
+    }
+
+    pub fn on_tcp_state_changed(&mut self, now: Instant) {
+        for (handle, smoltcp::socket::Socket::Tcp(socket)) in self.tcp_sockets.iter_mut() {
+            {
+                use smoltcp::socket::tcp::State::*;
+
+                if matches!(socket.state(), Closed | TimeWait | CloseWait) {
+                    let local_endpoint = *self.tcp_socket_listen_endpoints.get(&handle).unwrap();
+
+                    tracing::debug!(%handle, state = %socket.state(), "Resetting TCP socket to listen");
+
+                    socket.abort();
+                    socket.listen(local_endpoint).unwrap();
+                    continue;
+                }
+            }
+
+            let Some(local) = socket.local_endpoint() else {
+                continue;
+            };
+
+            // Ensure we can recv, send and have space to send.
+            if !socket.can_recv() || !socket.can_send() || socket.send_queue() > 0 {
+                continue;
+            }
+
+            let Some(upstream) = self
+                .dns_mapping
+                .get_by_left(&local.addr.into())
+                .map(|d| d.address())
+            else {
+                socket.abort(); // We only support TCP connections to active DNS servers.
+                continue;
+            };
+
+            let result = socket.recv(|r| {
+                let Some((header, message)) = r.split_first_chunk::<2>() else {
+                    return (0, None);
+                };
+                let dns_message_length = u16::from_be_bytes(*header) as usize;
+                if message.len() < dns_message_length {
+                    return (0, None);
+                }
+
+                (2 + dns_message_length, Some(Message::from_octets(message)))
+            });
+
+            match result {
+                Ok(Some(Ok(message))) => match self.stub_resolver.handle(message) {
+                    Ok(dns::ResolveStrategy::LocalResponse(response)) => {
+                        let dns_message_length = (response.len() as u16).to_be_bytes();
+
+                        socket
+                            .send_slice(&dns_message_length)
+                            .expect("we checked that we can send");
+                        socket
+                            .send_slice(&response)
+                            .expect("we checked that we can send");
+                    }
+                    Ok(dns::ResolveStrategy::ForwardQuery) => {
+                        let id = message.header().id();
+
+                        self.forwarded_tcp_dns_queries
+                            .insert((id, upstream), (handle, now));
+                        self.buffered_dns_queries
+                            .push_front(dns::RecursiveQuery::via_tcp(upstream, message));
+                    }
+                    Err(e) => {
+                        tracing::debug!("Failed to handle DNS message: {e:#}");
+                    }
+                },
+                Ok(Some(Err(e))) => {
+                    tracing::debug!("Failed to parse DNS message: {e}");
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    tracing::debug!("Failed to recv TCP data: {e}");
+                }
+            }
+        }
+    }
+
+    pub fn tcp_sockets(&mut self) -> &mut SocketSet<'static> {
+        &mut self.tcp_sockets
     }
 
     fn maybe_update_tun_routes(&mut self) {

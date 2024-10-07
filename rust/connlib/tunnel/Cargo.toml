@@ -30,6 +30,7 @@ rangemap = "1.5.1"
 secrecy = { workspace = true, features = ["serde"] }
 serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
 serde_json = "1.0"
+smoltcp = { version = "0.11", default-features = false, features = ["std", "log", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-tcp", "iface-max-addr-count-8"] }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 socket2 = { workspace = true }

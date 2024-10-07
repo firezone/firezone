@@ -6,18 +6,23 @@ use futures::{
 };
 use futures_bounded::FuturesTupleSet;
 use futures_util::FutureExt as _;
-use ip_packet::{IpPacket, MAX_DATAGRAM_PAYLOAD};
+use ip_packet::{IpPacket, IpPacketBuf, MAX_DATAGRAM_PAYLOAD};
+use smoltcp::{iface::SocketSet, wire::HardwareAddress};
 use snownet::{EncryptBuffer, EncryptedPacket};
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
+    collections::VecDeque,
     io,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     pin::Pin,
     sync::Arc,
     task::{ready, Context, Poll},
     time::{Duration, Instant},
 };
-use tokio::sync::mpsc;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::mpsc,
+};
 use tun::Tun;
 
 /// Bundles together all side-effects that connlib needs to have access to.
@@ -26,7 +31,7 @@ pub struct Io {
     sockets: Sockets,
     unwritten_packet: Option<EncryptedPacket>,
 
-    _tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 
     dns_queries: FuturesTupleSet<io::Result<Message<Vec<u8>>>, DnsQueryMetaData>,
@@ -35,6 +40,10 @@ pub struct Io {
     tun_tx: mpsc::Sender<Box<dyn Tun>>,
     outbound_packet_tx: mpsc::Sender<IpPacket>,
     inbound_packet_rx: mpsc::Receiver<IpPacket>,
+
+    device: SmolDeviceAdapter,
+    interface: smoltcp::iface::Interface,
+}
 
 #[derive(Debug)]
 struct DnsQueryMetaData {
@@ -52,6 +61,7 @@ pub enum Input<I> {
     Device(IpPacket),
     Network(I),
     DnsResponse(dns::RecursiveResponse),
+    TcpSocketsChanged,
 }
 
 const DNS_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -72,6 +82,18 @@ impl Io {
         let (outbound_packet_tx, outbound_packet_rx) = mpsc::channel(IP_CHANNEL_SIZE);
         let (tun_tx, tun_rx) = mpsc::channel(10);
 
+        let mut device = SmolDeviceAdapter {
+            outbound_packet_tx: outbound_packet_tx.clone(),
+            received_packets: VecDeque::default(),
+        };
+
+        let mut interface = smoltcp::iface::Interface::new(
+            smoltcp::iface::Config::new(HardwareAddress::Ip),
+            &mut device,
+            smoltcp::time::Instant::now(),
+        );
+        interface.set_any_ip(true);
+
         std::thread::spawn(|| {
             futures::executor::block_on(tun_send_recv(
                 tun_rx,
@@ -86,9 +108,11 @@ impl Io {
             inbound_packet_rx,
             timeout: None,
             sockets,
-            _tcp_socket_factory: tcp_socket_factory,
+            tcp_socket_factory,
             udp_socket_factory,
             unwritten_packet: None,
+            device,
+            interface,
             dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
         }
     }
@@ -97,12 +121,34 @@ impl Io {
         self.sockets.poll_has_sockets(cx)
     }
 
+    pub fn on_tun_device_changed(&mut self, config: &TunConfig) {
+        if config.dns_by_sentinel.len() > 8 {
+            tracing::warn!("TCP DNS only works for up to 8 DNS servers")
+        }
+
+        self.interface.update_ip_addrs(|ips| {
+            ips.clear();
+
+            let sentinel_ips = config
+                .dns_by_sentinel
+                .left_values()
+                .copied()
+                .map(|ip| match ip {
+                    IpAddr::V4(_) => smoltcp::wire::IpCidr::new(ip.into(), 32),
+                    IpAddr::V6(_) => smoltcp::wire::IpCidr::new(ip.into(), 128),
+                });
+
+            ips.extend(sentinel_ips.take(8));
+        });
+    }
+
     pub fn poll<'b>(
         &mut self,
         cx: &mut Context<'_>,
         ip4_buffer: &'b mut [u8],
         ip6_bffer: &'b mut [u8],
         encrypt_buffer: &EncryptBuffer,
+        tcp_sockets: &mut SocketSet,
     ) -> Poll<io::Result<Input<impl Iterator<Item = DatagramIn<'b>>>>> {
         ready!(self.poll_send_unwritten(cx, encrypt_buffer)?);
 
@@ -110,7 +156,18 @@ impl Io {
             return Poll::Ready(Ok(Input::Network(network.filter(is_max_wg_packet_size))));
         }
 
-        if let Poll::Ready(Some(packet)) = self.inbound_packet_rx.poll_recv(cx) {
+        while let Poll::Ready(Some(packet)) = self.inbound_packet_rx.poll_recv(cx) {
+            if packet.is_tcp()
+                && self
+                    .interface
+                    .ip_addrs()
+                    .iter()
+                    .any(|ip| ip.address() == packet.destination().into())
+            {
+                self.device.received_packets.push_back(packet);
+                continue;
+            }
+
             return Poll::Ready(Ok(Input::Device(packet)));
         }
 
@@ -135,6 +192,12 @@ impl Io {
             Poll::Pending => {}
         }
 
+        if self
+            .interface
+            .poll(smoltcp::time::Instant::now(), &mut self.device, tcp_sockets)
+        {
+            return Poll::Ready(Ok(Input::TcpSocketsChanged));
+        };
 
         if let Some(timeout) = self.timeout.as_mut() {
             if timeout.poll_unpin(cx).is_ready() {
@@ -253,6 +316,49 @@ impl Io {
                     tracing::debug!("Failed to queue UDP DNS query")
                 }
             }
+            dns::Transport::Tcp => {
+                let factory = self.tcp_socket_factory.clone();
+                let query_id = query.message.header().id();
+                let server = query.server;
+                let meta = DnsQueryMetaData {
+                    query_id,
+                    server,
+                    transport: dns::Transport::Tcp,
+                };
+
+                if self
+                    .dns_queries
+                    .try_push(
+                        async move {
+                            let tcp_socket = factory(&server)?;
+                            let mut tcp_stream = tcp_socket.connect(server).await?;
+
+                            let query = query.message.into_octets();
+                            let dns_message_length = (query.len() as u16).to_be_bytes();
+
+                            tcp_stream.write_all(&dns_message_length).await?;
+                            tcp_stream.write_all(&query).await?;
+
+                            let mut response_length = [0u8; 2];
+                            tcp_stream.read_exact(&mut response_length).await?;
+                            let response_length = u16::from_be_bytes(response_length) as usize;
+
+                            // A u16 is at most 65k, meaning we are okay to allocate here based on what the remote is sending.
+                            let mut response = vec![0u8; response_length];
+                            tcp_stream.read_exact(&mut response).await?;
+
+                            let message = Message::from_octets(response)
+                                .map_err(|_| io::Error::other("Failed to parse DNS message"))?;
+
+                            Ok(message)
+                        },
+                        meta,
+                    )
+                    .is_err()
+                {
+                    tracing::debug!("Failed to queue TCP DNS query")
+                }
+            }
         }
     }
 
@@ -362,6 +468,77 @@ fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
     }
 
     true
+}
+
+struct SmolDeviceAdapter {
+    outbound_packet_tx: mpsc::Sender<IpPacket>,
+    received_packets: VecDeque<IpPacket>,
+}
+
+impl smoltcp::phy::Device for SmolDeviceAdapter {
+    type RxToken<'a> = SmolRxToken;
+    type TxToken<'a> = SmolTxToken;
+
+    fn receive(
+        &mut self,
+        _timestamp: smoltcp::time::Instant,
+    ) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
+        let packet = self.received_packets.pop_front()?;
+
+        Some((
+            SmolRxToken { packet },
+            SmolTxToken {
+                outbound_packet_tx: self.outbound_packet_tx.clone(),
+            },
+        ))
+    }
+
+    fn transmit(&mut self, _timestamp: smoltcp::time::Instant) -> Option<Self::TxToken<'_>> {
+        Some(SmolTxToken {
+            outbound_packet_tx: self.outbound_packet_tx.clone(),
+        })
+    }
+
+    fn capabilities(&self) -> smoltcp::phy::DeviceCapabilities {
+        let mut caps = smoltcp::phy::DeviceCapabilities::default();
+        caps.medium = smoltcp::phy::Medium::Ip;
+        caps.max_transmission_unit = 1280;
+
+        caps
+    }
+}
+
+struct SmolTxToken {
+    outbound_packet_tx: mpsc::Sender<IpPacket>,
+}
+
+impl smoltcp::phy::TxToken for SmolTxToken {
+    fn consume<R, F>(self, len: usize, f: F) -> R
+    where
+        F: FnOnce(&mut [u8]) -> R,
+    {
+        let mut ip_packet_buf = IpPacketBuf::new();
+        let result = f(ip_packet_buf.buf());
+
+        let mut ip_packet = IpPacket::new(ip_packet_buf, len).unwrap();
+        ip_packet.update_checksum();
+        self.outbound_packet_tx.try_send(ip_packet).unwrap();
+
+        result
+    }
+}
+
+struct SmolRxToken {
+    packet: IpPacket,
+}
+
+impl smoltcp::phy::RxToken for SmolRxToken {
+    fn consume<R, F>(mut self, f: F) -> R
+    where
+        F: FnOnce(&mut [u8]) -> R,
+    {
+        f(self.packet.packet_mut())
+    }
 }
 
 #[cfg(test)]

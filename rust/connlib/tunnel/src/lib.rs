@@ -12,6 +12,7 @@ use connlib_model::{
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::MAX_DATAGRAM_PAYLOAD;
+use smoltcp::iface::SocketSet;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -107,6 +108,10 @@ impl ClientTunnel {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
             if let Some(e) = self.role_state.poll_event() {
+                if let ClientEvent::TunInterfaceUpdated(config) = &e {
+                    self.io.on_tun_device_changed(config)
+                }
+
                 return Poll::Ready(Ok(e));
             }
 
@@ -134,7 +139,12 @@ impl ClientTunnel {
                 self.ip4_read_buf.as_mut(),
                 self.ip6_read_buf.as_mut(),
                 &self.encrypt_buf,
+                self.role_state.tcp_sockets(),
             )? {
+                Poll::Ready(io::Input::TcpSocketsChanged) => {
+                    self.role_state.on_tcp_state_changed(Instant::now());
+                    continue;
+                }
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout);
                     continue;
@@ -231,6 +241,7 @@ impl GatewayTunnel {
                 self.ip4_read_buf.as_mut(),
                 self.ip6_read_buf.as_mut(),
                 &self.encrypt_buf,
+                &mut SocketSet::new(vec![]),
             )? {
                 Poll::Ready(io::Input::TcpSocketsChanged | io::Input::DnsResponse(_)) => {
                     unreachable!("Gateway doesn't use user-space TCP sockets or DNS resolution")
