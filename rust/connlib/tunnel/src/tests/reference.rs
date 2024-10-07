@@ -2,9 +2,9 @@ use super::{
     composite_strategy::CompositeStrategy, sim_client::*, sim_dns::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
-use crate::{client, DomainName, StaticSecret};
+use crate::{client, DomainName};
 use crate::{dns::is_subdomain, proptest::relay_id};
-use connlib_model::{GatewayId, RelayId, ResourceId};
+use connlib_model::{GatewayId, RelayId, ResourceId, StaticSecret};
 use domain::base::Rtype;
 use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;
