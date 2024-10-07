@@ -756,6 +756,13 @@ impl IpPacket {
         }
     }
 
+    fn payload_length(&self) -> u16 {
+        match self {
+            IpPacket::Ipv4(v4) => v4.ip_header().total_len() - v4.header_length() as u16,
+            IpPacket::Ipv6(v6) => v6.header().payload_length(),
+        }
+    }
+
     pub fn packet(&self) -> &[u8] {
         match self {
             IpPacket::Ipv4(v4) => v4.packet(),
@@ -772,14 +779,16 @@ impl IpPacket {
 
     fn payload(&self) -> &[u8] {
         let start = self.header_length();
+        let payload_length = self.payload_length() as usize;
 
-        &self.packet()[start..]
+        &self.packet()[start..(start + payload_length)]
     }
 
     fn payload_mut(&mut self) -> &mut [u8] {
         let start = self.header_length();
+        let payload_length = self.payload_length() as usize;
 
-        &mut self.packet_mut()[start..]
+        &mut self.packet_mut()[start..(start + payload_length)]
     }
 }
 
@@ -803,4 +812,26 @@ pub enum UnsupportedProtocol {
     UnsupportedIcmpv4Type(Icmpv4Type),
     #[error("Unsupported ICMPv6 type: {0:?}")]
     UnsupportedIcmpv6Type(Icmpv6Type),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn udp_packet_payload() {
+        let udp_packet = crate::make::udp_packet(
+            Ipv4Addr::LOCALHOST,
+            Ipv4Addr::LOCALHOST,
+            0,
+            0,
+            b"foobar".to_vec(),
+        )
+        .unwrap();
+
+        let ip_payload = udp_packet.payload();
+        let udp_payload = &ip_payload[etherparse::UdpHeader::LEN..];
+
+        assert_eq!(udp_payload, b"foobar");
+    }
 }
