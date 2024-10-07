@@ -19,6 +19,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
 jobs:
+  gtk:
+    uses: ./.github/workflows/_gtk.yml
   kotlin:
     uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
