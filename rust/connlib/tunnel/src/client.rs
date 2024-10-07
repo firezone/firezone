@@ -888,6 +888,9 @@ impl ClientState {
             let listen_endpoint = SocketAddr::from((sentinel_dns, 53));
 
             // Create a bunch of sockets per address so we can serve multiple clients at once.
+            // DNS queries may be sent concurrently on the same socket, but only be a single other remote socket.
+            // Having multiple sockets for the same sentinel IP allows multiple clients to connect concurrently.
+            // Each one of these needs to allocate a buffer.
             self.create_tcp_socket(listen_endpoint);
             self.create_tcp_socket(listen_endpoint);
             self.create_tcp_socket(listen_endpoint);
