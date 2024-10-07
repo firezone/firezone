@@ -461,8 +461,12 @@ impl GuiIntegration for GtkIntegration {
         Ok(())
     }
 
-    fn show_notification(&self, _title: &str, _body: &str) -> Result<()> {
-        tracing::warn!("show_notification not implemented");
+    fn show_notification(&self, title: &str, body: &str) -> Result<()> {
+        notify_rust::Notification::new()
+            .icon("/usr/share/icons/hicolor/128x128/apps/firezone-client-gui.png")
+            .summary(title)
+            .body(body)
+            .show()?;
         Ok(())
     }
 

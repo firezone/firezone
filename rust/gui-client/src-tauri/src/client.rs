@@ -27,7 +27,7 @@ pub(crate) enum Error {
 pub(crate) fn run() -> Result<()> {
     let cli = Cli::parse();
 
-    // TODO: Why is this here?
+    // TODO: Remove, this is only needed for Portal connections and the GUI process doesn't connect to the Portal. Unless it's also needed for update checks.
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
@@ -76,7 +76,7 @@ pub(crate) fn run() -> Result<()> {
                 // In smoke-test mode, don't show the dialog, since it might be running
                 // unattended in CI and the dialog would hang forever
 
-                // Because of <https://github.com/firezone/firezone/issues/3567>,
+                // Because of <shttps://github.com/firezone/firezone/issues/3567>,
                 // errors returned from `gui::run` may not be logged correctly
                 tracing::error!(?error);
             }
