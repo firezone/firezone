@@ -157,6 +157,7 @@ impl Io {
         }
 
         while let Poll::Ready(Some(packet)) = self.inbound_packet_rx.poll_recv(cx) {
+            // TCP traffic for the smoltcp interface needs to be redirected.
             if packet.is_tcp()
                 && self
                     .interface
