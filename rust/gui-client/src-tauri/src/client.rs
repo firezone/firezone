@@ -76,7 +76,7 @@ pub(crate) fn run() -> Result<()> {
                 // In smoke-test mode, don't show the dialog, since it might be running
                 // unattended in CI and the dialog would hang forever
 
-                // Because of <https://github.com/firezone/firezone/issues/3567>,
+                // Because of <shttps://github.com/firezone/firezone/issues/3567>,
                 // errors returned from `gui::run` may not be logged correctly
                 tracing::error!(?error);
             }

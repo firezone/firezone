@@ -191,6 +191,102 @@ fn build_ui(app: &gtk::Application) -> Result<Ui> {
         win.hide();
         glib::Propagation::Stop
     });
+    // "Notebook" is what GTK calls tabs
+    let notebook = gtk::Notebook::new();
+
+    {
+        let tab = gtk::Box::new(gtk::Orientation::Vertical, 5);
+        tab.pack_start(&gtk::Label::new(None), true, true, 0);
+
+        let warning_label = gtk::Label::builder()
+            .label("<b>WARNING</b>: These settings are intended for internal debug purposes <b>only</b>. Changing these is not supported and will disrupt access to your Resources.")
+            .margin_start(50)
+            .margin_end(50)
+            .use_markup(true)
+            .wrap(true)
+            .build();
+        tab.pack_start(&warning_label, true, true, 0);
+        tab.pack_start(&gtk::Label::new(None), true, true, 0);
+
+        let form = gtk::Box::builder()
+            .margin_start(100)
+            .margin_end(100)
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(5)
+            .build();
+
+        let label = gtk::Label::builder()
+            .halign(gtk::Align::Start)
+            .label(r#"<span font_desc="10">Auth Base URL</span>"#)
+            .use_markup(true)
+            .build();
+        form.pack_start(&label, true, true, 0);
+        let auth_base_url = gtk::Entry::builder().text("https://app.firez.one/").build();
+        form.pack_start(&auth_base_url, true, true, 0);
+
+        let label = gtk::Label::builder()
+            .halign(gtk::Align::Start)
+            .label(r#"<span font_desc="10">API URL</span>"#)
+            .use_markup(true)
+            .build();
+        form.pack_start(&label, true, true, 0);
+        let api_url = gtk::Entry::builder()
+            .placeholder_text("API URL")
+            .text("wss://api.firez.one/")
+            .build();
+        form.pack_start(&api_url, true, true, 0);
+
+        let label = gtk::Label::builder()
+            .halign(gtk::Align::Start)
+            .label(r#"<span font_desc="10">Log Filter</span>"#)
+            .use_markup(true)
+            .build();
+        form.pack_start(&label, true, true, 0);
+        let log_filter = gtk::Entry::builder()
+            .placeholder_text("Log Filter")
+            .text("firezone_gui_client=info,info")
+            .build();
+        form.pack_start(&log_filter, true, true, 0);
+
+        {
+            let btns = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+
+            let reset_btn = gtk::Button::with_label("Reset to Defaults");
+            btns.pack_start(&reset_btn, false, false, 0);
+
+            // Spacer
+            // btns.pack_start(&gtk::Label::new(None), true, true, 0);
+
+            let apply_btn = gtk::Button::with_label("Apply");
+            btns.pack_end(&apply_btn, false, false, 0);
+
+            let auth_base_url = auth_base_url.clone();
+            apply_btn.connect_clicked(move |_| {
+                tracing::info!("Button clicked, text is {}", auth_base_url.text());
+            });
+
+            form.pack_start(&btns, true, true, 0);
+        }
+
+        tab.pack_start(&form, true, true, 0);
+
+        tab.pack_start(&gtk::Label::new(None), true, true, 0);
+
+        notebook.append_page(&tab, Some(&gtk::Label::new(Some("Settings"))));
+    }
+
+    {
+        let tab = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+        let clear_btn = gtk::Button::with_label("Clear logs");
+        let export_btn = gtk::Button::with_label("Export logs");
+
+        tab.pack_start(&clear_btn, true, true, 0);
+        tab.pack_start(&export_btn, true, true, 0);
+
+        notebook.append_page(&tab, Some(&gtk::Label::new(Some("Diagnostic Logs"))));
+    }
+
+    settings_win.add(&notebook);
 
     Ok(Ui {
         about_win,
