@@ -13,7 +13,7 @@ use firezone_telemetry as telemetry;
 use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow};
 use secrecy::{ExposeSecret as _, SecretString};
-use std::str::FromStr;
+use std::{cell::RefCell, rc::Rc, str::FromStr};
 use tokio::sync::mpsc;
 use tray_icon::{menu::MenuEvent, TrayIconBuilder};
 
@@ -92,8 +92,15 @@ fn main() -> Result<()> {
         .application_id("dev.firezone.client")
         .build();
 
-    app.connect_activate(|app| {
-        if let Err(error) = build_ui(app) {
+    let ui_cell = Rc::new(RefCell::new(None));
+    let ui_cell_2 = ui_cell.clone();
+    let (ui_ready_tx, ui_ready_rx) = mpsc::channel(1);
+    app.connect_activate(move |app| match build_ui(app) {
+        Ok(ui) => {
+            *ui_cell_2.borrow_mut() = Some(ui);
+            ui_ready_tx.try_send(()).unwrap();
+        }
+        Err(error) => {
             tracing::error!(?error, "`build_ui` failed");
             telemetry::capture_anyhow(&error);
         }
@@ -140,6 +147,8 @@ fn main() -> Result<()> {
         last_icon_set: Default::default(),
         main_rx,
         tray_icon,
+        ui_cell,
+        ui_ready_rx,
     };
     glib::spawn_future_local(l.run());
 
@@ -149,29 +158,44 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn build_ui(app: &gtk::Application) -> Result<()> {
+struct Ui {
+    about_win: ApplicationWindow,
+    settings_win: ApplicationWindow,
+}
+
+fn build_ui(app: &gtk::Application) -> Result<Ui> {
     let icon_pixbuf = gdk_pixbuf::Pixbuf::from_file(
         "/usr/share/icons/hicolor/128x128/apps/firezone-client-gui.png",
     )?;
 
-    let win = ApplicationWindow::builder()
+    let about_win = ApplicationWindow::builder()
         .application(app)
         .default_width(640)
         .default_height(480)
         .icon(&icon_pixbuf)
         .title("About Firezone")
         .build();
-    win.show_all();
+    about_win.connect_delete_event(move |win, _| {
+        win.hide();
+        glib::Propagation::Stop
+    });
 
-    let win = ApplicationWindow::builder()
+    let settings_win = ApplicationWindow::builder()
         .application(app)
         .default_width(640)
         .default_height(480)
         .icon(&icon_pixbuf)
         .title("Settings")
         .build();
-    win.show_all();
-    Ok(())
+    settings_win.connect_delete_event(move |win, _| {
+        win.hide();
+        glib::Propagation::Stop
+    });
+
+    Ok(Ui {
+        about_win,
+        settings_win,
+    })
 }
 
 // Worker task to accept deep links from a named pipe forever
@@ -206,6 +230,8 @@ struct MainThreadLoop {
     last_icon_set: Icon,
     main_rx: mpsc::Receiver<MainThreadReq>,
     tray_icon: tray_icon::TrayIcon,
+    ui_cell: Rc<RefCell<Option<Ui>>>,
+    ui_ready_rx: mpsc::Receiver<()>,
 }
 
 impl MainThreadLoop {
@@ -213,6 +239,7 @@ impl MainThreadLoop {
     ///
     /// This function typically never returns, GLib just stops polling it when the GTK app quits
     async fn run(mut self) {
+        self.ui_ready_rx.recv().await.unwrap();
         while let Some(req) = self.main_rx.recv().await {
             if let Err(error) = self.handle_req(req) {
                 tracing::error!(?error, "`MainThreadLoop::handle_req` failed");
@@ -225,6 +252,14 @@ impl MainThreadLoop {
             MainThreadReq::Quit => self.app.quit(),
             MainThreadReq::SetTrayIcon(icon) => self.set_icon(icon)?,
             MainThreadReq::SetTrayMenu(app_state) => self.set_tray_menu(*app_state)?,
+            MainThreadReq::ShowWindow(window) => {
+                if let Some(ref ui) = *self.ui_cell.borrow() {
+                    match window {
+                        common::system_tray::Window::About => ui.about_win.show_all(),
+                        common::system_tray::Window::Settings => ui.settings_win.show_all(),
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -325,6 +360,7 @@ enum MainThreadReq {
     Quit,
     SetTrayIcon(common::system_tray::Icon),
     SetTrayMenu(Box<common::system_tray::AppState>),
+    ShowWindow(common::system_tray::Window),
 }
 
 async fn run_controller(
@@ -404,8 +440,8 @@ impl GuiIntegration for GtkIntegration {
         Ok(())
     }
 
-    fn show_window(&self, _window: common::system_tray::Window) -> Result<()> {
-        tracing::warn!("show_window not implemented");
+    fn show_window(&self, window: common::system_tray::Window) -> Result<()> {
+        self.main_tx.try_send(MainThreadReq::ShowWindow(window))?;
         Ok(())
     }
 }
