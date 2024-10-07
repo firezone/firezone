@@ -242,7 +242,7 @@ pub struct ClientState {
     ///
     /// The [`Instant`] tracks when the DNS query expires.
     mangled_dns_queries: HashMap<u16, Instant>,
-    /// DNS queries that were forwarded to an upstream server, indexed by the DNS query ID + the server we sent it to.
+    /// UDP DNS queries that were forwarded to an upstream server, indexed by the DNS query ID + the server we sent it to.
     ///
     /// The value is a tuple of:
     ///
@@ -253,7 +253,7 @@ pub struct ClientState {
     ///
     /// DNS query IDs don't appear to be unique across servers they are being sent to on some operating systems (looking at you, Windows).
     /// Hence, we need to index by ID + socket of the DNS server.
-    forwarded_dns_queries: HashMap<(u16, SocketAddr), (SocketAddr, Instant)>,
+    forwarded_udp_dns_queries: HashMap<(u16, SocketAddr), (SocketAddr, Instant)>,
 
     forwarded_tcp_dns_queries: HashMap<(u16, SocketAddr), (SocketHandle, Instant)>,
     /// Manages internal dns records and emits forwarding event when not internally handled
@@ -302,7 +302,7 @@ impl ClientState {
             sites_status: Default::default(),
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
-            forwarded_dns_queries: Default::default(),
+            forwarded_udp_dns_queries: Default::default(),
             forwarded_tcp_dns_queries: Default::default(),
             stub_resolver: StubResolver::new(known_hosts),
             disabled_resources: Default::default(),
@@ -739,7 +739,7 @@ impl ClientState {
 
                 tracing::trace!(server = %upstream, %query_id, "Forwarding DNS query");
 
-                self.forwarded_dns_queries
+                self.forwarded_udp_dns_queries
                     .insert((query_id, upstream), (original_src, now + IDS_EXPIRE));
                 self.buffered_dns_queries
                     .push_back(dns::RecursiveQuery::via_udp(upstream, message));
@@ -764,7 +764,7 @@ impl ClientState {
 
         let query_id = message.header().id();
 
-        let (destination, _) = self.forwarded_dns_queries.remove(&(query_id, from))?;
+        let (destination, _) = self.forwarded_udp_dns_queries.remove(&(query_id, from))?;
 
         if message.header().tc() {
             let domain = message
@@ -1020,7 +1020,8 @@ impl ClientState {
         self.drain_node_events();
 
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
-        self.forwarded_dns_queries.retain(|_, (_, exp)| now < *exp);
+        self.forwarded_udp_dns_queries
+            .retain(|_, (_, exp)| now < *exp);
     }
 
     pub fn on_tcp_state_changed(&mut self, now: Instant) {
