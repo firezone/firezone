@@ -1029,84 +1029,21 @@ impl ClientState {
 
     pub fn handle_tcp_sockets_changed(&mut self) {
         for (handle, smoltcp::socket::Socket::Tcp(socket)) in self.tcp_sockets.iter_mut() {
-            // smoltcp's sockets can only ever handle a single remote, i.e. there is no listening socket.
-            // to be able to handle a new connection, reset the socket back to `listen` once the connection is closed / closing.
-            {
-                use smoltcp::socket::tcp::State::*;
+            let listen_endpoint = self.tcp_socket_listen_endpoints.get(&handle).unwrap();
 
-                if matches!(socket.state(), Closed | TimeWait | CloseWait) {
-                    let local_endpoint = *self.tcp_socket_listen_endpoints.get(&handle).unwrap();
-
-                    tracing::debug!(%handle, state = %socket.state(), "Resetting TCP socket to listen");
-
-                    socket.abort();
-                    socket.listen(local_endpoint).unwrap();
-                    continue;
-                }
-            }
-
-            let Some(local) = socket.local_endpoint() else {
-                continue; // Unless we are connected with someone, there is nothing to do.
-            };
-
-            // Ensure we can recv, send and have space to send.
-            if !socket.can_recv() || !socket.can_send() || socket.send_queue() > 0 {
-                continue;
-            }
-
-            let Some(upstream) = self
-                .dns_mapping
-                .get_by_left(&local.addr.into())
-                .map(|d| d.address())
-            else {
-                socket.abort(); // We only support TCP connections to active DNS servers.
-                continue;
-            };
-
-            // Read a DNS message from the socket.
-            let result = socket.recv(|r| {
-                // DNS over TCP has a 2-byte length prefix at the start.
-                let Some((header, message)) = r.split_first_chunk::<2>() else {
-                    return (0, None);
-                };
-                let dns_message_length = u16::from_be_bytes(*header) as usize;
-                if message.len() < dns_message_length {
-                    return (0, None); // Don't consume any bytes unless we can read the full message at once.
-                }
-
-                (2 + dns_message_length, Some(Message::from_octets(message)))
-            });
-
-            match result {
-                Ok(Some(Ok(message))) => match self.stub_resolver.handle(message) {
-                    Ok(dns::ResolveStrategy::LocalResponse(response)) => {
-                        let dns_message_length = (response.len() as u16).to_be_bytes();
-
-                        socket
-                            .send_slice(&dns_message_length)
-                            .expect("we checked that we can send");
-                        socket
-                            .send_slice(&response)
-                            .expect("we checked that we can send");
-                    }
-                    Ok(dns::ResolveStrategy::ForwardQuery) => {
-                        let id = message.header().id();
-
-                        self.forwarded_tcp_dns_queries
-                            .insert((id, upstream), handle);
-                        self.buffered_dns_queries
-                            .push_front(dns::RecursiveQuery::via_tcp(upstream, message));
-                    }
-                    Err(e) => {
-                        tracing::debug!("Failed to handle DNS message: {e:#}");
-                    }
-                },
-                Ok(Some(Err(e))) => {
-                    tracing::debug!("Failed to parse DNS message: {e}");
-                }
-                Ok(None) => {}
+            match try_handle_tcp_socket(
+                handle,
+                socket,
+                *listen_endpoint,
+                &self.dns_mapping,
+                &mut self.stub_resolver,
+                &mut self.forwarded_tcp_dns_queries,
+                &mut self.buffered_dns_queries,
+            ) {
+                Ok(()) => {}
                 Err(e) => {
-                    tracing::debug!("Failed to recv TCP data: {e}");
+                    tracing::debug!("Failed to process TCP socket: {e}");
+                    socket.abort();
                 }
             }
         }
@@ -1662,6 +1599,89 @@ fn maybe_mangle_dns_response_from_cidr_resource(
     packet.update_checksum();
 
     packet
+}
+
+fn try_handle_tcp_socket(
+    handle: SocketHandle,
+    socket: &mut smoltcp::socket::tcp::Socket,
+    listen_endpoint: SocketAddr,
+    dns_mapping: &BiMap<IpAddr, DnsServer>,
+    resolver: &mut StubResolver,
+    forwarded_tcp_dns_queries: &mut HashMap<(u16, SocketAddr), SocketHandle>,
+    buffered_dns_queries: &mut VecDeque<dns::RecursiveQuery>,
+) -> anyhow::Result<()> {
+    // smoltcp's sockets can only ever handle a single remote, i.e. there is no permanent listening socket.
+    // to be able to handle a new connection, reset the socket back to `listen` once the connection is closed / closing.
+    {
+        use smoltcp::socket::tcp::State::*;
+
+        if matches!(socket.state(), Closed | TimeWait | CloseWait) {
+            tracing::debug!("Resetting TCP socket to listen");
+
+            socket.abort();
+            socket.listen(listen_endpoint).unwrap();
+            return Ok(());
+        }
+    }
+
+    let Some(local) = socket.local_endpoint().map(|e| IpAddr::from(e.addr)) else {
+        return Ok(()); // Unless we are connected with someone, there is nothing to do.
+    };
+
+    // Ensure we can recv, send and have space to send.
+    if !socket.can_recv() || !socket.can_send() || socket.send_queue() > 0 {
+        return Ok(());
+    }
+
+    let upstream = dns_mapping
+        .get_by_left(&local)
+        .map(|d| d.address())
+        .with_context(|| format!("Not a DNS server: {local}"))?;
+
+    // Read a DNS message from the socket.
+    let Some(message) = socket
+        .recv(|r| {
+            // DNS over TCP has a 2-byte length prefix at the start.
+            let Some((header, message)) = r.split_first_chunk::<2>() else {
+                return (0, None);
+            };
+            let dns_message_length = u16::from_be_bytes(*header) as usize;
+            if message.len() < dns_message_length {
+                return (0, None); // Don't consume any bytes unless we can read the full message at once.
+            }
+
+            (2 + dns_message_length, Some(Message::from_octets(message)))
+        })
+        .context("Failed to recv TCP data")?
+        .transpose()
+        .context("Failed to parse DNS message")?
+    else {
+        return Ok(());
+    };
+
+    match resolver
+        .handle(message)
+        .context("Failed to handle DNS message")?
+    {
+        dns::ResolveStrategy::LocalResponse(response) => {
+            let dns_message_length = (response.len() as u16).to_be_bytes();
+
+            socket
+                .send_slice(&dns_message_length)
+                .context("Failed to write TCP DNS length header")?;
+            socket
+                .send_slice(&response)
+                .context("Failed to write DNS message")?;
+        }
+        dns::ResolveStrategy::ForwardQuery => {
+            let id = message.header().id();
+
+            forwarded_tcp_dns_queries.insert((id, upstream), handle);
+            buffered_dns_queries.push_back(dns::RecursiveQuery::via_tcp(upstream, message));
+        }
+    }
+
+    Ok(())
 }
 
 pub struct IpProvider {
