@@ -303,6 +303,7 @@ impl ClientState {
             internet_resource: None,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
             upstream_dns: Default::default(),
+            buffered_dns_queries: Default::default(),
         }
     }
 
@@ -470,10 +471,6 @@ impl ClientState {
         packet: &[u8],
         now: Instant,
     ) -> Option<IpPacket> {
-        if let Some(response) = self.try_handle_forwarded_dns_response(from, packet) {
-            return Some(response);
-        };
-
         let (gid, packet) = self.node.decapsulate(
             local,
             from,
@@ -501,6 +498,20 @@ impl ClientState {
         );
 
         Some(packet)
+    }
+
+    pub(crate) fn on_dns_response(&mut self, response: dns::RecursiveResponse) {
+        match (response.transport, response.message) {
+            (dns::Transport::Udp, Ok(message)) => {
+                // TODO: Should this perhaps just return an error and we log it as part of the event loop?
+                let maybe_response =
+                    self.try_handle_forwarded_dns_response(response.server, &message);
+                self.buffered_packets.extend(maybe_response);
+            }
+            (dns::Transport::Udp, Err(e)) => {
+                tracing::debug!("UDP DNS query failed: {e}")
+            }
+        }
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String, now: Instant) {
@@ -685,11 +696,8 @@ impl ClientState {
 
                 self.forwarded_dns_queries
                     .insert((query_id, upstream), (original_src, now + IDS_EXPIRE));
-                self.buffered_transmits.push_back(Transmit {
-                    src: None,
-                    dst: upstream,
-                    payload: Cow::Owned(message.as_octets().to_vec()),
-                });
+                self.buffered_dns_queries
+                    .push_back(dns::RecursiveQuery::via_udp(upstream, message));
 
                 ControlFlow::Break(())
             }
@@ -703,13 +711,12 @@ impl ClientState {
     fn try_handle_forwarded_dns_response(
         &mut self,
         from: SocketAddr,
-        packet: &[u8],
+        message: &Message<Vec<u8>>,
     ) -> Option<IpPacket> {
         // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
         let saddr = *self.dns_mapping.get_by_right(&DnsServer::from(from))?;
         let sport = DNS_PORT;
 
-        let message = Message::from_slice(packet).ok()?;
         let query_id = message.header().id();
 
         let (destination, _) = self.forwarded_dns_queries.remove(&(query_id, from))?;
@@ -728,9 +735,10 @@ impl ClientState {
         let daddr = destination.ip();
         let dport = destination.port();
 
-        let ip_packet = ip_packet::make::udp_packet(saddr, daddr, sport, dport, packet.to_vec())
-            .inspect_err(|_| tracing::warn!("Failed to find original dst for DNS response"))
-            .ok()?;
+        let ip_packet =
+            ip_packet::make::udp_packet(saddr, daddr, sport, dport, message.as_octets().to_vec())
+                .inspect_err(|_| tracing::warn!("Failed to find original dst for DNS response"))
+                .ok()?;
 
         Some(ip_packet)
     }
@@ -1095,6 +1103,10 @@ impl ClientState {
         self.buffered_transmits
             .pop_front()
             .or_else(|| self.node.poll_transmit())
+    }
+
+    pub(crate) fn poll_dns_queries(&mut self) -> Option<dns::RecursiveQuery> {
+        self.buffered_dns_queries.pop_front()
     }
 
     /// Sets a new set of resources.
