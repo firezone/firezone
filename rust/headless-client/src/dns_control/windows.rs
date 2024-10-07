@@ -140,13 +140,10 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
 fn set_nameservers_on_interface(dns_config: &[IpAddr]) -> Result<()> {
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
-    let services_path = Path::new(r"SYSTEM\CurrentControlSet\Services");
-    let interface_path = Path::new(r"Parameters\Interfaces").join(format!("{{{TUNNEL_UUID}}}"));
-
     let key = hklm.open_subkey_with_flags(
-        services_path
-            .join(Path::new("Tcpip"))
-            .join(interface_path.clone()),
+        Path::new(&format!(
+            r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
+        )),
         winreg::enums::KEY_WRITE,
     )?;
     key.set_value(
@@ -155,7 +152,9 @@ fn set_nameservers_on_interface(dns_config: &[IpAddr]) -> Result<()> {
     )?;
 
     let key = hklm.open_subkey_with_flags(
-        services_path.join(Path::new("Tcpip6")).join(interface_path),
+        Path::new(&format!(
+            r"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
+        )),
         winreg::enums::KEY_WRITE,
     )?;
     key.set_value(
