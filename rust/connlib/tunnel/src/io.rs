@@ -508,7 +508,7 @@ impl smoltcp::phy::Device for SmolDeviceAdapter {
     fn capabilities(&self) -> smoltcp::phy::DeviceCapabilities {
         let mut caps = smoltcp::phy::DeviceCapabilities::default();
         caps.medium = smoltcp::phy::Medium::Ip;
-        caps.max_transmission_unit = 1280;
+        caps.max_transmission_unit = ip_packet::PACKET_SIZE;
 
         caps
     }
