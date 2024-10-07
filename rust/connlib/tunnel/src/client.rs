@@ -5,6 +5,7 @@ pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{DnsResource, InternetResource};
 use smoltcp::iface::{SocketHandle, SocketSet};
+use smoltcp::socket::tcp;
 
 use crate::dns::StubResolver;
 use crate::messages::client::ResourceDescription;
@@ -553,9 +554,7 @@ impl ClientState {
                     .remove(&(response.query.header().id(), response.server))
                     .context("Unknown query")?;
 
-                self.tcp_sockets
-                    .get_mut::<smoltcp::socket::tcp::Socket>(handle)
-                    .abort();
+                self.tcp_sockets.get_mut::<tcp::Socket>(handle).abort();
             }
         }
 
@@ -607,9 +606,7 @@ impl ClientState {
             .remove(&(query_id, server))
             .context("Unknown query")?;
 
-        let socket = self
-            .tcp_sockets
-            .get_mut::<smoltcp::socket::tcp::Socket>(handle);
+        let socket = self.tcp_sockets.get_mut::<tcp::Socket>(handle);
 
         let response = message.as_octets();
 
@@ -900,7 +897,7 @@ impl ClientState {
     }
 
     fn create_tcp_socket(&mut self, listen_endpoint: SocketAddr) {
-        let mut socket = smoltcp::socket::tcp::Socket::new(
+        let mut socket = tcp::Socket::new(
             smoltcp::storage::RingBuffer::new(vec![0u8; 10_000]),
             smoltcp::storage::RingBuffer::new(vec![0u8; 10_000]),
         );
@@ -1618,7 +1615,7 @@ fn maybe_mangle_dns_response_from_cidr_resource(
 
 fn try_handle_tcp_socket(
     handle: SocketHandle,
-    socket: &mut smoltcp::socket::tcp::Socket,
+    socket: &mut tcp::Socket,
     listen_endpoint: SocketAddr,
     dns_mapping: &BiMap<IpAddr, DnsServer>,
     resolver: &mut StubResolver,
@@ -1692,10 +1689,7 @@ fn try_handle_tcp_socket(
     Ok(())
 }
 
-fn write_tcp_dns_response(
-    socket: &mut smoltcp::socket::tcp::Socket,
-    response: &[u8],
-) -> anyhow::Result<()> {
+fn write_tcp_dns_response(socket: &mut tcp::Socket, response: &[u8]) -> anyhow::Result<()> {
     let dns_message_length = (response.len() as u16).to_be_bytes();
 
     let written = socket
