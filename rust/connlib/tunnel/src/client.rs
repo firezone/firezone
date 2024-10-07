@@ -383,11 +383,8 @@ impl ClientState {
         let Some((fqdn, ips)) = self.stub_resolver.get_fqdn(resource_ip) else {
             return;
         };
-        self.peers.add_ips_with_resource(
-            &gateway_id,
-            &ips.iter().copied().map_into().collect_vec(),
-            &resource_id,
-        );
+        self.peers
+            .add_ips_with_resource(&gateway_id, ips.iter().copied(), &resource_id);
         self.buffered_events.push_back(ClientEvent::RequestAccess {
             resource_id,
             gateway_id,
@@ -577,7 +574,7 @@ impl ClientState {
 
         if self.peers.get(&gateway_id).is_some() {
             self.peers
-                .add_ips_with_resource(&gateway_id, &ips, &resource_id);
+                .add_ips_with_resource(&gateway_id, ips.into_iter(), &resource_id);
 
             self.buffered_events.push_back(ClientEvent::RequestAccess {
                 resource_id,
@@ -592,7 +589,7 @@ impl ClientState {
             &[],
         );
         self.peers
-            .add_ips_with_resource(&gateway_id, &ips, &resource_id);
+            .add_ips_with_resource(&gateway_id, ips.into_iter(), &resource_id);
 
         let offer = self.node.new_connection(
             gateway_id,
