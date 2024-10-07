@@ -123,10 +123,13 @@ where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
-    pub fn new(private_key: StaticSecret, seed: [u8; 32]) -> Self {
+    pub fn new(seed: [u8; 32]) -> Self {
+        let mut rng = StdRng::from_seed(seed);
+        let private_key = StaticSecret::random_from_rng(&mut rng);
         let public_key = &(&private_key).into();
+
         Self {
-            rng: StdRng::from_seed(seed), // TODO: Use this seed for private key too. Requires refactoring of how we generate the login-url because that one needs to know the public key.
+            rng,
             session_id: SessionId::new(*public_key),
             private_key,
             public_key: *public_key,
@@ -173,6 +176,11 @@ where
         self.host_candidates.clear();
         self.connections.clear();
         self.buffered_transmits.clear();
+
+        self.private_key = StaticSecret::random_from_rng(&mut self.rng);
+        self.public_key = (&self.private_key).into();
+        self.rate_limiter = Arc::new(RateLimiter::new(&self.public_key, HANDSHAKE_RATE_LIMIT));
+        self.session_id = SessionId::new(self.public_key);
 
         tracing::debug!(%num_connections, "Closed all connections as part of reconnecting");
     }

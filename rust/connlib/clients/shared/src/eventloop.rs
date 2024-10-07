@@ -3,7 +3,7 @@ use anyhow::Result;
 use connlib_model::ResourceId;
 use firezone_tunnel::messages::{client::*, *};
 use firezone_tunnel::ClientTunnel;
-use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel};
+use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyParam};
 use std::{
     collections::{BTreeMap, BTreeSet},
     io,
@@ -16,7 +16,7 @@ pub struct Eventloop<C: Callbacks> {
     tunnel: ClientTunnel,
     callbacks: C,
 
-    portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+    portal: PhoenixChannel<(), IngressMessages, ReplyMessages, PublicKeyParam>,
     rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
 
     connection_intents: SentConnectionIntents,
@@ -35,9 +35,11 @@ impl<C: Callbacks> Eventloop<C> {
     pub(crate) fn new(
         tunnel: ClientTunnel,
         callbacks: C,
-        portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+        mut portal: PhoenixChannel<(), IngressMessages, ReplyMessages, PublicKeyParam>,
         rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
     ) -> Self {
+        portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
+
         Self {
             tunnel,
             portal,
@@ -70,8 +72,9 @@ where
                     continue;
                 }
                 Poll::Ready(Some(Command::Reset)) => {
-                    self.portal.reconnect();
                     self.tunnel.reset();
+                    self.portal
+                        .connect(PublicKeyParam(self.tunnel.public_key().to_bytes()));
 
                     continue;
                 }

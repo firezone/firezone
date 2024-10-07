@@ -1,4 +1,3 @@
-use boringtun::x25519::StaticSecret;
 use snownet::{Answer, ClientNode, Event, ServerNode};
 use std::{
     iter,
@@ -73,16 +72,10 @@ fn answer_after_stale_connection_does_not_panic() {
 fn only_generate_candidate_event_after_answer() {
     let local_candidate = SocketAddr::new(IpAddr::from(Ipv4Addr::LOCALHOST), 10000);
 
-    let mut alice = ClientNode::<u64, u64>::new(
-        StaticSecret::random_from_rng(rand::thread_rng()),
-        rand::random(),
-    );
+    let mut alice = ClientNode::<u64, u64>::new(rand::random());
     alice.add_local_host_candidate(local_candidate).unwrap();
 
-    let mut bob = ServerNode::<u64, u64>::new(
-        StaticSecret::random_from_rng(rand::thread_rng()),
-        rand::random(),
-    );
+    let mut bob = ServerNode::<u64, u64>::new(rand::random());
 
     let offer = alice.new_connection(1, Instant::now(), Instant::now());
 
@@ -106,14 +99,8 @@ fn only_generate_candidate_event_after_answer() {
 }
 
 fn alice_and_bob() -> (ClientNode<u64, u64>, ServerNode<u64, u64>) {
-    let alice = ClientNode::new(
-        StaticSecret::random_from_rng(rand::thread_rng()),
-        rand::random(),
-    );
-    let bob = ServerNode::new(
-        StaticSecret::random_from_rng(rand::thread_rng()),
-        rand::random(),
-    );
+    let alice = ClientNode::new(rand::random());
+    let bob = ServerNode::new(rand::random());
 
     (alice, bob)
 }

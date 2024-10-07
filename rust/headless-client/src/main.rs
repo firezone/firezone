@@ -3,7 +3,7 @@
 use anyhow::{anyhow, Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_client_shared::{keypair, ConnectArgs, Session};
+use connlib_client_shared::Session;
 use firezone_bin_shared::{
     new_dns_notifier, new_network_notifier,
     platform::{tcp_socket_factory, udp_socket_factory},
@@ -177,13 +177,11 @@ fn main() -> Result<()> {
     };
     firezone_telemetry::configure_scope(|scope| scope.set_tag("firezone_id", &firezone_id));
 
-    let (private_key, public_key) = keypair();
     let url = LoginUrl::client(
         cli.api_url,
         &token,
         firezone_id,
         cli.firezone_name,
-        public_key.to_bytes(),
         device_id::device_info(),
     )?;
 
@@ -197,12 +195,6 @@ fn main() -> Result<()> {
 
     // The name matches that in `ipc_service.rs`
     let mut last_connlib_start_instant = Some(Instant::now());
-    let args = ConnectArgs {
-        udp_socket_factory: Arc::new(udp_socket_factory),
-        tcp_socket_factory: Arc::new(tcp_socket_factory),
-        private_key,
-        callbacks,
-    };
 
     let result = rt.block_on(async {
         let ctx = firezone_telemetry::TransactionContext::new(
@@ -217,7 +209,7 @@ fn main() -> Result<()> {
         // for an Internet connection if it launches us at startup.
         // When running interactively, it is useful for the user to see that we can't reach the portal.
         let phoenix_span = transaction.start_child("phoenix", "Connect PhoenixChannel");
-        let portal = PhoenixChannel::connect(
+        let portal = PhoenixChannel::disconnected(
             Secret::new(url),
             get_user_agent(None, env!("CARGO_PKG_VERSION")),
             "client",
@@ -228,7 +220,13 @@ fn main() -> Result<()> {
             Arc::new(tcp_socket_factory),
         )?;
         phoenix_span.finish();
-        let session = Session::connect(args, portal, rt.handle().clone());
+        let session = Session::connect(
+            Arc::new(tcp_socket_factory),
+            Arc::new(udp_socket_factory),
+            callbacks,
+            portal,
+            rt.handle().clone(),
+        );
 
         let mut terminate = signals::Terminate::new()?;
         let mut hangup = signals::Hangup::new()?;

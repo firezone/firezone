@@ -5,7 +5,6 @@
 
 use crate::messages::{Offer, Relay, ResolveRequest, SecretKey};
 use bimap::BiMap;
-use boringtun::x25519::StaticSecret;
 use chrono::Utc;
 use connlib_model::{
     ClientId, DomainName, GatewayId, PublicKey, RelayId, ResourceId, ResourceView,
@@ -13,7 +12,6 @@ use connlib_model::{
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::MAX_DATAGRAM_PAYLOAD;
-use rand::rngs::OsRng;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -81,18 +79,21 @@ pub struct Tunnel<TRoleState> {
 
 impl ClientTunnel {
     pub fn new(
-        private_key: StaticSecret,
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         known_hosts: BTreeMap<String, Vec<IpAddr>>,
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
-            role_state: ClientState::new(private_key, known_hosts, rand::random()),
+            role_state: ClientState::new(known_hosts, rand::random()),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             encrypt_buf: EncryptBuffer::new(MAX_DATAGRAM_PAYLOAD),
         }
+    }
+
+    pub fn public_key(&self) -> PublicKey {
+        self.role_state.public_key()
     }
 
     pub fn reset(&mut self) {
@@ -177,17 +178,20 @@ impl ClientTunnel {
 
 impl GatewayTunnel {
     pub fn new(
-        private_key: StaticSecret,
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
-            role_state: GatewayState::new(private_key, rand::random()),
+            role_state: GatewayState::new(rand::random()),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             encrypt_buf: EncryptBuffer::new(MAX_DATAGRAM_PAYLOAD),
         }
+    }
+
+    pub fn public_key(&self) -> PublicKey {
+        self.role_state.public_key()
     }
 
     pub fn update_relays(&mut self, to_remove: BTreeSet<RelayId>, to_add: Vec<Relay>) {
@@ -339,13 +343,6 @@ pub enum GatewayEvent {
         conn_id: ClientId,
         resource_id: ResourceId,
     },
-}
-
-pub fn keypair() -> (StaticSecret, PublicKey) {
-    let private_key = StaticSecret::random_from_rng(OsRng);
-    let public_key = PublicKey::from(&private_key);
-
-    (private_key, public_key)
 }
 
 fn fmt_routes<T>(routes: &BTreeSet<T>, f: &mut fmt::Formatter) -> fmt::Result
