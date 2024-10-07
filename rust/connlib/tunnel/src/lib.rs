@@ -142,7 +142,7 @@ impl ClientTunnel {
                 self.role_state.tcp_sockets(),
             )? {
                 Poll::Ready(io::Input::TcpSocketsChanged) => {
-                    self.role_state.on_tcp_state_changed(Instant::now());
+                    self.role_state.on_tcp_state_changed();
                     continue;
                 }
                 Poll::Ready(io::Input::Timeout(timeout)) => {

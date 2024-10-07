@@ -244,18 +244,13 @@ pub struct ClientState {
     mangled_dns_queries: HashMap<u16, Instant>,
     /// UDP DNS queries that were forwarded to an upstream server, indexed by the DNS query ID + the server we sent it to.
     ///
-    /// The value is a tuple of:
-    ///
-    /// - The [`SocketAddr`] is the original source IP.
-    /// - The [`Instant`] tracks when the DNS query expires.
-    ///
-    /// We store an explicit expiry to avoid a memory leak in case of a non-responding DNS server.
+    /// The value is the original source IP.
     ///
     /// DNS query IDs don't appear to be unique across servers they are being sent to on some operating systems (looking at you, Windows).
     /// Hence, we need to index by ID + socket of the DNS server.
-    forwarded_udp_dns_queries: HashMap<(u16, SocketAddr), (SocketAddr, Instant)>,
+    forwarded_udp_dns_queries: HashMap<(u16, SocketAddr), SocketAddr>,
 
-    forwarded_tcp_dns_queries: HashMap<(u16, SocketAddr), (SocketHandle, Instant)>,
+    forwarded_tcp_dns_queries: HashMap<(u16, SocketAddr), SocketHandle>,
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
 
@@ -424,7 +419,7 @@ impl ClientState {
         now: Instant,
         buffer: &mut EncryptBuffer,
     ) -> Option<snownet::EncryptedPacket> {
-        let (packet, dst) = match self.try_handle_dns_query(packet, now) {
+        let (packet, dst) = match self.try_handle_dns_query(packet) {
             ControlFlow::Break(()) => return None,
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
         };
@@ -518,7 +513,7 @@ impl ClientState {
                 self.buffered_packets.extend(maybe_response);
             }
             (dns::Transport::Tcp, Ok(message)) => {
-                let Some((handle, _)) = self
+                let Some(handle) = self
                     .forwarded_tcp_dns_queries
                     .remove(&(response.query_id, response.server))
                 else {
@@ -551,10 +546,16 @@ impl ClientState {
                 }
             }
             (dns::Transport::Udp, Err(e)) => {
-                tracing::debug!("UDP DNS query failed: {e}")
+                tracing::debug!("UDP DNS query failed: {e}");
+
+                self.forwarded_udp_dns_queries
+                    .remove(&(response.query_id, response.server));
             }
             (dns::Transport::Tcp, Err(e)) => {
-                tracing::debug!("TCP DNS query failed: {e}")
+                tracing::debug!("TCP DNS query failed: {e}");
+
+                self.forwarded_tcp_dns_queries
+                    .remove(&(response.query_id, response.server));
             }
         }
     }
@@ -695,11 +696,7 @@ impl ClientState {
     }
 
     /// Attempt to handle the given packet as a DNS query packet.
-    fn try_handle_dns_query(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-    ) -> ControlFlow<(), (IpPacket, IpAddr)> {
+    fn try_handle_dns_query(&mut self, packet: IpPacket) -> ControlFlow<(), (IpPacket, IpAddr)> {
         let dst = packet.destination();
         let _guard = tracing::debug_span!("packet", %dst).entered();
         let Some(upstream) = self.dns_mapping.get_by_left(&dst).map(|s| s.address()) else {
@@ -740,7 +737,7 @@ impl ClientState {
                 tracing::trace!(server = %upstream, %query_id, "Forwarding DNS query");
 
                 self.forwarded_udp_dns_queries
-                    .insert((query_id, upstream), (original_src, now + IDS_EXPIRE));
+                    .insert((query_id, upstream), original_src);
                 self.buffered_dns_queries
                     .push_back(dns::RecursiveQuery::via_udp(upstream, message));
 
@@ -764,7 +761,7 @@ impl ClientState {
 
         let query_id = message.header().id();
 
-        let (destination, _) = self.forwarded_udp_dns_queries.remove(&(query_id, from))?;
+        let destination = self.forwarded_udp_dns_queries.remove(&(query_id, from))?;
 
         if message.header().tc() {
             let domain = message
@@ -1020,13 +1017,9 @@ impl ClientState {
         self.drain_node_events();
 
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
-        self.forwarded_udp_dns_queries
-            .retain(|_, (_, exp)| now < *exp);
-        self.forwarded_tcp_dns_queries
-            .retain(|_, (_, exp)| now < *exp);
     }
 
-    pub fn on_tcp_state_changed(&mut self, now: Instant) {
+    pub fn on_tcp_state_changed(&mut self) {
         for (handle, smoltcp::socket::Socket::Tcp(socket)) in self.tcp_sockets.iter_mut() {
             {
                 use smoltcp::socket::tcp::State::*;
@@ -1088,7 +1081,7 @@ impl ClientState {
                         let id = message.header().id();
 
                         self.forwarded_tcp_dns_queries
-                            .insert((id, upstream), (handle, now + IDS_EXPIRE));
+                            .insert((id, upstream), handle);
                         self.buffered_dns_queries
                             .push_front(dns::RecursiveQuery::via_tcp(upstream, message));
                     }
