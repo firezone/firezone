@@ -47,7 +47,7 @@ pub fn udp(std_addr: &SocketAddr) -> io::Result<UdpSocket> {
     let send_buf_size = socket.send_buffer_size()?;
     let recv_buf_size = socket.recv_buffer_size()?;
 
-    tracing::info!(addr = %std_addr, %send_buf_size, %recv_buf_size, "Created new UDP socket");
+    tracing::trace!(addr = %std_addr, %send_buf_size, %recv_buf_size, "Created new UDP socket");
 
     let socket = std::net::UdpSocket::from(socket);
     let socket = tokio::net::UdpSocket::try_from(socket)?;
