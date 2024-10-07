@@ -6975,6 +6975,7 @@ dependencies = [
 name = "socket-factory"
 version = "0.1.0"
 dependencies = [
+ "itertools 0.13.0",
  "quinn-udp",
  "socket2",
  "tokio",
