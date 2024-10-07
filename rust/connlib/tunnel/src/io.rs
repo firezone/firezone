@@ -299,10 +299,13 @@ impl Io {
                     .dns_queries
                     .try_push(
                         async move {
+                            // To avoid fragmentation, IP and thus also UDP packets can only reliably sent with an MTU of <= 1500 on the public Internet.
+                            const BUF_SIZE: usize = 1500;
+
                             let udp_socket = factory(&bind_addr)?;
 
                             let response = udp_socket
-                                .handshake::<1500>(server, query.message.as_slice())
+                                .handshake::<BUF_SIZE>(server, query.message.as_slice())
                                 .await?;
 
                             let message = Message::from_octets(response)
