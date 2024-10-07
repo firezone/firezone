@@ -15,6 +15,7 @@ firezone-gui-client-common = { path = "../gui-client/src-common" }
 firezone-headless-client = { path = "../headless-client" }
 firezone-logging = { path = "../logging" }
 firezone-telemetry = { path = "../telemetry" }
+gdk-pixbuf = "0.18.5"
 glib = "0.18.5"
 gtk = "0.18.1"
 notify-rust = "4.11.3"
