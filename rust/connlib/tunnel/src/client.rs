@@ -249,8 +249,8 @@ pub struct ClientState {
     /// DNS query IDs don't appear to be unique across servers they are being sent to on some operating systems (looking at you, Windows).
     /// Hence, we need to index by ID + socket of the DNS server.
     forwarded_udp_dns_queries: HashMap<(u16, SocketAddr), SocketAddr>,
-
     forwarded_tcp_dns_queries: HashMap<(u16, SocketAddr), SocketHandle>,
+
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
 
