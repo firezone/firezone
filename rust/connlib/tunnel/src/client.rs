@@ -554,8 +554,16 @@ impl ClientState {
             (dns::Transport::Tcp, Err(e)) => {
                 tracing::debug!("TCP DNS query failed: {e}");
 
-                self.forwarded_tcp_dns_queries
-                    .remove(&(response.query_id, response.server));
+                let Some(handle) = self
+                    .forwarded_tcp_dns_queries
+                    .remove(&(response.query_id, response.server))
+                else {
+                    return;
+                };
+
+                self.tcp_sockets
+                    .get_mut::<smoltcp::socket::tcp::Socket>(handle)
+                    .abort();
             }
         }
     }
