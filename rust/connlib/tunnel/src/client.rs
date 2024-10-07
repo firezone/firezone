@@ -897,9 +897,15 @@ impl ClientState {
     }
 
     fn create_tcp_socket(&mut self, listen_endpoint: SocketAddr) {
+        /// The 2-byte length prefix of DNS over TCP messages limits their size to effectively u16::MAX.
+        /// It is quite unlikely that we have to buffer _multiple_ of these max-sized messages.
+        /// Being able to buffer at least one of them means we can handle the extreme case.
+        /// In practice, this allows the OS to queue multiple queries even if we can't immediately process them.
+        const MAX_TCP_DNS_MSG_LENGTH: usize = u16::MAX as usize;
+
         let mut socket = tcp::Socket::new(
-            smoltcp::storage::RingBuffer::new(vec![0u8; 10_000]),
-            smoltcp::storage::RingBuffer::new(vec![0u8; 10_000]),
+            smoltcp::storage::RingBuffer::new(vec![0u8; MAX_TCP_DNS_MSG_LENGTH]),
+            smoltcp::storage::RingBuffer::new(vec![0u8; MAX_TCP_DNS_MSG_LENGTH]),
         );
         socket.listen(listen_endpoint).unwrap();
 
