@@ -52,8 +52,8 @@ impl Telemetry {
         // Can't use URLs as `environment` directly, because Sentry doesn't allow slashes in environments.
         // <https://docs.sentry.io/platforms/rust/configuration/environments/>
         let environment = match api_url {
-            "wss://api.firezone.dev/" => "production",
-            "wss://api.firez.one/" => "staging",
+            "wss://api.firezone.dev" | "wss://api.firezone.dev/" => "production",
+            "wss://api.firez.one" | "wss://api.firez.one/" => "staging",
             _ => "self-hosted",
         };
 
