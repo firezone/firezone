@@ -1641,7 +1641,7 @@ fn try_handle_tcp_socket(
     // Read a DNS message from the socket.
     let Some(message) = socket
         .recv(|r| {
-            // DNS over TCP has a 2-byte length prefix at the start.
+            // DNS over TCP has a 2-byte length prefix at the start, see <https://datatracker.ietf.org/doc/html/rfc1035#section-4.2.2>.
             let Some((header, message)) = r.split_first_chunk::<2>() else {
                 return (0, None);
             };
