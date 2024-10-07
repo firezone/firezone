@@ -504,46 +504,27 @@ impl ClientState {
         Some(packet)
     }
 
-    pub(crate) fn on_dns_response(&mut self, response: dns::RecursiveResponse) {
+    pub(crate) fn handle_dns_response(&mut self, response: dns::RecursiveResponse) {
+        match self.try_handle_dns_response(response) {
+            Ok(()) => {}
+            Err(e) => {
+                tracing::debug!("Failed to handle DNS response: {e}")
+            }
+        }
+    }
+
+    fn try_handle_dns_response(&mut self, response: dns::RecursiveResponse) -> anyhow::Result<()> {
         match (response.transport, response.message) {
             (dns::Transport::Udp, Ok(message)) => {
-                // TODO: Should this perhaps just return an error and we log it as part of the event loop?
-                let maybe_response =
-                    self.try_handle_forwarded_dns_response(response.server, &message);
-                self.buffered_packets.extend(maybe_response);
+                let ip_packet = self
+                    .try_handle_udp_dns_response(response.server, &message)
+                    .context("Failed to produce UDP DNS response packet")?;
+
+                self.buffered_packets.push_back(ip_packet);
             }
             (dns::Transport::Tcp, Ok(message)) => {
-                let Some(handle) = self
-                    .forwarded_tcp_dns_queries
-                    .remove(&(response.query_id, response.server))
-                else {
-                    return;
-                };
-
-                let socket = self
-                    .tcp_sockets
-                    .get_mut::<smoltcp::socket::tcp::Socket>(handle);
-
-                let response = message.as_octets();
-                let dns_message_length = (response.len() as u16).to_be_bytes();
-
-                match socket.send_slice(&dns_message_length) {
-                    Ok(2) => {}
-                    Ok(_) => {
-                        tracing::debug!(%handle, "No space in send buffer for DNS message header");
-                        return;
-                    }
-                    Err(e) => {
-                        tracing::debug!(%handle, "Failed to send DNS length header: {e}");
-                        return;
-                    }
-                }
-
-                match socket.send_slice(response) {
-                    Ok(n) if n == response.len() => {}
-                    Ok(_) => tracing::debug!(%handle, "No space in send buffer for DNS message"),
-                    Err(e) => tracing::debug!(%handle, "Failed to send DNS length header: {e}"),
-                }
+                self.try_handle_tcp_dns_response(response.query_id, response.server, &message)
+                    .context("Failed to write DNS response to TCP stream")?;
             }
             (dns::Transport::Udp, Err(e)) => {
                 tracing::debug!("UDP DNS query failed: {e}");
@@ -554,18 +535,75 @@ impl ClientState {
             (dns::Transport::Tcp, Err(e)) => {
                 tracing::debug!("TCP DNS query failed: {e}");
 
-                let Some(handle) = self
+                let handle = self
                     .forwarded_tcp_dns_queries
                     .remove(&(response.query_id, response.server))
-                else {
-                    return;
-                };
+                    .context("Unknown query")?;
 
                 self.tcp_sockets
                     .get_mut::<smoltcp::socket::tcp::Socket>(handle)
                     .abort();
             }
         }
+
+        Ok(())
+    }
+
+    fn try_handle_udp_dns_response(
+        &mut self,
+        from: SocketAddr,
+        message: &Message<Vec<u8>>,
+    ) -> Option<IpPacket> {
+        // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
+        let saddr = *self.dns_mapping.get_by_right(&DnsServer::from(from))?;
+        let sport = DNS_PORT;
+
+        let query_id = message.header().id();
+
+        let destination = self.forwarded_udp_dns_queries.remove(&(query_id, from))?;
+
+        if message.header().tc() {
+            let domain = message
+                .first_question()
+                .map(|q| q.into_qname())
+                .map(tracing::field::display);
+
+            tracing::warn!(server = %from, domain, "Upstream DNS server had to truncate response");
+        }
+
+        tracing::trace!(server = %from, %query_id, "Received forwarded DNS response");
+
+        let daddr = destination.ip();
+        let dport = destination.port();
+
+        let ip_packet =
+            ip_packet::make::udp_packet(saddr, daddr, sport, dport, message.as_octets().to_vec())
+                .inspect_err(|_| tracing::warn!("Failed to find original dst for DNS response"))
+                .ok()?;
+
+        Some(ip_packet)
+    }
+
+    fn try_handle_tcp_dns_response(
+        &mut self,
+        query_id: u16,
+        server: SocketAddr,
+        message: &Message<Vec<u8>>,
+    ) -> anyhow::Result<()> {
+        let handle = self
+            .forwarded_tcp_dns_queries
+            .remove(&(query_id, server))
+            .context("Unknown query")?;
+
+        let socket = self
+            .tcp_sockets
+            .get_mut::<smoltcp::socket::tcp::Socket>(handle);
+
+        let response = message.as_octets();
+
+        write_tcp_dns_response(socket, response)?;
+
+        Ok(())
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String, now: Instant) {
@@ -756,41 +794,6 @@ impl ClientState {
                 ControlFlow::Break(())
             }
         }
-    }
-
-    fn try_handle_forwarded_dns_response(
-        &mut self,
-        from: SocketAddr,
-        message: &Message<Vec<u8>>,
-    ) -> Option<IpPacket> {
-        // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
-        let saddr = *self.dns_mapping.get_by_right(&DnsServer::from(from))?;
-        let sport = DNS_PORT;
-
-        let query_id = message.header().id();
-
-        let destination = self.forwarded_udp_dns_queries.remove(&(query_id, from))?;
-
-        if message.header().tc() {
-            let domain = message
-                .first_question()
-                .map(|q| q.into_qname())
-                .map(tracing::field::display);
-
-            tracing::warn!(server = %from, domain, "Upstream DNS server had to truncate response");
-        }
-
-        tracing::trace!(server = %from, %query_id, "Received forwarded DNS response");
-
-        let daddr = destination.ip();
-        let dport = destination.port();
-
-        let ip_packet =
-            ip_packet::make::udp_packet(saddr, daddr, sport, dport, message.as_octets().to_vec())
-                .inspect_err(|_| tracing::warn!("Failed to find original dst for DNS response"))
-                .ok()?;
-
-        Some(ip_packet)
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
@@ -1664,14 +1667,7 @@ fn try_handle_tcp_socket(
         .context("Failed to handle DNS message")?
     {
         dns::ResolveStrategy::LocalResponse(response) => {
-            let dns_message_length = (response.len() as u16).to_be_bytes();
-
-            socket
-                .send_slice(&dns_message_length)
-                .context("Failed to write TCP DNS length header")?;
-            socket
-                .send_slice(&response)
-                .context("Failed to write DNS message")?;
+            write_tcp_dns_response(socket, &response)?;
         }
         dns::ResolveStrategy::ForwardQuery => {
             let id = message.header().id();
@@ -1680,6 +1676,33 @@ fn try_handle_tcp_socket(
             buffered_dns_queries.push_back(dns::RecursiveQuery::via_tcp(upstream, message));
         }
     }
+
+    Ok(())
+}
+
+fn write_tcp_dns_response(
+    socket: &mut smoltcp::socket::tcp::Socket,
+    response: &[u8],
+) -> anyhow::Result<()> {
+    let dns_message_length = (response.len() as u16).to_be_bytes();
+
+    let written = socket
+        .send_slice(&dns_message_length)
+        .context("Failed to write TCP DNS length header")?;
+
+    anyhow::ensure!(
+        written == 2,
+        "Not enough space in write buffer for TCP DNS length header"
+    );
+
+    let written = socket
+        .send_slice(&response)
+        .context("Failed to write DNS message")?;
+
+    anyhow::ensure!(
+        written == response.len(),
+        "Not enough space in write buffer for DNS response"
+    );
 
     Ok(())
 }

@@ -181,7 +181,7 @@ impl ClientTunnel {
                     continue;
                 }
                 Poll::Ready(io::Input::DnsResponse(packet)) => {
-                    self.role_state.on_dns_response(packet);
+                    self.role_state.handle_dns_response(packet);
                     continue;
                 }
                 Poll::Pending => {}

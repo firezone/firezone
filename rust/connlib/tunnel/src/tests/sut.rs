@@ -391,7 +391,7 @@ impl TunnelTest {
 
                 let response = self.on_recursive_dns_query(query, &ref_state.global_dns_records);
                 self.client.exec_mut(|c| {
-                    c.sut.on_dns_response(dns::RecursiveResponse {
+                    c.sut.handle_dns_response(dns::RecursiveResponse {
                         server,
                         query_id,
                         message: Ok(response), // TODO: Vary this?
