@@ -474,8 +474,10 @@ fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
     true
 }
 
+/// An adapter struct between our managed TUN device and [`smoltcp`].
 struct SmolDeviceAdapter {
     outbound_packet_tx: mpsc::Sender<IpPacket>,
+    /// Packets that we have received on the TUN device and selected to be processed by [`smoltcp`].
     received_packets: VecDeque<IpPacket>,
 }
 
