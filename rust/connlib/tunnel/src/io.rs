@@ -47,7 +47,7 @@ pub struct Io {
 
 #[derive(Debug)]
 struct DnsQueryMetaData {
-    query_id: u16,
+    query: Message<Vec<u8>>,
     server: SocketAddr,
     transport: dns::Transport,
 }
@@ -177,13 +177,13 @@ impl Io {
                 let response = result
                     .map(|result| dns::RecursiveResponse {
                         server: meta.server,
-                        query_id: meta.query_id,
+                        query: meta.query.clone(),
                         message: result,
                         transport: meta.transport,
                     })
                     .unwrap_or_else(|_| dns::RecursiveResponse {
                         server: meta.server,
-                        query_id: meta.query_id,
+                        query: meta.query,
                         message: Err(io::Error::from(io::ErrorKind::TimedOut)),
                         transport: meta.transport,
                     });
@@ -283,14 +283,13 @@ impl Io {
         match query.transport {
             dns::Transport::Udp => {
                 let factory = self.udp_socket_factory.clone();
-                let query_id = query.message.header().id();
                 let server = query.server;
                 let bind_addr = match query.server {
                     SocketAddr::V4(_) => SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
                     SocketAddr::V6(_) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
                 };
                 let meta = DnsQueryMetaData {
-                    query_id,
+                    query: query.message.clone(),
                     server,
                     transport: dns::Transport::Udp,
                 };
@@ -322,10 +321,9 @@ impl Io {
             }
             dns::Transport::Tcp => {
                 let factory = self.tcp_socket_factory.clone();
-                let query_id = query.message.header().id();
                 let server = query.server;
                 let meta = DnsQueryMetaData {
-                    query_id,
+                    query: query.message.clone(),
                     server,
                     transport: dns::Transport::Tcp,
                 };

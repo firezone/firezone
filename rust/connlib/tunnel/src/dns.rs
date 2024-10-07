@@ -46,7 +46,7 @@ pub struct StubResolver {
 }
 
 /// A query that needs to be forwarded to an upstream DNS server for resolution.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct RecursiveQuery {
     pub server: SocketAddr,
     pub message: Message<Vec<u8>>,
@@ -57,7 +57,7 @@ pub(crate) struct RecursiveQuery {
 #[derive(Debug)]
 pub(crate) struct RecursiveResponse {
     pub server: SocketAddr,
-    pub query_id: u16,
+    pub query: Message<Vec<u8>>,
     pub message: io::Result<Message<Vec<u8>>>,
     pub transport: Transport,
 }

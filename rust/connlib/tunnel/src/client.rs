@@ -1,5 +1,6 @@
 mod resource;
 
+use domain::base::iana::Rcode;
 pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{DnsResource, InternetResource};
@@ -26,7 +27,7 @@ use itertools::Itertools;
 use crate::peer::GatewayOnClient;
 use crate::utils::{earliest, turn};
 use crate::{ClientEvent, ClientTunnel, Tun};
-use domain::base::Message;
+use domain::base::{Message, MessageBuilder};
 use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, EncryptBuffer, RelaySocket, Transmit};
@@ -515,29 +516,41 @@ impl ClientState {
 
     fn try_handle_dns_response(&mut self, response: dns::RecursiveResponse) -> anyhow::Result<()> {
         match (response.transport, response.message) {
-            (dns::Transport::Udp, Ok(message)) => {
+            (dns::Transport::Udp, result) => {
+                let destination = self
+                    .recursive_udp_dns_queries
+                    .remove(&(response.query.header().id(), response.server))
+                    .context("Unknown query")?;
+
+                let dns_response = result.unwrap_or_else(|e| {
+                    tracing::debug!("UDP DNS query failed: {e}");
+
+                    MessageBuilder::new_vec()
+                        .start_answer(&response.query, Rcode::SERVFAIL)
+                        .expect("original query is valid")
+                        .into_message()
+                });
+
                 let ip_packet = self
-                    .try_handle_udp_dns_response(response.server, &message)
+                    .try_handle_udp_dns_response(response.server, destination, &dns_response)
                     .context("Failed to produce UDP DNS response packet")?;
 
                 self.buffered_packets.push_back(ip_packet);
             }
             (dns::Transport::Tcp, Ok(message)) => {
-                self.try_handle_tcp_dns_response(response.query_id, response.server, &message)
-                    .context("Failed to write DNS response to TCP stream")?;
-            }
-            (dns::Transport::Udp, Err(e)) => {
-                tracing::debug!("UDP DNS query failed: {e}");
-
-                self.recursive_udp_dns_queries
-                    .remove(&(response.query_id, response.server));
+                self.try_handle_tcp_dns_response(
+                    response.query.header().id(),
+                    response.server,
+                    &message,
+                )
+                .context("Failed to write DNS response to TCP stream")?;
             }
             (dns::Transport::Tcp, Err(e)) => {
                 tracing::debug!("TCP DNS query failed: {e}");
 
                 let handle = self
                     .recursive_tcp_dns_queries
-                    .remove(&(response.query_id, response.server))
+                    .remove(&(response.query.header().id(), response.server))
                     .context("Unknown query")?;
 
                 self.tcp_sockets
@@ -552,6 +565,7 @@ impl ClientState {
     fn try_handle_udp_dns_response(
         &mut self,
         from: SocketAddr,
+        dst: SocketAddr,
         message: &Message<Vec<u8>>,
     ) -> Option<IpPacket> {
         // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
@@ -559,8 +573,6 @@ impl ClientState {
         let sport = DNS_PORT;
 
         let query_id = message.header().id();
-
-        let destination = self.recursive_udp_dns_queries.remove(&(query_id, from))?;
 
         if message.header().tc() {
             let domain = message
@@ -573,8 +585,8 @@ impl ClientState {
 
         tracing::trace!(server = %from, %query_id, "Received recursive DNS response");
 
-        let daddr = destination.ip();
-        let dport = destination.port();
+        let daddr = dst.ip();
+        let dport = dst.port();
 
         let ip_packet =
             ip_packet::make::udp_packet(saddr, daddr, sport, dport, message.as_octets().to_vec())
@@ -1696,7 +1708,7 @@ fn write_tcp_dns_response(
     );
 
     let written = socket
-        .send_slice(&response)
+        .send_slice(response)
         .context("Failed to write DNS message")?;
 
     anyhow::ensure!(
