@@ -25,7 +25,13 @@
           "/usr/lib/sysusers.d/firezone-client-ipc.conf": "./deb_files/sysusers.conf"
         }
       },
-      "targets": ["deb", "msi"],
+      "rpm": {
+        "files": {
+          "/usr/lib/systemd/system/firezone-client-ipc.service": "./deb_files/firezone-client-ipc.service",
+          "/usr/lib/sysusers.d/firezone-client-ipc.conf": "./deb_files/sysusers.conf"
+        }
+      },
+      "targets": ["deb", "msi", "rpm"],
       "identifier": "dev.firezone.client",
       "icon": [
         "icons/128x128.png",
