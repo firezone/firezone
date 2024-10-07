@@ -644,38 +644,54 @@ impl ClientState {
         packet: IpPacket,
         now: Instant,
     ) -> ControlFlow<(), (IpPacket, IpAddr)> {
-        match self.stub_resolver.handle(&self.dns_mapping, &packet) {
-            Ok(ControlFlow::Break(dns::ResolveStrategy::LocalResponse(query))) => {
-                self.buffered_packets.push_back(query);
+        let dst = packet.destination();
+        let _guard = tracing::debug_span!("packet", %dst).entered();
+        let Some(upstream) = self.dns_mapping.get_by_left(&dst).map(|s| s.address()) else {
+            let dest = packet.destination();
+            return ControlFlow::Continue((packet, dest));
+        };
+
+        let (datagram, message) = match parse_udp_dns_message(&packet) {
+            Ok((datagram, message)) => (datagram, message),
+            Err(e) => {
+                tracing::trace!(?packet, "Failed to parse DNS query: {e:#}");
+                return ControlFlow::Break(());
+            }
+        };
+
+        match self.stub_resolver.handle(message) {
+            Ok(dns::ResolveStrategy::LocalResponse(response)) => {
+                self.buffered_packets.push_back(
+                    ip_packet::make::udp_packet(
+                        packet.destination(),
+                        packet.source(),
+                        datagram.destination_port(),
+                        datagram.source_port(),
+                        response,
+                    )
+                    .expect("src and dst IPs come from the same packet"),
+                );
                 ControlFlow::Break(())
             }
-            Ok(ControlFlow::Break(dns::ResolveStrategy::ForwardQuery {
-                upstream: server,
-                query_id,
-                payload,
-                original_src,
-            })) => {
-                let ip = server.ip();
-
-                if self.should_forward_dns_query_to_gateway(ip) {
-                    return ControlFlow::Continue((packet, ip));
+            Ok(dns::ResolveStrategy::ForwardQuery) => {
+                if self.should_forward_dns_query_to_gateway(upstream.ip()) {
+                    return ControlFlow::Continue((packet, upstream.ip()));
                 }
 
-                tracing::trace!(%server, %query_id, "Forwarding DNS query");
+                let query_id = message.header().id();
+                let original_src = SocketAddr::new(packet.source(), datagram.source_port());
+
+                tracing::trace!(server = %upstream, %query_id, "Forwarding DNS query");
 
                 self.forwarded_dns_queries
-                    .insert((query_id, server), (original_src, now + IDS_EXPIRE));
+                    .insert((query_id, upstream), (original_src, now + IDS_EXPIRE));
                 self.buffered_transmits.push_back(Transmit {
                     src: None,
-                    dst: server,
-                    payload: Cow::Owned(payload),
+                    dst: upstream,
+                    payload: Cow::Owned(message.as_octets().to_vec()),
                 });
 
                 ControlFlow::Break(())
-            }
-            Ok(ControlFlow::Continue(())) => {
-                let dest = packet.destination();
-                ControlFlow::Continue((packet, dest))
             }
             Err(e) => {
                 tracing::trace!(?packet, "Failed to handle DNS query: {e:#}");
@@ -1273,6 +1289,21 @@ impl ClientState {
         self.node.update_relays(to_remove, &to_add, now);
         self.drain_node_events(); // Ensure all state changes are fully-propagated.
     }
+}
+
+fn parse_udp_dns_message(packet: &IpPacket) -> anyhow::Result<(UdpSlice, Message<&[u8]>)> {
+    let datagram = packet.as_udp().context("Only DNS over UDP is supported")?;
+    let port = datagram.destination_port();
+
+    anyhow::ensure!(
+        port == DNS_PORT,
+        "DNS over UDP is only supported on port 53"
+    );
+
+    let message = Message::from_octets(datagram.payload())
+        .context("Failed to parse payload as DNS message")?;
+
+    Ok((datagram, message))
 }
 
 fn peer_by_resource_mut<'p>(
