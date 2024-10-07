@@ -14,7 +14,14 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="6874">
+          Fixes the GUI shutting down slowly.
+        </ChangeItem>
+        <ChangeItem enable={title === "Windows"} pull="6931">
+          Mitigates an issue where `ipconfig` and WSL weren't aware of Firezone DNS resolvers.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.3.7" date={new Date("2024-10-02")}>
         <ChangeItem pull="6831">
           Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is
