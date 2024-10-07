@@ -113,7 +113,8 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
 
     set_nameservers_on_interface(dns_config)?;
 
-    let dns_config_string = concat_ips(dns_config);
+    // e.g. [100.100.111.1, 100.100.111.2] -> "100.100.111.1;100.100.111.2"
+    let dns_config_string = itertools::join(dns_config, ";");
 
     // It's safe to always set the local rule.
     let (key, _) = hklm.create_subkey(local_nrpt_path().join(NRPT_REG_KEY))?;
@@ -148,7 +149,7 @@ fn set_nameservers_on_interface(dns_config: &[IpAddr]) -> Result<()> {
     )?;
     key.set_value(
         "NameServer",
-        &concat_ips(dns_config.iter().filter(|addr| addr.is_ipv4())),
+        &itertools::join(dns_config.iter().filter(|addr| addr.is_ipv4()), ";"),
     )?;
 
     let key = hklm.open_subkey_with_flags(
@@ -159,18 +160,10 @@ fn set_nameservers_on_interface(dns_config: &[IpAddr]) -> Result<()> {
     )?;
     key.set_value(
         "NameServer",
-        &concat_ips(dns_config.iter().filter(|addr| addr.is_ipv6())),
+        &itertools::join(dns_config.iter().filter(|addr| addr.is_ipv6()), ";"),
     )?;
 
     Ok(())
-}
-
-// e.g. [100.100.111.1, 100.100.111.2] -> "100.100.111.1;100.100.111.2"
-fn concat_ips<'a, I: IntoIterator<Item = &'a IpAddr>>(iter: I) -> String {
-    iter.into_iter()
-        .map(|ip| ip.to_string())
-        .collect::<Vec<_>>()
-        .join(";")
 }
 
 /// Returns the registry path we can use to set NRPT rules when Group Policy is not in effect.
