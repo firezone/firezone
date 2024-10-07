@@ -1027,7 +1027,7 @@ impl ClientState {
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
     }
 
-    pub fn on_tcp_state_changed(&mut self) {
+    pub fn handle_tcp_sockets_changed(&mut self) {
         for (handle, smoltcp::socket::Socket::Tcp(socket)) in self.tcp_sockets.iter_mut() {
             {
                 use smoltcp::socket::tcp::State::*;
