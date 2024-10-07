@@ -907,7 +907,9 @@ impl ClientState {
             smoltcp::storage::RingBuffer::new(vec![0u8; MAX_TCP_DNS_MSG_LENGTH]),
             smoltcp::storage::RingBuffer::new(vec![0u8; MAX_TCP_DNS_MSG_LENGTH]),
         );
-        socket.listen(listen_endpoint).unwrap();
+        socket
+            .listen(listen_endpoint)
+            .expect("A fresh socket should always be able to listen");
 
         let handle = self.tcp_sockets.add(socket);
         self.tcp_socket_listen_endpoints
