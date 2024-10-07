@@ -27,7 +27,7 @@ pub(crate) enum Error {
 pub(crate) fn run() -> Result<()> {
     let cli = Cli::parse();
 
-    // TODO: Why is this here?
+    // TODO: Remove, this is only needed for Portal connections and the GUI process doesn't connect to the Portal. Unless it's also needed for update checks.
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
