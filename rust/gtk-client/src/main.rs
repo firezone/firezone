@@ -13,7 +13,7 @@ use firezone_telemetry as telemetry;
 use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow};
 use secrecy::{ExposeSecret as _, SecretString};
-use std::str::FromStr;
+use std::{cell::RefCell, rc::Rc, str::FromStr};
 use tokio::sync::mpsc;
 use tray_icon::{menu::MenuEvent, TrayIconBuilder};
 
@@ -92,114 +92,18 @@ fn main() -> Result<()> {
         .application_id("dev.firezone.client")
         .build();
 
-    app.connect_activate(|app| {
-        // We create the main window.
-        let win = ApplicationWindow::builder()
-            .application(app)
-            .default_width(640)
-            .default_height(480)
-            .title("Firezone GTK+ 3")
-            .build();
-
-        // "Notebook" is what GTK calls tabs
-        let notebook = gtk::Notebook::new();
-
-        {
-            let tab = gtk::Box::new(gtk::Orientation::Vertical, 5);
-            tab.pack_start(&gtk::Label::new(None), true, true, 0);
-
-            let warning_label = gtk::Label::builder()
-                .label("<b>WARNING</b>: These settings are intended for internal debug purposes <b>only</b>. Changing these is not supported and will disrupt access to your Resources.")
-                .margin_start(50)
-                .margin_end(50)
-                .use_markup(true)
-                .wrap(true)
-                .build();
-            tab.pack_start(&warning_label, true, true, 0);
-            tab.pack_start(&gtk::Label::new(None), true, true, 0);
-
-            let form = gtk::Box::builder()
-                .margin_start(100)
-                .margin_end(100)
-                .orientation(gtk::Orientation::Vertical)
-                .spacing(5)
-                .build();
-
-            let label = gtk::Label::builder()
-                .halign(gtk::Align::Start)
-                .label(r#"<span font_desc="10">Auth Base URL</span>"#)
-                .use_markup(true)
-                .build();
-            form.pack_start(&label, true, true, 0);
-            let auth_base_url = gtk::Entry::builder()
-                .text("https://app.firez.one/")
-                .build();
-            form.pack_start(&auth_base_url, true, true, 0);
-
-            let label = gtk::Label::builder()
-                .halign(gtk::Align::Start)
-                .label(r#"<span font_desc="10">API URL</span>"#)
-                .use_markup(true)
-                .build();
-            form.pack_start(&label, true, true, 0);
-            let api_url = gtk::Entry::builder()
-                .placeholder_text("API URL")
-                .text("wss://api.firez.one/")
-                .build();
-            form.pack_start(&api_url, true, true, 0);
-
-            let label = gtk::Label::builder()
-                .halign(gtk::Align::Start)
-                .label(r#"<span font_desc="10">Log Filter</span>"#)
-                .use_markup(true)
-                .build();
-            form.pack_start(&label, true, true, 0);
-            let log_filter = gtk::Entry::builder()
-                .placeholder_text("Log Filter")
-                .text("firezone_gui_client=info,info")
-                .build();
-            form.pack_start(&log_filter, true, true, 0);
-
-            {
-                let btns = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-
-                let reset_btn = gtk::Button::with_label("Reset to Defaults");
-                btns.pack_start(&reset_btn, false, false, 0);
-
-                // Spacer
-                // btns.pack_start(&gtk::Label::new(None), true, true, 0);
-
-                let apply_btn = gtk::Button::with_label("Apply");
-                btns.pack_end(&apply_btn, false, false, 0);
-
-                let auth_base_url = auth_base_url.clone();
-                apply_btn.connect_clicked(move |_| {
-                    tracing::info!("Button clicked, text is {}", auth_base_url.text());
-                });
-
-                form.pack_start(&btns, true, true, 0);
-            }
-
-            tab.pack_start(&form, true, true, 0);
-
-            tab.pack_start(&gtk::Label::new(None), true, true, 0);
-
-            notebook.append_page(&tab, Some(&gtk::Label::new(Some("Settings"))));
+    let ui_cell = Rc::new(RefCell::new(None));
+    let ui_cell_2 = ui_cell.clone();
+    let (ui_ready_tx, ui_ready_rx) = mpsc::channel(1);
+    app.connect_activate(move |app| match build_ui(app) {
+        Ok(ui) => {
+            *ui_cell_2.borrow_mut() = Some(ui);
+            ui_ready_tx.try_send(()).unwrap();
         }
-
-        {
-            let tab = gtk::Box::new(gtk::Orientation::Horizontal, 5);
-            let clear_btn = gtk::Button::with_label("Clear logs");
-            let export_btn = gtk::Button::with_label("Export logs");
-
-            tab.pack_start(&clear_btn, true, true, 0);
-            tab.pack_start(&export_btn, true, true, 0);
-
-            notebook.append_page(&tab, Some(&gtk::Label::new(Some("Diagnostic Logs"))));
+        Err(error) => {
+            tracing::error!(?error, "`build_ui` failed");
+            telemetry::capture_anyhow(&error);
         }
-
-        win.add(&notebook);
-        win.show_all();
     });
 
     gtk::init()?;
@@ -243,6 +147,8 @@ fn main() -> Result<()> {
         last_icon_set: Default::default(),
         main_rx,
         tray_icon,
+        ui_cell,
+        ui_ready_rx,
     };
     glib::spawn_future_local(l.run());
 
@@ -250,6 +156,142 @@ fn main() -> Result<()> {
         anyhow::bail!("GTK main loop returned non-zero exit code");
     }
     Ok(())
+}
+
+struct Ui {
+    about_win: ApplicationWindow,
+    settings_win: ApplicationWindow,
+}
+
+fn build_ui(app: &gtk::Application) -> Result<Ui> {
+    let icon_pixbuf = gdk_pixbuf::Pixbuf::from_file(
+        "/usr/share/icons/hicolor/128x128/apps/firezone-client-gui.png",
+    )?;
+
+    let about_win = ApplicationWindow::builder()
+        .application(app)
+        .default_width(640)
+        .default_height(480)
+        .icon(&icon_pixbuf)
+        .title("About Firezone")
+        .build();
+    about_win.connect_delete_event(move |win, _| {
+        win.hide();
+        glib::Propagation::Stop
+    });
+
+    let settings_win = ApplicationWindow::builder()
+        .application(app)
+        .default_width(640)
+        .default_height(480)
+        .icon(&icon_pixbuf)
+        .title("Settings")
+        .build();
+    settings_win.connect_delete_event(move |win, _| {
+        win.hide();
+        glib::Propagation::Stop
+    });
+    // "Notebook" is what GTK calls tabs
+    let notebook = gtk::Notebook::new();
+
+    {
+        let tab = gtk::Box::new(gtk::Orientation::Vertical, 5);
+        tab.pack_start(&gtk::Label::new(None), true, true, 0);
+
+        let warning_label = gtk::Label::builder()
+            .label("<b>WARNING</b>: These settings are intended for internal debug purposes <b>only</b>. Changing these is not supported and will disrupt access to your Resources.")
+            .margin_start(50)
+            .margin_end(50)
+            .use_markup(true)
+            .wrap(true)
+            .build();
+        tab.pack_start(&warning_label, true, true, 0);
+        tab.pack_start(&gtk::Label::new(None), true, true, 0);
+
+        let form = gtk::Box::builder()
+            .margin_start(100)
+            .margin_end(100)
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(5)
+            .build();
+
+        let label = gtk::Label::builder()
+            .halign(gtk::Align::Start)
+            .label(r#"<span font_desc="10">Auth Base URL</span>"#)
+            .use_markup(true)
+            .build();
+        form.pack_start(&label, true, true, 0);
+        let auth_base_url = gtk::Entry::builder().text("https://app.firez.one/").build();
+        form.pack_start(&auth_base_url, true, true, 0);
+
+        let label = gtk::Label::builder()
+            .halign(gtk::Align::Start)
+            .label(r#"<span font_desc="10">API URL</span>"#)
+            .use_markup(true)
+            .build();
+        form.pack_start(&label, true, true, 0);
+        let api_url = gtk::Entry::builder()
+            .placeholder_text("API URL")
+            .text("wss://api.firez.one/")
+            .build();
+        form.pack_start(&api_url, true, true, 0);
+
+        let label = gtk::Label::builder()
+            .halign(gtk::Align::Start)
+            .label(r#"<span font_desc="10">Log Filter</span>"#)
+            .use_markup(true)
+            .build();
+        form.pack_start(&label, true, true, 0);
+        let log_filter = gtk::Entry::builder()
+            .placeholder_text("Log Filter")
+            .text("firezone_gui_client=info,info")
+            .build();
+        form.pack_start(&log_filter, true, true, 0);
+
+        {
+            let btns = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+
+            let reset_btn = gtk::Button::with_label("Reset to Defaults");
+            btns.pack_start(&reset_btn, false, false, 0);
+
+            // Spacer
+            // btns.pack_start(&gtk::Label::new(None), true, true, 0);
+
+            let apply_btn = gtk::Button::with_label("Apply");
+            btns.pack_end(&apply_btn, false, false, 0);
+
+            let auth_base_url = auth_base_url.clone();
+            apply_btn.connect_clicked(move |_| {
+                tracing::info!("Button clicked, text is {}", auth_base_url.text());
+            });
+
+            form.pack_start(&btns, true, true, 0);
+        }
+
+        tab.pack_start(&form, true, true, 0);
+
+        tab.pack_start(&gtk::Label::new(None), true, true, 0);
+
+        notebook.append_page(&tab, Some(&gtk::Label::new(Some("Settings"))));
+    }
+
+    {
+        let tab = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+        let clear_btn = gtk::Button::with_label("Clear logs");
+        let export_btn = gtk::Button::with_label("Export logs");
+
+        tab.pack_start(&clear_btn, true, true, 0);
+        tab.pack_start(&export_btn, true, true, 0);
+
+        notebook.append_page(&tab, Some(&gtk::Label::new(Some("Diagnostic Logs"))));
+    }
+
+    settings_win.add(&notebook);
+
+    Ok(Ui {
+        about_win,
+        settings_win,
+    })
 }
 
 // Worker task to accept deep links from a named pipe forever
@@ -284,6 +326,8 @@ struct MainThreadLoop {
     last_icon_set: Icon,
     main_rx: mpsc::Receiver<MainThreadReq>,
     tray_icon: tray_icon::TrayIcon,
+    ui_cell: Rc<RefCell<Option<Ui>>>,
+    ui_ready_rx: mpsc::Receiver<()>,
 }
 
 impl MainThreadLoop {
@@ -291,6 +335,7 @@ impl MainThreadLoop {
     ///
     /// This function typically never returns, GLib just stops polling it when the GTK app quits
     async fn run(mut self) {
+        self.ui_ready_rx.recv().await.unwrap();
         while let Some(req) = self.main_rx.recv().await {
             if let Err(error) = self.handle_req(req) {
                 tracing::error!(?error, "`MainThreadLoop::handle_req` failed");
@@ -301,7 +346,16 @@ impl MainThreadLoop {
     fn handle_req(&mut self, req: MainThreadReq) -> Result<()> {
         match req {
             MainThreadReq::Quit => self.app.quit(),
+            MainThreadReq::SetTrayIcon(icon) => self.set_icon(icon)?,
             MainThreadReq::SetTrayMenu(app_state) => self.set_tray_menu(*app_state)?,
+            MainThreadReq::ShowWindow(window) => {
+                if let Some(ref ui) = *self.ui_cell.borrow() {
+                    match window {
+                        common::system_tray::Window::About => ui.about_win.show_all(),
+                        common::system_tray::Window::Settings => ui.settings_win.show_all(),
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -400,7 +454,9 @@ fn build_item(that: &common::system_tray::Item) -> tray_icon::menu::MenuItem {
 enum MainThreadReq {
     /// The controller exited, quit the GTK app and exit the loop
     Quit,
+    SetTrayIcon(common::system_tray::Icon),
     SetTrayMenu(Box<common::system_tray::AppState>),
+    ShowWindow(common::system_tray::Window),
 }
 
 async fn run_controller(
@@ -450,8 +506,8 @@ impl GuiIntegration for GtkIntegration {
         Ok(())
     }
 
-    fn set_tray_icon(&mut self, _icon: common::system_tray::Icon) -> Result<()> {
-        tracing::warn!("set_tray_icon not implemented");
+    fn set_tray_icon(&mut self, icon: common::system_tray::Icon) -> Result<()> {
+        self.main_tx.try_send(MainThreadReq::SetTrayIcon(icon))?;
         Ok(())
     }
 
@@ -480,8 +536,8 @@ impl GuiIntegration for GtkIntegration {
         Ok(())
     }
 
-    fn show_window(&self, _window: common::system_tray::Window) -> Result<()> {
-        tracing::warn!("show_window not implemented");
+    fn show_window(&self, window: common::system_tray::Window) -> Result<()> {
+        self.main_tx.try_send(MainThreadReq::ShowWindow(window))?;
         Ok(())
     }
 }

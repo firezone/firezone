@@ -150,6 +150,9 @@ name = "anyhow"
 version = "1.0.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "86fdf8605db99b54d3cd748a44c6d04df638eb5dafb219b135d0149bd0db01f6"
+dependencies = [
+ "backtrace",
+]
 
 [[package]]
 name = "arbitrary"
@@ -1347,6 +1350,7 @@ dependencies = [
  "firezone-headless-client",
  "firezone-logging",
  "firezone-telemetry",
+ "gdk-pixbuf",
  "glib",
  "gtk",
  "notify-rust",
@@ -1463,6 +1467,7 @@ version = "0.1.0"
 dependencies = [
  "arc-swap",
  "sentry",
+ "sentry-anyhow",
  "tracing",
 ]
 
@@ -3036,6 +3041,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae99c7fa6dd38c7cafe1ec085e804f8f555a2f8659b0dbe03f1f9963a9b51092"
 dependencies = [
  "log",
+ "serde",
  "windows-sys 0.52.0",
 ]
 
@@ -3745,12 +3751,24 @@ dependencies = [
  "httpdate",
  "reqwest",
  "rustls 0.22.4",
+ "sentry-contexts",
  "sentry-core",
  "sentry-panic",
  "sentry-tracing",
  "tokio",
  "ureq",
  "webpki-roots",
+]
+
+[[package]]
+name = "sentry-anyhow"
+version = "0.34.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d672bfd1ed4e90978435f3c0704edb71a7a9d86403657839d518cd6aa278aff5"
+dependencies = [
+ "anyhow",
+ "sentry-backtrace",
+ "sentry-core",
 ]
 
 [[package]]
@@ -3763,6 +3781,20 @@ dependencies = [
  "once_cell",
  "regex",
  "sentry-core",
+]
+
+[[package]]
+name = "sentry-contexts"
+version = "0.34.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a8dd746da3d16cb8c39751619cefd4fcdbd6df9610f3310fd646b55f6e39910"
+dependencies = [
+ "hostname",
+ "libc",
+ "os_info",
+ "rustc_version",
+ "sentry-core",
+ "uname",
 ]
 
 [[package]]
@@ -4607,6 +4639,15 @@ dependencies = [
  "memoffset",
  "tempfile",
  "winapi",
+]
+
+[[package]]
+name = "uname"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b72f89f0ca32e4db1c04e2a72f5345d59796d4866a1ee0609084569f73683dc8"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

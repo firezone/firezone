@@ -213,7 +213,10 @@ async fn ipc_listen(
 ) -> Result<()> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
-    device_id::get_or_create().context("Failed to read / create device ID")?;
+    let firezone_id = device_id::get_or_create()
+        .context("Failed to read / create device ID")?
+        .id;
+    firezone_telemetry::configure_scope(|scope| scope.set_tag("firezone_id", &firezone_id));
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     let mut dns_controller = DnsController { dns_control_method };
     let telemetry = Telemetry::default();

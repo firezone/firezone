@@ -2,9 +2,10 @@ use arc_swap::ArcSwapOption;
 use std::time::Duration;
 
 pub use sentry::{
-    add_breadcrumb, capture_error, end_session, end_session_with_status, start_transaction,
-    types::protocol::v7::SessionStatus, Breadcrumb, TransactionContext,
+    add_breadcrumb, capture_error, configure_scope, end_session, end_session_with_status,
+    start_transaction, types::protocol::v7::SessionStatus, Breadcrumb, Hub, TransactionContext,
 };
+pub use sentry_anyhow::capture_anyhow;
 
 pub struct Dsn(&'static str);
 
@@ -68,7 +69,16 @@ impl Telemetry {
                 ..Default::default()
             },
         ));
-        sentry::configure_scope(|scope| scope.set_tag("api_url", api_url));
+        // Configure scope on the main hub so that all threads will get the tags
+        sentry::Hub::main().configure_scope(|scope| {
+            scope.set_tag("api_url", api_url);
+            let ctx = sentry::integrations::contexts::utils::device_context();
+            scope.set_context("device", ctx);
+            let ctx = sentry::integrations::contexts::utils::os_context().unwrap();
+            scope.set_context("os", ctx);
+            let ctx = sentry::integrations::contexts::utils::rust_context();
+            scope.set_context("rust", ctx);
+        });
         self.inner.swap(Some(inner.into()));
         sentry::start_session();
     }
