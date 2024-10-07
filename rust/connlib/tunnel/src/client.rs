@@ -884,13 +884,21 @@ impl ClientState {
         self.tcp_sockets = SocketSet::new(vec![]);
         self.tcp_socket_listen_endpoints.clear();
 
-        for (sentinel_dns, _) in self.dns_mapping() {
-            let listen_endpoint = SocketAddr::from((sentinel_dns, 53));
+        let tcp_listen_endpoints = self
+            .dns_mapping()
+            .into_iter()
+            .map(|(ip, _)| SocketAddr::from((ip, 53)));
 
-            // Create a bunch of sockets per address so we can serve multiple clients at once.
-            // DNS queries may be sent concurrently on the same socket, but only be a single other remote socket.
-            // Having multiple sockets for the same sentinel IP allows multiple clients to connect concurrently.
-            // Each one of these needs to allocate a buffer.
+        // Limiting the number here as two purposes:
+        // 1. We can't handle more than these anyway due to limitations in `smoltcp`.
+        // 2. We need to allocate a buffer for each one. If we don't limit these, definining a large number of DNS servers would be a memory-DoS vector.
+        let tcp_listen_endpoints = tcp_listen_endpoints.take(smoltcp::config::IFACE_MAX_ADDR_COUNT);
+
+        // Create a bunch of sockets per address so we can serve multiple clients at once.
+        // DNS queries may be sent concurrently on the same socket, but only be a single other remote socket.
+        // Having multiple sockets for the same sentinel IP allows multiple clients to connect concurrently.
+        // Each one of these needs to allocate a buffer.
+        for listen_endpoint in tcp_listen_endpoints {
             self.create_tcp_socket(listen_endpoint);
             self.create_tcp_socket(listen_endpoint);
             self.create_tcp_socket(listen_endpoint);

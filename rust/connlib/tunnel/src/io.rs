@@ -1,4 +1,6 @@
-use crate::{device_channel::Device, dns, sockets::Sockets, TunConfig};
+use crate::{
+    client::MAX_TCP_DNS_SOCKETS, device_channel::Device, dns, sockets::Sockets, TunConfig,
+};
 use domain::base::Message;
 use futures::{
     future::{self, Either},
@@ -138,7 +140,7 @@ impl Io {
                     IpAddr::V6(_) => smoltcp::wire::IpCidr::new(ip.into(), 128),
                 });
 
-            ips.extend(sentinel_ips.take(8));
+            ips.extend(sentinel_ips.take(smoltcp::config::IFACE_MAX_ADDR_COUNT));
         });
     }
 
