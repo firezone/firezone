@@ -222,6 +222,7 @@ impl WrappedSession {
             Arc::new(socket_factory::tcp),
         )?;
         let session = Session::connect(
+            Arc::new(socket_factory::tcp),
             Arc::new(socket_factory::udp),
             CallbackHandler {
                 inner: Arc::new(callback_handler),

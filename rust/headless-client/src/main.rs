@@ -211,6 +211,7 @@ fn main() -> Result<()> {
         )?;
         phoenix_span.finish();
         let session = Session::connect(
+            Arc::new(tcp_socket_factory),
             Arc::new(udp_socket_factory),
             callbacks,
             portal,

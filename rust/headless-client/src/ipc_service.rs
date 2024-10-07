@@ -557,6 +557,7 @@ impl<'a> Handler<'a> {
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
         let connlib = connlib_client_shared::Session::connect(
+            Arc::new(tcp_socket_factory),
             Arc::new(udp_socket_factory),
             callbacks,
             portal,

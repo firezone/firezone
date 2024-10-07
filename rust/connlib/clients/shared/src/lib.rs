@@ -12,7 +12,7 @@ use eventloop::Command;
 use firezone_telemetry as telemetry;
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
-use socket_factory::{SocketFactory, UdpSocket};
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -39,6 +39,7 @@ impl Session {
     ///
     /// This connects to the portal using the given [`LoginUrl`](phoenix_channel::LoginUrl) and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         callbacks: CB,
         portal: PhoenixChannel<(), IngressMessages, ReplyMessages, PublicKeyParam>,
@@ -46,8 +47,13 @@ impl Session {
     ) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
-        let connect_handle =
-            handle.spawn(connect(udp_socket_factory, callbacks.clone(), portal, rx));
+        let connect_handle = handle.spawn(connect(
+            tcp_socket_factory,
+            udp_socket_factory,
+            callbacks.clone(),
+            portal,
+            rx,
+        ));
         handle.spawn(connect_supervisor(connect_handle, callbacks));
 
         Self { channel: tx }
@@ -110,6 +116,7 @@ impl Session {
 ///
 /// When this function exits, the tunnel failed unrecoverably and you need to call it again.
 async fn connect<CB>(
+    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     callbacks: CB,
     portal: PhoenixChannel<(), IngressMessages, ReplyMessages, PublicKeyParam>,
@@ -119,6 +126,7 @@ where
     CB: Callbacks + 'static,
 {
     let tunnel = ClientTunnel::new(
+        tcp_socket_factory,
         udp_socket_factory,
         BTreeMap::from([(portal.server_host().to_owned(), portal.resolved_addresses())]),
     );

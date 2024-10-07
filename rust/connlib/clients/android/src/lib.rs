@@ -381,6 +381,7 @@ fn connect(
         tcp_socket_factory,
     )?;
     let session = Session::connect(
+        Arc::new(protected_tcp_socket_factory(callbacks.clone())),
         Arc::new(protected_udp_socket_factory(callbacks.clone())),
         callbacks,
         portal,
