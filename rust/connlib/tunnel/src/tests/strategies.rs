@@ -1,9 +1,4 @@
-use super::{
-    sim_dns::{dns_server_id, ref_dns_host, DnsServerId, RefDns},
-    sim_net::Host,
-    sim_relay::ref_relay_host,
-    stub_portal::StubPortal,
-};
+use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
 use crate::client::{CidrResource, DnsResource, InternetResource, IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::proptest::*;
 use crate::{messages::DnsServer, DomainName};
@@ -111,7 +106,7 @@ pub(crate) fn relays(
 /// Sample a list of DNS servers.
 ///
 /// We make sure to always have at least 1 IPv4 and 1 IPv6 DNS server.
-pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeMap<DnsServerId, Host<RefDns>>> {
+pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<SocketAddr>> {
     let ip4_dns_servers = collection::btree_set(
         any::<Ipv4Addr>()
             .prop_filter("must not be in sentinel IP range", |ip| {
@@ -129,22 +124,9 @@ pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeMap<DnsServerId, Host<
         1..4,
     );
 
-    (ip4_dns_servers, ip6_dns_servers).prop_flat_map(|(ip4_dns_servers, ip6_dns_servers)| {
-        let servers = Vec::from_iter(ip4_dns_servers.into_iter().chain(ip6_dns_servers));
-
-        // First, generate a unique number of IDs, one for each DNS server.
-        let ids = collection::btree_set(dns_server_id(), servers.len());
-
-        (ids, Just(servers))
-            .prop_flat_map(move |(ids, servers)| {
-                let ids = ids.into_iter();
-
-                // Second, zip the IDs and addresses together.
-                ids.zip(servers)
-                    .map(|(id, addr)| (Just(id), ref_dns_host(addr)))
-                    .collect::<Vec<_>>()
-            })
-            .prop_map(BTreeMap::from_iter) // Third, turn the `Vec` of tuples into a `BTreeMap`.
+    (ip4_dns_servers, ip6_dns_servers).prop_map(|(mut v4, v6)| {
+        v4.extend(v6);
+        v4
     })
 }
 
@@ -263,19 +245,19 @@ pub(crate) fn documentation_ip6s(subnet: u16, num_ips: usize) -> impl Strategy<V
 }
 
 pub(crate) fn system_dns_servers(
-    dns_servers: Vec<Host<RefDns>>,
+    dns_servers: Vec<SocketAddr>,
 ) -> impl Strategy<Value = Vec<IpAddr>> {
     let max = dns_servers.len();
 
     sample::subsequence(dns_servers, ..=max)
-        .prop_map(|seq| seq.into_iter().map(|h| h.single_socket().ip()).collect())
+        .prop_map(|seq| seq.into_iter().map(|h| h.ip()).collect())
 }
 
 pub(crate) fn upstream_dns_servers(
-    dns_servers: Vec<Host<RefDns>>,
+    dns_servers: Vec<SocketAddr>,
 ) -> impl Strategy<Value = Vec<DnsServer>> {
     let max = dns_servers.len();
 
     sample::subsequence(dns_servers, ..=max)
-        .prop_map(|seq| seq.into_iter().map(|h| h.single_socket().into()).collect())
+        .prop_map(|seq| seq.into_iter().map(|h| h.into()).collect())
 }

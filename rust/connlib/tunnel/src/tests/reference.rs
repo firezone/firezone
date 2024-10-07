@@ -1,5 +1,5 @@
 use super::{
-    composite_strategy::CompositeStrategy, sim_client::*, sim_dns::*, sim_gateway::*, sim_net::*,
+    composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
 use crate::{client, DomainName};
@@ -23,7 +23,7 @@ pub(crate) struct ReferenceState {
     pub(crate) client: Host<RefClient>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
-    pub(crate) dns_servers: BTreeMap<DnsServerId, Host<RefDns>>,
+    pub(crate) dns_servers: BTreeSet<SocketAddr>,
 
     pub(crate) portal: StubPortal,
 
@@ -59,8 +59,8 @@ impl ReferenceStateMachine for ReferenceState {
                 let gateways = portal.gateways();
                 let dns_resource_records = portal.dns_resource_records();
                 let client = portal.client(
-                    system_dns_servers(dns_servers.values().cloned().collect()),
-                    upstream_dns_servers(dns_servers.values().cloned().collect()),
+                    system_dns_servers(Vec::from_iter(dns_servers.clone())),
+                    upstream_dns_servers(Vec::from_iter(dns_servers.clone())),
                 );
                 let relays = relays(relay_id());
                 let global_dns_records = global_dns_records(); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
@@ -102,12 +102,6 @@ impl ReferenceStateMachine for ReferenceState {
 
                     for (id, relay) in &relays {
                         if !routing_table.add_host(*id, relay) {
-                            return None;
-                        };
-                    }
-
-                    for (id, dns_server) in &dns_servers {
-                        if !routing_table.add_host(*id, dns_server) {
                             return None;
                         };
                     }
@@ -173,12 +167,12 @@ impl ReferenceStateMachine for ReferenceState {
         CompositeStrategy::default()
             .with(
                 1,
-                system_dns_servers(state.dns_servers.values().cloned().collect())
+                system_dns_servers(Vec::from_iter(state.dns_servers.clone()))
                     .prop_map(Transition::UpdateSystemDnsServers),
             )
             .with(
                 1,
-                upstream_dns_servers(state.dns_servers.values().cloned().collect())
+                upstream_dns_servers(Vec::from_iter(state.dns_servers.clone()))
                     .prop_map(Transition::UpdateUpstreamDnsServers),
             )
             .with_if_not_empty(
