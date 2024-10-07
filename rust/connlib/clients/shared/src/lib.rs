@@ -158,7 +158,12 @@ async fn connect_supervisor<CB>(
             tracing::info!("connlib exited gracefully");
         }
         Ok(Err(e)) => {
-            if !e.is_authentication_error() {
+            if e.is_authentication_error() {
+                telemetry::capture_message(
+                    "Portal authentication error",
+                    telemetry::Level::Warning,
+                );
+            } else {
                 telemetry::capture_error(&e);
             }
 
