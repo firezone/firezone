@@ -229,16 +229,14 @@ mod tests {
         };
 
         let fz_dns_servers = vec![
-            [100, 100, 111, 1].into(),
-            [100, 100, 111, 2].into(),
-            [
+            IpAddr::from([100, 100, 111, 1]),
+            IpAddr::from([100, 100, 111, 2]),
+            IpAddr::from([
                 0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0x0003,
-            ]
-            .into(),
-            [
+            ]),
+            IpAddr::from([
                 0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0x0004,
-            ]
-            .into(),
+            ]),
         ];
         rt.block_on(async {
             dns_controller
