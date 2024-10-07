@@ -2344,6 +2344,7 @@ dependencies = [
  "ip-packet",
  "ip_network",
  "ipconfig",
+ "itertools 0.13.0",
  "known-folders",
  "libc",
  "mutants",

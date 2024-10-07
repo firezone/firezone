@@ -1,4 +1,4 @@
-use crate::windows::CREATE_NO_WINDOW;
+use crate::windows::{CREATE_NO_WINDOW, TUNNEL_UUID};
 use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -219,8 +219,6 @@ impl Drop for Tun {
 impl Tun {
     #[tracing::instrument(level = "debug")]
     pub fn new(mtu: u32) -> Result<Self> {
-        const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
-
         let path = ensure_dll()?;
         // SAFETY: we're loading a DLL from disk and it has arbitrary C code in it. There's no perfect way to prove it's safe.
         let wintun = unsafe { wintun::load_from_path(path) }?;
