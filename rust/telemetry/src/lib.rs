@@ -69,7 +69,15 @@ impl Telemetry {
             },
         ));
         // Configure scope on the main hub so that all threads will get the tags
-        sentry::Hub::main().configure_scope(|scope| scope.set_tag("api_url", api_url));
+        sentry::Hub::main().configure_scope(|scope| {
+            scope.set_tag("api_url", api_url);
+            let ctx = sentry::integrations::contexts::utils::device_context();
+            scope.set_context("device", ctx);
+            let ctx = sentry::integrations::contexts::utils::os_context().unwrap();
+            scope.set_context("os", ctx);
+            let ctx = sentry::integrations::contexts::utils::rust_context();
+            scope.set_context("rust", ctx);
+        });
         self.inner.swap(Some(inner.into()));
         sentry::start_session();
     }
