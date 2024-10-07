@@ -248,8 +248,8 @@ pub struct ClientState {
     ///
     /// DNS query IDs don't appear to be unique across servers they are being sent to on some operating systems (looking at you, Windows).
     /// Hence, we need to index by ID + socket of the DNS server.
-    forwarded_udp_dns_queries: HashMap<(u16, SocketAddr), SocketAddr>,
-    forwarded_tcp_dns_queries: HashMap<(u16, SocketAddr), SocketHandle>,
+    recursive_udp_dns_queries: HashMap<(u16, SocketAddr), SocketAddr>,
+    recursive_tcp_dns_queries: HashMap<(u16, SocketAddr), SocketHandle>,
 
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
@@ -297,8 +297,8 @@ impl ClientState {
             sites_status: Default::default(),
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
-            forwarded_udp_dns_queries: Default::default(),
-            forwarded_tcp_dns_queries: Default::default(),
+            recursive_udp_dns_queries: Default::default(),
+            recursive_tcp_dns_queries: Default::default(),
             stub_resolver: StubResolver::new(known_hosts),
             disabled_resources: Default::default(),
             buffered_transmits: Default::default(),
@@ -529,14 +529,14 @@ impl ClientState {
             (dns::Transport::Udp, Err(e)) => {
                 tracing::debug!("UDP DNS query failed: {e}");
 
-                self.forwarded_udp_dns_queries
+                self.recursive_udp_dns_queries
                     .remove(&(response.query_id, response.server));
             }
             (dns::Transport::Tcp, Err(e)) => {
                 tracing::debug!("TCP DNS query failed: {e}");
 
                 let handle = self
-                    .forwarded_tcp_dns_queries
+                    .recursive_tcp_dns_queries
                     .remove(&(response.query_id, response.server))
                     .context("Unknown query")?;
 
@@ -560,7 +560,7 @@ impl ClientState {
 
         let query_id = message.header().id();
 
-        let destination = self.forwarded_udp_dns_queries.remove(&(query_id, from))?;
+        let destination = self.recursive_udp_dns_queries.remove(&(query_id, from))?;
 
         if message.header().tc() {
             let domain = message
@@ -571,7 +571,7 @@ impl ClientState {
             tracing::warn!(server = %from, domain, "Upstream DNS server had to truncate response");
         }
 
-        tracing::trace!(server = %from, %query_id, "Received forwarded DNS response");
+        tracing::trace!(server = %from, %query_id, "Received recursive DNS response");
 
         let daddr = destination.ip();
         let dport = destination.port();
@@ -591,7 +591,7 @@ impl ClientState {
         message: &Message<Vec<u8>>,
     ) -> anyhow::Result<()> {
         let handle = self
-            .forwarded_tcp_dns_queries
+            .recursive_tcp_dns_queries
             .remove(&(query_id, server))
             .context("Unknown query")?;
 
@@ -772,7 +772,7 @@ impl ClientState {
                 );
                 ControlFlow::Break(())
             }
-            Ok(dns::ResolveStrategy::ForwardQuery) => {
+            Ok(dns::ResolveStrategy::Recurse) => {
                 if self.should_forward_dns_query_to_gateway(upstream.ip()) {
                     return ControlFlow::Continue((packet, upstream.ip()));
                 }
@@ -782,7 +782,7 @@ impl ClientState {
 
                 tracing::trace!(server = %upstream, %query_id, "Forwarding DNS query");
 
-                self.forwarded_udp_dns_queries
+                self.recursive_udp_dns_queries
                     .insert((query_id, upstream), original_src);
                 self.buffered_dns_queries
                     .push_back(dns::RecursiveQuery::via_udp(upstream, message));
@@ -1040,7 +1040,7 @@ impl ClientState {
                 *listen_endpoint,
                 &self.dns_mapping,
                 &mut self.stub_resolver,
-                &mut self.forwarded_tcp_dns_queries,
+                &mut self.recursive_tcp_dns_queries,
                 &mut self.buffered_dns_queries,
             ) {
                 Ok(()) => {}
@@ -1610,7 +1610,7 @@ fn try_handle_tcp_socket(
     listen_endpoint: SocketAddr,
     dns_mapping: &BiMap<IpAddr, DnsServer>,
     resolver: &mut StubResolver,
-    forwarded_tcp_dns_queries: &mut HashMap<(u16, SocketAddr), SocketHandle>,
+    recursive_tcp_dns_queries: &mut HashMap<(u16, SocketAddr), SocketHandle>,
     buffered_dns_queries: &mut VecDeque<dns::RecursiveQuery>,
 ) -> anyhow::Result<()> {
     // smoltcp's sockets can only ever handle a single remote, i.e. there is no permanent listening socket.
@@ -1669,10 +1669,10 @@ fn try_handle_tcp_socket(
         dns::ResolveStrategy::LocalResponse(response) => {
             write_tcp_dns_response(socket, &response)?;
         }
-        dns::ResolveStrategy::ForwardQuery => {
+        dns::ResolveStrategy::Recurse => {
             let id = message.header().id();
 
-            forwarded_tcp_dns_queries.insert((id, upstream), handle);
+            recursive_tcp_dns_queries.insert((id, upstream), handle);
             buffered_dns_queries.push_back(dns::RecursiveQuery::via_tcp(upstream, message));
         }
     }

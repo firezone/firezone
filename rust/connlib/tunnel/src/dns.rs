@@ -92,7 +92,7 @@ pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
     LocalResponse(Vec<u8>),
     /// The query is for a non-Resource, forward it to an upstream or system resolver.
-    ForwardQuery,
+    Recurse,
 }
 
 struct KnownHosts {
@@ -298,7 +298,7 @@ impl StubResolver {
 
         let resource_records = match (qtype, maybe_resource) {
             (_, Some(resource)) if !self.knows_resource(&resource) => {
-                return Ok(ResolveStrategy::ForwardQuery)
+                return Ok(ResolveStrategy::Recurse)
             }
             (Rtype::A, Some(resource)) => self.get_or_assign_a_records(domain.clone(), resource),
             (Rtype::AAAA, Some(resource)) => {
@@ -306,7 +306,7 @@ impl StubResolver {
             }
             (Rtype::PTR, _) => {
                 let Some(fqdn) = self.resource_address_name_by_reservse_dns(&domain) else {
-                    return Ok(ResolveStrategy::ForwardQuery);
+                    return Ok(ResolveStrategy::Recurse);
                 };
 
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
@@ -316,7 +316,7 @@ impl StubResolver {
                     "Discarding HTTPS record query for resource {domain} because we can't mangle it"
                 );
             }
-            _ => return Ok(ResolveStrategy::ForwardQuery),
+            _ => return Ok(ResolveStrategy::Recurse),
         };
 
         tracing::trace!(%qtype, %domain, records = ?resource_records, "Forming DNS response");
