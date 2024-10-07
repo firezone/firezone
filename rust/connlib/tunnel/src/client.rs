@@ -1022,6 +1022,8 @@ impl ClientState {
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
         self.forwarded_udp_dns_queries
             .retain(|_, (_, exp)| now < *exp);
+        self.forwarded_tcp_dns_queries
+            .retain(|_, (_, exp)| now < *exp);
     }
 
     pub fn on_tcp_state_changed(&mut self, now: Instant) {
@@ -1086,7 +1088,7 @@ impl ClientState {
                         let id = message.header().id();
 
                         self.forwarded_tcp_dns_queries
-                            .insert((id, upstream), (handle, now));
+                            .insert((id, upstream), (handle, now + IDS_EXPIRE));
                         self.buffered_dns_queries
                             .push_front(dns::RecursiveQuery::via_tcp(upstream, message));
                     }
