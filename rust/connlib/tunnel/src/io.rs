@@ -1,6 +1,4 @@
-use crate::{
-    client::MAX_TCP_DNS_SOCKETS, device_channel::Device, dns, sockets::Sockets, TunConfig,
-};
+use crate::{device_channel::Device, dns, sockets::Sockets, TunConfig};
 use domain::base::Message;
 use futures::{
     future::{self, Either},
