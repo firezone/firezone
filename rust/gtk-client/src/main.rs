@@ -77,9 +77,9 @@ fn main() -> Result<()> {
     let common::logging::Handles {
         logger: _logger,
         reloader: log_filter_reloader,
-    } = start_logging("debug")?; // TODO
-                                 // The runtime must be multi-thread so that the main thread is free for GTK to consume
-                                 // As long as Tokio has at least 1 worker thread (i.e. there is at least 1 CPU core in the system) this will work.
+    } = start_logging("info")?; // TODO
+                                // The runtime must be multi-thread so that the main thread is free for GTK to consume
+                                // As long as Tokio has at least 1 worker thread (i.e. there is at least 1 CPU core in the system) this will work.
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
@@ -87,6 +87,12 @@ fn main() -> Result<()> {
 
     // This enforces single-instance
     let deep_link_server = rt.block_on(deep_link::Server::new())?;
+
+    // The tray icon may not show if it's built after `app` is built.
+    let tray_icon = TrayIconBuilder::new()
+        .with_tooltip(TOOLTIP)
+        .with_icon(icon_to_native_icon(&Icon::default()))
+        .build()?;
 
     let app = Application::builder()
         .application_id("dev.firezone.client")
@@ -144,6 +150,7 @@ fn main() -> Result<()> {
     glib::spawn_future_local(run_main_thread_loop(
         app.clone(),
         main_rx,
+        tray_icon,
         ui_cell,
         ui_ready_rx,
     ));
@@ -225,13 +232,10 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
 async fn run_main_thread_loop(
     app: gtk::Application,
     main_rx: mpsc::Receiver<MainThreadReq>,
+    tray_icon: tray_icon::TrayIcon,
     ui_cell: Rc<RefCell<Option<Ui>>>,
     mut ui_ready_rx: mpsc::Receiver<()>,
-) -> Result<std::convert::Infallible> {
-    let tray_icon = TrayIconBuilder::new()
-        .with_tooltip(TOOLTIP)
-        .with_icon(icon_to_native_icon(&Icon::default()))
-        .build()?;
+) -> Result<()> {
     ui_ready_rx.recv().await.unwrap();
     let ui = ui_cell
         .take()
@@ -244,11 +248,10 @@ async fn run_main_thread_loop(
         ui,
     };
     l.run().await;
-    unreachable!()
+    Ok(())
 }
 
 /// Handles messages from other tasks / thread to our GTK main thread, such as quitting the app and changing the tray menu.
-#[must_use]
 struct MainThreadLoop {
     app: gtk::Application,
     last_icon_set: Icon,
@@ -308,10 +311,12 @@ impl MainThreadLoop {
         if icon == self.last_icon_set {
             return Ok(());
         }
+        tracing::warn!(?icon);
         // TODO: Does `tray-icon` have the same problem as `tao`,
         // where it writes PNGs to `/run/user/$UID/` every time you set an icon?
         self.tray_icon.set_icon(Some(icon_to_native_icon(&icon)))?;
         self.last_icon_set = icon;
+        std::thread::sleep(std::time::Duration::from_secs(2));
         Ok(())
     }
 }
