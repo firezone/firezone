@@ -15,7 +15,10 @@ use gtk::{Application, ApplicationWindow};
 use secrecy::{ExposeSecret as _, SecretString};
 use std::str::FromStr;
 use tokio::sync::mpsc;
-use tray_icon::{menu::MenuEvent, TrayIconBuilder};
+use tray_icon::{
+    menu::{MenuEvent, MenuItemKind},
+    TrayIconBuilder,
+};
 
 // TODO: De-dupe icon compositing with the Tauri Client.
 
@@ -106,10 +109,7 @@ fn main() -> Result<()> {
     });
 
     gtk::init()?;
-    let tray_icon = TrayIconBuilder::new()
-        .with_tooltip(TOOLTIP)
-        .with_icon(icon_to_native_icon(&Icon::default()))
-        .build()?;
+    let (tray_icon, menu) = create_loading_tray_icon()?;
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(100);
 
@@ -145,6 +145,7 @@ fn main() -> Result<()> {
         app: app.clone(),
         last_icon_set: Default::default(),
         main_rx,
+        menu,
         tray_icon,
     };
     glib::spawn_future_local(l.run());
@@ -186,6 +187,7 @@ struct MainThreadLoop {
     app: gtk::Application,
     last_icon_set: Icon,
     main_rx: mpsc::Receiver<MainThreadReq>,
+    menu: tray_icon::menu::Submenu,
     tray_icon: tray_icon::TrayIcon,
 }
 
@@ -226,8 +228,21 @@ impl MainThreadLoop {
         };
 
         let menu = build_menu("", &state.into_menu())?;
-        self.tray_icon.set_menu(Some(Box::new(menu)));
-        // TODO: Set menu tooltip here too
+
+        // Rebuild the menu in-place. This prevents issue #6970
+        while !self.menu.items().is_empty() {
+            self.menu.remove_at(0);
+        }
+        for item in menu.items() {
+            match item {
+                MenuItemKind::Check(item) => self.menu.append(&item)?,
+                MenuItemKind::Icon(item) => self.menu.append(&item)?,
+                MenuItemKind::MenuItem(item) => self.menu.append(&item)?,
+                MenuItemKind::Predefined(item) => self.menu.append(&item)?,
+                MenuItemKind::Submenu(menu) => self.menu.append(&menu)?,
+            }
+        }
+
         self.set_icon(new_icon)?;
 
         Ok(())
@@ -235,7 +250,8 @@ impl MainThreadLoop {
 
     fn set_icon(&mut self, icon: Icon) -> Result<()> {
         if icon == self.last_icon_set {
-            return Ok(());
+            // We try not to set the icon too often because `tray-icon` always writes it to disk on Linux
+            // return Ok(());
         }
         // TODO: Does `tray-icon` have the same problem as `tao`,
         // where it writes PNGs to `/run/user/$UID/` every time you set an icon?
@@ -243,6 +259,20 @@ impl MainThreadLoop {
         self.last_icon_set = icon;
         Ok(())
     }
+}
+
+fn create_loading_tray_icon() -> Result<(tray_icon::TrayIcon, tray_icon::menu::Submenu)> {
+    let state = AppState {
+        connlib: ConnlibState::Loading,
+        release: None,
+    };
+    let menu = build_menu("", &state.into_menu())?;
+    let tray_icon = TrayIconBuilder::new()
+        .with_tooltip(TOOLTIP)
+        .with_icon(icon_to_native_icon(&Icon::default()))
+        .with_menu(Box::new(menu.clone()))
+        .build()?;
+    Ok((tray_icon, menu))
 }
 
 fn icon_to_native_icon(that: &Icon) -> tray_icon::Icon {
