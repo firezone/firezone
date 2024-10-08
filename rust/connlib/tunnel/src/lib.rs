@@ -30,6 +30,7 @@ mod dns;
 mod gateway;
 mod io;
 pub mod messages;
+mod p2p_control;
 mod peer;
 mod peer_store;
 #[cfg(all(test, feature = "proptest"))]

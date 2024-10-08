@@ -1,5 +1,7 @@
 pub mod make;
 
+mod fz_p2p_control;
+mod fz_p2p_control_slice;
 mod icmpv4_header_slice_mut;
 mod icmpv6_header_slice_mut;
 mod ipv4_header_slice_mut;
@@ -13,6 +15,7 @@ mod tcp_header_slice_mut;
 mod udp_header_slice_mut;
 
 pub use etherparse::*;
+pub use fz_p2p_control_slice::FzP2pControlSlice;
 
 #[cfg(all(test, feature = "proptest"))]
 mod proptests;
@@ -610,6 +613,14 @@ impl IpPacket {
         Icmpv6EchoHeaderSliceMut::from_slice(self.payload_mut()).ok()
     }
 
+    pub fn as_fz_p2p_control(&self) -> Option<FzP2pControlSlice> {
+        if !self.is_fz_p2p_control() {
+            return None;
+        }
+
+        FzP2pControlSlice::from_slice(self.payload()).ok()
+    }
+
     fn icmpv4_echo_header(&self) -> Option<IcmpEchoHeader> {
         let p = self.as_icmpv4()?;
 
@@ -743,6 +754,13 @@ impl IpPacket {
 
     pub fn is_icmp(&self) -> bool {
         self.next_header() == IpNumber::ICMP
+    }
+
+    /// Whether the packet is a Firezone p2p control protocol packet.
+    pub fn is_fz_p2p_control(&self) -> bool {
+        self.next_header() == fz_p2p_control::IP_NUMBER
+            && self.source() == fz_p2p_control::ADDR
+            && self.destination() == fz_p2p_control::ADDR
     }
 
     pub fn is_icmpv6(&self) -> bool {
