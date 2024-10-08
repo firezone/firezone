@@ -246,7 +246,7 @@ where
         // We expose them to other components that deal with DNS stuff to ensure our domain always resolves to these IPs.
         let resolved_addresses = url
             .expose_secret()
-            .host()
+            .host_and_port()
             .to_socket_addrs()?
             .map(|addr| addr.ip())
             .collect();
@@ -281,7 +281,7 @@ where
 
     /// The host we are connecting / connected to.
     pub fn server_host(&self) -> &str {
-        self.url_prototype.expose_secret().host()
+        self.url_prototype.expose_secret().host_and_port().0
     }
 
     /// Join the provided room.
@@ -364,7 +364,7 @@ where
                         self.heartbeat.reset();
                         self.state = State::Connected(stream);
 
-                        let host = self.url_prototype.expose_secret().host();
+                        let (host, _) = self.url_prototype.expose_secret().host_and_port();
 
                         tracing::info!(%host, "Connected to portal");
                         self.join(self.login, self.init_req.clone());
