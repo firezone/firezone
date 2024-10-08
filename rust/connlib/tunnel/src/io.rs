@@ -87,12 +87,11 @@ impl Io {
             received_packets: VecDeque::default(),
         };
 
-        let mut interface = smoltcp::iface::Interface::new(
+        let interface = smoltcp::iface::Interface::new(
             smoltcp::iface::Config::new(HardwareAddress::Ip),
             &mut device,
             smoltcp::time::Instant::now(),
         );
-        interface.set_any_ip(true);
 
         std::thread::spawn(|| {
             futures::executor::block_on(tun_send_recv(
