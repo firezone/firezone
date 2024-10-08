@@ -4807,7 +4807,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
- "libm",
 ]
 
 [[package]]
@@ -5754,7 +5753,7 @@ checksum = "43d84d1d7a6ac92673717f9f6d1518374ef257669c24ebc5ac25d5033828be58"
 [[package]]
 name = "proptest"
 version = "1.5.0"
-source = "git+https://github.com/proptest-rs/proptest?branch=master#f8a84d5c2ecb3577d447e8340fd05e238a330007"
+source = "git+https://github.com/proptest-rs/proptest?branch=main#772e64733187dc65f669db51f627ddf9e8951bc8"
 dependencies = [
  "bit-set 0.8.0",
  "bit-vec 0.8.0",
@@ -5773,7 +5772,7 @@ dependencies = [
 [[package]]
 name = "proptest-state-machine"
 version = "0.3.0"
-source = "git+https://github.com/proptest-rs/proptest?branch=master#f8a84d5c2ecb3577d447e8340fd05e238a330007"
+source = "git+https://github.com/proptest-rs/proptest?branch=main#772e64733187dc65f669db51f627ddf9e8951bc8"
 dependencies = [
  "proptest",
 ]
