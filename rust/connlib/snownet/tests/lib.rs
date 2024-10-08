@@ -1,4 +1,5 @@
-use snownet::{Answer, ClientNode, Event, ServerNode};
+use secrecy::Secret;
+use snownet::{ClientNode, Credentials, Event, ServerNode};
 use std::{
     iter,
     net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -7,6 +8,7 @@ use std::{
 use str0m::{net::Protocol, Candidate};
 
 #[test]
+#[expect(deprecated, reason = "Will be deleted together with deprecated API")]
 fn connection_times_out_after_20_seconds() {
     let (mut alice, _) = alice_and_bob();
 
@@ -24,12 +26,9 @@ fn connection_without_candidates_times_out_after_10_seconds() {
     let start = Instant::now();
 
     let (mut alice, mut bob) = alice_and_bob();
-    let answer = send_offer(&mut alice, &mut bob, start);
+    handshake(&mut alice, &mut bob, start);
 
-    let accepted_at = start + Duration::from_secs(1);
-    alice.accept_answer(1, bob.public_key(), answer, accepted_at);
-
-    alice.handle_timeout(accepted_at + Duration::from_secs(10));
+    alice.handle_timeout(start + Duration::from_secs(10));
 
     assert_eq!(alice.poll_event().unwrap(), Event::ConnectionFailed(1));
 }
@@ -40,14 +39,12 @@ fn connection_with_candidates_does_not_time_out_after_10_seconds() {
     let start = Instant::now();
 
     let (mut alice, mut bob) = alice_and_bob();
-    let answer = send_offer(&mut alice, &mut bob, start);
+    handshake(&mut alice, &mut bob, start);
 
-    let accepted_at = start + Duration::from_secs(1);
-    alice.accept_answer(1, bob.public_key(), answer, accepted_at);
     alice.add_local_host_candidate(s("10.0.0.2:4444")).unwrap();
-    alice.add_remote_candidate(1, host("10.0.0.1:4444"), accepted_at);
+    alice.add_remote_candidate(1, host("10.0.0.1:4444"), start);
 
-    alice.handle_timeout(accepted_at + Duration::from_secs(10));
+    alice.handle_timeout(start + Duration::from_secs(10));
 
     let any_failed =
         iter::from_fn(|| alice.poll_event()).any(|e| matches!(e, Event::ConnectionFailed(_)));
@@ -56,6 +53,7 @@ fn connection_with_candidates_does_not_time_out_after_10_seconds() {
 }
 
 #[test]
+#[expect(deprecated, reason = "Will be deleted together with deprecated API")]
 fn answer_after_stale_connection_does_not_panic() {
     let start = Instant::now();
 
@@ -69,6 +67,7 @@ fn answer_after_stale_connection_does_not_panic() {
 }
 
 #[test]
+#[expect(deprecated, reason = "Will be deleted together with deprecated API")]
 fn only_generate_candidate_event_after_answer() {
     let local_candidate = SocketAddr::new(IpAddr::from(Ipv4Addr::LOCALHOST), 10000);
 
@@ -105,14 +104,46 @@ fn alice_and_bob() -> (ClientNode<u64, u64>, ServerNode<u64, u64>) {
     (alice, bob)
 }
 
+#[expect(deprecated, reason = "Will be deleted together with deprecated API")]
 fn send_offer(
     alice: &mut ClientNode<u64, u64>,
     bob: &mut ServerNode<u64, u64>,
     now: Instant,
-) -> Answer {
+) -> snownet::Answer {
     let offer = alice.new_connection(1, Instant::now(), now);
 
     bob.accept_connection(1, offer, alice.public_key(), now)
+}
+
+fn handshake(alice: &mut ClientNode<u64, u64>, bob: &mut ServerNode<u64, u64>, now: Instant) {
+    alice.upsert_connection(
+        1,
+        bob.public_key(),
+        Secret::new([0u8; 32]),
+        Credentials {
+            username: "foo".to_owned(),
+            password: "foo".to_owned(),
+        },
+        Credentials {
+            username: "bar".to_owned(),
+            password: "bar".to_owned(),
+        },
+        now,
+    );
+    bob.upsert_connection(
+        1,
+        alice.public_key(),
+        Secret::new([0u8; 32]),
+        Credentials {
+            username: "bar".to_owned(),
+            password: "bar".to_owned(),
+        },
+        Credentials {
+            username: "foo".to_owned(),
+            password: "foo".to_owned(),
+        },
+        now,
+    );
 }
 
 fn host(socket: &str) -> String {

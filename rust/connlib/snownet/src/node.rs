@@ -20,7 +20,6 @@ use std::borrow::Cow;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
-use std::marker::PhantomData;
 use std::mem;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
@@ -45,8 +44,36 @@ pub type ServerNode<TId, RId> = Node<Server, TId, RId>;
 /// Manages a set of wireguard connections for a client.
 pub type ClientNode<TId, RId> = Node<Client, TId, RId>;
 
-pub enum Server {}
-pub enum Client {}
+#[non_exhaustive]
+pub struct Server {}
+
+#[non_exhaustive]
+pub struct Client {}
+
+trait Mode {
+    fn new() -> Self;
+    fn is_client(&self) -> bool;
+}
+
+impl Mode for Server {
+    fn is_client(&self) -> bool {
+        false
+    }
+
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Mode for Client {
+    fn is_client(&self) -> bool {
+        true
+    }
+
+    fn new() -> Self {
+        Self {}
+    }
+}
 
 /// A node within a `snownet` network maintains connections to several other nodes.
 ///
@@ -96,7 +123,7 @@ pub struct Node<T, TId, RId> {
 
     stats: NodeStats,
 
-    marker: PhantomData<T>,
+    mode: T,
     rng: StdRng,
 }
 
@@ -118,10 +145,12 @@ pub enum Error {
     BadLocalAddress(#[from] str0m::error::IceError),
 }
 
+#[expect(private_bounds, reason = "We don't want `Mode` to be public API")]
 impl<T, TId, RId> Node<T, TId, RId>
 where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
+    T: Mode,
 {
     pub fn new(seed: [u8; 32]) -> Self {
         let mut rng = StdRng::from_seed(seed);
@@ -133,7 +162,7 @@ where
             session_id: SessionId::new(*public_key),
             private_key,
             public_key: *public_key,
-            marker: Default::default(),
+            mode: T::new(),
             index: IndexLfsr::default(),
             rate_limiter: Arc::new(RateLimiter::new(public_key, HANDSHAKE_RATE_LIMIT)),
             host_candidates: Default::default(),
@@ -187,6 +216,65 @@ where
 
     pub fn num_connections(&self) -> usize {
         self.connections.len()
+    }
+
+    /// Upserts a connection to the given remote.
+    ///
+    /// If we already have a connection with the same ICE credentials, this does nothing.
+    /// Otherwise, the existing connection is discarded and a new one will be created.
+    #[tracing::instrument(level = "info", skip_all, fields(%cid))]
+    pub fn upsert_connection(
+        &mut self,
+        cid: TId,
+        remote: PublicKey,
+        session_key: Secret<[u8; 32]>,
+        local_creds: Credentials,
+        remote_creds: Credentials,
+        now: Instant,
+    ) {
+        let local_creds = local_creds.into();
+        let remote_creds = remote_creds.into();
+
+        if self.connections.initial.contains_key(&cid) {
+            debug_assert!(false, "The new `upsert_connection` API is incompatible with the previous `new_connection` API");
+            return;
+        }
+
+        if self
+            .connections
+            .get_established_mut(&cid)
+            .is_some_and(|c| c.agent.local_credentials() == &local_creds)
+        {
+            tracing::debug!("Already got a connection");
+            return;
+        }
+
+        let selected_relay = self.sample_relay();
+
+        let mut agent = new_agent();
+        agent.set_controlling(self.mode.is_client());
+        agent.set_local_credentials(local_creds);
+        agent.set_remote_credentials(remote_creds);
+
+        self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
+
+        let connection = self.init_connection(
+            cid,
+            agent,
+            remote,
+            *session_key.expose_secret(),
+            selected_relay,
+            now,
+            now,
+        );
+
+        let existing = self.connections.established.insert(cid, connection);
+
+        if existing.is_some() {
+            tracing::info!("Replaced existing connection");
+        } else {
+            tracing::info!("Created new connection");
+        }
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -853,6 +941,8 @@ where
     /// The returned [`Offer`] must be passed to the remote via a signalling channel.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     #[must_use]
+    #[deprecated]
+    #[expect(deprecated)]
     pub fn new_connection(&mut self, cid: TId, intent_sent_at: Instant, now: Instant) -> Offer {
         if self.connections.initial.remove(&cid).is_some() {
             tracing::info!("Replacing existing initial connection");
@@ -902,6 +992,8 @@ where
 
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
+    #[deprecated]
+    #[expect(deprecated)]
     pub fn accept_answer(&mut self, cid: TId, remote: PublicKey, answer: Answer, now: Instant) {
         let Some(initial) = self.connections.initial.remove(&cid) else {
             tracing::debug!("No initial connection state, ignoring answer"); // This can happen if the connection setup timed out.
@@ -948,6 +1040,8 @@ where
     /// The returned [`Answer`] must be passed to the remote via a signalling channel.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     #[must_use]
+    #[deprecated]
+    #[expect(deprecated)]
     pub fn accept_connection(
         &mut self,
         cid: TId,
@@ -1334,12 +1428,14 @@ fn remove_local_candidate<TId>(
     }
 }
 
+#[deprecated]
 pub struct Offer {
     /// The Wireguard session key for a connection.
     pub session_key: Secret<[u8; 32]>,
     pub credentials: Credentials,
 }
 
+#[deprecated]
 pub struct Answer {
     pub credentials: Credentials,
 }
@@ -1349,6 +1445,16 @@ pub struct Credentials {
     pub username: String,
     /// The ICE password.
     pub password: String,
+}
+
+#[doc(hidden)] // Not public API.
+impl From<Credentials> for str0m::IceCreds {
+    fn from(value: Credentials) -> Self {
+        str0m::IceCreds {
+            ufrag: value.username,
+            pass: value.password,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
