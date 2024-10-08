@@ -891,7 +891,7 @@ impl ClientState {
 
         // Limiting the number here as two purposes:
         // 1. We can't handle more than these anyway due to limitations in `smoltcp`.
-        // 2. We need to allocate a buffer for each one. If we don't limit these, definining a large number of DNS servers would be a memory-DoS vector.
+        // 2. We need to allocate a buffer for each one. If we don't limit these, defining a large number of DNS servers would be a memory-DoS vector.
         let tcp_listen_endpoints = tcp_listen_endpoints.take(smoltcp::config::IFACE_MAX_ADDR_COUNT);
 
         // Create a bunch of sockets per address so we can serve multiple clients at once.

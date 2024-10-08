@@ -53,7 +53,7 @@ pub(crate) struct RecursiveQuery {
     pub transport: Transport,
 }
 
-/// A respose to a [`RecursiveQuery`].
+/// A response to a [`RecursiveQuery`].
 #[derive(Debug)]
 pub(crate) struct RecursiveResponse {
     pub server: SocketAddr,
