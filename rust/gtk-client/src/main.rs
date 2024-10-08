@@ -94,11 +94,14 @@ fn main() -> Result<()> {
 
     let ui_cell = Rc::new(RefCell::new(None));
     let ui_cell_2 = ui_cell.clone();
+    // Must be `mpsc` to satisfy `connect_activate`'s signature
     let (ui_ready_tx, ui_ready_rx) = mpsc::channel(1);
     app.connect_activate(move |app| match build_ui(app) {
         Ok(ui) => {
             *ui_cell_2.borrow_mut() = Some(ui);
-            ui_ready_tx.try_send(()).unwrap();
+            ui_ready_tx
+                .try_send(())
+                .expect("Should be able to signal that the UI is ready");
         }
         Err(error) => {
             tracing::error!(?error, "`build_ui` failed");
@@ -107,10 +110,6 @@ fn main() -> Result<()> {
     });
 
     gtk::init()?;
-    let tray_icon = TrayIconBuilder::new()
-        .with_tooltip(TOOLTIP)
-        .with_icon(icon_to_native_icon(&Icon::default()))
-        .build()?;
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(100);
 
@@ -142,15 +141,12 @@ fn main() -> Result<()> {
         updates_rx,
     ));
 
-    let l = MainThreadLoop {
-        app: app.clone(),
-        last_icon_set: Default::default(),
+    glib::spawn_future_local(run_main_thread_loop(
+        app.clone(),
         main_rx,
-        tray_icon,
         ui_cell,
         ui_ready_rx,
-    };
-    glib::spawn_future_local(l.run());
+    ));
 
     if app.run() != 0.into() {
         anyhow::bail!("GTK main loop returned non-zero exit code");
@@ -223,6 +219,34 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
     }
 }
 
+/// Waits for the UI to be built and then starts the main thread loop.
+///
+/// This function typically never returns, GLib just stops polling it when the GTK app quits
+async fn run_main_thread_loop(
+    app: gtk::Application,
+    main_rx: mpsc::Receiver<MainThreadReq>,
+    ui_cell: Rc<RefCell<Option<Ui>>>,
+    mut ui_ready_rx: mpsc::Receiver<()>,
+) -> Result<std::convert::Infallible> {
+    let tray_icon = TrayIconBuilder::new()
+        .with_tooltip(TOOLTIP)
+        .with_icon(icon_to_native_icon(&Icon::default()))
+        .build()?;
+    ui_ready_rx.recv().await.unwrap();
+    let ui = ui_cell
+        .take()
+        .expect("UI should have been built before we got `ui_ready` signal");
+    let l = MainThreadLoop {
+        app,
+        last_icon_set: Default::default(),
+        main_rx,
+        tray_icon,
+        ui,
+    };
+    l.run().await;
+    unreachable!()
+}
+
 /// Handles messages from other tasks / thread to our GTK main thread, such as quitting the app and changing the tray menu.
 #[must_use]
 struct MainThreadLoop {
@@ -230,16 +254,12 @@ struct MainThreadLoop {
     last_icon_set: Icon,
     main_rx: mpsc::Receiver<MainThreadReq>,
     tray_icon: tray_icon::TrayIcon,
-    ui_cell: Rc<RefCell<Option<Ui>>>,
-    ui_ready_rx: mpsc::Receiver<()>,
+    ui: Ui,
 }
 
 impl MainThreadLoop {
     /// Handle messages that must be handled on the main thread where GTK is
-    ///
-    /// This function typically never returns, GLib just stops polling it when the GTK app quits
     async fn run(mut self) {
-        self.ui_ready_rx.recv().await.unwrap();
         while let Some(req) = self.main_rx.recv().await {
             if let Err(error) = self.handle_req(req) {
                 tracing::error!(?error, "`MainThreadLoop::handle_req` failed");
@@ -252,14 +272,10 @@ impl MainThreadLoop {
             MainThreadReq::Quit => self.app.quit(),
             MainThreadReq::SetTrayIcon(icon) => self.set_icon(icon)?,
             MainThreadReq::SetTrayMenu(app_state) => self.set_tray_menu(*app_state)?,
-            MainThreadReq::ShowWindow(window) => {
-                if let Some(ref ui) = *self.ui_cell.borrow() {
-                    match window {
-                        common::system_tray::Window::About => ui.about_win.show_all(),
-                        common::system_tray::Window::Settings => ui.settings_win.show_all(),
-                    }
-                }
-            }
+            MainThreadReq::ShowWindow(window) => match window {
+                common::system_tray::Window::About => self.ui.about_win.show_all(),
+                common::system_tray::Window::Settings => self.ui.settings_win.show_all(),
+            },
         }
         Ok(())
     }
