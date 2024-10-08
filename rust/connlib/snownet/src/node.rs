@@ -346,9 +346,6 @@ where
             .get_established_mut(&connection)
             .ok_or(Error::NotConnected)?;
 
-        // Must bail early if we don't have a socket yet to avoid running into WG timeouts.
-        let socket = conn.socket().ok_or(Error::NotConnected)?;
-
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
             .encapsulate(packet.packet(), &mut buffer.inner[4..], now)?
@@ -361,7 +358,23 @@ where
         let packet_start = 4;
         let packet_end = 4 + packet_len;
 
-        match socket {
+        let socket = match &mut conn.state {
+            ConnectionState::Connecting { buffered, .. } => {
+                buffered.push(buffer.inner[packet_start..packet_end].to_vec());
+                let num_buffered = buffered.len();
+
+                let _guard = conn.span.enter();
+
+                tracing::debug!(%num_buffered, "ICE is still in progress, buffering WG handshake");
+
+                return Ok(None);
+            }
+            ConnectionState::Connected { peer_socket, .. } => peer_socket,
+            ConnectionState::Idle { peer_socket } => peer_socket,
+            ConnectionState::Failed => return Err(Error::NotConnected),
+        };
+
+        match *socket {
             PeerSocket::Direct {
                 dest: remote,
                 source,
@@ -1524,6 +1537,8 @@ enum ConnectionState<RId> {
         ///
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
         /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
+        ///
+        /// It can also happen if we attempt to encapsulate a packet prior to the WireGuard handshake which triggers the creation of a WireGuard handshake initiation packet.
         buffered: RingBuffer<Vec<u8>>,
     },
     /// A socket has been nominated.
@@ -1785,6 +1800,10 @@ where
 
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
                         ConnectionState::Connecting { buffered, .. } => {
+                            let num_buffered = buffered.len();
+
+                            tracing::debug!(%num_buffered, "Flushing packets buffered during ICE");
+
                             transmits.extend(buffered.into_iter().flat_map(|packet| {
                                 make_owned_transmit(remote_socket, &packet, allocations, now)
                             }));
