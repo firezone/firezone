@@ -525,7 +525,9 @@ impl smoltcp::phy::TxToken for SmolTxToken {
 
         let mut ip_packet = IpPacket::new(ip_packet_buf, len).unwrap();
         ip_packet.update_checksum();
-        self.outbound_packet_tx.try_send(ip_packet).unwrap();
+        self.outbound_packet_tx
+            .try_send(ip_packet)
+            .expect("Each `Sender` instance guarantees 1 slot in the channel");
 
         result
     }
