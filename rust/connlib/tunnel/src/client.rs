@@ -579,7 +579,7 @@ impl ClientState {
                 .map(|q| q.into_qname())
                 .map(tracing::field::display);
 
-            tracing::warn!(server = %from, domain, "Upstream DNS server had to truncate response");
+            tracing::debug!(server = %from, domain, "Upstream DNS server had to truncate response");
         }
 
         tracing::trace!(server = %from, %query_id, "Received recursive DNS response");
