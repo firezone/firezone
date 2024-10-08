@@ -113,11 +113,19 @@ pub(crate) fn relays(
 /// We make sure to always have at least 1 IPv4 and 1 IPv6 DNS server.
 pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeMap<DnsServerId, Host<RefDns>>> {
     let ip4_dns_servers = collection::btree_set(
-        any::<Ipv4Addr>().prop_map(|ip| SocketAddr::from((ip, 53))),
+        any::<Ipv4Addr>()
+            .prop_filter("must not be in sentinel IP range", |ip| {
+                !crate::client::DNS_SENTINELS_V4.contains(*ip)
+            })
+            .prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
     );
     let ip6_dns_servers = collection::btree_set(
-        any::<Ipv6Addr>().prop_map(|ip| SocketAddr::from((ip, 53))),
+        any::<Ipv6Addr>()
+            .prop_filter("must not be in sentinel IP range", |ip| {
+                !crate::client::DNS_SENTINELS_V6.contains(*ip)
+            })
+            .prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
     );
 
