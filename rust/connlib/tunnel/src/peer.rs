@@ -382,7 +382,7 @@ impl ClientOnGateway {
         for (addr, TranslationState { resource_id, .. }) in &self.permanent_translations {
             let mut filter_engine = FilterEngine::empty();
             // Empty filters means permit all
-            let filters = self.resources.get(&resource_id).unwrap().filters();
+            let filters = self.resources.get(resource_id).unwrap().filters();
 
             if filters.is_empty() {
                 filter_engine.permit_all();
