@@ -1,14 +1,10 @@
 use crate::utils::earliest;
+use crate::{messages::gateway::ResourceDescription, peer_store::PeerStore};
 use crate::{
-    messages::{gateway::ResourceDescription, Answer, Key, Offer},
-    peer_store::PeerStore,
-};
-use crate::{
-    messages::{IceCredentials, ResolveRequest, SecretKey},
+    messages::{IceCredentials, SecretKey},
     peer::ClientOnGateway,
 };
 use crate::{p2p_control, GatewayEvent, GatewayTunnel};
-use anyhow::Context;
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, DomainName, RelayId, ResourceId};
@@ -65,57 +61,8 @@ impl GatewayTunnel {
         )
     }
 
-    /// Accept a connection request from a client.
-    #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
-    pub fn accept(
-        &mut self,
-        client_id: ClientId,
-        key: Secret<Key>,
-        offer: Offer,
-        client: PublicKey,
-    ) -> Answer {
-        self.role_state.accept(
-            client_id,
-            snownet::Offer {
-                session_key: key.expose_secret().0.into(),
-                credentials: snownet::Credentials {
-                    username: offer.username,
-                    password: offer.password,
-                },
-            },
-            client,
-            Instant::now(),
-        )
-    }
-
     pub fn cleanup_connection(&mut self, id: &ClientId) {
         self.role_state.peers.remove(id);
-    }
-
-    pub fn allow_access(
-        &mut self,
-        client: ClientId,
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-        dns_resource_nat: Option<DnsResourceNatEntry>,
-        expires_at: Option<DateTime<Utc>>,
-        resource: ResourceDescription,
-    ) -> anyhow::Result<()> {
-        let resource_id = resource.id();
-
-        self.role_state
-            .allow_access(client, ipv4, ipv6, expires_at, resource);
-
-        if let Some(entry) = dns_resource_nat {
-            self.role_state.create_dns_resource_nat_entry(
-                client,
-                resource_id,
-                entry,
-                Instant::now(),
-            )?;
-        }
-
-        Ok(())
     }
 
     pub fn refresh_translation(
@@ -185,23 +132,6 @@ pub struct GatewayState {
 
     buffered_events: VecDeque<GatewayEvent>,
     buffered_transmits: VecDeque<Transmit<'static>>,
-}
-
-#[derive(Debug)]
-pub struct DnsResourceNatEntry {
-    domain: DomainName,
-    proxy_ips: Vec<IpAddr>,
-    resolved_ips: Vec<IpAddr>,
-}
-
-impl DnsResourceNatEntry {
-    pub fn new(request: ResolveRequest, resolved_ips: Vec<IpAddr>) -> Self {
-        Self {
-            domain: request.name,
-            proxy_ips: request.proxy_ips,
-            resolved_ips,
-        }
-    }
 }
 
 impl GatewayState {
@@ -294,23 +224,6 @@ impl GatewayState {
     pub fn remove_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String, now: Instant) {
         self.node
             .remove_remote_candidate(conn_id, ice_candidate, now);
-    }
-
-    /// Accept a connection request from a client.
-    #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
-    pub fn accept(
-        &mut self,
-        client_id: ClientId,
-        offer: snownet::Offer,
-        client: PublicKey,
-        now: Instant,
-    ) -> Answer {
-        let answer = self.node.accept_connection(client_id, offer, client, now);
-
-        Answer {
-            username: answer.credentials.username,
-            password: answer.credentials.password,
-        }
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%client_id))]
@@ -415,7 +328,7 @@ impl GatewayState {
         self.buffered_transmits.push_back(transmit);
     }
 
-    pub fn allow_access(
+    fn allow_access(
         &mut self,
         client: ClientId,
         ipv4: Ipv4Addr,
@@ -433,27 +346,6 @@ impl GatewayState {
         self.peers.add_ip(&client, &ipv6.into());
 
         tracing::info!(%client, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
-    }
-
-    pub fn create_dns_resource_nat_entry(
-        &mut self,
-        client: ClientId,
-        resource: ResourceId,
-        entry: DnsResourceNatEntry,
-        now: Instant,
-    ) -> anyhow::Result<()> {
-        self.peers
-            .get_mut(&client)
-            .context("Unknown peer")?
-            .assign_translations(
-                entry.domain,
-                resource,
-                &entry.resolved_ips,
-                entry.proxy_ips,
-                now,
-            )?;
-
-        Ok(())
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {

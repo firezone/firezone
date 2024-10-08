@@ -5,11 +5,10 @@ use connlib_model::{ClientId, ResourceId};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use firezone_tunnel::messages::gateway::{
-    ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages, IngressMessages,
-    RejectAccess,
+    ClientIceCandidates, ClientsIceCandidates, EgressMessages, IngressMessages, RejectAccess,
 };
-use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, Interface, RelaysPresence};
-use firezone_tunnel::{DnsResourceNatEntry, GatewayTunnel, PendingSetupNatRequest};
+use firezone_tunnel::messages::{Interface, RelaysPresence};
+use firezone_tunnel::{GatewayTunnel, PendingSetupNatRequest};
 use futures::channel::mpsc;
 use futures_bounded::Timeout;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
@@ -32,8 +31,6 @@ static_assertions::const_assert!(
 
 #[derive(Debug, Clone)]
 enum ResolveTrigger {
-    RequestConnection(firezone_tunnel::messages::gateway::RequestConnection), // Deprecated
-    AllowAccess(firezone_tunnel::messages::gateway::AllowAccess),             // Deprecated
     Refresh(DomainName, ClientId, ResourceId),
     SetupNat(PendingSetupNatRequest),
 }
@@ -79,14 +76,6 @@ impl Eventloop {
             }
 
             match self.resolve_tasks.poll_unpin(cx) {
-                Poll::Ready((result, ResolveTrigger::RequestConnection(req))) => {
-                    self.accept_connection(result, req);
-                    continue;
-                }
-                Poll::Ready((result, ResolveTrigger::AllowAccess(req))) => {
-                    self.allow_access(result, req);
-                    continue;
-                }
                 Poll::Ready((result, ResolveTrigger::Refresh(name, conn_id, resource_id))) => {
                     self.refresh_translation(result, conn_id, resource_id, name);
                     continue;
@@ -210,36 +199,6 @@ impl Eventloop {
                     .send(PHOENIX_TOPIC, EgressMessages::AuthorizeFlowOk { reference });
             }
             phoenix_channel::Event::InboundMessage {
-                msg: IngressMessages::RequestConnection(req),
-                ..
-            } => {
-                if self
-                    .resolve_tasks
-                    .try_push(
-                        resolve(req.client.payload.domain.as_ref().map(|r| r.name.clone())),
-                        ResolveTrigger::RequestConnection(req),
-                    )
-                    .is_err()
-                {
-                    tracing::warn!("Too many connections requests, dropping existing one");
-                };
-            }
-            phoenix_channel::Event::InboundMessage {
-                msg: IngressMessages::AllowAccess(req),
-                ..
-            } => {
-                if self
-                    .resolve_tasks
-                    .try_push(
-                        resolve(req.payload.as_ref().map(|r| r.name.clone())),
-                        ResolveTrigger::AllowAccess(req),
-                    )
-                    .is_err()
-                {
-                    tracing::warn!("Too many allow access requests, dropping existing one");
-                };
-            }
-            phoenix_channel::Event::InboundMessage {
                 msg:
                     IngressMessages::IceCandidates(ClientIceCandidates {
                         client_id,
@@ -312,72 +271,6 @@ impl Eventloop {
             | phoenix_channel::Event::HeartbeatSent
             | phoenix_channel::Event::JoinedRoom { .. } => {}
         }
-    }
-
-    pub fn accept_connection(
-        &mut self,
-        result: Result<Vec<IpAddr>, Timeout>,
-        req: firezone_tunnel::messages::gateway::RequestConnection,
-    ) {
-        let addresses = result
-            .inspect_err(|e| tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request: {e}"))
-            .unwrap_or_default();
-
-        let answer = self.tunnel.accept(
-            req.client.id,
-            req.client.peer.preshared_key,
-            req.client.payload.ice_parameters,
-            PublicKey::from(req.client.peer.public_key.0),
-        );
-
-        if let Err(e) = self.tunnel.allow_access(
-            req.client.id,
-            req.client.peer.ipv4,
-            req.client.peer.ipv6,
-            req.client
-                .payload
-                .domain
-                .map(|r| DnsResourceNatEntry::new(r, addresses)),
-            req.expires_at,
-            req.resource,
-        ) {
-            let client = req.client.id;
-
-            self.tunnel.cleanup_connection(&client);
-            tracing::debug!(%client, "Connection request failed: {e:#}");
-            return;
-        }
-
-        self.portal.send(
-            PHOENIX_TOPIC,
-            EgressMessages::ConnectionReady(ConnectionReady {
-                reference: req.reference,
-                gateway_payload: GatewayResponse::ConnectionAccepted(ConnectionAccepted {
-                    ice_parameters: answer,
-                }),
-            }),
-        );
-    }
-
-    pub fn allow_access(
-        &mut self,
-        result: Result<Vec<IpAddr>, Timeout>,
-        req: firezone_tunnel::messages::gateway::AllowAccess,
-    ) {
-        let addresses = result
-            .inspect_err(|e| tracing::debug!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request: {e}"))
-            .unwrap_or_default();
-
-        if let Err(e) = self.tunnel.allow_access(
-            req.client_id,
-            req.client_ipv4,
-            req.client_ipv6,
-            req.payload.map(|r| DnsResourceNatEntry::new(r, addresses)),
-            req.expires_at,
-            req.resource,
-        ) {
-            tracing::warn!(client = %req.client_id, "Allow access request failed: {e:#}");
-        };
     }
 
     pub fn refresh_translation(

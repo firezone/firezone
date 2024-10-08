@@ -3,7 +3,6 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
 use connlib_model::RelayId;
-use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -12,66 +11,6 @@ pub mod gateway;
 mod key;
 
 pub use key::{Key, SecretKey};
-
-use crate::DomainName;
-
-/// Represents a wireguard peer.
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct Peer {
-    /// Keepalive: How often to send a keep alive message.
-    pub persistent_keepalive: Option<u16>,
-    /// Peer's public key.
-    pub public_key: Key,
-    /// Peer's Ipv4 (only 1 ipv4 per peer for now and mandatory).
-    pub ipv4: Ipv4Addr,
-    /// Peer's Ipv6 (only 1 ipv6 per peer for now and mandatory).
-    pub ipv6: Ipv6Addr,
-    /// Preshared key for the given peer.
-    pub preshared_key: SecretKey,
-}
-
-impl Peer {
-    pub fn ips(&self) -> Vec<IpNetwork> {
-        vec![self.ipv4.into(), self.ipv6.into()]
-    }
-}
-
-impl PartialEq for Peer {
-    fn eq(&self, other: &Self) -> bool {
-        self.persistent_keepalive.eq(&other.persistent_keepalive)
-            && self.public_key.eq(&other.public_key)
-            && self.ipv4.eq(&other.ipv4)
-            && self.ipv6.eq(&other.ipv6)
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct ResolveRequest {
-    pub name: DomainName,
-    pub proxy_ips: Vec<IpAddr>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct Answer {
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct Offer {
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct ConnectionAccepted {
-    pub ice_parameters: Answer,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub enum GatewayResponse {
-    ConnectionAccepted(ConnectionAccepted),
-}
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 pub struct IceCredentials {
