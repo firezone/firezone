@@ -436,6 +436,10 @@ impl ClientOnGateway {
         Ok(Some(packet))
     }
 
+    pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {
+        self.resources.contains_key(&resource)
+    }
+
     fn ensure_allowed_src(&self, packet: &IpPacket) -> anyhow::Result<()> {
         let src = packet.source();
 

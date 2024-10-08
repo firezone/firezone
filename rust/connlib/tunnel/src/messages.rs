@@ -116,7 +116,6 @@ pub struct DomainResponse {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ConnectionAccepted {
     pub ice_parameters: Answer,
-    pub domain_response: Option<DomainResponse>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -128,6 +127,8 @@ pub struct ResourceAccepted {
 pub enum GatewayResponse {
     ConnectionAccepted(ConnectionAccepted),
     ResourceAccepted(ResourceAccepted),
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
 pub struct IceCredentials {
     pub username: String,

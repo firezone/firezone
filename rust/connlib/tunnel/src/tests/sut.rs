@@ -382,7 +382,14 @@ impl TunnelTest {
                     continue;
                 };
 
-                on_gateway_event(*id, event, &mut self.client, now);
+                on_gateway_event(
+                    *id,
+                    event,
+                    &mut self.client,
+                    gateway,
+                    &ref_state.global_dns_records,
+                    now,
+                );
                 continue 'outer;
             }
             if let Some(event) = self.client.exec_mut(|c| c.sut.poll_event()) {
@@ -819,6 +826,8 @@ fn on_gateway_event(
     src: GatewayId,
     event: GatewayEvent,
     client: &mut Host<SimClient>,
+    gateway: &mut Host<SimGateway>,
+    global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
     now: Instant,
 ) {
     match event {
@@ -833,5 +842,16 @@ fn on_gateway_event(
             }
         }),
         GatewayEvent::RefreshDns { .. } => todo!(),
+        GatewayEvent::ResolveDns(r) => {
+            let resolved_ips = global_dns_records
+                .get(r.domain())
+                .cloned()
+                .unwrap_or_default();
+
+            gateway.exec_mut(|g| {
+                g.sut
+                    .setup_dns_resource_nat(r, Vec::from_iter(resolved_ips), now)
+            })
+        }
     }
 }
