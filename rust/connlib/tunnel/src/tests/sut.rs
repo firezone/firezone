@@ -709,6 +709,7 @@ impl TunnelTest {
                     c.ipv6_routes = config.ipv6_routes;
                 });
             }
+            #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
             ClientEvent::RequestConnection {
                 gateway_id,
                 offer,
