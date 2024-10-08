@@ -21,12 +21,12 @@ defmodule Domain.Accounts do
 
   def all_active_paid_accounts! do
     ["Team", "Enterprise"]
-    |> Enum.flat_map(&all_active_accounts_by_type!/1)
+    |> Enum.flat_map(&all_active_accounts_by_subscription_name!/1)
   end
 
-  def all_active_accounts_by_type!(account_type) do
+  def all_active_accounts_by_subscription_name!(subscription_name) do
     Account.Query.not_disabled()
-    |> Account.Query.by_stripe_product_name(account_type)
+    |> Account.Query.by_stripe_product_name(subscription_name)
     |> Repo.all()
   end
 

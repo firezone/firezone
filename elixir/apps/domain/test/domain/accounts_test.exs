@@ -64,8 +64,8 @@ defmodule Domain.AccountsTest do
     end
   end
 
-  describe "all_active_accounts_by_type!/1" do
-    test "returns all active accounts for given type" do
+  describe "all_active_accounts_by_subscription_name!/1" do
+    test "returns all active accounts for given subscription name" do
       Fixtures.Accounts.create_account()
       Fixtures.Accounts.create_account() |> Fixtures.Accounts.change_to_team()
 
@@ -73,7 +73,7 @@ defmodule Domain.AccountsTest do
       |> Fixtures.Accounts.change_to_team()
       |> Fixtures.Accounts.disable_account()
 
-      accounts = all_active_accounts_by_type!("Team")
+      accounts = all_active_accounts_by_subscription_name!("Team")
       assert length(accounts) == 1
     end
 
@@ -84,7 +84,7 @@ defmodule Domain.AccountsTest do
       |> Fixtures.Accounts.change_to_team()
       |> Fixtures.Accounts.disable_account()
 
-      accounts = all_active_accounts_by_type!("Team")
+      accounts = all_active_accounts_by_subscription_name!("Team")
       assert length(accounts) == 0
     end
   end
