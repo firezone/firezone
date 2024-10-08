@@ -6,6 +6,7 @@ pub use sentry::{
     end_session_with_status, start_transaction, types::protocol::v7::SessionStatus, Breadcrumb,
     Hub, Level, TransactionContext,
 };
+pub use sentry_anyhow::capture_anyhow;
 
 pub struct Dsn(&'static str);
 
