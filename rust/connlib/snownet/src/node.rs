@@ -13,7 +13,7 @@ use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacket
 use itertools::Itertools as _;
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
-use rand::{random, Rng, SeedableRng};
+use rand::SeedableRng;
 use secrecy::{ExposeSecret, Secret};
 use sha2::Digest;
 use std::borrow::Cow;
@@ -24,7 +24,7 @@ use std::mem;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{collections::VecDeque, net::SocketAddr, sync::Arc};
-use str0m::ice::{IceAgent, IceAgentEvent, IceCreds, StunMessage, StunPacket};
+use str0m::ice::{IceAgent, IceAgentEvent, StunMessage, StunPacket};
 use str0m::net::Protocol;
 use str0m::{Candidate, CandidateKind, IceConnectionState};
 use stun_codec::rfc5389::attributes::{Realm, Username};
@@ -234,11 +234,6 @@ where
     ) {
         let local_creds = local_creds.into();
         let remote_creds = remote_creds.into();
-
-        if self.connections.initial.contains_key(&cid) {
-            debug_assert!(false, "The new `upsert_connection` API is incompatible with the previous `new_connection` API");
-            return;
-        }
 
         if self
             .connections
@@ -504,9 +499,6 @@ where
     pub fn poll_timeout(&mut self) -> Option<Instant> {
         let mut connection_timeout = None;
 
-        for (_, c) in self.connections.iter_initial_mut() {
-            connection_timeout = earliest(connection_timeout, c.poll_timeout());
-        }
         for (_, c) in self.connections.iter_established_mut() {
             connection_timeout = earliest(connection_timeout, c.poll_timeout());
         }
@@ -544,10 +536,6 @@ where
             connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
         }
 
-        for (id, connection) in self.connections.initial.iter_mut() {
-            connection.handle_timeout(id, now);
-        }
-
         let next_reset = *self.next_rate_limiter_reset.get_or_insert(now);
 
         if now >= next_reset {
@@ -564,8 +552,7 @@ where
                 }
                 None => true,
             });
-        self.connections
-            .check_relays_available(&self.allocations, &mut self.rng);
+        self.connections.check_relays_available(&self.allocations);
         self.connections.gc(&mut self.pending_events);
     }
 
@@ -930,165 +917,6 @@ where
     }
 }
 
-impl<TId, RId> Node<Client, TId, RId>
-where
-    TId: Eq + Hash + Copy + Ord + fmt::Display,
-    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
-{
-    /// Create a new connection indexed by the given ID.
-    ///
-    /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
-    /// The returned [`Offer`] must be passed to the remote via a signalling channel.
-    #[tracing::instrument(level = "info", skip_all, fields(%cid))]
-    #[must_use]
-    #[deprecated]
-    #[expect(deprecated)]
-    pub fn new_connection(&mut self, cid: TId, intent_sent_at: Instant, now: Instant) -> Offer {
-        if self.connections.initial.remove(&cid).is_some() {
-            tracing::info!("Replacing existing initial connection");
-        };
-
-        if self.connections.established.remove(&cid).is_some() {
-            tracing::info!("Replacing existing established connection");
-        };
-
-        let mut agent = new_agent();
-        agent.set_controlling(true);
-
-        let session_key = Secret::new(random());
-        let ice_creds = agent.local_credentials();
-
-        let params = Offer {
-            session_key: session_key.clone(),
-            credentials: Credentials {
-                username: ice_creds.ufrag.clone(),
-                password: ice_creds.pass.clone(),
-            },
-        };
-
-        let initial_connection = InitialConnection {
-            agent,
-            session_key,
-            created_at: now,
-            intent_sent_at,
-            relay: self.sample_relay(),
-            is_failed: false,
-            span: info_span!("connection", %cid),
-        };
-        let duration_since_intent = initial_connection.duration_since_intent(now);
-
-        let existing = self.connections.initial.insert(cid, initial_connection);
-        debug_assert!(existing.is_none());
-
-        tracing::info!(?duration_since_intent, "Establishing new connection");
-
-        params
-    }
-
-    /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
-    #[tracing::instrument(level = "info", skip_all, fields(%cid))]
-    #[deprecated]
-    #[expect(deprecated)]
-    pub fn accept_answer(&mut self, cid: TId, remote: PublicKey, answer: Answer, now: Instant) {
-        let Some(initial) = self.connections.initial.remove(&cid) else {
-            tracing::debug!("No initial connection state, ignoring answer"); // This can happen if the connection setup timed out.
-            return;
-        };
-
-        let mut agent = initial.agent;
-        agent.set_remote_credentials(IceCreds {
-            ufrag: answer.credentials.username,
-            pass: answer.credentials.password,
-        });
-
-        let selected_relay = initial.relay;
-
-        self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
-
-        let connection = self.init_connection(
-            cid,
-            agent,
-            remote,
-            *initial.session_key.expose_secret(),
-            selected_relay,
-            initial.intent_sent_at,
-            now,
-        );
-        let duration_since_intent = connection.duration_since_intent(now);
-
-        let existing = self.connections.established.insert(cid, connection);
-
-        tracing::info!(?duration_since_intent, remote = %hex::encode(remote.as_bytes()), "Signalling protocol completed");
-
-        debug_assert!(existing.is_none());
-    }
-}
-
-impl<TId, RId> Node<Server, TId, RId>
-where
-    TId: Eq + Hash + Copy + Ord + fmt::Display,
-    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
-{
-    /// Accept a new connection indexed by the given ID.
-    ///
-    /// Out of all configured STUN and TURN servers, the connection will only use the ones provided here.
-    /// The returned [`Answer`] must be passed to the remote via a signalling channel.
-    #[tracing::instrument(level = "info", skip_all, fields(%cid))]
-    #[must_use]
-    #[deprecated]
-    #[expect(deprecated)]
-    pub fn accept_connection(
-        &mut self,
-        cid: TId,
-        offer: Offer,
-        remote: PublicKey,
-        now: Instant,
-    ) -> Answer {
-        debug_assert!(
-            !self.connections.initial.contains_key(&cid),
-            "server to not use `initial_connections`"
-        );
-
-        if self.connections.established.remove(&cid).is_some() {
-            tracing::info!("Replacing existing established connection");
-        };
-
-        let mut agent = new_agent();
-        agent.set_controlling(false);
-        agent.set_remote_credentials(IceCreds {
-            ufrag: offer.credentials.username,
-            pass: offer.credentials.password,
-        });
-
-        let answer = Answer {
-            credentials: Credentials {
-                username: agent.local_credentials().ufrag.clone(),
-                password: agent.local_credentials().pass.clone(),
-            },
-        };
-
-        let selected_relay = self.sample_relay();
-        self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
-
-        let connection = self.init_connection(
-            cid,
-            agent,
-            remote,
-            *offer.session_key.expose_secret(),
-            selected_relay,
-            now, // Technically, this isn't fully correct because gateways don't send intents so we just use the current time.
-            now,
-        );
-        let existing = self.connections.established.insert(cid, connection);
-
-        debug_assert!(existing.is_none());
-
-        tracing::info!("Created new connection");
-
-        answer
-    }
-}
-
 impl<T, TId, RId> Node<T, TId, RId>
 where
     TId: Eq + Hash + Copy + fmt::Display,
@@ -1134,14 +962,12 @@ where
 }
 
 struct Connections<TId, RId> {
-    initial: BTreeMap<TId, InitialConnection<RId>>,
     established: BTreeMap<TId, Connection<RId>>,
 }
 
 impl<TId, RId> Default for Connections<TId, RId> {
     fn default() -> Self {
         Self {
-            initial: Default::default(),
             established: Default::default(),
         }
     }
@@ -1153,15 +979,6 @@ where
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
     fn gc(&mut self, events: &mut VecDeque<Event<TId>>) {
-        self.initial.retain(|id, conn| {
-            if conn.is_failed {
-                events.push_back(Event::ConnectionFailed(*id));
-                return false;
-            }
-
-            true
-        });
-
         self.established.retain(|id, conn| {
             if conn.is_failed() {
                 events.push_back(Event::ConnectionFailed(*id));
@@ -1172,27 +989,7 @@ where
         });
     }
 
-    fn check_relays_available(
-        &mut self,
-        allocations: &BTreeMap<RId, Allocation>,
-        rng: &mut impl Rng,
-    ) {
-        // For initial connections, we can just update the relay to be used.
-        for (_, c) in self.iter_initial_mut() {
-            if c.relay.is_some_and(|r| allocations.contains_key(&r)) {
-                continue;
-            }
-
-            let _guard = c.span.enter();
-
-            let Some(new_rid) = allocations.keys().copied().choose(rng) else {
-                continue;
-            };
-
-            tracing::info!(old_rid = ?c.relay, %new_rid, "Updating relay");
-            c.relay = Some(new_rid);
-        }
-
+    fn check_relays_available(&mut self, allocations: &BTreeMap<RId, Allocation>) {
         // For established connections, we check if we are currently using the relay.
         for (_, c) in self.iter_established_mut() {
             let _guard = c.span.enter();
@@ -1237,32 +1034,23 @@ where
     }
 
     fn agent_mut(&mut self, id: TId) -> Option<&mut IceAgent> {
-        let maybe_initial_connection = self.initial.get_mut(&id).map(|i| &mut i.agent);
-        let maybe_established_connection = self.established.get_mut(&id).map(|c| &mut c.agent);
-
-        maybe_initial_connection.or(maybe_established_connection)
+        self.established.get_mut(&id).map(|c| &mut c.agent)
     }
 
     fn connecting_agent_mut(&mut self, id: TId) -> Option<(&mut IceAgent, Option<RId>)> {
-        let maybe_initial_connection = self.initial.get_mut(&id).map(|i| (&mut i.agent, i.relay));
-        let maybe_pending_connection = self.established.get_mut(&id).and_then(|c| match c.state {
+        self.established.get_mut(&id).and_then(|c| match c.state {
             ConnectionState::Connecting { relay, .. } => Some((&mut c.agent, relay)),
             ConnectionState::Failed
             | ConnectionState::Idle { .. }
             | ConnectionState::Connected { .. } => None,
-        });
-
-        maybe_initial_connection.or(maybe_pending_connection)
+        })
     }
 
     fn connecting_agents_by_relay_mut(
         &mut self,
         id: RId,
     ) -> impl Iterator<Item = (TId, &mut IceAgent, tracing::span::Entered<'_>)> + '_ {
-        let initial_connections = self.initial.iter_mut().filter_map(move |(cid, i)| {
-            (i.relay? == id).then_some((*cid, &mut i.agent, i.span.enter()))
-        });
-        let pending_connections = self.established.iter_mut().filter_map(move |(cid, c)| {
+        self.established.iter_mut().filter_map(move |(cid, c)| {
             use ConnectionState::*;
 
             match c.state {
@@ -1271,32 +1059,19 @@ where
                 } if relay == id => Some((*cid, &mut c.agent, c.span.enter())),
                 Failed | Idle { .. } | Connecting { .. } | Connected { .. } => None,
             }
-        });
-
-        initial_connections.chain(pending_connections)
+        })
     }
 
     fn agents_mut(
         &mut self,
     ) -> impl Iterator<Item = (TId, &mut IceAgent, tracing::span::Entered<'_>)> {
-        let initial_agents = self
-            .initial
+        self.established
             .iter_mut()
-            .map(|(id, c)| (*id, &mut c.agent, c.span.enter()));
-        let negotiated_agents = self
-            .established
-            .iter_mut()
-            .map(|(id, c)| (*id, &mut c.agent, c.span.enter()));
-
-        initial_agents.chain(negotiated_agents)
+            .map(|(id, c)| (*id, &mut c.agent, c.span.enter()))
     }
 
     fn get_established_mut(&mut self, id: &TId) -> Option<&mut Connection<RId>> {
         self.established.get_mut(id)
-    }
-
-    fn iter_initial_mut(&mut self) -> impl Iterator<Item = (TId, &mut InitialConnection<RId>)> {
-        self.initial.iter_mut().map(|(id, conn)| (*id, conn))
     }
 
     fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
@@ -1308,16 +1083,15 @@ where
     }
 
     fn len(&self) -> usize {
-        self.initial.len() + self.established.len()
+        self.established.len()
     }
 
     fn clear(&mut self) {
-        self.initial.clear();
         self.established.clear();
     }
 
     fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
-        self.initial.keys().chain(self.established.keys()).copied()
+        self.established.keys().copied()
     }
 }
 
@@ -1556,53 +1330,6 @@ impl<'a> Transmit<'a> {
 pub(crate) enum CandidateEvent {
     New(Candidate),
     Invalid(Candidate),
-}
-
-struct InitialConnection<RId> {
-    agent: IceAgent,
-    session_key: Secret<[u8; 32]>,
-
-    /// The fallback relay we sampled for this potential connection.
-    ///
-    /// `None` if we don't have any relays available.
-    relay: Option<RId>,
-
-    created_at: Instant,
-    intent_sent_at: Instant,
-
-    is_failed: bool,
-
-    span: tracing::Span,
-}
-
-impl<RId> InitialConnection<RId> {
-    #[tracing::instrument(level = "debug", skip_all, fields(%cid))]
-    fn handle_timeout<TId>(&mut self, cid: TId, now: Instant)
-    where
-        TId: fmt::Display,
-    {
-        self.agent.handle_timeout(now);
-
-        if now >= self.no_answer_received_timeout() {
-            tracing::info!("Connection setup timed out (no answer received)");
-            self.is_failed = true;
-        }
-    }
-
-    fn poll_timeout(&mut self) -> Option<Instant> {
-        earliest(
-            self.agent.poll_timeout(),
-            Some(self.no_answer_received_timeout()),
-        )
-    }
-
-    fn no_answer_received_timeout(&self) -> Instant {
-        self.created_at + HANDSHAKE_TIMEOUT
-    }
-
-    fn duration_since_intent(&self, now: Instant) -> Duration {
-        now.duration_since(self.intent_sent_at)
-    }
 }
 
 struct Connection<RId> {
