@@ -9,14 +9,16 @@ use super::stub_portal::StubPortal;
 use super::transition::DnsQuery;
 use crate::client::Resource;
 use crate::dns::is_subdomain;
-use crate::gateway::DnsResourceNatEntry;
+use crate::messages::{IceCredentials, Key, SecretKey};
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
 use crate::utils::earliest;
 use crate::{messages::Interface, ClientEvent, GatewayEvent};
-use connlib_model::{ClientId, DomainName, GatewayId, RelayId};
-use secrecy::ExposeSecret as _;
+use connlib_model::{ClientId, DomainName, GatewayId, PublicKey, RelayId};
+use rand::distributions::DistString;
+use rand::SeedableRng;
+use sha2::Digest;
 use snownet::Transmit;
 use std::collections::BTreeSet;
 use std::iter;
@@ -392,13 +394,9 @@ impl TunnelTest {
                 );
                 continue 'outer;
             }
+
             if let Some(event) = self.client.exec_mut(|c| c.sut.poll_event()) {
-                self.on_client_event(
-                    self.client.inner().id,
-                    event,
-                    &ref_state.portal,
-                    &ref_state.global_dns_records,
-                );
+                self.on_client_event(self.client.inner().id, event, &ref_state.portal);
                 continue;
             }
 
@@ -451,6 +449,7 @@ impl TunnelTest {
                 buffered_transmits.push_from(transmit, &self.client, now);
                 continue;
             }
+
             self.client.exec_mut(|sim| {
                 while let Some(packet) = sim.sut.poll_packets() {
                     sim.on_received_packet(packet)
@@ -618,13 +617,7 @@ impl TunnelTest {
         }
     }
 
-    fn on_client_event(
-        &mut self,
-        src: ClientId,
-        event: ClientEvent,
-        portal: &StubPortal,
-        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
-    ) {
+    fn on_client_event(&mut self, src: ClientId, event: ClientEvent, portal: &StubPortal) {
         let now = self.flux_capacitor.now();
 
         match event {
@@ -653,51 +646,49 @@ impl TunnelTest {
                 })
             }
             ClientEvent::ConnectionIntent {
-                resource,
+                resource: resource_id,
                 connected_gateway_ids,
             } => {
-                let (gateway, site) =
-                    portal.handle_connection_intent(resource, connected_gateway_ids);
-
-                self.client
-                    .exec_mut(|c| c.sut.on_routing_details(resource, gateway, site, now))
-                    .unwrap();
-            }
-
-            ClientEvent::RequestAccess {
-                resource_id,
-                gateway_id,
-                maybe_domain,
-            } => {
+                let (gateway_id, site_id) =
+                    portal.handle_connection_intent(resource_id, connected_gateway_ids);
                 let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");
-                let maybe_entry = maybe_domain.and_then(|r| {
-                    let resolved_ips = Vec::from_iter(global_dns_records.get(&r.name).cloned()?);
-
-                    Some(DnsResourceNatEntry::new(r, resolved_ips))
-                });
-
                 let resource = portal.map_client_resource_to_gateway_resource(resource_id);
 
+                let client_key = self.client.inner().sut.public_key();
+                let gateway_key = gateway.inner().sut.public_key();
+                let (preshared_key, client_ice, gateway_ice) =
+                    make_preshared_key_and_ice(client_key, gateway_key);
+
                 gateway.exec_mut(|g| {
-                    g.sut.allow_access(
-                        self.client.inner().id,
+                    g.sut.authorize_flow(
+                        src,
+                        client_key,
+                        preshared_key.clone(),
+                        client_ice.clone(),
+                        gateway_ice.clone(),
                         self.client.inner().sut.tunnel_ip4().unwrap(),
                         self.client.inner().sut.tunnel_ip6().unwrap(),
                         None,
-                        resource.clone(),
-                    );
-                    if let Some(entry) = maybe_entry {
-                        g.sut
-                            .create_dns_resource_nat_entry(
-                                self.client.inner().id,
-                                resource.id(),
-                                entry,
-                                now,
-                            )
-                            .unwrap()
-                    };
+                        resource,
+                        now,
+                    )
                 });
+                if let Err(e) = self.client.exec_mut(|c| {
+                    c.sut.on_create_flow_ok(
+                        resource_id,
+                        gateway_id,
+                        gateway_key,
+                        site_id,
+                        preshared_key,
+                        client_ice,
+                        gateway_ice,
+                        now,
+                    )
+                }) {
+                    tracing::error!("{e:#}")
+                };
             }
+
             ClientEvent::ResourcesChanged { .. } => {
                 tracing::warn!("Unimplemented");
             }
@@ -715,80 +706,6 @@ impl TunnelTest {
                     c.ipv4_routes = config.ipv4_routes;
                     c.ipv6_routes = config.ipv6_routes;
                 });
-            }
-            #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
-            ClientEvent::RequestConnection {
-                gateway_id,
-                offer,
-                preshared_key,
-                resource_id,
-                maybe_domain,
-            } => {
-                let maybe_entry = maybe_domain.and_then(|r| {
-                    let resolved_ips = Vec::from_iter(global_dns_records.get(&r.name).cloned()?);
-
-                    Some(DnsResourceNatEntry::new(r, resolved_ips))
-                });
-                let resource = portal.map_client_resource_to_gateway_resource(resource_id);
-
-                let Some(gateway) = self.gateways.get_mut(&gateway_id) else {
-                    tracing::error!("Unknown gateway");
-                    return;
-                };
-
-                let client_id = self.client.inner().id;
-
-                let answer = gateway
-                    .exec_mut(|g| {
-                        let answer = g.sut.accept(
-                            client_id,
-                            snownet::Offer {
-                                session_key: preshared_key.expose_secret().0.into(),
-                                credentials: snownet::Credentials {
-                                    username: offer.username,
-                                    password: offer.password,
-                                },
-                            },
-                            self.client.inner().sut.public_key(),
-                            now,
-                        );
-                        g.sut.allow_access(
-                            self.client.inner().id,
-                            self.client.inner().sut.tunnel_ip4().unwrap(),
-                            self.client.inner().sut.tunnel_ip6().unwrap(),
-                            None,
-                            resource.clone(),
-                        );
-                        if let Some(entry) = maybe_entry {
-                            g.sut
-                                .create_dns_resource_nat_entry(
-                                    self.client.inner().id,
-                                    resource.id(),
-                                    entry,
-                                    now,
-                                )
-                                .unwrap()
-                        };
-
-                        anyhow::Ok(answer)
-                    })
-                    .unwrap();
-
-                self.client
-                    .exec_mut(|c| {
-                        c.sut.accept_answer(
-                            snownet::Answer {
-                                credentials: snownet::Credentials {
-                                    username: answer.username,
-                                    password: answer.password,
-                                },
-                            },
-                            resource_id,
-                            gateway.inner().sut.public_key(),
-                            now,
-                        )
-                    })
-                    .unwrap();
             }
         }
     }
@@ -820,6 +737,35 @@ impl TunnelTest {
         }
         self.relays = online; // Override all relays.
     }
+}
+
+fn make_preshared_key_and_ice(
+    client_key: PublicKey,
+    gateway_key: PublicKey,
+) -> (SecretKey, IceCredentials, IceCredentials) {
+    let secret_key = SecretKey::new(Key(hkdf("SECRET_KEY_DOMAIN_SEP", client_key, gateway_key)));
+    let client_ice = ice_creds("CLIENT_ICE_DOMAIN_SEP", client_key, gateway_key);
+    let gateway_ice = ice_creds("GATEWAY_ICE_DOMAIN_SEP", client_key, gateway_key);
+
+    (secret_key, client_ice, gateway_ice)
+}
+
+fn ice_creds(domain: &str, client_key: PublicKey, gateway_key: PublicKey) -> IceCredentials {
+    let mut rng = rand::rngs::StdRng::from_seed(hkdf(domain, client_key, gateway_key));
+
+    IceCredentials {
+        username: rand::distributions::Alphanumeric.sample_string(&mut rng, 4),
+        password: rand::distributions::Alphanumeric.sample_string(&mut rng, 12),
+    }
+}
+
+fn hkdf(domain: &str, client_key: PublicKey, gateway_key: PublicKey) -> [u8; 32] {
+    sha2::Sha256::default()
+        .chain_update(domain)
+        .chain_update(client_key.as_bytes())
+        .chain_update(gateway_key.as_bytes())
+        .finalize()
+        .into()
 }
 
 fn on_gateway_event(

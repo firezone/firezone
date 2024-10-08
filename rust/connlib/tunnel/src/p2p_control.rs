@@ -1,6 +1,5 @@
 //! Firezone's P2P control protocol between clients and gateways.
 
-#[cfg_attr(not(test), expect(dead_code, reason = "Will be used soon."))]
 pub mod setup_dns_resource_nat {
     use anyhow::{Context, Result};
     use connlib_model::{DomainName, ResourceId};

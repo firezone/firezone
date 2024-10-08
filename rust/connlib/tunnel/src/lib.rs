@@ -3,7 +3,7 @@
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
 
-use crate::messages::{Offer, Relay, ResolveRequest, SecretKey};
+use crate::messages::Relay;
 use bimap::BiMap;
 use chrono::Utc;
 use connlib_model::{
@@ -285,25 +285,6 @@ pub enum ClientEvent {
     ConnectionIntent {
         resource: ResourceId,
         connected_gateway_ids: BTreeSet<GatewayId>,
-    },
-    RequestAccess {
-        /// The resource we want to access.
-        resource_id: ResourceId,
-        /// The gateway we want to access the resource through.
-        gateway_id: GatewayId,
-        /// In the case of a DNS resource, its domain and the IPs we assigned to it.
-        maybe_domain: Option<ResolveRequest>,
-    },
-    RequestConnection {
-        /// The gateway we want to establish a connection to.
-        gateway_id: GatewayId,
-        /// The connection "offer". Contains our ICE credentials.
-        offer: Offer,
-        preshared_key: SecretKey,
-        /// The resource we want to access.
-        resource_id: ResourceId,
-        /// In the case of a DNS resource, its domain and the IPs we assigned to it.
-        maybe_domain: Option<ResolveRequest>,
     },
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {

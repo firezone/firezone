@@ -1,11 +1,18 @@
 use crate::{callbacks::Callbacks, PHOENIX_TOPIC};
 use anyhow::Result;
-use connlib_model::ResourceId;
-use firezone_tunnel::messages::{client::*, *};
-use firezone_tunnel::ClientTunnel;
+use connlib_model::{PublicKey, ResourceId};
+use firezone_tunnel::messages::client::{CreateFlowErr, CreateFlowErrKind};
+use firezone_tunnel::messages::RelaysPresence;
+use firezone_tunnel::{
+    messages::client::{
+        CreateFlowOk, EgressMessages, GatewayIceCandidates, GatewaysIceCandidates, IngressMessages,
+        InitClient,
+    },
+    ClientTunnel,
+};
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyParam};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     io,
     net::IpAddr,
     task::{Context, Poll},
@@ -16,10 +23,8 @@ pub struct Eventloop<C: Callbacks> {
     tunnel: ClientTunnel,
     callbacks: C,
 
-    portal: PhoenixChannel<(), IngressMessages, ReplyMessages, PublicKeyParam>,
+    portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
     rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
-
-    connection_intents: SentConnectionIntents,
 }
 
 /// Commands that can be sent to the [`Eventloop`].
@@ -35,7 +40,7 @@ impl<C: Callbacks> Eventloop<C> {
     pub(crate) fn new(
         tunnel: ClientTunnel,
         callbacks: C,
-        mut portal: PhoenixChannel<(), IngressMessages, ReplyMessages, PublicKeyParam>,
+        mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
     ) -> Self {
         portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
@@ -43,7 +48,6 @@ impl<C: Callbacks> Eventloop<C> {
         Self {
             tunnel,
             portal,
-            connection_intents: SentConnectionIntents::default(),
             rx,
             callbacks,
         }
@@ -141,29 +145,13 @@ where
             firezone_tunnel::ClientEvent::ConnectionIntent {
                 connected_gateway_ids,
                 resource,
-                ..
-            } => {
-                let id = self.portal.send(
-                    PHOENIX_TOPIC,
-                    EgressMessages::PrepareConnection {
-                        resource_id: resource,
-                        connected_gateway_ids,
-                    },
-                );
-                self.connection_intents.register_new_intent(id, resource);
-            }
-            firezone_tunnel::ClientEvent::RequestAccess {
-                resource_id,
-                gateway_id,
-                maybe_domain,
             } => {
                 self.portal.send(
                     PHOENIX_TOPIC,
-                    EgressMessages::ReuseConnection(ReuseConnection {
-                        resource_id,
-                        gateway_id,
-                        payload: maybe_domain,
-                    }),
+                    EgressMessages::CreateFlow {
+                        resource_id: resource,
+                        connected_gateway_ids,
+                    },
                 );
             }
             firezone_tunnel::ClientEvent::ResourcesChanged { resources } => {
@@ -179,40 +167,15 @@ where
                     Vec::from_iter(config.ipv6_routes),
                 );
             }
-            firezone_tunnel::ClientEvent::RequestConnection {
-                gateway_id,
-                offer,
-                preshared_key,
-                resource_id,
-                maybe_domain,
-            } => {
-                self.portal.send(
-                    PHOENIX_TOPIC,
-                    EgressMessages::RequestConnection(RequestConnection {
-                        gateway_id,
-                        resource_id,
-                        client_preshared_key: preshared_key,
-                        client_payload: ClientPayload {
-                            ice_parameters: offer,
-                            domain: maybe_domain,
-                        },
-                    }),
-                );
-            }
         }
     }
 
-    fn handle_portal_event(
-        &mut self,
-        event: phoenix_channel::Event<IngressMessages, ReplyMessages>,
-    ) {
+    fn handle_portal_event(&mut self, event: phoenix_channel::Event<IngressMessages, ()>) {
         match event {
             phoenix_channel::Event::InboundMessage { msg, .. } => {
                 self.handle_portal_inbound_message(msg);
             }
-            phoenix_channel::Event::SuccessResponse { res, req_id, .. } => {
-                self.handle_portal_success_reply(res, req_id);
-            }
+            phoenix_channel::Event::SuccessResponse { res: (), .. } => {}
             phoenix_channel::Event::ErrorResponse { res, req_id, topic } => {
                 self.handle_portal_error_reply(res, topic, req_id);
             }
@@ -266,56 +229,41 @@ where
                     self.tunnel.remove_ice_candidate(gateway_id, candidate)
                 }
             }
-        }
-    }
-
-    fn handle_portal_success_reply(&mut self, res: ReplyMessages, req_id: OutboundRequestId) {
-        match res {
-            ReplyMessages::Connect(Connect {
-                gateway_payload:
-                    GatewayResponse::ConnectionAccepted(ConnectionAccepted { ice_parameters, .. }),
-                gateway_public_key,
+            IngressMessages::CreateFlowOk(CreateFlowOk {
                 resource_id,
-                ..
-            }) => {
-                if let Err(e) = self.tunnel.received_offer_response(
-                    resource_id,
-                    ice_parameters,
-                    gateway_public_key.0.into(),
-                ) {
-                    tracing::warn!("Failed to accept connection: {e}");
-                }
-            }
-            ReplyMessages::Connect(Connect {
-                gateway_payload: GatewayResponse::ResourceAccepted(ResourceAccepted { .. }),
-                ..
-            }) => {
-                tracing::trace!("Connection response received, ignored as it's deprecated")
-            }
-            ReplyMessages::ConnectionDetails(ConnectionDetails {
                 gateway_id,
-                resource_id,
                 site_id,
-                ..
+                gateway_public_key,
+                preshared_key,
+                client_ice_credentials,
+                gateway_ice_credentials,
             }) => {
-                let should_accept = self
-                    .connection_intents
-                    .handle_connection_details_received(req_id, resource_id);
-
-                if !should_accept {
-                    tracing::debug!(%resource_id, "Ignoring stale connection details");
-                    return;
-                }
-
-                match self
-                    .tunnel
-                    .on_routing_details(resource_id, gateway_id, site_id)
-                {
+                match self.tunnel.on_create_flow_ok(
+                    resource_id,
+                    gateway_id,
+                    PublicKey::from(gateway_public_key.0),
+                    site_id,
+                    preshared_key,
+                    client_ice_credentials,
+                    gateway_ice_credentials,
+                ) {
                     Ok(()) => {}
                     Err(e) => {
                         tracing::warn!("Failed to request new connection: {e}");
                     }
                 };
+            }
+            IngressMessages::CreateFlowErr(CreateFlowErr {
+                resource_id,
+                reason: CreateFlowErrKind::Offline,
+            }) => {
+                self.tunnel.set_resource_offline(resource_id);
+            }
+            IngressMessages::CreateFlowErr(CreateFlowErr {
+                reason: CreateFlowErrKind::Unknown,
+                ..
+            }) => {
+                // TODO: Still fail connection?
             }
         }
     }
@@ -328,13 +276,9 @@ where
     ) {
         match res {
             ErrorReply::Offline => {
-                let Some(offline_resource) = self.connection_intents.handle_error(req_id) else {
-                    return;
-                };
+                // tracing::debug!(resource_id = %offline_resource, "Resource is offline");
 
-                tracing::debug!(resource_id = %offline_resource, "Resource is offline");
-
-                self.tunnel.set_resource_offline(offline_resource);
+                // self.tunnel.set_resource_offline(offline_resource);
             }
 
             ErrorReply::Disabled => {
@@ -347,108 +291,5 @@ where
                 tracing::debug!(%req_id, %reason, "Request failed");
             }
         }
-    }
-}
-
-#[derive(Default)]
-struct SentConnectionIntents {
-    inner: BTreeMap<OutboundRequestId, ResourceId>,
-}
-
-impl SentConnectionIntents {
-    fn register_new_intent(&mut self, id: OutboundRequestId, resource: ResourceId) {
-        self.inner.insert(id, resource);
-    }
-
-    /// To be called when we receive the connection details for a particular resource.
-    ///
-    /// Returns whether we should accept them.
-    fn handle_connection_details_received(
-        &mut self,
-        reference: OutboundRequestId,
-        r: ResourceId,
-    ) -> bool {
-        let has_more_recent_intent = self
-            .inner
-            .iter()
-            .any(|(req, resource)| req > &reference && resource == &r);
-
-        if has_more_recent_intent {
-            return false;
-        }
-
-        let has_intent = self
-            .inner
-            .get(&reference)
-            .is_some_and(|resource| resource == &r);
-
-        if !has_intent {
-            return false;
-        }
-
-        self.inner.retain(|_, v| v != &r);
-
-        true
-    }
-
-    fn handle_error(&mut self, req: OutboundRequestId) -> Option<ResourceId> {
-        self.inner.remove(&req)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn discards_old_connection_intent() {
-        let mut intents = SentConnectionIntents::default();
-
-        let resource = ResourceId::random();
-
-        intents.register_new_intent(OutboundRequestId::for_test(1), resource);
-        intents.register_new_intent(OutboundRequestId::for_test(2), resource);
-
-        let should_accept =
-            intents.handle_connection_details_received(OutboundRequestId::for_test(1), resource);
-
-        assert!(!should_accept);
-    }
-
-    #[test]
-    fn allows_unrelated_intents() {
-        let mut intents = SentConnectionIntents::default();
-
-        let resource1 = ResourceId::random();
-        let resource2 = ResourceId::random();
-
-        intents.register_new_intent(OutboundRequestId::for_test(1), resource1);
-        intents.register_new_intent(OutboundRequestId::for_test(2), resource2);
-
-        let should_accept_1 =
-            intents.handle_connection_details_received(OutboundRequestId::for_test(1), resource1);
-        let should_accept_2 =
-            intents.handle_connection_details_received(OutboundRequestId::for_test(2), resource2);
-
-        assert!(should_accept_1);
-        assert!(should_accept_2);
-    }
-
-    #[test]
-    fn handles_out_of_order_responses() {
-        let mut intents = SentConnectionIntents::default();
-
-        let resource = ResourceId::random();
-
-        intents.register_new_intent(OutboundRequestId::for_test(1), resource);
-        intents.register_new_intent(OutboundRequestId::for_test(2), resource);
-
-        let should_accept_2 =
-            intents.handle_connection_details_received(OutboundRequestId::for_test(2), resource);
-        let should_accept_1 =
-            intents.handle_connection_details_received(OutboundRequestId::for_test(1), resource);
-
-        assert!(should_accept_2);
-        assert!(!should_accept_1);
     }
 }

@@ -2478,6 +2478,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "sha2",
  "snownet",
  "socket-factory",
  "socket2",
