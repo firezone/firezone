@@ -80,9 +80,9 @@ fn main() -> Result<()> {
     let common::logging::Handles {
         logger: _logger,
         reloader: log_filter_reloader,
-    } = start_logging("debug")?; // TODO
-                                 // The runtime must be multi-thread so that the main thread is free for GTK to consume
-                                 // As long as Tokio has at least 1 worker thread (i.e. there is at least 1 CPU core in the system) this will work.
+    } = start_logging("info")?; // TODO
+                                // The runtime must be multi-thread so that the main thread is free for GTK to consume
+                                // As long as Tokio has at least 1 worker thread (i.e. there is at least 1 CPU core in the system) this will work.
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
@@ -251,10 +251,11 @@ impl MainThreadLoop {
     fn set_icon(&mut self, icon: Icon) -> Result<()> {
         if icon == self.last_icon_set {
             // We try not to set the icon too often because `tray-icon` always writes it to disk on Linux
-            // return Ok(());
+            return Ok(());
         }
         // TODO: Does `tray-icon` have the same problem as `tao`,
         // where it writes PNGs to `/run/user/$UID/` every time you set an icon?
+        tracing::warn!(?icon);
         self.tray_icon.set_icon(Some(icon_to_native_icon(&icon)))?;
         self.last_icon_set = icon;
         Ok(())
