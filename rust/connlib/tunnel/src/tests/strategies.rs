@@ -244,20 +244,20 @@ pub(crate) fn documentation_ip6s(subnet: u16, num_ips: usize) -> impl Strategy<V
     sample::select(ips)
 }
 
-pub(crate) fn system_dns_servers(
-    dns_servers: Vec<SocketAddr>,
-) -> impl Strategy<Value = Vec<IpAddr>> {
-    let max = dns_servers.len();
+pub(crate) fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
+    dns_servers().prop_flat_map(|dns_servers| {
+        let max = dns_servers.len();
 
-    sample::subsequence(dns_servers, ..=max)
-        .prop_map(|seq| seq.into_iter().map(|h| h.ip()).collect())
+        sample::subsequence(Vec::from_iter(dns_servers), ..=max)
+            .prop_map(|seq| seq.into_iter().map(|h| h.ip()).collect())
+    })
 }
 
-pub(crate) fn upstream_dns_servers(
-    dns_servers: Vec<SocketAddr>,
-) -> impl Strategy<Value = Vec<DnsServer>> {
-    let max = dns_servers.len();
+pub(crate) fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
+    dns_servers().prop_flat_map(|dns_servers| {
+        let max = dns_servers.len();
 
-    sample::subsequence(dns_servers, ..=max)
-        .prop_map(|seq| seq.into_iter().map(|h| h.into()).collect())
+        sample::subsequence(Vec::from_iter(dns_servers), ..=max)
+            .prop_map(|seq| seq.into_iter().map(|h| h.into()).collect())
+    })
 }

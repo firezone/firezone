@@ -23,7 +23,6 @@ pub(crate) struct ReferenceState {
     pub(crate) client: Host<RefClient>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
-    pub(crate) dns_servers: BTreeSet<SocketAddr>,
 
     pub(crate) portal: StubPortal,
 
@@ -54,14 +53,11 @@ impl ReferenceStateMachine for ReferenceState {
     type Transition = Transition;
 
     fn init_state() -> BoxedStrategy<Self::State> {
-        (stub_portal(), dns_servers())
-            .prop_flat_map(|(portal, dns_servers)| {
+        stub_portal()
+            .prop_flat_map(|portal| {
                 let gateways = portal.gateways();
                 let dns_resource_records = portal.dns_resource_records();
-                let client = portal.client(
-                    system_dns_servers(Vec::from_iter(dns_servers.clone())),
-                    upstream_dns_servers(Vec::from_iter(dns_servers.clone())),
-                );
+                let client = portal.client(system_dns_servers(), upstream_dns_servers());
                 let relays = relays(relay_id());
                 let global_dns_records = global_dns_records(); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
                 let drop_direct_client_traffic = any::<bool>();
@@ -74,7 +70,6 @@ impl ReferenceStateMachine for ReferenceState {
                     relays,
                     global_dns_records,
                     drop_direct_client_traffic,
-                    Just(dns_servers),
                 )
             })
             .prop_filter_map(
@@ -87,7 +82,6 @@ impl ReferenceStateMachine for ReferenceState {
                     relays,
                     mut global_dns,
                     drop_direct_client_traffic,
-                    dns_servers,
                 )| {
                     let mut routing_table = RoutingTable::default();
 
@@ -113,7 +107,6 @@ impl ReferenceStateMachine for ReferenceState {
                         c,
                         gateways,
                         relays,
-                        dns_servers,
                         portal,
                         global_dns,
                         drop_direct_client_traffic,
@@ -123,7 +116,7 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .prop_filter(
                 "private keys must be unique",
-                |(c, gateways, _, _, _, _, _, _)| {
+                |(c, gateways, _, _, _, _, _)| {
                     let different_keys = gateways
                         .iter()
                         .map(|(_, g)| g.inner().key)
@@ -138,7 +131,6 @@ impl ReferenceStateMachine for ReferenceState {
                     client,
                     gateways,
                     relays,
-                    dns_servers,
                     portal,
                     global_dns_records,
                     drop_direct_client_traffic,
@@ -148,7 +140,6 @@ impl ReferenceStateMachine for ReferenceState {
                         client,
                         gateways,
                         relays,
-                        dns_servers,
                         portal,
                         global_dns_records,
                         network,
@@ -167,13 +158,11 @@ impl ReferenceStateMachine for ReferenceState {
         CompositeStrategy::default()
             .with(
                 1,
-                system_dns_servers(Vec::from_iter(state.dns_servers.clone()))
-                    .prop_map(Transition::UpdateSystemDnsServers),
+                system_dns_servers().prop_map(Transition::UpdateSystemDnsServers),
             )
             .with(
                 1,
-                upstream_dns_servers(Vec::from_iter(state.dns_servers.clone()))
-                    .prop_map(Transition::UpdateUpstreamDnsServers),
+                upstream_dns_servers().prop_map(Transition::UpdateUpstreamDnsServers),
             )
             .with_if_not_empty(
                 5,
