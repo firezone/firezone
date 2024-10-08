@@ -38,6 +38,7 @@ pub struct LoginUrl<TFinish> {
     // This is duplicated here because `Url::host` is fallible.
     // If we don't duplicate it, we'd have to do extra error handling in several places instead of just one place.
     host: String,
+    port: u16,
 
     phantom: PhantomData<TFinish>,
 }
@@ -99,8 +100,11 @@ impl LoginUrl<PublicKeyParam> {
             device_info,
         )?;
 
+        let (host, port) = parse_host(&url)?;
+
         Ok(LoginUrl {
-            host: parse_host(&url)?,
+            host,
+            port,
             url,
             phantom: PhantomData,
         })
@@ -129,8 +133,11 @@ impl LoginUrl<PublicKeyParam> {
             Default::default(),
         )?;
 
+        let (host, port) = parse_host(&url)?;
+
         Ok(LoginUrl {
-            host: parse_host(&url)?,
+            host,
+            port,
             url,
             phantom: PhantomData,
         })
@@ -158,8 +165,11 @@ impl LoginUrl<NoParams> {
             Default::default(),
         )?;
 
+        let (host, port) = parse_host(&url)?;
+
         Ok(LoginUrl {
-            host: parse_host(&url)?,
+            host,
+            port,
             url,
             phantom: PhantomData,
         })
@@ -180,18 +190,18 @@ where
 }
 
 impl<TFinish> LoginUrl<TFinish> {
-    pub fn host(&self) -> &str {
-        &self.host
+    pub fn host_and_port(&self) -> (&str, u16) {
+        (&self.host, self.port)
     }
 }
 
 /// Parse the host from a URL, including port if present. e.g. `example.com:8080`.
-fn parse_host<E>(url: &Url) -> Result<String, LoginUrlError<E>> {
+fn parse_host<E>(url: &Url) -> Result<(String, u16), LoginUrlError<E>> {
     let host = url.host_str().ok_or(LoginUrlError::MissingHost)?;
 
     Ok(match url.port() {
-        Some(p) => format!("{host}:{p}"),
-        None => host.to_owned(),
+        Some(p) => (host.to_owned(), p),
+        None => (host.to_owned(), 443),
     })
 }
 
