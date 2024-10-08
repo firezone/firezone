@@ -1013,6 +1013,8 @@ impl ClientState {
         self.node.handle_timeout(now);
         self.drain_node_events();
 
+        self.tcp_dns_sockets.handle_timeout(now);
+
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
     }
 

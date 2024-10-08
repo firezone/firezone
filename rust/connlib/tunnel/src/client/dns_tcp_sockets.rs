@@ -93,7 +93,7 @@ impl DnsTcpSockets {
         self.device.outbound_packets.pop_front()
     }
 
-    fn handle_timeout(&mut self, now: Instant) {
+    pub(crate) fn handle_timeout(&mut self, now: Instant) {
         let changed = self.interface.poll(
             smoltcp::time::Instant::from(now),
             &mut self.device,

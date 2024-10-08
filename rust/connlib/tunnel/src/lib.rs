@@ -172,6 +172,7 @@ impl ClientTunnel {
                 }
                 Poll::Ready(io::Input::DnsResponse(packet)) => {
                     self.role_state.handle_dns_response(packet);
+                    self.role_state.handle_timeout(Instant::now());
                     continue;
                 }
                 Poll::Pending => {}
