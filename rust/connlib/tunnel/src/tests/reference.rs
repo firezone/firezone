@@ -2,9 +2,9 @@ use super::{
     composite_strategy::CompositeStrategy, sim_client::*, sim_dns::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
-use crate::{client, DomainName, StaticSecret};
+use crate::{client, DomainName};
 use crate::{dns::is_subdomain, proptest::relay_id};
-use connlib_model::{GatewayId, RelayId, ResourceId};
+use connlib_model::{GatewayId, RelayId, ResourceId, StaticSecret};
 use domain::base::Rtype;
 use proptest::{prelude::*, sample};
 use proptest_state_machine::ReferenceStateMachine;
@@ -447,7 +447,10 @@ impl ReferenceStateMachine for ReferenceState {
                     .add_host(state.client.inner().id, &state.client));
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
-                state.client.exec_mut(|client| client.reset_connections());
+                state.client.exec_mut(|client| {
+                    client.reset_connections();
+                    client.readd_all_resources()
+                });
             }
             Transition::ReconnectPortal => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.

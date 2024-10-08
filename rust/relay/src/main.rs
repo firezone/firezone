@@ -8,7 +8,7 @@ use firezone_relay::{
     PeerSocket, Server, Sleep,
 };
 use futures::{future, FutureExt};
-use phoenix_channel::{Event, LoginUrl, PhoenixChannel};
+use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use secrecy::{Secret, SecretString};
@@ -139,7 +139,7 @@ async fn main() -> Result<()> {
             args.public_ip6_addr,
         )?;
 
-        Some(PhoenixChannel::connect(
+        let mut channel = PhoenixChannel::disconnected(
             Secret::new(login),
             format!("relay/{}", env!("CARGO_PKG_VERSION")),
             "relay",
@@ -150,7 +150,10 @@ async fn main() -> Result<()> {
                 .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
                 .build(),
             Arc::new(socket_factory::tcp),
-        )?)
+        )?;
+        channel.connect(NoParams);
+
+        Some(channel)
     } else {
         tracing::warn!(target: "relay", "No portal token supplied, starting standalone mode");
 
@@ -305,7 +308,7 @@ struct Eventloop<R> {
     sockets: Sockets,
 
     server: Server<R>,
-    channel: Option<PhoenixChannel<JoinMessage, IngressMessage, ()>>,
+    channel: Option<PhoenixChannel<JoinMessage, IngressMessage, (), NoParams>>,
     sleep: Sleep,
 
     sigterm: unix::Signal,
@@ -325,7 +328,7 @@ where
 {
     fn new(
         server: Server<R>,
-        channel: Option<PhoenixChannel<JoinMessage, IngressMessage, ()>>,
+        channel: Option<PhoenixChannel<JoinMessage, IngressMessage, (), NoParams>>,
         public_address: IpStack,
         last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
     ) -> Result<Self> {
