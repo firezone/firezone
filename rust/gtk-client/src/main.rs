@@ -93,16 +93,10 @@ fn main() -> Result<()> {
         .build();
 
     app.connect_activate(|app| {
-        // We create the main window.
-        let win = ApplicationWindow::builder()
-            .application(app)
-            .default_width(640)
-            .default_height(480)
-            .title("Firezone GTK+ 3")
-            .build();
-
-        // Don't forget to make all widgets visible.
-        win.show_all();
+        if let Err(error) = build_ui(app) {
+            tracing::error!(?error, "`build_ui` failed");
+            telemetry::capture_anyhow(&error);
+        }
     });
 
     gtk::init()?;
@@ -155,6 +149,31 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn build_ui(app: &gtk::Application) -> Result<()> {
+    let icon_pixbuf = gdk_pixbuf::Pixbuf::from_file(
+        "/usr/share/icons/hicolor/128x128/apps/firezone-client-gui.png",
+    )?;
+
+    let win = ApplicationWindow::builder()
+        .application(app)
+        .default_width(640)
+        .default_height(480)
+        .icon(&icon_pixbuf)
+        .title("About Firezone")
+        .build();
+    win.show_all();
+
+    let win = ApplicationWindow::builder()
+        .application(app)
+        .default_width(640)
+        .default_height(480)
+        .icon(&icon_pixbuf)
+        .title("Settings")
+        .build();
+    win.show_all();
+    Ok(())
+}
+
 // Worker task to accept deep links from a named pipe forever
 ///
 /// * `server` An initial named pipe server to consume before making new servers. This lets us also use the named pipe to enforce single-instance
@@ -204,6 +223,7 @@ impl MainThreadLoop {
     fn handle_req(&mut self, req: MainThreadReq) -> Result<()> {
         match req {
             MainThreadReq::Quit => self.app.quit(),
+            MainThreadReq::SetTrayIcon(icon) => self.set_icon(icon)?,
             MainThreadReq::SetTrayMenu(app_state) => self.set_tray_menu(*app_state)?,
         }
         Ok(())
@@ -303,6 +323,7 @@ fn build_item(that: &common::system_tray::Item) -> tray_icon::menu::MenuItem {
 enum MainThreadReq {
     /// The controller exited, quit the GTK app and exit the loop
     Quit,
+    SetTrayIcon(common::system_tray::Icon),
     SetTrayMenu(Box<common::system_tray::AppState>),
 }
 
@@ -353,8 +374,8 @@ impl GuiIntegration for GtkIntegration {
         Ok(())
     }
 
-    fn set_tray_icon(&mut self, _icon: common::system_tray::Icon) -> Result<()> {
-        tracing::warn!("set_tray_icon not implemented");
+    fn set_tray_icon(&mut self, icon: common::system_tray::Icon) -> Result<()> {
+        self.main_tx.try_send(MainThreadReq::SetTrayIcon(icon))?;
         Ok(())
     }
 
