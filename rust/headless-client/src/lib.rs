@@ -9,7 +9,7 @@
 //! Otherwise we would just make it a normal binary crate.
 
 use anyhow::{Context as _, Result};
-use connlib_client_shared::{Callbacks, DisconnectError};
+use connlib_client_shared::Callbacks;
 use connlib_model::ResourceView;
 use firezone_bin_shared::platform::DnsControlMethod;
 use std::{
@@ -97,16 +97,10 @@ pub struct CallbackHandler {
 impl Callbacks for CallbackHandler {
     fn on_disconnect(&self, error: &connlib_client_shared::DisconnectError) {
         tracing::error!(?error, "Got `on_disconnect` from connlib");
-        let is_authentication_error = if let DisconnectError::PortalConnectionFailed(error) = error
-        {
-            error.is_authentication_error()
-        } else {
-            false
-        };
         self.cb_tx
             .try_send(ConnlibMsg::OnDisconnect {
                 error_msg: error.to_string(),
-                is_authentication_error,
+                is_authentication_error: error.is_authentication_error(),
             })
             .expect("should be able to send OnDisconnect");
     }

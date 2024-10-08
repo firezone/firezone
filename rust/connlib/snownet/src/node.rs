@@ -20,7 +20,6 @@ use std::borrow::Cow;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
-use std::marker::PhantomData;
 use std::mem;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
@@ -45,8 +44,36 @@ pub type ServerNode<TId, RId> = Node<Server, TId, RId>;
 /// Manages a set of wireguard connections for a client.
 pub type ClientNode<TId, RId> = Node<Client, TId, RId>;
 
-pub enum Server {}
-pub enum Client {}
+#[non_exhaustive]
+pub struct Server {}
+
+#[non_exhaustive]
+pub struct Client {}
+
+trait Mode {
+    fn new() -> Self;
+    fn is_client(&self) -> bool;
+}
+
+impl Mode for Server {
+    fn is_client(&self) -> bool {
+        false
+    }
+
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Mode for Client {
+    fn is_client(&self) -> bool {
+        true
+    }
+
+    fn new() -> Self {
+        Self {}
+    }
+}
 
 /// A node within a `snownet` network maintains connections to several other nodes.
 ///
@@ -96,7 +123,7 @@ pub struct Node<T, TId, RId> {
 
     stats: NodeStats,
 
-    marker: PhantomData<T>,
+    mode: T,
     rng: StdRng,
 }
 
@@ -118,19 +145,24 @@ pub enum Error {
     BadLocalAddress(#[from] str0m::error::IceError),
 }
 
+#[expect(private_bounds, reason = "We don't want `Mode` to be public API")]
 impl<T, TId, RId> Node<T, TId, RId>
 where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
+    T: Mode,
 {
-    pub fn new(private_key: StaticSecret, seed: [u8; 32]) -> Self {
+    pub fn new(seed: [u8; 32]) -> Self {
+        let mut rng = StdRng::from_seed(seed);
+        let private_key = StaticSecret::random_from_rng(&mut rng);
         let public_key = &(&private_key).into();
+
         Self {
-            rng: StdRng::from_seed(seed), // TODO: Use this seed for private key too. Requires refactoring of how we generate the login-url because that one needs to know the public key.
+            rng,
             session_id: SessionId::new(*public_key),
             private_key,
             public_key: *public_key,
-            marker: Default::default(),
+            mode: T::new(),
             index: IndexLfsr::default(),
             rate_limiter: Arc::new(RateLimiter::new(public_key, HANDSHAKE_RATE_LIMIT)),
             host_candidates: Default::default(),
@@ -174,11 +206,75 @@ where
         self.connections.clear();
         self.buffered_transmits.clear();
 
+        self.private_key = StaticSecret::random_from_rng(&mut self.rng);
+        self.public_key = (&self.private_key).into();
+        self.rate_limiter = Arc::new(RateLimiter::new(&self.public_key, HANDSHAKE_RATE_LIMIT));
+        self.session_id = SessionId::new(self.public_key);
+
         tracing::debug!(%num_connections, "Closed all connections as part of reconnecting");
     }
 
     pub fn num_connections(&self) -> usize {
         self.connections.len()
+    }
+
+    /// Upserts a connection to the given remote.
+    ///
+    /// If we already have a connection with the same ICE credentials, this does nothing.
+    /// Otherwise, the existing connection is discarded and a new one will be created.
+    #[tracing::instrument(level = "info", skip_all, fields(%cid))]
+    pub fn upsert_connection(
+        &mut self,
+        cid: TId,
+        remote: PublicKey,
+        session_key: Secret<[u8; 32]>,
+        local_creds: Credentials,
+        remote_creds: Credentials,
+        now: Instant,
+    ) {
+        let local_creds = local_creds.into();
+        let remote_creds = remote_creds.into();
+
+        if self.connections.initial.contains_key(&cid) {
+            debug_assert!(false, "The new `upsert_connection` API is incompatible with the previous `new_connection` API");
+            return;
+        }
+
+        if self
+            .connections
+            .get_established_mut(&cid)
+            .is_some_and(|c| c.agent.local_credentials() == &local_creds)
+        {
+            tracing::debug!("Already got a connection");
+            return;
+        }
+
+        let selected_relay = self.sample_relay();
+
+        let mut agent = new_agent();
+        agent.set_controlling(self.mode.is_client());
+        agent.set_local_credentials(local_creds);
+        agent.set_remote_credentials(remote_creds);
+
+        self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
+
+        let connection = self.init_connection(
+            cid,
+            agent,
+            remote,
+            *session_key.expose_secret(),
+            selected_relay,
+            now,
+            now,
+        );
+
+        let existing = self.connections.established.insert(cid, connection);
+
+        if existing.is_some() {
+            tracing::info!("Replaced existing connection");
+        } else {
+            tracing::info!("Created new connection");
+        }
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -338,9 +434,6 @@ where
             .get_established_mut(&connection)
             .ok_or(Error::NotConnected)?;
 
-        // Must bail early if we don't have a socket yet to avoid running into WG timeouts.
-        let socket = conn.socket().ok_or(Error::NotConnected)?;
-
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
             .encapsulate(packet.packet(), &mut buffer.inner[4..], now)?
@@ -353,7 +446,23 @@ where
         let packet_start = 4;
         let packet_end = 4 + packet_len;
 
-        match socket {
+        let socket = match &mut conn.state {
+            ConnectionState::Connecting { buffered, .. } => {
+                buffered.push(buffer.inner[packet_start..packet_end].to_vec());
+                let num_buffered = buffered.len();
+
+                let _guard = conn.span.enter();
+
+                tracing::debug!(%num_buffered, "ICE is still in progress, buffering WG handshake");
+
+                return Ok(None);
+            }
+            ConnectionState::Connected { peer_socket, .. } => peer_socket,
+            ConnectionState::Idle { peer_socket } => peer_socket,
+            ConnectionState::Failed => return Err(Error::NotConnected),
+        };
+
+        match *socket {
             PeerSocket::Direct {
                 dest: remote,
                 source,
@@ -832,6 +941,8 @@ where
     /// The returned [`Offer`] must be passed to the remote via a signalling channel.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     #[must_use]
+    #[deprecated]
+    #[expect(deprecated)]
     pub fn new_connection(&mut self, cid: TId, intent_sent_at: Instant, now: Instant) -> Offer {
         if self.connections.initial.remove(&cid).is_some() {
             tracing::info!("Replacing existing initial connection");
@@ -881,6 +992,8 @@ where
 
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
+    #[deprecated]
+    #[expect(deprecated)]
     pub fn accept_answer(&mut self, cid: TId, remote: PublicKey, answer: Answer, now: Instant) {
         let Some(initial) = self.connections.initial.remove(&cid) else {
             tracing::debug!("No initial connection state, ignoring answer"); // This can happen if the connection setup timed out.
@@ -927,6 +1040,8 @@ where
     /// The returned [`Answer`] must be passed to the remote via a signalling channel.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     #[must_use]
+    #[deprecated]
+    #[expect(deprecated)]
     pub fn accept_connection(
         &mut self,
         cid: TId,
@@ -1313,12 +1428,14 @@ fn remove_local_candidate<TId>(
     }
 }
 
+#[deprecated]
 pub struct Offer {
     /// The Wireguard session key for a connection.
     pub session_key: Secret<[u8; 32]>,
     pub credentials: Credentials,
 }
 
+#[deprecated]
 pub struct Answer {
     pub credentials: Credentials,
 }
@@ -1328,6 +1445,16 @@ pub struct Credentials {
     pub username: String,
     /// The ICE password.
     pub password: String,
+}
+
+#[doc(hidden)] // Not public API.
+impl From<Credentials> for str0m::IceCreds {
+    fn from(value: Credentials) -> Self {
+        str0m::IceCreds {
+            ufrag: value.username,
+            pass: value.password,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -1516,6 +1643,8 @@ enum ConnectionState<RId> {
         ///
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
         /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
+        ///
+        /// It can also happen if we attempt to encapsulate a packet prior to the WireGuard handshake which triggers the creation of a WireGuard handshake initiation packet.
         buffered: RingBuffer<Vec<u8>>,
     },
     /// A socket has been nominated.
@@ -1777,6 +1906,10 @@ where
 
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
                         ConnectionState::Connecting { buffered, .. } => {
+                            let num_buffered = buffered.len();
+
+                            tracing::debug!(%num_buffered, "Flushing packets buffered during ICE");
+
                             transmits.extend(buffered.into_iter().flat_map(|packet| {
                                 make_owned_transmit(remote_socket, &packet, allocations, now)
                             }));
@@ -1824,7 +1957,9 @@ where
 
                     tracing::info!(?old, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
 
-                    self.force_handshake(allocations, transmits, now);
+                    if self.agent.controlling() {
+                        self.force_handshake(allocations, transmits, now);
+                    }
                 }
                 IceAgentEvent::IceRestart(_) | IceAgentEvent::IceConnectionStateChange(_) => {}
             }
