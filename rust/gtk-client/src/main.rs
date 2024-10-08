@@ -77,7 +77,7 @@ fn main() -> Result<()> {
     let common::logging::Handles {
         logger: _logger,
         reloader: log_filter_reloader,
-    } = start_logging("info")?; // TODO
+    } = start_logging("info")?; // TODO: Load log filter from settings file
 
     // The runtime must be multi-thread so that the main thread is free for GTK to consume
     // As long as Tokio has at least 1 worker thread (i.e. there is at least 1 CPU core in the system) this will work.
@@ -89,13 +89,9 @@ fn main() -> Result<()> {
     // This enforces single-instance
     let deep_link_server = rt.block_on(deep_link::Server::new())?;
 
-    gtk::init()?;
-
     let app = Application::builder()
         .application_id("dev.firezone.client")
         .build();
-
-    let tray_icon = create_loading_tray_icon()?;
 
     let ui_cell = Rc::new(RefCell::new(None));
     let ui_cell_2 = ui_cell.clone();
@@ -113,6 +109,9 @@ fn main() -> Result<()> {
             telemetry::capture_anyhow(&error);
         }
     });
+
+    gtk::init()?;
+    let tray_icon = create_loading_tray_icon()?;
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(100);
 
