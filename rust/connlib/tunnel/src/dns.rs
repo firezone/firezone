@@ -71,10 +71,10 @@ impl RecursiveQuery {
         }
     }
 
-    pub(crate) fn via_tcp(server: SocketAddr, message: Message<&[u8]>) -> Self {
+    pub(crate) fn via_tcp(server: SocketAddr, message: Message<Vec<u8>>) -> Self {
         Self {
             server,
-            message: message.octets_into(),
+            message,
             transport: Transport::Tcp,
         }
     }

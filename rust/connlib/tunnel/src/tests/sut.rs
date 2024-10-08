@@ -47,9 +47,10 @@ impl TunnelTest {
     // Initialize the system under test from our reference state.
     pub(crate) fn init_test(ref_state: &ReferenceState, flux_capacitor: FluxCapacitor) -> Self {
         // Construct client, gateway and relay from the initial state.
-        let mut client = ref_state
-            .client
-            .map(|ref_client, _, _| ref_client.init(), debug_span!("client"));
+        let mut client = ref_state.client.map(
+            |ref_client, _, _| ref_client.init(flux_capacitor.now()),
+            debug_span!("client"),
+        );
 
         let mut gateways = ref_state
             .gateways

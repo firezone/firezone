@@ -1,11 +1,11 @@
+mod dns_tcp_sockets;
 mod resource;
 
+use dns_tcp_sockets::DnsTcpSockets;
 use domain::base::iana::Rcode;
 pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{DnsResource, InternetResource};
-use smoltcp::iface::{SocketHandle, SocketSet};
-use smoltcp::socket::tcp;
 
 use crate::dns::StubResolver;
 use crate::messages::client::ResourceDescription;
@@ -34,11 +34,11 @@ use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, EncryptBuffer, RelaySocket, Transmit};
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
-use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
+use std::{io, iter};
 
 pub(crate) const IPV4_RESOURCES: Ipv4Network =
     match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
@@ -251,7 +251,6 @@ pub struct ClientState {
     /// DNS query IDs don't appear to be unique across servers they are being sent to on some operating systems (looking at you, Windows).
     /// Hence, we need to index by ID + socket of the DNS server.
     recursive_udp_dns_queries: HashMap<(u16, SocketAddr), SocketAddr>,
-    recursive_tcp_dns_queries: HashMap<(u16, SocketAddr), SocketHandle>,
 
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
@@ -262,13 +261,12 @@ pub struct ClientState {
     /// Resources that have been disabled by the UI
     disabled_resources: BTreeSet<ResourceId>,
 
+    tcp_dns_sockets: DnsTcpSockets,
+
     /// Stores the gateways we recently connected to.
     ///
     /// We use this as a hint to the portal to re-connect us to the same gateway for a resource.
     recently_connected_gateways: LruCache<GatewayId, ()>,
-
-    tcp_sockets: SocketSet<'static>,
-    tcp_socket_listen_endpoints: HashMap<SocketHandle, SocketAddr>,
 
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
@@ -283,7 +281,11 @@ struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
-    pub(crate) fn new(known_hosts: BTreeMap<String, Vec<IpAddr>>, seed: [u8; 32]) -> Self {
+    pub(crate) fn new(
+        known_hosts: BTreeMap<String, Vec<IpAddr>>,
+        seed: [u8; 32],
+        now: Instant,
+    ) -> Self {
         Self {
             awaiting_connection_details: Default::default(),
             resources_gateways: Default::default(),
@@ -300,16 +302,14 @@ impl ClientState {
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
             recursive_udp_dns_queries: Default::default(),
-            recursive_tcp_dns_queries: Default::default(),
             stub_resolver: StubResolver::new(known_hosts),
             disabled_resources: Default::default(),
             buffered_transmits: Default::default(),
             internet_resource: None,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
             upstream_dns: Default::default(),
-            tcp_sockets: SocketSet::new(vec![]),
             buffered_dns_queries: Default::default(),
-            tcp_socket_listen_endpoints: Default::default(),
+            tcp_dns_sockets: DnsTcpSockets::new(now),
         }
     }
 
@@ -421,7 +421,7 @@ impl ClientState {
         now: Instant,
         buffer: &mut EncryptBuffer,
     ) -> Option<snownet::EncryptedPacket> {
-        let (packet, dst) = match self.try_handle_dns_query(packet) {
+        let (packet, dst) = match self.try_handle_dns(packet, now) {
             ControlFlow::Break(()) => return None,
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
         };
@@ -538,23 +538,10 @@ impl ClientState {
 
                 self.buffered_packets.push_back(ip_packet);
             }
-            (dns::Transport::Tcp, Ok(message)) => {
-                self.try_handle_tcp_dns_response(
-                    response.query.header().id(),
-                    response.server,
-                    &message,
-                )
-                .context("Failed to write DNS response to TCP stream")?;
-            }
-            (dns::Transport::Tcp, Err(e)) => {
-                tracing::debug!("TCP DNS query failed: {e}");
-
-                let handle = self
-                    .recursive_tcp_dns_queries
-                    .remove(&(response.query.header().id(), response.server))
-                    .context("Unknown query")?;
-
-                self.tcp_sockets.get_mut::<tcp::Socket>(handle).abort();
+            (dns::Transport::Tcp, result) => {
+                self.tcp_dns_sockets
+                    .write_dns_response(response.query.header().id(), response.server, result)
+                    .context("Failed to write DNS response to TCP stream")?;
             }
         }
 
@@ -593,26 +580,6 @@ impl ClientState {
                 .ok()?;
 
         Some(ip_packet)
-    }
-
-    fn try_handle_tcp_dns_response(
-        &mut self,
-        query_id: u16,
-        server: SocketAddr,
-        message: &Message<Vec<u8>>,
-    ) -> anyhow::Result<()> {
-        let handle = self
-            .recursive_tcp_dns_queries
-            .remove(&(query_id, server))
-            .context("Unknown query")?;
-
-        let socket = self.tcp_sockets.get_mut::<tcp::Socket>(handle);
-
-        let response = message.as_octets();
-
-        write_tcp_dns_response(socket, response)?;
-
-        Ok(())
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String, now: Instant) {
@@ -750,14 +717,46 @@ impl ClientState {
             .is_some()
     }
 
-    /// Attempt to handle the given packet as a DNS query packet.
-    fn try_handle_dns_query(&mut self, packet: IpPacket) -> ControlFlow<(), (IpPacket, IpAddr)> {
+    /// Handles UDP & TCP packets targeted at our stub resolver.
+    fn try_handle_dns(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> ControlFlow<(), (IpPacket, IpAddr)> {
         let dst = packet.destination();
         let _guard = tracing::debug_span!("packet", %dst).entered();
         let Some(upstream) = self.dns_mapping.get_by_left(&dst).map(|s| s.address()) else {
             let dest = packet.destination();
             return ControlFlow::Continue((packet, dest));
         };
+
+        if packet.is_tcp() {
+            self.tcp_dns_sockets.handle_inbound_packet(packet, now);
+
+            while let Some((server, query)) = self.tcp_dns_sockets.poll_received_queries() {
+                let result = match self.stub_resolver.handle(query.for_slice_ref()) {
+                    Ok(dns::ResolveStrategy::Recurse) => {
+                        self.buffered_dns_queries
+                            .push_back(dns::RecursiveQuery::via_tcp(upstream, query));
+                        continue;
+                    }
+                    Ok(dns::ResolveStrategy::LocalResponse(response)) => {
+                        Message::from_octets(response)
+                            .map_err(|_| io::Error::other("Failed to re-parse DNS message"))
+                    }
+                    Err(e) => Err(io::Error::other(format!("{e:#}"))),
+                };
+
+                if let Err(e) =
+                    self.tcp_dns_sockets
+                        .write_dns_response(query.header().id(), server, result)
+                {
+                    tracing::debug!("Failed to write TCP DNS response: {e:#}")
+                }
+            }
+
+            return ControlFlow::Break(());
+        }
 
         let (datagram, message) = match parse_udp_dns_message(&packet) {
             Ok((datagram, message)) => (datagram, message),
@@ -879,52 +878,9 @@ impl ClientState {
     }
 
     fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, DnsServer>) {
+        self.tcp_dns_sockets.set_dns_mapping(new_mapping.clone());
         self.dns_mapping = new_mapping;
         self.mangled_dns_queries.clear();
-        self.tcp_sockets = SocketSet::new(vec![]);
-        self.tcp_socket_listen_endpoints.clear();
-
-        let tcp_listen_endpoints = self
-            .dns_mapping()
-            .into_iter()
-            .map(|(ip, _)| SocketAddr::from((ip, 53)));
-
-        // Limiting the number here as two purposes:
-        // 1. We can't handle more than these anyway due to limitations in `smoltcp`.
-        // 2. We need to allocate a buffer for each one. If we don't limit these, defining a large number of DNS servers would be a memory-DoS vector.
-        let tcp_listen_endpoints = tcp_listen_endpoints.take(smoltcp::config::IFACE_MAX_ADDR_COUNT);
-
-        // Create a bunch of sockets per address so we can serve multiple clients at once.
-        // DNS queries may be sent concurrently on the same socket, but only be a single other remote socket.
-        // Having multiple sockets for the same sentinel IP allows multiple clients to connect concurrently.
-        // Each one of these needs to allocate a buffer.
-        for listen_endpoint in tcp_listen_endpoints {
-            self.create_tcp_socket(listen_endpoint);
-            self.create_tcp_socket(listen_endpoint);
-            self.create_tcp_socket(listen_endpoint);
-            self.create_tcp_socket(listen_endpoint);
-            self.create_tcp_socket(listen_endpoint);
-        }
-    }
-
-    fn create_tcp_socket(&mut self, listen_endpoint: SocketAddr) {
-        /// The 2-byte length prefix of DNS over TCP messages limits their size to effectively u16::MAX.
-        /// It is quite unlikely that we have to buffer _multiple_ of these max-sized messages.
-        /// Being able to buffer at least one of them means we can handle the extreme case.
-        /// In practice, this allows the OS to queue multiple queries even if we can't immediately process them.
-        const MAX_TCP_DNS_MSG_LENGTH: usize = u16::MAX as usize;
-
-        let mut socket = tcp::Socket::new(
-            smoltcp::storage::RingBuffer::new(vec![0u8; MAX_TCP_DNS_MSG_LENGTH]),
-            smoltcp::storage::RingBuffer::new(vec![0u8; MAX_TCP_DNS_MSG_LENGTH]),
-        );
-        socket
-            .listen(listen_endpoint)
-            .expect("A fresh socket should always be able to listen");
-
-        let handle = self.tcp_sockets.add(socket);
-        self.tcp_socket_listen_endpoints
-            .insert(handle, listen_endpoint);
     }
 
     pub fn set_disabled_resource(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
@@ -1039,7 +995,9 @@ impl ClientState {
     }
 
     pub fn poll_packets(&mut self) -> Option<IpPacket> {
-        self.buffered_packets.pop_front()
+        self.buffered_packets
+            .pop_front()
+            .or_else(|| self.tcp_dns_sockets.poll_outbound_packets())
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
@@ -1056,32 +1014,6 @@ impl ClientState {
         self.drain_node_events();
 
         self.mangled_dns_queries.retain(|_, exp| now < *exp);
-    }
-
-    pub fn handle_tcp_sockets_changed(&mut self) {
-        for (handle, smoltcp::socket::Socket::Tcp(socket)) in self.tcp_sockets.iter_mut() {
-            let listen_endpoint = self.tcp_socket_listen_endpoints.get(&handle).unwrap();
-
-            match try_handle_tcp_socket(
-                handle,
-                socket,
-                *listen_endpoint,
-                &self.dns_mapping,
-                &mut self.stub_resolver,
-                &mut self.recursive_tcp_dns_queries,
-                &mut self.buffered_dns_queries,
-            ) {
-                Ok(()) => {}
-                Err(e) => {
-                    tracing::debug!("Failed to process TCP socket: {e}");
-                    socket.abort();
-                }
-            }
-        }
-    }
-
-    pub fn tcp_sockets(&mut self) -> &mut SocketSet<'static> {
-        &mut self.tcp_sockets
     }
 
     fn maybe_update_tun_routes(&mut self) {
@@ -1632,106 +1564,6 @@ fn maybe_mangle_dns_response_from_cidr_resource(
     packet
 }
 
-fn try_handle_tcp_socket(
-    handle: SocketHandle,
-    socket: &mut tcp::Socket,
-    listen_endpoint: SocketAddr,
-    dns_mapping: &BiMap<IpAddr, DnsServer>,
-    resolver: &mut StubResolver,
-    recursive_tcp_dns_queries: &mut HashMap<(u16, SocketAddr), SocketHandle>,
-    buffered_dns_queries: &mut VecDeque<dns::RecursiveQuery>,
-) -> anyhow::Result<()> {
-    // smoltcp's sockets can only ever handle a single remote, i.e. there is no permanent listening socket.
-    // to be able to handle a new connection, reset the socket back to `listen` once the connection is closed / closing.
-    {
-        use smoltcp::socket::tcp::State::*;
-
-        if matches!(socket.state(), Closed | TimeWait | CloseWait) {
-            tracing::debug!("Resetting TCP socket to listen");
-
-            socket.abort();
-            socket.listen(listen_endpoint).unwrap();
-            return Ok(());
-        }
-    }
-
-    let Some(local) = socket.local_endpoint().map(|e| IpAddr::from(e.addr)) else {
-        return Ok(()); // Unless we are connected with someone, there is nothing to do.
-    };
-
-    // Ensure we can recv, send and have space to send.
-    if !socket.can_recv() || !socket.can_send() || socket.send_queue() > 0 {
-        return Ok(());
-    }
-
-    let upstream = dns_mapping
-        .get_by_left(&local)
-        .map(|d| d.address())
-        .with_context(|| format!("Not a DNS server: {local}"))?;
-
-    // Read a DNS message from the socket.
-    let Some(message) = socket
-        .recv(|r| {
-            // DNS over TCP has a 2-byte length prefix at the start, see <https://datatracker.ietf.org/doc/html/rfc1035#section-4.2.2>.
-            let Some((header, message)) = r.split_first_chunk::<2>() else {
-                return (0, None);
-            };
-            let dns_message_length = u16::from_be_bytes(*header) as usize;
-            if message.len() < dns_message_length {
-                return (0, None); // Don't consume any bytes unless we can read the full message at once.
-            }
-
-            (2 + dns_message_length, Some(Message::from_octets(message)))
-        })
-        .context("Failed to recv TCP data")?
-        .transpose()
-        .context("Failed to parse DNS message")?
-    else {
-        return Ok(());
-    };
-
-    match resolver
-        .handle(message)
-        .context("Failed to handle DNS message")?
-    {
-        dns::ResolveStrategy::LocalResponse(response) => {
-            write_tcp_dns_response(socket, &response)?;
-        }
-        dns::ResolveStrategy::Recurse => {
-            let id = message.header().id();
-
-            recursive_tcp_dns_queries.insert((id, upstream), handle);
-            buffered_dns_queries.push_back(dns::RecursiveQuery::via_tcp(upstream, message));
-        }
-    }
-
-    Ok(())
-}
-
-fn write_tcp_dns_response(socket: &mut tcp::Socket, response: &[u8]) -> anyhow::Result<()> {
-    let dns_message_length = (response.len() as u16).to_be_bytes();
-
-    let written = socket
-        .send_slice(&dns_message_length)
-        .context("Failed to write TCP DNS length header")?;
-
-    anyhow::ensure!(
-        written == 2,
-        "Not enough space in write buffer for TCP DNS length header"
-    );
-
-    let written = socket
-        .send_slice(response)
-        .context("Failed to write DNS message")?;
-
-    anyhow::ensure!(
-        written == response.len(),
-        "Not enough space in write buffer for DNS response"
-    );
-
-    Ok(())
-}
-
 pub struct IpProvider {
     ipv4: Box<dyn Iterator<Item = Ipv4Addr> + Send + Sync>,
     ipv6: Box<dyn Iterator<Item = Ipv6Addr> + Send + Sync>,
@@ -1839,7 +1671,7 @@ mod tests {
 
     impl ClientState {
         pub fn for_test() -> ClientState {
-            ClientState::new(BTreeMap::new(), rand::random())
+            ClientState::new(BTreeMap::new(), rand::random(), Instant::now())
         }
     }
 

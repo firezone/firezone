@@ -330,8 +330,8 @@ impl RefClient {
     /// Initialize the [`ClientState`].
     ///
     /// This simulates receiving the `init` message from the portal.
-    pub(crate) fn init(self) -> SimClient {
-        let mut client_state = ClientState::new(self.known_hosts, self.key.0); // Cheating a bit here by reusing the key as seed.
+    pub(crate) fn init(self, now: Instant) -> SimClient {
+        let mut client_state = ClientState::new(self.known_hosts, self.key.0, now); // Cheating a bit here by reusing the key as seed.
         client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,

@@ -12,7 +12,6 @@ use connlib_model::{
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::MAX_DATAGRAM_PAYLOAD;
-use smoltcp::iface::SocketSet;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -87,7 +86,7 @@ impl ClientTunnel {
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
-            role_state: ClientState::new(known_hosts, rand::random()),
+            role_state: ClientState::new(known_hosts, rand::random(), Instant::now()),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             encrypt_buf: EncryptBuffer::new(MAX_DATAGRAM_PAYLOAD),
@@ -108,10 +107,6 @@ impl ClientTunnel {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
             if let Some(e) = self.role_state.poll_event() {
-                if let ClientEvent::TunInterfaceUpdated(config) = &e {
-                    self.io.on_tun_device_changed(config)
-                }
-
                 return Poll::Ready(Ok(e));
             }
 
@@ -139,12 +134,7 @@ impl ClientTunnel {
                 self.ip4_read_buf.as_mut(),
                 self.ip6_read_buf.as_mut(),
                 &self.encrypt_buf,
-                self.role_state.tcp_sockets(),
             )? {
-                Poll::Ready(io::Input::TcpSocketsChanged) => {
-                    self.role_state.handle_tcp_sockets_changed();
-                    continue;
-                }
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout);
                     continue;
@@ -241,10 +231,9 @@ impl GatewayTunnel {
                 self.ip4_read_buf.as_mut(),
                 self.ip6_read_buf.as_mut(),
                 &self.encrypt_buf,
-                &mut SocketSet::new(vec![]),
             )? {
-                Poll::Ready(io::Input::TcpSocketsChanged | io::Input::DnsResponse(_)) => {
-                    unreachable!("Gateway doesn't use user-space TCP sockets or DNS resolution")
+                Poll::Ready(io::Input::DnsResponse(_)) => {
+                    unreachable!("Gateway doesn't use user-space DNS resolution")
                 }
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout, Utc::now());

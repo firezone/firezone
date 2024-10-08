@@ -1,4 +1,4 @@
-use crate::{device_channel::Device, dns, sockets::Sockets, TunConfig};
+use crate::{device_channel::Device, dns, sockets::Sockets};
 use domain::base::Message;
 use futures::{
     future::{self, Either},
@@ -6,14 +6,12 @@ use futures::{
 };
 use futures_bounded::FuturesTupleSet;
 use futures_util::FutureExt as _;
-use ip_packet::{IpPacket, IpPacketBuf, MAX_DATAGRAM_PAYLOAD};
-use smoltcp::{iface::SocketSet, wire::HardwareAddress};
+use ip_packet::{IpPacket, MAX_DATAGRAM_PAYLOAD};
 use snownet::{EncryptBuffer, EncryptedPacket};
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    collections::VecDeque,
     io,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     pin::Pin,
     sync::Arc,
     task::{ready, Context, Poll},
@@ -40,9 +38,6 @@ pub struct Io {
     tun_tx: mpsc::Sender<Box<dyn Tun>>,
     outbound_packet_tx: mpsc::Sender<IpPacket>,
     inbound_packet_rx: mpsc::Receiver<IpPacket>,
-
-    device: SmolDeviceAdapter,
-    interface: smoltcp::iface::Interface,
 }
 
 #[derive(Debug)]
@@ -61,7 +56,6 @@ pub enum Input<I> {
     Device(IpPacket),
     Network(I),
     DnsResponse(dns::RecursiveResponse),
-    TcpSocketsChanged,
 }
 
 const DNS_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -82,17 +76,6 @@ impl Io {
         let (outbound_packet_tx, outbound_packet_rx) = mpsc::channel(IP_CHANNEL_SIZE);
         let (tun_tx, tun_rx) = mpsc::channel(10);
 
-        let mut device = SmolDeviceAdapter {
-            outbound_packet_tx: outbound_packet_tx.clone(),
-            received_packets: VecDeque::default(),
-        };
-
-        let interface = smoltcp::iface::Interface::new(
-            smoltcp::iface::Config::new(HardwareAddress::Ip),
-            &mut device,
-            smoltcp::time::Instant::now(),
-        );
-
         std::thread::spawn(|| {
             futures::executor::block_on(tun_send_recv(
                 tun_rx,
@@ -110,8 +93,6 @@ impl Io {
             tcp_socket_factory,
             udp_socket_factory,
             unwritten_packet: None,
-            device,
-            interface,
             dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
         }
     }
@@ -120,34 +101,12 @@ impl Io {
         self.sockets.poll_has_sockets(cx)
     }
 
-    pub fn on_tun_device_changed(&mut self, config: &TunConfig) {
-        if config.dns_by_sentinel.len() > 8 {
-            tracing::warn!("TCP DNS only works for up to 8 DNS servers")
-        }
-
-        self.interface.update_ip_addrs(|ips| {
-            ips.clear();
-
-            let sentinel_ips = config
-                .dns_by_sentinel
-                .left_values()
-                .copied()
-                .map(|ip| match ip {
-                    IpAddr::V4(_) => smoltcp::wire::IpCidr::new(ip.into(), 32),
-                    IpAddr::V6(_) => smoltcp::wire::IpCidr::new(ip.into(), 128),
-                });
-
-            ips.extend(sentinel_ips.take(smoltcp::config::IFACE_MAX_ADDR_COUNT));
-        });
-    }
-
     pub fn poll<'b>(
         &mut self,
         cx: &mut Context<'_>,
         ip4_buffer: &'b mut [u8],
         ip6_bffer: &'b mut [u8],
         encrypt_buffer: &EncryptBuffer,
-        tcp_sockets: &mut SocketSet,
     ) -> Poll<io::Result<Input<impl Iterator<Item = DatagramIn<'b>>>>> {
         ready!(self.poll_send_unwritten(cx, encrypt_buffer)?);
 
@@ -155,19 +114,7 @@ impl Io {
             return Poll::Ready(Ok(Input::Network(network.filter(is_max_wg_packet_size))));
         }
 
-        while let Poll::Ready(Some(packet)) = self.inbound_packet_rx.poll_recv(cx) {
-            // TCP traffic for the smoltcp interface needs to be redirected.
-            if packet.is_tcp()
-                && self
-                    .interface
-                    .ip_addrs()
-                    .iter()
-                    .any(|ip| ip.address() == packet.destination().into())
-            {
-                self.device.received_packets.push_back(packet);
-                continue;
-            }
-
+        if let Poll::Ready(Some(packet)) = self.inbound_packet_rx.poll_recv(cx) {
             return Poll::Ready(Ok(Input::Device(packet)));
         }
 
@@ -191,13 +138,6 @@ impl Io {
             }
             Poll::Pending => {}
         }
-
-        if self
-            .interface
-            .poll(smoltcp::time::Instant::now(), &mut self.device, tcp_sockets)
-        {
-            return Poll::Ready(Ok(Input::TcpSocketsChanged));
-        };
 
         if let Some(timeout) = self.timeout.as_mut() {
             if timeout.poll_unpin(cx).is_ready() {
@@ -469,81 +409,6 @@ fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
     }
 
     true
-}
-
-/// An adapter struct between our managed TUN device and [`smoltcp`].
-struct SmolDeviceAdapter {
-    outbound_packet_tx: mpsc::Sender<IpPacket>,
-    /// Packets that we have received on the TUN device and selected to be processed by [`smoltcp`].
-    received_packets: VecDeque<IpPacket>,
-}
-
-impl smoltcp::phy::Device for SmolDeviceAdapter {
-    type RxToken<'a> = SmolRxToken;
-    type TxToken<'a> = SmolTxToken;
-
-    fn receive(
-        &mut self,
-        _timestamp: smoltcp::time::Instant,
-    ) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
-        let packet = self.received_packets.pop_front()?;
-
-        Some((
-            SmolRxToken { packet },
-            SmolTxToken {
-                outbound_packet_tx: self.outbound_packet_tx.clone(),
-            },
-        ))
-    }
-
-    fn transmit(&mut self, _timestamp: smoltcp::time::Instant) -> Option<Self::TxToken<'_>> {
-        Some(SmolTxToken {
-            outbound_packet_tx: self.outbound_packet_tx.clone(),
-        })
-    }
-
-    fn capabilities(&self) -> smoltcp::phy::DeviceCapabilities {
-        let mut caps = smoltcp::phy::DeviceCapabilities::default();
-        caps.medium = smoltcp::phy::Medium::Ip;
-        caps.max_transmission_unit = ip_packet::PACKET_SIZE;
-
-        caps
-    }
-}
-
-struct SmolTxToken {
-    outbound_packet_tx: mpsc::Sender<IpPacket>,
-}
-
-impl smoltcp::phy::TxToken for SmolTxToken {
-    fn consume<R, F>(self, len: usize, f: F) -> R
-    where
-        F: FnOnce(&mut [u8]) -> R,
-    {
-        let mut ip_packet_buf = IpPacketBuf::new();
-        let result = f(ip_packet_buf.buf());
-
-        let mut ip_packet = IpPacket::new(ip_packet_buf, len).unwrap();
-        ip_packet.update_checksum();
-        self.outbound_packet_tx
-            .try_send(ip_packet)
-            .expect("Each `Sender` instance guarantees 1 slot in the channel");
-
-        result
-    }
-}
-
-struct SmolRxToken {
-    packet: IpPacket,
-}
-
-impl smoltcp::phy::RxToken for SmolRxToken {
-    fn consume<R, F>(mut self, f: F) -> R
-    where
-        F: FnOnce(&mut [u8]) -> R,
-    {
-        f(self.packet.packet_mut())
-    }
 }
 
 #[cfg(test)]
