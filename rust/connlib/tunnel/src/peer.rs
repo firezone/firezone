@@ -356,7 +356,7 @@ impl ClientOnGateway {
     // in case that 2 or more resources have overlapping rules.
     fn recalculate_filters(&mut self) {
         self.filters = IpNetworkTable::new();
-        for resource in self.resources.values() {
+        for resource in self.resources.values().filter(|r| r.is_cidr()) {
             for ip in &resource.ips() {
                 let mut filter_engine = FilterEngine::empty();
                 let filters = self.resources.values().filter_map(|r| {
@@ -377,6 +377,22 @@ impl ClientOnGateway {
 
                 self.filters.insert(*ip, filter_engine);
             }
+        }
+
+        for (addr, TranslationState { resource_id, .. }) in &self.permanent_translations {
+            let mut filter_engine = FilterEngine::empty();
+            // Empty filters means permit all
+            let filters = self.resources.get(&resource_id).unwrap().filters();
+
+            if filters.is_empty() {
+                filter_engine.permit_all();
+            }
+
+            filter_engine.add_filters(self.resources.get(&resource_id).unwrap().filters());
+
+            tracing::trace!(%addr, filters = ?filter_engine, "Installing new filters");
+
+            self.filters.insert(*addr, filter_engine);
         }
     }
 
@@ -405,10 +421,9 @@ impl ClientOnGateway {
 
     pub fn decapsulate(&mut self, packet: IpPacket, now: Instant) -> anyhow::Result<IpPacket> {
         self.ensure_allowed_src(&packet)?;
+        self.ensure_allowed_dst(&packet)?;
 
         let packet = self.transform_network_to_tun(packet, now)?;
-
-        self.ensure_allowed_dst(&packet)?;
 
         Ok(packet)
     }
@@ -583,6 +598,10 @@ impl ResourceOnGateway {
             ResourceOnGateway::Dns { expires_at, .. } => expires_at.as_ref(),
             ResourceOnGateway::Internet { expires_at } => expires_at.as_ref(),
         }
+    }
+
+    fn is_cidr(&self) -> bool {
+        matches!(self, ResourceOnGateway::Cidr { .. })
     }
 }
 
