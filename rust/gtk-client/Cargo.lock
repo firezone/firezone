@@ -150,6 +150,9 @@ name = "anyhow"
 version = "1.0.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "86fdf8605db99b54d3cd748a44c6d04df638eb5dafb219b135d0149bd0db01f6"
+dependencies = [
+ "backtrace",
+]
 
 [[package]]
 name = "arbitrary"
@@ -1347,6 +1350,7 @@ dependencies = [
  "firezone-headless-client",
  "firezone-logging",
  "firezone-telemetry",
+ "gdk-pixbuf",
  "glib",
  "gtk",
  "notify-rust",
@@ -1463,6 +1467,7 @@ version = "0.1.0"
 dependencies = [
  "arc-swap",
  "sentry",
+ "sentry-anyhow",
  "tracing",
 ]
 
@@ -3754,6 +3759,17 @@ dependencies = [
  "tokio",
  "ureq",
  "webpki-roots",
+]
+
+[[package]]
+name = "sentry-anyhow"
+version = "0.34.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d672bfd1ed4e90978435f3c0704edb71a7a9d86403657839d518cd6aa278aff5"
+dependencies = [
+ "anyhow",
+ "sentry-backtrace",
+ "sentry-core",
 ]
 
 [[package]]
