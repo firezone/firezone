@@ -2,8 +2,9 @@ use arc_swap::ArcSwapOption;
 use std::time::Duration;
 
 pub use sentry::{
-    add_breadcrumb, capture_error, configure_scope, end_session, end_session_with_status,
-    start_transaction, types::protocol::v7::SessionStatus, Breadcrumb, Hub, TransactionContext,
+    add_breadcrumb, capture_error, capture_message, configure_scope, end_session,
+    end_session_with_status, start_transaction, types::protocol::v7::SessionStatus, Breadcrumb,
+    Hub, Level, TransactionContext,
 };
 
 pub struct Dsn(&'static str);
