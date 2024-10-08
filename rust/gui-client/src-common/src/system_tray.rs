@@ -130,7 +130,7 @@ impl SignedIn {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Icon {
     pub base: IconBase,
     pub update_ready: bool,
@@ -144,7 +144,7 @@ pub(crate) fn icon_terminating() -> Icon {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum IconBase {
     /// Must be equivalent to the default app icon, since we assume this is set when we start
     Busy,
