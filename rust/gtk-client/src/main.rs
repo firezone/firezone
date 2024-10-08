@@ -88,15 +88,13 @@ fn main() -> Result<()> {
     // This enforces single-instance
     let deep_link_server = rt.block_on(deep_link::Server::new())?;
 
-    // The tray icon may not show if it's built after `app` is built.
-    let tray_icon = TrayIconBuilder::new()
-        .with_tooltip(TOOLTIP)
-        .with_icon(icon_to_native_icon(&Icon::default()))
-        .build()?;
+    gtk::init()?;
 
     let app = Application::builder()
         .application_id("dev.firezone.client")
         .build();
+
+    let tray_icon = create_loading_tray_icon()?;
 
     let ui_cell = Rc::new(RefCell::new(None));
     let ui_cell_2 = ui_cell.clone();
@@ -114,8 +112,6 @@ fn main() -> Result<()> {
             telemetry::capture_anyhow(&error);
         }
     });
-
-    gtk::init()?;
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(100);
 
@@ -300,7 +296,7 @@ impl MainThreadLoop {
         };
 
         let menu = build_menu("", &state.into_menu())?;
-        self.tray_icon.set_menu(Some(Box::new(menu)));
+        //self.tray_icon.set_menu(Some(Box::new(menu)));
         // TODO: Set menu tooltip here too
         self.set_icon(new_icon)?;
 
@@ -311,14 +307,27 @@ impl MainThreadLoop {
         if icon == self.last_icon_set {
             return Ok(());
         }
-        tracing::warn!(?icon);
         // TODO: Does `tray-icon` have the same problem as `tao`,
         // where it writes PNGs to `/run/user/$UID/` every time you set an icon?
         self.tray_icon.set_icon(Some(icon_to_native_icon(&icon)))?;
         self.last_icon_set = icon;
-        std::thread::sleep(std::time::Duration::from_secs(2));
         Ok(())
     }
+}
+
+fn create_loading_tray_icon() -> Result<tray_icon::TrayIcon> {
+    let state = AppState {
+        connlib: ConnlibState::Loading,
+        release: None,
+    };
+    let menu = build_menu("", &state.into_menu())?;
+
+    let tray_icon = TrayIconBuilder::new()
+        .with_tooltip(TOOLTIP)
+        .with_icon(icon_to_native_icon(&Icon::default()))
+        .with_menu(Box::new(menu))
+        .build()?;
+    Ok(tray_icon)
 }
 
 fn icon_to_native_icon(that: &Icon) -> tray_icon::Icon {
