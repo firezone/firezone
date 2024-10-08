@@ -6943,7 +6943,6 @@ dependencies = [
  "bytecodec",
  "bytes",
  "firezone-logging",
- "hex",
  "hex-display",
  "ip-packet",
  "itertools 0.13.0",
