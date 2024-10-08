@@ -41,6 +41,8 @@ jobs:
         run: cargo test
       - name: Build
         run: ./build.sh
+      - name: Ensure unmodified Git workspace
+        run: git diff --exit-code
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
