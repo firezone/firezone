@@ -380,15 +380,20 @@ impl ClientOnGateway {
         }
 
         for (addr, TranslationState { resource_id, .. }) in &self.permanent_translations {
+            let Some(resource) = self.resources.get(resource_id) else {
+                continue;
+            };
+
+            debug_assert!(resource.is_dns());
+
             let mut filter_engine = FilterEngine::empty();
             // Empty filters means permit all
-            let filters = self.resources.get(resource_id).unwrap().filters();
 
-            if filters.is_empty() {
+            if resource.filters().is_empty() {
                 filter_engine.permit_all();
             }
 
-            filter_engine.add_filters(self.resources.get(&resource_id).unwrap().filters());
+            filter_engine.add_filters(resource.filters());
 
             tracing::trace!(%addr, filters = ?filter_engine, "Installing new filters");
 
@@ -602,6 +607,10 @@ impl ResourceOnGateway {
 
     fn is_cidr(&self) -> bool {
         matches!(self, ResourceOnGateway::Cidr { .. })
+    }
+
+    fn is_dns(&self) -> bool {
+        matches!(self, ResourceOnGateway::Dns { .. })
     }
 }
 
