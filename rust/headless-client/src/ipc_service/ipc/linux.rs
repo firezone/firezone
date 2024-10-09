@@ -20,18 +20,25 @@ pub(crate) type ServerStream = UnixStream;
 #[expect(clippy::wildcard_enum_match_arm)]
 pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Error> {
     let path = ipc_path(id);
-    let stream = UnixStream::connect(&path)
-        .await
-        .map_err(|error| match error.kind() {
-            ErrorKind::ConnectionRefused => {
-                Error::Other(anyhow!("ConnectionRefused by Unix domain socket"))
-            }
-            ErrorKind::NotFound => Error::NotFound(path.display().to_string()),
-            ErrorKind::PermissionDenied => Error::PermissionDenied,
-            _ => Error::Other(
-                anyhow!(error.to_string()).context("Couldn't connect to Unix domain socket"),
-            ),
-        })?;
+    let stream = match UnixStream::connect(&path).await {
+        Ok(stream) => stream,
+        Err(error) => {
+            return Err(match error.kind() {
+                ErrorKind::ConnectionRefused => {
+                    Error::Other(anyhow!("ConnectionRefused by Unix domain socket"))
+                }
+                ErrorKind::NotFound => Error::NotFound(path.display().to_string()),
+                ErrorKind::PermissionDenied => {
+                    let perms = tokio::fs::metadata(&path).await.unwrap().permissions();
+                    tracing::warn!(?perms, "PermissionDenied to IPC socket");
+                    Error::PermissionDenied
+                }
+                _ => Error::Other(
+                    anyhow!(error.to_string()).context("Couldn't connect to Unix domain socket"),
+                ),
+            })
+        }
+    };
     let cred = stream
         .peer_cred()
         .context("Couldn't get PID of UDS server")
