@@ -887,6 +887,7 @@ defmodule API.Gateway.ChannelTest do
       flow_id = Ecto.UUID.generate()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
+      gateway_group_id = gateway.group_id
       gateway_id = gateway.id
       gateway_public_key = gateway.public_key
       resource_id = resource.id
@@ -920,6 +921,7 @@ defmodule API.Gateway.ChannelTest do
         :connect,
         ^socket_ref,
         ^resource_id,
+        ^gateway_group_id,
         ^gateway_id,
         ^gateway_public_key,
         ^preshared_key,

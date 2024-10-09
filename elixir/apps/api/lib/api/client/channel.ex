@@ -531,25 +531,27 @@ defmodule API.Client.Channel do
   end
 
   def handle_info(
-        {:connect, socket_ref, resource_id, gateway_id, gateway_public_key, preshared_key,
-         ice_credentials, {opentelemetry_ctx, opentelemetry_span_ctx}},
+        {:connect, _socket_ref, resource_id, gateway_group_id, gateway_id, gateway_public_key,
+         preshared_key, ice_credentials, {opentelemetry_ctx, opentelemetry_span_ctx}},
         socket
       ) do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "client.connect", attributes: %{resource_id: resource_id} do
-      reply(
-        socket_ref,
-        {:ok,
-         %{
-           resource_id: resource_id,
-           preshared_key: preshared_key,
-           ice_credentials: ice_credentials,
-           gateway_id: gateway_id,
-           gateway_public_key: gateway_public_key
-         }}
-      )
+      reply_payload = %{
+        resource_id: resource_id,
+        preshared_key: preshared_key,
+        client_ice_credentials: ice_credentials.client,
+        gateway_group_id: gateway_group_id,
+        gateway_id: gateway_id,
+        gateway_public_key: gateway_public_key,
+        gateway_ice_credentials: ice_credentials.gateway
+      }
+
+      # We are pushing a message instead of replying for the sake of connlib message parsing convenience
+      push(socket, "flow_created", reply_payload)
+      # reply(socket_ref, {:ok, reply_payload})
 
       {:noreply, socket}
     end
@@ -636,7 +638,7 @@ defmodule API.Client.Channel do
         opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
         opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 
-        preshared_key = Domain.Crypto.psk()
+        preshared_key = generate_preshared_key()
         ice_credentials = generate_ice_credentials(socket.assigns.client, gateway)
 
         :ok =
@@ -657,17 +659,43 @@ defmodule API.Client.Channel do
       else
         {:error, :not_found} ->
           OpenTelemetry.Tracer.set_status(:error, "not_found")
-          {:reply, {:error, %{reason: :not_found}}, socket}
+
+          # We are pushing a message instead of replying for the sake of connlib message parsing convenience
+          # {:reply, {:error, %{reason: :not_found}}, socket}
+
+          push(socket, "flow_creation_failed", %{
+            resource_id: resource_id,
+            reason: :not_found
+          })
+
+          {:noreply, socket}
 
         {:ok, []} ->
           OpenTelemetry.Tracer.set_status(:error, "offline")
-          {:reply, {:error, %{reason: :offline}}, socket}
+
+          # We are pushing a message instead of replying for the sake of connlib message parsing convenience
+          # {:reply, {:error, %{reason: :offline}}, socket}
+
+          push(socket, "flow_creation_failed", %{
+            resource_id: resource_id,
+            reason: :offline
+          })
+
+          {:noreply, socket}
 
         {:error, {:forbidden, violated_properties: violated_properties}} ->
           OpenTelemetry.Tracer.set_status(:error, "forbidden")
 
-          {:reply, {:error, %{reason: :forbidden, violated_properties: violated_properties}},
-           socket}
+          # We are pushing a message instead of replying for the sake of connlib message parsing convenience
+          # {:reply, {:error, %{reason: :forbidden, violated_properties: violated_properties}}, socket}
+
+          push(socket, "flow_creation_failed", %{
+            resource_id: resource_id,
+            reason: :forbidden,
+            violated_properties: violated_properties
+          })
+
+          {:noreply, socket}
       end
     end
   end
@@ -1006,6 +1034,12 @@ defmodule API.Client.Channel do
           :drop -> :drop
         end
     end
+  end
+
+  # We generate a new preshared key for each flow request, the client and gateway MUST
+  # ignore it if this is for a connection that is already established.
+  defp generate_preshared_key do
+    Domain.Crypto.psk()
   end
 
   # Ice credentials must stay the same for all connections between client and gateway as long as they

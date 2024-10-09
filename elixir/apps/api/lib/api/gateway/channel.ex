@@ -308,8 +308,9 @@ defmodule API.Gateway.Channel do
         flow_id: flow_id,
         actor: Views.Actor.render(client.actor),
         resource: Views.Resource.render(resource),
-        ice_credentials: ice_credentials,
+        gateway_ice_credentials: ice_credentials.gateway,
         client: Views.Client.render(client, preshared_key),
+        client_ice_credentials: ice_credentials.client,
         expires_at: DateTime.to_unix(authorization_expires_at, :second)
       })
 
@@ -484,6 +485,7 @@ defmodule API.Gateway.Channel do
               :connect,
               socket_ref,
               resource_id,
+              socket.assigns.gateway.group_id,
               socket.assigns.gateway.id,
               socket.assigns.gateway.public_key,
               preshared_key,
