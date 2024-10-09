@@ -2,6 +2,7 @@ use std::collections::{hash_map, BTreeMap, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
+use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{gateway::Filter, gateway::Filters};
 use chrono::{DateTime, Utc};
@@ -138,6 +139,7 @@ pub struct ClientOnGateway {
     ipv4: Ipv4Addr,
     ipv6: Ipv6Addr,
     resources: HashMap<ResourceId, ResourceOnGateway>,
+    internet_resource_enabled: bool,
     filters: IpNetworkTable<FilterEngine>,
     permanent_translations: BTreeMap<IpAddr, TranslationState>,
     nat_table: NatTable,
@@ -155,6 +157,7 @@ impl ClientOnGateway {
             permanent_translations: Default::default(),
             nat_table: Default::default(),
             buffered_events: Default::default(),
+            internet_resource_enabled: false,
         }
     }
 
@@ -399,6 +402,8 @@ impl ClientOnGateway {
 
             self.filters.insert(*addr, filter_engine);
         }
+
+        self.internet_resource_enabled = self.resources.values().any(|r| r.is_internet_resource());
     }
 
     fn transform_network_to_tun(
@@ -469,6 +474,12 @@ impl ClientOnGateway {
     /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
     fn ensure_allowed_dst(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
         let dst = packet.destination();
+
+        // Note a Gateway with Internet resource should never get packets for other resources
+        if self.internet_resource_enabled && !is_dns_addr(packet.destination()) {
+            return Ok(());
+        }
+
         if !self
             .filters
             .longest_match(dst)
@@ -612,6 +623,10 @@ impl ResourceOnGateway {
     fn is_dns(&self) -> bool {
         matches!(self, ResourceOnGateway::Dns { .. })
     }
+
+    fn is_internet_resource(&self) -> bool {
+        matches!(self, ResourceOnGateway::Internet { .. })
+    }
 }
 
 // Current state of a translation for a given proxy ip
@@ -719,12 +734,17 @@ fn mapped_ipv4(ips: &[IpAddr]) -> Vec<IpAddr> {
         ipv6_addresses(ips)
     }
 }
+
 fn mapped_ipv6(ips: &[IpAddr]) -> Vec<IpAddr> {
     if !ipv6_addresses(ips).is_empty() {
         ipv6_addresses(ips)
     } else {
         ipv4_addresses(ips)
     }
+}
+
+fn is_dns_addr(addr: IpAddr) -> bool {
+    IpNetwork::from(IPV4_RESOURCES).contains(addr) || IpNetwork::from(IPV6_RESOURCES).contains(addr)
 }
 
 #[cfg(test)]
