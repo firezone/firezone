@@ -5,7 +5,7 @@ use chrono::{serde::ts_seconds, DateTime, Utc};
 use connlib_model::{GatewayId, RelayId, ResourceId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use url::Url;
 
 pub mod client;
 pub mod gateway;
@@ -130,50 +130,6 @@ pub enum GatewayResponse {
     ResourceAccepted(ResourceAccepted),
 }
 
-#[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
-#[serde(tag = "protocol", rename_all = "snake_case")]
-pub enum DnsServer {
-    IpPort(IpDnsServer),
-}
-
-impl fmt::Debug for DnsServer {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::IpPort(IpDnsServer { address }) => address.fmt(f),
-        }
-    }
-}
-
-impl DnsServer {
-    pub fn ip(&self) -> IpAddr {
-        match self {
-            DnsServer::IpPort(s) => s.address.ip(),
-        }
-    }
-
-    pub fn address(&self) -> SocketAddr {
-        match self {
-            DnsServer::IpPort(s) => s.address,
-        }
-    }
-}
-
-impl<T> From<T> for DnsServer
-where
-    T: Into<SocketAddr>,
-{
-    fn from(addr: T) -> Self {
-        Self::IpPort(IpDnsServer {
-            address: addr.into(),
-        })
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct IpDnsServer {
-    pub address: SocketAddr,
-}
-
 /// Represents a wireguard interface configuration.
 ///
 /// Note that the ips are /32 for ipv4 and /128 for ipv6.
@@ -184,9 +140,39 @@ pub struct Interface {
     pub ipv4: Ipv4Addr,
     /// Interface's Ipv6.
     pub ipv6: Ipv6Addr,
-    /// DNS that will be used to query for DNS that aren't within our resource list.
+    /// UDP DNS servers that will be used to query for DNS that aren't within our resource list.
     #[serde(default)]
-    pub upstream_dns: Vec<DnsServer>,
+    pub upstream_udp_dns: Vec<UdpDnsServer>,
+    /// DoH servers to use. Have priority over DNS UDP servers.
+    #[serde(default)]
+    pub upstream_doh: Vec<DohDnsServer>,
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+pub struct UdpDnsServer {
+    pub ip: IpAddr,
+    pub port: u16,
+}
+
+impl From<UdpDnsServer> for SocketAddr {
+    fn from(value: UdpDnsServer) -> Self {
+        Self::new(value.ip, value.port)
+    }
+}
+
+impl From<SocketAddr> for UdpDnsServer {
+    fn from(value: SocketAddr) -> Self {
+        Self {
+            ip: value.ip(),
+            port: value.port(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+pub struct DohDnsServer {
+    pub url: Url,
+    pub records: Vec<SocketAddr>,
 }
 
 /// A single relay

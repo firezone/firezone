@@ -18,6 +18,7 @@ use connlib_model::{ClientId, DomainName, GatewayId, RelayId};
 use domain::base::iana::{Class, Rcode};
 use domain::base::{Message, MessageBuilder, Record, Rtype, ToName as _, Ttl};
 use domain::rdata::AllRecordData;
+use itertools::Itertools;
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
 use std::collections::BTreeSet;
@@ -223,7 +224,8 @@ impl TunnelTest {
                     c.sut.update_interface_config(Interface {
                         ipv4: c.sut.tunnel_ip4().unwrap(),
                         ipv6: c.sut.tunnel_ip6().unwrap(),
-                        upstream_dns: servers,
+                        upstream_udp_dns: servers.into_iter().map_into().collect(),
+                        upstream_doh: Vec::default(),
                     })
                 });
             }
@@ -254,7 +256,8 @@ impl TunnelTest {
                     c.sut.update_interface_config(Interface {
                         ipv4,
                         ipv6,
-                        upstream_dns,
+                        upstream_udp_dns: upstream_dns.into_iter().map_into().collect(),
+                        upstream_doh: Vec::default(),
                     });
                     c.update_relays(iter::empty(), state.relays.iter(), now);
                     c.sut.set_resources(all_resources);

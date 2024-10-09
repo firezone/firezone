@@ -959,7 +959,7 @@ impl ClientState {
     }
 
     pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) {
-        let upstream_dns = config.upstream_dns.iter().map(|d| d.address()).collect();
+        let upstream_dns = config.upstream_udp_dns.into_iter().map_into().collect();
 
         tracing::trace!(?upstream_dns, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
 

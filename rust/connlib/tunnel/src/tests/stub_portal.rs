@@ -4,11 +4,8 @@ use super::{
     sim_net::Host,
     strategies::{resolved_ips, subdomain_records},
 };
-use crate::{client, proptest::*};
-use crate::{
-    messages::{gateway, DnsServer},
-    DomainName,
-};
+use crate::{client, messages::UdpDnsServer, proptest::*};
+use crate::{messages::gateway, DomainName};
 use connlib_model::GatewayId;
 use connlib_model::{ResourceId, SiteId};
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -202,7 +199,7 @@ impl StubPortal {
     pub(crate) fn client(
         &self,
         system_dns: impl Strategy<Value = Vec<IpAddr>>,
-        upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
+        upstream_dns: impl Strategy<Value = Vec<UdpDnsServer>>,
     ) -> impl Strategy<Value = Host<RefClient>> {
         let client_tunnel_ip4 = tunnel_ip4s().next().unwrap();
         let client_tunnel_ip6 = tunnel_ip6s().next().unwrap();

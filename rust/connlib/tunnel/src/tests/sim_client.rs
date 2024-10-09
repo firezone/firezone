@@ -8,7 +8,7 @@ use super::{
 };
 use crate::{
     client::{CidrResource, DnsResource, InternetResource, Resource},
-    messages::{DnsServer, Interface},
+    messages::{Interface, UdpDnsServer},
     DomainName,
 };
 use crate::{proptest::*, ClientState};
@@ -276,7 +276,7 @@ pub struct RefClient {
     system_dns_resolvers: Vec<IpAddr>,
     /// The upstream DNS resolvers configured in the portal.
     #[derivative(Debug = "ignore")]
-    upstream_dns_resolvers: Vec<DnsServer>,
+    upstream_dns_resolvers: Vec<SocketAddr>,
 
     ipv4_routes: BTreeMap<ResourceId, Ipv4Network>,
     ipv6_routes: BTreeMap<ResourceId, Ipv6Network>,
@@ -338,7 +338,13 @@ impl RefClient {
         client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,
-            upstream_dns: self.upstream_dns_resolvers.clone(),
+            upstream_udp_dns: self
+                .upstream_dns_resolvers
+                .clone()
+                .into_iter()
+                .map_into()
+                .collect(),
+            upstream_doh: Default::default(),
         });
         client_state.update_system_resolvers(self.system_dns_resolvers.clone());
 
@@ -725,11 +731,7 @@ impl RefClient {
     /// Otherwise it should use whatever was configured on the system prior to connlib starting.
     pub(crate) fn expected_dns_servers(&self) -> BTreeSet<SocketAddr> {
         if !self.upstream_dns_resolvers.is_empty() {
-            return self
-                .upstream_dns_resolvers
-                .iter()
-                .map(DnsServer::address)
-                .collect();
+            return self.upstream_dns_resolvers.iter().copied().collect();
         }
 
         self.system_dns_resolvers
@@ -843,11 +845,11 @@ impl RefClient {
         self.system_dns_resolvers.clone_from(servers);
     }
 
-    pub(crate) fn set_upstream_dns_resolvers(&mut self, servers: &Vec<DnsServer>) {
-        self.upstream_dns_resolvers.clone_from(servers);
+    pub(crate) fn set_upstream_dns_resolvers(&mut self, servers: &Vec<UdpDnsServer>) {
+        self.upstream_dns_resolvers = servers.clone().into_iter().map_into().collect();
     }
 
-    pub(crate) fn upstream_dns_resolvers(&self) -> Vec<DnsServer> {
+    pub(crate) fn upstream_dns_resolvers(&self) -> Vec<SocketAddr> {
         self.upstream_dns_resolvers.clone()
     }
 }
@@ -877,7 +879,7 @@ pub(crate) fn ref_client_host(
     tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
     system_dns: impl Strategy<Value = Vec<IpAddr>>,
-    upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
+    upstream_dns: impl Strategy<Value = Vec<UdpDnsServer>>,
 ) -> impl Strategy<Value = Host<RefClient>> {
     host(
         any_ip_stack(),
@@ -891,7 +893,7 @@ fn ref_client(
     tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
     system_dns: impl Strategy<Value = Vec<IpAddr>>,
-    upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
+    upstream_dns: impl Strategy<Value = Vec<UdpDnsServer>>,
 ) -> impl Strategy<Value = RefClient> {
     (
         tunnel_ip4s,
@@ -919,7 +921,7 @@ fn ref_client(
                     tunnel_ip4,
                     tunnel_ip6,
                     system_dns_resolvers,
-                    upstream_dns_resolvers,
+                    upstream_dns_resolvers: upstream_dns_resolvers.into_iter().map_into().collect(),
                     internet_resource: Default::default(),
                     cidr_resources: IpNetworkTable::new(),
                     dns_records: Default::default(),

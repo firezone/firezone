@@ -541,7 +541,7 @@ impl ReferenceState {
 
                 servers
                     .iter()
-                    .any(|dns_server| state.client.sending_socket_for(dns_server.ip()).is_some())
+                    .any(|dns_server| state.client.sending_socket_for(dns_server.ip).is_some())
             }
             Transition::SendDnsQueries(queries) => queries.iter().all(|query| {
                 let has_socket_for_server = state
