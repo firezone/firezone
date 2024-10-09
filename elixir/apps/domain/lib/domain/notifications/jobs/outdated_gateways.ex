@@ -25,7 +25,7 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
 
   defp run_check do
     Accounts.all_active_paid_accounts!()
-    |> Enum.filter(&(!notified_today?(&1)))
+    |> Enum.filter(&(!notified_in_last_24h?(&1)))
     |> Enum.each(fn account ->
       all_online_gateways_for_account(account)
       |> Enum.filter(&Gateways.gateway_outdated?/1)
@@ -74,7 +74,7 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
     |> Mailer.deliver_with_rate_limit()
   end
 
-  def notified_today?(%Accounts.Account{} = account) do
+  def notified_in_last_24h?(%Accounts.Account{} = account) do
     last_notification = last_notified(account.config.notifications)
 
     if is_nil(last_notification) do
