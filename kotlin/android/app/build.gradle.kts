@@ -85,8 +85,7 @@ android {
             buildConfigField(
                 "String",
                 "LOG_FILTER",
-                "\"connlib_client_android=debug,firezone_tunnel=debug,phoenix_channel=debug,connlib_shared=debug," +
-                    "boringtun=debug,snownet=debug,str0m=debug,connlib_client_shared=debug,info\"",
+                "\"debug\"",
             )
         }
 
@@ -126,7 +125,7 @@ android {
 
             buildConfigField("String", "AUTH_BASE_URL", "\"https://app.firezone.dev\"")
             buildConfigField("String", "API_URL", "\"wss://api.firezone.dev\"")
-            buildConfigField("String", "LOG_FILTER", "\"str0m=warn,info\"")
+            buildConfigField("String", "LOG_FILTER", "\"info\"")
             firebaseAppDistribution {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
                 artifactType = "AAB"
