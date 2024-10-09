@@ -41,6 +41,7 @@ fn show_export_dialog(ctlr_tx: CtlrTx) -> Result<()> {
         bail!("zip filename isn't valid Unicode");
     };
 
+    /*
     tauri::api::dialog::FileDialogBuilder::new()
         .add_filter("Zip", &["zip"])
         .set_file_name(filename)
@@ -53,5 +54,7 @@ fn show_export_dialog(ctlr_tx: CtlrTx) -> Result<()> {
                     .unwrap()
             }
         });
+    */
+    todo!();
     Ok(())
 }
