@@ -724,7 +724,6 @@ impl ClientState {
         now: Instant,
     ) -> ControlFlow<(), (IpPacket, IpAddr)> {
         let dst = packet.destination();
-        let _guard = tracing::debug_span!("packet", %dst).entered();
         let Some(upstream) = self.dns_mapping.get_by_left(&dst).map(|s| s.address()) else {
             let dest = packet.destination();
             return ControlFlow::Continue((packet, dest));
