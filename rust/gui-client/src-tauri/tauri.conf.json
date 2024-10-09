@@ -48,7 +48,6 @@
     ],
     "publisher": "Firezone"
   },
-  "productName": "firezone-client-gui",
   "mainBinaryName": "firezone-client-gui",
   "identifier": "dev.firezone.client",
   "plugins": {},
