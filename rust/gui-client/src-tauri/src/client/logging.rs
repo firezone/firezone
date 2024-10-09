@@ -32,16 +32,16 @@ pub(crate) async fn count_logs() -> Result<common::FileCount, String> {
 }
 
 /// Pops up the "Save File" dialog
-fn show_export_dialog(ctlr_tx: CtlrTx) -> Result<()> {
+fn show_export_dialog(_ctlr_tx: CtlrTx) -> Result<()> {
     let now = chrono::Local::now();
     let datetime_string = now.format("%Y_%m_%d-%H-%M");
     let stem = PathBuf::from(format!("firezone_logs_{datetime_string}"));
     let filename = stem.with_extension("zip");
-    let Some(filename) = filename.to_str() else {
+    let Some(_filename) = filename.to_str() else {
         bail!("zip filename isn't valid Unicode");
     };
-
-    tauri::api::dialog::FileDialogBuilder::new()
+    /*
+    tauri_plugin_dialog::FileDialogBuilder::new(app.dialog())
         .add_filter("Zip", &["zip"])
         .set_file_name(filename)
         .save_file(move |file_path| match file_path {
@@ -53,5 +53,6 @@ fn show_export_dialog(ctlr_tx: CtlrTx) -> Result<()> {
                     .unwrap()
             }
         });
+        */
     Ok(())
 }
