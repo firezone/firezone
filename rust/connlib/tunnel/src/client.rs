@@ -777,7 +777,6 @@ impl ClientState {
                     )
                     .expect("src and dst IPs come from the same packet"),
                 );
-                ControlFlow::Break(())
             }
             Ok(dns::ResolveStrategy::Recurse) => {
                 if self.should_forward_dns_query_to_gateway(upstream.ip()) {
@@ -793,14 +792,13 @@ impl ClientState {
                     .insert((query_id, upstream), original_src);
                 self.buffered_dns_queries
                     .push_back(dns::RecursiveQuery::via_udp(upstream, message));
-
-                ControlFlow::Break(())
             }
             Err(e) => {
                 tracing::trace!(?packet, "Failed to handle DNS query: {e:#}");
-                ControlFlow::Break(())
             }
         }
+
+        ControlFlow::Break(())
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
