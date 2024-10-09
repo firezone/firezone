@@ -265,17 +265,22 @@ impl UdpSocket {
         Ok(())
     }
 
-    /// Performs a single request-response handshake with the specified destination socket.
+    /// Performs a single request-response handshake with the specified destination socket address.
     ///
-    /// This uses [`tokio::net::UdpSocket::connect`] which cannot be undone and thus consumes this socket.
+    /// This consumes `self` because we want to enforce that we only receive a single message on this socket.
+    /// UDP is stateless and therefore, anybody can just send a packet to our socket.
+    ///
+    /// To simulate a handshake, we therefore only wait for a single message arriving on this socket,
+    /// after that, we discard it, freeing up the used source port.
+    ///
+    /// This is similar to the `connect` functionality but that one doesn't seem to work reliably in a cross-platform way.
+    ///
     /// TODO: Should we make a type-safe API to ensure only one "mode" of the socket can be used?
     pub async fn handshake<const BUF_SIZE: usize>(
         mut self,
         dst: SocketAddr,
         payload: &[u8],
     ) -> io::Result<Vec<u8>> {
-        self.inner.connect(dst).await?;
-
         let transmit = self
             .prepare_transmit(dst, None, payload)?
             .ok_or_else(|| io::Error::other("Failed to prepare `Transmit`"))?;
@@ -288,7 +293,14 @@ impl UdpSocket {
 
         let mut buffer = vec![0u8; BUF_SIZE];
 
-        let num_received = self.inner.recv(&mut buffer).await?;
+        let (num_received, sender) = self.inner.recv_from(&mut buffer).await?;
+
+        if sender != dst {
+            return Err(io::Error::other(format!(
+                "Unexpected reply source: {sender}; expected: {dst}"
+            )));
+        }
+
         buffer.truncate(num_received);
 
         Ok(buffer)
