@@ -1,4 +1,5 @@
 use std::collections::{hash_map, BTreeMap, HashMap, HashSet, VecDeque};
+use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
@@ -35,10 +36,6 @@ struct AllowRules {
 }
 
 impl FilterEngine {
-    fn empty() -> FilterEngine {
-        Self::PermitSome(AllowRules::new())
-    }
-
     fn is_allowed(&self, packet: &IpPacket) -> bool {
         match self {
             FilterEngine::PermitAll => true,
@@ -46,15 +43,16 @@ impl FilterEngine {
         }
     }
 
-    fn permit_all(&mut self) {
-        *self = FilterEngine::PermitAll;
-    }
-
-    fn add_filters<'a>(&mut self, filters: impl IntoIterator<Item = &'a Filter>) {
-        match self {
-            FilterEngine::PermitAll => {}
-            FilterEngine::PermitSome(filter_engine) => filter_engine.add_filters(filters),
+    fn with_filters<'a>(filters: impl Iterator<Item = &'a Filters> + Clone) -> FilterEngine {
+        // Empty filters means permit all
+        if filters.clone().any(|f| f.is_empty()) {
+            return Self::PermitAll;
         }
+
+        let mut allow_rules = AllowRules::new();
+        allow_rules.add_filters(filters.flatten());
+
+        Self::PermitSome(allow_rules)
     }
 }
 
@@ -360,7 +358,7 @@ impl ClientOnGateway {
     // in case that 2 or more resources have overlapping rules.
     fn recalculate_filters(&mut self) {
         self.filters = IpNetworkTable::new();
-        self.recalculate_filters();
+        self.recalculate_cidr_filters();
         self.recalculate_dns_filters();
 
         self.internet_resource_enabled = self.resources.values().any(|r| r.is_internet_resource());
@@ -369,7 +367,6 @@ impl ClientOnGateway {
     fn recalculate_cidr_filters(&mut self) {
         for resource in self.resources.values().filter(|r| r.is_cidr()) {
             for ip in &resource.ips() {
-                let mut filter_engine = FilterEngine::empty();
                 let filters = self.resources.values().filter_map(|r| {
                     r.ips()
                         .iter()
@@ -377,7 +374,10 @@ impl ClientOnGateway {
                         .then_some(r.filters())
                 });
 
-                self.include_filters(ip, filters);
+                let filter_engine = FilterEngine::with_filters(filters);
+
+                tracing::trace!(%ip, filters = ?filter_engine, "Installing new filters");
+                self.filters.insert(*ip, filter_engine);
             }
         }
     }
@@ -390,23 +390,11 @@ impl ClientOnGateway {
 
             debug_assert!(resource.is_dns());
 
-            self.include_filters(addr.into(), vec![resource.filters()]);
+            let filter_engine = FilterEngine::with_filters(iter::once(resource.filters()));
+
+            tracing::trace!(%addr, filters = ?filter_engine, "Installing new filters");
+            self.filters.insert(*addr, filter_engine);
         }
-    }
-
-    fn include_filters(&mut self, ip: IpNetwork, filters: Vec<Filters>) {
-        let mut filter_engine = FilterEngine::empty();
-
-        // Empty filters means permit all
-        if filters.clone().any(|f| f.is_empty()) {
-            filter_engine.permit_all();
-        }
-
-        filter_engine.add_filters(filters.flatten());
-
-        tracing::trace!(%ip, filters = ?filter_engine, "Installing new filters");
-
-        self.filters.insert(*ip, filter_engine);
     }
 
     fn transform_network_to_tun(
