@@ -172,7 +172,7 @@ impl From<SocketAddr> for UdpDnsServer {
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct DohDnsServer {
     pub url: Url,
-    pub records: Vec<SocketAddr>,
+    pub records: Vec<IpAddr>,
 }
 
 /// A single relay
