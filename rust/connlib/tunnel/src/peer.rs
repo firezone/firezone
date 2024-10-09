@@ -377,16 +377,7 @@ impl ClientOnGateway {
                         .then_some(r.filters())
                 });
 
-                // Empty filters means permit all
-                if filters.clone().any(|f| f.is_empty()) {
-                    filter_engine.permit_all();
-                }
-
-                filter_engine.add_filters(filters.flatten());
-
-                tracing::trace!(%ip, filters = ?filter_engine, "Installing new filters");
-
-                self.filters.insert(*ip, filter_engine);
+                self.include_filters(ip, filters);
             }
         }
     }
@@ -399,19 +390,23 @@ impl ClientOnGateway {
 
             debug_assert!(resource.is_dns());
 
-            let mut filter_engine = FilterEngine::empty();
-            // Empty filters means permit all
-
-            if resource.filters().is_empty() {
-                filter_engine.permit_all();
-            }
-
-            filter_engine.add_filters(resource.filters());
-
-            tracing::trace!(%addr, filters = ?filter_engine, "Installing new filters");
-
-            self.filters.insert(*addr, filter_engine);
+            self.include_filters(addr.into(), vec![resource.filters()]);
         }
+    }
+
+    fn include_filters(&mut self, ip: IpNetwork, filters: Vec<Filters>) {
+        let mut filter_engine = FilterEngine::empty();
+
+        // Empty filters means permit all
+        if filters.clone().any(|f| f.is_empty()) {
+            filter_engine.permit_all();
+        }
+
+        filter_engine.add_filters(filters.flatten());
+
+        tracing::trace!(%ip, filters = ?filter_engine, "Installing new filters");
+
+        self.filters.insert(*ip, filter_engine);
     }
 
     fn transform_network_to_tun(
