@@ -139,6 +139,7 @@ pub struct ClientOnGateway {
     ipv4: Ipv4Addr,
     ipv6: Ipv6Addr,
     resources: HashMap<ResourceId, ResourceOnGateway>,
+    /// Caches the existence of internet resource
     internet_resource_enabled: bool,
     filters: IpNetworkTable<FilterEngine>,
     permanent_translations: BTreeMap<IpAddr, TranslationState>,
@@ -359,6 +360,13 @@ impl ClientOnGateway {
     // in case that 2 or more resources have overlapping rules.
     fn recalculate_filters(&mut self) {
         self.filters = IpNetworkTable::new();
+        self.recalculate_filters();
+        self.recalculate_dns_filters();
+
+        self.internet_resource_enabled = self.resources.values().any(|r| r.is_internet_resource());
+    }
+
+    fn recalculate_cidr_filters(&mut self) {
         for resource in self.resources.values().filter(|r| r.is_cidr()) {
             for ip in &resource.ips() {
                 let mut filter_engine = FilterEngine::empty();
@@ -381,7 +389,9 @@ impl ClientOnGateway {
                 self.filters.insert(*ip, filter_engine);
             }
         }
+    }
 
+    fn recalculate_dns_filters(&mut self) {
         for (addr, TranslationState { resource_id, .. }) in &self.permanent_translations {
             let Some(resource) = self.resources.get(resource_id) else {
                 continue;
@@ -402,8 +412,6 @@ impl ClientOnGateway {
 
             self.filters.insert(*addr, filter_engine);
         }
-
-        self.internet_resource_enabled = self.resources.values().any(|r| r.is_internet_resource());
     }
 
     fn transform_network_to_tun(
