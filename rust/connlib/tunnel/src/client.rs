@@ -6,18 +6,17 @@ use domain::base::iana::Rcode;
 pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{DnsResource, InternetResource};
+use url::Url;
 
 use crate::dns::StubResolver;
 use crate::messages::client::ResourceDescription;
 use crate::messages::ResolveRequest;
-use crate::messages::{
-    Answer, DnsServer, Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay,
-};
+use crate::messages::{Answer, Interface as InterfaceConfig, Key, Offer, Relay};
 use crate::peer_store::PeerStore;
 use crate::{dns, TunConfig};
 use anyhow::Context;
 use bimap::BiMap;
-use connlib_model::PublicKey;
+use connlib_model::{DomainName, PublicKey};
 use connlib_model::{GatewayId, RelayId, ResourceId, ResourceStatus, ResourceView};
 use connlib_model::{Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -233,13 +232,17 @@ pub struct ClientState {
 
     /// The DNS resolvers configured on the system outside of connlib.
     system_resolvers: Vec<IpAddr>,
-    /// The DNS resolvers configured in the portal.
+    /// The UDP DNS resolvers configured in the portal.
     ///
     /// Has priority over system-configured DNS servers.
-    upstream_dns: Vec<DnsServer>,
+    upstream_udp_dns: Vec<SocketAddr>,
+    /// The DoH resolvers configured in the portal.
+    ///
+    /// Has priority over system-configured and UDP DNS servers.
+    upstream_doh: Vec<Url>,
 
-    /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
-    dns_mapping: BiMap<IpAddr, DnsServer>,
+    /// Maps from connlib-assigned IP of a DNS server back to the upstream DNS resolver.
+    dns_mapping: BiMap<IpAddr, DnsServerAddress>,
     /// DNS queries that had their destination IP mangled because the servers is a CIDR resource.
     ///
     /// The [`Instant`] tracks when the DNS query expires.
@@ -272,6 +275,12 @@ pub struct ClientState {
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit<'static>>,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum DnsServerAddress {
+    Socket(SocketAddr),
+    Url(Url),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -307,9 +316,10 @@ impl ClientState {
             buffered_transmits: Default::default(),
             internet_resource: None,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
-            upstream_dns: Default::default(),
+            upstream_udp_dns: Default::default(),
             buffered_dns_queries: Default::default(),
             tcp_dns_sockets: DnsTcpSockets::new(now),
+            upstream_doh: Default::default(),
         }
     }
 
@@ -496,12 +506,13 @@ impl ClientState {
             .inspect_err(|e| tracing::debug!(%gid, %local, %from, "{e}"))
             .ok()?;
 
-        let packet = maybe_mangle_dns_response_from_cidr_resource(
-            packet,
-            &self.dns_mapping,
-            &mut self.mangled_dns_queries,
-            now,
-        );
+        // TODO: What does DoH mean for queries through the tunnel? Which servers should be used here?
+        // let packet = maybe_mangle_dns_response_from_cidr_resource(
+        //     packet,
+        //     &self.dns_mapping,
+        //     &mut self.mangled_dns_queries,
+        //     now,
+        // );
 
         Some(packet)
     }
@@ -555,7 +566,7 @@ impl ClientState {
         message: &Message<Vec<u8>>,
     ) -> Option<IpPacket> {
         // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
-        let saddr = *self.dns_mapping.get_by_right(&DnsServer::from(from))?;
+        let saddr = *self.dns_mapping.get_by_right(&from)?;
         let sport = DNS_PORT;
 
         let query_id = message.header().id();
@@ -698,7 +709,7 @@ impl ClientState {
     }
 
     fn is_upstream_set_by_the_portal(&self) -> bool {
-        !self.upstream_dns.is_empty()
+        !self.upstream_udp_dns.is_empty()
     }
 
     /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
@@ -724,7 +735,7 @@ impl ClientState {
         now: Instant,
     ) -> ControlFlow<(), (IpPacket, IpAddr)> {
         let dst = packet.destination();
-        let Some(upstream) = self.dns_mapping.get_by_left(&dst).map(|s| s.address()) else {
+        let Some(upstream) = self.dns_mapping.get_by_left(&dst).copied() else {
             let dest = packet.destination();
             return ControlFlow::Continue((packet, dest));
         };
@@ -874,7 +885,7 @@ impl ClientState {
         self.resources_gateways.get(resource).copied()
     }
 
-    fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, DnsServer>) {
+    fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, SocketAddr>) {
         self.tcp_dns_sockets.set_dns_mapping(new_mapping.clone());
         self.dns_mapping = new_mapping;
         self.mangled_dns_queries.clear();
@@ -901,7 +912,7 @@ impl ClientState {
         self.maybe_update_tun_routes()
     }
 
-    pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
+    pub fn dns_mapping(&self) -> BiMap<IpAddr, SocketAddr> {
         self.dns_mapping.clone()
     }
 
@@ -961,7 +972,35 @@ impl ClientState {
     }
 
     pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) {
-        tracing::trace!(upstream_dns = ?config.upstream_dns, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
+        let upstream_udp_dns = config.upstream_udp_dns.into_iter().map_into().collect();
+        let upstream_doh = config
+            .upstream_doh
+            .iter()
+            .map(|doh| doh.url.clone())
+            .collect();
+
+        tracing::trace!(?upstream_udp_dns, ?upstream_doh, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
+
+        for doh in config.upstream_doh {
+            let Some(host) = doh.url.host() else {
+                tracing::warn!(url = %doh.url, "DoH server URL doesn't have a host");
+                continue;
+            };
+
+            let url::Host::Domain(host) = host else {
+                continue; // Unusual but if there is a DoH server that has a certificate for an IP it will work and we don't need to add any records.
+            };
+
+            let host = match DomainName::vec_from_str(host) {
+                Ok(host) => host,
+                Err(e) => {
+                    tracing::warn!(%host, "Failed to parse DoH server host as domain name: {e}");
+                    continue;
+                }
+            };
+
+            self.stub_resolver.add_known_host_records(host, doh.records);
+        }
 
         match self.tun_config.as_mut() {
             Some(existing) => {
@@ -986,7 +1025,8 @@ impl ClientState {
             }
         }
 
-        self.upstream_dns = config.upstream_dns;
+        self.upstream_udp_dns = upstream_udp_dns;
+        self.upstream_doh = upstream_doh;
 
         self.update_dns_mapping()
     }
@@ -1314,10 +1354,13 @@ impl ClientState {
             return;
         };
 
-        let effective_dns_servers =
-            effective_dns_servers(self.upstream_dns.clone(), self.system_resolvers.clone());
+        let effective_dns_servers = effective_dns_servers(
+            self.upstream_udp_dns.clone(),
+            self.upstream_doh.clone(),
+            self.system_resolvers.clone(),
+        );
 
-        if HashSet::<&DnsServer>::from_iter(effective_dns_servers.iter())
+        if HashSet::<&DnsServerAddress>::from_iter(effective_dns_servers.iter())
             == HashSet::from_iter(self.dns_mapping.right_values())
         {
             tracing::debug!(servers = ?effective_dns_servers, "Effective DNS servers are unchanged");
@@ -1342,10 +1385,7 @@ impl ClientState {
         let new_tun_config = TunConfig {
             ip4: config.ip4,
             ip6: config.ip6,
-            dns_by_sentinel: dns_mapping
-                .iter()
-                .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
-                .collect::<BiMap<_, _>>(),
+            dns_by_sentinel: dns_mapping.clone().into_iter().collect::<BiMap<_, _>>(),
             ipv4_routes,
             ipv6_routes,
         };
@@ -1414,21 +1454,25 @@ fn get_addresses_for_awaiting_resource(
 }
 
 fn effective_dns_servers(
-    upstream_dns: Vec<DnsServer>,
+    upstream_udp: Vec<SocketAddr>,
+    upstream_doh: Vec<Url>,
     default_resolvers: Vec<IpAddr>,
-) -> Vec<DnsServer> {
-    let mut upstream_dns = upstream_dns.into_iter().filter_map(not_sentinel).peekable();
+) -> Vec<DnsServerAddress> {
+    if !upstream_doh.is_empty() {
+        return upstream_doh
+            .into_iter()
+            .map(DnsServerAddress::Url)
+            .collect();
+    }
+
+    let mut upstream_dns = upstream_udp.into_iter().filter_map(not_sentinel).peekable();
     if upstream_dns.peek().is_some() {
-        return upstream_dns.collect();
+        return upstream_dns.map(DnsServerAddress::Socket).collect();
     }
 
     let mut dns_servers = default_resolvers
         .into_iter()
-        .map(|ip| {
-            DnsServer::IpPort(IpDnsServer {
-                address: (ip, DNS_PORT).into(),
-            })
-        })
+        .map(|ip| SocketAddr::new(ip, DNS_PORT))
         .filter_map(not_sentinel)
         .peekable();
 
@@ -1437,10 +1481,10 @@ fn effective_dns_servers(
         return Vec::new();
     }
 
-    dns_servers.collect()
+    dns_servers.map(DnsServerAddress::Socket).collect()
 }
 
-fn not_sentinel(srv: DnsServer) -> Option<DnsServer> {
+fn not_sentinel(srv: SocketAddr) -> Option<SocketAddr> {
     let is_v4_dns = IpNetwork::V4(DNS_SENTINELS_V4).contains(srv.ip());
     let is_v6_dns = IpNetwork::V6(DNS_SENTINELS_V6).contains(srv.ip());
 
@@ -1448,20 +1492,22 @@ fn not_sentinel(srv: DnsServer) -> Option<DnsServer> {
 }
 
 fn sentinel_dns_mapping(
-    dns: &[DnsServer],
+    dns: &[DnsServerAddress],
     old_sentinels: Vec<IpNetwork>,
-) -> BiMap<IpAddr, DnsServer> {
+) -> BiMap<IpAddr, DnsServerAddress> {
     let mut ip_provider = IpProvider::for_stub_dns_servers(old_sentinels);
 
     dns.iter()
         .cloned()
         .map(|i| {
-            (
-                ip_provider
-                    .get_proxy_ip_for(&i.ip())
-                    .expect("We only support up to 256 IPv4 DNS servers and 256 IPv6 DNS servers"),
-                i,
-            )
+            let ip_addr = match i {
+                DnsServerAddress::Socket(i) => ip_provider.get_proxy_ip_for(&i.ip()),
+                DnsServerAddress::Url(_) => ip_provider.ipv4.next().map(Into::into), // TODO: How do we decide between IPv4 and IPv6?
+            };
+            let ip_addr = ip_addr
+                .expect("We only support up to 256 IPv4 DNS servers and 256 IPv6 DNS servers");
+
+            (ip_addr, i)
         })
         .collect()
 }
@@ -1492,7 +1538,7 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
 /// In case the given packet is a DNS query, change its source IP to that of the actual DNS server.
 fn maybe_mangle_dns_query_to_cidr_resource(
     mut packet: IpPacket,
-    dns_mapping: &BiMap<IpAddr, DnsServer>,
+    dns_mapping: &BiMap<IpAddr, SocketAddr>,
     mangeled_dns_queries: &mut HashMap<u16, Instant>,
     now: Instant,
 ) -> IpPacket {
@@ -1521,7 +1567,7 @@ fn maybe_mangle_dns_query_to_cidr_resource(
 
 fn maybe_mangle_dns_response_from_cidr_resource(
     mut packet: IpPacket,
-    dns_mapping: &BiMap<IpAddr, DnsServer>,
+    dns_mapping: &BiMap<IpAddr, SocketAddr>,
     mangeled_dns_queries: &mut HashMap<u16, Instant>,
     now: Instant,
 ) -> IpPacket {
@@ -1533,7 +1579,7 @@ fn maybe_mangle_dns_response_from_cidr_resource(
 
     let src_port = udp.source_port();
 
-    let Some(sentinel) = dns_mapping.get_by_right(&DnsServer::from((src_ip, src_port))) else {
+    let Some(sentinel) = dns_mapping.get_by_right(&SocketAddr::new(src_ip, src_port)) else {
         return packet;
     };
 
@@ -1681,7 +1727,7 @@ mod tests {
         ]
     }
 
-    fn dns_list() -> Vec<DnsServer> {
+    fn dns_list() -> Vec<SocketAddr> {
         vec![
             dns("1.1.1.1:53"),
             dns("1.0.0.1:53"),
@@ -1689,10 +1735,8 @@ mod tests {
         ]
     }
 
-    fn dns(address: &str) -> DnsServer {
-        DnsServer::IpPort(IpDnsServer {
-            address: address.parse().unwrap(),
-        })
+    fn dns(address: &str) -> SocketAddr {
+        address.parse().unwrap()
     }
 
     fn ip(addr: &str) -> IpAddr {

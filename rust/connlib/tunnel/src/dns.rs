@@ -108,6 +108,18 @@ impl KnownHosts {
         }
     }
 
+    fn add_records(&mut self, host: DomainName, records: Vec<IpAddr>) {
+        self.fqdn_to_ips.insert(host.clone(), records.clone());
+
+        for ip in records {
+            let existing = self.ips_to_fqdn.insert(ip, host.clone());
+
+            if let Some(old_domain) = existing {
+                tracing::warn!(%host, %ip, %old_domain, "IP conflict");
+            }
+        }
+    }
+
     fn get_records(
         &self,
         qtype: Rtype,
@@ -176,6 +188,14 @@ impl StubResolver {
         let existing = self.dns_resources.insert(parsed_pattern, id);
 
         existing.is_none()
+    }
+
+    pub(crate) fn add_known_host_records(&mut self, host: DomainName, records: Vec<IpAddr>) {
+        self.fqdn_to_ips.insert(host.clone(), records.clone());
+
+        for ip in records {
+            let existing = self.ips_to_fqdn.insert(ip, host.clone());
+        }
     }
 
     pub(crate) fn remove_resource(&mut self, id: ResourceId) {

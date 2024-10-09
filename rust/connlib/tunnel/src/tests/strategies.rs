@@ -1,7 +1,8 @@
 use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
 use crate::client::{CidrResource, DnsResource, InternetResource, IPV4_RESOURCES, IPV6_RESOURCES};
+use crate::messages::UdpDnsServer;
 use crate::proptest::*;
-use crate::{messages::DnsServer, DomainName};
+use crate::DomainName;
 use connlib_model::{RelayId, Site};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
@@ -253,7 +254,7 @@ pub(crate) fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
     })
 }
 
-pub(crate) fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
+pub(crate) fn upstream_dns_servers() -> impl Strategy<Value = Vec<UdpDnsServer>> {
     dns_servers().prop_flat_map(|dns_servers| {
         let max = dns_servers.len();
 

@@ -1,11 +1,11 @@
 use crate::{
     client::{Resource, IPV4_RESOURCES, IPV6_RESOURCES},
+    messages::UdpDnsServer,
     proptest::{host_v4, host_v6},
 };
 use connlib_model::RelayId;
 
 use super::sim_net::{any_ip_stack, any_port, Host};
-use crate::messages::DnsServer;
 use connlib_model::{DomainName, ResourceId};
 use domain::base::Rtype;
 use prop::collection;
@@ -60,7 +60,7 @@ pub(crate) enum Transition {
     /// The system's DNS servers changed.
     UpdateSystemDnsServers(Vec<IpAddr>),
     /// The upstream DNS servers changed.
-    UpdateUpstreamDnsServers(Vec<DnsServer>),
+    UpdateUpstreamDnsServers(Vec<UdpDnsServer>),
 
     /// Roam the client to a new pair of sockets.
     RoamClient {
