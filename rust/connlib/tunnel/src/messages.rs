@@ -178,14 +178,13 @@ pub struct IpDnsServer {
 ///
 /// Note that the ips are /32 for ipv4 and /128 for ipv6.
 /// This is done to minimize collisions and we update the routing table manually.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 pub struct Interface {
     /// Interface's Ipv4.
     pub ipv4: Ipv4Addr,
     /// Interface's Ipv6.
     pub ipv6: Ipv6Addr,
     /// DNS that will be used to query for DNS that aren't within our resource list.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(default)]
     pub upstream_dns: Vec<DnsServer>,
 }
