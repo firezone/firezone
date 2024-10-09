@@ -131,3 +131,37 @@ jobs:
           TAG_NAME: gui-client-1.3.9
         shell: bash
         run: ${{ matrix.upload-script }}
+  build-tauri-v1:
+    name: build-tauri-v1
+    runs-on: ubuntu-20.04
+    env:
+      # mark:next-gui-version
+      BINARY_DEST_PATH: firezone-client-tauri-v1-linux_1.3.9_x86_64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-tauri-v1
+        timeout-minutes: 10
+      - name: Install pnpm deps
+        run: pnpm install
+      - name: Build release exe and deb
+        run: pnpm build
+      - name: Ensure unmodified Git workspace
+        run: git diff --exit-code
+      - name: Rename artifacts and compute SHA256
+        run: ../../scripts/build/tauri-rename-ubuntu.sh
+      - name: Upload debug symbols
+        uses: actions/upload-artifacts@v4
+        with:
+          name: ${{ env.BINARY_DEST_PATH }}-syms
+          # mark:next-gui-version
+          path: rust/gui-client/firezone-client-gui-linux_1.3.9_x86_64.dwp
+          if-no-files-found: error
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BINARY_DEST_PATH }}-pkg
+          path: rust/gui-client/firezone-client-gui-linux_1.3.9_x86_64.deb
+          if-no-files-found: error
+      # TODO: Upload to draft release

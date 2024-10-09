@@ -13,21 +13,21 @@ tauri-build = { version = "1.5", features = [] }
 
 [dependencies]
 anyhow = { version = "1.0" }
-atomicwrites = { workspace = true }
-chrono = { workspace = true }
+atomicwrites = "0.4.4"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 clap = { version = "4.5", features = ["derive", "env"] }
-connlib-client-shared = { workspace = true }
-connlib-model = { workspace = true }
-firezone-bin-shared = { workspace = true }
+connlib-client-shared = { path = "../../connlib/clients/shared" }
+connlib-model = { path = "../../connlib/model" }
+firezone-bin-shared = { path = "../../bin-shared" }
 firezone-gui-client-common = { path = "../../gui-client-common" }
 firezone-headless-client = { path = "../../headless-client" }
-firezone-logging = { workspace = true }
-firezone-telemetry = { workspace = true }
+firezone-logging = { path = "../../logging" }
+firezone-telemetry = { path = "../../telemetry" }
 native-dialog = "0.7.0"
 rand = "0.8.5"
-rustls = { workspace = true }
+rustls = { version = "0.23.10", default-features = false, features = ["ring"] }
 sadness-generator = "0.6.0"
-secrecy = { workspace = true }
+secrecy = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 subtle = "2.5.0"
@@ -36,9 +36,9 @@ tauri = { version = "1.7.1", features = ["dialog", "icon-png", "notification", "
 tauri-runtime = "0.14.5"
 tauri-utils = "1.6.0"
 thiserror = { version = "1.0", default-features = false }
-tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
+tokio = { version = "1.39", features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
 tokio-util = { version = "0.7.11", features = ["codec"] }
-tracing = { workspace = true }
+tracing = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 url = { version = "2.5.2", features = ["serde"] }
 uuid = { version = "1.10.0", features = ["v4"] }
@@ -66,5 +66,52 @@ features = [
 # I don't know how to verify this change, so I won't do it right now.
 custom-protocol = ["tauri/custom-protocol"]
 
-[lints]
-workspace = true
+# Tauri v1 and v2 have a conflicting native dependency on GTK,
+# so the Tauri v1 Client lives outside the workspace until it's deprecated.
+[workspace]
+
+[lints.clippy]
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+unnecessary_wraps = "warn"
+unused_async = "warn"
+wildcard_enum_match_arm = "warn" # Ensures we match on all combinations of `Poll`, preventing erroneous suspensions.
+redundant_else = "warn"
+redundant_clone = "warn"
+
+[lints.rustdoc]
+private-intra-doc-links = "allow" # We don't publish any of our docs but want to catch dead links.
+
+[patch.crates-io]
+boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
+str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
+ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
+ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
+proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" }
+proptest-state-machine = { git = "https://github.com/proptest-rs/proptest", branch = "main" }
+tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "deps/bump-otel-0.23" } # Waiting for release.
+
+# Enforce `tracing-macros` to have released `tracing` version.
+[patch.'https://github.com/tokio-rs/tracing']
+tracing = "0.1.40"
+
+[profile.dev]
+debug = "full"
+split-debuginfo = "packed"
+strip = "none"
+
+[profile.release]
+debug = "full"
+split-debuginfo = "packed"
+strip = "none"
+
+# Full link-time optimization. Reduces binaries by up to 3x on some platforms.
+lto = "fat"
+
+# Increases the compiler's ability to produce smaller, optimized code
+# at the expense of compilation time
+codegen-units = 1
+
+[profile.bench]
+strip = false # Frame pointers are necessary for profiling; `strip=true` appears to remove them.
