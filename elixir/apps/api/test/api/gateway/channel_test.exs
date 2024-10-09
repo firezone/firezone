@@ -746,7 +746,8 @@ defmodule API.Gateway.ChannelTest do
                public_key: client.public_key
              }
 
-      assert payload.ice_credentials == ice_credentials
+      assert payload.client_ice_credentials == ice_credentials.client
+      assert payload.gateway_ice_credentials == ice_credentials.gateway
 
       assert DateTime.from_unix!(payload.expires_at) ==
                DateTime.truncate(expires_at, :second)
