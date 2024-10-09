@@ -1,4 +1,4 @@
-defmodule Domain.Mocks.WWWFirezone do
+defmodule Domain.Mocks.FirezoneWebsite do
   def mock_versions_endpoint(bypass, versions \\ %{}) do
     versions_path = "/api/releases"
     test_pid = self()

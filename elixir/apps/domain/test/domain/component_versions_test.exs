@@ -2,7 +2,7 @@ defmodule Domain.ComponentVersionsTest do
   use ExUnit.Case, async: true
   import Domain.ComponentVersions
   alias Domain.ComponentVersions
-  alias Domain.Mocks.WWWFirezone
+  alias Domain.Mocks.FirezoneWebsite
 
   setup do
     bypass = Bypass.open()
@@ -19,7 +19,7 @@ defmodule Domain.ComponentVersionsTest do
         headless: "1.1.1"
       }
 
-      WWWFirezone.mock_versions_endpoint(bypass, versions)
+      FirezoneWebsite.mock_versions_endpoint(bypass, versions)
 
       new_config =
         Domain.Config.get_env(:domain, ComponentVersions)
