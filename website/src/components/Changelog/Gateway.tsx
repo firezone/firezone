@@ -10,7 +10,14 @@ export default function Gateway() {
 
   return (
     <Entries href={href} arches={arches} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <Entry version="1.3.3" date={todo}>
+          <ChangeItem pull="6960">
+            Separates CIDR and DNS resources filters, preventing filters
+            from one applying to the other.
+          </ChangeItem>
+        </Entry>
+      </Unreleased>
       <Entry version="1.3.2" date={new Date("2024-10-02")}>
         <ChangeItem pull="6733">
           Reduces log level of the "Couldn't find connection by IP" message so
@@ -19,10 +26,6 @@ export default function Gateway() {
         <ChangeItem pull="6845">
           Fixes connectivity issues on idle connections by entering an
           always-on, low-power mode instead of closing them.
-        </ChangeItem>
-        <ChangeItem pull="6960">
-          Separates CIDR and DNS resources filters, preventing filters
-          from one applying to the other.
         </ChangeItem>
       </Entry>
       <Entry version="1.3.1" date={new Date("2024-09-05")}>
