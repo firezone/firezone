@@ -136,7 +136,7 @@ jobs:
     runs-on: ubuntu-20.04
     env:
       # mark:next-gui-version
-      BINARY_DEST_PATH: firezone-client-tauri-v1-linux_1.3.9_x86_64
+      BINARY_DEST_PATH: firezone-client-tauri-v1-linux_1.3.10_x86_64
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -152,11 +152,11 @@ jobs:
       - name: Rename artifacts and compute SHA256
         run: ../../scripts/build/tauri-rename-ubuntu.sh
       - name: Upload debug symbols
-        uses: actions/upload-artifacts@v4
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BINARY_DEST_PATH }}-syms
           # mark:next-gui-version
-          path: rust/gui-client/firezone-client-gui-linux_1.3.9_x86_64.dwp
+          path: rust/gui-client/firezone-client-gui-linux_1.3.10_x86_64.dwp
           if-no-files-found: error
       - name: Upload package
         uses: actions/upload-artifact@v4
