@@ -10,7 +10,7 @@ arboard = { version = "3.4.0", default-features = false }
 atomicwrites = { workspace = true }
 connlib-model = { workspace = true }
 firezone-bin-shared = { workspace = true }
-firezone-headless-client = { path = "../../headless-client" }
+firezone-headless-client = { path = "../headless-client" }
 firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
 futures = { version = "0.3", default-features = false }
