@@ -14,7 +14,11 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem enable={title === "Linux GUI"} pull="6987">
+          Fixes a crash on startup caused by incorrect permissions on the ID file.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.3.8" date={new Date("2024-10-08")}>
         <ChangeItem pull="6874">
           Fixes the GUI shutting down slowly.
