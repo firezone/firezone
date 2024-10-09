@@ -21,9 +21,8 @@ export default function Gateway() {
           always-on, low-power mode instead of closing them.
         </ChangeItem>
         <ChangeItem pull="6960">
-          Applies DNS and CIDR resources filters separatedly, preventing
-          DNS resources with resovled IPs overlapping with CIDR having the CIDR
-          filters applied.
+          Separates CIDR and DNS resources filters, preventing filters
+          from one applying to the other.
         </ChangeItem>
       </Entry>
       <Entry version="1.3.1" date={new Date("2024-09-05")}>
