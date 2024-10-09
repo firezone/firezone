@@ -63,40 +63,4 @@ sudo journalctl -u firezone-gateway.service
 </TabsItem>
 </TabsGroup>
 
-## Some browsers break DNS routing
-
-Some web browsers enable DNS-over-HTTPS by default, which can interfere with
-Firezone's DNS-based routing system. If you're experiencing issues connecting to
-DNS Resources in your browser, or notice that DNS resources aren't being routed
-through a Firezone Gateway when they should be, try disabling DNS-over-HTTPS
-using the appropriate method below.
-
-### Firefox
-
-1. Go to `about:preferences#privacy` in the address bar.
-1. Scroll down to the "DNS over HTTPS" section.
-1. Ensure that "Off" is selected.
-
-<Image
-  src="/images/kb/administer/troubleshooting/ff_doh_disable.png"
-  alt="Firefox DNS-over-HTTPS settings"
-  className="mx-auto shadow rounded"
-  width={500}
-  height={500}
-/>
-
-### Chrome
-
-1. Go to `chrome://settings/security` in the address bar.
-1. Scroll down to the "Advanced" section.
-1. Ensure that "Use secure DNS" is disabled.
-
-<Image
-  src="/images/kb/administer/troubleshooting/chrome_doh_disable.png"
-  alt="Firefox DNS-over-HTTPS settings"
-  className="mx-auto shadow rounded"
-  width={500}
-  height={500}
-/>
-
 <SupportOptions />
