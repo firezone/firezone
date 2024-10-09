@@ -2441,6 +2441,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "firezone-tauri-v1-client"
+version = "1.3.9"
+dependencies = [
+ "anyhow",
+ "atomicwrites",
+ "chrono",
+ "clap",
+ "connlib-client-shared",
+ "connlib-model",
+ "dirs",
+ "firezone-bin-shared",
+ "firezone-gui-client-common",
+ "firezone-headless-client",
+ "firezone-logging",
+ "firezone-telemetry",
+ "native-dialog",
+ "nix 0.29.0",
+ "rand 0.8.5",
+ "rustls 0.23.13",
+ "sadness-generator",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "subtle",
+ "tauri",
+ "tauri-build",
+ "tauri-runtime",
+ "tauri-utils",
+ "tauri-winrt-notification 0.6.0",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+ "windows 0.58.0",
+]
+
+[[package]]
 name = "firezone-telemetry"
 version = "0.1.0"
 dependencies = [

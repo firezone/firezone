@@ -17,6 +17,7 @@ members = [
   "phoenix-channel",
   "relay",
   "socket-factory",
+  "tauri-client/src-tauri",
   "telemetry",
   "tests/gui-smoke-test",
   "tests/http-test-server",
