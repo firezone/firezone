@@ -24,7 +24,7 @@ defmodule Domain.ComponentVersionsTest do
       new_config =
         Domain.Config.get_env(:domain, ComponentVersions)
         |> Keyword.merge(
-          from_url: true,
+          fetch_from_url: true,
           firezone_releases_url: "http://localhost:#{bypass.port}/api/releases"
         )
 

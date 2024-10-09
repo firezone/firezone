@@ -36,12 +36,6 @@ defmodule Domain.ComponentVersions.Refresher do
     {:noreply, state}
   end
 
-  def component_version(component) do
-    Domain.Config.get_env(:domain, ComponentVersions, [])
-    |> Keyword.get(:versions, [])
-    |> Keyword.get(component, "0.0.0")
-  end
-
   defp refresh_versions do
     case ComponentVersions.fetch_versions() do
       {:ok, versions} ->

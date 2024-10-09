@@ -11,24 +11,41 @@ defmodule Domain.ComponentVersions do
   def init(_opts) do
     pool_opts = Domain.Config.fetch_env!(:domain, :http_client_ssl_opts)
 
-    children = [
-      {Finch, name: __MODULE__.Finch, pools: %{default: pool_opts}},
-      ComponentVersions.Refresher
-    ]
+    fetch_from_url? =
+      Domain.Config.fetch_env!(:domain, ComponentVersions)
+      |> Keyword.get(:fetch_from_url)
+
+    children =
+      [
+        {Finch, name: __MODULE__.Finch, pools: %{default: pool_opts}}
+      ]
+
+    children =
+      if fetch_from_url? do
+        children ++ [ComponentVersions.Refresher]
+      else
+        children
+      end
 
     Supervisor.init(children, strategy: :rest_for_one)
   end
 
   def gateway_version do
-    ComponentVersions.Refresher.component_version(:gateway)
+    ComponentVersions.component_version(:gateway)
+  end
+
+  def component_version(component) do
+    Domain.Config.get_env(:domain, ComponentVersions, [])
+    |> Keyword.get(:versions, [])
+    |> Keyword.get(component, "0.0.0")
   end
 
   def fetch_versions do
     config = fetch_config!()
     releases_url = Keyword.fetch!(config, :firezone_releases_url)
-    from_url? = Keyword.fetch!(config, :from_url)
+    fetch_from_url? = Keyword.fetch!(config, :fetch_from_url)
 
-    if from_url? do
+    if fetch_from_url? do
       fetch_versions_from_url(releases_url)
     else
       {:ok, Keyword.fetch!(config, :versions)}

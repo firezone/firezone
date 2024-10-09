@@ -27,7 +27,7 @@ config :domain, platform_adapter: Domain.GoogleCloudPlatform
 config :domain, Domain.GoogleCloudPlatform, service_account_email: "foo@iam.example.com"
 
 config :domain, Domain.ComponentVersions,
-  from_url: false,
+  fetch_from_url: false,
   versions: [
     apple: "1.0.0",
     android: "1.0.0",
