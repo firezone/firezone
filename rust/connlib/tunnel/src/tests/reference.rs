@@ -7,7 +7,6 @@ use crate::{dns::is_subdomain, proptest::relay_id};
 use connlib_model::{GatewayId, RelayId, ResourceId, StaticSecret};
 use domain::base::Rtype;
 use proptest::{prelude::*, sample};
-use proptest_state_machine::ReferenceStateMachine;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     fmt, iter,
@@ -48,11 +47,8 @@ pub(crate) enum ResourceDst {
 /// The logic in here represents what we expect the [`ClientState`] & [`GatewayState`] to do.
 /// Care has to be taken that we don't implement things in a buggy way here.
 /// After all, if your test has bugs, it won't catch any in the actual implementation.
-impl ReferenceStateMachine for ReferenceState {
-    type State = Self;
-    type Transition = Transition;
-
-    fn init_state() -> BoxedStrategy<Self::State> {
+impl ReferenceState {
+    pub(crate) fn initial_state() -> BoxedStrategy<Self> {
         stub_portal()
             .prop_flat_map(|portal| {
                 let gateways = portal.gateways();
@@ -154,7 +150,7 @@ impl ReferenceStateMachine for ReferenceState {
     ///
     /// This is invoked by proptest repeatedly to explore further state transitions.
     /// Here, we should only generate [`Transition`]s that make sense for the current state.
-    fn transitions(state: &Self::State) -> BoxedStrategy<Self::Transition> {
+    pub(crate) fn transitions(state: &Self) -> BoxedStrategy<Transition> {
         CompositeStrategy::default()
             .with(
                 1,
@@ -269,7 +265,7 @@ impl ReferenceStateMachine for ReferenceState {
     /// Apply the transition to our reference state.
     ///
     /// Here is where we implement the "expected" logic.
-    fn apply(mut state: Self::State, transition: &Self::Transition) -> Self::State {
+    pub(crate) fn apply(mut state: Self, transition: &Transition) -> Self {
         match transition {
             Transition::ActivateResource(resource) => {
                 state.client.exec_mut(|client| match resource {
@@ -456,7 +452,7 @@ impl ReferenceStateMachine for ReferenceState {
     }
 
     /// Any additional checks on whether a particular [`Transition`] can be applied to a certain state.
-    fn preconditions(state: &Self::State, transition: &Self::Transition) -> bool {
+    pub(crate) fn is_valid_transition(state: &Self, transition: &Transition) -> bool {
         match transition {
             Transition::ActivateResource(resource) => {
                 // Don't add resource we already have.

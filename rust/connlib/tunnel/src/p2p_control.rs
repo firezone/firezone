@@ -1,73 +1,108 @@
 //! Firezone's P2P control protocol between clients and gateways.
+//!
+//! The protocol is event-based, i.e. does not have a notion of requests or responses.
+//! It operates on top of IP, meaning delivery is not guaranteed.
+//!
+//! Unreliable, event-based protocols require application-level retransmissions.
+//! When adding a new event type, it is therefore strongly recommended to make its semantics idempotent.
+//!
+//! The protocol has a fixed 8-byte header where the first byte is reserved for the event-type.
+//! Usually, events will be grouped into a namespace.
+//! These namespaces are purely conventional and not represented on the protocol level.
 
+use ip_packet::FzP2pEventType;
+
+pub const ASSIGNED_IPS_EVENT: FzP2pEventType = FzP2pEventType::new(0);
+pub const DOMAIN_STATUS_EVENT: FzP2pEventType = FzP2pEventType::new(1);
+
+/// The namespace for the DNS resource NAT protocol.
 #[cfg_attr(not(test), expect(dead_code, reason = "Will be used soon."))]
-pub mod setup_dns_resource_nat {
+pub mod dns_resource_nat {
+    use super::*;
     use anyhow::{Context, Result};
     use connlib_model::{DomainName, ResourceId};
     use ip_packet::{FzP2pControlSlice, IpPacket};
     use std::net::IpAddr;
 
-    pub const REQ_CODE: u8 = 0;
-    pub const RES_CODE: u8 = 1;
-
-    pub fn request(resource: ResourceId, domain: DomainName, proxy_ips: Vec<IpAddr>) -> IpPacket {
+    /// Construct a new [`AssignedIps`] event.
+    pub fn assigned_ips(
+        resource: ResourceId,
+        domain: DomainName,
+        proxy_ips: Vec<IpAddr>,
+    ) -> IpPacket {
         debug_assert_eq!(proxy_ips.len(), 8);
 
-        let payload = serde_json::to_vec(&Request {
+        let payload = serde_json::to_vec(&AssignedIps {
             resource,
             domain,
             proxy_ips,
         })
         .unwrap();
 
-        ip_packet::make::fz_p2p_control([REQ_CODE, 0, 0, 0, 0, 0, 0, 0], &payload)
-            .expect("with only 8 proxy IPs, payload should be less than max packet size")
+        ip_packet::make::fz_p2p_control(
+            [ASSIGNED_IPS_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0],
+            &payload,
+        )
+        .expect("with only 8 proxy IPs, payload should be less than max packet size")
     }
 
-    pub fn response(resource: ResourceId, domain: DomainName, code: u16) -> IpPacket {
-        let payload = serde_json::to_vec(&Response {
-            code,
+    /// Construct a new [`DomainStatus`] event.
+    pub fn domain_status(resource: ResourceId, domain: DomainName, status: NatStatus) -> IpPacket {
+        let payload = serde_json::to_vec(&DomainStatus {
+            status,
             resource,
             domain,
         })
         .unwrap();
 
-        ip_packet::make::fz_p2p_control([RES_CODE, 0, 0, 0, 0, 0, 0, 0], &payload)
-            .expect("payload is less than max packet size")
+        ip_packet::make::fz_p2p_control(
+            [DOMAIN_STATUS_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0],
+            &payload,
+        )
+        .expect("payload is less than max packet size")
     }
 
-    pub fn decode_request(packet: FzP2pControlSlice) -> Result<Request> {
+    pub fn decode_assigned_ips(packet: FzP2pControlSlice) -> Result<AssignedIps> {
         anyhow::ensure!(
-            packet.message_type() == REQ_CODE,
-            "Control protocol packet is not a setup-dns-resource-nat request"
+            packet.event_type() == ASSIGNED_IPS_EVENT,
+            "Control protocol packet is not a `dns_resource_nat::AssignedIp`s event"
         );
 
-        serde_json::from_slice::<Request>(packet.payload())
-            .context("Failed to deserialize `setup_dns_resource_nat::Request`")
+        serde_json::from_slice::<AssignedIps>(packet.payload())
+            .context("Failed to deserialize `dns_resource_nat::AssignedIps`")
     }
 
-    pub fn decode_response(packet: FzP2pControlSlice) -> Result<Response> {
+    pub fn decode_domain_status(packet: FzP2pControlSlice) -> Result<DomainStatus> {
         anyhow::ensure!(
-            packet.message_type() == RES_CODE,
-            "Control protocol packet is not a setup-dns-resource-nat request"
+            packet.event_type() == DOMAIN_STATUS_EVENT,
+            "Control protocol packet is not a `dns_resource_nat::DomainStatus` event"
         );
 
-        serde_json::from_slice::<Response>(packet.payload())
-            .context("Failed to deserialize `setup_dns_resource_nat::Response`")
+        serde_json::from_slice::<DomainStatus>(packet.payload())
+            .context("Failed to deserialize `dns_resource_nat::DomainStatus`")
     }
 
     #[derive(serde::Serialize, serde::Deserialize)]
-    pub struct Request {
+    pub struct AssignedIps {
         pub resource: ResourceId,
         pub domain: DomainName,
         pub proxy_ips: Vec<IpAddr>,
     }
 
     #[derive(serde::Serialize, serde::Deserialize)]
-    pub struct Response {
+    pub struct DomainStatus {
         pub resource: ResourceId,
         pub domain: DomainName,
-        pub code: u16, // Loosely follows the semantics of HTTP.
+        pub status: NatStatus,
+    }
+
+    #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
+    pub enum NatStatus {
+        /// The NAT is active and traffic will be routed.
+        Active,
+        /// The NAT is inactive and traffic won't be routed.
+        #[serde(other)] // For forwards-compatibility with future versions of this enum.
+        Inactive,
     }
 
     #[cfg(test)]
@@ -78,45 +113,66 @@ pub mod setup_dns_resource_nat {
         use std::net::{Ipv4Addr, Ipv6Addr};
 
         #[test]
-        fn max_payload_length_request() {
-            let request = Request {
+        fn max_payload_length_assigned_ips() {
+            let assigned_ips = AssignedIps {
                 resource: ResourceId::from_u128(100),
                 domain: longest_domain_possible(),
                 proxy_ips: eight_proxy_ips(),
             };
 
-            let serialized = serde_json::to_vec(&request).unwrap();
+            let serialized = serde_json::to_vec(&assigned_ips).unwrap();
 
             assert_eq!(serialized.len(), 402);
             assert!(serialized.len() <= ip_packet::PACKET_SIZE);
         }
 
         #[test]
-        fn request_serde_roundtrip() {
-            let packet = request(
+        fn assigned_ips_serde_roundtrip() {
+            let packet = assigned_ips(
                 ResourceId::from_u128(101),
                 domain("example.com"),
                 eight_proxy_ips(),
             );
 
             let slice = packet.as_fz_p2p_control().unwrap();
-            let request = decode_request(slice).unwrap();
+            let assigned_ips = decode_assigned_ips(slice).unwrap();
 
-            assert_eq!(request.resource, ResourceId::from_u128(101));
-            assert_eq!(request.domain, domain("example.com"));
-            assert_eq!(request.proxy_ips, eight_proxy_ips())
+            assert_eq!(assigned_ips.resource, ResourceId::from_u128(101));
+            assert_eq!(assigned_ips.domain, domain("example.com"));
+            assert_eq!(assigned_ips.proxy_ips, eight_proxy_ips())
         }
 
         #[test]
-        fn response_serde_roundtrip() {
-            let packet = response(ResourceId::from_u128(101), domain("example.com"), 200);
+        fn domain_status_serde_roundtrip() {
+            let packet = domain_status(
+                ResourceId::from_u128(101),
+                domain("example.com"),
+                NatStatus::Active,
+            );
 
             let slice = packet.as_fz_p2p_control().unwrap();
-            let request = decode_response(slice).unwrap();
+            let domain_status = decode_domain_status(slice).unwrap();
 
-            assert_eq!(request.resource, ResourceId::from_u128(101));
-            assert_eq!(request.domain, domain("example.com"));
-            assert_eq!(request.code, 200)
+            assert_eq!(domain_status.resource, ResourceId::from_u128(101));
+            assert_eq!(domain_status.domain, domain("example.com"));
+            assert_eq!(domain_status.status, NatStatus::Active)
+        }
+
+        #[test]
+        fn domain_status_ignored_unknown_nat_status() {
+            let payload = r#"{"resource":"00000000-0000-0000-0000-000000000065","domain":"example.com","status":"what_is_this"}"#;
+            let packet = ip_packet::make::fz_p2p_control(
+                [DOMAIN_STATUS_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0],
+                payload.as_bytes(),
+            )
+            .expect("payload is less than max packet size");
+
+            let slice = packet.as_fz_p2p_control().unwrap();
+            let domain_status = decode_domain_status(slice).unwrap();
+
+            assert_eq!(domain_status.resource, ResourceId::from_u128(101));
+            assert_eq!(domain_status.domain, domain("example.com"));
+            assert_eq!(domain_status.status, NatStatus::Inactive);
         }
 
         fn domain(d: &str) -> DomainName {
