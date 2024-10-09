@@ -13,14 +13,14 @@ defmodule Domain.ComponentVersions do
 
     children = [
       {Finch, name: __MODULE__.Finch, pools: %{default: pool_opts}},
-      ComponentVersions.Instance
+      ComponentVersions.Refresher
     ]
 
     Supervisor.init(children, strategy: :rest_for_one)
   end
 
   def gateway_version do
-    ComponentVersions.Instance.component_version(:gateway)
+    ComponentVersions.Refresher.component_version(:gateway)
   end
 
   def fetch_versions do

@@ -1,4 +1,4 @@
-defmodule Domain.ComponentVersions.Instance do
+defmodule Domain.ComponentVersions.Refresher do
   use GenServer
   require Logger
   alias Domain.ComponentVersions
