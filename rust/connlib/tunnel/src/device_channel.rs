@@ -60,6 +60,10 @@ impl Device {
             }
         }
 
+        if packet.is_fz_p2p_control() {
+            tracing::warn!("Packet matches heuristics of FZ-internal p2p control protocol");
+        }
+
         tracing::trace!(target: "wire::dev::recv", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
 
         Poll::Ready(Ok(packet))
@@ -73,6 +77,11 @@ impl Device {
         }
 
         tracing::trace!(target: "wire::dev::send", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
+
+        debug_assert!(
+            !packet.is_fz_p2p_control(),
+            "FZ p2p control protocol packets should never leave `connlib`"
+        );
 
         match packet {
             IpPacket::Ipv4(msg) => self.tun()?.write4(msg.packet()),

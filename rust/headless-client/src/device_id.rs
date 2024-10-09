@@ -52,6 +52,18 @@ pub fn device_info() -> phoenix_channel::DeviceInfo {
     }
 }
 
+/// Returns the device ID without generating it
+pub fn get() -> Result<DeviceId> {
+    let path = path()?;
+    let content = fs::read_to_string(&path).context("Failed to read file")?;
+    let device_id_json = serde_json::from_str::<DeviceIdJson>(&content)
+        .context("Failed to deserialize content as JSON")?;
+
+    Ok(DeviceId {
+        id: device_id_json.device_id(),
+    })
+}
+
 /// Returns the device ID, generating it and saving it to disk if needed.
 ///
 /// Per <https://github.com/firezone/firezone/issues/2697> and <https://github.com/firezone/firezone/issues/2711>,
@@ -68,7 +80,7 @@ pub fn get_or_create() -> Result<DeviceId> {
     // Make sure the dir exists, and fix its permissions so the GUI can write the
     // log filter file
     fs::create_dir_all(dir).context("Failed to create dir for firezone-id")?;
-    set_permissions(dir).with_context(|| {
+    set_dir_permissions(dir).with_context(|| {
         format!(
             "Couldn't set permissions on IPC service config dir `{}`",
             dir.display()
@@ -82,6 +94,8 @@ pub fn get_or_create() -> Result<DeviceId> {
     {
         let id = j.device_id();
         tracing::debug!(?id, "Loaded device ID from disk");
+        // Correct permissions for #6989
+        set_id_permissions(&path).context("Couldn't set permissions on Firezone ID file")?;
         return Ok(DeviceId { id });
     }
 
@@ -98,13 +112,14 @@ pub fn get_or_create() -> Result<DeviceId> {
 
     let id = j.device_id();
     tracing::debug!(?id, "Saved device ID to disk");
+    set_id_permissions(&path).context("Couldn't set permissions on Firezone ID file")?;
     Ok(DeviceId { id })
 }
 
 #[cfg(target_os = "linux")]
-fn set_permissions(dir: &Path) -> Result<()> {
+fn set_dir_permissions(dir: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
-    // user read/write, group read-write, others nothing
+    // user read/write, group read/write, others nothing
     // directories need `+x` to work of course
     let perms = fs::Permissions::from_mode(0o770);
     std::fs::set_permissions(dir, perms)?;
@@ -114,7 +129,23 @@ fn set_permissions(dir: &Path) -> Result<()> {
 /// Does nothing on non-Linux systems
 #[cfg(not(target_os = "linux"))]
 #[expect(clippy::unnecessary_wraps)]
-fn set_permissions(_: &Path) -> Result<()> {
+fn set_dir_permissions(_: &Path) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn set_id_permissions(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    // user read/write, group read, others nothing
+    let perms = fs::Permissions::from_mode(0o640);
+    std::fs::set_permissions(path, perms)?;
+    Ok(())
+}
+
+/// Does nothing on non-Linux systems
+#[cfg(not(target_os = "linux"))]
+#[expect(clippy::unnecessary_wraps)]
+fn set_id_permissions(_: &Path) -> Result<()> {
     Ok(())
 }
 

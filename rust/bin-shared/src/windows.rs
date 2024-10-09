@@ -29,6 +29,11 @@ use windows::Win32::{
 /// Also used for self-elevation
 pub const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+/// A UUID we generated at dev time for our tunnel.
+///
+/// This ends up in registry keys and tunnel management.
+pub const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
+
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
 pub enum DnsControlMethod {
     /// Explicitly disable DNS control.

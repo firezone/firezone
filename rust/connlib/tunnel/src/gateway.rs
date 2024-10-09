@@ -7,7 +7,7 @@ use crate::{GatewayEvent, GatewayTunnel};
 use anyhow::Context;
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
-use connlib_model::{ClientId, DomainName, RelayId, ResourceId, StaticSecret};
+use connlib_model::{ClientId, DomainName, RelayId, ResourceId};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::IpPacket;
 use secrecy::{ExposeSecret as _, Secret};
@@ -35,6 +35,7 @@ impl GatewayTunnel {
     }
 
     /// Accept a connection request from a client.
+    #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
     pub fn accept(
         &mut self,
         client_id: ClientId,
@@ -163,16 +164,15 @@ impl DnsResourceNatEntry {
 }
 
 impl GatewayState {
-    pub(crate) fn new(private_key: impl Into<StaticSecret>, seed: [u8; 32]) -> Self {
+    pub(crate) fn new(seed: [u8; 32]) -> Self {
         Self {
             peers: Default::default(),
-            node: ServerNode::new(private_key.into(), seed),
+            node: ServerNode::new(seed),
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
         }
     }
 
-    #[cfg(all(feature = "proptest", test))]
     pub(crate) fn public_key(&self) -> PublicKey {
         self.node.public_key()
     }
@@ -250,6 +250,7 @@ impl GatewayState {
     }
 
     /// Accept a connection request from a client.
+    #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
     pub fn accept(
         &mut self,
         client_id: ClientId,

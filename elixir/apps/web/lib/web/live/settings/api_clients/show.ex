@@ -134,8 +134,8 @@ defmodule Web.Settings.ApiClients.Show do
       <:action :if={Actors.actor_active?(@actor)}>
         <.button_with_confirmation
           id="revoke_all_tokens"
-          style="warning"
-          icon="hero-lock-open"
+          style="danger"
+          icon="hero-trash"
           on_confirm="revoke_all_tokens"
         >
           <:dialog_title>Revoke all API Client Tokens</:dialog_title>
@@ -169,7 +169,12 @@ defmodule Web.Settings.ApiClients.Show do
             <%= Cldr.DateTime.Formatter.date(token.expires_at, 1, "en", Web.CLDR, []) %>
           </:col>
           <:col :let={token} label="created by">
-            <%= token.created_by_identity.provider_identifier %>
+            <.link
+              class={[link_style()]}
+              navigate={~p"/#{@account}/actors/#{token.created_by_actor_id}"}
+            >
+              <%= get_identity_email(token.created_by_identity) %>
+            </.link>
           </:col>
           <:col :let={token} label="last used">
             <.relative_datetime datetime={token.last_seen_at} />
@@ -180,7 +185,7 @@ defmodule Web.Settings.ApiClients.Show do
           <:action :let={token}>
             <.button_with_confirmation
               id={"revoke_token_#{token.id}"}
-              style="warning"
+              style="danger"
               icon="hero-trash-solid"
               on_confirm="revoke_token"
               on_confirm_id={token.id}

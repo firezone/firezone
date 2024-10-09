@@ -1,0 +1,54 @@
+---
+name: GTK
+"on":
+  workflow_call:
+
+defaults:
+  run:
+    working-directory: ./rust/gtk-client
+
+permissions:
+  contents: 'read'
+  id-token: 'write' # Needed to publish artifacts to releases?
+
+# Never tolerate warnings. Source of truth is `_rust.yml`
+env:
+  RUSTFLAGS: "-Dwarnings"
+  RUSTDOCFLAGS: "-D warnings"
+
+jobs:
+  build-gtk:
+    name: build-gtk-${{ matrix.runs-on }}
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: ubuntu-20.04
+            arch: x86_64
+          - runs-on: ubuntu-22.04-arm
+            arch: aarch64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+      - name: fmt
+        run: cargo fmt
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install libgtk-3-dev libxdo-dev && cargo install cargo-deb@2.7.0
+      - name: Clippy
+        run: cargo clippy --all-targets
+      - name: Test
+        run: cargo test
+      - name: Build
+        run: ./build.sh
+      - name: Ensure unmodified Git workspace
+        run: git diff --exit-code
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          # mark:next-gui-version
+          name: firezone-client-gui-gtk-linux_1.3.9_${{ matrix.arch }}-pkg
+          # This ignores the working dir or something
+          path: rust/gtk-client/target/debian/firezone-client-gui.deb
+          if-no-files-found: error
+        # TODO: Upload debug symbols

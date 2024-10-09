@@ -5,9 +5,7 @@
 
 use crate::tun::Tun;
 use backoff::ExponentialBackoffBuilder;
-use connlib_client_shared::{
-    keypair, Callbacks, ConnectArgs, DisconnectError, Session, V4RouteList, V6RouteList,
-};
+use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
 use connlib_model::{ResourceId, ResourceView};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
@@ -355,13 +353,11 @@ fn connect(
         handle,
     };
 
-    let (private_key, public_key) = keypair();
     let url = LoginUrl::client(
         api_url.as_str(),
         &secret,
         device_id,
         Some(device_name),
-        public_key.to_bytes(),
         device_info,
     )?;
 
@@ -374,13 +370,7 @@ fn connect(
 
     let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(callbacks.clone()));
 
-    let args = ConnectArgs {
-        tcp_socket_factory: tcp_socket_factory.clone(),
-        udp_socket_factory: Arc::new(protected_udp_socket_factory(callbacks.clone())),
-        private_key,
-        callbacks,
-    };
-    let portal = PhoenixChannel::connect(
+    let portal = PhoenixChannel::disconnected(
         Secret::new(url),
         get_user_agent(Some(os_version), env!("CARGO_PKG_VERSION")),
         "client",
@@ -390,7 +380,13 @@ fn connect(
             .build(),
         tcp_socket_factory,
     )?;
-    let session = Session::connect(args, portal, runtime.handle().clone());
+    let session = Session::connect(
+        Arc::new(protected_tcp_socket_factory(callbacks.clone())),
+        Arc::new(protected_udp_socket_factory(callbacks.clone())),
+        callbacks,
+        portal,
+        runtime.handle().clone(),
+    );
 
     Ok(SessionWrapper {
         inner: session,

@@ -14,8 +14,8 @@ use crate::peer_store::PeerStore;
 use crate::{dns, TunConfig};
 use anyhow::Context;
 use bimap::BiMap;
+use connlib_model::PublicKey;
 use connlib_model::{GatewayId, RelayId, ResourceId, ResourceStatus, ResourceView};
-use connlib_model::{PublicKey, StaticSecret};
 use connlib_model::{Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
@@ -179,6 +179,7 @@ impl ClientTunnel {
             .on_routing_details(resource_id, gateway_id, site_id, Instant::now())
     }
 
+    #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
     pub fn received_offer_response(
         &mut self,
         resource_id: ResourceId,
@@ -279,11 +280,7 @@ struct AwaitingConnectionDetails {
 }
 
 impl ClientState {
-    pub(crate) fn new(
-        private_key: impl Into<StaticSecret>,
-        known_hosts: BTreeMap<String, Vec<IpAddr>>,
-        seed: [u8; 32],
-    ) -> Self {
+    pub(crate) fn new(known_hosts: BTreeMap<String, Vec<IpAddr>>, seed: [u8; 32]) -> Self {
         Self {
             awaiting_connection_details: Default::default(),
             resources_gateways: Default::default(),
@@ -294,7 +291,7 @@ impl ClientState {
             buffered_events: Default::default(),
             tun_config: Default::default(),
             buffered_packets: Default::default(),
-            node: ClientNode::new(private_key.into(), seed),
+            node: ClientNode::new(seed),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
@@ -374,7 +371,6 @@ impl ClientState {
         }
     }
 
-    #[cfg(all(feature = "proptest", test))]
     pub(crate) fn public_key(&self) -> PublicKey {
         self.node.public_key()
     }
@@ -388,11 +384,8 @@ impl ClientState {
         let Some((fqdn, ips)) = self.stub_resolver.get_fqdn(resource_ip) else {
             return;
         };
-        self.peers.add_ips_with_resource(
-            &gateway_id,
-            &ips.iter().copied().map_into().collect_vec(),
-            &resource_id,
-        );
+        self.peers
+            .add_ips_with_resource(&gateway_id, ips.iter().copied(), &resource_id);
         self.buffered_events.push_back(ClientEvent::RequestAccess {
             resource_id,
             gateway_id,
@@ -525,6 +518,7 @@ impl ClientState {
     }
 
     #[tracing::instrument(level = "trace", skip_all, fields(%resource_id))]
+    #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
     pub fn accept_answer(
         &mut self,
         answer: snownet::Answer,
@@ -547,6 +541,10 @@ impl ClientState {
     ///
     /// In a nutshell, this tells us which gateway in which site to use for the given resource.
     #[tracing::instrument(level = "debug", skip_all, fields(%resource_id, %gateway_id))]
+    #[expect(
+        deprecated,
+        reason = "Will be refactored when deprecated control protocol is shipped"
+    )]
     pub fn on_routing_details(
         &mut self,
         resource_id: ResourceId,
@@ -582,7 +580,7 @@ impl ClientState {
 
         if self.peers.get(&gateway_id).is_some() {
             self.peers
-                .add_ips_with_resource(&gateway_id, &ips, &resource_id);
+                .add_ips_with_resource(&gateway_id, ips.into_iter(), &resource_id);
 
             self.buffered_events.push_back(ClientEvent::RequestAccess {
                 resource_id,
@@ -597,7 +595,7 @@ impl ClientState {
             &[],
         );
         self.peers
-            .add_ips_with_resource(&gateway_id, &ips, &resource_id);
+            .add_ips_with_resource(&gateway_id, ips.into_iter(), &resource_id);
 
         let offer = self.node.new_connection(
             gateway_id,
@@ -1523,7 +1521,6 @@ impl IpProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::rngs::OsRng;
 
     #[test]
     fn ignores_ip4_igmp_multicast() {
@@ -1568,11 +1565,7 @@ mod tests {
 
     impl ClientState {
         pub fn for_test() -> ClientState {
-            ClientState::new(
-                StaticSecret::random_from_rng(OsRng),
-                BTreeMap::new(),
-                rand::random(),
-            )
+            ClientState::new(BTreeMap::new(), rand::random())
         }
     }
 

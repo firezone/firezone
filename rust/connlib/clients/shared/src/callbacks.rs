@@ -48,3 +48,13 @@ pub enum DisconnectError {
     #[error("connection to the portal failed: {0}")]
     PortalConnectionFailed(#[from] phoenix_channel::Error),
 }
+
+impl DisconnectError {
+    pub fn is_authentication_error(&self) -> bool {
+        let Self::PortalConnectionFailed(e) = self else {
+            return false;
+        };
+
+        e.is_authentication_error()
+    }
+}
