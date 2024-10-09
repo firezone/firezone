@@ -15,8 +15,6 @@ use smoltcp::{
     wire::{HardwareAddress, IpCidr},
 };
 
-use crate::messages::DnsServer;
-
 const MAX_DNS_SERVERS: usize = smoltcp::config::IFACE_MAX_ADDR_COUNT;
 
 pub(crate) struct DnsTcpSockets {
@@ -26,7 +24,7 @@ pub(crate) struct DnsTcpSockets {
     tcp_sockets: SocketSet<'static>,
     tcp_socket_listen_endpoints: HashMap<SocketHandle, SocketAddr>,
 
-    dns_mapping: BiMap<IpAddr, DnsServer>,
+    dns_mapping: BiMap<IpAddr, SocketAddr>,
     received_queries: VecDeque<(SocketAddr, Message<Vec<u8>>)>,
 
     socket_handles_by_query: HashMap<(u16, SocketAddr), SocketHandle>,
@@ -122,7 +120,7 @@ impl DnsTcpSockets {
         }
     }
 
-    pub(crate) fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, DnsServer>) {
+    pub(crate) fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, SocketAddr>) {
         self.dns_mapping = new_mapping;
         self.tcp_sockets = SocketSet::new(vec![]);
         self.tcp_socket_listen_endpoints.clear();
@@ -191,7 +189,7 @@ impl DnsTcpSockets {
 fn try_handle_tcp_socket(
     socket: &mut tcp::Socket,
     listen_endpoint: SocketAddr,
-    dns_mapping: &BiMap<IpAddr, DnsServer>,
+    dns_mapping: &BiMap<IpAddr, SocketAddr>,
 ) -> anyhow::Result<Option<(SocketAddr, Message<Vec<u8>>)>> {
     // smoltcp's sockets can only ever handle a single remote, i.e. there is no permanent listening socket.
     // to be able to handle a new connection, reset the socket back to `listen` once the connection is closed / closing.
@@ -218,7 +216,6 @@ fn try_handle_tcp_socket(
 
     let upstream = dns_mapping
         .get_by_left(&local)
-        .map(|d| d.address())
         .with_context(|| format!("Not a DNS server: {local}"))?;
 
     // Read a DNS message from the socket.
@@ -242,7 +239,7 @@ fn try_handle_tcp_socket(
         return Ok(None);
     };
 
-    Ok(Some((upstream, message.octets_into())))
+    Ok(Some((*upstream, message.octets_into())))
 }
 
 fn write_tcp_dns_response(socket: &mut tcp::Socket, response: &[u8]) -> anyhow::Result<()> {
