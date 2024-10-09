@@ -35,7 +35,6 @@ StateDirectory=dev.firezone.client
 SystemCallArchitectures=native
 # TODO: Minimize
 SystemCallFilter=@aio @basic-io @file-system @io-event @ipc @network-io @signal @system-service
-# UMask is duplicated in `firezone-client-ipc.rs`
 UMask=077
 
 Environment="LOG_DIR=/var/log/dev.firezone.client"
