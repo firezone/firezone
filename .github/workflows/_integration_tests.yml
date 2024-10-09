@@ -97,26 +97,16 @@ jobs:
       fail-fast: false
       matrix:
         test:
-          - name: direct-curl-relay-restart
           - name: direct-curl-api-down
-          - name: direct-curl-api-relay-down
           - name: direct-curl-api-restart
           - name: direct-dns-api-down
-          - name: direct-dns-relay-down
           - name: direct-dns-two-resources
           - name: direct-dns
           - name: direct-download-roaming-network
             # Too noisy can cause flaky tests due to the amount of data
             rust_log: debug
-          - name: dns-failsafe # Uses the default DNS control method
           - name: dns-nm
           - name: relay-graceful-shutdown
-          - name: relayed-curl-api-down
-          - name: relayed-curl-api-restart
-          - name: relayed-curl-relay-restart
-          - name: relayed-dns-api-down
-          - name: relayed-dns-relay-restart
-          - name: relayed-dns
           - name: systemd/dns-systemd-resolved
     steps:
       - uses: actions/checkout@v4

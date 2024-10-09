@@ -1,4 +1,4 @@
-use connlib_shared::callbacks::ResourceDescription;
+use connlib_model::ResourceView;
 use ip_network::{Ipv4Network, Ipv6Network};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -19,7 +19,7 @@ pub trait Callbacks: Clone + Send + Sync {
     /// This may not be called if a Client has no Resources, which can
     /// happen to new accounts, or when removing and re-adding Resources,
     /// or if all Resources for a user are disabled by policy.
-    fn on_update_resources(&self, _: Vec<ResourceDescription>) {}
+    fn on_update_resources(&self, _: Vec<ResourceView>) {}
 
     /// Called when the tunnel is disconnected.
     ///
@@ -47,4 +47,14 @@ pub enum DisconnectError {
 
     #[error("connection to the portal failed: {0}")]
     PortalConnectionFailed(#[from] phoenix_channel::Error),
+}
+
+impl DisconnectError {
+    pub fn is_authentication_error(&self) -> bool {
+        let Self::PortalConnectionFailed(e) = self else {
+            return false;
+        };
+
+        e.is_authentication_error()
+    }
 }

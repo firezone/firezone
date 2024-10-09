@@ -113,7 +113,7 @@ defmodule Web.Policies.New do
                     <% end %>
 
                     <span :if={resource.gateway_groups == []} class="text-red-800">
-                      (not connected to any Sites)
+                      (not connected to any Site)
                     </span>
                     <span
                       :if={length(resource.gateway_groups) > 0}
@@ -135,7 +135,7 @@ defmodule Web.Policies.New do
                   </:no_options>
 
                   <:no_search_results>
-                    No resources found. Try a different search query or create a new one <.link
+                    No Resources found. Try a different search query or create a new one <.link
                       navigate={~p"/#{@account}/resources/new"}
                       class={link_style()}
                     >here</.link>.
@@ -152,19 +152,19 @@ defmodule Web.Policies.New do
               </fieldset>
 
               <.conditions_form
-                :if={not is_nil(@selected_resource) and @selected_resource.type != :internet}
+                :if={not is_nil(@selected_resource)}
                 form={@form}
                 account={@account}
                 timezone={@timezone}
                 providers={@providers}
+                selected_resource={@selected_resource}
               />
 
               <.options_form
-                :if={not is_nil(@selected_resource) and @selected_resource.type == :internet}
+                :if={not is_nil(@selected_resource)}
                 form={@form}
                 account={@account}
-                timezone={@timezone}
-                providers={@providers}
+                selected_resource={@selected_resource}
               />
             </div>
 

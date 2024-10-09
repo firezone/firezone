@@ -11,12 +11,23 @@ export default function Apple() {
       title="macOS / iOS"
     >
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.3.6" date={new Date("2024-10-02")}>
         <ChangeItem pull="6831">
           Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is
           active.
         </ChangeItem>
-      </Unreleased>
+        <ChangeItem pull="6845">
+          Fixes connectivity issues on idle connections by entering an
+          always-on, low-power mode instead of closing them.
+        </ChangeItem>
+        <ChangeItem pull="6857">
+          MacOS: sends hardware's UUID for device verification.
+        </ChangeItem>
+        <ChangeItem pull="6857">
+          iOS: sends Id for vendor for device verification.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.3.5" date={new Date("2024-09-26")}>
         <ChangeItem pull="6809">
           Fixes a bug where non-wildcard DNS resources were not prioritised over

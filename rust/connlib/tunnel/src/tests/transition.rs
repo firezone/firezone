@@ -1,13 +1,12 @@
 use crate::{
-    client::{IPV4_RESOURCES, IPV6_RESOURCES},
+    client::{Resource, IPV4_RESOURCES, IPV6_RESOURCES},
     proptest::{host_v4, host_v6},
 };
+use connlib_model::RelayId;
 
 use super::sim_net::{any_ip_stack, any_port, Host};
-use connlib_shared::{
-    messages::{client::ResourceDescription, DnsServer, RelayId, ResourceId},
-    DomainName,
-};
+use crate::messages::DnsServer;
+use connlib_model::{DomainName, ResourceId};
 use domain::base::Rtype;
 use prop::collection;
 use proptest::{prelude::*, sample};
@@ -22,7 +21,7 @@ use std::{
 #[expect(clippy::large_enum_variant)]
 pub(crate) enum Transition {
     /// Activate a resource on the client.
-    ActivateResource(ResourceDescription),
+    ActivateResource(Resource),
     /// Deactivate a resource on the client.
     DeactivateResource(ResourceId),
     /// Client-side disable resource
@@ -82,8 +81,13 @@ pub(crate) enum Transition {
     /// To avoid having to model that, we partition all of them but reconnect them within the same transition.
     PartitionRelaysFromPortal,
 
-    /// Idle connlib for a while, forcing connection to auto-close.
+    /// Idle connlib for a while.
     Idle,
+
+    /// Simulate all relays rebooting while we are network partitioned from the portal.
+    ///
+    /// In this case, we won't receive a `relays_presence` but instead we will receive relays with the same ID yet different credentials.
+    RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
 }
 
 #[derive(Debug, Clone)]

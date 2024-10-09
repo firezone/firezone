@@ -267,7 +267,7 @@ other_admin_actor_email = "other@localhost.local"
 
 unprivileged_actor_context = %Auth.Context{
   type: :browser,
-  user_agent: "Debian/11.0.0 connlib/0.1.0",
+  user_agent: "iOS/12 connlib/0.1.0",
   remote_ip: {172, 28, 0, 100},
   remote_ip_location_region: "UA",
   remote_ip_location_city: "Kyiv",
@@ -285,7 +285,7 @@ nonce = "n"
 
 admin_actor_context = %Auth.Context{
   type: :browser,
-  user_agent: "iOS/12.5 (iPhone) connlib/0.7.412",
+  user_agent: "Mac OS/14.5 (iPhone) connlib/0.7.412",
   remote_ip: {100, 64, 100, 58},
   remote_ip_location_region: "UA",
   remote_ip_location_city: "Kyiv",
@@ -348,7 +348,8 @@ IO.puts("")
       name: "FZ User iPhone",
       external_id: Ecto.UUID.generate(),
       public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412"
+      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
+      identifier_for_vendor: "APPL-#{Ecto.UUID.generate()}"
     },
     unprivileged_subject
   )
@@ -356,10 +357,12 @@ IO.puts("")
 {:ok, _admin_iphone} =
   Domain.Clients.upsert_client(
     %{
-      name: "FZ Admin iPhone",
+      name: "FZ Admin Laptop",
       external_id: Ecto.UUID.generate(),
       public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412"
+      last_seen_user_agent: "Mac OS/14.5 (MacBook) connlib/0.7.412",
+      device_serial: "FVFHF246Q72Z",
+      device_uuid: "#{Ecto.UUID.generate()}"
     },
     admin_subject
   )

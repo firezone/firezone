@@ -10,12 +10,17 @@ export default function Gateway() {
 
   return (
     <Entries href={href} arches={arches} title="Gateway">
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.3.2" date={new Date("2024-10-02")}>
         <ChangeItem pull="6733">
           Reduces log level of the "Couldn't find connection by IP" message so
           that it doesn't log each time a client disconnects.
         </ChangeItem>
-      </Unreleased>
+        <ChangeItem pull="6845">
+          Fixes connectivity issues on idle connections by entering an
+          always-on, low-power mode instead of closing them.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.3.1" date={new Date("2024-09-05")}>
         <ChangeItem pull="6563">
           Removes unnecessary packet buffers for a minor performance increase.

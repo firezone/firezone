@@ -259,9 +259,7 @@ impl Allocation {
 
         tracing::debug!("Refreshing allocation");
 
-        // Allocation is not suspended here, we check as part of `handle_input` whether we need to `ALLOCATE` or `REFRESH`
-        self.active_socket = None;
-        self.send_binding_requests();
+        self.authenticate_and_queue(make_refresh_request(self.software.clone()), None);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%from, tid, method, class, rtt))]
@@ -620,6 +618,7 @@ impl Allocation {
 
                 // If we fail to queue the refresh message because we've exceeded our backoff, give up.
                 if !queued && is_refresh {
+                    self.active_socket = None; // The socket seems to no longer be reachable.
                     self.invalidate_allocation();
                 }
 
@@ -788,6 +787,16 @@ impl Allocation {
         self.credentials.is_some()
     }
 
+    pub fn matches_credentials(&self, username: &Username, password: &str) -> bool {
+        self.credentials
+            .as_ref()
+            .is_some_and(|c| &c.username == username && c.password == password)
+    }
+
+    pub fn matches_socket(&self, socket: &RelaySocket) -> bool {
+        &self.server == socket
+    }
+
     fn log_update(&self, now: Instant) {
         tracing::info!(
             srflx_ip4 = ?self.ip4_srflx_candidate.as_ref().map(|c| c.addr()),
@@ -814,6 +823,8 @@ impl Allocation {
     }
 
     fn invalidate_allocation(&mut self) {
+        tracing::info!(active_socket = ?self.active_socket, "Invalidating allocation");
+
         if let Some(candidate) = self.ip4_allocation.take() {
             self.events.push_back(CandidateEvent::Invalid(candidate))
         }
@@ -1933,10 +1944,6 @@ mod tests {
 
         allocation.refresh_with_same_credentials();
 
-        let binding = allocation.next_message().unwrap();
-        assert_eq!(binding.method(), BINDING);
-        allocation.handle_test_input_ip4(&binding_response(&binding, PEER1), Instant::now());
-
         let refresh = allocation.next_message().unwrap();
         assert_eq!(refresh.method(), REFRESH);
 
@@ -2032,10 +2039,6 @@ mod tests {
         );
 
         allocation.refresh_with_same_credentials();
-
-        let binding = allocation.next_message().unwrap();
-        assert_eq!(binding.method(), BINDING);
-        allocation.handle_test_input_ip4(&binding_response(&binding, PEER1), Instant::now());
 
         let refresh = allocation.next_message().unwrap();
         allocation.handle_test_input_ip4(&allocation_mismatch(&refresh), Instant::now());
@@ -2336,10 +2339,6 @@ mod tests {
 
         let now = now + Duration::from_secs(1);
         allocation.refresh(now);
-
-        let binding = allocation.next_message().unwrap();
-        assert_eq!(binding.method(), BINDING);
-        allocation.handle_test_input_ip4(&binding_response(&binding, PEER1), Instant::now());
 
         // If the relay is restarted, our current credentials will be invalid. Simulate with an "unauthorized" response".
         let now = now + Duration::from_secs(1);

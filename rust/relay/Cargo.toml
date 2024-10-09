@@ -9,8 +9,8 @@ backoff = "0.4"
 base64 = "0.22.1"
 bytecodec = "0.4.15"
 bytes = "1.7.1"
-clap = { version = "4.5.13", features = ["derive", "env"] }
-derive_more = { version = "0.99.18", features = ["from"] }
+clap = { version = "4.5.19", features = ["derive", "env"] }
+derive_more = { version = "1.0.0", features = ["from"] }
 firezone-bin-shared = { workspace = true }
 futures = "0.3.29"
 hex = "0.4.3"

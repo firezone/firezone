@@ -1,19 +1,20 @@
-use crate::messages::{
-    AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
-    IngressMessages, RejectAccess, RequestConnection,
-};
 use anyhow::Result;
 use boringtun::x25519::PublicKey;
-use connlib_shared::messages::{
-    ClientId, ConnectionAccepted, Interface, RelaysPresence, ResourceId,
-};
-use connlib_shared::{messages::GatewayResponse, DomainName};
+use connlib_model::DomainName;
+use connlib_model::{ClientId, ResourceId};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
+use firezone_tunnel::messages::{
+    gateway::{
+        AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
+        IngressMessages, RejectAccess, RequestConnection,
+    },
+    ConnectionAccepted, GatewayResponse, Interface, RelaysPresence,
+};
 use firezone_tunnel::{DnsResourceNatEntry, GatewayTunnel};
 use futures::channel::mpsc;
 use futures_bounded::Timeout;
-use phoenix_channel::PhoenixChannel;
+use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::BTreeSet;
 use std::convert::Infallible;
 use std::net::IpAddr;
@@ -40,7 +41,7 @@ enum ResolveTrigger {
 
 pub struct Eventloop {
     tunnel: GatewayTunnel,
-    portal: PhoenixChannel<(), IngressMessages, ()>,
+    portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
     tun_device_channel: mpsc::Sender<Interface>,
 
     resolve_tasks: futures_bounded::FuturesTupleSet<Vec<IpAddr>, ResolveTrigger>,
@@ -49,9 +50,11 @@ pub struct Eventloop {
 impl Eventloop {
     pub(crate) fn new(
         tunnel: GatewayTunnel,
-        portal: PhoenixChannel<(), IngressMessages, ()>,
+        mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         tun_device_channel: mpsc::Sender<Interface>,
     ) -> Self {
+        portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
+
         Self {
             tunnel,
             portal,

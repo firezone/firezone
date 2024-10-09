@@ -27,6 +27,7 @@ pub(crate) enum Error {
 pub(crate) fn run() -> Result<()> {
     let cli = Cli::parse();
 
+    // TODO: Remove, this is only needed for Portal connections and the GUI process doesn't connect to the Portal. Unless it's also needed for update checks.
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
@@ -60,7 +61,11 @@ pub(crate) fn run() -> Result<()> {
             // Can't check elevation here because the Windows CI is always elevated
             let settings = common::settings::load_advanced_settings().unwrap_or_default();
             let telemetry = telemetry::Telemetry::default();
-            telemetry.start(settings.api_url.to_string(), telemetry::GUI_DSN);
+            telemetry.start(
+                settings.api_url.as_ref(),
+                firezone_bin_shared::git_version!("gui-client-*"),
+                telemetry::GUI_DSN,
+            );
             // Don't fix the log filter for smoke tests
             let common::logging::Handles {
                 logger: _logger,
@@ -88,7 +93,11 @@ fn run_gui(cli: Cli) -> Result<()> {
     let mut settings = common::settings::load_advanced_settings().unwrap_or_default();
     let telemetry = telemetry::Telemetry::default();
     // In the future telemetry will be opt-in per organization, that's why this isn't just at the top of `main`
-    telemetry.start(settings.api_url.to_string(), telemetry::GUI_DSN);
+    telemetry.start(
+        settings.api_url.as_ref(),
+        firezone_bin_shared::git_version!("gui-client-*"),
+        telemetry::GUI_DSN,
+    );
     fix_log_filter(&mut settings)?;
     let common::logging::Handles {
         logger: _logger,

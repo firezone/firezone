@@ -9,8 +9,8 @@
 //! Otherwise we would just make it a normal binary crate.
 
 use anyhow::{Context as _, Result};
-use connlib_client_shared::{Callbacks, DisconnectError};
-use connlib_shared::callbacks;
+use connlib_client_shared::Callbacks;
+use connlib_model::ResourceView;
 use firezone_bin_shared::platform::DnsControlMethod;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -82,7 +82,7 @@ pub enum ConnlibMsg {
         ipv6: Ipv6Addr,
         dns: Vec<IpAddr>,
     },
-    OnUpdateResources(Vec<callbacks::ResourceDescription>),
+    OnUpdateResources(Vec<ResourceView>),
     OnUpdateRoutes {
         ipv4: Vec<Ipv4Network>,
         ipv6: Vec<Ipv6Network>,
@@ -97,16 +97,10 @@ pub struct CallbackHandler {
 impl Callbacks for CallbackHandler {
     fn on_disconnect(&self, error: &connlib_client_shared::DisconnectError) {
         tracing::error!(?error, "Got `on_disconnect` from connlib");
-        let is_authentication_error = if let DisconnectError::PortalConnectionFailed(error) = error
-        {
-            error.is_authentication_error()
-        } else {
-            false
-        };
         self.cb_tx
             .try_send(ConnlibMsg::OnDisconnect {
                 error_msg: error.to_string(),
-                is_authentication_error,
+                is_authentication_error: error.is_authentication_error(),
             })
             .expect("should be able to send OnDisconnect");
     }
@@ -117,7 +111,7 @@ impl Callbacks for CallbackHandler {
             .expect("Should be able to send OnSetInterfaceConfig");
     }
 
-    fn on_update_resources(&self, resources: Vec<callbacks::ResourceDescription>) {
+    fn on_update_resources(&self, resources: Vec<ResourceView>) {
         tracing::debug!(len = resources.len(), "New resource list");
         self.cb_tx
             .try_send(ConnlibMsg::OnUpdateResources(resources))
@@ -145,55 +139,9 @@ pub fn setup_stdout_logging() -> Result<LogFilterReloader> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
-
-    const EXE_NAME: &str = "firezone-client-ipc";
-
     // Make sure it's okay to store a bunch of these to mitigate #5880
     #[test]
     fn callback_msg_size() {
         assert_eq!(std::mem::size_of::<ConnlibMsg>(), 56)
-    }
-
-    #[test]
-    #[cfg(target_os = "linux")]
-    fn dns_control() {
-        let actual = CliCommon::parse_from([EXE_NAME]);
-        assert!(matches!(
-            actual.dns_control,
-            DnsControlMethod::SystemdResolved
-        ));
-
-        let actual = CliCommon::parse_from([EXE_NAME, "--dns-control", "disabled"]);
-        assert!(matches!(actual.dns_control, DnsControlMethod::Disabled));
-
-        let actual = CliCommon::parse_from([EXE_NAME, "--dns-control", "etc-resolv-conf"]);
-        assert!(matches!(
-            actual.dns_control,
-            DnsControlMethod::EtcResolvConf
-        ));
-
-        let actual = CliCommon::parse_from([EXE_NAME, "--dns-control", "systemd-resolved"]);
-        assert!(matches!(
-            actual.dns_control,
-            DnsControlMethod::SystemdResolved
-        ));
-
-        assert!(CliCommon::try_parse_from([EXE_NAME, "--dns-control", "invalid"]).is_err());
-    }
-
-    #[test]
-    #[cfg(target_os = "windows")]
-    fn dns_control() {
-        let actual = CliCommon::parse_from([EXE_NAME]);
-        assert!(matches!(actual.dns_control, DnsControlMethod::Nrpt));
-
-        let actual = CliCommon::parse_from([EXE_NAME, "--dns-control", "disabled"]);
-        assert!(matches!(actual.dns_control, DnsControlMethod::Disabled));
-
-        let actual = CliCommon::parse_from([EXE_NAME, "--dns-control", "nrpt"]);
-        assert!(matches!(actual.dns_control, DnsControlMethod::Nrpt));
-
-        assert!(CliCommon::try_parse_from([EXE_NAME, "--dns-control", "invalid"]).is_err());
     }
 }

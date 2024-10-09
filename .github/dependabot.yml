@@ -42,6 +42,10 @@ updates:
           - windows-core
           - windows-implement
           - windows-sys
+  - package-ecosystem: cargo
+    directory: rust/gtk-client/
+    schedule:
+      interval: weekly
   - package-ecosystem: gradle
     directory: kotlin/android/
     schedule:

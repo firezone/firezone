@@ -4,17 +4,10 @@ use super::{
     sim_relay::ref_relay_host,
     stub_portal::StubPortal,
 };
-use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+use crate::client::{CidrResource, DnsResource, InternetResource, IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::proptest::*;
-use connlib_shared::{
-    messages::{
-        client::{
-            ResourceDescriptionCidr, ResourceDescriptionDns, ResourceDescriptionInternet, Site,
-        },
-        DnsServer, RelayId,
-    },
-    DomainName,
-};
+use crate::{messages::DnsServer, DomainName};
+use connlib_model::{RelayId, Site};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;
@@ -109,8 +102,10 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
         )
 }
 
-pub(crate) fn relays() -> impl Strategy<Value = BTreeMap<RelayId, Host<u64>>> {
-    collection::btree_map(relay_id(), ref_relay_host(), 1..=2)
+pub(crate) fn relays(
+    id: impl Strategy<Value = RelayId>,
+) -> impl Strategy<Value = BTreeMap<RelayId, Host<u64>>> {
+    collection::btree_map(id, ref_relay_host(), 1..=2)
 }
 
 /// Sample a list of DNS servers.
@@ -118,11 +113,19 @@ pub(crate) fn relays() -> impl Strategy<Value = BTreeMap<RelayId, Host<u64>>> {
 /// We make sure to always have at least 1 IPv4 and 1 IPv6 DNS server.
 pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeMap<DnsServerId, Host<RefDns>>> {
     let ip4_dns_servers = collection::btree_set(
-        any::<Ipv4Addr>().prop_map(|ip| SocketAddr::from((ip, 53))),
+        any::<Ipv4Addr>()
+            .prop_filter("must not be in sentinel IP range", |ip| {
+                !crate::client::DNS_SENTINELS_V4.contains(*ip)
+            })
+            .prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
     );
     let ip6_dns_servers = collection::btree_set(
-        any::<Ipv6Addr>().prop_map(|ip| SocketAddr::from((ip, 53))),
+        any::<Ipv6Addr>()
+            .prop_filter("must not be in sentinel IP range", |ip| {
+                !crate::client::DNS_SENTINELS_V6.contains(*ip)
+            })
+            .prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
     );
 
@@ -151,7 +154,7 @@ fn any_site(sites: BTreeSet<Site>) -> impl Strategy<Value = Site> {
 
 fn cidr_resource_outside_reserved_ranges(
     sites: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = ResourceDescriptionCidr> {
+) -> impl Strategy<Value = CidrResource> {
     cidr_resource(any_ip_network(8), sites.prop_map(|s| vec![s]))
         .prop_filter(
             "tests doesn't support yet CIDR resources overlapping DNS resources",
@@ -168,22 +171,20 @@ fn cidr_resource_outside_reserved_ranges(
         .prop_filter("resource must not be in the documentation range because we use those for host addresses and DNS IPs", |r| !r.address.is_documentation())
 }
 
-fn internet_resource(
-    site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = ResourceDescriptionInternet> {
+fn internet_resource(site: impl Strategy<Value = Site>) -> impl Strategy<Value = InternetResource> {
     crate::proptest::internet_resource(site.prop_map(|s| vec![s]))
 }
 
 fn non_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = ResourceDescriptionDns> {
+) -> impl Strategy<Value = DnsResource> {
     dns_resource(site.prop_map(|s| vec![s]))
 }
 
 fn star_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = ResourceDescriptionDns> {
-    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| ResourceDescriptionDns {
+) -> impl Strategy<Value = DnsResource> {
+    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| DnsResource {
         address: format!("*.{}", r.address),
         ..r
     })
@@ -191,8 +192,8 @@ fn star_wildcard_dns_resource(
 
 fn double_star_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = ResourceDescriptionDns> {
-    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| ResourceDescriptionDns {
+) -> impl Strategy<Value = DnsResource> {
+    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| DnsResource {
         address: format!("**.{}", r.address),
         ..r
     })

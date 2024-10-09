@@ -1,7 +1,7 @@
 use crate::client::IpProvider;
+use crate::messages::DnsServer;
 use anyhow::{Context, Result};
-use connlib_shared::messages::{DnsServer, ResourceId};
-use connlib_shared::DomainName;
+use connlib_model::{DomainName, ResourceId};
 use domain::base::{
     iana::{Class, Rcode, Rtype},
     Message, MessageBuilder, ToName,
@@ -19,7 +19,7 @@ const DNS_TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
 const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
 const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
-const DNS_PORT: u16 = 53;
+pub(crate) const DNS_PORT: u16 = 53;
 
 /// The DNS over HTTPS canary domain used by Firefox to check whether DoH can be enabled by default.
 ///

@@ -3,7 +3,7 @@
 
 use anyhow::{Context as _, Result};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
-use connlib_shared::messages::ResourceId;
+use connlib_model::ResourceId;
 use firezone_headless_client::known_dirs;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, io::Write, path::PathBuf};
@@ -23,14 +23,14 @@ pub struct AdvancedSettings {
 #[cfg(debug_assertions)]
 mod defaults {
     pub(crate) const AUTH_BASE_URL: &str = "https://app.firez.one";
-    pub(crate) const API_URL: &str = "wss://api.firez.one";
+    pub(crate) const API_URL: &str = "wss://api.firez.one/";
     pub(crate) const LOG_FILTER: &str = "firezone_gui_client=debug,info";
 }
 
 #[cfg(not(debug_assertions))]
 mod defaults {
     pub(crate) const AUTH_BASE_URL: &str = "https://app.firezone.dev";
-    pub(crate) const API_URL: &str = "wss://api.firezone.dev";
+    pub(crate) const API_URL: &str = "wss://api.firezone.dev/";
     pub(crate) const LOG_FILTER: &str = "info";
 }
 

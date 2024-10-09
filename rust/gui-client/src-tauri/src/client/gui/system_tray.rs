@@ -71,6 +71,7 @@ impl Tray {
     pub(crate) fn update(&mut self, state: AppState) -> Result<()> {
         let base = match &state.connlib {
             ConnlibState::Loading
+            | ConnlibState::Quitting
             | ConnlibState::RetryingConnection
             | ConnlibState::WaitingForBrowser
             | ConnlibState::WaitingForPortal
@@ -137,7 +138,7 @@ fn build_item(that: &Item) -> tauri::CustomMenuItem {
     if that.event.is_none() {
         item = item.disabled();
     }
-    if that.selected {
+    if let Some(true) = that.checked {
         item = item.selected();
     }
     item
