@@ -101,7 +101,7 @@ mod tests {
         let elapsed = start.elapsed();
 
         assert!(result.is_ok());
-        assert!(elapsed >= INTERVAL);
+        assert!(elapsed >= INTERVAL, "Only suspended for {elapsed:?}");
     }
 
     #[tokio::test]
