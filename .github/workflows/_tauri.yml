@@ -12,10 +12,6 @@ permissions:
   contents: write
   id-token: write
 
-defaults:
-  run:
-    working-directory: ./rust/gui-client
-
 # Never tolerate warnings. Source of truth is `_rust.yml`
 env:
   RUSTFLAGS: "-Dwarnings"
@@ -24,6 +20,9 @@ env:
 jobs:
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
+    defaults:
+      run:
+        working-directory: ./rust/gui-client
     runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
@@ -134,9 +133,12 @@ jobs:
   build-tauri-v1:
     name: build-tauri-v1
     runs-on: ubuntu-20.04
+    defaults:
+      run:
+        working-directory: ./rust/tauri-client
     env:
       # mark:next-gui-version
-      BINARY_DEST_PATH: firezone-client-tauri-v1-linux_1.3.10_x86_64
+      BINARY_DEST_PATH: firezone-client-tauri-v1-linux_1.3.9_x86_64
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
@@ -156,12 +158,12 @@ jobs:
         with:
           name: ${{ env.BINARY_DEST_PATH }}-syms
           # mark:next-gui-version
-          path: rust/gui-client/firezone-client-gui-linux_1.3.10_x86_64.dwp
+          path: rust/tauri-client/firezone-client-gui-linux_1.3.9_x86_64.dwp
           if-no-files-found: error
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BINARY_DEST_PATH }}-pkg
-          path: rust/gui-client/firezone-client-gui-linux_1.3.9_x86_64.deb
+          path: rust/tauri-client/firezone-client-gui-linux_1.3.9_x86_64.deb
           if-no-files-found: error
       # TODO: Upload to draft release
