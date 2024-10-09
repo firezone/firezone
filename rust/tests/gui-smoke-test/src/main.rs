@@ -46,6 +46,7 @@ fn main() -> Result<()> {
         .popen()?;
 
     gui.wait()?.fz_exit_ok().context("GUI process")?;
+
     ipc_service.wait()?.fz_exit_ok().context("IPC service")?;
 
     // Force the GUI to crash
