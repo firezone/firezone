@@ -55,13 +55,13 @@ pub fn device_info() -> phoenix_channel::DeviceInfo {
 /// Returns the device ID without generating it
 pub fn get() -> Result<DeviceId> {
     let path = path()?;
-    let Some(j) = fs::read_to_string(&path)
-        .ok()
-        .and_then(|s| serde_json::from_str::<DeviceIdJson>(&s).ok())
-    else {
-        anyhow::bail!("Couldn't read device ID from disk");
-    };
-    Ok(DeviceId { id: j.device_id() })
+    let content = fs::read_to_string(&path).context("Failed to read file")?;
+    let device_id_json = serde_json::from_str::<DeviceIdJson>(&content)
+        .context("Failed to deserialize content as JSON")?;
+
+    Ok(DeviceId {
+        id: device_id_json.device_id(),
+    })
 }
 
 /// Returns the device ID, generating it and saving it to disk if needed.
