@@ -11,15 +11,10 @@ defmodule Domain.Accounts.Config do
     embeds_one :notifications, Notifications,
       primary_key: false,
       on_replace: :update do
-      embeds_one :outdated_gateway, OutdatedGateway, primary_key: false, on_replace: :update do
-        field :enabled, :boolean
-        field :last_notified, :utc_datetime
-      end
+      embeds_one :outdated_gateway, Domain.Accounts.Config.Notifications.Email,
+        on_replace: :update
 
-      embeds_one :idp_sync_error, IDPSyncError, primary_key: false, on_replace: :update do
-        field :enabled, :boolean
-        field :last_notified, :utc_datetime
-      end
+      embeds_one :idp_sync_error, Domain.Accounts.Config.Notifications.Email, on_replace: :update
     end
   end
 

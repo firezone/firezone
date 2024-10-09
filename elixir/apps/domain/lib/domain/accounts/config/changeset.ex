@@ -85,17 +85,7 @@ defmodule Domain.Accounts.Config.Changeset do
   def notifications_changeset(notifications, attrs) do
     notifications
     |> cast(attrs, [])
-    |> cast_embed(:outdated_gateway, with: &outdated_gateway_changeset/2)
-    |> cast_embed(:idp_sync_error, with: &idp_sync_error_changeset/2)
-  end
-
-  defp outdated_gateway_changeset(notification, attrs) do
-    notification
-    |> cast(attrs, [:enabled, :last_notified])
-  end
-
-  defp idp_sync_error_changeset(notification, attrs) do
-    notification
-    |> cast(attrs, [:enabled, :last_notified])
+    |> cast_embed(:outdated_gateway, with: &Config.Notifications.Email.Changeset.changeset/2)
+    |> cast_embed(:idp_sync_error, with: &Config.Notifications.Email.Changeset.changeset/2)
   end
 end
