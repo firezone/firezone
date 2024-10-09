@@ -15,6 +15,7 @@ mod tcp_header_slice_mut;
 mod udp_header_slice_mut;
 
 pub use etherparse::*;
+pub use fz_p2p_control::EventType as FzP2pEventType;
 pub use fz_p2p_control_slice::FzP2pControlSlice;
 
 #[cfg(all(test, feature = "proptest"))]

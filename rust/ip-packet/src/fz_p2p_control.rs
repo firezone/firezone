@@ -12,3 +12,16 @@ pub const ADDR: Ipv6Addr = Ipv6Addr::UNSPECIFIED;
 ///
 /// `0xFF` is reserved and should thus never appear as real-world traffic.
 pub const IP_NUMBER: IpNumber = IpNumber(0xFF);
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct EventType(u8);
+
+impl EventType {
+    pub const fn new(ty: u8) -> Self {
+        Self(ty)
+    }
+
+    pub fn into_u8(self) -> u8 {
+        self.0
+    }
+}

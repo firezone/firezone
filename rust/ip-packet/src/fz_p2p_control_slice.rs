@@ -1,5 +1,7 @@
 use etherparse::LenSource;
 
+use crate::FzP2pEventType;
+
 pub struct FzP2pControlSlice<'a> {
     slice: &'a [u8],
 }
@@ -20,8 +22,8 @@ impl<'a> FzP2pControlSlice<'a> {
         Ok(Self { slice })
     }
 
-    pub fn message_type(&self) -> u8 {
-        self.slice[0]
+    pub fn event_type(&self) -> FzP2pEventType {
+        FzP2pEventType::new(self.slice[0])
     }
 
     pub fn payload(&self) -> &[u8] {
