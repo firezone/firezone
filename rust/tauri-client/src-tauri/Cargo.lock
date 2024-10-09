@@ -1598,7 +1598,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client-common"
-version = "1.3.9"
+version = "1.3.10"
 dependencies = [
  "anyhow",
  "arboard",
@@ -7243,13 +7243,3 @@ dependencies = [
  "quote",
  "syn 2.0.79",
 ]
-
-[[patch.unused]]
-name = "proptest"
-version = "1.5.0"
-source = "git+https://github.com/proptest-rs/proptest?branch=main#772e64733187dc65f669db51f627ddf9e8951bc8"
-
-[[patch.unused]]
-name = "proptest-state-machine"
-version = "0.3.0"
-source = "git+https://github.com/proptest-rs/proptest?branch=main#772e64733187dc65f669db51f627ddf9e8951bc8"
