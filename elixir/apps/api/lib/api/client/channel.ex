@@ -7,9 +7,11 @@ defmodule API.Client.Channel do
   require OpenTelemetry.Tracer
 
   @gateway_compatibility [
+    # We introduced new websocket protocol and the clients of version 1.4+
+    # are only compatible with gateways of version 1.4+
+    {">= 1.4.0", ">= 1.4.0"},
     # The clients of version of 1.1+ are compatible with gateways of version 1.1+,
     # but the clients of versions prior to that can connect to any gateway
-    {">= 1.4.0", ">= 1.4.0"},
     {">= 1.1.0", ">= 1.1.0"}
   ]
 
