@@ -62,15 +62,7 @@ defmodule Domain.ComponentVersions do
 
     case Finch.request(request, __MODULE__.Finch) do
       {:ok, %Finch.Response{status: 200, body: response}} ->
-        versions =
-          %{
-            apple: _apple_version,
-            android: _android_version,
-            gateway: _gateway_version,
-            gui: _gui_version,
-            headless: _headless_version
-          } = Jason.decode!(response, keys: :atoms)
-
+        versions = decode_versions_response(response)
         {:ok, Enum.into(versions, [])}
 
       {:ok, response} ->
@@ -80,6 +72,17 @@ defmodule Domain.ComponentVersions do
       {:error, reason} ->
         Logger.error("Can't fetch Firezone versions", reason: inspect(reason))
         {:error, reason}
+    end
+  end
+
+  defp decode_versions_response(response) do
+    case Jason.decode(response, keys: :atoms) do
+      {:ok, %{apple: _, android: _, gateway: _, gui: _, headless: _} = decoded_json} ->
+        decoded_json
+
+      _ ->
+        fetch_config!()
+        |> Keyword.fetch!(:versions)
     end
   end
 end
