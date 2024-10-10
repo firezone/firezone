@@ -10,6 +10,19 @@ use crate::stub_device::InMemoryDevice;
 const IP4_ADDR: Ipv4Address = Ipv4Address::new(127, 0, 0, 1);
 const IP6_ADDR: Ipv6Address = Ipv6Address::new(0, 0, 0, 0, 0, 0, 0, 1);
 
+/// Creates a smoltcp [`Interface`].
+///
+/// smoltcp's abstractions allow to directly plug it in a TUN device.
+/// As a result, it has all the features you'd expect from a network interface:
+/// - Setting IP addresses
+/// - Definining routes
+///
+/// In our implementation, we don't want to use any of that.
+/// Our device is entirely backed by in-memory buffers and we and selectively feed IP packets to it.
+/// Therefore, we configure it to:
+/// - Accept any packet
+/// - Define dummy IPs (localhost for IPv4 and IPv6)
+/// - Define catch-all routes (0.0.0.0/0) that routes all traffic to the interface
 pub fn create_interface(device: &mut InMemoryDevice, now: Instant) -> Interface {
     let mut interface = Interface::new(Config::new(HardwareAddress::Ip), device, now.into());
     // Accept packets with any destination IP, not just our interface.
