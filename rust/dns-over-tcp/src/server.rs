@@ -6,8 +6,9 @@ use std::{
 
 use crate::stub_device::InMemoryDevice;
 use anyhow::{bail, Context as _, Result};
-use domain::{base::Message, dep::octseq::OctetsInto as _};
+use domain::{base::Message, dep::octseq::OctetsInto as _, rdata::AllRecordData};
 use ip_packet::IpPacket;
+use itertools::Itertools as _;
 use smoltcp::{
     iface::{Config, Interface, Route, SocketSet},
     socket::tcp,
@@ -100,6 +101,8 @@ impl Server {
                 let handle = sockets.add(create_tcp_socket(listen_endpoint));
                 listen_endpoints.insert(handle, listen_endpoint);
             }
+
+            tracing::debug!(%listen_endpoint, concurrency = %NUM_CONCURRENT_CLIENTS, "Created new TCP socket");
         }
 
         self.sockets = sockets;
@@ -139,11 +142,39 @@ impl Server {
     pub fn send_message(&mut self, socket: SocketHandle, message: Message<Vec<u8>>) -> Result<()> {
         let socket = self.sockets.get_mut::<tcp::Socket>(socket.0);
 
-        let response = message.as_octets();
-        let result = write_tcp_dns_response(socket, response);
+        let result = write_tcp_dns_response(socket, message.for_slice_ref());
 
         if result.is_err() {
             socket.abort();
+        }
+
+        result?;
+
+        if tracing::event_enabled!(target: "wire::dns::res", tracing::Level::TRACE) {
+            if let Ok(question) = message.sole_question() {
+                let qtype = question.qtype();
+                let qname = question.into_qname();
+                let rcode = message.header().rcode();
+
+                if let Ok(record_section) = message.answer() {
+                    let records = record_section
+                        .into_iter()
+                        .filter_map(|r| {
+                            let data = r
+                                .ok()?
+                                .into_any_record::<AllRecordData<_, _>>()
+                                .ok()?
+                                .data()
+                                .clone();
+
+                            Some(data)
+                        })
+                        .join(" | ");
+                    let qid = message.header().id();
+
+                    tracing::trace!(target: "wire::dns::res", %qid, %rcode, "{:5} {qname} => [{records}]", qtype.to_string());
+                }
+            }
         }
 
         Ok(())
@@ -173,8 +204,18 @@ impl Server {
         for (handle, smoltcp::socket::Socket::Tcp(socket)) in self.sockets.iter_mut() {
             let listen = self.listen_endpoints.get(&handle).copied().unwrap();
 
-            match try_recv_message(socket, listen) {
+            match try_recv_query(socket, listen) {
                 Ok(Some(message)) => {
+                    if tracing::event_enabled!(target: "wire::dns::qry", tracing::Level::TRACE) {
+                        if let Ok(question) = message.sole_question() {
+                            let qtype = question.qtype();
+                            let qname = question.into_qname();
+                            let qid = message.header().id();
+
+                            tracing::trace!(target: "wire::dns::qry", %qid, "{:5} {qname}", qtype.to_string());
+                        }
+                    }
+
                     self.received_queries.push_back(Query {
                         message,
                         socket: SocketHandle(handle),
@@ -219,7 +260,7 @@ fn create_tcp_socket(listen_endpoint: SocketAddr) -> tcp::Socket<'static> {
     socket
 }
 
-fn try_recv_message(
+fn try_recv_query(
     socket: &mut tcp::Socket,
     listen: SocketAddr,
 ) -> Result<Option<Message<Vec<u8>>>> {
@@ -229,7 +270,7 @@ fn try_recv_message(
         use smoltcp::socket::tcp::State::*;
 
         if matches!(socket.state(), Closed | TimeWait | CloseWait) {
-            tracing::debug!("Resetting socket to listen state");
+            tracing::debug!(state = %socket.state(), "Resetting socket to listen state");
 
             socket.abort();
             socket
@@ -271,10 +312,19 @@ fn try_recv_message(
         return Ok(None);
     };
 
+    anyhow::ensure!(!message.header().qr(), "Only DNS queries are supported");
+
     Ok(Some(message.octets_into()))
 }
 
-fn write_tcp_dns_response(socket: &mut tcp::Socket, response: &[u8]) -> Result<()> {
+fn write_tcp_dns_response(socket: &mut tcp::Socket, response: Message<&[u8]>) -> Result<()> {
+    anyhow::ensure!(
+        response.header().qr(),
+        "Only DNS responses are allowed to be written"
+    );
+
+    let response = response.as_slice();
+
     let dns_message_length = (response.len() as u16).to_be_bytes();
 
     let written = socket

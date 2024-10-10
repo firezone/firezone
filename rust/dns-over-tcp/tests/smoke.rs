@@ -1,5 +1,6 @@
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
+    process::Stdio,
     task::{ready, Context, Poll},
     time::Instant,
 };
@@ -12,11 +13,14 @@ use ip_packet::{IpPacket, IpPacketBuf};
 use tokio::task::JoinSet;
 use tun::Tun;
 
-const CLIENT_CONCURRENCY: usize = 10;
+const CLIENT_CONCURRENCY: usize = 3;
 
 #[tokio::test]
 #[ignore = "Requires root"]
 async fn smoke() {
+    let _guard =
+        firezone_logging::test("netlink_proto=off,wire::dns=trace,dns_over_tcp=trace,debug");
+
     let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
     let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
 
@@ -38,10 +42,17 @@ async fn smoke() {
 
     tokio::spawn(std::future::poll_fn(move |cx| eventloop.poll(cx)));
 
+    // Running the queries multiple times ensures we can reuse sockets.
+    run_queries(listen_addr.ip()).await;
+    run_queries(listen_addr.ip()).await;
+    run_queries(listen_addr.ip()).await;
+}
+
+async fn run_queries(dns_server: IpAddr) {
     let mut set = JoinSet::new();
 
     for _ in 0..CLIENT_CONCURRENCY {
-        set.spawn(dig(listen_addr.ip()));
+        set.spawn(dig(dns_server));
     }
 
     let exit_codes = set
@@ -58,7 +69,18 @@ async fn smoke() {
 
 async fn dig(dns_server: IpAddr) -> Result<i32> {
     let exit_status = tokio::process::Command::new("dig")
-        .args(["+tcp", "+tries=1", &format!("@{dns_server}"), "example.com"])
+        .args([
+            "+tcp",
+            "+tries=1",
+            "+keepopen", // Reuse the TCP socket
+            &format!("@{dns_server}"),
+            "example.com",
+            "example.com", // Querying more than one domain ensures a client can reuse a TCP connection
+            "example.com",
+            "example.com",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .status()
         .await?
         .code()
