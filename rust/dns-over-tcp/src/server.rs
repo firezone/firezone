@@ -102,7 +102,7 @@ impl Server {
                 listen_endpoints.insert(handle, listen_endpoint);
             }
 
-            tracing::debug!(%listen_endpoint, concurrency = %NUM_CONCURRENT_CLIENTS, "Created new TCP socket");
+            tracing::info!(%listen_endpoint, concurrency = %NUM_CONCURRENT_CLIENTS, "Created listening TCP socket");
         }
 
         self.sockets = sockets;
