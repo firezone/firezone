@@ -1,4 +1,5 @@
 import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
+import org.gradle.util.VersionNumber
 
 plugins {
     id("org.mozilla.rust-android-gradle.rust-android")
@@ -45,9 +46,21 @@ android {
     namespace = "dev.firezone.android"
     compileSdk = 34
 
-    // Life is easier if we just match the default NDK on the Ubuntu 22.04 runners
-    // https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2204-Readme.md#android
-    ndkVersion = "27.1.12297006"
+    // We try to build against the NDK version that is pre-installed on GitHub runners.
+    // Unfortunately, those get upgraded without a grace-period where _both_ are available and updates are rolled out over time.
+    // Meaning some jobs will run against an older runner image and some against a newer one.
+    // By default, we can only build against a single version.
+    // To mitigate this, we iterate through all versions here and pick the latest one.
+    // See https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2204-Readme.md#android.
+    ndkVersion = file("${android.sdkDirectory}/ndk").listFiles()
+        ?.filter { it.isDirectory }
+        ?.map { it.name }
+        ?.filter { it.matches(Regex("\\d+\\.\\d+\\.\\d+")) }
+        ?.filter { it.startsWith("27") }
+        ?.maxWithOrNull(compareBy { VersionNumber.parse(it) })
+        ?: throw GradleException("No NDK version 27.x.x found")
+
+    logger.info("Using NDK version: $ndkVersion")
 
     defaultConfig {
         applicationId = "dev.firezone.android"
