@@ -2467,6 +2467,7 @@ dependencies = [
  "domain",
  "firezone-relay",
  "futures",
+ "futures-bounded",
  "futures-util",
  "glob",
  "hex",
