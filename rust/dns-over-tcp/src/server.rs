@@ -104,6 +104,9 @@ impl Server {
         self.received_queries.clear();
     }
 
+    /// Checks whether this server can handle the given packet.
+    ///
+    /// Only TCP packets targeted at one of sockets configured with [`Server::set_listen_addresses`] are accepted.
     pub fn accepts(&self, packet: &IpPacket) -> bool {
         let Some(tcp) = packet.as_tcp() else {
             return false;
@@ -116,6 +119,10 @@ impl Server {
             .any(|listen| listen == &dst_socket)
     }
 
+    /// Handle the [`IpPacket`].
+    ///
+    /// This function only inserts the packet into a buffer.
+    /// To actually process the packets in the buffer, [`Server::handle_timeout`] must be called.
     pub fn handle_inbound(&mut self, packet: IpPacket) {
         debug_assert!(self.accepts(&packet));
 
@@ -123,6 +130,9 @@ impl Server {
     }
 
     /// Send a message on the socket associated with the handle.
+    ///
+    /// This fails if the socket is not writeable.
+    /// On any error, the TCP connection is automatically reset.
     pub fn send_message(&mut self, socket: SocketHandle, message: Message<Vec<u8>>) -> Result<()> {
         let socket = self.sockets.get_mut::<tcp::Socket>(socket.0);
 
@@ -143,6 +153,9 @@ impl Server {
         self.sockets.get_mut::<tcp::Socket>(handle.0).abort();
     }
 
+    /// Inform the server that time advanced.
+    ///
+    /// Typical for a sans-IO design, `handle_timeout` will work through all local buffers and process them as much as possible.
     pub fn handle_timeout(&mut self, now: Instant) {
         let changed = self.interface.poll(
             smoltcp::time::Instant::from(now),
@@ -174,10 +187,12 @@ impl Server {
         }
     }
 
+    /// Returns [`IpPacket`]s that should be sent.
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
         self.device.outbound_packets.pop_front()
     }
 
+    /// Returns queries received from a DNS client.
     pub fn poll_queries(&mut self) -> Option<Query> {
         self.received_queries.pop_front()
     }
