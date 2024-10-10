@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::stub_device::InMemoryDevice;
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result};
 use domain::{base::Message, dep::octseq::OctetsInto as _, rdata::AllRecordData};
 use ip_packet::IpPacket;
 use itertools::Itertools as _;
