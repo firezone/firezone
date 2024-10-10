@@ -91,10 +91,6 @@ jobs:
         if: ${{ matrix.runs-on == 'ubuntu-22.04' }}
         # Installing new packages can take time
         timeout-minutes: 10
-      - uses: ./.github/actions/setup-tauri-v1
-        if: ${{ matrix.runs-on == 'windows-2019' }}
-        # Installing new packages can take time
-        timeout-minutes: 10
       # the arm64 images don't have the GH cli installed.
       # Remove this when https://github.com/actions/runner-images/issues/10192 is resolved.
       - name: Ubuntu arm workaround
