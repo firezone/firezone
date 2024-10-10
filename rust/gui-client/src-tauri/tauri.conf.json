@@ -51,12 +51,9 @@
   "mainBinaryName": "firezone-client-gui",
   "identifier": "dev.firezone.client",
   "plugins": {},
+  "productName": "Firezone",
   "app": {
     "withGlobalTauri": true,
-    "trayIcon": {
-      "iconPath": "icons/tray/Busy layer.png",
-      "iconAsTemplate": true
-    },
     "security": {
       "csp": null
     },

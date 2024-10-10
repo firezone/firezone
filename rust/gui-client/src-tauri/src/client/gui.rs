@@ -78,10 +78,12 @@ impl GuiIntegration for TauriIntegration {
     }
 
     fn set_tray_icon(&mut self, icon: common::system_tray::Icon) -> Result<()> {
+        tracing::warn!("set_tray_icon");
         self.tray.set_icon(icon)
     }
 
     fn set_tray_menu(&mut self, app_state: common::system_tray::AppState) -> Result<()> {
+        tracing::warn!("set_tray_menu");
         self.tray.update(&self.app, app_state)
     }
 
@@ -271,6 +273,7 @@ pub(crate) fn run(
 
                     // In a normal Rust application, Sentry's guard would flush on drop: https://docs.sentry.io/platforms/rust/configuration/draining/
                     // But due to a limit in `tao` we cannot return from the event loop and must call `std::process::exit` (or Tauri's wrapper), so we explicitly flush here.
+                    // TODO: This limit may not exist in Tauri v2
                     telemetry.stop();
 
                     tracing::info!(?exit_code);
@@ -279,16 +282,13 @@ pub(crate) fn run(
                 Ok(())
             };
 
-            setup_result_tx.send(setup_inner()).expect("should be able to send setup result");
+            let result = setup_inner();
+            tracing::warn!(?result, "Ran setup_inner");
+            setup_result_tx.send(result).expect("should be able to send setup result");
 
             Ok(())
         });
-    tracing::debug!("Building Tauri app...");
     let app = app.build(tauri::generate_context!());
-
-    setup_result_rx
-        .try_recv()
-        .context("couldn't receive result of setup")??;
 
     let app = match app {
         Ok(x) => x,
@@ -312,6 +312,10 @@ pub(crate) fn run(
             api.prevent_exit();
         }
     });
+    tracing::warn!("app.run returned");
+    setup_result_rx
+        .try_recv()
+        .context("couldn't receive result of setup")??;
     Ok(())
 }
 
@@ -444,6 +448,7 @@ async fn run_controller(
         ))
         .menu(&system_tray::build_app_state(&app, state))
         .on_menu_event(|app, event| {
+            tracing::warn!("on_menu_event");
             let id = &event.id.0;
             tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
             let event = match serde_json::from_str::<TrayMenuEvent>(id) {
