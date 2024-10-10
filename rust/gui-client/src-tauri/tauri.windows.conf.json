@@ -1,8 +1,5 @@
 {
   "build": {
     "beforeBundleCommand": "bash -c '../../scripts/build/sign.sh ../target/release/Firezone.exe'"
-  },
-  "package": {
-    "productName": "Firezone"
   }
 }

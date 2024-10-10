@@ -26,3 +26,6 @@ src/output.css
 
 # JS output from the TypeScript compiler
 src/**/*.js
+
+# Some new generated files in Tauri v2
+src-tauri/gen
