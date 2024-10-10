@@ -1096,7 +1096,7 @@ mod tests {
     }
 
     #[test]
-    fn dns_and_cidr_filters_are_segregated() {
+    fn dns_and_cidr_filters_dot_mix() {
         let mut peer = ClientOnGateway::new(client_id(), source_v4_addr(), source_v6_addr());
         peer.add_resource(foo_dns_resource(), None);
         peer.add_resource(bar_cidr_resource(), None);
@@ -1109,9 +1109,11 @@ mod tests {
         )
         .unwrap();
 
+        assert_eq!(bar_contained_ip(), foo_real_ip());
+
         let pkt = ip_packet::make::udp_packet(
             source_v4_addr(),
-            foo_real_ip(),
+            bar_contained_ip(),
             1,
             bar_allowed_port(),
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -1122,7 +1124,7 @@ mod tests {
 
         let pkt = ip_packet::make::udp_packet(
             source_v4_addr(),
-            foo_real_ip(),
+            bar_contained_ip(),
             1,
             foo_allowed_port(),
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -1147,6 +1149,54 @@ mod tests {
             foo_proxy_ip(),
             1,
             foo_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.decapsulate(pkt, Instant::now()).is_ok());
+    }
+
+    #[test]
+    fn internet_resource_doesnt_allow_all_traffic_for_dns_resources() {
+        let mut peer = ClientOnGateway::new(client_id(), source_v4_addr(), source_v6_addr());
+        peer.add_resource(foo_dns_resource(), None);
+        peer.add_resource(internet_resource(), None);
+        peer.assign_translations(
+            foo_name().parse().unwrap(),
+            resource_id(),
+            &[foo_real_ip().into()],
+            vec![foo_proxy_ip().into()],
+            Instant::now(),
+        )
+        .unwrap();
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            foo_proxy_ip(),
+            1,
+            foo_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.decapsulate(pkt, Instant::now()).is_ok());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            foo_proxy_ip(),
+            1,
+            600,
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.decapsulate(pkt, Instant::now()).is_err());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            "1.1.1.1".parse().unwrap(),
+            1,
+            600,
             vec![0, 0, 0, 0, 0, 0, 0, 0],
         )
         .unwrap();
@@ -1182,6 +1232,14 @@ mod tests {
         )
     }
 
+    fn internet_resource() -> crate::messages::gateway::ResourceDescription {
+        crate::messages::gateway::ResourceDescription::Internet(
+            crate::messages::gateway::ResourceDescriptionInternet {
+                id: "ed29c148-2acf-4ceb-8db5-d796c267163a".parse().unwrap(),
+            },
+        )
+    }
+
     fn foo_allowed_port() -> u16 {
         80
     }
@@ -1191,6 +1249,10 @@ mod tests {
     }
 
     fn foo_real_ip() -> Ipv4Addr {
+        "10.0.0.1".parse().unwrap()
+    }
+
+    fn bar_contained_ip() -> Ipv4Addr {
         "10.0.0.1".parse().unwrap()
     }
 
