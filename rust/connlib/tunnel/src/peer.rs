@@ -374,10 +374,7 @@ impl ClientOnGateway {
                         .then_some(r.filters())
                 });
 
-                let filter_engine = FilterEngine::with_filters(filters);
-
-                tracing::trace!(%ip, filters = ?filter_engine, "Installing new filters");
-                self.filters.insert(*ip, filter_engine);
+                insert_filters(&mut self.filters, *ip, filters);
             }
         }
     }
@@ -390,10 +387,11 @@ impl ClientOnGateway {
 
             debug_assert!(resource.is_dns());
 
-            let filter_engine = FilterEngine::with_filters(iter::once(resource.filters()));
-
-            tracing::trace!(%addr, filters = ?filter_engine, "Installing new filters");
-            self.filters.insert(*addr, filter_engine);
+            insert_filters(
+                &mut self.filters,
+                IpNetwork::from(*addr),
+                iter::once(resource.filters()),
+            );
         }
     }
 
@@ -736,6 +734,17 @@ fn mapped_ipv6(ips: &[IpAddr]) -> Vec<IpAddr> {
 
 fn is_dns_addr(addr: IpAddr) -> bool {
     IpNetwork::from(IPV4_RESOURCES).contains(addr) || IpNetwork::from(IPV6_RESOURCES).contains(addr)
+}
+
+fn insert_filters<'a>(
+    filter_store: &mut IpNetworkTable<FilterEngine>,
+    ip: IpNetwork,
+    filters: impl Iterator<Item = &'a Filters> + Clone,
+) {
+    let filter_engine = FilterEngine::with_filters(filters);
+
+    tracing::trace!(%ip, filters = ?filter_engine, "Installing new filters");
+    filter_store.insert(ip, filter_engine);
 }
 
 #[cfg(test)]
