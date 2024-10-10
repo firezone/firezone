@@ -735,6 +735,12 @@ impl ClientState {
             while let Some((server, query)) = self.tcp_dns_sockets.poll_received_queries() {
                 let result = match self.stub_resolver.handle(query.for_slice_ref()) {
                     Ok(dns::ResolveStrategy::Recurse) => {
+                        if self.should_forward_dns_query_to_gateway(server.ip()) {
+                            tracing::debug!("Tunneling TCP DNS queries is not yet supported");
+
+                            return ControlFlow::Break(());
+                        }
+
                         self.buffered_dns_queries
                             .push_back(dns::RecursiveQuery::via_tcp(upstream, query));
                         continue;
