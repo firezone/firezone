@@ -726,44 +726,11 @@ impl ClientState {
         let dst = packet.destination();
         let Some(upstream) = self.dns_mapping.get_by_left(&dst).map(|s| s.address()) else {
             let dest = packet.destination();
-            return ControlFlow::Continue((packet, dest));
+            return ControlFlow::Continue((packet, dest)); // Not for our DNS resolver.
         };
 
         if packet.is_tcp() {
             self.tcp_dns_sockets.handle_inbound_packet(packet, now);
-
-            while let Some((server, message)) = self.tcp_dns_sockets.poll_received_queries() {
-                let result = match self.stub_resolver.handle(message.for_slice_ref()) {
-                    Ok(dns::ResolveStrategy::Recurse) => {
-                        if self.should_forward_dns_query_to_gateway(server.ip()) {
-                            tracing::debug!("Tunneling TCP DNS queries is not yet supported");
-
-                            return ControlFlow::Break(());
-                        }
-
-                        let query_id = message.header().id();
-
-                        tracing::trace!(%server, %query_id, "Forwarding TCP DNS query");
-
-                        self.buffered_dns_queries
-                            .push_back(dns::RecursiveQuery::via_tcp(server, message));
-                        continue;
-                    }
-                    Ok(dns::ResolveStrategy::LocalResponse(response)) => {
-                        Message::from_octets(response)
-                            .map_err(|_| io::Error::other("Failed to re-parse DNS message"))
-                    }
-                    Err(e) => Err(io::Error::other(format!("{e:#}"))),
-                };
-
-                if let Err(e) =
-                    self.tcp_dns_sockets
-                        .write_dns_response(message.header().id(), server, result)
-                {
-                    tracing::debug!("Failed to write TCP DNS response: {e:#}")
-                }
-            }
-
             return ControlFlow::Break(());
         }
 
@@ -1020,9 +987,39 @@ impl ClientState {
         self.node.handle_timeout(now);
         self.drain_node_events();
 
+        self.mangled_dns_queries.retain(|_, exp| now < *exp);
+
         self.tcp_dns_sockets.handle_timeout(now);
 
-        self.mangled_dns_queries.retain(|_, exp| now < *exp);
+        // Check if have any pending TCP DNS queries.
+        while let Some((server, message)) = self.tcp_dns_sockets.poll_received_queries() {
+            let result = match self.stub_resolver.handle(message.for_slice_ref()) {
+                Ok(dns::ResolveStrategy::Recurse) => {
+                    if self.should_forward_dns_query_to_gateway(server.ip()) {
+                        tracing::debug!("Tunneling TCP DNS queries is not yet supported");
+                        continue;
+                    }
+
+                    let query_id = message.header().id();
+
+                    tracing::trace!(%server, %query_id, "Forwarding TCP DNS query");
+
+                    self.buffered_dns_queries
+                        .push_back(dns::RecursiveQuery::via_tcp(server, message));
+                    continue;
+                }
+                Ok(dns::ResolveStrategy::LocalResponse(response)) => Message::from_octets(response)
+                    .map_err(|_| io::Error::other("Failed to re-parse DNS message")),
+                Err(e) => Err(io::Error::other(format!("{e:#}"))),
+            };
+
+            if let Err(e) =
+                self.tcp_dns_sockets
+                    .write_dns_response(message.header().id(), server, result)
+            {
+                tracing::debug!("Failed to write TCP DNS response: {e:#}")
+            }
+        }
     }
 
     fn maybe_update_tun_routes(&mut self) {

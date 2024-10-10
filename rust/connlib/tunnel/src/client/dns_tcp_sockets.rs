@@ -53,7 +53,6 @@ impl DnsTcpSockets {
 
     pub(crate) fn handle_inbound_packet(&mut self, packet: IpPacket, now: Instant) {
         self.device.inbound_packets.push_back(packet);
-        self.handle_timeout(now);
     }
 
     pub(crate) fn write_dns_response(
