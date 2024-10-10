@@ -22,6 +22,7 @@ use firezone_telemetry as telemetry;
 use secrecy::{ExposeSecret as _, SecretString};
 use std::{str::FromStr, time::Duration};
 use tauri::Manager;
+use tauri_plugin_shell::ShellExt as _;
 use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
 
@@ -73,7 +74,7 @@ impl GuiIntegration for TauriIntegration {
     }
 
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
-        todo!()
+        Ok(self.app.shell().open(url.as_ref(), None)?)
         //Ok(tauri::api::shell::open(&self.app.shell_scope(), url, None)?)
     }
 
@@ -167,6 +168,7 @@ pub(crate) fn run(
             crate::client::welcome::sign_in,
         ])
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_shell::init())
         .setup(move |app| {
             let setup_inner = move || {
                 // Check for updates
