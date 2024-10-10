@@ -55,7 +55,9 @@ pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::ClientState;
-pub use gateway::{DnsResourceNatEntry, GatewayState, IPV4_PEERS, IPV6_PEERS};
+pub use gateway::{
+    DnsResourceNatEntry, GatewayState, PendingSetupNatRequest, IPV4_PEERS, IPV6_PEERS,
+};
 use snownet::EncryptBuffer;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
@@ -344,6 +346,7 @@ pub enum GatewayEvent {
         conn_id: ClientId,
         resource_id: ResourceId,
     },
+    ResolveDns(PendingSetupNatRequest),
 }
 
 fn fmt_routes<T>(routes: &BTreeSet<T>, f: &mut fmt::Formatter) -> fmt::Result

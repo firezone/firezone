@@ -1,8 +1,10 @@
 //! Gateway related messages that are needed within connlib
 
 use crate::messages::{
-    GatewayResponse, Interface, Offer, Peer, Relay, RelaysPresence, ResolveRequest,
+    GatewayResponse, IceCredentials, Interface, Key, Offer, Peer, Relay, RelaysPresence,
+    ResolveRequest, SecretKey,
 };
+
 use chrono::{serde::ts_seconds_option, DateTime, Utc};
 use connlib_model::{ClientId, ResourceId};
 use ip_network::IpNetwork;
@@ -173,14 +175,31 @@ pub struct RejectAccess {
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum IngressMessages {
-    RequestConnection(RequestConnection),
-    AllowAccess(AllowAccess),
+    RequestConnection(RequestConnection), // Deprecated.
+    AllowAccess(AllowAccess),             // Deprecated.
     RejectAccess(RejectAccess),
     IceCandidates(ClientIceCandidates),
     InvalidateIceCandidates(ClientIceCandidates),
     Init(InitGateway),
     RelaysPresence(RelaysPresence),
     ResourceUpdated(ResourceDescription),
+    AuthorizeFlow {
+        resource: ResourceDescription,
+        #[serde(with = "ts_seconds_option")]
+        expires_at: Option<DateTime<Utc>>,
+
+        client_id: ClientId,
+        client_key: Key,
+        client_ipv4: Ipv4Addr,
+        client_ipv6: Ipv6Addr,
+
+        preshared_key: SecretKey,
+        client_ice: IceCredentials,
+        gateway_ice: IceCredentials,
+
+        #[serde(rename = "ref")]
+        reference: String,
+    },
 }
 
 /// A client's ice candidate message.
@@ -209,6 +228,10 @@ pub enum EgressMessages {
     ConnectionReady(ConnectionReady),
     BroadcastIceCandidates(ClientsIceCandidates),
     BroadcastInvalidatedIceCandidates(ClientsIceCandidates),
+    AuthorizeFlowOk {
+        #[serde(rename = "ref")]
+        reference: String,
+    },
 }
 
 #[derive(Debug, Serialize, Clone)]
