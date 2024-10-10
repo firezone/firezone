@@ -341,7 +341,7 @@ pub(crate) fn run(
         .tooltip("Firezone")
         .build(&app)
         .map_err(|_| anyhow::anyhow!("Cannot build Tauri tray icon"))?;
-    if let Err(_) = tray_tx.send(tray) {
+    if tray_tx.send(tray).is_err() {
         panic!("Couldn't send tray through the channel");
     }
 

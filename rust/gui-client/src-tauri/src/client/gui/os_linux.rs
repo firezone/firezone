@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result};
-use firezone_bin_shared::BUNDLE_ID;
+// use firezone_bin_shared::BUNDLE_ID;
 
 pub(crate) async fn set_autostart(enabled: bool) -> Result<()> {
     let dir = dirs::config_local_dir()
@@ -43,7 +43,8 @@ pub(crate) fn show_update_notification(
 }
 
 /// Show a notification in the bottom right of the screen
-pub(crate) fn show_notification(title: &str, body: &str) -> Result<()> {
+#[allow(clippy::unnecessary_wraps)]
+pub(crate) fn show_notification(_title: &str, _body: &str) -> Result<()> {
     tracing::warn!("Notifications not migrated yet");
     /*
     Notification::new(BUNDLE_ID)

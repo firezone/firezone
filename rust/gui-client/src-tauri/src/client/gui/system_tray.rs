@@ -85,6 +85,7 @@ impl Tray {
 
     // Only needed for the stress test
     // Otherwise it would be inlined
+    #[allow(clippy::unnecessary_wraps)]
     pub(crate) fn set_icon(&mut self, icon: Icon) -> Result<()> {
         if icon != self.last_icon_set {
             // Don't call `set_icon` too often. On Linux it writes a PNG to `/run/user/$UID/tao/tray-icon-*.png` every single time.
