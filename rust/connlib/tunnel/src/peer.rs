@@ -759,7 +759,7 @@ mod tests {
     };
     use chrono::Utc;
     use connlib_model::{ClientId, ResourceId};
-    use ip_network::Ipv4Network;
+    use ip_network::{IpNetwork, Ipv4Network};
 
     use super::{ClientOnGateway, TranslationState};
 
@@ -1093,6 +1093,117 @@ mod tests {
         now += Duration::from_secs(1);
 
         assert!(state.is_expired(now));
+    }
+
+    #[test]
+    fn dns_and_cidr_filters_are_segregated() {
+        let mut peer = ClientOnGateway::new(client_id(), source_v4_addr(), source_v6_addr());
+        peer.add_resource(foo_dns_resource(), None);
+        peer.add_resource(bar_cidr_resource(), None);
+        peer.assign_translations(
+            foo_name().parse().unwrap(),
+            resource_id(),
+            &[foo_real_ip().into()],
+            vec![foo_proxy_ip().into()],
+            Instant::now(),
+        )
+        .unwrap();
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            foo_real_ip(),
+            1,
+            bar_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.decapsulate(pkt, Instant::now()).is_ok());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            foo_real_ip(),
+            1,
+            foo_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.decapsulate(pkt, Instant::now()).is_err());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            foo_proxy_ip(),
+            1,
+            bar_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.decapsulate(pkt, Instant::now()).is_err());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            foo_proxy_ip(),
+            1,
+            foo_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.decapsulate(pkt, Instant::now()).is_ok());
+    }
+
+    fn foo_dns_resource() -> crate::messages::gateway::ResourceDescription {
+        crate::messages::gateway::ResourceDescription::Dns(
+            crate::messages::gateway::ResourceDescriptionDns {
+                id: resource_id(),
+                address: foo_name(),
+                name: "foo".to_string(),
+                filters: vec![Filter::Udp(PortRange {
+                    port_range_end: foo_allowed_port(),
+                    port_range_start: foo_allowed_port(),
+                })],
+            },
+        )
+    }
+
+    fn bar_cidr_resource() -> crate::messages::gateway::ResourceDescription {
+        crate::messages::gateway::ResourceDescription::Cidr(
+            crate::messages::gateway::ResourceDescriptionCidr {
+                id: resource2_id(),
+                address: bar_address(),
+                name: "foo".to_string(),
+                filters: vec![Filter::Udp(PortRange {
+                    port_range_end: bar_allowed_port(),
+                    port_range_start: bar_allowed_port(),
+                })],
+            },
+        )
+    }
+
+    fn foo_allowed_port() -> u16 {
+        80
+    }
+
+    fn bar_allowed_port() -> u16 {
+        443
+    }
+
+    fn foo_real_ip() -> Ipv4Addr {
+        "10.0.0.1".parse().unwrap()
+    }
+
+    fn foo_proxy_ip() -> Ipv4Addr {
+        "100.96.0.1".parse().unwrap()
+    }
+
+    fn foo_name() -> String {
+        "foo.com".to_string()
+    }
+
+    fn bar_address() -> IpNetwork {
+        "10.0.0.0/24".parse().unwrap()
     }
 
     fn source_v4_addr() -> Ipv4Addr {
