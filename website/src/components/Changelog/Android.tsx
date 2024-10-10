@@ -11,7 +11,11 @@ export default function Android() {
       title="Android"
     >
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="6944">
+          Correctly responds to DNS queries over TCP.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.3.5" date={new Date("2024-10-03")}>
         <ChangeItem pull="6831">
           Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is

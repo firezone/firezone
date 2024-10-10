@@ -86,7 +86,7 @@ impl ClientTunnel {
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
-            role_state: ClientState::new(known_hosts, rand::random()),
+            role_state: ClientState::new(known_hosts, rand::random(), Instant::now()),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             encrypt_buf: EncryptBuffer::new(MAX_DATAGRAM_PAYLOAD),
@@ -117,6 +117,11 @@ impl ClientTunnel {
 
             if let Some(transmit) = self.role_state.poll_transmit() {
                 self.io.send_network(transmit)?;
+                continue;
+            }
+
+            if let Some(query) = self.role_state.poll_dns_queries() {
+                self.io.send_dns_query(query);
                 continue;
             }
 
@@ -163,6 +168,11 @@ impl ClientTunnel {
                         self.io.send_tun(packet)?;
                     }
 
+                    continue;
+                }
+                Poll::Ready(io::Input::DnsResponse(packet)) => {
+                    self.role_state.handle_dns_response(packet);
+                    self.role_state.handle_timeout(Instant::now());
                     continue;
                 }
                 Poll::Pending => {}
@@ -223,6 +233,9 @@ impl GatewayTunnel {
                 self.ip6_read_buf.as_mut(),
                 &self.encrypt_buf,
             )? {
+                Poll::Ready(io::Input::DnsResponse(_)) => {
+                    unreachable!("Gateway doesn't use user-space DNS resolution")
+                }
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout, Utc::now());
                     continue;

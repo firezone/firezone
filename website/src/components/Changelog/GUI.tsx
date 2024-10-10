@@ -14,7 +14,11 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="6944">
+          Correctly responds to DNS queries over TCP.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.3.9" date={new Date("2024-10-09")}>
         <ChangeItem enable={title === "Linux GUI"} pull="6987">
           Fixes a crash on startup caused by incorrect permissions on the ID file.

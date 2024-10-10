@@ -1,20 +1,26 @@
-use crate::{device_channel::Device, sockets::Sockets};
+use crate::{device_channel::Device, dns, sockets::Sockets};
+use domain::base::Message;
 use futures::{
     future::{self, Either},
     stream, Stream, StreamExt,
 };
+use futures_bounded::FuturesTupleSet;
 use futures_util::FutureExt as _;
 use ip_packet::{IpPacket, MAX_DATAGRAM_PAYLOAD};
 use snownet::{EncryptBuffer, EncryptedPacket};
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     io,
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     pin::Pin,
     sync::Arc,
     task::{ready, Context, Poll},
-    time::Instant,
+    time::{Duration, Instant},
 };
-use tokio::sync::mpsc;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::mpsc,
+};
 use tun::Tun;
 
 /// Bundles together all side-effects that connlib needs to have access to.
@@ -23,13 +29,22 @@ pub struct Io {
     sockets: Sockets,
     unwritten_packet: Option<EncryptedPacket>,
 
-    _tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+
+    dns_queries: FuturesTupleSet<io::Result<Message<Vec<u8>>>, DnsQueryMetaData>,
 
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
     tun_tx: mpsc::Sender<Box<dyn Tun>>,
     outbound_packet_tx: mpsc::Sender<IpPacket>,
     inbound_packet_rx: mpsc::Receiver<IpPacket>,
+}
+
+#[derive(Debug)]
+struct DnsQueryMetaData {
+    query: Message<Vec<u8>>,
+    server: SocketAddr,
+    transport: dns::Transport,
 }
 
 #[expect(
@@ -40,8 +55,10 @@ pub enum Input<I> {
     Timeout(Instant),
     Device(IpPacket),
     Network(I),
+    DnsResponse(dns::RecursiveResponse),
 }
 
+const DNS_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 const IP_CHANNEL_SIZE: usize = 1000;
 
 impl Io {
@@ -73,9 +90,10 @@ impl Io {
             inbound_packet_rx,
             timeout: None,
             sockets,
-            _tcp_socket_factory: tcp_socket_factory,
+            tcp_socket_factory,
             udp_socket_factory,
             unwritten_packet: None,
+            dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
         }
     }
 
@@ -98,6 +116,27 @@ impl Io {
 
         if let Poll::Ready(Some(packet)) = self.inbound_packet_rx.poll_recv(cx) {
             return Poll::Ready(Ok(Input::Device(packet)));
+        }
+
+        match self.dns_queries.poll_unpin(cx) {
+            Poll::Ready((result, meta)) => {
+                let response = result
+                    .map(|result| dns::RecursiveResponse {
+                        server: meta.server,
+                        query: meta.query.clone(),
+                        message: result,
+                        transport: meta.transport,
+                    })
+                    .unwrap_or_else(|_| dns::RecursiveResponse {
+                        server: meta.server,
+                        query: meta.query,
+                        message: Err(io::Error::from(io::ErrorKind::TimedOut)),
+                        transport: meta.transport,
+                    });
+
+                return Poll::Ready(Ok(Input::DnsResponse(response)));
+            }
+            Poll::Pending => {}
         }
 
         if let Some(timeout) = self.timeout.as_mut() {
@@ -177,6 +216,91 @@ impl Io {
         })?;
 
         Ok(())
+    }
+
+    pub fn send_dns_query(&mut self, query: dns::RecursiveQuery) {
+        match query.transport {
+            dns::Transport::Udp => {
+                let factory = self.udp_socket_factory.clone();
+                let server = query.server;
+                let bind_addr = match query.server {
+                    SocketAddr::V4(_) => SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
+                    SocketAddr::V6(_) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
+                };
+                let meta = DnsQueryMetaData {
+                    query: query.message.clone(),
+                    server,
+                    transport: dns::Transport::Udp,
+                };
+
+                if self
+                    .dns_queries
+                    .try_push(
+                        async move {
+                            // To avoid fragmentation, IP and thus also UDP packets can only reliably sent with an MTU of <= 1500 on the public Internet.
+                            const BUF_SIZE: usize = 1500;
+
+                            let udp_socket = factory(&bind_addr)?;
+
+                            let response = udp_socket
+                                .handshake::<BUF_SIZE>(server, query.message.as_slice())
+                                .await?;
+
+                            let message = Message::from_octets(response)
+                                .map_err(|_| io::Error::other("Failed to parse DNS message"))?;
+
+                            Ok(message)
+                        },
+                        meta,
+                    )
+                    .is_err()
+                {
+                    tracing::debug!("Failed to queue UDP DNS query")
+                }
+            }
+            dns::Transport::Tcp => {
+                let factory = self.tcp_socket_factory.clone();
+                let server = query.server;
+                let meta = DnsQueryMetaData {
+                    query: query.message.clone(),
+                    server,
+                    transport: dns::Transport::Tcp,
+                };
+
+                if self
+                    .dns_queries
+                    .try_push(
+                        async move {
+                            let tcp_socket = factory(&server)?;
+                            let mut tcp_stream = tcp_socket.connect(server).await?;
+
+                            let query = query.message.into_octets();
+                            let dns_message_length = (query.len() as u16).to_be_bytes();
+
+                            tcp_stream.write_all(&dns_message_length).await?;
+                            tcp_stream.write_all(&query).await?;
+
+                            let mut response_length = [0u8; 2];
+                            tcp_stream.read_exact(&mut response_length).await?;
+                            let response_length = u16::from_be_bytes(response_length) as usize;
+
+                            // A u16 is at most 65k, meaning we are okay to allocate here based on what the remote is sending.
+                            let mut response = vec![0u8; response_length];
+                            tcp_stream.read_exact(&mut response).await?;
+
+                            let message = Message::from_octets(response)
+                                .map_err(|_| io::Error::other("Failed to parse DNS message"))?;
+
+                            Ok(message)
+                        },
+                        meta,
+                    )
+                    .is_err()
+                {
+                    tracing::debug!("Failed to queue TCP DNS query")
+                }
+            }
+        }
     }
 
     pub fn send_encrypted_packet(
