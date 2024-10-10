@@ -5,7 +5,10 @@ defmodule Web.Sites.Show do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
            Gateways.fetch_group_by_id(id, socket.assigns.subject,
-             preload: [created_by_identity: [:actor]]
+             preload: [
+               created_by_identity: [:actor],
+               created_by_actor: []
+             ]
            ) do
       if connected?(socket) do
         :ok = Gateways.subscribe_to_gateways_presence_in_group(group)

@@ -89,6 +89,31 @@ defmodule Web.Live.Groups.ShowTest do
     assert table["created"] =~ "by #{actor.name}"
   end
 
+  test "renders group details when created by API", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
+    subject = Fixtures.Auth.create_subject(account: account, actor: actor)
+    group = Fixtures.Actors.create_group(account: account, subject: subject)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/groups/#{group}")
+
+    table =
+      lv
+      |> element("#group")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["name"] == group.name
+    assert around_now?(table["created"])
+    assert table["created"] =~ "by #{actor.name}"
+  end
+
   test "renders name of actor that created group", %{
     account: account,
     actor: actor,
