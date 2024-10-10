@@ -753,6 +753,37 @@ defmodule API.Gateway.ChannelTest do
                DateTime.truncate(expires_at, :second)
     end
 
+    test "pushes authorize_flow message for authorizations that do not expire", %{
+      client: client,
+      resource: resource,
+      socket: socket
+    } do
+      channel_pid = self()
+      socket_ref = make_ref()
+      preshared_key = "PSK"
+      flow_id = Ecto.UUID.generate()
+
+      ice_credentials = %{
+        client: %{username: "A", password: "B"},
+        gateway: %{username: "C", password: "D"}
+      }
+
+      send(
+        socket.channel_pid,
+        {:authorize_flow, {channel_pid, socket_ref},
+         %{
+           client_id: client.id,
+           resource_id: resource.id,
+           flow_id: flow_id,
+           authorization_expires_at: nil,
+           ice_credentials: ice_credentials,
+           preshared_key: preshared_key
+         }, {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}}
+      )
+
+      assert_push "authorize_flow", %{expires_at: nil}
+    end
+
     test "subscribes for flow expiration event", %{
       account: account,
       client: client,
