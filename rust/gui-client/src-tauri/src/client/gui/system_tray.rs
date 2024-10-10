@@ -8,9 +8,8 @@
 use anyhow::Result;
 use firezone_gui_client_common::{
     compositor::{self, Image},
-    system_tray::{AppState, ConnlibState, Entry, Icon, IconBase, Item, Menu},
+    system_tray::{AppState, ConnlibState, Entry, Icon, IconBase, Menu},
 };
-use tokio::sync::oneshot;
 
 // Figma is the source of truth for the tray icon layers
 // <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=nHBOzOnSY5Ol4asV-0>
@@ -73,10 +72,12 @@ impl Tray {
 
         let app = self.app.clone();
         let handle = self.handle.clone();
-        self.app.run_on_main_thread(move || {
-            handle.set_tooltip(Some(TOOLTIP));
-            handle.set_menu(Some(build_app_state(&app, state)));
-        });
+        self.app
+            .run_on_main_thread(move || {
+                handle.set_tooltip(Some(TOOLTIP)).unwrap();
+                handle.set_menu(Some(build_app_state(&app, state))).unwrap();
+            })
+            .unwrap();
         self.set_icon(new_icon)?;
 
         Ok(())
@@ -92,9 +93,11 @@ impl Tray {
             // on disk.
             let handle = self.handle.clone();
             self.last_icon_set = icon.clone();
-            self.app.run_on_main_thread(move || {
-                handle.set_icon(Some(icon_to_tauri_icon(&icon)));
-            });
+            self.app
+                .run_on_main_thread(move || {
+                    handle.set_icon(Some(icon_to_tauri_icon(&icon))).unwrap();
+                })
+                .unwrap();
         }
         Ok(())
     }

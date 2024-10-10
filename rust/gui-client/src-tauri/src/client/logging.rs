@@ -56,5 +56,4 @@ fn show_export_dialog(ctlr_tx: CtlrTx) -> Result<()> {
         });
     */
     todo!();
-    Ok(())
 }

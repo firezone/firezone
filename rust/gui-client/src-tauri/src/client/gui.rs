@@ -143,7 +143,7 @@ pub(crate) fn run(
     };
 
     let (setup_result_tx, mut setup_result_rx) = oneshot::channel::<Result<(), Error>>();
-    let (tray_tx, mut tray_rx) = oneshot::channel();
+    let (tray_tx, tray_rx) = oneshot::channel();
     let app = tauri::Builder::default()
         .manage(managed)
         .on_window_event(|window, event| {
@@ -299,7 +299,7 @@ pub(crate) fn run(
         });
     let app = app.build(tauri::generate_context!());
 
-    let mut app = match app {
+    let app = match app {
         Ok(x) => x,
         Err(error) => {
             tracing::error!(?error, "Failed to build Tauri app instance");
@@ -341,7 +341,9 @@ pub(crate) fn run(
         .tooltip("Firezone")
         .build(&app)
         .map_err(|_| anyhow::anyhow!("Cannot build Tauri tray icon"))?;
-    tray_tx.send(tray);
+    if let Err(_) = tray_tx.send(tray) {
+        panic!("Couldn't send tray through the channel");
+    }
 
     app.run(|_app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
