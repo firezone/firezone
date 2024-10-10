@@ -185,21 +185,23 @@ impl StubResolver {
     /// Attempts to match the given domain against our list of possible patterns.
     ///
     /// This performs a linear search and is thus O(N) and **must not** be called in the hot-path of packet routing.
-    #[tracing::instrument(level = "trace", skip_all, fields(%domain))]
     fn match_resource_linear(&self, domain: &DomainName) -> Option<ResourceId> {
         let name = Candidate::from_domain(domain);
 
         for (pattern, id) in &self.dns_resources {
             if pattern.matches(&name) {
-                tracing::trace!(%id, %pattern, "Matched domain");
+                tracing::trace!(%id, %pattern, %domain, "Matched resource");
 
                 return Some(*id);
             }
-
-            tracing::trace!(%pattern, %id, "No match");
         }
 
-        tracing::trace!("No resources matched");
+        if tracing::enabled!(tracing::Level::TRACE) {
+            let patterns = self.dns_resources.keys().join(" | ");
+            let patterns = format!("[{patterns}]");
+
+            tracing::trace!(%domain, %patterns, "No resources matched");
+        }
 
         None
     }
