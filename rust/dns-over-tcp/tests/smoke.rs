@@ -19,7 +19,7 @@ const CLIENT_CONCURRENCY: usize = 3;
 #[ignore = "Requires root"]
 async fn smoke() {
     let _guard =
-        firezone_logging::test("netlink_proto=off,wire::dns=trace,dns_over_tcp=trace,debug");
+        firezone_logging::test("netlink_proto=off,wire::dns::res=trace,dns_over_tcp=trace,debug");
 
     let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
     let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
@@ -43,7 +43,6 @@ async fn smoke() {
     tokio::spawn(std::future::poll_fn(move |cx| eventloop.poll(cx)));
 
     // Running the queries multiple times ensures we can reuse sockets.
-    run_queries(listen_addr.ip()).await;
     run_queries(listen_addr.ip()).await;
     run_queries(listen_addr.ip()).await;
 }

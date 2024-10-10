@@ -148,7 +148,7 @@ impl Server {
             socket.abort();
         }
 
-        result?;
+        result.context("Failed to write DNS response")?;
 
         if tracing::event_enabled!(target: "wire::dns::res", tracing::Level::TRACE) {
             if let Ok(question) = message.sole_question() {
@@ -224,7 +224,7 @@ impl Server {
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    tracing::debug!("Failed recv message: {e}");
+                    tracing::debug!("Error on receiving DNS query: {e}");
                     socket.abort();
                 }
             }
@@ -312,16 +312,13 @@ fn try_recv_query(
         return Ok(None);
     };
 
-    anyhow::ensure!(!message.header().qr(), "Only DNS queries are supported");
+    anyhow::ensure!(!message.header().qr(), "DNS message is a response!");
 
     Ok(Some(message.octets_into()))
 }
 
 fn write_tcp_dns_response(socket: &mut tcp::Socket, response: Message<&[u8]>) -> Result<()> {
-    anyhow::ensure!(
-        response.header().qr(),
-        "Only DNS responses are allowed to be written"
-    );
+    anyhow::ensure!(response.header().qr(), "DNS message is a query!");
 
     let response = response.as_slice();
 
