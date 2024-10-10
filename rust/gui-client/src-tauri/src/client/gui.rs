@@ -143,6 +143,7 @@ pub(crate) fn run(
     };
 
     let (setup_result_tx, mut setup_result_rx) = oneshot::channel::<Result<(), Error>>();
+    let (tray_tx, mut tray_rx) = oneshot::channel();
     let app = tauri::Builder::default()
         .manage(managed)
         .on_window_event(|window, event| {
@@ -166,6 +167,7 @@ pub(crate) fn run(
             settings::get_advanced_settings,
             crate::client::welcome::sign_in,
         ])
+        .plugin(tauri_plugin_notification::init())
         .setup(move |app| {
             let setup_inner = move || {
                 // Check for updates
@@ -231,12 +233,16 @@ pub(crate) fn run(
                     "BUNDLE_ID should match bundle ID in tauri.conf.json"
                 );
 
+                let tray = tray_rx.blocking_recv().expect("tray_rx failed");
+                let tray = system_tray::Tray::new(tray);
+                let integration = TauriIntegration { app: app.handle().clone(), tray };
+
                 let app_handle = app.handle().clone();
                 let _ctlr_task = tokio::spawn(async move {
                     // Spawn two nested Tasks so the outer can catch panics from the inner
                     let task = tokio::spawn(run_controller(
-                        app_handle.clone(),
                         ctlr_tx,
+                        integration,
                         ctlr_rx,
                         advanced_settings,
                         reloader,
@@ -278,6 +284,8 @@ pub(crate) fn run(
 
                     tracing::info!(?exit_code);
                     app_handle.exit(exit_code);
+                    tracing::error!("This was unreachable in Tauri v1");
+                    std::process::exit(exit_code);
                 });
                 Ok(())
             };
@@ -290,7 +298,7 @@ pub(crate) fn run(
         });
     let app = app.build(tauri::generate_context!());
 
-    let app = match app {
+    let mut app = match app {
         Ok(x) => x,
         Err(error) => {
             tracing::error!(?error, "Failed to build Tauri app instance");
@@ -304,12 +312,44 @@ pub(crate) fn run(
         }
     };
 
+    let state = firezone_gui_client_common::system_tray::AppState {
+        connlib: firezone_gui_client_common::system_tray::ConnlibState::Loading,
+        release: None,
+    };
+    let tray = tauri::tray::TrayIconBuilder::new()
+        .icon(system_tray::icon_to_tauri_icon(
+            &firezone_gui_client_common::system_tray::Icon::default(),
+        ))
+        .menu(&system_tray::build_app_state(app.handle(), state))
+        .on_menu_event(|app, event| {
+            tracing::warn!("on_menu_event");
+            let id = &event.id.0;
+            tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
+            let event = match serde_json::from_str::<TrayMenuEvent>(id) {
+                Ok(x) => x,
+                Err(e) => {
+                    tracing::error!("{e}");
+                    return;
+                }
+            };
+            match handle_system_tray_event(app, event) {
+                Ok(_) => {}
+                Err(e) => tracing::error!("{e}"),
+            }
+        })
+        .tooltip("Firezone")
+        .build(&app)
+        .map_err(|_| anyhow::anyhow!("Cannot build Tauri tray icon"))?;
+    tray_tx.send(tray);
+
     app.run(|_app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             // Don't exit if we close our main window
             // https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
 
             api.prevent_exit();
+        } else {
+            tracing::warn!(?event);
         }
     });
     tracing::warn!("app.run returned");
@@ -429,8 +469,8 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 
 // TODO: Move this into `impl Controller`
 async fn run_controller(
-    app: tauri::AppHandle,
     ctlr_tx: CtlrTx,
+    integration: TauriIntegration,
     rx: mpsc::Receiver<ControllerRequest>,
     advanced_settings: AdvancedSettings,
     log_filter_reloader: LogFilterReloader,
@@ -438,40 +478,11 @@ async fn run_controller(
     updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 ) -> Result<(), Error> {
     tracing::debug!("Entered `run_controller`");
-    let state = firezone_gui_client_common::system_tray::AppState {
-        connlib: firezone_gui_client_common::system_tray::ConnlibState::Loading,
-        release: None,
-    };
-    let tray = tauri::tray::TrayIconBuilder::new()
-        .icon(system_tray::icon_to_tauri_icon(
-            &firezone_gui_client_common::system_tray::Icon::default(),
-        ))
-        .menu(&system_tray::build_app_state(&app, state))
-        .on_menu_event(|app, event| {
-            tracing::warn!("on_menu_event");
-            let id = &event.id.0;
-            tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
-            let event = match serde_json::from_str::<TrayMenuEvent>(id) {
-                Ok(x) => x,
-                Err(e) => {
-                    tracing::error!("{e}");
-                    return;
-                }
-            };
-            match handle_system_tray_event(app, event) {
-                Ok(_) => {}
-                Err(e) => tracing::error!("{e}"),
-            }
-        })
-        .tooltip("Firezone")
-        .build(&app)
-        .map_err(|_| anyhow::anyhow!("Cannot build Tauri tray icon"))?;
-    let tray = system_tray::Tray::new(tray);
 
     let controller = firezone_gui_client_common::controller::Builder {
         advanced_settings,
         ctlr_tx,
-        integration: TauriIntegration { app, tray },
+        integration,
         log_filter_reloader,
         rx,
         telemetry,
