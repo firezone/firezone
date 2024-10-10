@@ -24,8 +24,7 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
   end
 
   defp run_check do
-    Accounts.all_active_paid_accounts!()
-    |> Enum.filter(&(!notified_in_last_24h?(&1)))
+    Accounts.all_active_paid_accounts_pending_notification!()
     |> Enum.each(fn account ->
       all_online_gateways_for_account(account)
       |> Enum.filter(&Gateways.gateway_outdated?/1)

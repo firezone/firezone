@@ -41,8 +41,8 @@ defmodule Domain.AccountsTest do
     end
   end
 
-  describe "all_active_paid_accounts!/0" do
-    test "returns only paid and active accounts" do
+  describe "all_active_paid_accounts_pending_notification!/0" do
+    test "returns paid and active accounts" do
       Fixtures.Accounts.create_account()
       Fixtures.Accounts.create_account() |> Fixtures.Accounts.change_to_enterprise()
       Fixtures.Accounts.create_account() |> Fixtures.Accounts.change_to_team()
@@ -51,7 +51,7 @@ defmodule Domain.AccountsTest do
       |> Fixtures.Accounts.change_to_team()
       |> Fixtures.Accounts.disable_account()
 
-      accounts = all_active_paid_accounts!()
+      accounts = all_active_paid_accounts_pending_notification!()
       assert length(accounts) == 2
     end
 
@@ -59,12 +59,68 @@ defmodule Domain.AccountsTest do
       Fixtures.Accounts.create_account()
       Fixtures.Accounts.create_account() |> Fixtures.Accounts.change_to_starter()
 
-      accounts = all_active_paid_accounts!()
+      accounts = all_active_paid_accounts_pending_notification!()
       assert length(accounts) == 0
+    end
+
+    test "does not return accounts that have been notified within 24 hours" do
+      attrs = %{
+        config: %{
+          notifications: %{
+            outdated_gateway: %{
+              enabled: true,
+              last_notified: DateTime.utc_now() |> DateTime.add(-(60 * 60 * 12))
+            }
+          }
+        }
+      }
+
+      Fixtures.Accounts.create_account()
+
+      Fixtures.Accounts.create_account(attrs)
+      |> Fixtures.Accounts.change_to_enterprise()
+
+      Fixtures.Accounts.create_account(attrs)
+      |> Fixtures.Accounts.change_to_team()
+
+      Fixtures.Accounts.create_account(attrs)
+      |> Fixtures.Accounts.change_to_team()
+      |> Fixtures.Accounts.disable_account()
+
+      accounts = all_active_paid_accounts_pending_notification!()
+      assert length(accounts) == 0
+    end
+
+    test "returns accounts that have been notified more than 24 hours ago" do
+      attrs = %{
+        config: %{
+          notifications: %{
+            outdated_gateway: %{
+              enabled: true,
+              last_notified: DateTime.utc_now() |> DateTime.add(-(60 * 60 * 36))
+            }
+          }
+        }
+      }
+
+      Fixtures.Accounts.create_account()
+
+      Fixtures.Accounts.create_account(attrs)
+      |> Fixtures.Accounts.change_to_enterprise()
+
+      Fixtures.Accounts.create_account(attrs)
+      |> Fixtures.Accounts.change_to_team()
+
+      Fixtures.Accounts.create_account(attrs)
+      |> Fixtures.Accounts.change_to_team()
+      |> Fixtures.Accounts.disable_account()
+
+      accounts = all_active_paid_accounts_pending_notification!()
+      assert length(accounts) == 2
     end
   end
 
-  describe "all_active_accounts_by_subscription_name!/1" do
+  describe "all_active_accounts_by_subscription_name_pending_notification!/1" do
     test "returns all active accounts for given subscription name" do
       Fixtures.Accounts.create_account()
       Fixtures.Accounts.create_account() |> Fixtures.Accounts.change_to_team()
@@ -73,7 +129,7 @@ defmodule Domain.AccountsTest do
       |> Fixtures.Accounts.change_to_team()
       |> Fixtures.Accounts.disable_account()
 
-      accounts = all_active_accounts_by_subscription_name!("Team")
+      accounts = all_active_accounts_by_subscription_name_pending_notification!("Team")
       assert length(accounts) == 1
     end
 
@@ -84,7 +140,7 @@ defmodule Domain.AccountsTest do
       |> Fixtures.Accounts.change_to_team()
       |> Fixtures.Accounts.disable_account()
 
-      accounts = all_active_accounts_by_subscription_name!("Team")
+      accounts = all_active_accounts_by_subscription_name_pending_notification!("Team")
       assert length(accounts) == 0
     end
   end

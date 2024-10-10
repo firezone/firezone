@@ -19,14 +19,15 @@ defmodule Domain.Accounts do
     end
   end
 
-  def all_active_paid_accounts! do
+  def all_active_paid_accounts_pending_notification! do
     ["Team", "Enterprise"]
-    |> Enum.flat_map(&all_active_accounts_by_subscription_name!/1)
+    |> Enum.flat_map(&all_active_accounts_by_subscription_name_pending_notification!/1)
   end
 
-  def all_active_accounts_by_subscription_name!(subscription_name) do
+  def all_active_accounts_by_subscription_name_pending_notification!(subscription_name) do
     Account.Query.not_disabled()
     |> Account.Query.by_stripe_product_name(subscription_name)
+    |> Account.Query.by_notification_last_notified("outdated_gateway", 24)
     |> Repo.all()
   end
 

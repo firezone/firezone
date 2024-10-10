@@ -55,6 +55,26 @@ defmodule Domain.Accounts.Account.Query do
     end
   end
 
+  def by_notification_last_notified(queryable, notification, hours) do
+    interval = Duration.new!(hour: hours)
+
+    where(
+      queryable,
+      [accounts: accounts],
+      fragment(
+        "(?->'notifications'->?->>'last_notified')::timestamp < NOW() - ?::interval",
+        accounts.config,
+        ^notification,
+        ^interval
+      ) or
+        fragment(
+          "(?->'notifications'->?->>'last_notified') IS NULL",
+          accounts.config,
+          ^notification
+        )
+    )
+  end
+
   # Pagination
 
   @impl Domain.Repo.Query
