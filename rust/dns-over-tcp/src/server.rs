@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeSet, HashMap, VecDeque},
     net::SocketAddr,
     time::Instant,
 };
@@ -115,14 +115,21 @@ impl Server {
     /// Only TCP packets targeted at one of sockets configured with [`Server::set_listen_addresses`] are accepted.
     pub fn accepts(&self, packet: &IpPacket) -> bool {
         let Some(tcp) = packet.as_tcp() else {
+            tracing::trace!(?packet, "Not a TCP packet");
+
             return false;
         };
 
-        let dst_socket = SocketAddr::new(packet.destination(), tcp.destination_port());
+        let dst = SocketAddr::new(packet.destination(), tcp.destination_port());
+        let is_listening = self.listen_endpoints.values().any(|listen| listen == &dst);
 
-        self.listen_endpoints
-            .values()
-            .any(|listen| listen == &dst_socket)
+        if !is_listening && tracing::enabled!(tracing::Level::TRACE) {
+            let listen_endpoints = BTreeSet::from_iter(self.listen_endpoints.values().copied());
+
+            tracing::trace!(%dst, ?listen_endpoints, "No listening socket for destination");
+        }
+
+        is_listening
     }
 
     /// Handle the [`IpPacket`].
@@ -148,7 +155,7 @@ impl Server {
             socket.abort();
         }
 
-        result.context("Failed to write DNS response")?;
+        result.context("Failed to write DNS response")?; // Bail before logging in case we failed to write the response.
 
         if tracing::event_enabled!(target: "wire::dns::res", tracing::Level::TRACE) {
             if let Ok(question) = message.sole_question() {
@@ -281,13 +288,21 @@ fn try_recv_query(
 
     // We configure `smoltcp` with "any-ip", meaning packets to technically any IP will be routed here to us.
     if let Some(local) = socket.local_endpoint() {
-        if local != IpEndpoint::from(listen) {
-            bail!("Bad destination socket: {local}");
-        }
+        anyhow::ensure!(
+            local == IpEndpoint::from(listen),
+            "Bad destination socket: {local}"
+        )
     }
 
     // Ensure we can recv, send and have space to send.
     if !socket.can_recv() || !socket.can_send() || socket.send_queue() > 0 {
+        tracing::trace!(
+            can_recv = %socket.can_recv(),
+            can_send = %socket.can_send(),
+            send_queue = %socket.send_queue(),
+            "Not yet ready to receive next message"
+        );
+
         return Ok(None);
     }
 
