@@ -1,3 +1,4 @@
+mod interface;
 mod server;
 mod stub_device;
 
