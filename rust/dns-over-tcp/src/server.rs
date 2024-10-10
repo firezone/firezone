@@ -1,0 +1,281 @@
+use std::{
+    collections::{HashMap, VecDeque},
+    net::SocketAddr,
+    time::Instant,
+};
+
+use crate::adapter::SmolDeviceAdapter;
+use anyhow::{bail, Context as _, Result};
+use domain::{base::Message, dep::octseq::OctetsInto as _};
+use ip_packet::IpPacket;
+use smoltcp::{
+    iface::{Config, Interface, Route, SocketSet},
+    socket::tcp,
+    storage::RingBuffer,
+    wire::{HardwareAddress, IpEndpoint, Ipv4Address, Ipv4Cidr, Ipv6Address, Ipv6Cidr},
+};
+
+/// A sans-IO implementation of DNS-over-TCP server.
+///
+/// Listens on a specified number of socket addresses, parses incoming DNS queries and allows writing back responses.
+pub struct Server {
+    device: SmolDeviceAdapter,
+    interface: Interface,
+
+    sockets: SocketSet<'static>,
+    listen_endpoints: HashMap<smoltcp::iface::SocketHandle, SocketAddr>,
+
+    received_queries: VecDeque<Query>,
+}
+
+/// Opaque handle to a TCP socket.
+///
+/// This purposely does not implement [`Clone`] or [`Copy`] to make them single-use.
+#[derive(Debug, PartialEq, Eq, Hash)]
+#[must_use = "An active `SocketHandle` means a TCP socket is waiting for a reply somewhere"]
+pub struct SocketHandle(smoltcp::iface::SocketHandle);
+
+pub struct Query {
+    pub message: Message<Vec<u8>>,
+    pub socket: SocketHandle,
+    /// The address of the socket that received the query.
+    pub local: SocketAddr,
+}
+
+const SERVER_IP4_ADDR: Ipv4Address = Ipv4Address::new(127, 0, 0, 1);
+const SERVER_IP6_ADDR: Ipv6Address = Ipv6Address::new(0, 0, 0, 0, 0, 0, 0, 1);
+const NUM_CONCURRENT_SOCKETS: usize = 5;
+
+impl Server {
+    pub fn new(now: Instant) -> Self {
+        let mut device = SmolDeviceAdapter {
+            inbound_packets: VecDeque::default(),
+            outbound_packets: VecDeque::default(),
+        };
+
+        let mut interface =
+            Interface::new(Config::new(HardwareAddress::Ip), &mut device, now.into());
+        // Accept packets with any destination IP, not just our interface.
+        interface.set_any_ip(true);
+
+        // Set our interface IPs. These are just dummies and don't show up anywhere!
+        interface.update_ip_addrs(|ips| {
+            ips.push(Ipv4Cidr::new(SERVER_IP4_ADDR, 32).into()).unwrap();
+            ips.push(Ipv6Cidr::new(SERVER_IP6_ADDR, 128).into())
+                .unwrap();
+        });
+
+        // Configure catch-all routes, meaning all packets given to `smoltcp` will be routed to our interface.
+        interface.routes_mut().update(|routes| {
+            routes
+                .push(Route::new_ipv4_gateway(SERVER_IP4_ADDR))
+                .unwrap();
+            routes
+                .push(Route::new_ipv6_gateway(SERVER_IP6_ADDR))
+                .unwrap();
+        });
+
+        Self {
+            device,
+            interface,
+            sockets: SocketSet::new(Vec::default()),
+            listen_endpoints: Default::default(),
+            received_queries: Default::default(),
+        }
+    }
+
+    /// Listen on the specified addresses.
+    ///
+    /// This resets all sockets we were previously listening on.
+    pub fn set_listen_addresses(&mut self, addresses: Vec<SocketAddr>) {
+        let mut sockets =
+            SocketSet::new(Vec::with_capacity(addresses.len() * NUM_CONCURRENT_SOCKETS));
+        let mut listen_endpoints = HashMap::with_capacity(addresses.len());
+
+        for listen_endpoint in addresses {
+            for _ in 0..NUM_CONCURRENT_SOCKETS {
+                let handle = sockets.add(create_tcp_socket(listen_endpoint));
+                listen_endpoints.insert(handle, listen_endpoint);
+            }
+        }
+
+        self.sockets = sockets;
+        self.listen_endpoints = listen_endpoints;
+        self.received_queries.clear();
+    }
+
+    pub fn accepts(&self, packet: &IpPacket) -> bool {
+        let Some(tcp) = packet.as_tcp() else {
+            return false;
+        };
+
+        let dst_socket = SocketAddr::new(packet.destination(), tcp.destination_port());
+
+        self.listen_endpoints
+            .values()
+            .any(|listen| listen == &dst_socket)
+    }
+
+    pub fn handle_inbound(&mut self, packet: IpPacket) {
+        debug_assert!(self.accepts(&packet));
+
+        self.device.inbound_packets.push_back(packet);
+    }
+
+    /// Send a message on the socket associated with the handle.
+    pub fn send_message(&mut self, socket: SocketHandle, message: Message<Vec<u8>>) -> Result<()> {
+        let socket = self.sockets.get_mut::<tcp::Socket>(socket.0);
+
+        let response = message.as_octets();
+        let result = write_tcp_dns_response(socket, response);
+
+        if result.is_err() {
+            socket.abort();
+        }
+
+        Ok(())
+    }
+
+    /// Resets the socket associated with the given handle.
+    ///
+    /// Use this if you encountered an error while processing a previously emitted DNS query.
+    pub fn reset(&mut self, handle: SocketHandle) {
+        self.sockets.get_mut::<tcp::Socket>(handle.0).abort();
+    }
+
+    pub fn handle_timeout(&mut self, now: Instant) {
+        let changed = self.interface.poll(
+            smoltcp::time::Instant::from(now),
+            &mut self.device,
+            &mut self.sockets,
+        );
+
+        if !changed {
+            return;
+        }
+
+        for (handle, smoltcp::socket::Socket::Tcp(socket)) in self.sockets.iter_mut() {
+            let listen = self.listen_endpoints.get(&handle).copied().unwrap();
+
+            match try_recv_message(socket, listen) {
+                Ok(Some(message)) => {
+                    self.received_queries.push_back(Query {
+                        message,
+                        socket: SocketHandle(handle),
+                        local: listen,
+                    });
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    tracing::debug!("Failed recv message: {e}");
+                    socket.abort();
+                }
+            }
+        }
+    }
+
+    pub fn poll_outbound(&mut self) -> Option<IpPacket> {
+        self.device.outbound_packets.pop_front()
+    }
+
+    pub fn poll_queries(&mut self) -> Option<Query> {
+        self.received_queries.pop_front()
+    }
+}
+
+fn create_tcp_socket(listen_endpoint: SocketAddr) -> tcp::Socket<'static> {
+    /// The 2-byte length prefix of DNS over TCP messages limits their size to effectively u16::MAX.
+    /// It is quite unlikely that we have to buffer _multiple_ of these max-sized messages.
+    /// Being able to buffer at least one of them means we can handle the extreme case.
+    /// In practice, this allows the OS to queue multiple queries even if we can't immediately process them.
+    const MAX_TCP_DNS_MSG_LENGTH: usize = u16::MAX as usize;
+
+    let mut socket = tcp::Socket::new(
+        RingBuffer::new(vec![0u8; MAX_TCP_DNS_MSG_LENGTH]),
+        RingBuffer::new(vec![0u8; MAX_TCP_DNS_MSG_LENGTH]),
+    );
+    socket
+        .listen(listen_endpoint)
+        .expect("A fresh socket should always be able to listen");
+
+    socket
+}
+
+fn try_recv_message(
+    socket: &mut tcp::Socket,
+    listen: SocketAddr,
+) -> Result<Option<Message<Vec<u8>>>> {
+    // smoltcp's sockets can only ever handle a single remote, i.e. there is no permanent listening socket.
+    // to be able to handle a new connection, reset the socket back to `listen` once the connection is closed / closing.
+    {
+        use smoltcp::socket::tcp::State::*;
+
+        if matches!(socket.state(), Closed | TimeWait | CloseWait) {
+            tracing::debug!("Resetting socket to listen state");
+
+            socket.abort();
+            socket
+                .listen(listen)
+                .expect("Can always listen after `abort()`");
+        }
+    }
+
+    // We configure `smoltcp` with "any-ip", meaning packets to technically any IP will be routed here to us.
+    if let Some(local) = socket.local_endpoint() {
+        if local != IpEndpoint::from(listen) {
+            bail!("Bad destination socket: {local}");
+        }
+    }
+
+    // Ensure we can recv, send and have space to send.
+    if !socket.can_recv() || !socket.can_send() || socket.send_queue() > 0 {
+        return Ok(None);
+    }
+
+    // Read a DNS message from the socket.
+    let Some(message) = socket
+        .recv(|r| {
+            // DNS over TCP has a 2-byte length prefix at the start, see <https://datatracker.ietf.org/doc/html/rfc1035#section-4.2.2>.
+            let Some((header, message)) = r.split_first_chunk::<2>() else {
+                return (0, None);
+            };
+            let dns_message_length = u16::from_be_bytes(*header) as usize;
+            if message.len() < dns_message_length {
+                return (0, None); // Don't consume any bytes unless we can read the full message at once.
+            }
+
+            (2 + dns_message_length, Some(Message::from_octets(message)))
+        })
+        .context("Failed to recv TCP data")?
+        .transpose()
+        .context("Failed to parse DNS message")?
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(message.octets_into()))
+}
+
+fn write_tcp_dns_response(socket: &mut tcp::Socket, response: &[u8]) -> Result<()> {
+    let dns_message_length = (response.len() as u16).to_be_bytes();
+
+    let written = socket
+        .send_slice(&dns_message_length)
+        .context("Failed to write TCP DNS length header")?;
+
+    anyhow::ensure!(
+        written == 2,
+        "Not enough space in write buffer for TCP DNS length header"
+    );
+
+    let written = socket
+        .send_slice(response)
+        .context("Failed to write DNS message")?;
+
+    anyhow::ensure!(
+        written == response.len(),
+        "Not enough space in write buffer for DNS response"
+    );
+
+    Ok(())
+}
