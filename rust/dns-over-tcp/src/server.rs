@@ -123,7 +123,7 @@ impl Server {
     pub fn handle_inbound(&mut self, packet: IpPacket) {
         debug_assert!(self.accepts(&packet));
 
-        self.device.inbound_packets.push_back(packet);
+        self.device.receive(packet);
     }
 
     /// Send a message on the socket associated with the handle.
@@ -186,7 +186,7 @@ impl Server {
 
     /// Returns [`IpPacket`]s that should be sent.
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
-        self.device.outbound_packets.pop_front()
+        self.device.next_send()
     }
 
     /// Returns queries received from a DNS client.

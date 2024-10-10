@@ -5,8 +5,18 @@ use ip_packet::{IpPacket, IpPacketBuf};
 /// A in-memory device for [`smoltcp`] that is entirely backed by buffers.
 #[derive(Debug, Default)]
 pub(crate) struct InMemoryDevice {
-    pub(crate) inbound_packets: VecDeque<IpPacket>,
-    pub(crate) outbound_packets: VecDeque<IpPacket>,
+    inbound_packets: VecDeque<IpPacket>,
+    outbound_packets: VecDeque<IpPacket>,
+}
+
+impl InMemoryDevice {
+    pub(crate) fn receive(&mut self, packet: IpPacket) {
+        self.inbound_packets.push_back(packet);
+    }
+
+    pub(crate) fn next_send(&mut self) -> Option<IpPacket> {
+        self.outbound_packets.pop_front()
+    }
 }
 
 impl smoltcp::phy::Device for InMemoryDevice {
