@@ -19,7 +19,7 @@ clap = { version = "4.5", features = ["derive", "env"] }
 connlib-client-shared = { workspace = true }
 connlib-model = { workspace = true }
 firezone-bin-shared = { workspace = true }
-firezone-gui-client-common = { path = "../src-common" }
+firezone-gui-client-common = { path = "../../gui-client-common" }
 firezone-headless-client = { path = "../../headless-client" }
 firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }

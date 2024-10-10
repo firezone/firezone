@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+#
+# Runs from `rust/gui-client` or `rust/tauri-client`
+
 set -euox pipefail
 
 SERVICE_NAME=firezone-client-ipc
