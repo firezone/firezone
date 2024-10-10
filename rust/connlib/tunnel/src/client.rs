@@ -732,8 +732,8 @@ impl ClientState {
         if packet.is_tcp() {
             self.tcp_dns_sockets.handle_inbound_packet(packet, now);
 
-            while let Some((server, query)) = self.tcp_dns_sockets.poll_received_queries() {
-                let result = match self.stub_resolver.handle(query.for_slice_ref()) {
+            while let Some((server, message)) = self.tcp_dns_sockets.poll_received_queries() {
+                let result = match self.stub_resolver.handle(message.for_slice_ref()) {
                     Ok(dns::ResolveStrategy::Recurse) => {
                         if self.should_forward_dns_query_to_gateway(server.ip()) {
                             tracing::debug!("Tunneling TCP DNS queries is not yet supported");
@@ -741,8 +741,12 @@ impl ClientState {
                             return ControlFlow::Break(());
                         }
 
+                        let query_id = message.header().id();
+
+                        tracing::trace!(%server, %query_id, "Forwarding TCP DNS query");
+
                         self.buffered_dns_queries
-                            .push_back(dns::RecursiveQuery::via_tcp(upstream, query));
+                            .push_back(dns::RecursiveQuery::via_tcp(server, message));
                         continue;
                     }
                     Ok(dns::ResolveStrategy::LocalResponse(response)) => {
@@ -754,7 +758,7 @@ impl ClientState {
 
                 if let Err(e) =
                     self.tcp_dns_sockets
-                        .write_dns_response(query.header().id(), server, result)
+                        .write_dns_response(message.header().id(), server, result)
                 {
                     tracing::debug!("Failed to write TCP DNS response: {e:#}")
                 }
@@ -792,7 +796,7 @@ impl ClientState {
                 let query_id = message.header().id();
                 let original_src = SocketAddr::new(packet.source(), datagram.source_port());
 
-                tracing::trace!(server = %upstream, %query_id, "Forwarding DNS query");
+                tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query");
 
                 self.recursive_udp_dns_queries
                     .insert((query_id, upstream), original_src);
