@@ -10,6 +10,7 @@ use firezone_gui_client_common::{
     compositor::{self, Image},
     system_tray::{AppState, ConnlibState, Entry, Icon, IconBase, Item, Menu},
 };
+use tokio::sync::oneshot;
 
 // Figma is the source of truth for the tray icon layers
 // <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=nHBOzOnSY5Ol4asV-0>
@@ -22,6 +23,7 @@ const UPDATE_READY_LAYER: &[u8] = include_bytes!("../../../icons/tray/Update rea
 const TOOLTIP: &str = "Firezone";
 
 pub(crate) struct Tray {
+    app: tauri::AppHandle,
     handle: tauri::tray::TrayIcon,
     last_icon_set: Icon,
 }
@@ -45,14 +47,15 @@ fn image_to_tauri_icon(val: Image) -> tauri::image::Image<'static> {
 }
 
 impl Tray {
-    pub(crate) fn new(handle: tauri::tray::TrayIcon) -> Self {
+    pub(crate) fn new(app: tauri::AppHandle, handle: tauri::tray::TrayIcon) -> Self {
         Self {
+            app,
             handle,
             last_icon_set: Default::default(),
         }
     }
 
-    pub(crate) fn update(&mut self, app: &tauri::AppHandle, state: AppState) -> Result<()> {
+    pub(crate) fn update(&mut self, state: AppState) -> Result<()> {
         let base = match &state.connlib {
             ConnlibState::Loading
             | ConnlibState::Quitting
@@ -68,8 +71,12 @@ impl Tray {
             update_ready: state.release.is_some(),
         };
 
-        self.handle.set_tooltip(Some(TOOLTIP))?;
-        self.handle.set_menu(Some(build_app_state(app, state)))?;
+        let app = self.app.clone();
+        let handle = self.handle.clone();
+        self.app.run_on_main_thread(move || {
+            handle.set_tooltip(Some(TOOLTIP));
+            handle.set_menu(Some(build_app_state(&app, state)));
+        });
         self.set_icon(new_icon)?;
 
         Ok(())
@@ -83,14 +90,20 @@ impl Tray {
             // <https://github.com/tauri-apps/tao/blob/tao-v0.16.7/src/platform_impl/linux/system_tray.rs#L119>
             // Yes, even if you use `Icon::File` and tell Tauri that the icon is already
             // on disk.
-            self.handle.set_icon(Some(icon_to_tauri_icon(&icon)))?;
-            self.last_icon_set = icon;
+            let handle = self.handle.clone();
+            self.last_icon_set = icon.clone();
+            self.app.run_on_main_thread(move || {
+                handle.set_icon(Some(icon_to_tauri_icon(&icon)));
+            });
         }
         Ok(())
     }
 }
 
-pub(crate) fn build_app_state(app: &tauri::AppHandle, that: AppState) -> tauri::menu::Submenu<tauri::Wry> {
+pub(crate) fn build_app_state(
+    app: &tauri::AppHandle,
+    that: AppState,
+) -> tauri::menu::Submenu<tauri::Wry> {
     build_menu(app, "", &that.into_menu())
 }
 

@@ -78,13 +78,12 @@ impl GuiIntegration for TauriIntegration {
     }
 
     fn set_tray_icon(&mut self, icon: common::system_tray::Icon) -> Result<()> {
-        tracing::warn!("set_tray_icon");
         self.tray.set_icon(icon)
     }
 
     fn set_tray_menu(&mut self, app_state: common::system_tray::AppState) -> Result<()> {
         tracing::warn!("set_tray_menu");
-        self.tray.update(&self.app, app_state)
+        self.tray.update(app_state)
     }
 
     fn show_notification(&self, title: &str, body: &str) -> Result<()> {
@@ -234,7 +233,7 @@ pub(crate) fn run(
                 );
 
                 let tray = tray_rx.blocking_recv().expect("tray_rx failed");
-                let tray = system_tray::Tray::new(tray);
+                let tray = system_tray::Tray::new(app.handle().clone(), tray);
                 let integration = TauriIntegration { app: app.handle().clone(), tray };
 
                 let app_handle = app.handle().clone();
@@ -348,8 +347,6 @@ pub(crate) fn run(
             // https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
 
             api.prevent_exit();
-        } else {
-            tracing::warn!(?event);
         }
     });
     tracing::warn!("app.run returned");
