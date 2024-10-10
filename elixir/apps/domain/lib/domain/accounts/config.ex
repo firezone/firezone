@@ -7,6 +7,15 @@ defmodule Domain.Accounts.Config do
       field :protocol, Ecto.Enum, values: [:ip_port, :dns_over_tls, :dns_over_http]
       field :address, :string
     end
+
+    embeds_one :notifications, Notifications,
+      primary_key: false,
+      on_replace: :update do
+      embeds_one :outdated_gateway, Domain.Accounts.Config.Notifications.Email,
+        on_replace: :update
+
+      embeds_one :idp_sync_error, Domain.Accounts.Config.Notifications.Email, on_replace: :update
+    end
   end
 
   def supported_dns_protocols, do: ~w[ip_port]a

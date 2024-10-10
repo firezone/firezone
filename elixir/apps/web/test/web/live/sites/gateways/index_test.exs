@@ -51,7 +51,12 @@ defmodule Web.Live.Sites.Gateways.IndexTest do
     group: group,
     conn: conn
   } do
-    gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
+    gateway =
+      Fixtures.Gateways.create_gateway(
+        account: account,
+        group: group,
+        context: %{user_agent: "iOS/12.5 (iPhone) connlib/1.3.2"}
+      )
 
     {:ok, lv, _html} =
       conn
@@ -67,7 +72,8 @@ defmodule Web.Live.Sites.Gateways.IndexTest do
     assert row == %{
              "instance" => gateway.name,
              "remote ip" => to_string(gateway.last_seen_remote_ip),
-             "status" => "Offline"
+             "status" => "Offline",
+             "version" => "1.3.2"
            }
   end
 
@@ -77,7 +83,12 @@ defmodule Web.Live.Sites.Gateways.IndexTest do
     group: group,
     conn: conn
   } do
-    gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
+    gateway =
+      Fixtures.Gateways.create_gateway(
+        account: account,
+        group: group,
+        context: %{user_agent: "iOS/12.5 (iPhone) connlib/1.3.2"}
+      )
 
     {:ok, lv, _html} =
       conn
@@ -98,7 +109,8 @@ defmodule Web.Live.Sites.Gateways.IndexTest do
       assert row == %{
                "instance" => gateway.name,
                "remote ip" => to_string(gateway.last_seen_remote_ip),
-               "status" => "Online"
+               "status" => "Online",
+               "version" => "1.3.2"
              }
     end)
   end

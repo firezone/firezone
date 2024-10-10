@@ -41,6 +41,54 @@ defmodule Domain.AccountsTest do
     end
   end
 
+  describe "all_active_paid_accounts!/0" do
+    test "returns only paid and active accounts" do
+      Fixtures.Accounts.create_account()
+      Fixtures.Accounts.create_account() |> Fixtures.Accounts.change_to_enterprise()
+      Fixtures.Accounts.create_account() |> Fixtures.Accounts.change_to_team()
+
+      Fixtures.Accounts.create_account()
+      |> Fixtures.Accounts.change_to_team()
+      |> Fixtures.Accounts.disable_account()
+
+      accounts = all_active_paid_accounts!()
+      assert length(accounts) == 2
+    end
+
+    test "returns empty list when no paid accounts exist" do
+      Fixtures.Accounts.create_account()
+      Fixtures.Accounts.create_account() |> Fixtures.Accounts.change_to_starter()
+
+      accounts = all_active_paid_accounts!()
+      assert length(accounts) == 0
+    end
+  end
+
+  describe "all_active_accounts_by_subscription_name!/1" do
+    test "returns all active accounts for given subscription name" do
+      Fixtures.Accounts.create_account()
+      Fixtures.Accounts.create_account() |> Fixtures.Accounts.change_to_team()
+
+      Fixtures.Accounts.create_account()
+      |> Fixtures.Accounts.change_to_team()
+      |> Fixtures.Accounts.disable_account()
+
+      accounts = all_active_accounts_by_subscription_name!("Team")
+      assert length(accounts) == 1
+    end
+
+    test "returns an empty list when no active accounts with type" do
+      Fixtures.Accounts.create_account()
+
+      Fixtures.Accounts.create_account()
+      |> Fixtures.Accounts.change_to_team()
+      |> Fixtures.Accounts.disable_account()
+
+      accounts = all_active_accounts_by_subscription_name!("Team")
+      assert length(accounts) == 0
+    end
+  end
+
   describe "fetch_account_by_id/3" do
     setup do
       account = Fixtures.Accounts.create_account()

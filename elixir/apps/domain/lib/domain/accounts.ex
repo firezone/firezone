@@ -1,4 +1,5 @@
 defmodule Domain.Accounts do
+  alias Web.Settings.Account
   alias Domain.{Repo, Config, PubSub}
   alias Domain.{Auth, Billing}
   alias Domain.Accounts.{Account, Features, Authorizer}
@@ -16,6 +17,17 @@ defmodule Domain.Accounts do
     else
       []
     end
+  end
+
+  def all_active_paid_accounts! do
+    ["Team", "Enterprise"]
+    |> Enum.flat_map(&all_active_accounts_by_subscription_name!/1)
+  end
+
+  def all_active_accounts_by_subscription_name!(subscription_name) do
+    Account.Query.not_disabled()
+    |> Account.Query.by_stripe_product_name(subscription_name)
+    |> Repo.all()
   end
 
   def fetch_account_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
@@ -136,6 +148,14 @@ defmodule Domain.Accounts do
     else
       slug_candidate
     end
+  end
+
+  def type(%Account{metadata: %{stripe: %{product_name: type}}}) do
+    type || "Starter"
+  end
+
+  def type(%Account{}) do
+    "Starter"
   end
 
   ### PubSub

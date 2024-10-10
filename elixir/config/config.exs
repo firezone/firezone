@@ -75,6 +75,17 @@ config :domain, Domain.GoogleCloudPlatform,
   sign_endpoint_url: "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/",
   cloud_storage_url: "https://storage.googleapis.com"
 
+config :domain, Domain.ComponentVersions,
+  firezone_releases_url: "https://www.firezone.dev/api/releases",
+  fetch_from_url: true,
+  versions: [
+    apple: "1.3.6",
+    android: "1.3.5",
+    gateway: "1.3.2",
+    gui: "1.3.8",
+    headless: "1.3.4"
+  ]
+
 config :domain, Domain.Cluster,
   adapter: nil,
   adapter_config: []
