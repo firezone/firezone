@@ -88,6 +88,9 @@ defmodule Domain.Resources.Resource.ChangesetTest do
         assert changeset.valid?
       end
 
+      refute create(%{type: :dns, address: "1.1.1.1"}).valid?
+      refute create(%{type: :dns, address: ".example.com"}).valid?
+      refute create(%{type: :dns, address: "example.com."}).valid?
       refute create(%{type: :dns, address: "exa&mple.com"}).valid?
       refute create(%{type: :dns, address: ""}).valid?
       refute create(%{type: :dns, address: "http://example.com/"}).valid?
