@@ -4,7 +4,7 @@ use std::{
     time::Instant,
 };
 
-use crate::adapter::SmolDeviceAdapter;
+use crate::stub_device::InMemoryDevice;
 use anyhow::{bail, Context as _, Result};
 use domain::{base::Message, dep::octseq::OctetsInto as _};
 use ip_packet::IpPacket;
@@ -19,7 +19,7 @@ use smoltcp::{
 ///
 /// Listens on a specified number of socket addresses, parses incoming DNS queries and allows writing back responses.
 pub struct Server {
-    device: SmolDeviceAdapter,
+    device: InMemoryDevice,
     interface: Interface,
 
     sockets: SocketSet<'static>,
@@ -48,10 +48,7 @@ const NUM_CONCURRENT_SOCKETS: usize = 5;
 
 impl Server {
     pub fn new(now: Instant) -> Self {
-        let mut device = SmolDeviceAdapter {
-            inbound_packets: VecDeque::default(),
-            outbound_packets: VecDeque::default(),
-        };
+        let mut device = InMemoryDevice::default();
 
         let mut interface =
             Interface::new(Config::new(HardwareAddress::Ip), &mut device, now.into());

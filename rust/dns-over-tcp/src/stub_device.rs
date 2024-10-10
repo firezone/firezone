@@ -2,14 +2,14 @@ use std::collections::VecDeque;
 
 use ip_packet::{IpPacket, IpPacketBuf};
 
-/// An adapter struct between our managed TUN device and [`smoltcp`].
-pub(crate) struct SmolDeviceAdapter {
-    /// Packets that we have received on the TUN device and selected to be processed by [`smoltcp`].
+/// A in-memory device for [`smoltcp`] that is entirely backed by buffers.
+#[derive(Debug, Default)]
+pub(crate) struct InMemoryDevice {
     pub(crate) inbound_packets: VecDeque<IpPacket>,
     pub(crate) outbound_packets: VecDeque<IpPacket>,
 }
 
-impl smoltcp::phy::Device for SmolDeviceAdapter {
+impl smoltcp::phy::Device for InMemoryDevice {
     type RxToken<'a> = SmolRxToken;
     type TxToken<'a> = SmolTxToken<'a>;
 
