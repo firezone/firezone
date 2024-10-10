@@ -238,6 +238,7 @@ cargo {
     prebuiltToolchains = true
     module = "../../../rust/connlib/clients/android"
     libname = "connlib"
+    verbose = true
     targets =
         listOf(
             "arm64",
