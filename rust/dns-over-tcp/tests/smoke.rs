@@ -1,6 +1,5 @@
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
-    process::Stdio,
     task::{ready, Context, Poll},
     time::Instant,
 };
@@ -12,6 +11,8 @@ use ip_network::Ipv4Network;
 use ip_packet::{IpPacket, IpPacketBuf};
 use tokio::task::JoinSet;
 use tun::Tun;
+
+const CLIENT_CONCURRENCY: usize = 10;
 
 #[tokio::test]
 #[ignore = "Requires root"]
@@ -32,34 +33,32 @@ async fn smoke() {
 
     let listen_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(100, 100, 111, 1), 53));
     let mut dns_server = dns_over_tcp::Server::new(Instant::now());
-    dns_server.set_listen_addresses(vec![listen_addr]);
+    dns_server.set_listen_addresses::<CLIENT_CONCURRENCY>(vec![listen_addr]);
     let mut eventloop = Eventloop::new(Box::new(tun), dns_server);
 
     tokio::spawn(std::future::poll_fn(move |cx| eventloop.poll(cx)));
 
     let mut set = JoinSet::new();
 
-    set.spawn(dig(listen_addr.ip()));
-    set.spawn(dig(listen_addr.ip()));
-    set.spawn(dig(listen_addr.ip()));
-    set.spawn(dig(listen_addr.ip()));
-    set.spawn(dig(listen_addr.ip()));
+    for _ in 0..CLIENT_CONCURRENCY {
+        set.spawn(dig(listen_addr.ip()));
+    }
 
-    let status = set
+    let exit_codes = set
         .join_all()
         .await
         .into_iter()
         .collect::<Result<Vec<_>>>()
         .unwrap();
 
-    assert_eq!(status, vec![0, 0, 0, 0, 0])
+    for status in exit_codes {
+        assert_eq!(status, 0)
+    }
 }
 
 async fn dig(dns_server: IpAddr) -> Result<i32> {
     let exit_status = tokio::process::Command::new("dig")
         .args(["+tcp", "+tries=1", &format!("@{dns_server}"), "example.com"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
         .status()
         .await?
         .code()

@@ -44,7 +44,6 @@ pub struct Query {
 
 const SERVER_IP4_ADDR: Ipv4Address = Ipv4Address::new(127, 0, 0, 1);
 const SERVER_IP6_ADDR: Ipv6Address = Ipv6Address::new(0, 0, 0, 0, 0, 0, 0, 1);
-const NUM_CONCURRENT_SOCKETS: usize = 5;
 
 impl Server {
     pub fn new(now: Instant) -> Self {
@@ -84,13 +83,20 @@ impl Server {
     /// Listen on the specified addresses.
     ///
     /// This resets all sockets we were previously listening on.
-    pub fn set_listen_addresses(&mut self, addresses: Vec<SocketAddr>) {
+    /// This function is generic over a `NUM_CONCURRENT_CLIENTS` constant.
+    /// The constant configures, how many concurrent clients you would like to be able to serve per listen address.
+    pub fn set_listen_addresses<const NUM_CONCURRENT_CLIENTS: usize>(
+        &mut self,
+        addresses: Vec<SocketAddr>,
+    ) {
+        assert!(NUM_CONCURRENT_CLIENTS > 0);
+
         let mut sockets =
-            SocketSet::new(Vec::with_capacity(addresses.len() * NUM_CONCURRENT_SOCKETS));
+            SocketSet::new(Vec::with_capacity(addresses.len() * NUM_CONCURRENT_CLIENTS));
         let mut listen_endpoints = HashMap::with_capacity(addresses.len());
 
         for listen_endpoint in addresses {
-            for _ in 0..NUM_CONCURRENT_SOCKETS {
+            for _ in 0..NUM_CONCURRENT_CLIENTS {
                 let handle = sockets.add(create_tcp_socket(listen_endpoint));
                 listen_endpoints.insert(handle, listen_endpoint);
             }
