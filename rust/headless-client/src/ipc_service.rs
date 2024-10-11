@@ -4,7 +4,6 @@ use crate::{
 };
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{keypair, ConnectArgs};
 use connlib_model::ResourceView;
 use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
@@ -213,7 +212,10 @@ async fn ipc_listen(
 ) -> Result<()> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
-    device_id::get_or_create().context("Failed to read / create device ID")?;
+    let firezone_id = device_id::get_or_create()
+        .context("Failed to read / create device ID")?
+        .id;
+    firezone_telemetry::configure_scope(|scope| scope.set_tag("firezone_id", &firezone_id));
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     let mut dns_controller = DnsController { dns_control_method };
     let telemetry = Telemetry::default();
@@ -526,14 +528,12 @@ impl<'a> Handler<'a> {
         let transaction = firezone_telemetry::start_transaction(ctx);
         assert!(self.session.is_none());
         let device_id = device_id::get_or_create().map_err(|e| Error::DeviceId(e.to_string()))?;
-        let (private_key, public_key) = keypair();
 
         let url = LoginUrl::client(
             Url::parse(api_url).map_err(|e| Error::UrlParse(e.to_string()))?,
             &token,
             device_id.id,
             None,
-            public_key.to_bytes(),
             device_id::device_info(),
         )
         .map_err(|e| Error::LoginUrl(e.to_string()))?;
@@ -541,16 +541,10 @@ impl<'a> Handler<'a> {
         self.last_connlib_start_instant = Some(Instant::now());
         let (cb_tx, cb_rx) = mpsc::channel(1_000);
         let callbacks = CallbackHandler { cb_tx };
-        let args = ConnectArgs {
-            tcp_socket_factory: Arc::new(tcp_socket_factory),
-            udp_socket_factory: Arc::new(udp_socket_factory),
-            private_key,
-            callbacks,
-        };
 
         // Synchronous DNS resolution here
         let phoenix_span = transaction.start_child("phoenix", "Resolve DNS for PhoenixChannel");
-        let portal = PhoenixChannel::connect(
+        let portal = PhoenixChannel::disconnected(
             Secret::new(url),
             get_user_agent(None, env!("CARGO_PKG_VERSION")),
             "client",
@@ -566,7 +560,9 @@ impl<'a> Handler<'a> {
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
         let connlib = connlib_client_shared::Session::connect(
-            args,
+            Arc::new(tcp_socket_factory),
+            Arc::new(udp_socket_factory),
+            callbacks,
             portal,
             tokio::runtime::Handle::current(),
         );

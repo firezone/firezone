@@ -3,7 +3,7 @@
 use anyhow::{anyhow, Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_client_shared::{keypair, ConnectArgs, Session};
+use connlib_client_shared::Session;
 use firezone_bin_shared::{
     new_dns_notifier, new_network_notifier,
     platform::{tcp_socket_factory, udp_socket_factory},
@@ -116,6 +116,15 @@ fn main() -> Result<()> {
 
     let token_env_var = cli.token.take().map(SecretString::from);
     let cli = cli;
+
+    // Deactivate DNS control before starting telemetry or connecting to the portal,
+    // in case a previous run of Firezone left DNS control on and messed anything up.
+    let dns_control_method = cli.common.dns_control;
+    let mut dns_controller = DnsController { dns_control_method };
+    // Deactivate Firezone DNS control in case the system or IPC service crashed
+    // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
+    dns_controller.deactivate()?;
+
     let telemetry = Telemetry::default();
     telemetry.start(
         cli.api_url.as_ref(),
@@ -166,14 +175,13 @@ fn main() -> Result<()> {
         Some(id) => id,
         None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
+    firezone_telemetry::configure_scope(|scope| scope.set_tag("firezone_id", &firezone_id));
 
-    let (private_key, public_key) = keypair();
     let url = LoginUrl::client(
         cli.api_url,
         &token,
         firezone_id,
         cli.firezone_name,
-        public_key.to_bytes(),
         device_id::device_info(),
     )?;
 
@@ -187,12 +195,6 @@ fn main() -> Result<()> {
 
     // The name matches that in `ipc_service.rs`
     let mut last_connlib_start_instant = Some(Instant::now());
-    let args = ConnectArgs {
-        udp_socket_factory: Arc::new(udp_socket_factory),
-        tcp_socket_factory: Arc::new(tcp_socket_factory),
-        private_key,
-        callbacks,
-    };
 
     let result = rt.block_on(async {
         let ctx = firezone_telemetry::TransactionContext::new(
@@ -207,7 +209,7 @@ fn main() -> Result<()> {
         // for an Internet connection if it launches us at startup.
         // When running interactively, it is useful for the user to see that we can't reach the portal.
         let phoenix_span = transaction.start_child("phoenix", "Connect PhoenixChannel");
-        let portal = PhoenixChannel::connect(
+        let portal = PhoenixChannel::disconnected(
             Secret::new(url),
             get_user_agent(None, env!("CARGO_PKG_VERSION")),
             "client",
@@ -218,17 +220,19 @@ fn main() -> Result<()> {
             Arc::new(tcp_socket_factory),
         )?;
         phoenix_span.finish();
-        let session = Session::connect(args, portal, rt.handle().clone());
+        let session = Session::connect(
+            Arc::new(tcp_socket_factory),
+            Arc::new(udp_socket_factory),
+            callbacks,
+            portal,
+            rt.handle().clone(),
+        );
 
         let mut terminate = signals::Terminate::new()?;
         let mut hangup = signals::Hangup::new()?;
         let mut terminate = pin!(terminate.recv().fuse());
         let mut hangup = pin!(hangup.recv().fuse());
-        let dns_control_method = cli.common.dns_control;
-        let mut dns_controller = DnsController { dns_control_method };
-        // Deactivate Firezone DNS control in case the system or IPC service crashed
-        // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
-        dns_controller.deactivate()?;
+
         let mut tun_device = TunDeviceManager::new(ip_packet::PACKET_SIZE)?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 

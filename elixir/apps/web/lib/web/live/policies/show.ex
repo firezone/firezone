@@ -10,6 +10,7 @@ defmodule Web.Policies.Show do
                actor_group: [:provider],
                resource: [],
                created_by_identity: :actor,
+               created_by_actor: [],
                replaced_by_policy: [:actor_group, :resource],
                replaces_policy: [:actor_group, :resource]
              ]

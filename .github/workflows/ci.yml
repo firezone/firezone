@@ -19,6 +19,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
 jobs:
+  gtk:
+    uses: ./.github/workflows/_gtk.yml
   kotlin:
     uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
@@ -53,7 +55,7 @@ jobs:
           - release_name: headless-client-1.3.5
             config_name: release-drafter-headless-client.yml
           # mark:next-gui-version
-          - release_name: gui-client-1.3.8
+          - release_name: gui-client-1.3.10
             config_name: release-drafter-gui-client.yml
     steps:
       - uses: release-drafter/release-drafter@v6

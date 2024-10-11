@@ -14,9 +14,10 @@ use firezone_tunnel::messages::{
 use firezone_tunnel::{DnsResourceNatEntry, GatewayTunnel};
 use futures::channel::mpsc;
 use futures_bounded::Timeout;
-use phoenix_channel::PhoenixChannel;
+use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::BTreeSet;
 use std::convert::Infallible;
+use std::io;
 use std::net::IpAddr;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -41,7 +42,7 @@ enum ResolveTrigger {
 
 pub struct Eventloop {
     tunnel: GatewayTunnel,
-    portal: PhoenixChannel<(), IngressMessages, ()>,
+    portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
     tun_device_channel: mpsc::Sender<Interface>,
 
     resolve_tasks: futures_bounded::FuturesTupleSet<Vec<IpAddr>, ResolveTrigger>,
@@ -50,9 +51,11 @@ pub struct Eventloop {
 impl Eventloop {
     pub(crate) fn new(
         tunnel: GatewayTunnel,
-        portal: PhoenixChannel<(), IngressMessages, ()>,
+        mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         tun_device_channel: mpsc::Sender<Interface>,
     ) -> Self {
+        portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
+
         Self {
             tunnel,
             portal,
@@ -68,6 +71,9 @@ impl Eventloop {
             match self.tunnel.poll_next_event(cx) {
                 Poll::Ready(Ok(event)) => {
                     self.handle_tunnel_event(event);
+                    continue;
+                }
+                Poll::Ready(Err(e)) if e.kind() == io::ErrorKind::WouldBlock => {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {

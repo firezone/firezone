@@ -15,7 +15,7 @@
 
 use super::DnsController;
 use anyhow::{Context as _, Result};
-use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW};
+use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW, TUNNEL_UUID};
 use std::{
     io::ErrorKind, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command,
 };
@@ -102,9 +102,6 @@ pub(crate) fn system_resolvers(_method: DnsControlMethod) -> Result<Vec<IpAddr>>
 const NRPT_REG_KEY: &str = "{6C0507CB-C884-4A78-BC55-0ACEE21227F6}";
 
 /// Tells Windows to send all DNS queries to our sentinels
-///
-/// Parameters:
-/// - `dns_config_string`: Comma-separated IP addresses of DNS servers, e.g. "1.1.1.1,8.8.8.8"
 fn activate(dns_config: &[IpAddr]) -> Result<()> {
     // TODO: Known issue where web browsers will keep a connection open to a site,
     // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS
@@ -114,11 +111,10 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
 
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
-    let dns_config_string = dns_config
-        .iter()
-        .map(|ip| ip.to_string())
-        .collect::<Vec<_>>()
-        .join(";");
+    set_nameservers_on_interface(dns_config)?;
+
+    // e.g. [100.100.111.1, 100.100.111.2] -> "100.100.111.1;100.100.111.2"
+    let dns_config_string = itertools::join(dns_config, ";");
 
     // It's safe to always set the local rule.
     let (key, _) = hklm.create_subkey(local_nrpt_path().join(NRPT_REG_KEY))?;
@@ -136,6 +132,36 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
     }
 
     tracing::info!("DNS control active.");
+
+    Ok(())
+}
+
+/// Sets our DNS servers in the registry so `ipconfig` and WSL will notice them
+/// Fixes #6777
+fn set_nameservers_on_interface(dns_config: &[IpAddr]) -> Result<()> {
+    let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
+
+    let key = hklm.open_subkey_with_flags(
+        Path::new(&format!(
+            r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
+        )),
+        winreg::enums::KEY_WRITE,
+    )?;
+    key.set_value(
+        "NameServer",
+        &itertools::join(dns_config.iter().filter(|addr| addr.is_ipv4()), ";"),
+    )?;
+
+    let key = hklm.open_subkey_with_flags(
+        Path::new(&format!(
+            r"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
+        )),
+        winreg::enums::KEY_WRITE,
+    )?;
+    key.set_value(
+        "NameServer",
+        &itertools::join(dns_config.iter().filter(|addr| addr.is_ipv6()), ";"),
+    )?;
 
     Ok(())
 }
@@ -170,4 +196,65 @@ fn set_nrpt_rule(key: &winreg::RegKey, dns_config_string: &str) -> Result<()> {
     key.set_value("Name", &vec!["."])?;
     key.set_value("Version", &0x2u32)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    // Passes in CI but not locally. Maybe ReactorScram's dev system has IPv6 misconfigured. There it fails to pick up the IPv6 DNS servers.
+    #[ignore = "Needs admin, changes system state"]
+    #[test]
+    fn dns_control() {
+        let _guard = firezone_logging::test("debug");
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
+        let mut tun_dev_manager = firezone_bin_shared::TunDeviceManager::new(1280).unwrap();
+        let _tun = tun_dev_manager.make_tun().unwrap();
+
+        rt.block_on(async {
+            tun_dev_manager
+                .set_ips(
+                    [100, 92, 193, 137].into(),
+                    [0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0xa, 0x9db5].into(),
+                )
+                .await
+        })
+        .unwrap();
+
+        let mut dns_controller = DnsController {
+            dns_control_method: DnsControlMethod::Nrpt,
+        };
+
+        let fz_dns_servers = vec![
+            IpAddr::from([100, 100, 111, 1]),
+            IpAddr::from([100, 100, 111, 2]),
+            IpAddr::from([
+                0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0x0003,
+            ]),
+            IpAddr::from([
+                0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0x0004,
+            ]),
+        ];
+        rt.block_on(async {
+            dns_controller
+                .set_dns(fz_dns_servers.clone())
+                .await
+                .unwrap();
+        });
+
+        let adapter = ipconfig::get_adapters()
+            .unwrap()
+            .into_iter()
+            .find(|a| a.friendly_name() == "Firezone")
+            .unwrap();
+        assert_eq!(
+            BTreeSet::from_iter(adapter.dns_servers().iter().cloned()),
+            BTreeSet::from_iter(fz_dns_servers.into_iter())
+        );
+
+        dns_controller.deactivate().unwrap();
+    }
 }
