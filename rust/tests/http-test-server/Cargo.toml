@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
-axum = { version = "0.7.5", features = ["http1", "tokio"] }
+axum = { version = "0.7.7", features = ["http1", "tokio"] }
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }
 tokio = { workspace = true, features = ["net"] }
