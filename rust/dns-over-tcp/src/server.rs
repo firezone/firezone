@@ -4,7 +4,7 @@ use std::{
     time::Instant,
 };
 
-use crate::{interface::create_interface, stub_device::InMemoryDevice};
+use crate::{create_tcp_socket, interface::create_interface, stub_device::InMemoryDevice};
 use anyhow::{Context as _, Result};
 use domain::{base::Message, dep::octseq::OctetsInto as _, rdata::AllRecordData};
 use ip_packet::IpPacket;
@@ -73,7 +73,12 @@ impl Server {
 
         for listen_endpoint in addresses {
             for _ in 0..NUM_CONCURRENT_CLIENTS {
-                let handle = sockets.add(create_tcp_socket(listen_endpoint));
+                let mut socket = create_tcp_socket();
+                socket
+                    .listen(listen_endpoint)
+                    .expect("A fresh socket should always be able to listen");
+
+                let handle = sockets.add(socket);
                 listen_endpoints.insert(handle, listen_endpoint);
             }
 
@@ -222,24 +227,6 @@ impl Server {
     pub fn poll_queries(&mut self) -> Option<Query> {
         self.received_queries.pop_front()
     }
-}
-
-fn create_tcp_socket(listen_endpoint: SocketAddr) -> tcp::Socket<'static> {
-    /// The 2-byte length prefix of DNS over TCP messages limits their size to effectively u16::MAX.
-    /// It is quite unlikely that we have to buffer _multiple_ of these max-sized messages.
-    /// Being able to buffer at least one of them means we can handle the extreme case.
-    /// In practice, this allows the OS to queue multiple queries even if we can't immediately process them.
-    const MAX_TCP_DNS_MSG_LENGTH: usize = u16::MAX as usize;
-
-    let mut socket = tcp::Socket::new(
-        RingBuffer::new(vec![0u8; MAX_TCP_DNS_MSG_LENGTH]),
-        RingBuffer::new(vec![0u8; MAX_TCP_DNS_MSG_LENGTH]),
-    );
-    socket
-        .listen(listen_endpoint)
-        .expect("A fresh socket should always be able to listen");
-
-    socket
 }
 
 fn try_recv_query(
