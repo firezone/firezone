@@ -378,7 +378,7 @@ impl ReferenceState {
                     }
                 }
             }
-            Transition::SendICMPPacketToNonResourceIp {
+            Transition::SendPacketToNonResourceIp {
                 src,
                 dst,
                 seq,
@@ -399,7 +399,7 @@ impl ReferenceState {
                     }
                 });
             }
-            Transition::SendICMPPacketToCidrResource {
+            Transition::SendPacketToCidrResource {
                 src,
                 dst,
                 seq,
@@ -412,7 +412,7 @@ impl ReferenceState {
                     })
                 });
             }
-            Transition::SendICMPPacketToDnsResource {
+            Transition::SendPacketToDnsResource {
                 src,
                 dst,
                 seq,
@@ -486,7 +486,7 @@ impl ReferenceState {
                     .iter()
                     .all(|r| state.client.inner().has_resource(*r))
             }
-            Transition::SendICMPPacketToNonResourceIp {
+            Transition::SendPacketToNonResourceIp {
                 dst,
                 seq,
                 identifier,
@@ -501,7 +501,7 @@ impl ReferenceState {
 
                 is_valid_icmp_packet && !is_cidr_resource
             }
-            Transition::SendICMPPacketToCidrResource {
+            Transition::SendPacketToCidrResource {
                 seq,
                 identifier,
                 dst,
@@ -519,7 +519,7 @@ impl ReferenceState {
                 ref_client.is_valid_icmp_packet(seq, identifier, payload)
                     && state.gateways.contains_key(gateway)
             }
-            Transition::SendICMPPacketToDnsResource {
+            Transition::SendPacketToDnsResource {
                 seq,
                 identifier,
                 dst,

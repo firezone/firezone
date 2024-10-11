@@ -143,14 +143,14 @@ impl TunnelTest {
             Transition::DisableResources(resources) => state
                 .client
                 .exec_mut(|c| c.sut.set_disabled_resource(resources)),
-            Transition::SendICMPPacketToNonResourceIp {
+            Transition::SendPacketToNonResourceIp {
                 src,
                 dst,
                 seq,
                 identifier,
                 payload,
             }
-            | Transition::SendICMPPacketToCidrResource {
+            | Transition::SendPacketToCidrResource {
                 src,
                 dst,
                 seq,
@@ -170,7 +170,7 @@ impl TunnelTest {
 
                 buffered_transmits.push_from(transmit, &state.client, now);
             }
-            Transition::SendICMPPacketToDnsResource {
+            Transition::SendPacketToDnsResource {
                 src,
                 dst,
                 seq,
