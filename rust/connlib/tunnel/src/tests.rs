@@ -19,7 +19,6 @@ mod composite_strategy;
 mod flux_capacitor;
 mod reference;
 mod sim_client;
-mod sim_dns;
 mod sim_gateway;
 mod sim_net;
 mod sim_relay;
