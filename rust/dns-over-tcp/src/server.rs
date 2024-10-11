@@ -204,7 +204,7 @@ impl Server {
                     }
 
                     self.received_queries.push_back(Query {
-                        message,
+                        message: message.octets_into(),
                         socket: SocketHandle(handle),
                         local: listen,
                     });
@@ -229,10 +229,10 @@ impl Server {
     }
 }
 
-fn try_recv_query(
-    socket: &mut tcp::Socket,
+fn try_recv_query<'b>(
+    socket: &'b mut tcp::Socket,
     listen: SocketAddr,
-) -> Result<Option<Message<Vec<u8>>>> {
+) -> Result<Option<Message<&'b [u8]>>> {
     // smoltcp's sockets can only ever handle a single remote, i.e. there is no permanent listening socket.
     // to be able to handle a new connection, reset the socket back to `listen` once the connection is closed / closing.
     {
@@ -274,7 +274,7 @@ fn try_recv_query(
 
     anyhow::ensure!(!message.header().qr(), "DNS message is a response!");
 
-    Ok(Some(message.octets_into()))
+    Ok(Some(message))
 }
 
 fn write_tcp_dns_response(socket: &mut tcp::Socket, response: Message<&[u8]>) -> Result<()> {
