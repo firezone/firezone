@@ -4,16 +4,14 @@ use std::{
     time::Instant,
 };
 
-use crate::stub_device::InMemoryDevice;
+use crate::{codec, create_tcp_socket, interface::create_interface, stub_device::InMemoryDevice};
 use anyhow::{Context as _, Result};
-use domain::{base::Message, dep::octseq::OctetsInto as _, rdata::AllRecordData};
+use domain::{base::Message, dep::octseq::OctetsInto as _};
 use ip_packet::IpPacket;
-use itertools::Itertools as _;
 use smoltcp::{
-    iface::{Config, Interface, Route, SocketSet},
+    iface::{Interface, SocketSet},
     socket::tcp,
-    storage::RingBuffer,
-    wire::{HardwareAddress, IpEndpoint, Ipv4Address, Ipv4Cidr, Ipv6Address, Ipv6Cidr},
+    wire::IpEndpoint,
 };
 
 /// A sans-IO implementation of DNS-over-TCP server.
@@ -43,34 +41,10 @@ pub struct Query {
     pub local: SocketAddr,
 }
 
-const SERVER_IP4_ADDR: Ipv4Address = Ipv4Address::new(127, 0, 0, 1);
-const SERVER_IP6_ADDR: Ipv6Address = Ipv6Address::new(0, 0, 0, 0, 0, 0, 0, 1);
-
 impl Server {
     pub fn new(now: Instant) -> Self {
         let mut device = InMemoryDevice::default();
-
-        let mut interface =
-            Interface::new(Config::new(HardwareAddress::Ip), &mut device, now.into());
-        // Accept packets with any destination IP, not just our interface.
-        interface.set_any_ip(true);
-
-        // Set our interface IPs. These are just dummies and don't show up anywhere!
-        interface.update_ip_addrs(|ips| {
-            ips.push(Ipv4Cidr::new(SERVER_IP4_ADDR, 32).into()).unwrap();
-            ips.push(Ipv6Cidr::new(SERVER_IP6_ADDR, 128).into())
-                .unwrap();
-        });
-
-        // Configure catch-all routes, meaning all packets given to `smoltcp` will be routed to our interface.
-        interface.routes_mut().update(|routes| {
-            routes
-                .push(Route::new_ipv4_gateway(SERVER_IP4_ADDR))
-                .unwrap();
-            routes
-                .push(Route::new_ipv6_gateway(SERVER_IP6_ADDR))
-                .unwrap();
-        });
+        let interface = create_interface(&mut device, now);
 
         Self {
             device,
@@ -98,7 +72,12 @@ impl Server {
 
         for listen_endpoint in addresses {
             for _ in 0..NUM_CONCURRENT_CLIENTS {
-                let handle = sockets.add(create_tcp_socket(listen_endpoint));
+                let mut socket = create_tcp_socket();
+                socket
+                    .listen(listen_endpoint)
+                    .expect("A fresh socket should always be able to listen");
+
+                let handle = sockets.add(socket);
                 listen_endpoints.insert(handle, listen_endpoint);
             }
 
@@ -149,40 +128,9 @@ impl Server {
     pub fn send_message(&mut self, socket: SocketHandle, message: Message<Vec<u8>>) -> Result<()> {
         let socket = self.sockets.get_mut::<tcp::Socket>(socket.0);
 
-        let result = write_tcp_dns_response(socket, message.for_slice_ref());
-
-        if result.is_err() {
-            socket.abort();
-        }
-
-        result.context("Failed to write DNS response")?; // Bail before logging in case we failed to write the response.
-
-        if tracing::event_enabled!(target: "wire::dns::res", tracing::Level::TRACE) {
-            if let Ok(question) = message.sole_question() {
-                let qtype = question.qtype();
-                let qname = question.into_qname();
-                let rcode = message.header().rcode();
-
-                if let Ok(record_section) = message.answer() {
-                    let records = record_section
-                        .into_iter()
-                        .filter_map(|r| {
-                            let data = r
-                                .ok()?
-                                .into_any_record::<AllRecordData<_, _>>()
-                                .ok()?
-                                .data()
-                                .clone();
-
-                            Some(data)
-                        })
-                        .join(" | ");
-                    let qid = message.header().id();
-
-                    tracing::trace!(target: "wire::dns::res", %qid, %rcode, "{:5} {qname} => [{records}]", qtype.to_string());
-                }
-            }
-        }
+        write_tcp_dns_response(socket, message.for_slice_ref())
+            .inspect_err(|_| socket.abort()) // Abort socket on error.
+            .context("Failed to write DNS response")?;
 
         Ok(())
     }
@@ -211,28 +159,20 @@ impl Server {
         for (handle, smoltcp::socket::Socket::Tcp(socket)) in self.sockets.iter_mut() {
             let listen = self.listen_endpoints.get(&handle).copied().unwrap();
 
-            match try_recv_query(socket, listen) {
-                Ok(Some(message)) => {
-                    if tracing::event_enabled!(target: "wire::dns::qry", tracing::Level::TRACE) {
-                        if let Ok(question) = message.sole_question() {
-                            let qtype = question.qtype();
-                            let qname = question.into_qname();
-                            let qid = message.header().id();
-
-                            tracing::trace!(target: "wire::dns::qry", %qid, "{:5} {qname}", qtype.to_string());
-                        }
+            while let Some(result) = try_recv_query(socket, listen).transpose() {
+                match result {
+                    Ok(message) => {
+                        self.received_queries.push_back(Query {
+                            message: message.octets_into(),
+                            socket: SocketHandle(handle),
+                            local: listen,
+                        });
                     }
-
-                    self.received_queries.push_back(Query {
-                        message,
-                        socket: SocketHandle(handle),
-                        local: listen,
-                    });
-                }
-                Ok(None) => {}
-                Err(e) => {
-                    tracing::debug!("Error on receiving DNS query: {e}");
-                    socket.abort();
+                    Err(e) => {
+                        tracing::debug!("Error on receiving DNS query: {e}");
+                        socket.abort();
+                        break;
+                    }
                 }
             }
         }
@@ -249,28 +189,10 @@ impl Server {
     }
 }
 
-fn create_tcp_socket(listen_endpoint: SocketAddr) -> tcp::Socket<'static> {
-    /// The 2-byte length prefix of DNS over TCP messages limits their size to effectively u16::MAX.
-    /// It is quite unlikely that we have to buffer _multiple_ of these max-sized messages.
-    /// Being able to buffer at least one of them means we can handle the extreme case.
-    /// In practice, this allows the OS to queue multiple queries even if we can't immediately process them.
-    const MAX_TCP_DNS_MSG_LENGTH: usize = u16::MAX as usize;
-
-    let mut socket = tcp::Socket::new(
-        RingBuffer::new(vec![0u8; MAX_TCP_DNS_MSG_LENGTH]),
-        RingBuffer::new(vec![0u8; MAX_TCP_DNS_MSG_LENGTH]),
-    );
-    socket
-        .listen(listen_endpoint)
-        .expect("A fresh socket should always be able to listen");
-
-    socket
-}
-
-fn try_recv_query(
-    socket: &mut tcp::Socket,
+fn try_recv_query<'b>(
+    socket: &'b mut tcp::Socket,
     listen: SocketAddr,
-) -> Result<Option<Message<Vec<u8>>>> {
+) -> Result<Option<Message<&'b [u8]>>> {
     // smoltcp's sockets can only ever handle a single remote, i.e. there is no permanent listening socket.
     // to be able to handle a new connection, reset the socket back to `listen` once the connection is closed / closing.
     {
@@ -306,56 +228,19 @@ fn try_recv_query(
         return Ok(None);
     }
 
-    // Read a DNS message from the socket.
-    let Some(message) = socket
-        .recv(|r| {
-            // DNS over TCP has a 2-byte length prefix at the start, see <https://datatracker.ietf.org/doc/html/rfc1035#section-4.2.2>.
-            let Some((header, message)) = r.split_first_chunk::<2>() else {
-                return (0, None);
-            };
-            let dns_message_length = u16::from_be_bytes(*header) as usize;
-            if message.len() < dns_message_length {
-                return (0, None); // Don't consume any bytes unless we can read the full message at once.
-            }
-
-            (2 + dns_message_length, Some(Message::from_octets(message)))
-        })
-        .context("Failed to recv TCP data")?
-        .transpose()
-        .context("Failed to parse DNS message")?
-    else {
+    let Some(message) = codec::try_recv(socket)? else {
         return Ok(None);
     };
 
     anyhow::ensure!(!message.header().qr(), "DNS message is a response!");
 
-    Ok(Some(message.octets_into()))
+    Ok(Some(message))
 }
 
 fn write_tcp_dns_response(socket: &mut tcp::Socket, response: Message<&[u8]>) -> Result<()> {
     anyhow::ensure!(response.header().qr(), "DNS message is a query!");
 
-    let response = response.as_slice();
-
-    let dns_message_length = (response.len() as u16).to_be_bytes();
-
-    let written = socket
-        .send_slice(&dns_message_length)
-        .context("Failed to write TCP DNS length header")?;
-
-    anyhow::ensure!(
-        written == 2,
-        "Not enough space in write buffer for TCP DNS length header"
-    );
-
-    let written = socket
-        .send_slice(response)
-        .context("Failed to write DNS message")?;
-
-    anyhow::ensure!(
-        written == response.len(),
-        "Not enough space in write buffer for DNS response"
-    );
+    codec::try_send(socket, response)?;
 
     Ok(())
 }
