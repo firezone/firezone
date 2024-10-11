@@ -6,7 +6,11 @@
 //! Source: <https://datatracker.ietf.org/doc/html/rfc1035#section-4.2.2>.
 
 use anyhow::{Context as _, Result};
-use domain::base::Message;
+use domain::{
+    base::{iana::Rcode, Message, ParsedName, Rtype},
+    rdata::AllRecordData,
+};
+use itertools::Itertools as _;
 use smoltcp::socket::tcp;
 
 pub fn try_send(socket: &mut tcp::Socket, message: Message<&[u8]>) -> Result<()> {
@@ -32,6 +36,25 @@ pub fn try_send(socket: &mut tcp::Socket, message: Message<&[u8]>) -> Result<()>
         "Not enough space in write buffer for DNS message"
     );
 
+    if tracing::event_enabled!(target: "wire::dns::tcp::send", tracing::Level::TRACE) {
+        if let Some(ParsedMessage {
+            qid,
+            qname,
+            qtype,
+            response,
+            rcode,
+            records,
+        }) = parse(message)
+        {
+            if response {
+                let records = records.into_iter().join(" | ");
+                tracing::trace!(target: "wire::dns::tcp::send", %qid, %rcode, "{:5} {qname} => [{records}]", qtype.to_string());
+            } else {
+                tracing::trace!(target: "wire::dns::tcp::send", %qid, "{:5} {qname}", qtype.to_string());
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -53,5 +76,66 @@ pub fn try_recv<'b>(socket: &'b mut tcp::Socket) -> Result<Option<Message<&'b [u
         .transpose()
         .context("Failed to parse DNS message")?;
 
+    if tracing::event_enabled!(target: "wire::dns::tcp::recv", tracing::Level::TRACE) {
+        if let Some(ParsedMessage {
+            qid,
+            qname,
+            qtype,
+            rcode,
+            response,
+            records,
+        }) = maybe_message.and_then(parse)
+        {
+            if response {
+                let records = records.into_iter().join(" | ");
+                tracing::trace!(target: "wire::dns::tcp::recv", %qid, %rcode, "{:5} {qname} => [{records}]", qtype.to_string());
+            } else {
+                tracing::trace!(target: "wire::dns::tcp::recv", %qid, "{:5} {qname}", qtype.to_string());
+            }
+        }
+    }
+
     Ok(maybe_message)
+}
+
+fn parse(message: Message<&[u8]>) -> Option<ParsedMessage<'_>> {
+    let question = message.sole_question().ok()?;
+    let answers = message.answer().ok()?;
+
+    let qtype = question.qtype();
+    let qname = question.into_qname();
+    let qid = message.header().id();
+    let response = message.header().qr();
+    let rcode = message.header().rcode();
+    let records = answers
+        .into_iter()
+        .filter_map(|r| {
+            let data = r
+                .ok()?
+                .into_any_record::<AllRecordData<_, _>>()
+                .ok()?
+                .data()
+                .clone();
+
+            Some(data)
+        })
+        .collect();
+
+    Some(ParsedMessage {
+        qid,
+        qname,
+        rcode,
+        qtype,
+        response,
+        records,
+    })
+}
+
+struct ParsedMessage<'a> {
+    qid: u16,
+    qname: ParsedName<&'a [u8]>,
+    qtype: Rtype,
+    rcode: Rcode,
+    response: bool,
+    records: Vec<AllRecordData<&'a [u8], ParsedName<&'a [u8]>>>,
 }

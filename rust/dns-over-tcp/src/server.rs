@@ -6,9 +6,8 @@ use std::{
 
 use crate::{codec, create_tcp_socket, interface::create_interface, stub_device::InMemoryDevice};
 use anyhow::{Context as _, Result};
-use domain::{base::Message, dep::octseq::OctetsInto as _, rdata::AllRecordData};
+use domain::{base::Message, dep::octseq::OctetsInto as _};
 use ip_packet::IpPacket;
-use itertools::Itertools as _;
 use smoltcp::{
     iface::{Interface, SocketSet},
     socket::tcp,
@@ -133,33 +132,6 @@ impl Server {
             .inspect_err(|_| socket.abort()) // Abort socket on error.
             .context("Failed to write DNS response")?;
 
-        if tracing::event_enabled!(target: "wire::dns::res", tracing::Level::TRACE) {
-            if let Ok(question) = message.sole_question() {
-                let qtype = question.qtype();
-                let qname = question.into_qname();
-                let rcode = message.header().rcode();
-
-                if let Ok(record_section) = message.answer() {
-                    let records = record_section
-                        .into_iter()
-                        .filter_map(|r| {
-                            let data = r
-                                .ok()?
-                                .into_any_record::<AllRecordData<_, _>>()
-                                .ok()?
-                                .data()
-                                .clone();
-
-                            Some(data)
-                        })
-                        .join(" | ");
-                    let qid = message.header().id();
-
-                    tracing::trace!(target: "wire::dns::res", %qid, %rcode, "{:5} {qname} => [{records}]", qtype.to_string());
-                }
-            }
-        }
-
         Ok(())
     }
 
@@ -190,17 +162,6 @@ impl Server {
             while let Some(result) = try_recv_query(socket, listen).transpose() {
                 match result {
                     Ok(message) => {
-                        if tracing::event_enabled!(target: "wire::dns::qry", tracing::Level::TRACE)
-                        {
-                            if let Ok(question) = message.sole_question() {
-                                let qtype = question.qtype();
-                                let qname = question.into_qname();
-                                let qid = message.header().id();
-
-                                tracing::trace!(target: "wire::dns::qry", %qid, "{:5} {qname}", qtype.to_string());
-                            }
-                        }
-
                         self.received_queries.push_back(Query {
                             message: message.octets_into(),
                             socket: SocketHandle(handle),
