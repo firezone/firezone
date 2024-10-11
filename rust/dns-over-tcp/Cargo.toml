@@ -11,6 +11,7 @@ ip-packet = { workspace = true }
 itertools = "0.13"
 smoltcp = { version = "0.11", default-features = false, features = ["std", "log", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-tcp"] }
 tracing = { workspace = true }
+rand = "0.8"
 
 [dev-dependencies]
 firezone-bin-shared = { workspace = true }
@@ -18,3 +19,4 @@ firezone-logging = { workspace = true }
 ip_network = { version = "0.4", default-features = false }
 tokio = { workspace = true, features = ["process", "rt", "macros"] }
 tun = { workspace = true }
+futures = "0.3"

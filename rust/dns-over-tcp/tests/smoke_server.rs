@@ -16,7 +16,7 @@ use tun::Tun;
 const CLIENT_CONCURRENCY: usize = 3;
 
 #[tokio::test]
-#[ignore = "Requires root"]
+#[ignore = "Requires root & IP forwarding"]
 async fn smoke() {
     let _guard =
         firezone_logging::test("netlink_proto=off,wire::dns::res=trace,dns_over_tcp=trace,debug");
