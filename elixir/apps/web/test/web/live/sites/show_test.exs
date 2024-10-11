@@ -161,6 +161,7 @@ defmodule Web.Live.Sites.ShowTest do
     |> with_table_row("instance", gateway.name, fn row ->
       assert gateway.last_seen_remote_ip
       assert row["remote ip"] =~ to_string(gateway.last_seen_remote_ip)
+      assert row["version"] =~ gateway.last_seen_version
       assert row["status"] =~ "Online"
     end)
   end

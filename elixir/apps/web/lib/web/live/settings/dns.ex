@@ -7,7 +7,6 @@ defmodule Web.Settings.DNS do
            Accounts.fetch_account_by_id(socket.assigns.account.id, socket.assigns.subject) do
       form =
         Accounts.change_account(account, %{})
-        |> maybe_append_empty_embed()
         |> to_form()
 
       socket =
@@ -58,8 +57,14 @@ defmodule Web.Settings.DNS do
               <div>
                 <.inputs_for :let={config} field={@form[:config]}>
                   <.inputs_for :let={dns} field={config[:clients_upstream_dns]}>
+                    <input
+                      type="hidden"
+                      name={"#{config.name}[clients_upstream_dns_sort][]"}
+                      value={dns.index}
+                    />
+
                     <div class="flex gap-4 items-start mb-2">
-                      <div class="w-1/4">
+                      <div class="w-3/12">
                         <.input
                           type="select"
                           label="Protocol"
@@ -69,21 +74,42 @@ defmodule Web.Settings.DNS do
                           value={dns[:protocol].value}
                         />
                       </div>
-                      <div class="w-3/4">
+                      <div class="w-8/12">
                         <.input
                           label="Address"
                           field={dns[:address]}
                           placeholder="DNS Server Address"
                         />
                       </div>
+                      <div class="w-1/12 flex">
+                        <div class="pt-7">
+                          <button
+                            type="button"
+                            name={"#{config.name}[clients_upstream_dns_drop][]"}
+                            value={dns.index}
+                            phx-click={JS.dispatch("change")}
+                          >
+                            <.icon name="hero-trash" class="text-red-500 w-6 h-6 relative top-2" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </.inputs_for>
-                  <% errors =
-                    translate_errors(
-                      @form.source.changes.config.errors,
-                      :clients_upstream_dns
-                    ) %>
-                  <.error :for={error <- errors} data-validation-error-for="clients_upstream_dns">
+                  <input type="hidden" name={"#{config.name}[clients_upstream_dns_drop][]"} />
+                  <.button
+                    class="mt-6 w-full"
+                    type="button"
+                    style="info"
+                    name={"#{config.name}[clients_upstream_dns_sort][]"}
+                    value="new"
+                    phx-click={JS.dispatch("change")}
+                  >
+                    New DNS Server
+                  </.button>
+                  <.error
+                    :for={error <- dns_config_errors(@form.source.changes)}
+                    data-validation-error-for="clients_upstream_dns"
+                  >
                     <%= error %>
                   </.error>
                 </.inputs_for>
@@ -106,101 +132,33 @@ defmodule Web.Settings.DNS do
   end
 
   def handle_event("change", %{"account" => attrs}, socket) do
-    changeset =
+    form =
       Accounts.change_account(socket.assigns.account, attrs)
-      |> maybe_append_empty_embed()
-      |> filter_errors()
       |> Map.put(:action, :validate)
+      |> to_form()
 
-    {:noreply, assign(socket, form: to_form(changeset))}
+    {:noreply, assign(socket, form: form)}
   end
 
   def handle_event("submit", %{"account" => attrs}, socket) do
-    attrs = remove_empty_servers(attrs)
-
     with {:ok, account} <-
            Accounts.update_account(socket.assigns.account, attrs, socket.assigns.subject) do
       form =
         Accounts.change_account(account, %{})
-        |> maybe_append_empty_embed()
         |> to_form()
+
+      socket = put_flash(socket, :success, "Save successful!")
 
       {:noreply, assign(socket, account: account, form: form)}
     else
       {:error, changeset} ->
-        changeset =
+        form =
           changeset
-          |> maybe_append_empty_embed()
-          |> filter_errors()
           |> Map.put(:action, :validate)
+          |> to_form()
 
-        {:noreply, assign(socket, form: to_form(changeset))}
+        {:noreply, assign(socket, form: form)}
     end
-  end
-
-  defp filter_errors(changeset) do
-    update_clients_upstream_dns(changeset, fn
-      clients_upstream_dns_changesets ->
-        remove_errors(clients_upstream_dns_changesets, :address, "can't be blank")
-    end)
-  end
-
-  defp remove_errors(changesets, field, message) do
-    Enum.map(changesets, fn changeset ->
-      errors =
-        Enum.filter(changeset.errors, fn
-          {^field, {^message, _}} -> false
-          {_, _} -> true
-        end)
-
-      %{changeset | errors: errors}
-    end)
-  end
-
-  defp maybe_append_empty_embed(changeset) do
-    update_clients_upstream_dns(changeset, fn
-      clients_upstream_dns_changesets ->
-        last_client_upstream_dns_changeset = List.last(clients_upstream_dns_changesets)
-
-        with true <- last_client_upstream_dns_changeset != nil,
-             {_data_or_changes, last_address} <-
-               Ecto.Changeset.fetch_field(last_client_upstream_dns_changeset, :address),
-             true <- last_address in [nil, ""] do
-          clients_upstream_dns_changesets
-        else
-          _other -> clients_upstream_dns_changesets ++ [%Accounts.Config.ClientsUpstreamDNS{}]
-        end
-    end)
-  end
-
-  defp update_clients_upstream_dns(changeset, cb) do
-    config_changeset = Ecto.Changeset.get_embed(changeset, :config)
-
-    clients_upstream_dns_changeset =
-      Ecto.Changeset.get_embed(config_changeset, :clients_upstream_dns)
-
-    config_changeset =
-      Ecto.Changeset.put_embed(
-        config_changeset,
-        :clients_upstream_dns,
-        cb.(clients_upstream_dns_changeset)
-      )
-
-    Ecto.Changeset.put_embed(changeset, :config, config_changeset)
-  end
-
-  defp remove_empty_servers(attrs) do
-    update_in(attrs, [Access.key("config", %{}), "clients_upstream_dns"], fn
-      nil ->
-        nil
-
-      servers ->
-        Map.filter(servers, fn
-          {_index, %{"address" => ""}} -> false
-          {_index, %{"address" => nil}} -> false
-          _ -> true
-        end)
-    end)
   end
 
   defp dns_options do
@@ -217,5 +175,13 @@ defmodule Web.Settings.DNS do
         false -> option ++ [disabled: true]
       end
     end)
+  end
+
+  defp dns_config_errors(changes) when changes == %{} do
+    []
+  end
+
+  defp dns_config_errors(changes) do
+    translate_errors(changes.config.errors, :clients_upstream_dns)
   end
 end

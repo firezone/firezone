@@ -49,6 +49,18 @@ defmodule Domain.Fixtures.Accounts do
     update_account(account, disabled_at: DateTime.utc_now())
   end
 
+  def change_to_enterprise(%Accounts.Account{} = account) do
+    update_account(account, %{metadata: %{stripe: %{product_name: "Enterprise"}}})
+  end
+
+  def change_to_team(%Accounts.Account{} = account) do
+    update_account(account, %{metadata: %{stripe: %{product_name: "Team"}}})
+  end
+
+  def change_to_starter(%Accounts.Account{} = account) do
+    update_account(account, %{metadata: %{stripe: %{product_name: "Starter"}}})
+  end
+
   def update_account(account, attrs \\ %{}) do
     account
     |> Ecto.Changeset.change(attrs)
