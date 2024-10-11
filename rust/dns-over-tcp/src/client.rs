@@ -89,6 +89,7 @@ impl Client {
         self.sockets = SocketSet::new(vec![]);
         self.sockets_by_remote.clear();
         self.local_ports_by_socket.clear();
+
         self.query_results
             .extend(
                 self.pending_queries_by_remote
@@ -138,6 +139,8 @@ impl Client {
     }
 
     /// Send the given DNS query to the target server.
+    ///
+    /// This only queues the message. You need to call [`Client::handle_timeout`] to actually send them.
     pub fn send_query(&mut self, server: SocketAddr, message: Message<Vec<u8>>) -> Result<()> {
         anyhow::ensure!(!message.header().qr(), "Message is a DNS response!");
         anyhow::ensure!(
@@ -155,7 +158,7 @@ impl Client {
 
     /// Checks whether this client can handle the given packet.
     ///
-    /// Only TCP packets targeted at one of our open sockets that are waiting for a reply are accepted.
+    /// Only TCP packets originating from one of the connected DNS resolvers are accepted.
     pub fn accepts(&self, packet: &IpPacket) -> bool {
         let Some(tcp) = packet.as_tcp() else {
             tracing::trace!(?packet, "Not a TCP packet");
@@ -203,6 +206,7 @@ impl Client {
         self.device.next_send()
     }
 
+    /// Returns the next [`QueryResult`].
     pub fn poll_query_result(&mut self) -> Option<QueryResult> {
         self.query_results.pop_front()
     }
@@ -229,6 +233,7 @@ impl Client {
             let socket = self.sockets.get_mut::<Socket>(*handle);
             let server = *remote;
 
+            // First, attempt to send all pending queries on this socket.
             send_pending_queries(
                 socket,
                 server,
@@ -236,6 +241,8 @@ impl Client {
                 &mut self.sent_queries_by_remote,
                 &mut self.query_results,
             );
+
+            // Second, attempt to receive responses.
             recv_responses(
                 socket,
                 server,
@@ -244,6 +251,7 @@ impl Client {
                 &mut self.query_results,
             );
 
+            // Third, if the socket got closed, reconnect it.
             if matches!(socket.state(), tcp::State::Closed) {
                 let local_port = self
                     .local_ports_by_socket
@@ -268,7 +276,7 @@ impl Client {
     fn sample_unique_ports(&mut self, num_ports: usize) -> Result<impl Iterator<Item = u16>> {
         let mut ports = HashSet::with_capacity(num_ports);
 
-        if num_ports < self.port_range.len() {
+        if num_ports > self.port_range.len() {
             bail!(
                 "Port range only provides {} values but we need {num_ports}",
                 self.port_range.len()
@@ -308,15 +316,21 @@ fn send_pending_queries(
                 debug_assert!(!replaced, "Query ID is not unique");
             }
             Err(e) => {
+                // We failed to send the query, declare the socket as failed.
                 socket.abort();
-                tracing::debug!("{e:#}");
 
-                // report query as failed.
+                query_results.extend(into_failed_results(
+                    server,
+                    pending_queries
+                        .drain(..)
+                        .chain(sent_queries.drain().map(|(_, query)| query)),
+                    || anyhow!("{e:#}"),
+                ));
                 query_results.push_back(QueryResult {
                     query,
                     server,
                     result: Err(e),
-                })
+                });
             }
         }
     }
@@ -353,14 +367,14 @@ fn recv_responses(
         .unwrap_or_else(|e| {
             socket.abort();
 
-            let failed_pending_queries =
-                into_failed_results(server, pending_queries.drain(..), || anyhow!("{e:#}"));
-            let failed_sent_queries =
-                into_failed_results(server, sent_queries.drain().map(|(_, query)| query), || {
-                    anyhow!("{e:#}")
-                });
-
-            failed_pending_queries.chain(failed_sent_queries).collect()
+            into_failed_results(
+                server,
+                pending_queries
+                    .drain(..)
+                    .chain(sent_queries.drain().map(|(_, query)| query)),
+                || anyhow!("{e:#}"),
+            )
+            .collect()
         });
 
     query_results.extend(new_results);
@@ -378,10 +392,6 @@ fn into_failed_results(
     })
 }
 
-/// Try to receive a response from this socket.
-///
-/// You should only call this if you actually still _want_ to receive a message.
-/// This function will fail if the socket is no longer open for receiving.
 fn try_recv_response<'b>(socket: &'b mut tcp::Socket) -> Result<Option<Message<&'b [u8]>>> {
     anyhow::ensure!(socket.is_active(), "Socket is not active");
 
