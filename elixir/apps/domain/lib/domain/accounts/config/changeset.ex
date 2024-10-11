@@ -60,6 +60,7 @@ defmodule Domain.Accounts.Config.Changeset do
       message: "this type of DNS provider is not supported yet"
     )
     |> validate_address()
+    |> validate_reserved_ip_exclusion()
   end
 
   defp validate_address(changeset) do
@@ -80,6 +81,17 @@ defmodule Domain.Accounts.Config.Changeset do
         _ -> [address: "must be a valid IP address"]
       end
     end)
+  end
+
+  defp validate_reserved_ip_exclusion(changeset) do
+    if has_errors?(changeset, :address) do
+      changeset
+    else
+      Domain.Network.reserved_cidrs()
+      |> Enum.reduce(changeset, fn {_type, cidr}, changeset ->
+        validate_not_in_cidr(changeset, :address, cidr)
+      end)
+    end
   end
 
   def notifications_changeset(notifications, attrs) do

@@ -482,6 +482,46 @@ defmodule Domain.AccountsTest do
              }
     end
 
+    test "returns error on dns config address in IPv4 sentinel range", %{account: account} do
+      attrs = %{
+        config: %{
+          clients_upstream_dns: [
+            %{protocol: "ip_port", address: "100.64.10.1"}
+          ]
+        }
+      }
+
+      assert {:error, changeset} = update_account_by_id(account.id, attrs)
+
+      assert errors_on(changeset) == %{
+               config: %{
+                 clients_upstream_dns: [
+                   %{address: ["cannot be in the CIDR 100.64.0.0/10"]}
+                 ]
+               }
+             }
+    end
+
+    test "returns error on dns config address in IPv6 sentinel range", %{account: account} do
+      attrs = %{
+        config: %{
+          clients_upstream_dns: [
+            %{protocol: "ip_port", address: "fd00:2021:1111:10::"}
+          ]
+        }
+      }
+
+      assert {:error, changeset} = update_account_by_id(account.id, attrs)
+
+      assert errors_on(changeset) == %{
+               config: %{
+                 clients_upstream_dns: [
+                   %{address: ["cannot be in the CIDR fd00:2021:1111::/48"]}
+                 ]
+               }
+             }
+    end
+
     test "updates account and broadcasts a message", %{account: account} do
       Bypass.open()
       |> Domain.Mocks.Stripe.mock_update_customer_endpoint(account)
