@@ -120,6 +120,11 @@ impl ClientTunnel {
                 continue;
             }
 
+            if let Some(query) = self.role_state.poll_dns_queries() {
+                self.io.send_dns_query(query);
+                continue;
+            }
+
             if let Some(timeout) = self.role_state.poll_timeout() {
                 self.io.reset_timeout(timeout);
             }
@@ -163,6 +168,11 @@ impl ClientTunnel {
                         self.io.send_tun(packet)?;
                     }
 
+                    continue;
+                }
+                Poll::Ready(io::Input::DnsResponse(packet)) => {
+                    self.role_state.handle_dns_response(packet);
+                    self.role_state.handle_timeout(Instant::now());
                     continue;
                 }
                 Poll::Pending => {}
@@ -223,6 +233,9 @@ impl GatewayTunnel {
                 self.ip6_read_buf.as_mut(),
                 &self.encrypt_buf,
             )? {
+                Poll::Ready(io::Input::DnsResponse(_)) => {
+                    unreachable!("Gateway doesn't use user-space DNS resolution")
+                }
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout, Utc::now());
                     continue;

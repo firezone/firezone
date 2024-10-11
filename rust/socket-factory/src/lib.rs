@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::{
     borrow::Cow,
     // collections::VecDeque,
@@ -46,7 +47,7 @@ pub fn udp(std_addr: &SocketAddr) -> io::Result<UdpSocket> {
     let send_buf_size = socket.send_buffer_size()?;
     let recv_buf_size = socket.recv_buffer_size()?;
 
-    tracing::info!(addr = %std_addr, %send_buf_size, %recv_buf_size, "Created new UDP socket");
+    tracing::trace!(addr = %std_addr, %send_buf_size, %recv_buf_size, "Created new UDP socket");
 
     let socket = std::net::UdpSocket::from(socket);
     let socket = tokio::net::UdpSocket::try_from(socket)?;
@@ -190,6 +191,7 @@ impl std::os::fd::AsFd for UdpSocket {
 }
 
 /// An inbound UDP datagram.
+#[derive(Debug)]
 pub struct DatagramIn<'a> {
     pub local: SocketAddr,
     pub from: SocketAddr,
@@ -208,7 +210,7 @@ impl UdpSocket {
         &self,
         buffer: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<impl Iterator<Item = DatagramIn<'b>>>> {
+    ) -> Poll<io::Result<impl Iterator<Item = DatagramIn<'b>> + fmt::Debug>> {
         let Self {
             port, inner, state, ..
         } = self;
@@ -258,40 +260,93 @@ impl UdpSocket {
     pub fn send(&mut self, datagram: DatagramOut) -> io::Result<()> {
         tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, num_bytes = %datagram.packet.len());
 
-        self.try_send(&datagram)?;
+        self.try_send(datagram)?;
 
         Ok(())
     }
 
-    pub fn try_send(&mut self, transmit: &DatagramOut) -> io::Result<()> {
-        let destination = transmit.dst;
-        let src_ip = transmit.src.map(|s| s.ip());
+    /// Performs a single request-response handshake with the specified destination socket address.
+    ///
+    /// This consumes `self` because we want to enforce that we only receive a single message on this socket.
+    /// UDP is stateless and therefore, anybody can just send a packet to our socket.
+    ///
+    /// To simulate a handshake, we therefore only wait for a single message arriving on this socket,
+    /// after that, we discard it, freeing up the used source port.
+    ///
+    /// This is similar to the `connect` functionality but that one doesn't seem to work reliably in a cross-platform way.
+    ///
+    /// TODO: Should we make a type-safe API to ensure only one "mode" of the socket can be used?
+    pub async fn handshake<const BUF_SIZE: usize>(
+        mut self,
+        dst: SocketAddr,
+        payload: &[u8],
+    ) -> io::Result<Vec<u8>> {
+        let transmit = self
+            .prepare_transmit(dst, None, payload)?
+            .ok_or_else(|| io::Error::other("Failed to prepare `Transmit`"))?;
 
-        let src_ip = match src_ip {
-            Some(src_ip) => Some(src_ip),
-            None => match self.resolve_source_for(destination.ip()) {
-                Ok(src_ip) => src_ip,
-                Err(e) => {
-                    tracing::trace!(
-                        dst = %transmit.dst.ip(),
-                        "No available interface for packet: {e}"
-                    );
-                    return Ok(());
-                }
-            },
-        };
+        self.inner
+            .async_io(Interest::WRITABLE, || {
+                self.state.send((&self.inner).into(), &transmit)
+            })
+            .await?;
 
-        let transmit = quinn_udp::Transmit {
-            destination,
-            ecn: None,
-            contents: &transmit.packet,
-            segment_size: None,
-            src_ip,
+        let mut buffer = vec![0u8; BUF_SIZE];
+
+        let (num_received, sender) = self.inner.recv_from(&mut buffer).await?;
+
+        if sender != dst {
+            return Err(io::Error::other(format!(
+                "Unexpected reply source: {sender}; expected: {dst}"
+            )));
+        }
+
+        buffer.truncate(num_received);
+
+        Ok(buffer)
+    }
+
+    fn try_send(&mut self, datagram: DatagramOut) -> io::Result<()> {
+        let Some(transmit) =
+            self.prepare_transmit(datagram.dst, datagram.src.map(|s| s.ip()), &datagram.packet)?
+        else {
+            return Ok(());
         };
 
         self.inner.try_io(Interest::WRITABLE, || {
             self.state.send((&self.inner).into(), &transmit)
         })
+    }
+
+    fn prepare_transmit<'a>(
+        &mut self,
+        dst: SocketAddr,
+        src_ip: Option<IpAddr>,
+        packet: &'a [u8],
+    ) -> io::Result<Option<quinn_udp::Transmit<'a>>> {
+        let src_ip = match src_ip {
+            Some(src_ip) => Some(src_ip),
+            None => match self.resolve_source_for(dst.ip()) {
+                Ok(src_ip) => src_ip,
+                Err(e) => {
+                    tracing::trace!(
+                        dst = %dst.ip(),
+                        "No available interface for packet: {e}"
+                    );
+                    return Ok(None); // Not an error because we log it above already.
+                }
+            },
+        };
+
+        let transmit = quinn_udp::Transmit {
+            destination: dst,
+            ecn: None,
+            contents: packet,
+            segment_size: None,
+            src_ip,
+        };
+
+        Ok(Some(transmit))
     }
 
     /// Attempt to resolve the source IP to use for sending to the given destination IP.

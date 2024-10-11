@@ -1,5 +1,5 @@
 use super::{
-    composite_strategy::CompositeStrategy, sim_client::*, sim_dns::*, sim_gateway::*, sim_net::*,
+    composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
 use crate::{client, DomainName};
@@ -22,7 +22,6 @@ pub(crate) struct ReferenceState {
     pub(crate) client: Host<RefClient>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
-    pub(crate) dns_servers: BTreeMap<DnsServerId, Host<RefDns>>,
 
     pub(crate) portal: StubPortal,
 
@@ -50,14 +49,11 @@ pub(crate) enum ResourceDst {
 /// After all, if your test has bugs, it won't catch any in the actual implementation.
 impl ReferenceState {
     pub(crate) fn initial_state() -> BoxedStrategy<Self> {
-        (stub_portal(), dns_servers())
-            .prop_flat_map(|(portal, dns_servers)| {
+        stub_portal()
+            .prop_flat_map(|portal| {
                 let gateways = portal.gateways();
                 let dns_resource_records = portal.dns_resource_records();
-                let client = portal.client(
-                    system_dns_servers(dns_servers.values().cloned().collect()),
-                    upstream_dns_servers(dns_servers.values().cloned().collect()),
-                );
+                let client = portal.client(system_dns_servers(), upstream_dns_servers());
                 let relays = relays(relay_id());
                 let global_dns_records = global_dns_records(); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
                 let drop_direct_client_traffic = any::<bool>();
@@ -70,7 +66,6 @@ impl ReferenceState {
                     relays,
                     global_dns_records,
                     drop_direct_client_traffic,
-                    Just(dns_servers),
                 )
             })
             .prop_filter_map(
@@ -83,7 +78,6 @@ impl ReferenceState {
                     relays,
                     mut global_dns,
                     drop_direct_client_traffic,
-                    dns_servers,
                 )| {
                     let mut routing_table = RoutingTable::default();
 
@@ -102,12 +96,6 @@ impl ReferenceState {
                         };
                     }
 
-                    for (id, dns_server) in &dns_servers {
-                        if !routing_table.add_host(*id, dns_server) {
-                            return None;
-                        };
-                    }
-
                     // Merge all DNS records into `global_dns`.
                     global_dns.extend(records);
 
@@ -115,7 +103,6 @@ impl ReferenceState {
                         c,
                         gateways,
                         relays,
-                        dns_servers,
                         portal,
                         global_dns,
                         drop_direct_client_traffic,
@@ -125,7 +112,7 @@ impl ReferenceState {
             )
             .prop_filter(
                 "private keys must be unique",
-                |(c, gateways, _, _, _, _, _, _)| {
+                |(c, gateways, _, _, _, _, _)| {
                     let different_keys = gateways
                         .iter()
                         .map(|(_, g)| g.inner().key)
@@ -140,7 +127,6 @@ impl ReferenceState {
                     client,
                     gateways,
                     relays,
-                    dns_servers,
                     portal,
                     global_dns_records,
                     drop_direct_client_traffic,
@@ -150,7 +136,6 @@ impl ReferenceState {
                         client,
                         gateways,
                         relays,
-                        dns_servers,
                         portal,
                         global_dns_records,
                         network,
@@ -169,13 +154,11 @@ impl ReferenceState {
         CompositeStrategy::default()
             .with(
                 1,
-                system_dns_servers(state.dns_servers.values().cloned().collect())
-                    .prop_map(Transition::UpdateSystemDnsServers),
+                system_dns_servers().prop_map(Transition::UpdateSystemDnsServers),
             )
             .with(
                 1,
-                upstream_dns_servers(state.dns_servers.values().cloned().collect())
-                    .prop_map(Transition::UpdateUpstreamDnsServers),
+                upstream_dns_servers().prop_map(Transition::UpdateUpstreamDnsServers),
             )
             .with_if_not_empty(
                 5,

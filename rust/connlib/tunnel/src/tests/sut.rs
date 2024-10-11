@@ -1,14 +1,13 @@
 use super::buffered_transmits::BufferedTransmits;
 use super::reference::ReferenceState;
 use super::sim_client::SimClient;
-use super::sim_dns::{DnsServerId, SimDns};
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
 use super::transition::DnsQuery;
 use crate::client::Resource;
-use crate::dns::is_subdomain;
+use crate::dns::{self, is_subdomain};
 use crate::gateway::DnsResourceNatEntry;
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
@@ -16,6 +15,9 @@ use crate::tests::transition::Transition;
 use crate::utils::earliest;
 use crate::{messages::Interface, ClientEvent, GatewayEvent};
 use connlib_model::{ClientId, DomainName, GatewayId, RelayId};
+use domain::base::iana::{Class, Rcode};
+use domain::base::{Message, MessageBuilder, Record, Rtype, ToName as _, Ttl};
+use domain::rdata::AllRecordData;
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
 use std::collections::BTreeSet;
@@ -36,7 +38,6 @@ pub(crate) struct TunnelTest {
     client: Host<SimClient>,
     gateways: BTreeMap<GatewayId, Host<SimGateway>>,
     relays: BTreeMap<RelayId, Host<SimRelay>>,
-    dns_servers: BTreeMap<DnsServerId, Host<SimDns>>,
 
     drop_direct_client_traffic: bool,
     network: RoutingTable,
@@ -73,16 +74,6 @@ impl TunnelTest {
             })
             .collect::<BTreeMap<_, _>>();
 
-        let dns_servers = ref_state
-            .dns_servers
-            .iter()
-            .map(|(did, dns_server)| {
-                let dns_server = dns_server.map(|_, _, _| SimDns {}, debug_span!("dns", %did));
-
-                (*did, dns_server)
-            })
-            .collect::<BTreeMap<_, _>>();
-
         // Configure client and gateway with the relays.
         client.exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
         for gateway in gateways.values_mut() {
@@ -97,7 +88,6 @@ impl TunnelTest {
             client,
             gateways,
             relays,
-            dns_servers,
         };
 
         let mut buffered_transmits = BufferedTransmits::default();
@@ -394,6 +384,23 @@ impl TunnelTest {
                 );
                 continue;
             }
+            if let Some(query) = self.client.exec_mut(|c| c.sut.poll_dns_queries()) {
+                let server = query.server;
+                let transport = query.transport;
+
+                let response =
+                    self.on_recursive_dns_query(query.clone(), &ref_state.global_dns_records);
+                self.client.exec_mut(|c| {
+                    c.sut.handle_dns_response(dns::RecursiveResponse {
+                        server,
+                        query: query.message,
+                        message: Ok(response), // TODO: Vary this?
+                        transport,
+                    })
+                });
+
+                continue;
+            }
 
             for (_, relay) in self.relays.iter_mut() {
                 let Some(message) = relay.exec_mut(|r| r.sut.next_command()) else {
@@ -521,18 +528,6 @@ impl TunnelTest {
                 }
             })
         }
-
-        for (_, dns_server) in self.dns_servers.iter_mut() {
-            while let Some(transmit) = dns_server.poll_transmit(now) {
-                let Some(reply) =
-                    dns_server.exec_mut(|d| d.receive(global_dns_records, transmit, now))
-                else {
-                    continue;
-                };
-
-                buffered_transmits.push_from(reply, dns_server, now);
-            }
-        }
     }
 
     fn poll_timeout(&mut self) -> Option<Instant> {
@@ -601,12 +596,6 @@ impl TunnelTest {
             }
             HostId::Stale => {
                 tracing::debug!(%dst, "Dropping packet because host roamed away or is offline");
-            }
-            HostId::DnsServer(id) => {
-                self.dns_servers
-                    .get_mut(&id)
-                    .expect("unknown DNS server")
-                    .receive(transmit, now);
             }
         }
     }
@@ -784,6 +773,47 @@ impl TunnelTest {
                     .unwrap();
             }
         }
+    }
+
+    fn on_recursive_dns_query(
+        &self,
+        query: crate::dns::RecursiveQuery,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
+    ) -> Message<Vec<u8>> {
+        let query = query.message;
+
+        let response = MessageBuilder::new_vec();
+        let mut answers = response.start_answer(&query, Rcode::NOERROR).unwrap();
+
+        let query = query.sole_question().unwrap();
+        let name = query.qname().to_vec();
+        let qtype = query.qtype();
+
+        let records = global_dns_records
+            .get(&name)
+            .into_iter()
+            .flatten()
+            .copied()
+            .filter_map(|ip| match (qtype, ip) {
+                (Rtype::A, IpAddr::V4(v4)) => {
+                    Some(AllRecordData::<Vec<_>, DomainName>::A(v4.into()))
+                }
+                (Rtype::AAAA, IpAddr::V6(v6)) => {
+                    Some(AllRecordData::<Vec<_>, DomainName>::Aaaa(v6.into()))
+                }
+                _ => None,
+            })
+            .map(|rdata| Record::new(name.clone(), Class::IN, Ttl::from_days(1), rdata));
+
+        for record in records {
+            answers.push(record).unwrap();
+        }
+
+        let response = answers.into_message();
+
+        tracing::debug!(%name, %qtype, "Responding to DNS query");
+
+        response
     }
 
     fn deploy_new_relays(
