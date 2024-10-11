@@ -251,8 +251,14 @@ impl Client {
                 &mut self.query_results,
             );
 
+            let has_pending_dns_queries = !self
+                .pending_queries_by_remote
+                .entry(server)
+                .or_default()
+                .is_empty();
+
             // Third, if the socket got closed, reconnect it.
-            if matches!(socket.state(), tcp::State::Closed) {
+            if matches!(socket.state(), tcp::State::Closed) && has_pending_dns_queries {
                 let local_port = self
                     .local_ports_by_socket
                     .get(handle)
