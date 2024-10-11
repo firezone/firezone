@@ -129,13 +129,9 @@ impl Server {
     pub fn send_message(&mut self, socket: SocketHandle, message: Message<Vec<u8>>) -> Result<()> {
         let socket = self.sockets.get_mut::<tcp::Socket>(socket.0);
 
-        let result = write_tcp_dns_response(socket, message.for_slice_ref());
-
-        if result.is_err() {
-            socket.abort();
-        }
-
-        result.context("Failed to write DNS response")?; // Bail before logging in case we failed to write the response.
+        write_tcp_dns_response(socket, message.for_slice_ref())
+            .inspect_err(|_| socket.abort()) // Abort socket on error.
+            .context("Failed to write DNS response")?;
 
         if tracing::event_enabled!(target: "wire::dns::res", tracing::Level::TRACE) {
             if let Ok(question) = message.sole_question() {
