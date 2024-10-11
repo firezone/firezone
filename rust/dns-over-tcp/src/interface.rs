@@ -15,7 +15,7 @@ const IP6_ADDR: Ipv6Address = Ipv6Address::new(0, 0, 0, 0, 0, 0, 0, 1);
 /// smoltcp's abstractions allow to directly plug it in a TUN device.
 /// As a result, it has all the features you'd expect from a network interface:
 /// - Setting IP addresses
-/// - Definining routes
+/// - Defining routes
 ///
 /// In our implementation, we don't want to use any of that.
 /// Our device is entirely backed by in-memory buffers and we and selectively feed IP packets to it.
