@@ -194,7 +194,7 @@ impl Client {
     /// Handle the [`IpPacket`].
     ///
     /// This function only inserts the packet into a buffer.
-    /// To actually process the packets in the buffer, [`Client:handle_timeout`] must be called.
+    /// To actually process the packets in the buffer, [`Client::handle_timeout`] must be called.
     pub fn handle_inbound(&mut self, packet: IpPacket) {
         debug_assert!(self.accepts(&packet));
 
