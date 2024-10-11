@@ -84,10 +84,13 @@ defmodule Web.Sites.Gateways.Index do
               <%= gateway.name %>
             </.link>
           </:col>
-          <:col :let={gateway} label="remote iP">
+          <:col :let={gateway} label="remote ip">
             <code>
               <%= gateway.last_seen_remote_ip %>
             </code>
+          </:col>
+          <:col :let={gateway} label="version">
+            <%= gateway.last_seen_version %>
           </:col>
           <:col :let={gateway} label="status">
             <.connection_status schema={gateway} />

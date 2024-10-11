@@ -34,6 +34,8 @@ defmodule Domain.Application do
       Domain.Billing,
       Domain.Mailer,
       Domain.Mailer.RateLimiter,
+      Domain.Notifications,
+      Domain.ComponentVersions,
 
       # Observability
       Domain.Telemetry
