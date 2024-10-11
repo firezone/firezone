@@ -4,7 +4,7 @@ use std::{
     time::Instant,
 };
 
-use crate::{create_tcp_socket, interface::create_interface, stub_device::InMemoryDevice};
+use crate::{codec, create_tcp_socket, interface::create_interface, stub_device::InMemoryDevice};
 use anyhow::{Context as _, Result};
 use domain::{base::Message, dep::octseq::OctetsInto as _, rdata::AllRecordData};
 use ip_packet::IpPacket;
@@ -12,7 +12,7 @@ use itertools::Itertools as _;
 use smoltcp::{
     iface::{Interface, SocketSet},
     socket::tcp,
-    storage::RingBuffer,
+    wire::IpEndpoint,
 };
 
 /// A sans-IO implementation of DNS-over-TCP server.
@@ -268,24 +268,7 @@ fn try_recv_query(
         return Ok(None);
     }
 
-    // Read a DNS message from the socket.
-    let Some(message) = socket
-        .recv(|r| {
-            // DNS over TCP has a 2-byte length prefix at the start, see <https://datatracker.ietf.org/doc/html/rfc1035#section-4.2.2>.
-            let Some((header, message)) = r.split_first_chunk::<2>() else {
-                return (0, None);
-            };
-            let dns_message_length = u16::from_be_bytes(*header) as usize;
-            if message.len() < dns_message_length {
-                return (0, None); // Don't consume any bytes unless we can read the full message at once.
-            }
-
-            (2 + dns_message_length, Some(Message::from_octets(message)))
-        })
-        .context("Failed to recv TCP data")?
-        .transpose()
-        .context("Failed to parse DNS message")?
-    else {
+    let Some(message) = codec::try_recv(socket)? else {
         return Ok(None);
     };
 
@@ -297,27 +280,7 @@ fn try_recv_query(
 fn write_tcp_dns_response(socket: &mut tcp::Socket, response: Message<&[u8]>) -> Result<()> {
     anyhow::ensure!(response.header().qr(), "DNS message is a query!");
 
-    let response = response.as_slice();
-
-    let dns_message_length = (response.len() as u16).to_be_bytes();
-
-    let written = socket
-        .send_slice(&dns_message_length)
-        .context("Failed to write TCP DNS length header")?;
-
-    anyhow::ensure!(
-        written == 2,
-        "Not enough space in write buffer for TCP DNS length header"
-    );
-
-    let written = socket
-        .send_slice(response)
-        .context("Failed to write DNS message")?;
-
-    anyhow::ensure!(
-        written == response.len(),
-        "Not enough space in write buffer for DNS response"
-    );
+    codec::try_send(socket, response)?;
 
     Ok(())
 }
