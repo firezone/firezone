@@ -187,28 +187,31 @@ impl Server {
         for (handle, smoltcp::socket::Socket::Tcp(socket)) in self.sockets.iter_mut() {
             let listen = self.listen_endpoints.get(&handle).copied().unwrap();
 
-            match try_recv_query(socket, listen) {
-                Ok(Some(message)) => {
-                    if tracing::event_enabled!(target: "wire::dns::qry", tracing::Level::TRACE) {
-                        if let Ok(question) = message.sole_question() {
-                            let qtype = question.qtype();
-                            let qname = question.into_qname();
-                            let qid = message.header().id();
+            while let Some(result) = try_recv_query(socket, listen).transpose() {
+                match result {
+                    Ok(message) => {
+                        if tracing::event_enabled!(target: "wire::dns::qry", tracing::Level::TRACE)
+                        {
+                            if let Ok(question) = message.sole_question() {
+                                let qtype = question.qtype();
+                                let qname = question.into_qname();
+                                let qid = message.header().id();
 
-                            tracing::trace!(target: "wire::dns::qry", %qid, "{:5} {qname}", qtype.to_string());
+                                tracing::trace!(target: "wire::dns::qry", %qid, "{:5} {qname}", qtype.to_string());
+                            }
                         }
-                    }
 
-                    self.received_queries.push_back(Query {
-                        message: message.octets_into(),
-                        socket: SocketHandle(handle),
-                        local: listen,
-                    });
-                }
-                Ok(None) => {}
-                Err(e) => {
-                    tracing::debug!("Error on receiving DNS query: {e}");
-                    socket.abort();
+                        self.received_queries.push_back(Query {
+                            message: message.octets_into(),
+                            socket: SocketHandle(handle),
+                            local: listen,
+                        });
+                    }
+                    Err(e) => {
+                        tracing::debug!("Error on receiving DNS query: {e}");
+                        socket.abort();
+                        break;
+                    }
                 }
             }
         }
