@@ -27,7 +27,7 @@ pub(crate) enum Transition {
     /// Client-side disable resource
     DisableResources(BTreeSet<ResourceId>),
     /// Send an ICMP packet to non-resource IP.
-    SendICMPPacketToNonResourceIp {
+    SendPacketToNonResourceIp {
         src: IpAddr,
         dst: IpAddr,
         seq: u16,
@@ -35,7 +35,7 @@ pub(crate) enum Transition {
         payload: u64,
     },
     /// Send an ICMP packet to a CIDR resource.
-    SendICMPPacketToCidrResource {
+    SendPacketToCidrResource {
         src: IpAddr,
         dst: IpAddr,
         seq: u16,
@@ -43,7 +43,7 @@ pub(crate) enum Transition {
         payload: u64,
     },
     /// Send an ICMP packet to a DNS resource.
-    SendICMPPacketToDnsResource {
+    SendPacketToDnsResource {
         src: IpAddr,
         dst: DomainName,
         #[derivative(Debug = "ignore")]
@@ -115,7 +115,7 @@ where
         any::<u64>(),
     )
         .prop_map(|(src, dst, seq, identifier, payload)| {
-            Transition::SendICMPPacketToNonResourceIp {
+            Transition::SendPacketToNonResourceIp {
                 src,
                 dst,
                 seq,
@@ -140,7 +140,7 @@ where
         any::<u64>(),
     )
         .prop_map(|(dst, seq, identifier, src, payload)| {
-            Transition::SendICMPPacketToCidrResource {
+            Transition::SendPacketToCidrResource {
                 src,
                 dst,
                 seq,
@@ -166,7 +166,7 @@ where
         any::<u64>(),
     )
         .prop_map(|(dst, seq, identifier, src, resolved_ip, payload)| {
-            Transition::SendICMPPacketToDnsResource {
+            Transition::SendPacketToDnsResource {
                 src,
                 dst,
                 resolved_ip,
