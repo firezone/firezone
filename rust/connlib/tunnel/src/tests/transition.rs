@@ -27,30 +27,27 @@ pub(crate) enum Transition {
     /// Client-side disable resource
     DisableResources(BTreeSet<ResourceId>),
     /// Send an ICMP packet to non-resource IP.
-    SendICMPPacketToNonResourceIp {
+    SendIcmpPacket {
         src: IpAddr,
-        dst: IpAddr,
-        seq: u16,
-        identifier: u16,
+        dst: Destination,
+        seq: Seq,
+        identifier: Identifier,
         payload: u64,
     },
-    /// Send an ICMP packet to a CIDR resource.
-    SendICMPPacketToCidrResource {
+    /// Send an UDP packet to non-resource IP.
+    SendUdpPacket {
         src: IpAddr,
-        dst: IpAddr,
-        seq: u16,
-        identifier: u16,
+        dst: Destination,
+        sport: SPort,
+        dport: DPort,
         payload: u64,
     },
-    /// Send an ICMP packet to a DNS resource.
-    SendICMPPacketToDnsResource {
+    /// Send an TCP payload to non-resource IP.
+    SendTcpPayload {
         src: IpAddr,
-        dst: DomainName,
-        #[derivative(Debug = "ignore")]
-        resolved_ip: sample::Selector,
-
-        seq: u16,
-        identifier: u16,
+        dst: Destination,
+        sport: SPort,
+        dport: DPort,
         payload: u64,
     },
 
@@ -107,78 +104,163 @@ pub(crate) enum DnsTransport {
     Tcp,
 }
 
-pub(crate) fn ping_random_ip<I>(
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct Seq(pub u16);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct Identifier(pub u16);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct SPort(pub u16);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct DPort(pub u16);
+
+#[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
+pub(crate) enum Destination {
+    DomainName {
+        resolved_ip: sample::Selector,
+        name: DomainName,
+    },
+    IpAddr(IpAddr),
+}
+
+/// Helper enum
+#[derive(Debug, Clone)]
+enum PacketDestination {
+    DomainName(DomainName),
+    IpAddr(IpAddr),
+}
+
+pub(crate) trait RequestFrom {
+    fn request_from(self) -> Self;
+}
+
+impl RequestFrom for (SPort, DPort) {
+    fn request_from(self) -> Self {
+        (SPort(self.1 .0), DPort(self.0 .0))
+    }
+}
+
+impl RequestFrom for (Seq, Identifier) {
+    fn request_from(self) -> Self {
+        self
+    }
+}
+
+impl From<DomainName> for PacketDestination {
+    fn from(name: DomainName) -> Self {
+        PacketDestination::DomainName(name)
+    }
+}
+
+impl From<Ipv4Addr> for PacketDestination {
+    fn from(addr: Ipv4Addr) -> Self {
+        PacketDestination::IpAddr(addr.into())
+    }
+}
+
+impl From<Ipv6Addr> for PacketDestination {
+    fn from(addr: Ipv6Addr) -> Self {
+        PacketDestination::IpAddr(addr.into())
+    }
+}
+
+impl From<IpAddr> for PacketDestination {
+    fn from(addr: IpAddr) -> Self {
+        PacketDestination::IpAddr(addr)
+    }
+}
+
+impl PacketDestination {
+    fn into_destination(self, resolved_ip: sample::Selector) -> Destination {
+        match self {
+            PacketDestination::DomainName(name) => Destination::DomainName { resolved_ip, name },
+            PacketDestination::IpAddr(addr) => Destination::IpAddr(addr),
+        }
+    }
+}
+
+#[allow(private_bounds)]
+pub(crate) fn icmp_to_destination<I, D>(
     src: impl Strategy<Value = I>,
-    dst: impl Strategy<Value = I>,
+    dst: impl Strategy<Value = D>,
 ) -> impl Strategy<Value = Transition>
 where
     I: Into<IpAddr>,
+    D: Into<PacketDestination>,
 {
     (
         src.prop_map(Into::into),
         dst.prop_map(Into::into),
         any::<u16>(),
         any::<u16>(),
-        any::<u64>(),
-    )
-        .prop_map(|(src, dst, seq, identifier, payload)| {
-            Transition::SendICMPPacketToNonResourceIp {
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
-            }
-        })
-}
-
-pub(crate) fn icmp_to_cidr_resource<I>(
-    src: impl Strategy<Value = I>,
-    dst: impl Strategy<Value = I>,
-) -> impl Strategy<Value = Transition>
-where
-    I: Into<IpAddr>,
-{
-    (
-        dst.prop_map(Into::into),
-        any::<u16>(),
-        any::<u16>(),
-        src.prop_map(Into::into),
-        any::<u64>(),
-    )
-        .prop_map(|(dst, seq, identifier, src, payload)| {
-            Transition::SendICMPPacketToCidrResource {
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
-            }
-        })
-}
-
-pub(crate) fn icmp_to_dns_resource<I>(
-    src: impl Strategy<Value = I>,
-    dst: impl Strategy<Value = DomainName>,
-) -> impl Strategy<Value = Transition>
-where
-    I: Into<IpAddr>,
-{
-    (
-        dst,
-        any::<u16>(),
-        any::<u16>(),
-        src.prop_map(Into::into),
         any::<sample::Selector>(),
         any::<u64>(),
     )
-        .prop_map(|(dst, seq, identifier, src, resolved_ip, payload)| {
-            Transition::SendICMPPacketToDnsResource {
+        .prop_map(|(src, dst, seq, identifier, resolved_ip, payload)| {
+            Transition::SendIcmpPacket {
                 src,
-                dst,
-                resolved_ip,
-                seq,
-                identifier,
+                dst: dst.into_destination(resolved_ip),
+                seq: Seq(seq),
+                identifier: Identifier(identifier),
+                payload,
+            }
+        })
+}
+
+#[allow(private_bounds)]
+pub(crate) fn udp_to_destination<I, D>(
+    src: impl Strategy<Value = I>,
+    dst: impl Strategy<Value = D>,
+) -> impl Strategy<Value = Transition>
+where
+    I: Into<IpAddr>,
+    D: Into<PacketDestination>,
+{
+    (
+        src.prop_map(Into::into),
+        dst.prop_map(Into::into),
+        any::<u16>(),
+        any::<u16>(),
+        any::<sample::Selector>(),
+        any::<u64>(),
+    )
+        .prop_map(
+            |(src, dst, sport, dport, resolved_ip, payload)| Transition::SendUdpPacket {
+                src,
+                dst: dst.into_destination(resolved_ip),
+                sport: SPort(sport),
+                dport: DPort(dport),
+                payload,
+            },
+        )
+}
+
+#[allow(private_bounds)]
+pub(crate) fn tcp_to_destination<I, D>(
+    src: impl Strategy<Value = I>,
+    dst: impl Strategy<Value = D>,
+) -> impl Strategy<Value = Transition>
+where
+    I: Into<IpAddr>,
+    D: Into<PacketDestination>,
+{
+    (
+        src.prop_map(Into::into),
+        dst.prop_map(Into::into),
+        any::<u16>(),
+        any::<u16>(),
+        any::<sample::Selector>(),
+        any::<u64>(),
+    )
+        .prop_map(|(src, dst, sport, dport, resolved_ip, payload)| {
+            Transition::SendTcpPayload {
+                src,
+                dst: dst.into_destination(resolved_ip),
+                sport: SPort(sport),
+                dport: DPort(dport),
                 payload,
             }
         })

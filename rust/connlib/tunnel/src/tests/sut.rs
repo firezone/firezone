@@ -5,7 +5,7 @@ use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
-use super::transition::DnsQuery;
+use super::transition::{Destination, DnsQuery};
 use crate::client::Resource;
 use crate::dns::{self, is_subdomain};
 use crate::gateway::DnsResourceNatEntry;
@@ -134,61 +134,70 @@ impl TunnelTest {
             Transition::DisableResources(resources) => state
                 .client
                 .exec_mut(|c| c.sut.set_disabled_resources(resources)),
-            Transition::SendICMPPacketToNonResourceIp {
+            Transition::SendIcmpPacket {
                 src,
                 dst,
                 seq,
                 identifier,
                 payload,
-            }
-            | Transition::SendICMPPacketToCidrResource {
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
+                ..
             } => {
+                let dst = address_from_destination(&dst, &state, &src);
+
                 let packet = ip_packet::make::icmp_request_packet(
                     src,
                     dst,
-                    seq,
-                    identifier,
+                    seq.0,
+                    identifier.0,
                     &payload.to_be_bytes(),
                 )
                 .unwrap();
 
-                let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
+                let transmit = state
+                    .client
+                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?.into_owned()));
 
                 buffered_transmits.push_from(transmit, &state.client, now);
             }
-            Transition::SendICMPPacketToDnsResource {
+            Transition::SendUdpPacket {
                 src,
                 dst,
-                seq,
-                identifier,
+                sport,
+                dport,
                 payload,
-                resolved_ip,
-                ..
             } => {
-                let available_ips = state
-                    .client
-                    .inner()
-                    .dns_records
-                    .get(&dst)
-                    .unwrap()
-                    .iter()
-                    .filter(|ip| match ip {
-                        IpAddr::V4(_) => src.is_ipv4(),
-                        IpAddr::V6(_) => src.is_ipv6(),
-                    });
-                let dst = *resolved_ip.select(available_ips);
+                let dst = address_from_destination(&dst, &state, &src);
 
-                let packet = ip_packet::make::icmp_request_packet(
+                let packet = ip_packet::make::udp_packet(
                     src,
                     dst,
-                    seq,
-                    identifier,
-                    &payload.to_be_bytes(),
+                    sport.0,
+                    dport.0,
+                    payload.to_be_bytes().to_vec(),
+                )
+                .unwrap();
+
+                let transmit = state
+                    .client
+                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?.into_owned()));
+
+                buffered_transmits.push_from(transmit, &state.client, now);
+            }
+            Transition::SendTcpPayload {
+                src,
+                dst,
+                sport,
+                dport,
+                payload,
+            } => {
+                let dst = address_from_destination(&dst, &state, &src);
+
+                let packet = ip_packet::make::tcp_packet(
+                    src,
+                    dst,
+                    sport.0,
+                    dport.0,
+                    payload.to_be_bytes().to_vec(),
                 )
                 .unwrap();
 
@@ -878,6 +887,26 @@ impl TunnelTest {
             gateway.exec_mut(|g| g.update_relays(to_remove.iter().copied(), online.iter(), now));
         }
         self.relays = online; // Override all relays.
+    }
+}
+
+fn address_from_destination(destination: &Destination, state: &TunnelTest, src: &IpAddr) -> IpAddr {
+    match destination {
+        Destination::DomainName { resolved_ip, name } => {
+            let available_ips = state
+                .client
+                .inner()
+                .dns_records
+                .get(name)
+                .unwrap()
+                .iter()
+                .filter(|ip| match ip {
+                    IpAddr::V4(_) => src.is_ipv4(),
+                    IpAddr::V6(_) => src.is_ipv6(),
+                });
+            *resolved_ip.select(available_ips)
+        }
+        Destination::IpAddr(addr) => *addr,
     }
 }
 
