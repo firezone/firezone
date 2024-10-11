@@ -18,7 +18,7 @@ export default function GUI({ title }: { title: string }) {
         <ChangeItem enable={title === "Linux GUI"}>
           This is a maintenance release with no user-facing changes.
         </ChangeItem>
-        <ChangeItem enable={title === "Windows"}>
+        <ChangeItem enable={title === "Windows"} pull="7009">
           The IPC service `firezone-client-ipc.exe` is now signed.
         </ChangeItem>
       </Unreleased>
