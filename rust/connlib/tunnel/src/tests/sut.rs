@@ -394,6 +394,7 @@ impl TunnelTest {
                     c.sut.handle_dns_response(dns::RecursiveResponse {
                         server,
                         query: query.message,
+                        original_src: query.original_src,
                         message: Ok(response), // TODO: Vary this?
                         transport,
                     })

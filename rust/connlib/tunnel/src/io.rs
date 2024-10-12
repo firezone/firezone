@@ -41,6 +41,7 @@ pub struct Io {
 struct DnsQueryMetaData {
     query: Message<Vec<u8>>,
     server: SocketAddr,
+    original_src: SocketAddr,
     transport: dns::Transport,
 }
 
@@ -123,12 +124,14 @@ impl Io {
                         query: meta.query.clone(),
                         message: result,
                         transport: meta.transport,
+                        original_src: meta.original_src,
                     })
                     .unwrap_or_else(|_| dns::RecursiveResponse {
                         server: meta.server,
                         query: meta.query,
                         message: Err(io::Error::from(io::ErrorKind::TimedOut)),
                         transport: meta.transport,
+                        original_src: meta.original_src,
                     });
 
                 return Poll::Ready(Ok(Input::DnsResponse(response)));
@@ -228,6 +231,7 @@ impl Io {
                     query: query.message.clone(),
                     server,
                     transport: dns::Transport::Udp,
+                    original_src: query.original_src,
                 };
 
                 if self

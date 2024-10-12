@@ -50,6 +50,7 @@ pub struct StubResolver {
 #[derive(Debug, Clone)]
 pub(crate) struct RecursiveQuery {
     pub server: SocketAddr,
+    pub original_src: SocketAddr,
     pub message: Message<Vec<u8>>,
     pub transport: Transport,
 }
@@ -58,17 +59,23 @@ pub(crate) struct RecursiveQuery {
 #[derive(Debug)]
 pub(crate) struct RecursiveResponse {
     pub server: SocketAddr,
+    pub original_src: SocketAddr,
     pub query: Message<Vec<u8>>,
     pub message: io::Result<Message<Vec<u8>>>,
     pub transport: Transport,
 }
 
 impl RecursiveQuery {
-    pub(crate) fn via_udp(server: SocketAddr, message: Message<&[u8]>) -> Self {
+    pub(crate) fn via_udp(
+        server: SocketAddr,
+        original_src: SocketAddr,
+        message: Message<&[u8]>,
+    ) -> Self {
         Self {
             server,
             message: message.octets_into(),
             transport: Transport::Udp,
+            original_src,
         }
     }
 }
