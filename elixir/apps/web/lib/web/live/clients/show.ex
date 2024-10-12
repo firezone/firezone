@@ -171,6 +171,10 @@ defmodule Web.Clients.Show do
         Device Attributes
       </:title>
 
+      <:help>
+        Information about the device that the Client is running on.
+      </:help>
+
       <:action :if={is_nil(@client.deleted_at) and not is_nil(@client.verified_at)}>
         <.button_with_confirmation
           id="remove_client_verification"
