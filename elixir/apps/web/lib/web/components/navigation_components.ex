@@ -347,4 +347,25 @@ defmodule Web.NavigationComponents do
     </.link>
     """
   end
+
+  @doc """
+  Renders links to the docs based off documentation portal path.
+
+  ## Examples
+
+    <.website_link href="/pricing>Pricing</.website_link>
+    <.website_link href="/kb/deploy/gateways" class="text-neutral-900">Deploy Gateway(s)</.website_link>
+    <.website_link href={~p"/contact/sales"}>Contact Sales</.website_link>
+  """
+  attr :path, :string, required: true
+  attr :fragment, :string, required: false, default: ""
+  attr :rest, :global
+
+  def docs_action(assigns) do
+    ~H"""
+    <.link navigate={"/kb#{@path}?utm_source=product##{@fragment}"} target="_blank" {@rest}>
+      <.icon name="hero-question-mark-circle" class="mr-2 w-5 h-5" />
+    </.link>
+    """
+  end
 end

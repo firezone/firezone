@@ -387,9 +387,11 @@ defmodule Web.FormComponents do
   attr :id, :string, required: true, doc: "The id of the dialog"
   attr :class, :string, default: "", doc: "Custom classes to be added to the button"
   attr :style, :string, default: "danger", doc: "The style of the button"
+  attr :confirm_style, :string, default: "danger", doc: "The style of the confirm button"
   attr :icon, :string, default: nil, doc: "The icon of the button"
   attr :size, :string, default: "md", doc: "The size of the button"
   attr :on_confirm, :string, required: true, doc: "The phx event to broadcast on confirm"
+  attr :disabled, :boolean, default: false, doc: "Whether the button is disabled"
 
   attr :on_confirm_id, :string,
     default: nil,
@@ -418,7 +420,7 @@ defmodule Web.FormComponents do
               <%= render_slot(@dialog_title) %>
             </h3>
             <button
-              class="text-neutral-400 bg-transparent hover:text-accent-900"
+              class="text-neutral-400 bg-transparent hover:text-accent-900 ml-2"
               type="submit"
               value="cancel"
             >
@@ -444,7 +446,7 @@ defmodule Web.FormComponents do
               phx-click={@on_confirm}
               phx-value-id={@on_confirm_id}
               type="submit"
-              style="danger"
+              style={@confirm_style}
               value="confirm"
               class="py-2.5 px-5 ms-3"
             >
@@ -454,7 +456,15 @@ defmodule Web.FormComponents do
         </div>
       </form>
     </dialog>
-    <.button id={@id} style={@style} size={@size} icon={@icon} class={@class} phx-hook="ConfirmDialog">
+    <.button
+      id={@id}
+      style={@style}
+      size={@size}
+      icon={@icon}
+      class={@class}
+      disabled={@disabled}
+      phx-hook="ConfirmDialog"
+    >
       <%= render_slot(@inner_block) %>
     </.button>
     """
@@ -632,6 +642,15 @@ defmodule Web.FormComponents do
         "text-neutral-900",
         "border border-neutral-200",
         "hover:bg-neutral-100 hover:text-neutral-900"
+      ]
+  end
+
+  def button_style("disabled") do
+    button_style() ++
+      [
+        "text-neutral-200",
+        "border border-neutral-200",
+        "cursor-not-allowed"
       ]
   end
 

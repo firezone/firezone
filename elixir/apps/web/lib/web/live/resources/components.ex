@@ -116,7 +116,7 @@ defmodule Web.Resources.Components do
     ~H"""
     <fieldset class="flex flex-col gap-2">
       <div class="mb-1 flex items-center justify-between">
-        <legend>Traffic Restriction</legend>
+        <legend class="text-xl">Traffic Restriction</legend>
 
         <%= if @traffic_filters_enabled? == false do %>
           <.link navigate={~p"/#{@account}/settings/billing"} class="text-sm text-primary-500">
@@ -136,7 +136,7 @@ defmodule Web.Resources.Components do
         @traffic_filters_enabled? == false && "opacity-50",
         "mt-4"
       ]}>
-        <div class="flex items-top h-20">
+        <div class="flex items-top mb-4">
           <.input type="hidden" name={"#{@form.name}[tcp][protocol]"} value="tcp" />
           <div class="mt-2.5 w-24">
             <.input
@@ -169,7 +169,7 @@ defmodule Web.Resources.Components do
           </div>
         </div>
 
-        <div class="flex items-top h-20">
+        <div class="flex items-top mb-4">
           <.input type="hidden" name={"#{@form.name}[udp][protocol]"} value="udp" />
           <div class="mt-2.5 w-24">
             <.input
@@ -201,7 +201,7 @@ defmodule Web.Resources.Components do
           </div>
         </div>
 
-        <div class="flex items-top h-20">
+        <div class="flex items-top mb-4">
           <.input type="hidden" name={"#{@form.name}[icmp][protocol]"} value="icmp" />
 
           <div class="mt-2.5 w-24">
@@ -287,7 +287,11 @@ defmodule Web.Resources.Components do
 
     ~H"""
     <fieldset class="flex flex-col gap-2" {@rest}>
-      <legend class="mb-2">Sites</legend>
+      <legend class="text-xl mb-4">Sites</legend>
+
+      <p class="text-sm text-neutral-500">
+        When multiple sites are selected, the client will automatically connect to the closest one based on its geographical location.
+      </p>
 
       <.error :for={error <- @errors} data-validation-error-for="connections">
         <%= error %>

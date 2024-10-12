@@ -56,6 +56,9 @@ defmodule Web.Settings.IdentityProviders.Index do
         Identity Providers
       </:title>
       <:action>
+        <.docs_action path="/authenticate" />
+      </:action>
+      <:action>
         <.add_button navigate={~p"/#{@account}/settings/identity_providers/new"}>
           Add Identity Provider
         </.add_button>

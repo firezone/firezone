@@ -126,6 +126,9 @@ defmodule Web.Sites.Show do
           see all <.icon name="hero-arrow-right" class="w-2 h-2" />
         </.link>
       </:title>
+      <:action>
+        <.docs_action path="/deploy/gateways" />
+      </:action>
       <:action :if={is_nil(@group.deleted_at)}>
         <.add_button navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
           Deploy Gateway
@@ -238,9 +241,14 @@ defmodule Web.Sites.Show do
             <:col :let={resource} label="Authorized groups">
               <.peek peek={Map.fetch!(@resource_actor_groups_peek, resource.id)}>
                 <:empty>
-                  None -
+                  <div class="mr-1">
+                    <.icon
+                      name="hero-exclamation-triangle-solid"
+                      class="inline-block w-3.5 h-3.5 text-red-500"
+                    /> None.
+                  </div>
                   <.link
-                    class={["px-1", link_style()]}
+                    class={[link_style(), "mr-1"]}
                     navigate={~p"/#{@account}/policies/new?resource_id=#{resource}&site_id=#{@group}"}
                   >
                     Create a Policy

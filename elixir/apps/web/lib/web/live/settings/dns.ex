@@ -33,17 +33,16 @@ defmodule Web.Settings.DNS do
       <:title>
         DNS
       </:title>
+
+      <:action>
+        <.docs_action path="/deploy/dns" />
+      </:action>
+
       <:help>
         Configure the default resolver used by connected Clients.
-        Queries for Resources will <strong>always</strong>
-        use Firezone's internal DNS.
+        Queries for Resources will <strong>always</strong> use Firezone's internal DNS.
         All other queries will use the DNS servers configured here or the Client's
         system resolvers if no servers are configured.
-        <p class="mt-2">
-          <.website_link path="/kb/deploy/dns">
-            Read more about configuring DNS in Firezone.
-          </.website_link>
-        </p>
       </:help>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto">
@@ -70,11 +69,7 @@ defmodule Web.Settings.DNS do
                         />
                       </div>
                       <div class="w-3/4">
-                        <.input
-                          label="Address"
-                          field={dns[:address]}
-                          placeholder="DNS Server Address"
-                        />
+                        <.input label="Address" field={dns[:address]} placeholder="E.g. 1.1.1.1" />
                       </div>
                     </div>
                   </.inputs_for>

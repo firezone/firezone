@@ -133,7 +133,7 @@ defmodule Web.SignUp do
     ~H"""
     <div class="space-y-6">
       <div class="text-center text-neutral-900">
-        Your account has been created!
+        <p class="text-xl font-medium">Your account has been created!</p>
         <p>Please check your email for sign in instructions.</p>
       </div>
       <div class="text-center">
@@ -141,7 +141,7 @@ defmodule Web.SignUp do
           <table class="border-collapse w-full text-sm">
             <tbody>
               <tr>
-                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
+                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900 font-bold]}>
                   Account Name:
                 </td>
                 <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
@@ -149,7 +149,7 @@ defmodule Web.SignUp do
                 </td>
               </tr>
               <tr>
-                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
+                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900 font-bold]}>
                   Account Slug:
                 </td>
                 <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
@@ -157,7 +157,7 @@ defmodule Web.SignUp do
                 </td>
               </tr>
               <tr>
-                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
+                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900 font-bold]}>
                   Sign In URL:
                 </td>
                 <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
@@ -204,8 +204,8 @@ defmodule Web.SignUp do
         <.input
           field={@form[:email]}
           type="text"
-          label="Email"
-          placeholder="Enter your work email here"
+          label="Work Email"
+          placeholder="E.g. foo@example.com"
           required
           autofocus
           phx-debounce="300"
@@ -215,8 +215,8 @@ defmodule Web.SignUp do
           <.input
             field={account[:name]}
             type="text"
-            label="Account Name"
-            placeholder="Enter an account name"
+            label="Company Name"
+            placeholder="E.g. Example Corp"
             required
             phx-debounce="300"
           />
@@ -228,7 +228,7 @@ defmodule Web.SignUp do
             field={actor[:name]}
             type="text"
             label="Your Name"
-            placeholder="Enter your name here"
+            placeholder="E.g. John Smith"
             required
             phx-debounce="300"
           />
@@ -389,10 +389,19 @@ defmodule Web.SignUp do
   end
 
   defp maybe_put_default_account_name(attrs, false) do
-    case String.split(attrs["email"], "@", parts: 2) do
-      [default_name | _] when byte_size(default_name) > 0 ->
-        put_in(attrs, ["account", "name"], "#{default_name}'s account")
+    with [default_name | _] <- String.split(attrs["email"], "@", parts: 2) do
+      case String.split(default_name, ".", parts: 2) do
+        [first_name, last_name | _] when byte_size(first_name) > 0 and byte_size(last_name) > 0 ->
+          put_in(
+            attrs,
+            ["account", "name"],
+            "#{String.capitalize(first_name)} #{String.capitalize(last_name)}'s Account"
+          )
 
+        _ ->
+          put_in(attrs, ["account", "name"], "#{String.capitalize(default_name)}'s Account")
+      end
+    else
       _ ->
         attrs
     end
@@ -405,8 +414,22 @@ defmodule Web.SignUp do
   end
 
   defp maybe_put_default_actor_name(attrs, false) do
-    [default_name | _] = String.split(attrs["email"], "@", parts: 2)
-    put_in(attrs, ["actor", "name"], default_name)
+    with [default_name | _] <- String.split(attrs["email"], "@", parts: 2) do
+      case String.split(default_name, ".", parts: 2) do
+        [first_name, last_name | _] when byte_size(first_name) > 0 and byte_size(last_name) > 0 ->
+          put_in(
+            attrs,
+            ["actor", "name"],
+            "#{String.capitalize(first_name)} #{String.capitalize(last_name)}"
+          )
+
+        _ ->
+          put_in(attrs, ["actor", "name"], String.capitalize(default_name))
+      end
+    else
+      _ ->
+        attrs
+    end
   end
 
   defp register_account(socket, registration) do

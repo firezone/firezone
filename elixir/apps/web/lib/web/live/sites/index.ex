@@ -49,6 +49,11 @@ defmodule Web.Sites.Index do
       <:title>
         Sites
       </:title>
+
+      <:action>
+        <.docs_action path="/deploy/sites" />
+      </:action>
+
       <:action>
         <.add_button navigate={~p"/#{@account}/sites/new"}>
           Add Site

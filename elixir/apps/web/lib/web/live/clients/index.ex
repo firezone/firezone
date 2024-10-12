@@ -54,6 +54,9 @@ defmodule Web.Clients.Index do
       <:help>
         Clients are end-user devices and servers that access your protected Resources.
       </:help>
+      <:action>
+        <.docs_action path="/deploy/clients" />
+      </:action>
       <:content>
         <.flash_group flash={@flash} />
         <.live_table
