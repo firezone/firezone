@@ -75,51 +75,12 @@ defmodule Web.Clients.Show do
         <span :if={not is_nil(@client.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
 
-      <:action :if={is_nil(@client.deleted_at) and not is_nil(@client.verified_at)}>
-        <.button_with_confirmation
-          id="remove_client_verification"
-          style="danger"
-          icon="hero-shield-exclamation"
-          on_confirm="remove_client_verification"
-        >
-          <:dialog_title>Remove verification</:dialog_title>
-          <:dialog_content>
-            Are you sure you want to remove verification of this Client?
-          </:dialog_content>
-          <:dialog_confirm_button>
-            Remove
-          </:dialog_confirm_button>
-          <:dialog_cancel_button>
-            Cancel
-          </:dialog_cancel_button>
-          Remove verification
-        </.button_with_confirmation>
-      </:action>
-      <:action :if={is_nil(@client.deleted_at) and is_nil(@client.verified_at)}>
-        <.button_with_confirmation
-          id="verify_client"
-          style="warning"
-          icon="hero-shield-check"
-          on_confirm="verify_client"
-        >
-          <:dialog_title>Verify Client</:dialog_title>
-          <:dialog_content>
-            Are you sure you want to verify this Client?
-          </:dialog_content>
-          <:dialog_confirm_button>
-            Verify
-          </:dialog_confirm_button>
-          <:dialog_cancel_button>
-            Cancel
-          </:dialog_cancel_button>
-          Verify
-        </.button_with_confirmation>
-      </:action>
       <:action :if={is_nil(@client.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/clients/#{@client}/edit"}>
           Edit Client
         </.edit_button>
       </:action>
+
       <:content>
         <.vertical_table id="client">
           <.vertical_table_row>
@@ -142,12 +103,6 @@ defmodule Web.Clients.Show do
           <.vertical_table_row>
             <:label>Status</:label>
             <:value><.connection_status class="ml-1/2" schema={@client} /></:value>
-          </.vertical_table_row>
-          <.vertical_table_row>
-            <:label>Verification</:label>
-            <:value>
-              <.verified_by account={@account} schema={@client} />
-            </:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Owner</:label>
@@ -188,7 +143,7 @@ defmodule Web.Clients.Show do
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>Client version</:label>
+            <:label>Version</:label>
             <:value><%= @client.last_seen_version %></:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -208,11 +163,56 @@ defmodule Web.Clients.Show do
             </:value>
           </.vertical_table_row>
         </.vertical_table>
+      </:content>
+    </.section>
 
-        <h2 class="mt-6 mb-4 text-xl leading-none tracking-tight text-neutral-900">
-          Device Attributes
-        </h2>
+    <.section>
+      <:title>
+        Device Attributes
+      </:title>
 
+      <:action :if={is_nil(@client.deleted_at) and not is_nil(@client.verified_at)}>
+        <.button_with_confirmation
+          id="remove_client_verification"
+          style="danger"
+          icon="hero-shield-exclamation"
+          on_confirm="remove_client_verification"
+        >
+          <:dialog_title>Remove verification</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to remove verification of this Client?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Remove
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
+          Remove verification
+        </.button_with_confirmation>
+      </:action>
+      <:action :if={is_nil(@client.deleted_at) and is_nil(@client.verified_at)}>
+        <.button_with_confirmation
+          id="verify_client"
+          style="warning"
+          icon="hero-shield-check"
+          on_confirm="verify_client"
+        >
+          <:dialog_title>Verify Client</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to verify this Client?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Verify
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
+          Verify
+        </.button_with_confirmation>
+      </:action>
+
+      <:content>
         <.vertical_table id="posture">
           <.vertical_table_row>
             <:label>
@@ -248,6 +248,23 @@ defmodule Web.Clients.Show do
             <:label>Last seen remote IP</:label>
             <:value>
               <.last_seen schema={@client} />
+            </:value>
+          </.vertical_table_row>
+
+          <.vertical_table_row>
+            <:label>
+              <.popover>
+                <:target>
+                  Verification
+                  <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
+                </:target>
+                <:content>
+                  Policies can be configured to require verification in order to access a Resource.
+                </:content>
+              </.popover>
+            </:label>
+            <:value>
+              <.verified_by account={@account} schema={@client} />
             </:value>
           </.vertical_table_row>
         </.vertical_table>
