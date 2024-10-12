@@ -73,7 +73,12 @@ defmodule Web.Clients.Index do
               <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
                 <%= client.name %>
               </.link>
-              <.icon :if={not is_nil(client.verified_at)} name="hero-shield-check" class="w-4 h-4" />
+              <.icon
+                :if={not is_nil(client.verified_at)}
+                name="hero-shield-check"
+                class="w-4 h-4"
+                title="Device attributes of this client are manually verified"
+              />
             </div>
           </:col>
           <:col :let={client} label="user">
