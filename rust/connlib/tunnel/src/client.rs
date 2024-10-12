@@ -497,10 +497,22 @@ impl ClientState {
     }
 
     pub(crate) fn handle_dns_response(&mut self, response: dns::RecursiveResponse) {
+        let qid = response.query.header().id();
+        let domain = response
+            .query
+            .sole_question()
+            .ok()
+            .map(|q| q.into_qname())
+            .map(tracing::field::display);
+
+        let _guard =
+            tracing::info_span!("on_dns_response", %qid, domain, proto = %response.transport)
+                .entered();
+
         match self.try_handle_dns_response(response) {
             Ok(()) => {}
             Err(e) => {
-                tracing::debug!("Failed to handle DNS response: {e}")
+                tracing::warn!("Failed to handle DNS response: {e}")
             }
         }
     }
@@ -543,18 +555,11 @@ impl ClientState {
         let saddr = *self.dns_mapping.get_by_right(&DnsServer::from(from))?;
         let sport = DNS_PORT;
 
-        let query_id = message.header().id();
-
         if message.header().tc() {
-            let domain = message
-                .first_question()
-                .map(|q| q.into_qname())
-                .map(tracing::field::display);
-
-            tracing::debug!(server = %from, domain, "Upstream DNS server had to truncate response");
+            tracing::debug!(server = %from, "Upstream DNS server had to truncate response");
         }
 
-        tracing::trace!(server = %from, %query_id, "Received recursive DNS response");
+        tracing::trace!(server = %from, "Received recursive DNS response");
 
         let daddr = dst.ip();
         let dport = dst.port();

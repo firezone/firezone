@@ -1,6 +1,7 @@
 use crate::client::IpProvider;
 use anyhow::{Context, Result};
 use connlib_model::{DomainName, ResourceId};
+use core::fmt;
 use domain::rdata::AllRecordData;
 use domain::{
     base::{
@@ -75,6 +76,14 @@ impl RecursiveQuery {
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Transport {
     Udp,
+}
+
+impl fmt::Display for Transport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Transport::Udp => write!(f, "udp"),
+        }
+    }
 }
 
 /// Tells the Client how to reply to a single DNS query
