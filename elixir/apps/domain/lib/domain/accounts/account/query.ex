@@ -55,6 +55,18 @@ defmodule Domain.Accounts.Account.Query do
     end
   end
 
+  def by_notification_enabled(queryable, notification) do
+    where(
+      queryable,
+      [accounts: accounts],
+      fragment(
+        "(?->'notifications'->?->>'enabled') = 'true'",
+        accounts.config,
+        ^notification
+      )
+    )
+  end
+
   def by_notification_last_notified(queryable, notification, hours) do
     interval = Duration.new!(hour: hours)
 
