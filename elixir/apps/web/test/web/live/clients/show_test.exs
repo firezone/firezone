@@ -92,8 +92,7 @@ defmodule Web.Live.Clients.ShowTest do
     assert table["status"] =~ "Offline"
     assert table["created"]
     assert table["last started"]
-    assert table["verification"] =~ "Not Verified"
-    assert table["client version"] =~ client.last_seen_version
+    assert table["version"] =~ client.last_seen_version
     assert table["user agent"] =~ client.last_seen_user_agent
 
     table =
@@ -104,6 +103,7 @@ defmodule Web.Live.Clients.ShowTest do
 
     assert table["file id"] == client.external_id
 
+    assert table["verification"] =~ "Not Verified"
     assert table["device serial"] =~ to_string(client.device_serial)
     assert table["device uuid"] =~ to_string(client.device_uuid)
     assert table["app installation id"] =~ to_string(client.firebase_installation_id)
@@ -322,7 +322,7 @@ defmodule Web.Live.Clients.ShowTest do
 
     table =
       lv
-      |> element("#client")
+      |> element("#posture")
       |> render()
       |> vertical_table_to_map()
 
